@@ -10,6 +10,7 @@ import {
   serializeDeviceBuckets,
 } from './trackerEnergy';
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
+import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges';
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
@@ -77,20 +78,24 @@ function buildNextPowerState(params: {
   const { lastGenerationW: _droppedGenerationLatch, ...carriedState } = state;
   return {
     ...carriedState,
-    buckets: Object.fromEntries(nextBuckets),
-    hourlySampleCounts: Object.fromEntries(nextHourlySampleCounts),
-    hourlyBudgets: Object.fromEntries(nextBudgets),
-    controlledBuckets: nextControlledBuckets ? Object.fromEntries(nextControlledBuckets) : state.controlledBuckets,
+    buckets: addToHourlyBuckets(state.buckets, nextBuckets),
+    hourlySampleCounts: addToHourlyBuckets(state.hourlySampleCounts, nextHourlySampleCounts),
+    hourlyBudgets: updateHourlyBuckets(state.hourlyBudgets, nextBudgets),
+    controlledBuckets: nextControlledBuckets
+      ? addToHourlyBuckets(state.controlledBuckets, nextControlledBuckets)
+      : state.controlledBuckets,
     uncontrolledBuckets: nextUncontrolledBuckets
-      ? Object.fromEntries(nextUncontrolledBuckets)
+      ? addToHourlyBuckets(state.uncontrolledBuckets, nextUncontrolledBuckets)
       : state.uncontrolledBuckets,
-    exemptBuckets: nextExemptBuckets ? Object.fromEntries(nextExemptBuckets) : state.exemptBuckets,
+    exemptBuckets: nextExemptBuckets ? addToHourlyBuckets(state.exemptBuckets, nextExemptBuckets) : state.exemptBuckets,
     // Sparse solar families: serialize only when non-empty so a non-solar home
     // never gains the keys and its persisted state stays deep-equal (merge gate).
-    ...(nextGenerationBuckets.size > 0 ? { generationBuckets: Object.fromEntries(nextGenerationBuckets) } : {}),
-    ...(nextExportBuckets.size > 0 ? { exportBuckets: Object.fromEntries(nextExportBuckets) } : {}),
+    ...(nextGenerationBuckets.size > 0
+      ? { generationBuckets: addToHourlyBuckets(state.generationBuckets, nextGenerationBuckets) } : {}),
+    ...(nextExportBuckets.size > 0
+      ? { exportBuckets: addToHourlyBuckets(state.exportBuckets, nextExportBuckets) } : {}),
     ...(currentGenerationW !== undefined ? { lastGenerationW: currentGenerationW } : {}),
-    deviceBuckets: serializeDeviceBuckets(nextDeviceBuckets),
+    deviceBuckets: serializeDeviceBuckets(state.deviceBuckets, nextDeviceBuckets),
     lastDevicePowerWById: currentDevicePowerWById,
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
@@ -151,32 +156,20 @@ function resolveBoundedTrackedPowerW(currentPowerW: number, trackedPowerW?: numb
   return Math.max(0, Math.min(trackedPowerW, currentPowerW));
 }
 
-function buildTrackedBucketMaps(state: PowerTrackerState): {
-  nextBuckets: Map<string, number>;
-  nextHourlySampleCounts: Map<string, number>;
-  nextBudgets: Map<string, number>;
-  nextControlledBuckets: Map<string, number>;
-  nextUncontrolledBuckets: Map<string, number>;
-  nextExemptBuckets: Map<string, number>;
-  nextGenerationBuckets: Map<string, number>;
-  nextExportBuckets: Map<string, number>;
-  nextDeviceBuckets: Map<string, Map<string, number>>;
-} {
+// These maps hold ONLY this sample's increments (budgets hold replacement values).
+// The retained histories stay in state; materialization copies a dictionary only
+// when a value changes, preserving the snapshots held by the SQLite diff base.
+function createSampleBucketChanges() {
   return {
-    nextBuckets: new Map<string, number>(Object.entries(state.buckets || {})),
-    nextHourlySampleCounts: new Map<string, number>(Object.entries(state.hourlySampleCounts || {})),
-    nextBudgets: new Map<string, number>(Object.entries(state.hourlyBudgets || {})),
-    nextControlledBuckets: new Map<string, number>(Object.entries(state.controlledBuckets || {})),
-    nextUncontrolledBuckets: new Map<string, number>(Object.entries(state.uncontrolledBuckets || {})),
-    nextExemptBuckets: new Map<string, number>(Object.entries(state.exemptBuckets || {})),
-    nextGenerationBuckets: new Map<string, number>(Object.entries(state.generationBuckets || {})),
-    nextExportBuckets: new Map<string, number>(Object.entries(state.exportBuckets || {})),
-    nextDeviceBuckets: new Map<string, Map<string, number>>(
-      Object.entries(state.deviceBuckets || {}).map(([deviceId, buckets]) => [
-        deviceId,
-        new Map<string, number>(Object.entries(buckets)),
-      ]),
-    ),
+    nextBuckets: new Map<string, number>(),
+    nextHourlySampleCounts: new Map<string, number>(),
+    nextBudgets: new Map<string, number>(),
+    nextControlledBuckets: new Map<string, number>(),
+    nextUncontrolledBuckets: new Map<string, number>(),
+    nextExemptBuckets: new Map<string, number>(),
+    nextGenerationBuckets: new Map<string, number>(),
+    nextExportBuckets: new Map<string, number>(),
+    nextDeviceBuckets: new Map<string, Map<string, number>>(),
   };
 }
 
@@ -443,7 +436,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
-  } = buildTrackedBucketMaps(state);
+  } = createSampleBucketChanges();
   const budgetKWh = applyCurrentHourSample({
     nextHourlySampleCounts,
     nextBudgets,

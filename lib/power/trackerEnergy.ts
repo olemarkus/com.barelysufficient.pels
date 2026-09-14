@@ -1,4 +1,6 @@
 import { truncateToUtcHour } from '../utils/dateUtils';
+import { addToHourlyBuckets } from './trackerBucketChanges';
+import type { PowerTrackerState } from './trackerTypes';
 
 export const calculateEnergyAcrossBoundaries = (params: {
   startTs: number;
@@ -42,13 +44,20 @@ export function normalizeDevicePowerWById(
 }
 
 export function serializeDeviceBuckets(
-  bucketsByDeviceId: Map<string, Map<string, number>>,
-): Record<string, Record<string, number>> | undefined {
-  const entries = Array.from(bucketsByDeviceId.entries()).flatMap(([deviceId, buckets]) => {
-    const retained = Object.fromEntries(buckets);
-    return Object.keys(retained).length > 0 ? [[deviceId, retained] as const] : [];
-  });
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  previous: PowerTrackerState['deviceBuckets'],
+  incrementsByDeviceId: Map<string, Map<string, number>>,
+): PowerTrackerState['deviceBuckets'] {
+  let next = previous ?? {};
+  for (const [deviceId, increments] of incrementsByDeviceId) {
+    if (increments.size === 0) continue;
+    const buckets = addToHourlyBuckets(previous?.[deviceId], increments);
+    if (buckets === previous?.[deviceId]) continue;
+    // eslint-disable-next-line no-restricted-syntax -- Copy once on the first change, never on later iterations.
+    if (next === previous) next = { ...previous };
+    // Only the new outer dictionary is edited; other devices keep their history.
+    next[deviceId] = buckets;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 export function pruneHourlyBucketsOnly(params: {
