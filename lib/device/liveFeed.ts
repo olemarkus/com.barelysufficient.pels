@@ -96,6 +96,9 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
   private quietEmittedAt: number | null = null;
   private trackedDeviceIds: ReadonlySet<string> = new Set();
   private subscribedDeviceIds: Set<string> = new Set();
+  // An attempt is reserved before awaiting its acknowledgement. Its token also
+  // fences late replies when Socket.IO reuses the same socket after reconnect.
+  private readonly pendingDeviceSubscriptions = new Map<string, symbol>();
 
   private health: LiveFeedHealth = {
     subscriptionState: 'disconnected',
@@ -136,6 +139,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       clearInterval(this.quietCheckTimer);
       this.quietCheckTimer = null;
     }
+    this.pendingDeviceSubscriptions.clear();
     this.subscribedDeviceIds.clear();
     try {
       this.namespacedSocket?.removeAllListeners();
@@ -282,6 +286,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     // Tear down the old socket BEFORE opening a new one — Manager caches sockets by namespace,
     // so disconnecting after would kill the newly created socket.
     if (this.namespacedSocket) {
+      this.pendingDeviceSubscriptions.clear();
       this.subscribedDeviceIds.clear();
       this.namespacedSocket.removeAllListeners();
       this.namespacedSocket.disconnect();
@@ -434,18 +439,26 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     for (const id of this.subscribedDeviceIds) {
       if (!targetIds.has(id)) this.unsubscribeFromDevice(id);
     }
+    for (const id of this.pendingDeviceSubscriptions.keys()) {
+      if (!targetIds.has(id)) this.unsubscribeFromDevice(id);
+    }
     for (const id of targetIds) {
-      if (!this.subscribedDeviceIds.has(id)) await this.subscribeToDevice(id);
+      await this.subscribeToDevice(id);
     }
   }
 
   private async subscribeToDevice(deviceId: string): Promise<void> {
-    if (!this.namespacedSocket?.connected || this.stopped) return;
+    const socket = this.namespacedSocket;
+    if (!socket?.connected || this.stopped || !this.trackedDeviceIds.has(deviceId)) return;
+    if (this.subscribedDeviceIds.has(deviceId) || this.pendingDeviceSubscriptions.has(deviceId)) return;
+    const attempt = Symbol(deviceId);
+    this.pendingDeviceSubscriptions.set(deviceId, attempt);
     const uri = `${DEVICE_URI_PREFIX}${deviceId}`;
     try {
-      await this.emitSubscribeUri(this.namespacedSocket, uri);
+      await this.emitSubscribeUri(socket, uri);
+      if (this.pendingDeviceSubscriptions.get(deviceId) !== attempt || !socket.connected) return;
       this.subscribedDeviceIds.add(deviceId);
-      this.namespacedSocket.on(uri, (eventName: string, data: unknown) => {
+      socket.on(uri, (eventName: string, data: unknown) => {
         if (eventName !== DEVICE_CAPABILITY_EVENT) return;
         if (!data || typeof data !== 'object') return;
         const payload = data as Record<string, unknown>;
@@ -453,15 +466,19 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         this.callbacks.onCapabilityUpdate?.(deviceId, payload.capabilityId, payload.value);
       });
     } catch (error) {
+      if (this.pendingDeviceSubscriptions.get(deviceId) !== attempt) return;
       (this.logger.structuredLog ?? moduleLogger).error({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_device_subscribe_failed',
         deviceId, err: normalizeError(error),
       });
+    } finally {
+      if (this.pendingDeviceSubscriptions.get(deviceId) === attempt) this.pendingDeviceSubscriptions.delete(deviceId);
     }
   }
 
   private unsubscribeFromDevice(deviceId: string): void {
+    this.pendingDeviceSubscriptions.delete(deviceId);
     const uri = `${DEVICE_URI_PREFIX}${deviceId}`;
     this.namespacedSocket?.emit('unsubscribe', uri);
     this.namespacedSocket?.off(uri);
