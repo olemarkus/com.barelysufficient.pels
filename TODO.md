@@ -366,37 +366,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
       2026-09-03. [P3]
 
-- [ ] **A configured setpoint shed makes a COOLING device cool harder, so the shed adds load.**
-      `resolveResidualShedBehavior` (`lib/device/temperatureControlPosture.ts`) returns the owner's
-      stored absolute setpoint unconditionally. That number was chosen as a heating floor ("when you
-      limit this device, let it fall to 16"), and on a unit whose `thermostat_mode` reports cooling
-      the same 16 is a demand for more compressor work. A shed that raises the device's draw is the
-      one outcome a shed must never have, and unlike the two entries below it makes a control
-      decision worse rather than merely inert.
-      Change: needs a product call first, because the owner stored ONE absolute number. Either
-      reinterpret it as "the comfort limit in whichever direction sheds" (16 while heating, and the
-      owner's cooling limit while cooling — which means a second stored value, or reading the
-      capability bound), or deny the `set_temperature` arm on a cooling device so it falls back to
-      `turn_off`, exactly as a device with no observed temperature already does at
-      `temperatureControlPosture.ts` (`resolveShedBehaviorWithoutTemperature`). The second is
-      smaller and losable-comfort-free; the first keeps the device modulating instead of stopping.
-      Done when no shed of a cooling device raises its expected draw, pinned by a planner test that
-      sheds a device reporting `thermostatMode: 'cooling'` and asserts its commanded setpoint does not move
-      below its current one. Source: the price-shift direction work, 2026-09-11; `pels-layering-guardian`
-      and `pels-runtime-reality` both isolated this arm from the two below. [P1]
-
-- [ ] **`overshoot_behaviors` has three parsers and no owner.** The runtime normalizes it in
-      `lib/utils/capacityHelpers.ts` (`ConfiguredShedBehavior`), the settings UI reads it raw as
-      `PersistedShedBehavior` / `state.ShedBehavior` (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`,
-      `state.ts`) with its own bounds (heating -20..50, cooling 16..40), and until 2026-09-14 the
-      auto-seed had a fourth (`OvershootBehaviorEntry`, since deleted). Both browser and Node read
-      the key, which is exactly the placement shared-domain exists for
-      (`notes/settings-key-ownership.md`). Change: `packages/shared-domain/src/settings/shedBehaviors.ts`
-      owns the type, the read (one normalization, one set of bounds) and the write shape; the UI's
-      two types and the runtime's collapse onto it; `capacityHelpers.ts` re-exports or imports.
-      Done when one function parses the key for both sides and the UI cannot persist a value the
-      runtime would clamp differently. Source: `pels-layering-guardian` on the cooling-shed PR. [P2]
-
 - [ ] **The solar-surplus lift and the deadline floor still move a setpoint as if every device were
       heating, so on a cooling device they do nothing useful and erase the price shift.** The plan
       input now carries the device's own direction (`TemperaturePlanInputKind.thermalDirection`,

@@ -80,7 +80,7 @@ export const resolveLifecycleFallbackRequest = (params: {
  *
  * The step rung is the DEVICE's: its lowest active step, or its off step. A
  * configured step id used to sit above those two, but nothing ever wrote one —
- * `normalizeShedBehaviors` stores `set_step` as a bare `{ action }` — so that
+ * `readShedBehaviors` stores `set_step` as a bare `{ action }` — so that
  * branch could not be reached from settings.
  *
  * `no_writable_axis` is REACHABLE, and the reason is worth stating: the

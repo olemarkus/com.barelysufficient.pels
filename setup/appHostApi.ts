@@ -12,10 +12,10 @@ import type {
 } from '../lib/dailyBudget/dailyBudgetTypes';
 import {
   getAllModes as getAllModesHelper,
-  getShedBehavior as getShedBehaviorHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
 import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
+import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
@@ -266,7 +266,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getTemperatureBoostConfig = (deviceId: string) => this.context.temperatureBoostSettings[deviceId];
   public getEvBoostConfig = (deviceId: string) => this.context.evBoostSettings[deviceId];
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
-    getShedBehaviorHelper(deviceId, this.context.shedBehaviors),
+    resolveShedBehavior(this.context.shedBehaviors, deviceId),
     // Lazy and single-device: this runs several times per device per plan build,
     // and `latestTargetSnapshot` rebuilds the whole list on every access.
     () => this.decorateOneDevice(deviceId),

@@ -210,7 +210,11 @@ export class AppServiceWiring {
   }
 
   createObservedTemperatureModeUpdates() {
-    return createObservedTemperatureModeUpdates(this.deps.ctx, () => this.deps.getHomeRuntimeRegistry());
+    return createObservedTemperatureModeUpdates(
+      this.deps.ctx,
+      () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
+      (deviceId) => this.isDeviceLimitedInOwningHome(deviceId),
+    );
   }
 
   async runInit(): Promise<void> {
@@ -637,6 +641,20 @@ export class AppServiceWiring {
    * is no plan to rebuild and nothing to record — the first plan build reads the
    * freshly written reachability anyway.
    */
+  /**
+   * Whether the plan of whichever home owns this device has it limited by
+   * setpoint. Routed exactly as {@link rebuildOwningHomePlanForDevice} is, and
+   * for the same reason: main's plan filters sub-home members out, so asking
+   * main about one of them would always answer "not limited". Before the plan
+   * service exists there is no plan, and nothing in it is limited.
+   */
+  isDeviceLimitedInOwningHome(deviceId: string): boolean {
+    const subHomeRoute = this.deps.getHomeRuntimeRegistry()?.getOwningHomeRouteForDevice(deviceId);
+    if (subHomeRoute) return subHomeRoute.hooks.isDeviceLimited(deviceId);
+    const resolved = resolvePlanService(this.deps.ctx);
+    return resolved.state === 'ready' && resolved.planService.isDeviceLimitedInLatestPlan(deviceId);
+  }
+
   rebuildOwningHomePlanForDevice(deviceId: string, trigger: PlanRebuildTrigger): Promise<unknown> {
     const subHomeRoute = this.deps.getHomeRuntimeRegistry()?.getOwningHomeRouteForDevice(deviceId);
     if (subHomeRoute) return subHomeRoute.hooks.rebuildPlan(trigger);

@@ -3,7 +3,7 @@ import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import type {
   DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot, ThermalDirection,
 } from '../../packages/contracts/src/types';
-import type { ConfiguredShedBehavior } from '../utils/capacityHelpers';
+import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';

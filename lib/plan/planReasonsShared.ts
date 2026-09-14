@@ -3,6 +3,7 @@ import type { PlanEngineState } from './planState';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { HeadroomReserve } from './admission';
 import type { RestoreTiming } from './restore/timing';
+import type { ShedSetpointLimits } from './normalizedShedFloor';
 /** Local shape: the pending-restore countdown a hold names. */
 export type PendingRestoreDelay = { remainingSec: number; countdownStartedAtMs: number; countdownTotalSec: number };
 
@@ -47,7 +48,7 @@ export type HoldPass = {
   readonly guardInShortfall: boolean;
   /** The guard's shedding latch this cycle — the restore pass forks on it before the cooldown lane. */
   readonly sheddingActive: boolean;
-  readonly normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+  readonly normalizedShedFloorCByDevice: ShedSetpointLimits;
   readonly restoredThisCycle: Set<string>;
 };
 

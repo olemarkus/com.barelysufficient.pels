@@ -25,6 +25,7 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
       ? 'shed_temperature'
       : 'target_update',
     recordRestoreOnTargetApply: dev.recordRestoreOnTargetApply,
+    restoreFromTarget: dev.currentTarget,
   };
   return intent;
 }
@@ -40,16 +41,17 @@ export function buildExecutableTargetUpdate(
 
   return {
     ...command,
-    // Planner-resolved, raise-guarded in the diff domain the executor owns:
-    // the plan's verdict is frozen at build time, so if the observation moved
-    // ABOVE the desired value before apply, this write LOWERS the setpoint —
-    // advancing the restore clocks for it would delay legitimate restores by
-    // the backoff. The guard compares only desired vs observed (no config,
-    // no policy — the owner ruling stands); why the write is a restore was
-    // decided where the setpoint was chosen.
+    // Planner-resolved, guarded in the diff domain the executor owns: the
+    // plan's verdict is frozen at build time, so if the observation moved PAST
+    // the desired value before apply, this write goes the other way — advancing
+    // the restore clocks for it would delay legitimate restores by the backoff.
+    // The guard compares only which side of desired the observation is on now
+    // versus when the plan decided (no config, no policy, no direction — the
+    // owner ruling stands); why the write is a restore was decided where the
+    // setpoint was chosen.
     isRestoring: intent.recordRestoreOnTargetApply
       && typeof command.observedValue === 'number'
-      && command.desired > command.observedValue,
+      && Math.sign(command.desired - command.observedValue) === Math.sign(command.desired - intent.restoreFromTarget),
   };
 }
 

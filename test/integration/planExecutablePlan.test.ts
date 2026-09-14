@@ -158,9 +158,9 @@ describe('planExecutablePlan', () => {
     });
   });
 
-  it('honors the plan-time restore stamp only while the write actually raises the setpoint', () => {
+  it('honors the plan-time restore stamp only while the write moves the setpoint the way the plan did', () => {
     // The planner's verdict is frozen at build time; the projection's
-    // raise-guard (pure diff domain: desired vs observed, no config) keeps a
+    // guard (pure diff domain: desired vs observed, no config) keeps a
     // drifted observation honest. Drift UPWARD but still below the desired
     // value: the write still raises — the stamp holds. Documented on
     // `ExecutableTargetIntent.recordRestoreOnTargetApply`.
@@ -223,6 +223,33 @@ describe('planExecutablePlan', () => {
       observedValue: 22,
       isRestoring: false,
     });
+  });
+
+  it('records a cooling unit resuming DOWN from its limit, and not once the observation moved past the target', () => {
+    // A cooling unit is limited by raising its target, so its resume LOWERS
+    // the setpoint (28 -> 22). The guard compares which side of the target the
+    // observation is on now with the side the plan decided from, so it needs no
+    // direction; a `desired > observed` check never recorded this resume at all.
+    const coolingUnit = buildPlanDevice({
+      id: 'ac-1',
+      name: 'AC',
+      currentTarget: 28,
+      currentTemperature: 27,
+      plannedTarget: 22,
+      recordRestoreOnTargetApply: true,
+    });
+    const intent = buildExecutableTargetIntent(coolingUnit);
+    const observedAt = (value: number) => buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
+      id: 'ac-1',
+      name: 'AC',
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value, unit: '°C' }],
+    });
+
+    expect(buildExecutableTargetUpdate(intent, observedAt(28))).toMatchObject({ desired: 22, isRestoring: true });
+    // Someone set it to 20 between build and apply: writing 22 now RAISES it.
+    expect(buildExecutableTargetUpdate(intent, observedAt(20))).toMatchObject({ desired: 22, isRestoring: false });
   });
 
   it('does not project binary intent for target-only devices', () => {

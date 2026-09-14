@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createObservedTemperatureModeUpdates } from '../../setup/appInit/createObservedTemperatureModeUpdates';
+import { AppServiceWiring, type AppServiceWiringDeps } from '../../setup/appServiceWiring';
+import type { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
@@ -38,11 +39,16 @@ describe('observed temperature mode updates ask the owning home whether a device
         invalidateRebuildSuppression: () => {},
       },
     };
-    const service = createObservedTemperatureModeUpdates(ctx, () => ({
+    const registry = partialDouble<HomeRuntimeRegistry>({
       getLiveBundles: () => [],
       getOwningHomeRouteForDevice: () => route,
+    });
+    const wiring = new AppServiceWiring(partialDouble<AppServiceWiringDeps>({
+      ctx,
+      isMainActuationStopped: () => false,
+      getHomeRuntimeRegistry: () => registry,
     }));
-    return { ctx, service };
+    return { ctx, service: wiring.createObservedTemperatureModeUpdates() };
   };
 
   it('asks main when the device has no owning sub-home', () => {

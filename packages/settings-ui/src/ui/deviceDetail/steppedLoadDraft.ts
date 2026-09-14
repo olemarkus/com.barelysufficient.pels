@@ -28,6 +28,7 @@ import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { hasEvTargetPowerPreset, isSteppedLoadControlModel } from '../deviceKind.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
+import { resolveShedBehavior } from '../../../../shared-domain/src/settings/shedBehaviors.ts';
 
 // Drafts are keyed by deviceId so the editor state for one device cannot bleed
 // into another's session. A single module-global draft used to make fallback
@@ -402,8 +403,7 @@ export const initSteppedLoadDraftHandlers = (params: {
         logMessage: 'Failed to save stepped-load profile',
         toastMessage: 'Failed to save stepped-load profile.',
         mutate: (currentBehaviors) => {
-          const currentBehavior = currentBehaviors[deviceId];
-          if (currentBehavior?.action !== 'set_step') {
+          if (resolveShedBehavior(currentBehaviors, deviceId).action !== 'set_step') {
             return currentBehaviors;
           }
           return {

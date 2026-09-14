@@ -7,6 +7,7 @@ import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { SteppedSwapExecutor } from './helpers';
+import type { ShedSetpointLimits } from '../normalizedShedFloor';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -14,7 +15,7 @@ export type RestoreDeps = {
   /** This build's capability-normalized configured shed floor per device —
    * resolved once by the builder (`resolveNormalizedShedFloors`); every
    * floor comparison in the restore/swap pass reads through it. */
-  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+  normalizedShedFloorCByDevice: ShedSetpointLimits;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   deviceNameById?: ReadonlyMap<string, string>;

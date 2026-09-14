@@ -7,6 +7,7 @@ import {
 import { sortByPriorityAsc } from './planSort';
 import { resolvePlannedShedTargetKind } from './planActionMaterialization';
 import { setpointAddsDemand } from './setpointDemand';
+import { shedLimitFor, type ShedSetpointLimits } from './normalizedShedFloor';
 
 export type PlanReasonPairValidationIssue = {
   deviceId: string;
@@ -220,7 +221,7 @@ export function finalizePlanDevices(
   /** This build's capability-normalized configured shed floor per device
    * (`resolveNormalizedShedFloors`) — the restore classification below reads
    * it, never raw config. */
-  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+  normalizedShedFloorCByDevice: ShedSetpointLimits,
   /** The PREVIOUS build's final shed set: the restore classification counts a
    * raise off it even when the device no longer sits at the configured floor,
    * which is how a mid-hold floor edit still classifies as a restore. */
@@ -284,13 +285,16 @@ export function finalizePlanDevices(
  */
 function resolveRecordRestoreOnTargetApply(
   dev: DevicePlanDevice,
-  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+  normalizedShedFloorCByDevice: ShedSetpointLimits,
   wasShedLastBuild: ReadonlySet<string>,
 ): boolean {
-  if (!isTemperaturePlanDevice(dev)) return false;
+  // Only a device limited by SETPOINT has a resume to classify here, and only
+  // such a device has a limit entry. A device limited by turning it off records
+  // its resume on the binary write instead.
+  if (!isTemperaturePlanDevice(dev) || !normalizedShedFloorCByDevice.has(dev.id)) return false;
+  const limit = shedLimitFor(normalizedShedFloorCByDevice, dev.id);
   // A resume moves the setpoint back toward demand: up for a heater, down for a
   // unit that is cooling.
-  if (!setpointAddsDemand(dev.thermalDirection, dev.currentTarget, dev.plannedTarget)) return false;
-  return normalizedShedFloorCByDevice.get(dev.id) === dev.currentTarget
-    || wasShedLastBuild.has(dev.id);
+  if (!setpointAddsDemand(limit.thermalDirection, dev.currentTarget, dev.plannedTarget)) return false;
+  return limit.temperatureC === dev.currentTarget || wasShedLastBuild.has(dev.id);
 }

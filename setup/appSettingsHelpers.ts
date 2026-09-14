@@ -1,6 +1,8 @@
 import { readTemperatureControlDisabledDevicesSetting } from '../lib/device/temperatureControlSettings';
 import type Homey from 'homey';
-import type { ConfiguredShedBehavior } from '../lib/utils/capacityHelpers';
+import {
+  isShedBehaviorsSetting, readShedBehaviors, type ConfiguredShedBehavior,
+} from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DeviceControlProfiles,
   EvBoostSettings,
@@ -10,7 +12,6 @@ import type {
 } from '../packages/contracts/src/types';
 import {
   getAllModes as getAllModesHelper,
-  normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
 import { createSettingsHandler } from '../lib/utils/settingsHandlers';
@@ -179,7 +180,11 @@ export function buildCapacitySettingsSnapshot(params: {
   // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
   // they all inherit the strict order without branching on stored shape.
   const nextDryRun = capacityScalars.dryRun;
-  const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors);
+  // A read that is not the map keeps the one already held: a transient miss is
+  // not an owner who cleared every limit.
+  const nextBehaviors = isShedBehaviorsSetting(rawShedBehaviors)
+    ? readShedBehaviors(rawShedBehaviors)
+    : current.shedBehaviors;
 
   return {
     capacitySettings: nextCapacity,

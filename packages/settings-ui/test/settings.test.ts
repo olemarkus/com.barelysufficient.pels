@@ -700,7 +700,7 @@ describe('settings script', () => {
         },
       },
       overshoot_behaviors: {
-        'dev-1': { action: 'set_temperature', temperature: 55 },
+        'dev-1': { action: 'set_temperature', temperature: 50 },
       },
     });
     await loadDeviceAndModeSettings();
@@ -721,7 +721,7 @@ describe('settings script', () => {
     expect(shedAction.value).toBe('set_temperature');
     expect(tempRow.hidden).toBe(false);
     expect(stepRow.hidden).toBe(true);
-    expect(tempInput.value).toBe('55');
+    expect(tempInput.value).toBe('50');
   });
 
   it('switches between shed modes with only the relevant shed field visible', async () => {
@@ -1119,7 +1119,7 @@ describe('settings script', () => {
     await flushPromises();
 
     expect(homey.__settingsStore.overshoot_behaviors).toEqual({
-      'dev-1': { action: 'set_temperature', temperature: 55, coolingTemperature: 28 },
+      'dev-1': { action: 'set_temperature', temperature: 50, coolingTemperature: 28 },
       'dev-2': { action: 'set_step' },
     });
   });
@@ -1137,7 +1137,7 @@ describe('settings script', () => {
         },
       ],
       overshoot_behaviors: {
-        'dev-1': { action: 'set_temperature', temperature: 55 },
+        'dev-1': { action: 'set_temperature', temperature: 50 },
       },
     });
     const originalSet = homey.set;
@@ -1159,7 +1159,7 @@ describe('settings script', () => {
     const tempInput = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
 
     expect(shedAction.value).toBe('set_temperature');
-    expect(tempInput.value).toBe('55');
+    expect(tempInput.value).toBe('50');
     expect(tempRow.hidden).toBe(false);
 
     shedAction.value = 'turn_off';
@@ -1168,10 +1168,10 @@ describe('settings script', () => {
     await flushPromises();
 
     expect(shedAction.value).toBe('set_temperature');
-    expect(tempInput.value).toBe('55');
+    expect(tempInput.value).toBe('50');
     expect(tempRow.hidden).toBe(false);
     expect(homey.__settingsStore.overshoot_behaviors).toEqual({
-      'dev-1': { action: 'set_temperature', temperature: 55 },
+      'dev-1': { action: 'set_temperature', temperature: 50 },
     });
   });
 

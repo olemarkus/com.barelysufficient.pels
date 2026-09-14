@@ -231,7 +231,7 @@ describe('limiting card statement vs radiogroup', () => {
       [device.id]: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] },
     };
     state.temperatureControlDisabledMap = { [device.id]: true };
-    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 45 } };
+    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 45, coolingTemperature: 28 } };
 
     render(device);
 

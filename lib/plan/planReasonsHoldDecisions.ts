@@ -2,7 +2,7 @@ import type {
   DevicePlanDevice, ShedBehavior, TemperatureKind,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { shedFloorCFor } from './normalizedShedFloor';
+import { shedFloorCFor, shedLimitFor, type ShedSetpointLimits } from './normalizedShedFloor';
 import type { PlanEngineState } from './planState';
 import type { HeadroomReserve } from './admission';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
@@ -161,7 +161,7 @@ export type ShedHoldParams = {
    * raw stamp for an off-step configured floor plans a setpoint the device
    * can never report back — a futile re-write per cycle.
    */
-  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+  normalizedShedFloorCByDevice: ShedSetpointLimits;
 };
 
 export function applyShedTemperatureHold(params: ShedHoldParams): {
@@ -370,7 +370,7 @@ function getPendingRestoreDelay(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
   getShedBehavior: (deviceId: string) => ShedBehavior,
-  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+  normalizedShedFloorCByDevice: ShedSetpointLimits,
 ): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
   let countdownStartedAtMs: number | null = null;
@@ -379,9 +379,9 @@ function getPendingRestoreDelay(
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature') continue;
     if (!isTemperaturePlanDevice(dev)) continue;
-    const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
-    if (dev.currentTarget !== floorC) continue;
-    if (!setpointAddsDemand(dev.thermalDirection, floorC, dev.plannedTarget)) continue;
+    const limit = shedLimitFor(normalizedShedFloorCByDevice, dev.id);
+    if (dev.currentTarget !== limit.temperatureC) continue;
+    if (!setpointAddsDemand(limit.thermalDirection, limit.temperatureC, dev.plannedTarget)) continue;
 
     const lastRestoreMs = state.actuation.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;

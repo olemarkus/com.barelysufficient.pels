@@ -41,6 +41,7 @@ import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildCeilingShortfallInputs } from './planReasonShortfall';
 import { getOnDevices } from './restore/devices';
 import { trackPlanStage } from './planStageTiming';
+import type { ShedSetpointLimits } from './normalizedShedFloor';
 
 /**
  * The slice of `PlanBuilderDeps` the materialization stages read. Declared
@@ -112,7 +113,7 @@ export class PlanMaterializationStages {
     power: MeasuredPower,
     sheddingPlan: SheddingPlan,
     deviceNameById: ReadonlyMap<string, string>,
-    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+    normalizedShedFloorCByDevice: ShedSetpointLimits,
   ): RestorePlanResult {
     return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
@@ -132,7 +133,7 @@ export class PlanMaterializationStages {
     // Resolved ONCE per build by the builder and shared with restore
     // classification, so no stage can disagree about this build's floor.
     // Semantics on `ShedHoldParams.normalizedShedFloorCByDevice`.
-    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+    normalizedShedFloorCByDevice: ShedSetpointLimits,
   ): HoldPlanResult {
     return trackPlanStage('plan_hold_ms', () => applyShedTemperatureHold({
       normalizedShedFloorCByDevice,
@@ -164,7 +165,7 @@ export class PlanMaterializationStages {
     sheddingPlan: SheddingPlan;
     holds: ShedReasonHoldInputs;
     holdResult: HoldPlanResult;
-    normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+    normalizedShedFloorCByDevice: ShedSetpointLimits;
   }): DevicePlanDevice[] {
     const {
       planDevices, context, power, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
@@ -226,7 +227,7 @@ export class PlanMaterializationStages {
 
   finalizePlan(
     planDevices: DevicePlanDevice[],
-    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+    normalizedShedFloorCByDevice: ShedSetpointLimits,
   ): FinalizedPlanResult {
     return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
       planDevices, normalizedShedFloorCByDevice, this.state.shedDecisions.lastPlannedShedIds, {
@@ -287,7 +288,7 @@ export class PlanMaterializationStages {
     sheddingActive: boolean;
     guardInShortfall: boolean;
     deviceNameById: ReadonlyMap<string, string>;
-    normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+    normalizedShedFloorCByDevice: ShedSetpointLimits;
   }): RestorePlanResult {
     const {
       planDevices, context, power, sheddingActive, guardInShortfall, deviceNameById, normalizedShedFloorCByDevice,

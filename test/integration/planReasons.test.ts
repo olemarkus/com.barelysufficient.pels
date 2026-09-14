@@ -14,7 +14,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
-import { buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
+import { buildPlanDevice, restoreTimingFixture, heatingShedLimits } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
@@ -875,7 +875,7 @@ describe('finalizePlanDevices', () => {
       currentTarget: 16.5,
       currentTemperature: 16.5,
       plannedTarget: 21,
-    })], new Map([['dev', 17]]), new Set(['dev']));
+    })], heatingShedLimits({ 'dev': 17 }), new Set(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
@@ -887,12 +887,11 @@ describe('finalizePlanDevices', () => {
     // back-off and flips on the 60 s limit cadence.
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',
-      thermostatMode: 'cooling',
       plannedState: 'keep',
       currentTarget: 28,
       currentTemperature: 27,
       plannedTarget: 22,
-    })], new Map([['dev', 28]]), new Set<string>());
+    })], new Map([['dev', { temperatureC: 28, thermalDirection: 'cooling' }]]), new Set<string>());
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
@@ -900,12 +899,11 @@ describe('finalizePlanDevices', () => {
   it('does not stamp the restore classification for a cooling unit moving further INTO its limit', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',
-      thermostatMode: 'cooling',
       plannedState: 'keep',
       currentTarget: 22,
       currentTemperature: 23,
       plannedTarget: 28,
-    })], new Map([['dev', 28]]), new Set<string>(['dev']));
+    })], new Map([['dev', { temperatureC: 28, thermalDirection: 'cooling' }]]), new Set<string>(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
   });
@@ -917,7 +915,7 @@ describe('finalizePlanDevices', () => {
       currentTarget: 18,
       currentTemperature: 18,
       plannedTarget: 21,
-    })], new Map([['dev', 16]]), new Set<string>());
+    })], heatingShedLimits({ 'dev': 16 }), new Set<string>());
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
   });
@@ -949,7 +947,7 @@ describe('applyShedTemperatureHold', () => {
       const state = createPlanEngineState();
       state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
       return applyShedTemperatureHold({
-        normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+        normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Water Heater',
@@ -990,7 +988,7 @@ describe('applyShedTemperatureHold', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1023,7 +1021,7 @@ describe('applyShedTemperatureHold', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1060,7 +1058,7 @@ describe('applyShedTemperatureHold', () => {
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const held = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1129,7 +1127,7 @@ describe('applyShedTemperatureHold', () => {
         state.actuation.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
       }
       return applyShedTemperatureHold({
-        normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+        normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Thermostat',

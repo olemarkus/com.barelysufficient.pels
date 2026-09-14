@@ -151,18 +151,22 @@ the problem, not the safety net.
   to change how much the device draws must apply its move in that direction. The
   price-based shift does (`lib/plan/planPriceDelta.ts`), so does the diagnostics
   "held below target" resolution, and so does the configured `set_temperature`
-  shed: the owner's entry carries a limit per direction (`ConfiguredShedBehavior`,
-  `coolingTemperature` beside `temperature`), and
+  shed: the owner's entry carries a limit per direction (`ConfiguredShedBehavior`
+  in `packages/shared-domain/src/settings/shedBehaviors.ts`, `coolingTemperature`
+  beside `temperature`), and
   `resolveTemperaturePolicyShedBehavior` picks the one for the device's direction
   at the single seam that hands the planner a `ShedBehavior`
   (`AppHostApi.getShedBehavior`). Every setpoint entry carries both limits —
-  `normalizeShedBehaviors` fills `COOLING_SHED_DEFAULT_C` for one persisted
-  before the second existed — so no seam asks whether a limit is configured.
+  `readShedBehaviors` fills `COOLING_SHED_DEFAULT_C` for one persisted before
+  the second existed — so no seam asks whether a limit is configured.
   Every planner reader that orders two setpoints ("is this a limit or a
   resume", "would moving it to its limit still release demand") goes through
   `setpointAddsDemand` (`lib/plan/setpointDemand.ts`), reading the direction
-  the plan device carries on its own temperature facet; a bare `>` between two
-  targets is a heating assumption.
+  off the build's setpoint limit for that device (`ShedSetpointLimit`,
+  `lib/plan/normalizedShedFloor.ts`); a bare `>` between two targets is a
+  heating assumption. The executor never orders setpoints: its restore guard
+  asks only whether the observation is still on the side of the target the plan
+  decided from (`ExecutableTargetIntent.restoreFromTarget`).
   The surplus lift and the deadline floor still assume heating,
   and each is a defect for a cooling device rather than a deliberate exemption.
   **The readers assume it too, and that list is not closed.** `computeTemperatureGap`

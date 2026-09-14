@@ -136,6 +136,10 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
     putSpy.mockClear();
 
+    // Past the 60 s limit cooldown before relieving, as the heater scenario
+    // below is: the resume is now recorded as one, and a resume this
+    // soon after a limit is limited again, for a heater and a cooling unit alike.
+    await vi.advanceTimersByTimeAsync(70_000);
     setHomePower(100);
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     await vi.advanceTimersByTimeAsync(90_000);

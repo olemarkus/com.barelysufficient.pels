@@ -1,10 +1,11 @@
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
 import {
-  TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, OVERSHOOT_BEHAVIORS, homeScopedSettingsKey,
+  TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, homeScopedSettingsKey,
 } from '../utils/settingsKeys';
 import {
-  configuredShedTemperatures, normalizeShedBehaviors, type ConfiguredShedBehavior,
-} from '../utils/capacityHelpers';
+  resolveShedBehavior, shedLimitTemperatures, type ConfiguredShedBehavior,
+} from '../../packages/shared-domain/src/settings/shedBehaviors';
+import { readShedBehaviorsSetting } from './shedBehaviorsRead';
 import {
   readTemperatureControlModes, type TemperatureControlModes,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
@@ -18,11 +19,20 @@ export type DeviceModeForTemperatureUpdate =
 
 type ModeCatalogReader = { reloadModeCatalog: () => void };
 
+/**
+ * The temperature policy map as this service last read it. `unavailable` until
+ * one read resolves — a device's policy is unknown then, and every question
+ * below answers "no" rather than assume the default policy.
+ */
+type ControlModesRead =
+  | { state: 'unavailable' }
+  | { state: 'resolved'; modes: TemperatureControlModes };
+
 /** Owns observation-origin edits to a device's active mode, including persistence. */
 export class ObservedTemperatureModeUpdates {
   private readonly pendingSettings = new Map<string, { serialized: string; count: number }>();
 
-  private lastControlModes?: TemperatureControlModes;
+  private controlModes: ControlModesRead = { state: 'unavailable' };
 
   private lastShedBehaviors: Record<string, ConfiguredShedBehavior> = {};
 
@@ -39,8 +49,8 @@ export class ObservedTemperatureModeUpdates {
 
   /** Policy reads retain the last good value across transient SDK gaps. */
   allowsAutomaticAdjustments(deviceId: string): boolean {
-    const modes = this.readControlModes();
-    return modes !== undefined && modes[deviceId] !== 'update_mode' && modes[deviceId] !== 'external';
+    const read = this.readControlModes();
+    return read.state === 'resolved' && read.modes[deviceId] !== 'update_mode' && read.modes[deviceId] !== 'external';
   }
 
   /**
@@ -52,8 +62,8 @@ export class ObservedTemperatureModeUpdates {
    * "Keep the new temperature" means PELS writes no setpoint at all.
    */
   allowsLimiting(deviceId: string): boolean {
-    const modes = this.readControlModes();
-    return modes !== undefined && modes[deviceId] !== 'external';
+    const read = this.readControlModes();
+    return read.state === 'resolved' && read.modes[deviceId] !== 'external';
   }
 
   /**
@@ -65,9 +75,9 @@ export class ObservedTemperatureModeUpdates {
    * both numbers are the owner's. A queued price or solar offset is neither.
    */
   allowsTarget(deviceId: string, value: number): boolean {
-    const modes = this.readControlModes();
-    if (!modes || modes[deviceId] === 'external') return false;
-    if (modes[deviceId] !== 'update_mode') return true;
+    const read = this.readControlModes();
+    if (read.state !== 'resolved' || read.modes[deviceId] === 'external') return false;
+    if (read.modes[deviceId] !== 'update_mode') return true;
     if (this.configuredLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
       return true;
     }
@@ -86,31 +96,28 @@ export class ObservedTemperatureModeUpdates {
   /**
    * The owner's configured limit setpoints for this device, either direction —
    * read off the same settings port the policy is, so the fence needs no second
-   * injection. The normalizer is the one writer of that map's shape.
+   * injection. The key's owner (`shedBehaviors.ts`) reads the bytes.
    */
   private configuredLimitTemperatures(deviceId: string): readonly number[] {
-    try {
-      const raw = this.settings.get(OVERSHOOT_BEHAVIORS);
-      // The key is written as a map and never cleared, so a non-map read is a
-      // transient miss, not an emptied map: keep the last good one. A key never
-      // written reads as the empty map this starts with.
-      if (typeof raw === 'object' && raw !== null) this.lastShedBehaviors = normalizeShedBehaviors(raw);
-    } catch { /* Retain the last good map: a transient miss must not refuse a limit write. */ }
-    return configuredShedTemperatures(deviceId, this.lastShedBehaviors);
+    // An unavailable read keeps the last good map: a transient miss must not
+    // refuse a limit write.
+    const read = readShedBehaviorsSetting(this.settings);
+    if (read.state === 'resolved') this.lastShedBehaviors = read.behaviors;
+    return shedLimitTemperatures(resolveShedBehavior(this.lastShedBehaviors, deviceId));
   }
 
-  private readControlModes(): TemperatureControlModes | undefined {
+  private readControlModes(): ControlModesRead {
     try {
       const raw = this.settings.get(TEMPERATURE_CONTROL_MODES);
       const modes = readTemperatureControlModes(raw);
-      if (modes) this.lastControlModes = modes;
+      if (modes) this.controlModes = { state: 'resolved', modes };
       else if (raw === null || raw === undefined) {
         const keys = this.settings.getKeys();
         if (Array.isArray(keys) && keys.length > 0 && keys.every((key) => typeof key === 'string')
-          && !keys.includes(TEMPERATURE_CONTROL_MODES)) this.lastControlModes = {};
+          && !keys.includes(TEMPERATURE_CONTROL_MODES)) this.controlModes = { state: 'resolved', modes: {} };
       }
     } catch { /* Retain the last good policy. */ }
-    return this.lastControlModes;
+    return this.controlModes;
   }
 
   /** Consume our own notifications, including deferred/coalesced SDK delivery.
@@ -154,8 +161,11 @@ export class ObservedTemperatureModeUpdates {
    * other external change.
    */
   private adopts(adjustment: ExternalTemperatureAdjustment): boolean {
+    // A fresh read, not the retained policy: adopting PERSISTS a target, and a
+    // write is not something to base on a policy this read could not confirm.
     const modes = readTemperatureControlModes(this.settings.get(TEMPERATURE_CONTROL_MODES));
-    if (modes?.[adjustment.deviceId] !== 'update_mode' || !this.isManaged(adjustment.deviceId)) return false;
+    if (modes === null || modes[adjustment.deviceId] !== 'update_mode') return false;
+    if (!this.isManaged(adjustment.deviceId)) return false;
     if (!this.isLimited(adjustment.deviceId)) return true;
     getLogger('home/temperature-mode').info({
       event: 'observed_temperature_mode_update_skipped_while_limited', ...adjustment,

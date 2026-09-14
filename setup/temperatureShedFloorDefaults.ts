@@ -10,6 +10,7 @@
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { readModeDeviceTarget } from '../lib/home/modeDeviceTargetsRead';
+import { readShedBehaviorsSetting } from '../lib/home/shedBehaviorsRead';
 import type { DeviceOperatingModeOutcome } from './homeRuntime/homeOperatingMode';
 import { isTemperatureControlDevice } from '../packages/shared-domain/src/temperatureDeviceKind';
 import {
@@ -27,7 +28,9 @@ import {
   normalizeShedTemperature,
 } from '../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
-import type { ConfiguredShedBehavior } from '../lib/utils/capacityHelpers';
+import {
+  resolveShedBehavior, type ConfiguredShedBehavior,
+} from '../packages/shared-domain/src/settings/shedBehaviors';
 
 /**
  * Per-device active-mode resolution, carrying the producer's read-outcome
@@ -112,53 +115,57 @@ function readModeTarget(params: {
     : { state: 'resolved', modeTarget: read.targetC };
 }
 
+/**
+ * What the seed does for one device: leave its entry alone, or write this one.
+ * Leaving it alone covers both "already right" and "cannot tell" — an unknown
+ * mode seeds nothing, and a missing entry is re-derived on the next refresh.
+ */
+type OvershootSeed =
+  | { kind: 'keep' }
+  | { kind: 'write'; behavior: ConfiguredShedBehavior };
+
 function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
   settings: Homey.App['homey']['settings'];
   device: TargetDeviceSnapshot;
-  existing: ConfiguredShedBehavior | undefined;
+  existing: ConfiguredShedBehavior;
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): ConfiguredShedBehavior | null {
+}): OvershootSeed {
   const { settings, device, existing, resolveOperatingModeForDevice } = params;
-  const existingSetpoint = existing?.action === 'set_temperature' ? existing : undefined;
-  const existingTemp = existingSetpoint?.temperature ?? null;
   const minFloorC = resolveTemperatureShedFloor(device);
 
-  let normalizedTemp: number;
-  if (existingTemp !== null) {
-    const normalizedExisting = normalizeShedTemperature(existingTemp);
-    normalizedTemp = Math.max(minFloorC, normalizedExisting);
-  } else {
-    const modeTargetRead = readModeTarget({
-      settings,
-      deviceId: device.id,
-      resolveOperatingModeForDevice,
-    });
-    // The owning home's active mode is unknown (ownership is provisional, a
-    // settings read failed, or a rename is between its target and alias writes),
-    // so the default we would derive cannot be attributed to a mode.
-    // Seed NOTHING: a wrong-mode default persists — every later refresh keeps
-    // the entry that already exists — while a missing entry is re-derived on
-    // the next refresh, once the read succeeds.
-    if (modeTargetRead.state === 'unavailable') return null;
-    normalizedTemp = computeDefaultAirtreatmentShedTemperature({
-      modeTarget: modeTargetRead.modeTarget,
-      currentTarget: getPrimaryTargetCapability(device.targets)?.value ?? null,
-      minFloorC,
-    });
+  if (existing.action === 'set_temperature') {
+    // The owner's setpoint entry: only a floor below the device's minimum is
+    // corrected. The cooling limit is theirs and rides through untouched — a
+    // re-seed that reset it would silently loosen a limited air conditioner.
+    const normalizedTemp = Math.max(minFloorC, normalizeShedTemperature(existing.temperature));
+    if (Math.abs(normalizedTemp - existing.temperature) <= 1e-9) return { kind: 'keep' };
+    return { kind: 'write', behavior: { ...existing, temperature: normalizedTemp } };
   }
 
-  const needsUpdate = existingSetpoint === undefined
-    || existingTemp === null
-    || Math.abs(normalizedTemp - existingTemp) > 1e-9;
-  if (!needsUpdate) return null;
-
-  // The seed owns the HEATING floor only. The cooling limit is the owner's and
-  // rides through untouched — a re-seed that reset it would silently loosen a
-  // limited air conditioner. A first seed starts it where the UI does.
+  const modeTargetRead = readModeTarget({
+    settings,
+    deviceId: device.id,
+    resolveOperatingModeForDevice,
+  });
+  // The owning home's active mode is unknown (ownership is provisional, a
+  // settings read failed, or a rename is between its target and alias writes),
+  // so the default we would derive cannot be attributed to a mode.
+  // Seed NOTHING: a wrong-mode default persists — every later refresh keeps
+  // the entry that already exists — while a missing entry is re-derived on
+  // the next refresh, once the read succeeds.
+  if (modeTargetRead.state === 'unavailable') return { kind: 'keep' };
   return {
-    action: 'set_temperature',
-    temperature: normalizedTemp,
-    coolingTemperature: existingSetpoint === undefined ? COOLING_SHED_DEFAULT_C : existingSetpoint.coolingTemperature,
+    kind: 'write',
+    behavior: {
+      action: 'set_temperature',
+      temperature: computeDefaultAirtreatmentShedTemperature({
+        modeTarget: modeTargetRead.modeTarget,
+        currentTarget: getPrimaryTargetCapability(device.targets)?.value ?? null,
+        minFloorC,
+      }),
+      // A first seed starts the cooling limit where the settings UI does.
+      coolingTemperature: COOLING_SHED_DEFAULT_C,
+    },
   };
 }
 
@@ -167,24 +174,28 @@ export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
   snapshot: TargetDeviceSnapshot[];
   managed: BooleanMap;
   controllable: BooleanMap;
-  overshootSettings: Record<string, ConfiguredShedBehavior>;
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
 }): number {
   const {
-    settings, snapshot, managed, controllable, overshootSettings, resolveOperatingModeForDevice,
+    settings, snapshot, managed, controllable, resolveOperatingModeForDevice,
   } = params;
+  // An unavailable read seeds nothing: the seed writes the WHOLE map back, so
+  // seeding from a miss would erase every other device's limits.
+  const read = readShedBehaviorsSetting(settings);
+  if (read.state === 'unavailable') return 0;
+  const overshootSettings = read.behaviors;
   const updates = Object.fromEntries(snapshot.flatMap((device) => {
     if (device.powerCapable === false) return [];
     if (!isTemperatureWithoutOnOff(device)) return [];
     if (managed[device.id] !== true || controllable[device.id] !== true) return [];
 
-    const update = resolveTemperatureWithoutOnOffOvershootUpdate({
+    const seed = resolveTemperatureWithoutOnOffOvershootUpdate({
       settings,
       device,
-      existing: overshootSettings[device.id],
+      existing: resolveShedBehavior(overshootSettings, device.id),
       resolveOperatingModeForDevice,
     });
-    return update ? [[device.id, update] as const] : [];
+    return seed.kind === 'write' ? [[device.id, seed.behavior] as const] : [];
   }));
 
   const updated = Object.keys(updates).length;

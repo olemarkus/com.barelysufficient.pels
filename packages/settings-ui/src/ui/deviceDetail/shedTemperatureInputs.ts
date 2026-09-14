@@ -1,48 +1,32 @@
 /**
  * The two limit fields, read back as numbers.
  *
- * Neither read ever answers "no limit". The heating field has always resolved
- * an unparseable value to the saved limit, else a default, and the cooling
- * field does the same: every setpoint entry the editor writes carries both
- * limits, so the runtime never asks whether one is configured.
+ * A field never answers "no limit". Text that is not a number in the limit's
+ * range reads as the value the entry already carries, and the caller then shows
+ * the field the value it saves, so what the owner sees is what is saved. The ranges are the
+ * key owner's (`shared-domain/src/settings/shedBehaviors.ts`), so the editor
+ * cannot save a limit the runtime would clamp to something else.
  */
-import { deviceDetailShedCoolingTemp, deviceDetailShedTemp } from '../dom.ts';
-import { state } from '../state.ts';
+import {
+  COOLING_SHED_LIMIT_RANGE,
+  type ConfiguredShedBehavior,
+  type ShedLimitRange,
+} from '../../../../shared-domain/src/settings/shedBehaviors.ts';
 import { COOLING_SHED_DEFAULT_C } from '../../../../shared-domain/src/utils/airtreatmentConstants.ts';
 
-export const parseShedTemperatureInput = (): number | null => {
-  const parsedTemp = Number.parseFloat(deviceDetailShedTemp?.value || '');
-  if (!Number.isFinite(parsedTemp)) return null;
-  if (parsedTemp < -20 || parsedTemp > 50) return null;
-  return parsedTemp;
+type LimitField = { value: string };
+
+export const readShedLimitField = (field: LimitField, range: ShedLimitRange, fallbackC: number): number => {
+  const parsed = Number.parseFloat(field.value);
+  return Number.isFinite(parsed) && parsed >= range.minC && parsed <= range.maxC ? parsed : fallbackC;
 };
 
-/**
- * The bounds match the field's own: a ceiling below any real cooling setpoint
- * would make limiting add load, which is the outcome the whole second limit
- * exists to prevent.
- */
-const parseCoolingShedTemperatureInput = (): number | null => {
-  const parsedTemp = Number.parseFloat(deviceDetailShedCoolingTemp?.value || '');
-  if (!Number.isFinite(parsedTemp)) return null;
-  if (parsedTemp < 16 || parsedTemp > 40) return null;
-  return parsedTemp;
-};
-
-/** The cooling limit the device's entry carries now — the saved one, else the default. */
-export const savedCoolingShedTemperature = (deviceId: string): number => (
-  state.shedBehaviors[deviceId]?.coolingTemperature ?? COOLING_SHED_DEFAULT_C
+/** The cooling limit a saved entry carries: its own for a setpoint entry, else where a new one starts. */
+export const savedCoolingShedTemperature = (saved: ConfiguredShedBehavior): number => (
+  saved.action === 'set_temperature' ? saved.coolingTemperature : COOLING_SHED_DEFAULT_C
 );
 
-/**
- * The cooling limit to persist, read from its field. Only for a device that can
- * say it is cooling: the field is hidden otherwise, and a hidden field's value
- * is not the owner's choice. A field that did not parse is written back with
- * the value the entry will carry, as the heating field is.
- */
-export const resolveCoolingShedTemperature = (deviceId: string): number => {
-  const parsed = parseCoolingShedTemperatureInput();
-  const resolved = parsed ?? savedCoolingShedTemperature(deviceId);
-  if (parsed === null && deviceDetailShedCoolingTemp) deviceDetailShedCoolingTemp.value = resolved.toString();
-  return resolved;
-};
+/** Read the cooling limit from its field. */
+export const resolveCoolingShedTemperature = (field: LimitField, saved: ConfiguredShedBehavior): number => (
+  readShedLimitField(field, COOLING_SHED_LIMIT_RANGE, savedCoolingShedTemperature(saved))
+);

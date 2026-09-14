@@ -72,22 +72,22 @@ describe('writeShedBehaviors snapshot-fallback semantics', () => {
       toastMessage: 'Failed save.',
       mutate: (current) => ({
         ...current,
-        'heater-1': { action: 'set_temperature', temperature: 18 },
+        'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
       }),
       commit,
     });
 
     expect(result).toEqual({
       'other-device': { action: 'turn_off' },
-      'heater-1': { action: 'set_temperature', temperature: 18 },
+      'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
     });
     expect(setSetting).toHaveBeenCalledWith('overshoot_behaviors', {
       'other-device': { action: 'turn_off' },
-      'heater-1': { action: 'set_temperature', temperature: 18 },
+      'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
     });
     expect(commit).toHaveBeenCalledWith({
       'other-device': { action: 'turn_off' },
-      'heater-1': { action: 'set_temperature', temperature: 18 },
+      'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
     });
   });
 
@@ -115,17 +115,17 @@ describe('writeShedBehaviors snapshot-fallback semantics', () => {
       toastMessage: 'Failed save shed.',
       mutate: (current) => ({
         ...current,
-        'heater-1': { action: 'set_temperature', temperature: 18 },
+        'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
       }),
     });
 
     expect(result).toEqual({
       'other-device': { action: 'turn_off' },
-      'heater-1': { action: 'set_temperature', temperature: 18 },
+      'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
     });
     expect(setSetting).toHaveBeenCalledWith('overshoot_behaviors', {
       'other-device': { action: 'turn_off' },
-      'heater-1': { action: 'set_temperature', temperature: 18 },
+      'heater-1': { action: 'set_temperature', temperature: 18, coolingTemperature: 28 },
     });
     // No toast/log: the snapshot fallback is a planned, non-error path.
     expect(logSettingsError).not.toHaveBeenCalled();

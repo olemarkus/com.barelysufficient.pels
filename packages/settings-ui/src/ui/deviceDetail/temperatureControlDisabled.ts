@@ -33,6 +33,12 @@ const HINTS: Record<TemperatureControlMode, string> = {
     + 'Price and solar temperature adjustments are not applied.',
 };
 
+const syncPowerHint = (device: SettingsUiDeviceDetailItem, selected: TemperatureControlMode): void => {
+  if (!powerHintEl) return;
+  powerHintEl.hidden = selected === 'mode';
+  if (selected !== 'mode') powerHintEl.textContent = manualTemperaturePowerHint(device, selected);
+};
+
 export const syncTemperatureControlDisabledRow = (params: {
   deviceId: string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -40,8 +46,8 @@ export const syncTemperatureControlDisabledRow = (params: {
   if (!rowEl || !selectEl) return;
   const device = params.deviceId ? params.getDeviceById(params.deviceId) : null;
   rowEl.hidden = !supportsTemperatureDevice(device);
-  if (rowEl.hidden || !params.deviceId) return;
-  const id = params.deviceId;
+  if (device === null || rowEl.hidden) return;
+  const { id } = device;
   const selected = pendingSelections.get(id)
     ?? resolveTemperatureControlMode(state.temperatureControlModes, state.temperatureControlDisabledMap, id);
   selectEl.value = selected;
@@ -50,10 +56,7 @@ export const syncTemperatureControlDisabledRow = (params: {
   for (const value of ['external', 'update_mode']) {
     selectEl.querySelector(`[value="${value}"]`)?.toggleAttribute('disabled', hasTask && selected !== value);
   }
-  if (powerHintEl) {
-    powerHintEl.hidden = selected === 'mode';
-    if (selected !== 'mode') powerHintEl.textContent = manualTemperaturePowerHint(device, selected);
-  }
+  syncPowerHint(device, selected);
   if (hintEl) hintEl.textContent = HINTS[selected];
   if (smartTaskHintEl) smartTaskHintEl.hidden = !hasTask || selected === 'external';
 };

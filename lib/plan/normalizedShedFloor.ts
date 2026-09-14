@@ -16,8 +16,26 @@
  * at its floor" could restore straight through startup stabilization.
  */
 import type { PlanInputDevice, ShedBehavior } from './planTypes';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+
+/**
+ * One device's setpoint limit for this build: the capability-normalized
+ * setpoint PELS may move it to, and which way from a setpoint is more demand.
+ *
+ * The direction rides with the limit because every reader that compares a
+ * setpoint against the limit also has to order two setpoints — "is this move a
+ * resume", "would moving it to its limit still release demand" — and the answer
+ * is opposite for a unit that is cooling. The map only holds devices limited by
+ * setpoint, which is exactly the set those readers ask about.
+ */
+export type ShedSetpointLimit = {
+  readonly temperatureC: number;
+  readonly thermalDirection: ThermalDirection;
+};
+
+export type ShedSetpointLimits = ReadonlyMap<string, ShedSetpointLimit>;
 
 /**
  * Resolve the capability-normalized `set_temperature` shed floor for every
@@ -29,16 +47,19 @@ import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../u
 export function resolveNormalizedShedFloors(
   devices: readonly PlanInputDevice[],
   getShedBehavior: (deviceId: string) => ShedBehavior,
-): ReadonlyMap<string, number> {
-  const floors = new Map<string, number>();
+): ShedSetpointLimits {
+  const floors = new Map<string, ShedSetpointLimit>();
   for (const dev of devices) {
     if (!isTemperaturePlanDevice(dev)) continue;
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature') continue;
-    floors.set(dev.id, normalizeTargetCapabilityValue({
-      target: getPrimaryTargetCapability(dev.targets),
-      value: behavior.temperature,
-    }));
+    floors.set(dev.id, {
+      temperatureC: normalizeTargetCapabilityValue({
+        target: getPrimaryTargetCapability(dev.targets),
+        value: behavior.temperature,
+      }),
+      thermalDirection: dev.thermalDirection,
+    });
   }
   return floors;
 }
@@ -49,8 +70,16 @@ export function resolveNormalizedShedFloors(
  * consumers trust the resolved map instead of re-deriving from raw settings.
  */
 export function shedFloorCFor(
-  floors: ReadonlyMap<string, number>,
+  floors: ShedSetpointLimits,
   deviceId: string,
 ): number {
+  return shedLimitFor(floors, deviceId).temperatureC;
+}
+
+/** The whole limit, for a reader that also orders setpoints. Same guarantee as {@link shedFloorCFor}. */
+export function shedLimitFor(
+  floors: ShedSetpointLimits,
+  deviceId: string,
+): ShedSetpointLimit {
   return floors.get(deviceId)!;
 }

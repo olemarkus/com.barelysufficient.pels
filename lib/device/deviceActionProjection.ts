@@ -391,7 +391,7 @@ const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | nul
   // this; they pick lowest-active independently in `planSteppedLoad.ts`.
   //
   // There used to be a rung above these two — a configured `shedBehavior.stepId`. Nothing
-  // ever wrote one (`normalizeShedBehaviors` stores `set_step` as a bare `{ action }`), so
+  // ever wrote one (`readShedBehaviors` stores `set_step` as a bare `{ action }`), so
   // that branch was unreachable; the ladder is the device's, not the owner's.
   const lowestActive = getSteppedLoadLowestActiveStep(profile);
   if (lowestActive) return lowestActive.id;

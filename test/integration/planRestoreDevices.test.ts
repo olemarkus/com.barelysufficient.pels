@@ -17,7 +17,7 @@ import type {
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, heatingShedLimits } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 const makeDevice = (
@@ -61,16 +61,16 @@ describe('plan restore device helpers', () => {
       deviceId === 'temp-blocked'
         ? { action: 'set_temperature', temperature: 21 }
         : { action: 'turn_off' }
-    ), new Map([['temp-blocked', 21]])).map((device) => device.id)).toEqual(['on', 'na']);
+    ), heatingShedLimits({ 'temp-blocked': 21 })).map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, currentTemperature: 23, plannedTarget: 23 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
-      new Map([['temp', 20]]),
+      heatingShedLimits({ 'temp': 20 }),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, currentTemperature: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
-      new Map([['temp', 20]]),
+      heatingShedLimits({ 'temp': 20 }),
     )).toEqual([]);
   });
 

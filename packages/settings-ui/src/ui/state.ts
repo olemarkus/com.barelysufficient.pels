@@ -18,15 +18,8 @@ import {
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
+import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 
-export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
-export type ShedBehavior = {
-  action: ShedAction;
-  temperature?: number;
-  /** The limit while cooling — a ceiling; shown only for a device that reports a heating/cooling mode. */
-  coolingTemperature?: number;
-  stepId?: string;
-};
 
 export type PriceOptimizationConfig = {
   enabled: boolean;
@@ -92,7 +85,7 @@ export type UiState = {
   // this is the merge base a write falls back to when the SDK read blips.
   deviceExpectedPowerOverrides: DeviceExpectedPowerOverrides;
   modeAliases: Record<string, string>;
-  shedBehaviors: Record<string, ShedBehavior>;
+  shedBehaviors: Record<string, ConfiguredShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
   evCarAssociations: EvCarAssociations;

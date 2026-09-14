@@ -47,10 +47,8 @@ const COOLING_MODE_VALUES: ReadonlySet<string> = new Set(['cool', 'cooling']);
  * still holding. See `lib/observer/AGENTS.md` § "A device observation never
  * times out".
  */
-export function resolveThermalDirection(device: ThermostatModeObservedProbe | undefined): ThermalDirection {
-  // Absence is classified HERE, like the other observer reads: no record means
-  // no mode axis anyone has seen, and that is a heater.
-  const mode = device?.thermostatMode;
+export function resolveThermalDirection(device: ThermostatModeObservedProbe): ThermalDirection {
+  const mode = device.thermostatMode;
   if (mode !== undefined && COOLING_MODE_VALUES.has(mode)) return 'cooling';
   return 'heating';
 }

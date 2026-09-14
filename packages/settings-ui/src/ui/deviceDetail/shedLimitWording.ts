@@ -16,11 +16,11 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
  * second limit mean anything: without a mode axis the device is a heater, and
  * its one limit is a floor.
  */
-export const reportsThermostatMode = (device: SettingsUiDeviceDetailItem | null): boolean => (
-  device?.capabilities?.includes('thermostat_mode') === true
+export const reportsThermostatMode = (device: SettingsUiDeviceDetailItem): boolean => (
+  device.capabilities?.includes('thermostat_mode') === true
 );
 
-export const describeLimitFields = (device: SettingsUiDeviceDetailItem | null): {
+export const describeLimitFields = (device: SettingsUiDeviceDetailItem): {
   heatingLabel: string;
   heatingHint: string;
   coolingHint: string;
@@ -36,7 +36,7 @@ export const describeLimitFields = (device: SettingsUiDeviceDetailItem | null): 
 };
 
 /** Write the wording onto the fields. Guarded per handle: the stub harnesses omit some. */
-export const applyLimitWording = (device: SettingsUiDeviceDetailItem | null): void => {
+export const applyLimitWording = (device: SettingsUiDeviceDetailItem): void => {
   const wording = describeLimitFields(device);
   if (deviceDetailShedTemp) deviceDetailShedTemp.label = wording.heatingLabel;
   if (deviceDetailShedTempHint) deviceDetailShedTempHint.textContent = wording.heatingHint;

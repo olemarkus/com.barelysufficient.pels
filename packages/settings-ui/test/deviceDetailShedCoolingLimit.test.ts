@@ -109,7 +109,7 @@ afterEach(() => {
 describe('limited temperature when cooling', () => {
   it('shows the cooling limit only for a device that reports a heating/cooling mode', async () => {
     const { state, shedTempRow, shedCoolingTempRow, show } = await loadHarness();
-    state.shedBehaviors = { 'device-1': { action: 'set_temperature', temperature: 16 } };
+    state.shedBehaviors = { 'device-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 } };
 
     show(buildDevice());
     expect(shedTempRow.hidden).toBe(false);
@@ -125,7 +125,7 @@ describe('limited temperature when cooling', () => {
 
   it('words both limits for a reversible unit, and starts the cooling limit at the default', async () => {
     const { state, shedTemp, shedTempHint, shedCoolingTemp, shedCoolingTempHint, show } = await loadHarness();
-    state.shedBehaviors = { 'device-1': { action: 'set_temperature', temperature: 16 } };
+    state.shedBehaviors = { 'device-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 } };
 
     // A plain heater: one limit, the familiar label.
     show(buildDevice());
@@ -165,7 +165,7 @@ describe('limited temperature when cooling', () => {
   it('never reads the hidden cooling field for a device that cannot say it is cooling', async () => {
     const { state, setSetting, show, changeCoolingLimit } = await loadHarness();
     const device = buildDevice({ id: 'heater' });
-    state.shedBehaviors = { heater: { action: 'set_temperature', temperature: 16 } };
+    state.shedBehaviors = { heater: { action: 'set_temperature', temperature: 16, coolingTemperature: 28 } };
 
     show(device);
     // A stray value in the hidden field is not the owner's choice; the entry

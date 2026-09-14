@@ -21,6 +21,7 @@ import { getHomeScope } from './homeScope.ts';
 import { normalizeEvCarAssociations } from '../../../contracts/src/evCarAssociations.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
+import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -259,7 +260,7 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
     },
     {
       key: OVERSHOOT_BEHAVIORS, fallback: state.shedBehaviors,
-      apply: (value) => { state.shedBehaviors = readRecordSetting(value); },
+      apply: (value) => { if (isShedBehaviorsSetting(value)) state.shedBehaviors = readShedBehaviors(value); },
     },
     {
       key: TEMPERATURE_BOOST_SETTINGS,

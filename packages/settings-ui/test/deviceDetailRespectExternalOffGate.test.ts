@@ -563,7 +563,7 @@ describe('device detail "Disable temperature control"', () => {
     // Saving as current mode target keeps the configured limit in force; what
     // the owner needs to hear is the one thing it changes for a limited device.
     const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice() });
-    const limiting = { 'heater-1': { action: 'set_temperature' as const, temperature: 16 } };
+    const limiting = { 'heater-1': { action: 'set_temperature' as const, temperature: 16, coolingTemperature: 28 } };
     state.shedBehaviors = limiting;
     homey.__settingsStore.overshoot_behaviors = limiting;
     const select = temperatureControlToggle()!;

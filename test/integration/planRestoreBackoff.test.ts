@@ -35,7 +35,7 @@ import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedge
 import { resolveMeterSettlingRemainingSec } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice, heatingShedLimits } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type { DevicePlanDevice , SteppedPlanDevice } from '../../lib/plan/planTypes';
@@ -646,7 +646,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+        normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
         logDebug: vi.fn(),
       },
@@ -1634,7 +1634,7 @@ describe('restore cooldown backoff', () => {
     }));
     const deps = {
       powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
-      normalizedShedFloorCByDevice: new Map([['off-heater', 16], ['peer', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'off-heater': 16, 'peer': 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1701,7 +1701,7 @@ describe('restore cooldown backoff', () => {
     const { context, power } = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-      normalizedShedFloorCByDevice: new Map([['first-temp', 16], ['second-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'first-temp': 16, 'second-temp': 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1766,13 +1766,13 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: now - 10_000 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map([['temp', 16]]),
+        normalizedShedFloorCByDevice: heatingShedLimits({ 'temp': 16 }),
         getShedBehavior,
         logDebug: vi.fn(),
       },
     });
     const held = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'temp': 16 }),
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
@@ -1816,7 +1816,7 @@ describe('restore cooldown backoff', () => {
     })];
     const deps = {
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -3016,7 +3016,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 18]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 18 }),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -3059,7 +3059,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 18]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 18 }),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -3264,7 +3264,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
+      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',

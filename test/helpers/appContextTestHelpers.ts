@@ -1,4 +1,4 @@
-import type { ConfiguredShedBehavior } from '../../lib/utils/capacityHelpers';
+import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { snapshotById } from './snapshotById';

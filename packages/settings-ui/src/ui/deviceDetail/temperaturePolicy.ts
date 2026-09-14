@@ -20,17 +20,14 @@ export function supportsTemperatureAdjustments(device: SettingsUiDeviceDetailIte
 }
 
 /**
- * Power limiting by setpoint: a narrower denial than the offsets above. "Save as
- * current mode target" keeps the owner's limit in force — a temperature chosen
+ * Power limiting by setpoint is a narrower denial than the offsets above. "Save
+ * as current mode target" keeps the owner's limit in force — a temperature chosen
  * while the device is limited is drift PELS reconciles, not a new target — so
- * only "Keep the new temperature" (temperature control off) denies it.
+ * only "Keep the new temperature" (temperature control off) denies it, which is
+ * exactly what `supportsTemperatureControlDevice` answers.
  */
-export function supportsTemperatureLimiting(device: SettingsUiDeviceDetailItem | null): boolean {
-  return supportsTemperatureControlDevice(device);
-}
-
 export function supportsPowerLimiting(device: SettingsUiDeviceDetailItem | null): boolean {
-  return supportsPowerDevice(device) && (!supportsTemperatureDevice(device) || supportsTemperatureLimiting(device)
+  return supportsPowerDevice(device) && (!supportsTemperatureDevice(device) || supportsTemperatureControlDevice(device)
     || device?.binaryControllable === true || isSteppedLoadControlModel(device));
 }
 
@@ -50,7 +47,7 @@ export function temperatureAdjustmentGateHint(device: SettingsUiDeviceDetailItem
  * takes the setpoint away, and the sentence names what is left.
  */
 export function manualTemperaturePowerHint(
-  device: SettingsUiDeviceDetailItem | null,
+  device: SettingsUiDeviceDetailItem,
   policy: Exclude<TemperatureControlMode, 'mode'>,
 ): string {
   if (!supportsPowerDevice(device)) return `PELS cannot limit this device’s power. It needs ${POWER_READING_REMEDY}.`;
@@ -59,6 +56,6 @@ export function manualTemperaturePowerHint(
       + 'While PELS is limiting its temperature, a change made outside PELS is not saved as the mode target.';
   }
   if (isSteppedLoadControlModel(device)) return 'PELS can still limit power using this device’s power levels.';
-  if (device?.binaryControllable === true) return 'PELS can still limit power by turning this device off and on.';
+  if (device.binaryControllable === true) return 'PELS can still limit power by turning this device off and on.';
   return 'PELS cannot limit this device’s power without changing its temperature.';
 }

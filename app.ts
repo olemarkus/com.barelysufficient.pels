@@ -8,7 +8,7 @@ import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
 import type { PlanEngine } from './lib/plan/planEngine';
-import type { ConfiguredShedBehavior } from './lib/utils/capacityHelpers';
+import type { ConfiguredShedBehavior } from './packages/shared-domain/src/settings/shedBehaviors';
 import type { PlanService } from './lib/plan/planService';
 import type { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
 import type { DeviceControlProfiles } from './packages/contracts/src/types';

@@ -6,11 +6,13 @@ import type {
   ProjectedObservedDeviceState,
   StateOfChargeObservedProbe,
   TemperatureObservedProbe,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
 } from './observedStateEvents';
+import { resolveThermalDirection } from './thermalDirection';
 
 /**
  * Owner-blessed raw read of the observed EV plug-state, for PRODUCER wiring
@@ -249,6 +251,17 @@ export class ObservedDeviceStateProjection {
      */
     getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
         return this.byId.get(deviceId)?.value;
+    }
+
+    /**
+     * Which way this device's setpoint moves demand, always. The projection owns
+     * the answer for a device it holds no record of, because it is the one that
+     * knows there is none: nothing has reported a mode for it, and a device with
+     * no mode is heating.
+     */
+    getThermalDirection(deviceId: string): ThermalDirection {
+        const entry = this.byId.get(deviceId);
+        return entry === undefined ? 'heating' : resolveThermalDirection(entry.value);
     }
 
     /**

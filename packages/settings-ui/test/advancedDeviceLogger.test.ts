@@ -254,7 +254,7 @@ describe('advanced device cleanup', () => {
       },
     };
     state.shedBehaviors = {
-      'dev-1': { action: 'set_step', stepId: 'low' },
+      'dev-1': { action: 'set_step' },
       'dev-2': { action: 'turn_off' },
     };
     state.priceOptimizationSettings = { 'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 } };
@@ -353,7 +353,7 @@ describe('advanced device cleanup', () => {
       },
     });
     expect(homey.setSetting).toHaveBeenCalledWith('overshoot_behaviors', {
-      'dev-1': { action: 'set_step', stepId: 'low' },
+      'dev-1': { action: 'set_step' },
     });
   });
 });

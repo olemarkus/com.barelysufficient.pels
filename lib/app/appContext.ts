@@ -33,7 +33,7 @@ import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { MeterSilenceMonitor } from '../power/meterSilence';
 import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
-import type { ConfiguredShedBehavior } from '../utils/capacityHelpers';
+import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';

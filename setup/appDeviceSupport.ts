@@ -1,4 +1,3 @@
-import { normalizeShedBehaviors } from '../lib/utils/capacityHelpers';
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { isBooleanMap } from '../lib/utils/appTypeGuards';
@@ -7,7 +6,6 @@ import {
   MAIN_HOME_ID,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
-  OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
   homeScopedSettingsKey,
   type HomeId,
@@ -218,9 +216,6 @@ export function disableUnsupportedDevices(params: {
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
-  // Through the key's one normalizer, not a bare cast: the seed must see the
-  // same entries the runtime does, cooling limit included.
-  const overshootSettings = normalizeShedBehaviors(settings.get(OVERSHOOT_BEHAVIORS));
   // Edge-trigger the price-only log: only emit when capacity was previously
   // enabled (`true`) and we're demoting it to `false`. Absent keys are not a
   // transition — they were already effectively unmanaged — so they must not
@@ -251,7 +246,6 @@ export function disableUnsupportedDevices(params: {
     snapshot,
     managed,
     controllable,
-    overshootSettings,
     resolveOperatingModeForDevice,
   });
 
