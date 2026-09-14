@@ -1,3 +1,6 @@
+import { buildLocalDayBuckets as buildRuntimeDayBuckets } from '../../lib/utils/dateUtils';
+import { buildLocalDayBuckets as buildSharedDayBuckets } from '../../packages/shared-domain/src/utils/dateUtils';
+
 const loadDateUtils = () => require('../../lib/utils/dateUtils.ts') as typeof import('../../lib/utils/dateUtils');
 
 describe('dateUtils time zone handling', () => {
@@ -57,5 +60,45 @@ describe('dateUtils time zone handling', () => {
     expect(new Date(dayStartUtcMs).toISOString()).toBe('2024-03-30T23:00:00.000Z');
     expect(new Date(getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone)).toISOString()).toBe('2024-03-31T22:00:00.000Z');
     expect(new Date(getPreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone)).toISOString()).toBe('2024-03-29T23:00:00.000Z');
+  });
+});
+
+describe.each([
+  ['runtime', buildRuntimeDayBuckets],
+  ['shared-domain', buildSharedDayBuckets],
+] as const)('%s local day bucket labels', (_name, buildLocalDayBuckets) => {
+  it('keeps timezone labels independent across repeated calls', () => {
+    const dayStartUtcMs = Date.parse('2024-01-01T00:00:00.000Z');
+    const nextDayStartUtcMs = dayStartUtcMs + 2 * 60 * 60 * 1000;
+
+    for (const timeZone of ['Europe/Oslo', 'Asia/Kolkata', 'Europe/Oslo']) {
+      const { bucketStartLocalLabels } = buildLocalDayBuckets({ dayStartUtcMs, nextDayStartUtcMs, timeZone });
+      expect(bucketStartLocalLabels).toEqual(timeZone === 'Europe/Oslo' ? ['01:00', '02:00'] : ['05:30', '06:30']);
+    }
+  });
+
+  it('keeps the same timezone formatter correct across spring and fall DST transitions', () => {
+    const timeZone = 'Europe/Oslo';
+    const spring = buildLocalDayBuckets({
+      dayStartUtcMs: Date.parse('2024-03-30T23:00:00.000Z'),
+      nextDayStartUtcMs: Date.parse('2024-03-31T22:00:00.000Z'),
+      timeZone,
+    });
+    expect(spring.bucketStartLocalLabels).toHaveLength(23);
+    expect(spring.bucketStartLocalLabels.slice(0, 4)).toEqual(['00:00', '01:00', '03:00', '04:00']);
+    expect(spring.bucketStartLocalLabels.at(-1)).toBe('23:00');
+
+    const fall = buildLocalDayBuckets({
+      dayStartUtcMs: Date.parse('2024-10-26T22:00:00.000Z'),
+      nextDayStartUtcMs: Date.parse('2024-10-27T23:00:00.000Z'),
+      timeZone,
+    });
+    expect(fall.bucketStartLocalLabels).toHaveLength(25);
+    expect(fall.bucketStartLocalLabels.slice(0, 5)).toEqual(['00:00', '01:00', '02:00', '02:00', '03:00']);
+    expect(fall.bucketStartLocalLabels.at(-1)).toBe('23:00');
+    expect(fall.bucketStartUtcMs.slice(2, 4)).toEqual([
+      Date.parse('2024-10-27T00:00:00.000Z'),
+      Date.parse('2024-10-27T01:00:00.000Z'),
+    ]);
   });
 });

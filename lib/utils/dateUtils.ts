@@ -13,6 +13,7 @@ const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
 // session); no eviction needed.
 const zonedPartsFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
 const offsetFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
+const hourLabelFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
 
 const getZonedPartsFormatter = (timeZone: string): Intl.DateTimeFormat => {
     const cached = zonedPartsFormatterByTimezone.get(timeZone);
@@ -41,6 +42,19 @@ const getOffsetFormatter = (timeZone: string): Intl.DateTimeFormat => {
         hour: '2-digit',
     });
     offsetFormatterByTimezone.set(timeZone, formatter);
+    return formatter;
+};
+
+const getHourLabelFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const cached = hourLabelFormatterByTimezone.get(timeZone);
+    if (cached) return cached;
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    hourLabelFormatterByTimezone.set(timeZone, formatter);
     return formatter;
 };
 
@@ -308,12 +322,7 @@ export function buildLocalDayBuckets(params: {
     timeZone: string;
 }): { bucketStartUtcMs: number[]; bucketStartLocalLabels: string[] } {
     const { dayStartUtcMs, nextDayStartUtcMs, timeZone } = params;
-    const formatter = new Intl.DateTimeFormat('en-GB', {
-        timeZone,
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    });
+    const formatter = getHourLabelFormatter(timeZone);
     const bucketCount = Math.max(0, Math.round((nextDayStartUtcMs - dayStartUtcMs) / (60 * 60 * 1000)));
     const bucketStartUtcMs = Array.from({ length: bucketCount }, (_, index) => (
         dayStartUtcMs + index * 60 * 60 * 1000
