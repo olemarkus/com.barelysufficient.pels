@@ -270,7 +270,11 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     // Lazy and single-device: this runs several times per device per plan build,
     // and `latestTargetSnapshot` rebuilds the whole list on every access.
     () => this.decorateOneDevice(deviceId),
-    this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId),
+    this.context.observedTemperatureModeUpdates.allowsLimiting(deviceId),
+    // The observer's answer, so the configured pair collapses to the one limit
+    // for the direction the device is moving demand in — the same resolution
+    // `toPlanDevice` asks for the price shift.
+    this.context.getThermalDirection(deviceId),
   );
 
   /** One device through the same join + decoration `latestTargetSnapshot` applies to all of them. */

@@ -1,5 +1,10 @@
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
-import { TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, homeScopedSettingsKey } from '../utils/settingsKeys';
+import {
+  TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, OVERSHOOT_BEHAVIORS, homeScopedSettingsKey,
+} from '../utils/settingsKeys';
+import {
+  configuredShedTemperatures, normalizeShedBehaviors, type ConfiguredShedBehavior,
+} from '../utils/capacityHelpers';
 import {
   readTemperatureControlModes, type TemperatureControlModes,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
@@ -19,6 +24,8 @@ export class ObservedTemperatureModeUpdates {
 
   private lastControlModes?: TemperatureControlModes;
 
+  private lastShedBehaviors: Record<string, ConfiguredShedBehavior> = {};
+
   constructor(
     private readonly settings: SettingsPort,
     private readonly resolveDeviceMode: (deviceId: string) => DeviceModeForTemperatureUpdate,
@@ -26,6 +33,8 @@ export class ObservedTemperatureModeUpdates {
     private readonly reloadMain: () => void,
     private readonly getAreaCatalogs: () => readonly ModeCatalogReader[],
     private readonly normalizeTarget: (deviceId: string, value: number) => number,
+    /** Whether the latest plan has this device limited. Limiting outranks adoption. */
+    private readonly isLimited: (deviceId: string) => boolean,
   ) {}
 
   /** Policy reads retain the last good value across transient SDK gaps. */
@@ -34,11 +43,34 @@ export class ObservedTemperatureModeUpdates {
     return modes !== undefined && modes[deviceId] !== 'update_mode' && modes[deviceId] !== 'external';
   }
 
-  /** A queued adjustment cannot outlive a switch to manual target ownership. */
+  /**
+   * Whether PELS may write a LIMIT setpoint to this device. Narrower than the
+   * adjustments question above: "Save as current mode target" turns off the
+   * price and solar offsets, not power limiting — the owner's limit still
+   * applies, and a temperature they choose while the device is limited is drift
+   * the executor reconciles rather than a new target (`update` below). Only
+   * "Keep the new temperature" means PELS writes no setpoint at all.
+   */
+  allowsLimiting(deviceId: string): boolean {
+    const modes = this.readControlModes();
+    return modes !== undefined && modes[deviceId] !== 'external';
+  }
+
+  /**
+   * A queued adjustment cannot outlive a switch to manual target ownership.
+   *
+   * Under "Save as current mode target" two writes are legitimate: the saved
+   * mode target itself, and the owner's configured limit — either direction's,
+   * because the fence does not know which way the device is moving demand and
+   * both numbers are the owner's. A queued price or solar offset is neither.
+   */
   allowsTarget(deviceId: string, value: number): boolean {
     const modes = this.readControlModes();
     if (!modes || modes[deviceId] === 'external') return false;
     if (modes[deviceId] !== 'update_mode') return true;
+    if (this.configuredLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
+      return true;
+    }
     try {
       const active = this.resolveDeviceMode(deviceId);
       if (active.state !== 'resolved' || active.mode === null) return false;
@@ -49,6 +81,22 @@ export class ObservedTemperatureModeUpdates {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * The owner's configured limit setpoints for this device, either direction —
+   * read off the same settings port the policy is, so the fence needs no second
+   * injection. The normalizer is the one writer of that map's shape.
+   */
+  private configuredLimitTemperatures(deviceId: string): readonly number[] {
+    try {
+      const raw = this.settings.get(OVERSHOOT_BEHAVIORS);
+      // The key is written as a map and never cleared, so a non-map read is a
+      // transient miss, not an emptied map: keep the last good one. A key never
+      // written reads as the empty map this starts with.
+      if (typeof raw === 'object' && raw !== null) this.lastShedBehaviors = normalizeShedBehaviors(raw);
+    } catch { /* Retain the last good map: a transient miss must not refuse a limit write. */ }
+    return configuredShedTemperatures(deviceId, this.lastShedBehaviors);
   }
 
   private readControlModes(): TemperatureControlModes | undefined {
@@ -95,9 +143,28 @@ export class ObservedTemperatureModeUpdates {
     }
   }
 
-  private update(adjustment: ExternalTemperatureAdjustment): void {
+  /**
+   * Whether this adjustment is one the owner meant as a preference.
+   *
+   * Policy and management first. Then: a change made while PELS has the device
+   * limited is a reaction to the limit, not a new preference — saving it would
+   * turn "I nudged the thermostat back up during a peak" into the mode's target
+   * for good. Not adopted, so the executor sees observed and desired disagree
+   * and converges the device back onto its limit: ordinary drift, like any
+   * other external change.
+   */
+  private adopts(adjustment: ExternalTemperatureAdjustment): boolean {
     const modes = readTemperatureControlModes(this.settings.get(TEMPERATURE_CONTROL_MODES));
-    if (modes?.[adjustment.deviceId] !== 'update_mode' || !this.isManaged(adjustment.deviceId)) return;
+    if (modes?.[adjustment.deviceId] !== 'update_mode' || !this.isManaged(adjustment.deviceId)) return false;
+    if (!this.isLimited(adjustment.deviceId)) return true;
+    getLogger('home/temperature-mode').info({
+      event: 'observed_temperature_mode_update_skipped_while_limited', ...adjustment,
+    });
+    return false;
+  }
+
+  private update(adjustment: ExternalTemperatureAdjustment): void {
+    if (!this.adopts(adjustment)) return;
     // Bind the edit to this resolved mode before touching persistence. This
     // operation is synchronous: a queued mode change cannot retarget the edit.
     const active = this.resolveDeviceMode(adjustment.deviceId);

@@ -915,7 +915,23 @@
                   inputmode="decimal"
                   suffix-text="°C"
                 ></md-filled-text-field>
-                <small class="field__hint">Use this target instead of turning the device off.</small>
+                <small class="field__hint" id="device-detail-overshoot-temp-hint">Use this target instead of turning the device off.</small>
+              </div>
+              <!-- Only for a device that reports a heating/cooling mode. While cooling,
+                   the limit is a ceiling the device may rise to, not a floor. -->
+              <div class="md-field-row" id="device-detail-overshoot-cooling-temp-row" hidden>
+                <md-filled-text-field
+                  id="device-detail-overshoot-cooling-temp"
+                  label="Limited temperature when cooling"
+                  type="number"
+                  step="0.5"
+                  min="16"
+                  max="40"
+                  inputmode="decimal"
+                  suffix-text="°C"
+                ></md-filled-text-field>
+                <!-- Worded by shedLimitWording.ts, beside the heating hint. -->
+                <small class="field__hint" id="device-detail-overshoot-cooling-temp-hint"></small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-step-row" hidden>
                 <md-filled-select id="device-detail-overshoot-step" label="Limited step"></md-filled-select>

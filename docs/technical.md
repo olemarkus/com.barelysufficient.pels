@@ -302,6 +302,23 @@ Devices ship **disabled by default**, so you stay in control of what PELS touche
 
 For a temperature device that another app or Flow controls, enable **Disable temperature control**. The setting covers one thing: the device's temperature target. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. Every other control the device exposes still works — PELS can turn it off and on, and a device with power levels is still lowered a level at a time rather than only switched off.
 
+### Limited temperature for a heating and cooling device
+
+When PELS limits a device by setpoint, the **Limited temperature** is the point it may fall to: a heater set to 21 °C that is limited to 16 °C is allowed to cool down to 16 °C, and no further, until power allows it back up. That number is a floor, and for a heater it is the whole story.
+
+A reversible unit — an air conditioner or a heat pump that also cools — has two stories. While it is heating, the same floor applies. While it is cooling, a floor is the wrong thing to hand it: setting a cooling unit *down* to 16 °C makes it work harder, which is the opposite of limiting. So a device that reports its own heating/cooling mode gets a second setting, **Limited temperature when cooling**, and that one is a ceiling: the point the room may rise to while the device is limited.
+
+PELS reads which way the device is running from the device itself (its `thermostat_mode` capability) and applies the matching limit. A device that does not report a mode — a water heater, a radiator, floor heating — is treated as heating and only ever has the one limit.
+
+Caveats, in the order they tend to matter:
+
+- **The cooling limit starts at 28 °C.** PELS fills it in alongside the heating limit, so a reversible unit is limited from its first peak rather than left running; change it to suit the room. It is used only while the device reports that it is cooling.
+- **A limit on the wrong side of the target is not applied.** If the limited temperature would make the device work harder — a heating limit above its current target, or a cooling limit below it — PELS leaves that device's setpoint alone and limits other devices instead. A mode target can move past a limit that was fine when it was set.
+- **`auto` mode is treated as heating.** A unit in `auto` may be cooling, but the mode alone cannot say, and PELS does not guess from the room temperature: the guess would flip every time the setpoint moved. If your unit runs in `auto` through the summer, set its mode to cooling explicitly for the season, or accept that it is limited as if heating.
+- **Both limits stay in force under "Save as current mode target".** That policy switches off the price and solar offsets, not power limiting. If the device's temperature is changed outside PELS *while PELS is limiting its temperature*, that change is not saved as the mode's target — it is treated like any other outside change, and PELS brings the device back to its limit. A change made at any other time — including while PELS has the device turned off — is saved as usual.
+- **"Keep the new temperature" still means no setpoint writes at all.** PELS limits such a device only by turning it off, or by stepping it down if it has power levels.
+- **The rest of PELS's setpoint behaviour still assumes heating.** Smart-task targets and "Use solar surplus" move the setpoint as if every device were a heater; leave those off on a cooling device.
+
 ### Available-Power Check For Devices With Power-Limit Control
 
 The **"Is there available power for device?"** Flow condition answers "Can this device safely draw another _X_ kW right now?" for chargers, water heaters, and any other power-limit-controlled load. It evaluates:

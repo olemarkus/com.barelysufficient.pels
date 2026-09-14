@@ -11,6 +11,7 @@ export type MdSwitchElement = HTMLElement & {
 
 export type MdFilledTextFieldElement = HTMLElement & {
   value: string;
+  label: string;
   disabled: boolean;
   min: string;
   max: string;
@@ -225,6 +226,12 @@ export const deviceDetailShedHint = qs('#device-detail-shed-hint');
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(
   '#device-detail-overshoot-temp',
+) as MdFilledTextFieldElement;
+export const deviceDetailShedTempHint = qs('#device-detail-overshoot-temp-hint');
+export const deviceDetailShedCoolingTempRow = qs('#device-detail-overshoot-cooling-temp-row');
+export const deviceDetailShedCoolingTempHint = qs('#device-detail-overshoot-cooling-temp-hint');
+export const deviceDetailShedCoolingTemp = document.querySelector(
+  '#device-detail-overshoot-cooling-temp',
 ) as MdFilledTextFieldElement;
 export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
 export const deviceDetailShedStep = document.querySelector(

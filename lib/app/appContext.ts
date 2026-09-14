@@ -33,6 +33,7 @@ import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { MeterSilenceMonitor } from '../power/meterSilence';
 import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
+import type { ConfiguredShedBehavior } from '../utils/capacityHelpers';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
@@ -54,6 +55,7 @@ import type {
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { DeviceTargetPowerConfigsWithReachability } from '../device/targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -197,6 +199,13 @@ export type AppContext = {
   getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
+  /**
+   * The observer's resolution of which way this device's setpoint moves demand
+   * (`resolveThermalDirection`), asked through the context so the seams that
+   * compose it with other domains — the shed-behaviour resolution in
+   * `appHostApi` — do not each import the observer to get it.
+   */
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
   getObservationRevision: () => number;
@@ -274,8 +283,8 @@ export type AppContext = {
   set deviceControlProfiles(value: DeviceControlProfiles);
   get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability;
   set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigsWithReachability);
-  get shedBehaviors(): Record<string, ShedBehavior>;
-  set shedBehaviors(value: Record<string, ShedBehavior>);
+  get shedBehaviors(): Record<string, ConfiguredShedBehavior>;
+  set shedBehaviors(value: Record<string, ConfiguredShedBehavior>);
   get debugLoggingTopics(): Set<DebugLoggingTopic>;
   set debugLoggingTopics(value: Set<DebugLoggingTopic>);
   get defaultComputeDynamicSoftLimit(): (() => number) | undefined;

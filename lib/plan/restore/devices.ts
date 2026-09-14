@@ -11,6 +11,7 @@ import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import { setpointAddsDemand } from '../setpointDemand';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -240,8 +241,10 @@ function canSwapOutDevice(
   if (!isTemperaturePlanDevice(dev)) return true;
   // Normalized floor, never raw config: the device reports the normalized
   // value, so an off-step configured floor compared raw would classify an
-  // at-floor thermostat as still swappable (`normalizedShedFloor.ts`).
-  return dev.currentTarget > shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
+  // at-floor thermostat as still swappable (`normalizedShedFloor.ts`). Swappable
+  // while moving it to its limit would still release demand.
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
+  return setpointAddsDemand(dev.thermalDirection, floorC, dev.currentTarget);
 }
 
 /**

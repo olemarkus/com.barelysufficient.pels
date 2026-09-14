@@ -155,6 +155,12 @@ export type OwningHomeHooks = {
    * a house that has since changed — for up to the 120 s tight-noop backoff.
    */
   invalidateRebuildSuppression: () => void;
+  /**
+   * Whether THIS home's latest plan has the device limited by setpoint. Asked by
+   * the mode-target adoption path, which must not save an owner's reaction to a
+   * limit; main's plan does not contain this device, so main would say "no".
+   */
+  isDeviceLimited: (deviceId: string) => boolean;
 };
 
 export type HomeCapacityBundle = {

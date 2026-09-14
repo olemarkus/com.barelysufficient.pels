@@ -30,6 +30,7 @@ export type ShedCandidateSkipReason =
   | 'control_not_writable'
   | 'zero_current_draw'
   | 'already_at_shed_temperature'
+  | 'limit_would_add_demand'
   | 'no_temperature_target'
   | 'stepped_zero_draw'
   | 'no_lower_step_reachable'

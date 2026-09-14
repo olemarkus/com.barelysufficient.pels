@@ -3639,4 +3639,30 @@ describe('rebuild ordering', () => {
     expect(syncPendingBinaryCommands.mock.invocationCallOrder[0])
       .toBeLessThan(getPlanDevices.mock.invocationCallOrder[0]!);
   });
+
+  describe('isDeviceLimitedInLatestPlan', () => {
+    it('answers from the latest committed plan, and nothing is limited before one exists', () => {
+      // The mode-target adoption path asks this so an owner's reaction to a
+      // limit is not saved as the mode's target. "Limited" is the same
+      // `plannedState === 'shed'` the Overview renders.
+      const { service } = createPlanService();
+      expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
+
+      service['latestPlanSnapshot'] = buildPlan(20, 'shed due to capacity', {}, {
+        plannedState: 'shed', shedAction: 'set_temperature',
+      });
+      expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(true);
+      expect(service.isDeviceLimitedInLatestPlan('someone-else')).toBe(false);
+
+      // Limited BY SETPOINT only: a device PELS turned off has not had its
+      // setpoint touched, so a change there is a preference and is adopted.
+      service['latestPlanSnapshot'] = buildPlan(20, 'shed due to capacity', {}, {
+        plannedState: 'shed', shedAction: 'turn_off',
+      });
+      expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
+
+      service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, { plannedState: 'keep' });
+      expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
+    });
+  });
 });

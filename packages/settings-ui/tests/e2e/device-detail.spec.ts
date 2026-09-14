@@ -402,8 +402,11 @@ test.describe('Device detail panel', () => {
   });
 
   for (const policy of [
-    { value: 'external', label: 'Keep the new temperature', appliesTargets: false },
-    { value: 'update_mode', label: 'Save as current mode target', appliesTargets: true },
+    // `limitsBySetpoint`: only "Keep the new temperature" stops PELS writing a
+    // setpoint, so only it takes the limited-temperature choice away. "Save as
+    // current mode target" switches off the offsets and keeps the limit.
+    { value: 'external', label: 'Keep the new temperature', appliesTargets: false, limitsBySetpoint: false },
+    { value: 'update_mode', label: 'Save as current mode target', appliesTargets: true, limitsBySetpoint: true },
   ]) {
     test(`${policy.label} confirms affected controls and preserves configuration`, async ({ page }) => {
       await openDeviceDetail(page, 'dev_heatpump');
@@ -469,9 +472,12 @@ test.describe('Device detail panel', () => {
         policy.appliesTargets ? 'PELS will set this' : 'won’t apply them',
       );
       await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(false);
-      await expect(page.locator('#device-detail-overshoot-segmented .segmented__option', {
+      const setTemperatureOption = page.locator('#device-detail-overshoot-segmented .segmented__option', {
         hasText: 'Set temperature',
-      })).toBeHidden();
+      });
+      await (policy.limitsBySetpoint
+        ? expect(setTemperatureOption).toBeVisible()
+        : expect(setTemperatureOption).toBeHidden());
       expect(await readHomeySetting(page, 'price_optimization_settings')).toEqual(before);
       expect(await readHomeySetting(page, 'mode_device_targets')).toEqual(modeTargetsBefore);
       expect(await readHomeySetting(page, 'overshoot_behaviors')).toEqual(shedBefore);

@@ -25,6 +25,7 @@ import {
   resolveRestoreDecision,
   type HoldDecision,
 } from './planReasonsRestoreGating';
+import { setpointAddsDemand } from './setpointDemand';
 
 
 // The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
@@ -380,7 +381,7 @@ function getPendingRestoreDelay(
     if (!isTemperaturePlanDevice(dev)) continue;
     const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
     if (dev.currentTarget !== floorC) continue;
-    if (dev.plannedTarget <= floorC) continue;
+    if (!setpointAddsDemand(dev.thermalDirection, floorC, dev.plannedTarget)) continue;
 
     const lastRestoreMs = state.actuation.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;

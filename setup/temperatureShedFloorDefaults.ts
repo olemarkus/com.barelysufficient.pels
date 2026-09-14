@@ -19,6 +19,7 @@ import {
 } from '../lib/utils/settingsKeys';
 import {
   AIRTREATMENT_SHED_FLOOR_C,
+  COOLING_SHED_DEFAULT_C,
   NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
 } from '../packages/shared-domain/src/utils/airtreatmentConstants';
 import {
@@ -26,6 +27,7 @@ import {
   normalizeShedTemperature,
 } from '../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
+import type { ConfiguredShedBehavior } from '../lib/utils/capacityHelpers';
 
 /**
  * Per-device active-mode resolution, carrying the producer's read-outcome
@@ -34,7 +36,6 @@ import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
  */
 export type ResolveOperatingModeForDevice = (deviceId: string) => DeviceOperatingModeOutcome;
 
-export type OvershootBehaviorEntry = { action?: string; temperature?: number; stepId?: string };
 
 type BooleanMap = Record<string, boolean>;
 
@@ -114,11 +115,12 @@ function readModeTarget(params: {
 function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
   settings: Homey.App['homey']['settings'];
   device: TargetDeviceSnapshot;
-  existing: OvershootBehaviorEntry | undefined;
+  existing: ConfiguredShedBehavior | undefined;
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): OvershootBehaviorEntry | null {
+}): ConfiguredShedBehavior | null {
   const { settings, device, existing, resolveOperatingModeForDevice } = params;
-  const existingTemp = typeof existing?.temperature === 'number' ? existing.temperature : null;
+  const existingSetpoint = existing?.action === 'set_temperature' ? existing : undefined;
+  const existingTemp = existingSetpoint?.temperature ?? null;
   const minFloorC = resolveTemperatureShedFloor(device);
 
   let normalizedTemp: number;
@@ -145,12 +147,19 @@ function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
     });
   }
 
-  const needsUpdate = existing?.action !== 'set_temperature'
+  const needsUpdate = existingSetpoint === undefined
     || existingTemp === null
     || Math.abs(normalizedTemp - existingTemp) > 1e-9;
   if (!needsUpdate) return null;
 
-  return { action: 'set_temperature', temperature: normalizedTemp };
+  // The seed owns the HEATING floor only. The cooling limit is the owner's and
+  // rides through untouched — a re-seed that reset it would silently loosen a
+  // limited air conditioner. A first seed starts it where the UI does.
+  return {
+    action: 'set_temperature',
+    temperature: normalizedTemp,
+    coolingTemperature: existingSetpoint === undefined ? COOLING_SHED_DEFAULT_C : existingSetpoint.coolingTemperature,
+  };
 }
 
 export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
@@ -158,7 +167,7 @@ export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
   snapshot: TargetDeviceSnapshot[];
   managed: BooleanMap;
   controllable: BooleanMap;
-  overshootSettings: Record<string, OvershootBehaviorEntry>;
+  overshootSettings: Record<string, ConfiguredShedBehavior>;
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
 }): number {
   const {

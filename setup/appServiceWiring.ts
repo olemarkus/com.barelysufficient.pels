@@ -210,9 +210,7 @@ export class AppServiceWiring {
   }
 
   createObservedTemperatureModeUpdates() {
-    return createObservedTemperatureModeUpdates(
-      this.deps.ctx, () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
-    );
+    return createObservedTemperatureModeUpdates(this.deps.ctx, () => this.deps.getHomeRuntimeRegistry());
   }
 
   async runInit(): Promise<void> {

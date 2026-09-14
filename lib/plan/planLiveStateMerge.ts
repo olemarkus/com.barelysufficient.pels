@@ -104,6 +104,7 @@ function resolveMergedTemperatureCluster(
     currentTarget: live.currentTarget,
     currentTemperature: live.currentTemperature,
     plannedTarget: priorPlannedTarget ?? live.currentTarget,
+    thermalDirection: live.thermalDirection,
   };
 }
 

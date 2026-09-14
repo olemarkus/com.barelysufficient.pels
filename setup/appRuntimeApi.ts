@@ -9,6 +9,7 @@ import type {
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
+  ThermalDirection,
 } from '../packages/contracts/src/types';
 import {
   readObservedEvChargingState,
@@ -60,6 +61,7 @@ import type { AppPowerTracker } from './appPowerTracker';
 import type { AppServiceWiring } from './appServiceWiring';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
+import { resolveThermalDirection } from '../lib/observer/thermalDirection';
 import type { PowerSamplePipeline } from './powerSamplePipeline';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { withAppHostApi } from './appHostApi';
@@ -188,6 +190,16 @@ abstract class AppRuntimeApi extends Base {
 
   public getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
     return readObservedEvChargingState(this.observedDeviceStateProjection.getObservedState(deviceId));
+  }
+
+  /**
+   * Which way this device's setpoint moves demand — the observer's resolution
+   * of its reported mode, same shape as the cluster reads above. A device with
+   * no record has no mode axis to speak of, and resolves the way every device
+   * with no mode does: heating.
+   */
+  public getThermalDirection(deviceId: string): ThermalDirection {
+    return resolveThermalDirection(this.observedDeviceStateProjection.getObservedState(deviceId));
   }
   public seedObservedStateFromSnapshot(): void {
     this.observedDeviceStateProjection.seedMissing(this.context.deviceReads.observedSeed());

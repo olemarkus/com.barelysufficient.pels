@@ -6,6 +6,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { sortByPriorityAsc } from './planSort';
 import { resolvePlannedShedTargetKind } from './planActionMaterialization';
+import { setpointAddsDemand } from './setpointDemand';
 
 export type PlanReasonPairValidationIssue = {
   deviceId: string;
@@ -287,7 +288,9 @@ function resolveRecordRestoreOnTargetApply(
   wasShedLastBuild: ReadonlySet<string>,
 ): boolean {
   if (!isTemperaturePlanDevice(dev)) return false;
-  if (dev.plannedTarget <= dev.currentTarget) return false;
+  // A resume moves the setpoint back toward demand: up for a heater, down for a
+  // unit that is cooling.
+  if (!setpointAddsDemand(dev.thermalDirection, dev.currentTarget, dev.plannedTarget)) return false;
   return normalizedShedFloorCByDevice.get(dev.id) === dev.currentTarget
     || wasShedLastBuild.has(dev.id);
 }

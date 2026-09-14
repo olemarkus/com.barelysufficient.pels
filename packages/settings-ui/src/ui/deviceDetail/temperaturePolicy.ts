@@ -1,4 +1,6 @@
-import { resolveTemperatureControlMode } from '../../../../shared-domain/src/settings/temperatureControl.ts';
+import {
+  resolveTemperatureControlMode, type TemperatureControlMode,
+} from '../../../../shared-domain/src/settings/temperatureControl.ts';
 import { state } from '../state.ts';
 import {
   supportsPowerDevice, supportsTemperatureControlDevice, supportsTemperatureDevice, type SettingsUiDeviceDetailItem,
@@ -12,12 +14,23 @@ export function followsDeviceTemperature(device: SettingsUiDeviceDetailItem | nu
   ) === 'update_mode';
 }
 
+/** Price and solar offsets: switched off under both non-default policies. */
 export function supportsTemperatureAdjustments(device: SettingsUiDeviceDetailItem | null): boolean {
   return supportsTemperatureControlDevice(device) && !followsDeviceTemperature(device);
 }
 
+/**
+ * Power limiting by setpoint: a narrower denial than the offsets above. "Save as
+ * current mode target" keeps the owner's limit in force — a temperature chosen
+ * while the device is limited is drift PELS reconciles, not a new target — so
+ * only "Keep the new temperature" (temperature control off) denies it.
+ */
+export function supportsTemperatureLimiting(device: SettingsUiDeviceDetailItem | null): boolean {
+  return supportsTemperatureControlDevice(device);
+}
+
 export function supportsPowerLimiting(device: SettingsUiDeviceDetailItem | null): boolean {
-  return supportsPowerDevice(device) && (!supportsTemperatureDevice(device) || supportsTemperatureAdjustments(device)
+  return supportsPowerDevice(device) && (!supportsTemperatureDevice(device) || supportsTemperatureLimiting(device)
     || device?.binaryControllable === true || isSteppedLoadControlModel(device));
 }
 
@@ -27,8 +40,24 @@ export function temperatureAdjustmentGateHint(device: SettingsUiDeviceDetailItem
     : 'Not applied while PELS keeps the new temperature. Your saved settings are kept.';
 }
 
-export function manualTemperaturePowerHint(device: SettingsUiDeviceDetailItem | null): string {
+/**
+ * What power limiting means under a non-default temperature policy.
+ *
+ * "Save as current mode target" leaves limiting exactly as configured — the
+ * owner's limit is still a limit — so the only thing worth saying is what it
+ * changes: a temperature set by hand while the device is limited is drift PELS
+ * reconciles, not a new target. "Keep the new temperature" is the policy that
+ * takes the setpoint away, and the sentence names what is left.
+ */
+export function manualTemperaturePowerHint(
+  device: SettingsUiDeviceDetailItem | null,
+  policy: Exclude<TemperatureControlMode, 'mode'>,
+): string {
   if (!supportsPowerDevice(device)) return `PELS cannot limit this device’s power. It needs ${POWER_READING_REMEDY}.`;
+  if (policy === 'update_mode') {
+    return 'PELS still limits this device’s power as configured. '
+      + 'While PELS is limiting its temperature, a change made outside PELS is not saved as the mode target.';
+  }
   if (isSteppedLoadControlModel(device)) return 'PELS can still limit power using this device’s power levels.';
   if (device?.binaryControllable === true) return 'PELS can still limit power by turning this device off and on.';
   return 'PELS cannot limit this device’s power without changing its temperature.';

@@ -87,6 +87,7 @@ function pickTemperatureClusterFields(
     // above, not a runtime state: "no commanded setpoint" materializes as
     // planned === current, which the executor's no-op fence skips.
     plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
+    thermalDirection: dev.thermalDirection,
   };
 }
 

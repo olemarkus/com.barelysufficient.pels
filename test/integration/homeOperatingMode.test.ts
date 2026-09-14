@@ -849,7 +849,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     // Recovery: the very next pass seeds from the home's OWN pinned mode.
     readSpy.mockRestore();
     runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });
 
   it('skips the overshoot seed while the pinned mode targets are unavailable, then retries', () => {
@@ -869,7 +869,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
 
     readSpy.mockRestore();
     runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });
 
   it('uses the current setpoint when a valid targets blob has no active-mode map', () => {
@@ -879,7 +879,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
 
     runSeedPass();
 
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 19 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 19, coolingTemperature: 28 });
   });
 
   it('skips the overshoot seed until zone-based device ownership is committed', () => {
@@ -905,7 +905,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     expect(membership.getHomeIdForDevice('vt-1')).toBe('h_a');
     // The producer retries the previously deferred seed synchronously before
     // it notifies plan consumers about the committed ownership map.
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });
 
   it('skips the overshoot seed between rename target and alias commits', () => {
@@ -925,11 +925,11 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
       new Set(Object.keys(renamedTargets)),
     );
     runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });
 
   it('seeds from the home\'s pinned mode when the read succeeds (never the global mode)', () => {
     runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17 });
+    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });
 });

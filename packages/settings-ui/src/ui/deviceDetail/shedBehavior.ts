@@ -1,6 +1,8 @@
-import { supportsTemperatureAdjustments, supportsPowerLimiting } from './temperaturePolicy.ts';
+import { supportsTemperatureLimiting, supportsPowerLimiting } from './temperaturePolicy.ts';
 import {
   deviceDetailShedAction,
+  deviceDetailShedCoolingTemp,
+  deviceDetailShedCoolingTempRow,
   deviceDetailShedHint,
   deviceDetailShedSegmented,
   deviceDetailShedSegmentedLabel,
@@ -10,6 +12,12 @@ import {
   deviceDetailShedTemp,
   deviceDetailShedTempRow,
 } from '../dom.ts';
+import { applyLimitWording, reportsThermostatMode } from './shedLimitWording.ts';
+import {
+  parseShedTemperatureInput,
+  resolveCoolingShedTemperature,
+  savedCoolingShedTemperature,
+} from './shedTemperatureInputs.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { resolveManagedState, state } from '../state.ts';
@@ -47,6 +55,11 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type PersistedShedBehavior = {
   action: ShedAction;
   temperature?: number;
+  /**
+   * The limit while cooling — a ceiling. Every setpoint entry this UI writes
+   * carries one; an entry persisted before it existed renders the default.
+   */
+  coolingTemperature?: number;
   stepId?: string;
 };
 
@@ -209,13 +222,6 @@ const getShedDefaultTemp = (
   return 10;
 };
 
-const parseShedTemperatureInput = (): number | null => {
-  const parsedTemp = Number.parseFloat(deviceDetailShedTemp?.value || '');
-  if (!Number.isFinite(parsedTemp)) return null;
-  if (parsedTemp < -20 || parsedTemp > 50) return null;
-  return parsedTemp;
-};
-
 const resolveTemperatureShedBehavior = (params: {
   deviceId: string;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -242,8 +248,13 @@ const resolveTemperatureShedBehavior = (params: {
   }
 
   const shouldUpdateTempInput = parsedTemp === null || (forceTemperatureOnly && parsedTemp !== temperature);
+  // Every setpoint entry carries the cooling limit; only a device that can say
+  // it is cooling has a field to read it from.
+  const coolingTemperature = reportsThermostatMode(device)
+    ? resolveCoolingShedTemperature(params.deviceId)
+    : savedCoolingShedTemperature(params.deviceId);
   return {
-    behavior: { action: 'set_temperature', temperature },
+    behavior: { action: 'set_temperature', temperature, coolingTemperature },
     updateTempInput: shouldUpdateTempInput ? temperature : undefined,
   };
 };
@@ -270,7 +281,7 @@ const resolveVisibleShedAction = (params: {
   }
   if (
     deviceDetailShedAction.value === 'set_temperature'
-    && supportsTemperatureAdjustments(device)
+    && supportsTemperatureLimiting(device)
     && isShedActionOptionVisible('set_temperature')
   ) {
     return 'set_temperature';
@@ -282,7 +293,7 @@ const resolveShedControlCapabilities = (params: {
   device: SettingsUiDeviceDetailItem | null;
 }) => {
   const { device } = params;
-  const supportsTemperature = supportsTemperatureAdjustments(device);
+  const supportsTemperature = supportsTemperatureLimiting(device);
   const supportsPower = supportsPowerDevice(device);
   const forceTurnOffOnly = hasEvTargetPowerPreset(device);
   // The step arm is its own axis: "Disable temperature control" denies the
@@ -320,6 +331,15 @@ const resolveUnavailablePowerLimitingStatement = (device: SettingsUiDeviceDetail
   supportsPowerDevice(device)
     ? 'PELS cannot limit this device without changing its temperature.'
     : `PELS does not limit this ${noun}.`
+);
+
+// A device with only the setpoint to limit on. A reversible unit's sentence
+// names both directions.
+const temperatureOnlyStatement = (device: SettingsUiDeviceDetailItem | null): string => (
+  reportsThermostatMode(device)
+    ? 'When limiting this device, PELS lowers its temperature while it is heating '
+      + 'and raises it while it is cooling, instead of turning it off.'
+    : 'When limiting this device, PELS lowers its temperature instead of turning it off.'
 );
 
 const resolveShedStatement = (params: {
@@ -360,9 +380,7 @@ const resolveShedStatement = (params: {
     // what the owner observes.
     return 'When limiting this charger, PELS pauses charging and resumes it when power allows.';
   }
-  if (shedControls.forceTemperatureOnly) {
-    return 'When limiting this device, PELS lowers its temperature instead of turning it off.';
-  }
+  if (shedControls.forceTemperatureOnly) return temperatureOnlyStatement(device);
   if (shedControls.forceStepOnly) {
     return 'When limiting this device, PELS steps it down and back up as power allows.';
   }
@@ -446,6 +464,12 @@ export const setDeviceDetailShedBehavior = (params: {
     });
     deviceDetailShedTemp.disabled = !shedControls.canConfigure;
   }
+  if (deviceDetailShedCoolingTemp) {
+    deviceDetailShedCoolingTemp.value = shedControls.canConfigure
+      ? savedCoolingShedTemperature(params.deviceId).toString()
+      : '';
+    deviceDetailShedCoolingTemp.disabled = !shedControls.canConfigure;
+  }
 };
 
 export const updateShedFieldVisibility = (params: {
@@ -455,6 +479,7 @@ export const updateShedFieldVisibility = (params: {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow || !deviceDetailShedStepRow) return;
 
   const selectedAction = resolveVisibleShedAction(params);
+  const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
   if (selectedAction !== 'set_temperature') {
     deviceDetailShedTempRow.hidden = true;
     if (deviceDetailShedTemp) {
@@ -470,6 +495,14 @@ export const updateShedFieldVisibility = (params: {
       }
     }
   }
+  // The cooling limit only makes sense on a device that can say it is cooling.
+  if (deviceDetailShedCoolingTempRow) {
+    deviceDetailShedCoolingTempRow.hidden = selectedAction !== 'set_temperature' || !reportsThermostatMode(device);
+  }
+  if (deviceDetailShedCoolingTemp) {
+    deviceDetailShedCoolingTemp.disabled = selectedAction !== 'set_temperature';
+  }
+  applyLimitWording(device);
 
   deviceDetailShedStepRow.hidden = true;
 };
@@ -492,7 +525,7 @@ const saveShedBehavior = async (params: {
       && deviceDetailShedAction?.value === 'set_step'
     ) {
       nextBehavior = { action: 'set_step' };
-    } else if (supportsTemperatureAdjustments(device)) {
+    } else if (supportsTemperatureLimiting(device)) {
       const { behavior, updateTempInput } = resolveTemperatureShedBehavior({
         deviceId,
         getDeviceById: params.getDeviceById,
@@ -551,5 +584,6 @@ export const initDeviceDetailShedHandlers = (params: {
 
   deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
+  deviceDetailShedCoolingTemp?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedStep?.addEventListener('change', autoSaveShedBehavior);
 };

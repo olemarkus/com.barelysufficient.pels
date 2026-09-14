@@ -385,6 +385,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       below its current one. Source: the price-shift direction work, 2026-09-11; `pels-layering-guardian`
       and `pels-runtime-reality` both isolated this arm from the two below. [P1]
 
+- [ ] **`overshoot_behaviors` has three parsers and no owner.** The runtime normalizes it in
+      `lib/utils/capacityHelpers.ts` (`ConfiguredShedBehavior`), the settings UI reads it raw as
+      `PersistedShedBehavior` / `state.ShedBehavior` (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`,
+      `state.ts`) with its own bounds (heating -20..50, cooling 16..40), and until 2026-09-14 the
+      auto-seed had a fourth (`OvershootBehaviorEntry`, since deleted). Both browser and Node read
+      the key, which is exactly the placement shared-domain exists for
+      (`notes/settings-key-ownership.md`). Change: `packages/shared-domain/src/settings/shedBehaviors.ts`
+      owns the type, the read (one normalization, one set of bounds) and the write shape; the UI's
+      two types and the runtime's collapse onto it; `capacityHelpers.ts` re-exports or imports.
+      Done when one function parses the key for both sides and the UI cannot persist a value the
+      runtime would clamp differently. Source: `pels-layering-guardian` on the cooling-shed PR. [P2]
+
 - [ ] **The solar-surplus lift and the deadline floor still move a setpoint as if every device were
       heating, so on a cooling device they do nothing useful and erase the price shift.** The plan
       input now carries the device's own direction (`TemperaturePlanInputKind.thermalDirection`,

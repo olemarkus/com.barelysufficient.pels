@@ -8,7 +8,7 @@ import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
 import type { PlanEngine } from './lib/plan/planEngine';
-import type { ShedBehavior } from './lib/plan/planTypes';
+import type { ConfiguredShedBehavior } from './lib/utils/capacityHelpers';
 import type { PlanService } from './lib/plan/planService';
 import type { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
 import type { DeviceControlProfiles } from './packages/contracts/src/types';
@@ -172,7 +172,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   public deviceControlProfiles: DeviceControlProfiles = {};
   public deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
-  public shedBehaviors: Record<string, ShedBehavior> = {};
+  public shedBehaviors: Record<string, ConfiguredShedBehavior> = {};
   public dailyBudgetService!: DailyBudgetService;
   public deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
 

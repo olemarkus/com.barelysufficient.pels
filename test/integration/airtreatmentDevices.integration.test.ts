@@ -124,7 +124,7 @@ describe('Airtreatment device integration', () => {
     await app.refreshTargetDevicesSnapshot();
 
     const overshootBehaviors = mockHomeyInstance.settings.get('overshoot_behaviors') as Record<string, { action: string; temperature?: number }>;
-    expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'set_temperature', temperature: 16 });
+    expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'set_temperature', temperature: 16, coolingTemperature: 28 });
   });
 
   // Capacity shedding (lower target_temperature for thermostat-class devices; turn_off
@@ -143,8 +143,8 @@ describe('Airtreatment device integration', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'flexit-1': 19, 'flexit-2': 19 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'flexit-1': { action: 'set_temperature', temperature: 16 },
-      'flexit-2': { action: 'set_temperature', temperature: 16 },
+      'flexit-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 },
+      'flexit-2': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 },
     });
 
     const app = createApp();

@@ -1,8 +1,9 @@
 import type { ResidualKwShedBehavior } from './deviceResidualKw';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import type {
-  DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot,
+  DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot, ThermalDirection,
 } from '../../packages/contracts/src/types';
+import type { ConfiguredShedBehavior } from '../utils/capacityHelpers';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
@@ -64,26 +65,58 @@ export function resolveDeviceControlPosture(
   };
 }
 
+/**
+ * Whether the device has any axis PELS may limit on. The setpoint counts unless
+ * the owner switched temperature control off ("Keep the new temperature") —
+ * NOT when they chose "Save as current mode target": that policy switches off
+ * the price and solar offsets (`temperatureAdjustmentsDisabled`), and limiting
+ * by setpoint stays in force under it. One predicate, the same one
+ * `allowsLimiting` answers at the shed-behaviour seam.
+ */
 export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot): boolean {
-  return (device.temperatureAdjustmentsDisabled !== true && device.temperatureControlDisabled !== true)
+  return device.temperatureControlDisabled !== true
     || device.binaryControl !== undefined || isSteppedLoadSnapshot(device);
 }
 
 /**
- * Preserve the configured action unless following device targets removes its axis.
+ * The owner's configured shed behaviour resolved onto ONE runtime `ShedBehavior`
+ * for this device, now.
  *
- * The device arrives as a THUNK because the first line answers for most devices
- * without one, and resolving it is not free: the caller's device view re-projects
- * and re-decorates on access, and this runs several times per device per plan
- * build (shed floors, candidates, restore, the silent-meter pass). Passed eagerly
- * it rebuilt the whole device list every time, for an argument usually unread.
+ * Two things decide the `set_temperature` arm, and both are answered here so
+ * nothing downstream sees a second limit or a policy:
+ *
+ * - **Direction.** The configured entry carries a limit per direction; the
+ *   device's current `thermalDirection` picks one — the floor while heating,
+ *   the ceiling while cooling. Handing a cooling unit its heating floor would
+ *   make the compressor work harder, the one outcome a shed must never have.
+ * - **Policy.** "Keep the new temperature" (`external`) means PELS writes no
+ *   setpoint at all, so the arm is denied there. Denial falls to the device's
+ *   other axis — off if it has on/off, its lowest step if it is stepped. "Save
+ *   as current mode
+ *   target" is NOT a denial: limiting still applies under it, and a change the
+ *   owner makes while the device is limited is drift the executor reconciles,
+ *   not a new target (`ObservedTemperatureModeUpdates`).
+ *
+ * The device arrives as a THUNK because most calls answer without it, and
+ * resolving it is not free: the caller's device view re-projects and
+ * re-decorates on access, and this runs several times per device per plan
+ * build (shed floors, candidates, restore, the silent-meter pass). Passed
+ * eagerly it rebuilt the whole device list every time, for an argument usually
+ * unread.
  */
-export function resolveTemperaturePolicyShedBehavior<T extends { action: string }>(
-  configured: T,
+export function resolveTemperaturePolicyShedBehavior(
+  configured: ConfiguredShedBehavior,
   readDevice: () => DecoratedDeviceSnapshot | undefined,
-  allowsAdjustments: boolean,
-): T | { action: 'turn_off' } | { action: 'set_step' } {
-  if (allowsAdjustments || configured.action !== 'set_temperature') return configured;
+  allowsLimiting: boolean,
+  direction: ThermalDirection,
+): ResidualKwShedBehavior {
+  if (configured.action !== 'set_temperature') return configured;
+  if (allowsLimiting) {
+    return {
+      action: 'set_temperature',
+      temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
+    };
+  }
   const device = readDevice();
   if (device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)) return { action: 'set_step' };
   return { action: 'turn_off' };
@@ -111,18 +144,21 @@ export function resolveResidualShedBehavior(
 ): ResidualKwForPlanDeviceShedBehavior {
   if (configured.action === 'set_temperature') {
     // The setpoint arm — and only it — is denied when the owner switched
-    // temperature control off. Relaxing this to "the fence will catch it" would
-    // let a stale persisted setpoint shed reach the planner: a stepped device
-    // routes its release through `shed_release`, which would issue a `target`
-    // command the fence refuses, leaving the device shed with no way back.
+    // temperature control off ("Keep the new temperature"). Relaxing this to
+    // "the fence will catch it" would let a stale persisted setpoint shed reach
+    // the planner: a stepped device routes its release through `shed_release`,
+    // which would issue a `target` command the fence refuses under that policy,
+    // leaving the device shed with no way back. (Under "Save as current mode
+    // target" the fence admits the limit, and the arm is not denied.)
     // The first disjunct cannot decide anything in production:
     // `projectTemperatureDeniedDevice` (applied in `toPlanDevice.ts`) already blanks
     // `targets`/`temperature` and stamps `deviceType: 'onoff'` for a
     // temperature-disabled device before this runs. It is kept because fixture
     // callers reach this function directly, without that projection — so the
     // denial must hold here too rather than rely on a caller that may not exist.
-    if (device.temperatureControlDisabled === true || device.temperatureAdjustmentsDisabled === true
-      || device.temperature === undefined) {
+    // `temperatureAdjustmentsDisabled` is deliberately NOT a term here: it says
+    // the offsets are off, and limiting is not an offset.
+    if (device.temperatureControlDisabled === true || device.temperature === undefined) {
       return resolveShedBehaviorWithoutTemperature(device);
     }
     return { action: 'set_temperature', temperature: configured.temperature };

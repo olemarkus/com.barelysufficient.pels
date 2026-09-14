@@ -1,6 +1,6 @@
 import { readTemperatureControlDisabledDevicesSetting } from '../lib/device/temperatureControlSettings';
 import type Homey from 'homey';
-import type { ShedBehavior } from '../lib/plan/planTypes';
+import type { ConfiguredShedBehavior } from '../lib/utils/capacityHelpers';
 import type {
   DeviceControlProfiles,
   EvBoostSettings,
@@ -90,7 +90,7 @@ export type CapacitySettingsSnapshot = {
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability;
-  shedBehaviors: Record<string, ShedBehavior>;
+  shedBehaviors: Record<string, ConfiguredShedBehavior>;
 };
 
 export { readTemperatureControlDisabledDevicesSetting } from '../lib/device/temperatureControlSettings';

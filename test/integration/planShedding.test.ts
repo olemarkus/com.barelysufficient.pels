@@ -2590,6 +2590,63 @@ describe('buildSheddingPlan', () => {
   // One fact, read by both the fixture's residual and the planner's own deps.
   const AT_SETPOINT_SHED_BEHAVIOR = { action: 'set_temperature', temperature: 15 } as const;
 
+  it('skips a setpoint limit that would make the device work harder', async () => {
+    // A cooling unit targeting 24 with a cooling limit of 20: writing the limit
+    // would ADD demand. The candidate is skipped, and the counters say why.
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+    const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
+    // The direction rides on the temperature facet, which the fixture's loose
+    // probe does not spell out; spread it in as the producer stamps it.
+    const cooling = { thermalDirection: 'cooling' as const };
+
+    const result = await buildSheddingPlan(
+      ...cycleArgs({
+        devices: [
+          buildDevice({
+            id: 'ac',
+            name: 'AC',
+            binaryControl: { on: true },
+            controllable: true,
+            deviceType: 'temperature',
+            currentTemperature: 25,
+            currentTarget: 24,
+            ...cooling,
+            currentDrawKw: 0.8, expectedPowerKw: 0.8,
+            targets: [{ id: 'target_temperature', value: 24, unit: 'C' }],
+            shedBehavior,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 4,
+        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => shedBehavior,
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('ac')).toBe(false);
+    expect(result.overshootStats).toEqual(expect.objectContaining({
+      eligibleCandidateCount: 0,
+      skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'limit_would_add_demand', count: 1 }],
+    }));
+  });
+
   it('marks overshoot as exhausted when no sheddable controlled load remains', async () => {
     const state = createPlanEngineState();
 

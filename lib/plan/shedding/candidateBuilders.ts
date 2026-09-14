@@ -23,6 +23,7 @@ import {
   type ShedCandidate,
   type TemperatureShedCandidate,
 } from './types';
+import { setpointAddsDemand } from '../setpointDemand';
 
 export function buildBinaryCandidate(
   device: PlanInputDevice,
@@ -102,9 +103,43 @@ export function buildTemperatureCandidate(params: {
   };
 }
 
-export function isNotAtShedTemperature(device: ShedCandidate): boolean {
+function isNotAtShedTemperature(device: ShedCandidate): boolean {
   if (device.kind !== 'temperature') return true;
   // The setpoint truth is the narrowed `currentTarget` (atomic facet), not a
   // re-derivation from the raw `targets` metadata list.
   return !(isTemperaturePlanDevice(device) && device.currentTarget === device.shedTemperature);
+}
+
+/**
+ * A limit on the DEMAND side of the current target: a floor above the heating
+ * target, or a cooling ceiling below the cooling target. Writing it would make
+ * the device work harder — the one outcome a shed must never have — so the
+ * candidate is skipped rather than clamped: a clamped write is a no-op the
+ * executor would still issue and wait to confirm. The owner can configure such
+ * a limit (the fields only bound the range), and a mode target can move past a
+ * limit that was fine when it was set.
+ */
+function limitWouldAddDemand(device: ShedCandidate): boolean {
+  if (device.kind !== 'temperature' || !isTemperaturePlanDevice(device)) return false;
+  return setpointAddsDemand(device.thermalDirection, device.currentTarget, device.shedTemperature);
+}
+
+/**
+ * The two setpoint checks the collect loop applies to a built candidate, each
+ * recorded as its own skip so the counters say which. True when skipped.
+ */
+export function recordSetpointShedSkip(
+  candidate: ShedCandidate,
+  device: PlanInputDevice,
+  recorder: ShedCandidateSkipRecorder,
+): boolean {
+  if (!isNotAtShedTemperature(candidate)) {
+    recorder.record({ device, reasonCode: 'already_at_shed_temperature' });
+    return true;
+  }
+  if (limitWouldAddDemand(candidate)) {
+    recorder.record({ device, reasonCode: 'limit_would_add_demand' });
+    return true;
+  }
+  return false;
 }

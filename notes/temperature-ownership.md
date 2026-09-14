@@ -12,11 +12,24 @@ of three policies:
 - **Save as current mode target**: an admitted external setpoint transition
   updates this device's target in the active mode of its owning home. The selected
   temperature is literal: saved mode targets remain writable, including when
-  switching modes, but price/solar offsets and fixed-temperature limiting are not
-  applied. Saved adjustment preferences are preserved for switching back.
-  Binary and stepped limiting remain available; a temperature-only device has no
-  remaining limiting control. Temperature Smart tasks require full temperature
-  control and cannot be created with this policy.
+  switching modes, but price/solar offsets are not applied. Saved adjustment
+  preferences are preserved for switching back. **Power limiting by setpoint still
+  applies** (since 2026-09-14; it used to be denied here too): the owner's limit
+  is a limit under any policy that lets PELS write a setpoint, and the write
+  fence admits it beside the saved target. **A change the owner makes while PELS
+  is limiting the device's temperature is not saved** — it is a reaction to the
+  limit, not a preference, so `ObservedTemperatureModeUpdates` skips it
+  (`observed_temperature_mode_update_skipped_while_limited`) and the executor
+  converges the device back onto its limit as ordinary drift. "Limited" here is
+  the latest plan's `plannedState === 'shed'` with `shedAction === 'set_temperature'`
+  — narrower than the Overview's Limited on purpose: a device PELS turned off or
+  is holding has not had its setpoint touched, and a change there is a preference
+  the executor would never write back over, so it is adopted as usual. The plan
+  asked is the device's OWNING home's, routed through
+  `HomeRuntimeRegistry.getOwningHomeRouteForDevice`, because main's plan filters
+  meter-area members out.
+  Temperature Smart tasks require full temperature control and cannot be created
+  with this policy.
 
 **Observation → mode owner → next meter-driven plan.** `TemperatureAdjustmentObserver`
 classifies command echoes in the device observation path, with no plan comparison.
@@ -134,12 +147,22 @@ the problem, not the safety net.
   asks for it and stamps it on `TemperaturePlanInputKind`; the raw mode is
   stripped there and never reaches the planner. Any policy that moves a setpoint
   to change how much the device draws must apply its move in that direction. The
-  price-based shift does (`lib/plan/planPriceDelta.ts`), and so does the
-  diagnostics "held below target" resolution, which otherwise accrues persisted
-  starvation time for a cooling device PELS is running flat out. The surplus
-  lift, the deadline floor and the configured `set_temperature` shed still assume
-  heating, and each is a defect for a cooling device rather than a deliberate
-  exemption.
+  price-based shift does (`lib/plan/planPriceDelta.ts`), so does the diagnostics
+  "held below target" resolution, and so does the configured `set_temperature`
+  shed: the owner's entry carries a limit per direction (`ConfiguredShedBehavior`,
+  `coolingTemperature` beside `temperature`), and
+  `resolveTemperaturePolicyShedBehavior` picks the one for the device's direction
+  at the single seam that hands the planner a `ShedBehavior`
+  (`AppHostApi.getShedBehavior`). Every setpoint entry carries both limits —
+  `normalizeShedBehaviors` fills `COOLING_SHED_DEFAULT_C` for one persisted
+  before the second existed — so no seam asks whether a limit is configured.
+  Every planner reader that orders two setpoints ("is this a limit or a
+  resume", "would moving it to its limit still release demand") goes through
+  `setpointAddsDemand` (`lib/plan/setpointDemand.ts`), reading the direction
+  the plan device carries on its own temperature facet; a bare `>` between two
+  targets is a heating assumption.
+  The surplus lift and the deadline floor still assume heating,
+  and each is a defect for a cooling device rather than a deliberate exemption.
   **The readers assume it too, and that list is not closed.** `computeTemperatureGap`
   (`lib/observer/idleDetector.ts`) is `target - current`, so a cooling unit above
   its setpoint — working hardest — reads as `near_target_idle`; and the

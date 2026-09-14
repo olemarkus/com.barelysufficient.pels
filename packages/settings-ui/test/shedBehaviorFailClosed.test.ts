@@ -31,6 +31,8 @@ const loadShedHelpers = async () => {
     deviceDetailShedStepRow: null,
     deviceDetailShedTemp: null,
     deviceDetailShedTempRow: null,
+    deviceDetailShedCoolingTemp: null,
+    deviceDetailShedCoolingTempRow: null,
   }));
 
   const module = await import('../src/ui/deviceDetail/shedBehavior.ts');

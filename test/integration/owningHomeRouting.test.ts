@@ -82,6 +82,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
       rebuildPlan: () => Promise.resolve(),
       invalidateRebuildSuppression: vi.fn(),
+          isDeviceLimited: () => false,
     };
 
     syncExternalOffHoldForObservation({
@@ -161,6 +162,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
             clearRecentBinaryOffCommand: vi.fn(),
             rebuildPlan,
             invalidateRebuildSuppression: vi.fn(),
+          isDeviceLimited: () => false,
           },
         },
       }),
@@ -203,6 +205,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
             clearRecentBinaryOffCommand: vi.fn(),
             rebuildPlan: () => Promise.resolve(),
             invalidateRebuildSuppression: invalidateSubHome,
+          isDeviceLimited: () => false,
           },
         },
       }),

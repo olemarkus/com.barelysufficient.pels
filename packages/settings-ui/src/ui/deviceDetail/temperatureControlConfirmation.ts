@@ -28,17 +28,39 @@ function limitingConsequence(device: SettingsUiDeviceDetailItem): string | undef
     : 'When limiting power, PELS will turn this device off instead of changing its temperature.';
 }
 
-/** Confirm the consequences before the auto-saving selector writes its new policy. */
+/** Everything the owner should hear before the policy changes, in the order it matters. */
+function policyChangeWarnings(
+  device: SettingsUiDeviceDetailItem,
+  next: Exclude<TemperatureControlMode, 'mode'>,
+): string[] {
+  const warnings: string[] = [];
+  const limiting = next === 'external' ? limitingConsequence(device) : undefined;
+  if (limiting) warnings.push(limiting);
+  if (next === 'update_mode' && state.shedBehaviors[device.id]?.action === 'set_temperature') {
+    warnings.push(
+      'While PELS is limiting this device’s temperature, a change made outside PELS is not saved as the mode target.',
+    );
+  }
+  const price = state.priceOptimizationSettings[device.id];
+  if (price?.enabled) warnings.push('Price-based temperature adjustments will stop.');
+  if (price?.surplusWilling) warnings.push('Solar-surplus temperature adjustments will stop.');
+  return warnings;
+}
+
+/**
+ * Confirm the consequences before the auto-saving selector writes its new policy.
+ *
+ * Only "Keep the new temperature" takes limiting away — PELS then writes no
+ * setpoint at all. "Save as current mode target" keeps the owner's limit in
+ * force; what it changes for limiting is that a temperature the owner sets by
+ * hand WHILE the device is limited is not saved, because that is a reaction to
+ * the limit rather than a preference.
+ */
 export async function confirmTemperatureControlChange(
   device: SettingsUiDeviceDetailItem,
   next: Exclude<TemperatureControlMode, 'mode'>,
 ): Promise<boolean> {
-  const warnings: string[] = [];
-  const limiting = limitingConsequence(device);
-  if (limiting) warnings.push(limiting);
-  const price = state.priceOptimizationSettings[device.id];
-  if (price?.enabled) warnings.push('Price-based temperature adjustments will stop.');
-  if (price?.surplusWilling) warnings.push('Solar-surplus temperature adjustments will stop.');
+  const warnings = policyChangeWarnings(device, next);
   if (warnings.length === 0) return true;
   if (!dialog || !message || !consequences || dialog.open) return false;
 

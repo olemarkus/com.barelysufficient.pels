@@ -880,6 +880,36 @@ describe('finalizePlanDevices', () => {
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
 
+  it('stamps the restore classification for a cooling unit leaving its limit DOWNWARD', () => {
+    // A cooling unit is limited by raising its target (22 -> 28), so resuming is
+    // the move DOWN from 28. Read as a heater, that drop looks like a deeper
+    // limit, the restore is never recorded, and the device skips the restore
+    // back-off and flips on the 60 s limit cadence.
+    const finalized = finalizePlanDevices([buildPlanDevice({
+      deviceType: 'temperature',
+      thermostatMode: 'cooling',
+      plannedState: 'keep',
+      currentTarget: 28,
+      currentTemperature: 27,
+      plannedTarget: 22,
+    })], new Map([['dev', 28]]), new Set<string>());
+
+    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
+  });
+
+  it('does not stamp the restore classification for a cooling unit moving further INTO its limit', () => {
+    const finalized = finalizePlanDevices([buildPlanDevice({
+      deviceType: 'temperature',
+      thermostatMode: 'cooling',
+      plannedState: 'keep',
+      currentTarget: 22,
+      currentTemperature: 23,
+      plannedTarget: 28,
+    })], new Map([['dev', 28]]), new Set<string>(['dev']));
+
+    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+  });
+
   it('does not stamp the restore classification for an ordinary off-floor raise', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',

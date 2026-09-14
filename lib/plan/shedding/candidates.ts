@@ -7,7 +7,7 @@ import {
   buildBinaryCandidate,
   buildTemperatureCandidate,
   isEligibleForShedding,
-  isNotAtShedTemperature,
+  recordSetpointShedSkip,
 } from './candidateBuilders';
 import { buildSteppedCandidate } from './steppedCandidates';
 import {
@@ -107,10 +107,7 @@ function collectSheddingCandidates(
       recorder,
     });
     if (!candidate) continue;
-    if (!isNotAtShedTemperature(candidate)) {
-      recorder.record({ device, reasonCode: 'already_at_shed_temperature' });
-      continue;
-    }
+    if (recordSetpointShedSkip(candidate, device, recorder)) continue;
 
     const allowedByLimitPolicy = limitSource !== 'daily' || capacityBreached || device.budgetExempt !== true;
     if (allowedByLimitPolicy) {

@@ -63,7 +63,10 @@ describe('external temperature changes reach the mode through observation', () =
     expect(put).not.toHaveBeenCalled();
   });
 
-  it('the next meter-driven plan reads the adopted target while keeping capacity limits', async () => {
+  it('the next meter-driven plan reads the adopted target, and the configured limit still applies', async () => {
+    // "Save as current mode target" switches off the offsets, not the limit:
+    // the owner's limited temperature is what PELS lowers the device to under
+    // pressure, and the target it saved is what it comes back to.
     const app = await start('update_mode');
     mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
     await drainPending();
@@ -81,9 +84,30 @@ describe('external temperature changes reach the mode through observation', () =
       (device) => device.id === deviceId && device.plannedState === 'shed',
     ) === true);
     const limited = app.planService!.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId);
-    expect(limited).toMatchObject({ plannedTarget: 22, shedAction: 'turn_off' });
+    expect(limited).toMatchObject({ plannedTarget: 16, shedAction: 'set_temperature' });
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
+  });
 
+  it('does not save a change made while the device is limited', async () => {
+    // A nudge during a peak is a reaction to the limit, not a preference. The
+    // saved target stays what the owner chose while unlimited; the executor
+    // reconciles the nudge back onto the limit as ordinary drift.
+    const app = await start('update_mode');
+    mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
+    await drainPending();
+    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    const report = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
+    await report({ power: 15_000 });
+    await vi.advanceTimersByTimeAsync(2000);
+    await drainUntil(() => app.planService!.getLatestPlanSnapshot()?.devices.some(
+      (device) => device.id === deviceId && device.plannedState === 'shed',
+    ) === true);
+
+    app.deviceManager!.injectDeviceUpdateForTest(update(23));
+    await drainPending();
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
+    expect(app.modeDeviceTargets.Home?.[deviceId]).toBe(22);
   });
 
   it('keeps saved price and solar settings without applying their offsets', async () => {
@@ -111,20 +135,26 @@ describe('external temperature changes reach the mode through observation', () =
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
   });
 
-  it('does not claim power limiting for a device whose only control is temperature', async () => {
+  it('still limits a device whose only control is temperature, by setpoint', async () => {
+    // "Save as current mode target" switches off the offsets, not the limit. A
+    // device with nothing but a setpoint to limit on keeps its authority and is
+    // lowered to its limited temperature under pressure — this is the
+    // auto-seeded air-conditioner shape, so a `commandAuthority: false` here
+    // would leave exactly those devices unlimited while the UI says otherwise.
     const app = await start('update_mode', false);
     mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
     await drainPending();
     await mockHomeyInstance.flow._actionCardListeners.report_power_usage({ power: 15_000 });
     await vi.advanceTimersByTimeAsync(2000);
+    await drainUntil(() => app.planService!.getLatestPlanSnapshot()?.devices.some(
+      (device) => device.id === deviceId && device.plannedState === 'shed',
+    ) === true);
     const device = app.planService!.getLatestPlanSnapshot()?.devices.find((candidate) => candidate.id === deviceId);
-    // A device whose only axis is temperature, with temperature control off,
-    // has nothing PELS could command — `hasTemperaturePolicyPowerControl` is
-    // the last term of `commandAuthority`.
     expect(device).toMatchObject({
-      control: expect.objectContaining({ commandAuthority: false }),
-      plannedState: 'keep',
-      plannedTarget: 23.5,
+      control: expect.objectContaining({ commandAuthority: true }),
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      plannedTarget: 16,
     });
   });
 

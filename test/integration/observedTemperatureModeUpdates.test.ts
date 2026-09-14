@@ -20,20 +20,78 @@ describe('observation-origin mode edits', () => {
     const resolveMode = vi.fn(() => ({
       state: 'resolved' as const, mode: 'Home', homeId, catalogHomeId: homeId,
     }));
+    const isLimited = vi.fn(() => false);
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, reloadMain, () => [{ reloadModeCatalog: reloadArea }], (_id, value) => value,
+      isLimited,
     );
-    return { settings, key, service, reloadMain, reloadArea, resolveMode };
+    return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited };
   };
 
   it('authorizes the normalized saved target rather than an old adjusted target', () => {
     const { settings, resolveMode } = start();
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value),
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false,
     );
     expect(service.allowsTarget('heater', 24)).toBe(true);
     expect(service.allowsTarget('heater', 23.5)).toBe(false);
     expect(service.allowsTarget('heater', 16)).toBe(false);
+  });
+
+  it('authorizes the owner\'s configured limit under Save as current mode target, in either direction', () => {
+    // Limiting still applies under that policy; only the price and solar offsets
+    // are switched off. The fence cannot tell which way the device is moving
+    // demand, so both of the owner's limits are legitimate writes.
+    const { settings, resolveMode } = start();
+    settings.set('overshoot_behaviors', {
+      heater: { action: 'set_temperature', temperature: 16.4, coolingTemperature: 26.2 },
+    });
+    const service = new ObservedTemperatureModeUpdates(
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false,
+    );
+    expect(service.allowsTarget('heater', 16)).toBe(true);
+    expect(service.allowsTarget('heater', 26)).toBe(true);
+    expect(service.allowsTarget('heater', 20)).toBe(false);
+  });
+
+  it('keeps the configured limits across a transient null read of the map', () => {
+    // The SDK answers `null` for a key that exists, now and then. The limits it
+    // held are the last good value, so the fence keeps admitting them; an emptied
+    // map here would refuse the executor's own limit write.
+    const { settings, resolveMode } = start();
+    settings.set('overshoot_behaviors', {
+      heater: { action: 'set_temperature', temperature: 16, coolingTemperature: 27 },
+    });
+    const service = new ObservedTemperatureModeUpdates(
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => value, () => false,
+    );
+    expect(service.allowsTarget('heater', 16)).toBe(true);
+    vi.spyOn(settings, 'get').mockImplementationOnce(() => null);
+    expect(service.allowsTarget('heater', 16)).toBe(true);
+    expect(service.allowsTarget('heater', 27)).toBe(true);
+  });
+
+  it('allows limiting under Save as current mode target and denies it only under Keep the new temperature', () => {
+    const { service, settings } = start();
+    expect(service.allowsLimiting('heater')).toBe(true);
+    expect(service.allowsAutomaticAdjustments('heater')).toBe(false);
+    settings.set('temperature_control_modes', { heater: 'external' });
+    expect(service.allowsLimiting('heater')).toBe(false);
+  });
+
+  it('does not save a change made while PELS has the device limited', () => {
+    // A nudge during a peak is a reaction to the limit, not a new preference.
+    // Left unsaved, the executor sees observed and desired disagree and brings
+    // the device back onto its limit — ordinary drift.
+    const { settings, key, service, reloadMain, isLimited } = start();
+    isLimited.mockReturnValue(true);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 23.5, other: 19 }, Away: { heater: 15 } });
+    expect(reloadMain).not.toHaveBeenCalled();
+
+    isLimited.mockReturnValue(false);
+    service.accept(adjustment);
+    expect(settings.get(key)).toEqual({ Home: { heater: 22, other: 19 }, Away: { heater: 15 } });
   });
 
   it('holds the last good policy through transient settings failures', () => {

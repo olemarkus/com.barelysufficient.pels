@@ -210,6 +210,24 @@ export class PlanService {
     return this.latestPlanSnapshot;
   }
 
+  /**
+   * Whether the latest committed plan has this device limited BY SETPOINT.
+   *
+   * Asked by the mode-target adoption path, which must not save an owner's
+   * reaction to a lowered (or, cooling, raised) temperature as the mode's
+   * target. Deliberately narrower than the Overview's "Limited": a device PELS
+   * turned off, or is holding for surplus or a start policy, has not had its
+   * setpoint touched — a change the owner makes there is a preference the
+   * executor would never write back over, so it is adopted as usual. No plan
+   * yet means nothing is limited.
+   */
+  isDeviceLimitedInLatestPlan(deviceId: string): boolean {
+    if (this.latestPlanSnapshot === null) return false;
+    return this.latestPlanSnapshot.devices.some(
+      (device) => device.id === deviceId && device.plannedState === 'shed' && device.shedAction === 'set_temperature',
+    );
+  }
+
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
     return serializePlanForUi(this.latestPlanSnapshot, this.deps, this.idleClassifier);
   }

@@ -418,6 +418,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       invalidateRebuildSuppression: () => {
         params.planRebuildThrottle.onObservation();
       },
+      isDeviceLimited: (deviceId) => planService.isDeviceLimitedInLatestPlan(deviceId),
     }),
     updateHomeConfig: (next) => {
       setHome(next);

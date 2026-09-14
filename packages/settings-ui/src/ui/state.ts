@@ -23,6 +23,8 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
+  /** The limit while cooling — a ceiling; shown only for a device that reports a heating/cooling mode. */
+  coolingTemperature?: number;
   stepId?: string;
 };
 

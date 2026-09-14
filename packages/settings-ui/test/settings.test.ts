@@ -1119,7 +1119,7 @@ describe('settings script', () => {
     await flushPromises();
 
     expect(homey.__settingsStore.overshoot_behaviors).toEqual({
-      'dev-1': { action: 'set_temperature', temperature: 55 },
+      'dev-1': { action: 'set_temperature', temperature: 55, coolingTemperature: 28 },
       'dev-2': { action: 'set_step' },
     });
   });

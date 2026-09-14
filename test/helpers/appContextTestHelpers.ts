@@ -1,3 +1,4 @@
+import type { ConfiguredShedBehavior } from '../../lib/utils/capacityHelpers';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { snapshotById } from './snapshotById';
@@ -25,7 +26,6 @@ import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
-import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
@@ -34,6 +34,7 @@ import type {
   EvBoostSettings,
   EvCarAssociations,
   TemperatureBoostSettings,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
@@ -130,7 +131,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';
   let evBoostSettings: EvBoostSettings = {};
   let evCarAssociations: EvCarAssociations = {};
-  let shedBehaviors: Record<string, ShedBehavior> = {};
+  let shedBehaviors: Record<string, ConfiguredShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
@@ -215,6 +216,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     deviceReads,
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
+      () => false,
     ),
     startupBootstrap: undefined,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
@@ -269,6 +271,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     // split: the record no longer answers these questions.
     getObservedStateOfCharge: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservedTemperature: vi.fn(() => ({ kind: 'absent' } as const)),
+    getThermalDirection: vi.fn((): ThermalDirection => 'heating'),
     getObservedEvChargingState: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservationRevision: vi.fn(() => 0),
     seedObservedStateFromSnapshot: vi.fn(),

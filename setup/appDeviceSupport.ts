@@ -1,3 +1,4 @@
+import { normalizeShedBehaviors } from '../lib/utils/capacityHelpers';
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { isBooleanMap } from '../lib/utils/appTypeGuards';
@@ -16,7 +17,6 @@ import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import {
   enforceTemperatureWithoutOnOffOvershootBehaviors,
-  type OvershootBehaviorEntry,
   type ResolveOperatingModeForDevice,
 } from './temperatureShedFloorDefaults';
 
@@ -97,10 +97,6 @@ function parsePriceSettings(value: unknown): PriceSettings | null {
   return value && typeof value === 'object' ? value as PriceSettings : null;
 }
 
-function parseOvershootSettings(value: unknown): Record<string, OvershootBehaviorEntry> {
-  if (!value || typeof value !== 'object') return {};
-  return value as Record<string, OvershootBehaviorEntry>;
-}
 
 function applyFalseOverrides(params: {
   settings: Homey.App['homey']['settings'];
@@ -222,7 +218,9 @@ export function disableUnsupportedDevices(params: {
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
-  const overshootSettings = parseOvershootSettings(settings.get(OVERSHOOT_BEHAVIORS) as unknown);
+  // Through the key's one normalizer, not a bare cast: the seed must see the
+  // same entries the runtime does, cooling limit included.
+  const overshootSettings = normalizeShedBehaviors(settings.get(OVERSHOOT_BEHAVIORS));
   // Edge-trigger the price-only log: only emit when capacity was previously
   // enabled (`true`) and we're demoting it to `false`. Absent keys are not a
   // transition — they were already effectively unmanaged — so they must not

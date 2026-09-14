@@ -110,6 +110,40 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     expect(turnedOff).toBe(false);
   });
 
+  it('limits a cooling unit by RAISING its target to the cooling limit, and resumes it back down', async () => {
+    // Handing a cooling unit its heating limit (16) would make the compressor
+    // work harder. While it reports that it is cooling, PELS raises it to the
+    // cooling limit instead, and resuming is the move back DOWN to the mode
+    // target — the move a heater-shaped reading would take for a deeper limit.
+    const device = await buildHeatpumpDevice(22, 2000);
+    await device.setCapabilityValue('thermostat_mode', 'cool');
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    enableCapacity(1);
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 22 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 },
+    });
+    const setHomePower = reportHomePower(5000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 28 });
+
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 16 });
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
+    putSpy.mockClear();
+
+    setHomePower(100);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 22 });
+    await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(22);
+  });
+
   it('applies the mode setpoint by writing target_temperature on the configured operating mode', async () => {
     const device = await buildHeatpumpDevice(22, 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
@@ -178,7 +212,12 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(20);
   });
 
-  it('restores an off heater after switching from manual saving to fixed-temperature control', async () => {
+  it('keeps limiting by setpoint under manual saving, and does not save a nudge made while limited', async () => {
+    // "Save as current mode target" switches off the offsets, not the limit. So
+    // under pressure PELS lowers the heater to its limited temperature rather
+    // than turning it off — and a temperature the owner sets by hand WHILE it is
+    // limited is a reaction to the limit, not a preference: it is not saved, and
+    // the executor brings the heater back onto its limit as ordinary drift.
     const device = await buildHeatpumpDevice(24, 2000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     enableCapacity(1);
@@ -193,23 +232,35 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
-    await device.setCapabilityValue('measure_power', 0);
-
-    // Re-enable the saved temperature floor while the heater is already off.
-    mockHomeyInstance.settings.set('temperature_control_modes', { 'heatpump-a': 'mode' });
-    await vi.advanceTimersByTimeAsync(10_000);
     await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 16 });
-    await expect(device.getCapabilityValue('onoff')).resolves.toBe(false);
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
+    putSpy.mockClear();
+
+    // The owner nudges the limited heater up. The live feed is off in tests, so
+    // the change arrives the way it does in production: as a `device.update`
+    // carrying the new target. Not saved; written back on the next cycle the
+    // limit cooldown allows (60 s between limit operations).
+    await device.setCapabilityValue('target_temperature', 20);
+    app.deviceManager!.injectDeviceUpdateForTest({
+      id: 'heatpump-a', name: 'Hallway Heatpump', class: 'heatpump',
+      capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode'],
+      capabilitiesObj: {
+        onoff: { id: 'onoff', value: true },
+        measure_power: { id: 'measure_power', value: 2000 },
+        measure_temperature: { id: 'measure_temperature', value: 21 },
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(70_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 16 });
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'heatpump-a': 24 } });
     putSpy.mockClear();
 
     setHomePower(100);
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     await vi.advanceTimersByTimeAsync(90_000);
 
-    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: true });
     expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 24 });
-    await expect(device.getCapabilityValue('onoff')).resolves.toBe(true);
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(24);
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'heatpump-a': 24 } });
   });

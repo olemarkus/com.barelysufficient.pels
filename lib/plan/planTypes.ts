@@ -3,6 +3,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -178,7 +179,14 @@ export type NonSteppedLoadKind = Record<never, never>;
 // (the lowest layer both sides may import) precisely so the planner's control
 // cluster is not defined by a type named for the UI — read the ownership rules
 // on `PlannedTemperatureState` before adding a field to either side.
-export type TemperatureKind = PlannedTemperatureState;
+//
+// `thermalDirection` is the one planner-only addition, and it is added HERE
+// rather than on the shared shape for exactly that reason: the card renders
+// three numbers and has no use for it, while every planner reader that asks
+// "is this move a limit or a resume" needs it — the answer is opposite for a
+// unit that is cooling. Carried from the input device's own facet
+// (`TemperaturePlanInputKind.thermalDirection`), never re-derived.
+export type TemperatureKind = PlannedTemperatureState & { thermalDirection: ThermalDirection };
 
 /**
  * Binary-control field cluster (binary-variant slice of the discriminated-types
@@ -309,6 +317,7 @@ export type TemperatureDiscriminantProbe = {
   currentTarget?: number;
   currentTemperature?: number;
   plannedTarget?: number;
+  thermalDirection?: ThermalDirection;
 };
 
 /**
@@ -323,7 +332,7 @@ export type TemperatureDiscriminantProbe = {
  */
 export type TemperatureClusterFields =
   | TemperatureKind
-  | { currentTarget?: never; currentTemperature?: never; plannedTarget?: never };
+  | { currentTarget?: never; currentTemperature?: never; plannedTarget?: never; thermalDirection?: never };
 
 /**
  * Regroup the temperature field cluster off a loose bag (whose temperature
@@ -357,10 +366,13 @@ export function withTemperatureDiscriminant<TBase extends object>(
   if (isTemperatureControlDevice(loose)) {
     return loose;
   }
-  if (!('currentTarget' in loose) && !('currentTemperature' in loose) && !('plannedTarget' in loose)) {
+  if (!('currentTarget' in loose) && !('currentTemperature' in loose) && !('plannedTarget' in loose)
+    && !('thermalDirection' in loose)) {
     return loose;
   }
-  const { currentTarget: _t, currentTemperature: _c, plannedTarget: _p, ...base } = loose;
+  const {
+    currentTarget: _t, currentTemperature: _c, plannedTarget: _p, thermalDirection: _d, ...base
+  } = loose;
   return { ...base };
 }
 

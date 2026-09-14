@@ -49,6 +49,8 @@ const loadShedStatementHarness = async () => {
   const hint = { hidden: false };
   const shedTemp = { value: '', disabled: false };
   const shedTempRow = { hidden: true };
+  const shedCoolingTemp = { value: '', disabled: false };
+  const shedCoolingTempRow = { hidden: true };
   const shedStepRow = { hidden: true };
   const shedStep = { innerHTML: '', disabled: false, addEventListener: () => {} };
 
@@ -60,6 +62,8 @@ const loadShedStatementHarness = async () => {
     deviceDetailShedHint: hint,
     deviceDetailShedTemp: shedTemp,
     deviceDetailShedTempRow: shedTempRow,
+    deviceDetailShedCoolingTemp: shedCoolingTemp,
+    deviceDetailShedCoolingTempRow: shedCoolingTempRow,
     deviceDetailShedStep: shedStep,
     deviceDetailShedStepRow: shedStepRow,
   }));

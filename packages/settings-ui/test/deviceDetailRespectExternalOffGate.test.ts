@@ -510,18 +510,37 @@ describe('device detail "Disable temperature control"', () => {
     expect(state.temperatureControlDisabledMap['heater-1']).toBe(false);
     expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
     expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(false);
-    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent).toContain('off and on');
+    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent)
+      .toContain('still limits');
     const modeInput = document.querySelector<MdSwitchLike>('.detail-mode-temp[data-mode="Home"]');
     expect(modeInput).not.toBeNull();
     expect(modeInput?.disabled).toBe(false);
   });
 
-  it('explains that following a temperature-only device removes power limiting', async () => {
-    await openPanel({ device: buildTemperatureBinaryDevice({
+  it('keeps power limiting when a temperature-only device saves changes as its mode target', async () => {
+    // "Save as current mode target" switches off the offsets, not the limit: the
+    // owner's limited temperature still applies, so nothing to warn about and no
+    // dialog. Only "Keep the new temperature" takes the setpoint away.
+    const { homey } = await openPanel({ device: buildTemperatureBinaryDevice({
       capabilities: ['target_temperature', 'measure_temperature'], binaryControl: undefined, binaryControllable: false,
     }) });
     const select = temperatureControlToggle()!;
     select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(temperatureConfirmation().open).toBe(false);
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'update_mode' });
+    expect((document.querySelector('#device-detail-controllable') as MdSwitchLike).disabled).toBe(false);
+    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent)
+      .toContain('still limits');
+  });
+
+  it('explains that keeping the new temperature on a temperature-only device removes power limiting', async () => {
+    await openPanel({ device: buildTemperatureBinaryDevice({
+      capabilities: ['target_temperature', 'measure_temperature'], binaryControl: undefined, binaryControllable: false,
+    }) });
+    const select = temperatureControlToggle()!;
+    select.value = 'external';
     select.dispatchEvent(new Event('change', { bubbles: true }));
     expect(temperatureConfirmation().textContent).toContain('no longer be able to limit');
     finishTemperatureConfirmation('confirm');
@@ -540,7 +559,9 @@ describe('device detail "Disable temperature control"', () => {
     expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
   });
 
-  it('warns before replacing temperature limiting and leaves everything saved on Cancel', async () => {
+  it('warns that a hand-set temperature is not saved while limited, and leaves everything saved on Cancel', async () => {
+    // Saving as current mode target keeps the configured limit in force; what
+    // the owner needs to hear is the one thing it changes for a limited device.
     const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice() });
     const limiting = { 'heater-1': { action: 'set_temperature' as const, temperature: 16 } };
     state.shedBehaviors = limiting;
@@ -549,7 +570,7 @@ describe('device detail "Disable temperature control"', () => {
     select.value = 'update_mode';
     select.dispatchEvent(new Event('change', { bubbles: true }));
     expect(temperatureConfirmation().open).toBe(true);
-    expect(temperatureConfirmation().textContent).toContain('turn this device off instead');
+    expect(temperatureConfirmation().textContent).toContain('not saved as the mode target');
     expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
     finishTemperatureConfirmation('cancel');
     await flushPromises();

@@ -1619,21 +1619,29 @@ It uses **Return to mode target** (default), **Keep the new temperature** (the
 former Disable temperature control toggle), and **Save as current mode target**.
 The last option includes changes from the device, Homey, another app or Flow; do
 not imply the physical remote is distinguishable. The saved mode target is the
-literal temperature to apply. Automatic offsets and temperature-based limiting
-are unavailable under this choice.
+literal temperature to apply. Automatic offsets (price, solar) are unavailable
+under this choice; **power limiting stays as configured**, including limiting by
+temperature — a temperature change made outside PELS *while PELS is limiting the
+device's temperature* is not saved as the mode target (since 2026-09-14).
 
 For **Save as current mode target**, keep per-mode target inputs editable. Show
 price and solar controls as unavailable with saved values retained, with the explanation
 **Not applied while PELS saves temperature changes as the current mode target.
 Your saved settings are kept.** Explain
-remaining power control beside the selector: binary on/off, power levels, or
+power control beside the selector: under Save as current mode target it is
+**PELS still limits this device’s power as configured. While PELS is limiting its
+temperature, a change made outside PELS is not saved as the mode target.**; under Keep
+the new temperature it is what is left — binary on/off, power levels, or
 **PELS cannot limit this device’s power without changing its temperature.**
 Temperature Smart tasks require the default control policy; existing task history
 stays visible regardless of the current choice.
 
-Leaving **Return to mode target** asks for confirmation when configured temperature
-limiting or price/solar adjustments will become inactive, or a temperature-only
-device will lose power limiting. **Change how PELS handles temperature?** names the device
-and lists the actual consequences. **Cancel** and dismissal leave the saved
+Leaving **Return to mode target** asks for confirmation when price/solar
+adjustments will become inactive; for Keep the new temperature, also when
+configured temperature limiting becomes inactive or a temperature-only device
+loses power limiting; for Save as current mode target with temperature limiting
+configured, the bullet is **While PELS is limiting this device’s temperature, a change made
+outside PELS is not saved as the mode target.** **Change how PELS
+handles temperature?** names the device and lists the actual consequences. **Cancel** and dismissal leave the saved
 selection unchanged; **Save choice** saves it. Selecting **Return to mode target**
 does not ask again. A toast alone is insufficient for approving a control change.
