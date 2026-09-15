@@ -20,6 +20,7 @@ import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/p
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { getAppPlanRebuildNowMs } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import {
   hasReservation,
   seedServedSwapReservation,
@@ -1516,7 +1517,7 @@ describe('Device plan snapshot', () => {
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
     // Force the periodic max-interval rebuild path for this restore check.
-    rememberLastRebuild(app.planRebuildThrottle, app['getPlanRebuildNowMs']() - 200);
+    rememberLastRebuild(app.planRebuildThrottle, getAppPlanRebuildNowMs() - 200);
     await app['powerSamplePipeline'].recordPowerSample(500);
     plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('keep');

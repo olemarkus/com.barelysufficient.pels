@@ -252,7 +252,6 @@ abstract class AppRuntimeApi extends Base {
   protected initPlanRuntime(): void { this.serviceWiring.initPlanRuntime(); }
   protected initDeviceDiagnosticsService(): void { this.serviceWiring.initDeviceDiagnosticsService(); }
   protected subscribePlanObservedState(): void { this.serviceWiring.subscribePlanObservedState(); }
-  protected getPlanRebuildNowMs(): number { return this.planRebuildScheduler.now().nowMs; }
   protected captureDefaultDynamicSoftLimit(): void { this.serviceWiring.captureDefaultDynamicSoftLimit(); }
   protected initSettingsHandler(): void { this.serviceWiring.initSettingsHandler(); }
   public async onUninit(): Promise<void> { await this.serviceWiring.runUninit(); }

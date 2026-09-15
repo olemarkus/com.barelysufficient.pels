@@ -50,9 +50,9 @@ import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsSto
 import type { PlanService } from '../../lib/plan/planService';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
-import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import { createHomePlanRebuildThrottle } from '../planRebuildIntentPolicy';
+import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // Direct file imports (not the `setup/appInit.ts` barrel) to mirror
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
@@ -227,49 +227,6 @@ export type HomeCapacityBundle = {
   teardown: (options?: { resetMeterFreshness?: boolean }) => boolean;
 };
 
-// Per-bundle rebuild throttle and the scheduler it queues into; every timer
-// rides the shared TimerRegistry under this home's key. Bundle clock:
-// `Date.now()` unconditionally — self-consistent within the bundle (the
-// throttle's memory and the scheduler's due times read the same clock); the
-// main home keeps its monotonic-clock variant. `flow` intents do not exist for
-// sub-homes, so every intent here is the throttle's.
-function createBundleRebuildRuntime(params: {
-  ctx: AppContext;
-  timerKey: (suffix: string) => string;
-  getPlanService: () => PlanService;
-  getCapacityGuard: () => CapacityGuard;
-}): { scheduler: PlanRebuildScheduler; throttle: PlanRebuildThrottle } {
-  const { ctx, timerKey, getPlanService, getCapacityGuard } = params;
-  const nowMs = () => Date.now();
-  const throttle: PlanRebuildThrottle = createHomePlanRebuildThrottle({
-    getScheduler: () => scheduler,
-    getCapacityGuard,
-    getNowMs: nowMs,
-    rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
-  });
-  const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
-    getNowMs: nowMs,
-    resolveDueAtMs: (intent, state) => throttle.dueAtMs(intent, state.nowMs),
-    executeIntent: (intent) => {
-      if (intent.kind === 'signal' || intent.kind === 'hardCap') return throttle.execute();
-      return getPlanService()
-        .rebuildPlanFromCache(intent.reason, { detail: intent.detail })
-        .then(() => undefined);
-    },
-    shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    // A cancelled intent releases the rebuild queued for it, so a sample
-    // awaiting one learns the reason instead of hanging past teardown.
-    onIntentCancelled: (intent, reason) => {
-      if (intent.kind === 'signal' || intent.kind === 'hardCap') throttle.cancel(reason);
-    },
-    setTimeoutFn: (callback, delayMs) => (
-      ctx.timers.registerTimeout(timerKey('planRebuild'), setTimeout(callback, delayMs))
-    ),
-    clearTimeoutFn: () => { ctx.timers.clear(timerKey('planRebuild')); },
-  });
-  return { scheduler, throttle };
-}
-
 // The sub-home `HomeScope`: capacity-only policy block, suffixed persisted-
 // signal writers, membership-partitioned plan input (fail-closed for sub-home
 // scopes — see `filterDevicesForHome`).
@@ -396,12 +353,15 @@ function createBundleSamplePipeline(params: {
   scheduler: PlanRebuildScheduler;
   throttle: PlanRebuildThrottle;
 } {
-  const { scheduler, throttle } = createBundleRebuildRuntime({
-    ctx: params.ctx,
-    timerKey: params.timerKey,
-    getPlanService: params.getPlanService,
-    getCapacityGuard: params.getCapacityGuard,
-  });
+  const { scheduler, throttle } = createHomeRebuildRuntime(
+    params.homeId,
+    params.ctx.timers,
+    params.timerKey,
+    params.getCapacityGuard,
+    params.getPlanService,
+    () => params.ctx.getStructuredLogger('plan'),
+    (topic) => params.ctx.debugLoggingTopics.has(topic),
+  );
   const pipeline = createHomePowerPipeline({
     ctx: params.ctx,
     homeId: params.homeId,

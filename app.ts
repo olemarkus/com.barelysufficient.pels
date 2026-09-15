@@ -42,11 +42,10 @@ import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/home
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
-import { SchedulerTelemetryObserver } from './lib/plan/rebuildScheduler/telemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
 import { createCombinedPricesReader } from './lib/price/combinedPricesReader';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
-import { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
+import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import type { PvForecastSourceUiStatus } from './packages/contracts/src/settingsUiApi';
 import {
@@ -64,10 +63,8 @@ import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
 import { AppSmartTaskApi } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import {
-  createHomePlanRebuildThrottle,
-  getAppPlanRebuildNowMs,
-  PlanRebuildIntentPolicy,
-} from './setup/planRebuildIntentPolicy';
+  createHomeRebuildRuntime,
+} from './lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { AppNativeWiring } from './setup/appNativeWiring';
 import {
   AppServiceWiring,
@@ -237,34 +234,28 @@ class PelsApp extends PelsAppBase implements AppContext {
   public lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   public lastNotifiedOperatingMode = 'Home';
   private readonly settingsRepository = new SettingsRepository(this.homey);
-  private readonly schedulerTelemetry = new SchedulerTelemetryObserver({
-    getStructuredLogger: () => this.structuredLogger,
-    isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
-    getNowMs: () => this.getPlanRebuildNowMs(),
-    cancelQueuedPowerRebuild: (reason) => this.planRebuildThrottle.cancel(reason),
-  });
-  private readonly planRebuildIntentPolicy: PlanRebuildIntentPolicy = new PlanRebuildIntentPolicy({
-    getPlanRebuildThrottle: () => this.planRebuildThrottle,
-    getPlanService: () => this.planService,
-  });
-  protected readonly planRebuildScheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
-    getNowMs: getAppPlanRebuildNowMs,
-    resolveDueAtMs: (intent, state) => this.planRebuildIntentPolicy.resolveDueAtMs(intent, state),
-    executeIntent: (intent) => this.planRebuildIntentPolicy.executeIntent(intent),
-    shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    onIntentDropped: this.schedulerTelemetry.onIntentDropped,
-    onPendingIntentReplaced: this.schedulerTelemetry.onPendingIntentReplaced,
-    onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
-    onIntentError: this.schedulerTelemetry.onIntentError,
-  });
-  // The main home's rebuild throttle: it owns what the scheduler used to read
-  // off a state record held here (`lib/plan/rebuildScheduler/throttle.ts`).
-  public readonly planRebuildThrottle: PlanRebuildThrottle = createHomePlanRebuildThrottle({
-    getScheduler: () => this.planRebuildScheduler,
-    getCapacityGuard: () => this.capacityGuard,
-    getNowMs: () => this.getPlanRebuildNowMs(),
-    rebuildPlanFromCache: (trigger) => this.planService.rebuildPlanFromCache(trigger),
-  });
+  // Declared before every field that arms a timer. It depends on nothing, and
+  // a field initializer that reaches it must run after this line — TypeScript
+  // rejects the forward read rather than handing over an `undefined` registry.
+  public readonly timers = new TimerRegistry();
+  /**
+   * The main home's rebuild loop, built by the factory every meter area builds
+   * its own with. Its four components — throttle, scheduler, due-time policy
+   * and scheduler telemetry — used to be four fields here, and an area had a
+   * hand-rolled copy of two of them.
+   */
+  private readonly rebuildRuntime = createHomeRebuildRuntime(
+    MAIN_HOME_ID,
+    this.timers,
+    // Main's timer namespace is the bare suffix, as it is for its settings keys.
+    (suffix) => suffix,
+    () => this.capacityGuard,
+    () => this.planService,
+    () => this.getStructuredLogger('plan'),
+    (topic) => this.debugLoggingTopics.has(topic),
+  );
+  protected readonly planRebuildScheduler: PlanRebuildScheduler = this.rebuildRuntime.scheduler;
+  public readonly planRebuildThrottle: PlanRebuildThrottle = this.rebuildRuntime.throttle;
   public readonly meterSilenceMonitor = createMeterSilenceMonitor({
     getLastSampleAtMs: () => this.powerTracker.lastTimestamp,
     nowMs: () => Date.now(),
@@ -331,7 +322,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected readonly backgroundTasks = this.backgroundTaskBundle.controller;
 
   protected structuredLogger?: PinoLogger;
-  public readonly timers = new TimerRegistry();
   /**
    * The userdata database and the tracker's repository on it: opened at the
    * first boot step, closed last at teardown, and absent outside that window

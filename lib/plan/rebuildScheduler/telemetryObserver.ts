@@ -3,10 +3,18 @@ import type { RebuildIntent } from './scheduler';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
+import type { HomeId } from '../../utils/settingsKeys';
 
 const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 
 export type SchedulerTelemetryObserverDeps = {
+  /**
+   * The home this scheduler paces. On every payload because both the main home
+   * and every meter area run one: without it two homes' dropped/replaced lines
+   * are indistinguishable, and the rate-limiter below is per observer, so each
+   * home keeps its own window.
+   */
+  homeId: HomeId;
   getStructuredLogger: () => PinoLogger | undefined;
   isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean;
   getNowMs: () => number;
@@ -38,6 +46,7 @@ export class SchedulerTelemetryObserver {
       `dropped:${dropped.kind}:${dropped.reason}:${kept.kind}:${kept.reason}`,
       {
         event: 'plan_rebuild_scheduler_intent_dropped',
+        homeId: this.deps.homeId,
         droppedKind: dropped.kind,
         droppedReason: dropped.reason,
         keptKind: kept.kind,
@@ -57,6 +66,7 @@ export class SchedulerTelemetryObserver {
       `replaced:${previous.kind}:${previous.reason}:${next.kind}:${next.reason}`,
       {
         event: 'plan_rebuild_scheduler_intent_replaced',
+        homeId: this.deps.homeId,
         previousKind: previous.kind,
         previousReason: previous.reason,
         nextKind: next.kind,
@@ -76,6 +86,7 @@ export class SchedulerTelemetryObserver {
     if (intent.kind === 'flow') {
       logger?.error({
         event: 'plan_rebuild_flow_failed',
+        homeId: this.deps.homeId,
         intentReason: intent.reason,
         err: normalizeError(error),
       });
@@ -84,6 +95,7 @@ export class SchedulerTelemetryObserver {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
       logger?.error({
         event: 'plan_rebuild_power_sample_failed',
+        homeId: this.deps.homeId,
         intentKind: intent.kind,
         err: normalizeError(error),
       });
@@ -91,8 +103,11 @@ export class SchedulerTelemetryObserver {
   };
 
   private emit(key: string, payload: Record<string, unknown>): void {
+    // Topic gate first: `getStructuredLogger` allocates a pino child per call
+    // for both homes, and the disabled path has no use for one.
+    if (!this.deps.isDebugTopicEnabled('plan')) return;
     const logger = this.deps.getStructuredLogger();
-    if (!logger || !this.deps.isDebugTopicEnabled('plan')) return;
+    if (!logger) return;
     const nowMs = this.deps.getNowMs();
     for (const [storedKey, lastEmittedAtMs] of this.lastEmittedAtMsByKey) {
       if (nowMs - lastEmittedAtMs >= PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS) {

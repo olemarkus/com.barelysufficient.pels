@@ -102,7 +102,6 @@
   - `appRuntimeApi.ts` / `appHostApi.ts` — inherited runtime/lifecycle and Homey/widget/settings-API
     façades. `PelsApp` stays the concrete state/composition root; inherited methods preserve the
     external `homey.app` surface and receiver binding without keeping their bodies in `app.ts`.
-  - `planRebuildIntentPolicy.ts` — `getAppPlanRebuildNowMs` plus the due-time/execution decisions `PlanRebuildScheduler` delegates back to the app.
   - `appSettingsHelpers.ts` — loads/normalizes capacity settings and reacts to settings changes.
   - `homeRuntime/` — per-home wiring (multi-home): the `HomeScope` closure bundle the plan factories consume, the pipeline factory, and the R7b capacity-only sub-home bundles (`homeRuntimeRegistry.ts` + `createHomeCapacityBundle.ts`, reconciled against `homes_config`; the main home never routes through the bundle factory). **The per-home FACTORIES here serve Main too** — `createHomePlanRuntime.ts` and `createHomeCapacityGuard.ts` are each called once per meter area and once by `appServiceWiring.ts` for Main, with everything the homes differ by arriving through the scope. A new one belongs here, not under `appInit/`: a factory only Main calls is how "omitted means the main home" gets back in.
 

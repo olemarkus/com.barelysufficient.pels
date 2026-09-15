@@ -16,7 +16,7 @@ import { requireDeviceManager } from '../appInit/contextGuards';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 
 // Base freshness-heartbeat cadence (mirrors `powerSampleRebuildCadence().maxIntervalMs`
-// in `setup/powerSamplePipeline.ts`). The test value is coarser than the poll
+// in `lib/plan/rebuildScheduler/intentPolicy.ts`). The test value is coarser than the poll
 // cadence so a 10-minute stale-escalation test doesn't fire thousands of ticks.
 
 // Grace after which a bundle still gated on a committed zone tree WARNS (a

@@ -371,7 +371,7 @@ setup/flowConflictProbe.ts 1
 setup/homeMembership.ts 1
 setup/homeMeterOwnership.ts 1
 setup/homeRegistryAdapter.ts 2
-setup/homeRuntime/createHomeCapacityBundle.ts 4
+setup/homeRuntime/createHomeCapacityBundle.ts 3
 setup/homeRuntime/homeCapacityBundleApi.ts 5
 setup/homeRuntime/homeCapacityBundleReadiness.ts 1
 setup/homeRuntime/homeModeOwnershipStore.ts 1

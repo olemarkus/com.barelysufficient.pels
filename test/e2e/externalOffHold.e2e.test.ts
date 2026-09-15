@@ -93,7 +93,7 @@ const onoffPuts = (putSpy: { mock: { calls: unknown[][] } }) => putSpy.mock.call
 describe('Leave off until turned on again (SDK-boundary e2e)', () => {
   beforeEach(() => {
     // 'Date' MUST be faked — under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (app.ts getAppPlanRebuildNowMs); a real-vs-fake split
+    // its clock via Date.now() (`lib/plan/rebuildScheduler/intentPolicy.ts` getAppPlanRebuildNowMs); a real-vs-fake split
     // intermittently strands the rebuild under CI load.
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],

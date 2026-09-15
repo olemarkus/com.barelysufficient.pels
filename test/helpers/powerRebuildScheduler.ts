@@ -22,8 +22,9 @@ export const throttleMemoryFixture = (
 
 /**
  * A throttle and the scheduler it queues into, wired as production wires them
- * (`setup/planRebuildIntentPolicy.ts` for main, `createBundleRebuildRuntime`
- * for a sub-home): due times and execution come back to the throttle, a
+ * (`lib/plan/rebuildScheduler/homeRebuildRuntime.ts`, the one factory the main
+ * home and every meter area build theirs with): due times and execution come
+ * back to the throttle, a
  * cancelled intent releases the rebuild queued for it. Specs drive the throttle
  * and read its `snapshot()`; nothing here is a second code path.
  *

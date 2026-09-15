@@ -4,7 +4,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../../lib/plan/rebuildScheduler/policy';
 import type { PlanRebuildScheduler, RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
 import { PlanRebuildThrottle, type PlanRebuildThrottleMemory } from '../../lib/plan/rebuildScheduler/throttle';
-import { PlanRebuildIntentPolicy } from '../../setup/planRebuildIntentPolicy';
+import { PlanRebuildIntentPolicy } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { schedulePowerSampleForTest, throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
 

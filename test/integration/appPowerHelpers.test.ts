@@ -987,7 +987,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('does not floor the first rebuild on a monotonic clock', async () => {
-    // Reproduces prod: getPlanRebuildNowMs is performance.now() (monotonic, small
+    // Reproduces prod: getAppPlanRebuildNowMs is performance.now() (monotonic, small
     // values) and the throttle starts with no rebuild remembered. Were the floor
     // anchored to a zero timestamp instead of to a rebuild that ran, an
     // unactionable initial sample would floor its due time to 0 + 15_000 and

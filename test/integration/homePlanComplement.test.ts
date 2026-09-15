@@ -19,7 +19,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
+import { powerSampleRebuildCadence } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildHomePlanDevices } from '../../setup/homeRuntime/planDevicePrePass';

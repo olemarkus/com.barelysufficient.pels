@@ -1,7 +1,6 @@
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
-import type { RebuildIntent } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { Logger } from '../../lib/logging/logger';
 import type { PvForecastController } from '../../setup/appInit/createPvForecastService';
 import { partialDouble } from '../helpers/partialDouble';
@@ -65,6 +64,7 @@ import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudge
 import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
+import { getAppPlanRebuildNowMs } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -427,107 +427,6 @@ describe('MyApp initialization', () => {
     } finally {
       capture.restore();
     }
-  });
-
-  it('emits rate-limited structured plan rebuild scheduler replacement events', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
-
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set(['plan']);
-
-    const previous: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
-    const next: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
-    app['schedulerTelemetry'].onPendingIntentReplaced(previous, next);
-    app['schedulerTelemetry'].onPendingIntentReplaced(previous, next);
-
-    expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
-    expect(childLogger.debug).toHaveBeenCalledTimes(1);
-    expect(childLogger.debug).toHaveBeenCalledWith({
-      event: 'plan_rebuild_scheduler_intent_replaced',
-      previousKind: 'flow',
-      previousReason: 'flow_card',
-      nextKind: 'hardCap',
-      nextReason: 'shortfall',
-      debugTopic: 'plan',
-    });
-  });
-
-  it('does not rate-limit distinct plan rebuild scheduler replacement keys', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
-
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set(['plan']);
-
-    app['schedulerTelemetry'].onPendingIntentReplaced(
-      { kind: 'flow', reason: 'flow_card' },
-      { kind: 'hardCap', reason: 'shortfall' },
-    );
-    app['schedulerTelemetry'].onPendingIntentReplaced(
-      { kind: 'flow', reason: 'settings' },
-      { kind: 'hardCap', reason: 'shortfall' },
-    );
-
-    expect(childLogger.debug).toHaveBeenCalledTimes(2);
-    expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
-      event: 'plan_rebuild_scheduler_intent_replaced',
-      previousKind: 'flow',
-      previousReason: 'settings',
-      nextKind: 'hardCap',
-      nextReason: 'shortfall',
-      debugTopic: 'plan',
-    }));
-  });
-
-  it('emits rate-limited structured plan rebuild scheduler dropped events', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
-
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set(['plan']);
-
-    const dropped: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
-    const kept: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
-    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
-    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
-
-    expect(childLogger.debug).toHaveBeenCalledTimes(1);
-    expect(childLogger.debug).toHaveBeenCalledWith({
-      event: 'plan_rebuild_scheduler_intent_dropped',
-      droppedKind: 'flow',
-      droppedReason: 'flow_card',
-      keptKind: 'hardCap',
-      keptReason: 'shortfall',
-      debugTopic: 'plan',
-    });
-  });
-
-  it('prunes stale plan rebuild scheduler rate-limit keys', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
-    const map = app['schedulerTelemetry']['lastEmittedAtMsByKey'] as Map<string, number>;
-
-    vi.spyOn(app as unknown as Record<'getPlanRebuildNowMs', () => number>, 'getPlanRebuildNowMs')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(60_000);
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set(['plan']);
-
-    const dropped: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
-    const kept: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
-    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
-    expect(map.size).toBe(1);
-
-    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
-
-    expect(childLogger.debug).toHaveBeenCalledTimes(2);
-    expect(map.size).toBe(1);
-    expect(map.get('dropped:flow:flow_card:hardCap:shortfall')).toBe(60_000);
   });
 
   it('keeps devices disabled by default when no settings exist', async () => {
@@ -907,7 +806,7 @@ describe('MyApp initialization', () => {
     // rebuild this case cancels is held by the tight-unactionable execution
     // floor instead: an unactionable sample past the max interval is admitted,
     // then floored 15 s after the last rebuild.
-    rememberLastRebuild(app.planRebuildThrottle, app['getPlanRebuildNowMs']() - 200);
+    rememberLastRebuild(app.planRebuildThrottle, getAppPlanRebuildNowMs() - 200);
     const pending = schedulePowerSampleForTest({
       throttle: app.planRebuildThrottle,
       limitKw: 10,
@@ -1101,7 +1000,7 @@ describe('MyApp initialization', () => {
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = app['getPlanRebuildNowMs']();
+    const nowMs = getAppPlanRebuildNowMs();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.actuation.lastRestoreMs = nowMs - 1_000;
     app.planEngine.state.actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
@@ -1148,7 +1047,7 @@ describe('MyApp initialization', () => {
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = app['getPlanRebuildNowMs']();
+    const nowMs = getAppPlanRebuildNowMs();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.overshoot.enter(Date.now());
 
@@ -1177,7 +1076,7 @@ describe('MyApp initialization', () => {
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = app['getPlanRebuildNowMs']();
+    const nowMs = getAppPlanRebuildNowMs();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.overshoot.enter(Date.now());
 

@@ -23,7 +23,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
+import { powerSampleRebuildCadence } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 

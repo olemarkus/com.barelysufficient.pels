@@ -1,11 +1,11 @@
-import type { PlanService } from '../lib/plan/planService';
+import type { PlanService } from '../planService';
 import {
   initialPlanRebuildThrottleMemory,
   PlanRebuildThrottle,
   type PlanRebuildThrottleDeps,
-} from '../lib/plan/rebuildScheduler/throttle';
-import type { PlanRebuildScheduler, RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
-import type { RebuildCadence } from '../lib/plan/rebuildScheduler/rebuildSignal';
+} from './throttle';
+import type { PlanRebuildScheduler, RebuildIntent } from './scheduler';
+import type { RebuildCadence } from './rebuildSignal';
 
 /**
  * How often a home's rebuild throttle may rebuild — one cadence for every

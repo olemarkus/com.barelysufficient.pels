@@ -94,7 +94,7 @@ const writesTo = (spy: { mock: { calls: unknown[][] } }, path: string): unknown[
 describe('stepped shed with temperature control disabled (SDK-boundary e2e)', () => {
   beforeEach(() => {
     // 'Date' MUST be faked: under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (`setup/planRebuildIntentPolicy.ts`). Without it the
+    // its clock via Date.now() (`lib/plan/rebuildScheduler/intentPolicy.ts`). Without it the
     // rebuild runs on real wall-clock while the test drives fake timers.
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
