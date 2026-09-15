@@ -148,6 +148,48 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(22);
   });
 
+  it('holds a cooling unit whose limit would add demand where it is when the meter goes silent', async () => {
+    // The owner's cooling limit (20) sits BELOW the unit's cooling target (24):
+    // writing it would make the compressor work harder. With the meter silent
+    // past the shed timeout, PELS sheds everything it controls — the plug turns
+    // off — but the cooling unit is held at 24, never moved to its limit.
+    const device = await buildHeatpumpDevice(24, 2000);
+    await device.setCapabilityValue('thermostat_mode', 'cool');
+    const plug = new MockDevice('plug-a', 'Plug', ['onoff', 'measure_power'], 'socket');
+    await plug.setCapabilityValue('onoff', true);
+    await plug.setCapabilityValue('measure_power', 500);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device, plug]) });
+    enableCapacity(10);
+    mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true, 'plug-a': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true, 'plug-a': true });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 24 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 16, coolingTemperature: 20 },
+    });
+    let meterReports = true;
+    const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
+      if (path === 'manager/energy/live') {
+        return { items: meterReports ? [{ type: 'cumulative', id: 'meter-main', values: { W: 2500 } }] : [] };
+      }
+      return originalGet(path);
+    });
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(putSpy).not.toHaveBeenCalledWith(cap('plug-a', 'onoff'), { value: false });
+
+    meterReports = false;
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    await drainUntilCalledWith(putSpy, cap('plug-a', 'onoff'), { value: false });
+
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 20 });
+    await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(24);
+  });
+
   it('applies the mode setpoint by writing target_temperature on the configured operating mode', async () => {
     const device = await buildHeatpumpDevice(22, 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });

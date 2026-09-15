@@ -6,6 +6,7 @@ import type { PlanEngineState, SheddingOutcome } from '../planState';
 import type { PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export type SheddingPlan = {
   shedSet: Set<string>;
@@ -123,6 +124,8 @@ export type ShedCandidateParams = {
    * re-derives breach from a total (an unmeasured cycle is not breached).
    */
   capacityBreached: boolean;
+  /** The build's resolved setpoints (`PlanContext.temperatureSetpoints`): whether a setpoint limit releases demand. */
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   state: PlanEngineState;
   deps: SheddingDeps;
 };

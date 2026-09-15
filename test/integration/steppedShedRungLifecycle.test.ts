@@ -20,7 +20,6 @@ import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec 
 import { steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 const chargerProfile = {
   steps: [
@@ -37,7 +36,6 @@ const chargerProfile = {
 const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
   buildPlanCycleObject({
     devices: [],
-    modeTargetCFor: (d) => d.currentTarget,
     softLimit: 0,
     capacitySoftLimit: 0,
     dailySoftLimit: null,
@@ -53,7 +51,6 @@ const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
     minutesRemaining: 60,
     headroomRaw: 0,
     headroom: 0,
-    currentHourPriceLevel: PriceLevel.UNKNOWN,
     total: 3,
     ...overrides,
   })
@@ -119,7 +116,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior,
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
@@ -170,7 +166,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

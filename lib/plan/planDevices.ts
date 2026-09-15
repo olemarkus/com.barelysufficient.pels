@@ -2,42 +2,37 @@ import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planType
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
-import { PriceLevel } from '../price/priceLevels';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
 import {
   resolveSteppedShedCurrentDesiredStepId,
   resolveSteppedShedHypotheticalStepId,
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { isSurplusLiftEngaged, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import { isSurplusHeldDevice } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import {
-  getPrimaryTargetCapability,
-  normalizeTargetCapabilityValue,
-} from '../utils/targetCapabilities';
 import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { applyPriceOptimizationDelta } from './planPriceDelta';
+import { temperatureSetpointsFor } from './planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import { addPerfDuration } from '../utils/perfCounters';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 export type PlanDevicesDeps = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getPriceOptimizationEnabled: () => boolean;
+  // The surplus opt-in only; the lift's value is already in the resolved setpoints.
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
   // allocator's pool; 0 = no inferred surplus. The producer
   // (`lib/solar/curtailmentSurplus.ts`, injected flat via setup wiring) owns
   // every safety decision about the term — this layer never re-validates it.
   getInferredSurplusKw: () => number;
-  getOperatingMode?: () => string;
   // Observer-owned pending-binary-command store; plan-side raw reads go
   // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -102,8 +97,7 @@ export function buildInitialPlanDevices(params: {
     const priority = dev.priority;
     const plannedTarget = resolvePlannedTarget({
       dev,
-      modeTargetCFor: context.modeTargetCFor,
-      currentHourPriceLevel: context.currentHourPriceLevel,
+      temperatureSetpoints: context.temperatureSetpoints,
       state,
       deps,
     });
@@ -176,88 +170,33 @@ export function buildInitialPlanDevices(params: {
   addPerfDuration('plan_devices_offstate_ms', offStateMs);
   return result;
 }
+/**
+ * The setpoint a temperature device's outcome commands this cycle: the
+ * surplus-lift setpoint while the allocator has it absorbing surplus, the kept
+ * setpoint otherwise. Both are resolved before the planner
+ * (`PlanContext.temperatureSetpoints`); this only picks. A limit is not decided
+ * here — `resolveShedAction` swaps in the limit for a device the plan sheds.
+ */
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
-  /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
-  currentHourPriceLevel: PriceLevel;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ResolvedPlannedTarget {
-  const {
-    dev,
-    modeTargetCFor,
-    currentHourPriceLevel,
-    state,
-    deps,
-  } = params;
-  // Default: surplus is not the binding cause unless the mode branch below proves it is.
+  const { dev, temperatureSetpoints, state, deps } = params;
+  // Default: surplus is not the binding cause unless the lift below proves it is.
   // Reset every cycle for every device so a stale true never lingers.
   state.surplusAbsorbActiveByDevice[dev.id] = false;
   if (!isTemperaturePlanDevice(dev)) return undefined;
-  // Capability METADATA (min/max/step) for normalization; the target VALUE truth
-  // is the narrowed `dev.currentTarget` (the observer's atomic facet — always a
-  // finite number for a temperature device).
-  const target = getPrimaryTargetCapability(dev.targets);
-  const deferredC = dev.deadlineFloorTargetC;
-  const hasDeferred = typeof deferredC === 'number';
-  const modulated = applyModeSeedModulation({
-    seedValue: modeTargetCFor(dev),
-    dev,
-    config: deps.getPriceOptimizationSettings()[dev.id],
-    currentHourPriceLevel,
-    state,
-    deps,
-  });
-  let { plannedTarget } = modulated;
-  // Track the same target with NO surplus lift in parallel, so surplus's "binding cause" can
-  // be decided AFTER all floors AND capability normalization/rounding (below) — not latched
-  // mid-computation.
-  let { nonSurplusTarget } = modulated;
-  if (hasDeferred) {
-    // The deadline floor applies to both the actual and the non-surplus target.
-    plannedTarget = Math.max(plannedTarget, deferredC);
-    nonSurplusTarget = Math.max(nonSurplusTarget, deferredC);
-  }
-  const normalizedTarget = normalizeTargetCapabilityValue({ target, value: plannedTarget });
-  const normalizedNonSurplus = normalizeTargetCapabilityValue({ target, value: nonSurplusTarget });
-  // Surplus is the binding cause only when, after floors AND capability normalization, the
-  // commanded target is strictly higher than it would be WITHOUT the lift. This is false when
-  // a deadline floor lands on the surplus value (no extra lift) and when a sub-step delta
-  // rounds back to the original setpoint (the device would draw identically without solar).
-  state.surplusAbsorbActiveByDevice[dev.id] = typeof normalizedTarget === 'number'
-    && typeof normalizedNonSurplus === 'number'
-    && normalizedTarget > normalizedNonSurplus;
-  return normalizedTarget;
-}
-
-type ModeSeedModulation = { plannedTarget: number; nonSurplusTarget: number };
-
-/**
- * The mode's seed setpoint after the price-optimization delta and the surplus
- * lift, tracked as a pair so surplus's "binding cause" can be decided after the
- * deadline floor and capability normalization run on both.
- */
-function applyModeSeedModulation(params: {
-  seedValue: number;
-  dev: PlanInputDevice & TemperaturePlanInputKind;
-  config: PriceOptDeviceConfig | undefined;
-  currentHourPriceLevel: PriceLevel;
-  state: PlanEngineState;
-  deps: PlanDevicesDeps;
-}): ModeSeedModulation {
-  const { seedValue, dev, config, currentHourPriceLevel, state, deps } = params;
-  const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
-    ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel, dev.thermalDirection)
-    : seedValue;
-  const surplusTarget = applySurplusAbsorbDelta({
-    baseTarget: seedValue,
-    pricedTarget,
-    dev,
-    config,
-    state,
-  });
-  return { plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
+  const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
+  const lifted = isSurplusLiftEngaged(
+    dev, resolvePriceOptimizationConfig(deps.getPriceOptimizationSettings(), dev.id), state,
+  );
+  // Surplus is the binding cause only when the lift actually commands something
+  // else: false when a deadline floor already sits there, and when a sub-step
+  // lift rounds back to the kept setpoint (the device would draw the same).
+  state.surplusAbsorbActiveByDevice[dev.id] = lifted && setpoints.surplusC !== setpoints.keepC;
+  return lifted ? setpoints.surplusC : setpoints.keepC;
 }
 
 function resolveCurrentState(device: PlanInputDevice): string {

@@ -10,6 +10,9 @@ import {
   recordSetpointShedSkip,
 } from './candidateBuilders';
 import { buildSteppedCandidate } from './steppedCandidates';
+import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import {
   createShedCandidateSkipRecorder,
   type ShedCandidateSkipRecorder,
@@ -74,6 +77,7 @@ function collectSheddingCandidates(
     deficitKw,
     limitSource,
     capacityBreached,
+    temperatureSetpoints,
     state,
     deps,
   } = params;
@@ -99,6 +103,7 @@ function collectSheddingCandidates(
     const candidate = addCandidatePower({
       device,
       devices,
+      temperatureSetpoints,
       state,
       nowTs,
       needed,
@@ -107,7 +112,7 @@ function collectSheddingCandidates(
       recorder,
     });
     if (!candidate) continue;
-    if (recordSetpointShedSkip(candidate, device, recorder)) continue;
+    if (recordSetpointShedSkip(candidate, device, temperatureSetpoints, recorder)) continue;
 
     const allowedByLimitPolicy = limitSource !== 'daily' || capacityBreached || device.budgetExempt !== true;
     if (allowedByLimitPolicy) {
@@ -141,6 +146,7 @@ function collectSheddingCandidates(
 function addCandidatePower(params: {
   device: PlanInputDevice;
   devices: PlanInputDevice[];
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   state: PlanEngineState;
   nowTs: number;
   /** Severity, sentinel-carrying — for `resolveRecentRestoreState` only. */
@@ -156,6 +162,7 @@ function addCandidatePower(params: {
   const {
     device,
     devices,
+    temperatureSetpoints,
     state,
     nowTs,
     needed,
@@ -178,22 +185,24 @@ function addCandidatePower(params: {
       // remainder to hand down here.
       neededKw: deficitKw,
       state,
+      temperatureSetpoints,
       getShedBehavior: deps.getShedBehavior,
       pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
       recorder,
     });
   }
-  const shedBehavior = deps.getShedBehavior(device.id);
-  if (shedBehavior.action === 'set_temperature') {
-    const target = device.targets?.[0];
-    if (target?.id) {
+  // A device with no temperature facet has no setpoint to limit, whatever its
+  // stored shed behaviour says.
+  const target = device.targets?.[0];
+  if (isTemperaturePlanDevice(device) && target?.id) {
+    const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
+    if (shed.action === 'set_temperature') {
       return buildTemperatureCandidate({
         device,
         priority,
         recentlyRestored,
-        shedTemperature: shedBehavior.temperature,
+        shedTemperature: shed.limitC,
         targetCapabilityId: target.id,
-        targetCapability: target,
         pendingTargetCommands: state.pendingTargetCommands,
         recorder,
       });

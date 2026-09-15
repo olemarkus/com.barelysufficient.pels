@@ -31,7 +31,6 @@ import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 const DEVICE_ID = 'tank';
 const MODE_C = 20;
@@ -43,7 +42,24 @@ const EXPORTING_KW = -2;
 const EXPORTING_TOO_LITTLE_KW = -1;
 const IMPORTING_KW = 1;
 
-const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanCycle => buildPlanCycleObject({
+// The device's price-opt entry. Two readers take it, as in production: the
+// allocator (is the device a willing absorber) and the setpoint resolver (what
+// setpoint the lift commands), so both are handed the same one.
+const surplusSettings = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C) => ({
+  [DEVICE_ID]: {
+    enabled: false,
+    cheapDelta: 0,
+    expensiveDelta: 0,
+    surplusWilling,
+    surplusDelta,
+  },
+});
+
+const buildContext = (
+  signedNetKw: number,
+  measuredDrawKw = 0,
+  settings = surplusSettings(true),
+): PlanCycle => buildPlanCycleObject({
   devices: [
     buildPlanInputDevice({
       id: DEVICE_ID,
@@ -55,7 +71,10 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanCycle => bui
       targets: [{ id: 'target_temperature', value: MODE_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
     }),
   ],
-  modeTargetCFor: (d) => (({ [DEVICE_ID]: MODE_C })[d.id] ?? d.currentTarget),
+  intent: {
+    getModeDeviceTargets: () => ({ Home: { [DEVICE_ID]: MODE_C } }),
+    getPriceOptimizationSettings: () => settings,
+  },
   total: signedNetKw,
   softLimit: 10,
   capacitySoftLimit: 10,
@@ -72,22 +91,14 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanCycle => bui
   minutesRemaining: 60,
   headroomRaw: 12,
   headroom: 12,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
+
+const withoutSetpoints = ({ temperatureSetpoints: _resolvedForOtherDevices, ...rest }: PlanCycle) => rest;
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getPriceOptimizationEnabled: () => false,
-  getPriceOptimizationSettings: () => ({
-    [DEVICE_ID]: {
-      enabled: false,
-      cheapDelta: 0,
-      expensiveDelta: 0,
-      surplusWilling,
-      surplusDelta,
-    },
-  }),
+  getPriceOptimizationSettings: () => surplusSettings(surplusWilling, surplusDelta),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 });
 
@@ -127,7 +138,7 @@ const cycle = (
   measuredDrawKw = 0,
 ): number | undefined => {
   const device = buildDevices({
-    context: buildContext(signedNetKw, measuredDrawKw),
+    context: buildContext(signedNetKw, measuredDrawKw, surplusSettings(surplusWilling)),
     state,
     deps: deps(surplusWilling),
   })[0];
@@ -143,7 +154,7 @@ const cycleDevice = (
   measuredDrawKw = 0,
   surplusDelta = SURPLUS_DELTA_C,
 ) => buildDevices({
-  context: buildContext(signedNetKw, measuredDrawKw),
+  context: buildContext(signedNetKw, measuredDrawKw, surplusSettings(surplusWilling, surplusDelta)),
   state,
   deps: deps(surplusWilling, surplusDelta),
 })[0];
@@ -403,9 +414,14 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       getPriceOptimizationSettings: () => ({ [HI]: surplusConfig, [LO]: surplusConfig }),
     };
     const ctx = (): PlanCycle => buildPlanCycleObject({
-      ...buildContext(-1.5),
+      // Everything but the single tank's resolved setpoints, which the fixture
+      // resolves again for these two devices.
+      ...withoutSetpoints(buildContext(-1.5)),
       devices: [makeDevice(HI), makeDevice(LO)],
-      modeTargetCFor: (d) => (({ [HI]: MODE_C, [LO]: MODE_C })[d.id] ?? d.currentTarget),
+      intent: {
+        getModeDeviceTargets: () => ({ Home: { [HI]: MODE_C, [LO]: MODE_C } }),
+        getPriceOptimizationSettings: () => ({ [HI]: surplusConfig, [LO]: surplusConfig }),
+      },
     });
     const state = createPlanEngineState();
     const run = () => {

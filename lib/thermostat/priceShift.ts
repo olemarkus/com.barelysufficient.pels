@@ -20,22 +20,28 @@
  * compressor flat out through the expensive hour. Reading the magnitude gives
  * every stored pair the behaviour both labels promise.
  *
- * One implementation, shared by the planner's target resolution and the
- * diagnostics projection of "what this device is being asked for", because two
- * copies of a rule with a sign in it is two chances to disagree — and if the
- * diagnostics copy did not flip, the owner would read a target PELS never wrote.
+ * One implementation, resolved before the planner (`temperatureSetpoints.ts`)
+ * into the one desired setpoint both the command and the diagnostics report,
+ * because two copies of a rule with a sign in it is two chances to disagree —
+ * and if the diagnostics copy did not flip, the owner would read a target PELS
+ * never wrote.
  */
 import { PriceLevel } from '../price/priceLevels';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
-import type { PriceOptDeviceConfig } from './planSurplusAbsorb';
 
-export function applyPriceOptimizationDelta(
+/** The owner's two price deltas for a device, as stored. Their signs are not read. */
+export type PriceShiftDeltas = {
+  cheapDelta: number;
+  expensiveDelta: number;
+};
+
+export function applyPriceShift(
   target: number,
-  config: PriceOptDeviceConfig,
+  deltas: PriceShiftDeltas,
   priceLevel: PriceLevel,
   direction: ThermalDirection,
 ): number {
-  const shift = resolvePriceShiftMagnitude(config, priceLevel);
+  const shift = resolvePriceShiftMagnitude(deltas, priceLevel);
   if (shift === 0) return target;
   const worksHarder = priceLevel === PriceLevel.CHEAP;
   const raises = worksHarder === (direction === 'heating');
@@ -43,7 +49,7 @@ export function applyPriceOptimizationDelta(
 }
 
 /** How far the setpoint moves this hour, as a distance. Direction is decided above. */
-function resolvePriceShiftMagnitude(config: PriceOptDeviceConfig, priceLevel: PriceLevel): number {
+function resolvePriceShiftMagnitude(config: PriceShiftDeltas, priceLevel: PriceLevel): number {
   if (priceLevel === PriceLevel.CHEAP) return Math.abs(config.cheapDelta);
   if (priceLevel === PriceLevel.EXPENSIVE) return Math.abs(config.expensiveDelta);
   return 0;

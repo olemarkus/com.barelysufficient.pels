@@ -11,7 +11,6 @@
  */
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
-import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
@@ -67,7 +66,7 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(toPlanDevice(ctx, snapshot).available).toBe(false);
   });
 
-  describe('thermal direction', () => {
+  describe('thermal direction never reaches the planner', () => {
     const heatPump = (thermostatMode?: string) => ({
       available: true,
       id: 'heatpump-1',
@@ -91,20 +90,6 @@ describe('toPlanDevice — R7b per-home options', () => {
       ctx.resolveManagedState = vi.fn(() => true);
       return { ...toPlanDevice(ctx, heatPump(thermostatMode)), priority: 1 } as PlanInputDevice;
     };
-
-    it.each([
-      { mode: 'cooling', direction: 'cooling' },
-      { mode: 'cool', direction: 'cooling' },
-      { mode: 'heat', direction: 'heating' },
-      { mode: 'auto', direction: 'heating' },
-      { mode: undefined, direction: 'heating' },
-    ])('resolves a reported mode of $mode to $direction', ({ mode, direction }) => {
-      // The single join between the observation and the planner. Without this
-      // the cluster is only TYPE-checked: a producer that hard-coded `'heating'`
-      // would satisfy tsc and pass every other spec in the suite.
-      const device = planDeviceFor(mode);
-      expect(isTemperaturePlanDevice(device) && device.thermalDirection).toBe(direction);
-    });
 
     it('strips the raw mode, so no planner code can re-derive a direction from it', () => {
       expect('thermostatMode' in planDeviceFor('cooling')).toBe(false);

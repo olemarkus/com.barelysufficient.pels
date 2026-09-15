@@ -1,4 +1,5 @@
 import { SwapLedger } from '../../lib/plan/swap';
+import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
 import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
@@ -14,7 +15,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
-import { buildPlanDevice, restoreTimingFixture, heatingShedLimits } from '../utils/planTestUtils';
+import { buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
@@ -875,35 +876,36 @@ describe('finalizePlanDevices', () => {
       currentTarget: 16.5,
       currentTemperature: 16.5,
       plannedTarget: 21,
-    })], heatingShedLimits({ 'dev': 17 }), new Set(['dev']));
+    })], fixtureLimitedSetpoints({ 'dev': 17 }), new Set(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
 
-  it('stamps the restore classification for a cooling unit leaving its limit DOWNWARD', () => {
+  it('stamps the restore classification for a move off the limit, whichever way it goes', () => {
     // A cooling unit is limited by raising its target (22 -> 28), so resuming is
     // the move DOWN from 28. Read as a heater, that drop looks like a deeper
     // limit, the restore is never recorded, and the device skips the restore
-    // back-off and flips on the 60 s limit cadence.
+    // back-off and flips on the 60 s limit cadence. The planner is not told the
+    // direction, so it asks by outcome: a write away from the limit it sits at.
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',
       plannedState: 'keep',
       currentTarget: 28,
       currentTemperature: 27,
       plannedTarget: 22,
-    })], new Map([['dev', { temperatureC: 28, thermalDirection: 'cooling' }]]), new Set<string>());
+    })], fixtureLimitedSetpoints({ 'dev': 28 }), new Set<string>());
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
 
-  it('does not stamp the restore classification for a cooling unit moving further INTO its limit', () => {
+  it('does not stamp the restore classification for a write TO the limit', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',
       plannedState: 'keep',
       currentTarget: 22,
       currentTemperature: 23,
       plannedTarget: 28,
-    })], new Map([['dev', { temperatureC: 28, thermalDirection: 'cooling' }]]), new Set<string>(['dev']));
+    })], fixtureLimitedSetpoints({ 'dev': 28 }), new Set<string>(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
   });
@@ -915,7 +917,34 @@ describe('finalizePlanDevices', () => {
       currentTarget: 18,
       currentTemperature: 18,
       plannedTarget: 21,
-    })], heatingShedLimits({ 'dev': 16 }), new Set<string>());
+    })], fixtureLimitedSetpoints({ 'dev': 16 }), new Set<string>());
+
+    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+  });
+
+  it('does not stamp the restore classification for a move off the limit that asks for less work', () => {
+    // A heater parked at its 16 °C limit, planned to 15 °C by an expensive-hour
+    // shift: the setpoint leaves the limit, but nothing resumes.
+    const finalized = finalizePlanDevices([buildPlanDevice({
+      deviceType: 'temperature',
+      plannedState: 'keep',
+      currentTarget: 16,
+      currentTemperature: 17,
+      plannedTarget: 15,
+    })], fixtureLimitedSetpoints({ dev: 16 }, { keepC: 15, keepAddsDemand: false }), new Set<string>(['dev']));
+
+    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+  });
+
+  it('does not stamp the restore classification for a device not limited by setpoint', () => {
+    // Limited by turning it off last build: its setpoint change is not a resume.
+    const finalized = finalizePlanDevices([buildPlanDevice({
+      deviceType: 'temperature',
+      plannedState: 'keep',
+      currentTarget: 18,
+      currentTemperature: 18,
+      plannedTarget: 21,
+    })], new Map([['dev', fixtureTemperatureSetpointsEntry({ keepAddsDemand: true })]]), new Set<string>(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
   });
@@ -947,7 +976,7 @@ describe('applyShedTemperatureHold', () => {
       const state = createPlanEngineState();
       state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
       return applyShedTemperatureHold({
-        normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
+        temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Water Heater',
@@ -971,7 +1000,6 @@ describe('applyShedTemperatureHold', () => {
         headroomReserves: [],
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       });
     };
 
@@ -984,11 +1012,90 @@ describe('applyShedTemperatureHold', () => {
     expect(reasonText(nonExempt.planDevices[0]?.reason)).toContain('insufficient headroom');
   });
 
+  it('counts down a pending resume only for a device moving off its limit to more work', () => {
+    const now = Date.UTC(2024, 0, 1, 12, 0, 0);
+    vi.setSystemTime(now);
+    const run = (movedAddsDemand: boolean) => {
+      const state = createPlanEngineState();
+      state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
+      // `moved` sat at its limit and was just planned off it.
+      state.actuation.lastDeviceRestoreMs.moved = now - 1_000;
+      const limited = { currentState: 'keep' as const, expectedPowerKw: 1, shedAction: 'set_temperature' as const, shedTemperature: 16 };
+      return applyShedTemperatureHold({
+        temperatureSetpoints: new Map([
+          ['moved', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(16, false), keepAddsDemand: movedAddsDemand })],
+          ['dev-temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(16, false), keepAddsDemand: true })],
+        ]),
+        planDevices: [
+          withBinaryOn(buildPlanDevice({
+            ...limited, id: 'moved', name: 'Moved', plannedState: 'keep', currentTarget: 16, currentTemperature: 17, plannedTarget: 15,
+          }), true),
+          withBinaryOn(buildPlanDevice({
+            ...limited, id: 'dev-temp', name: 'Held', plannedState: 'shed', currentTarget: 16, currentTemperature: 16, plannedTarget: 16,
+            reason: fixtureDeviceReason('shed due to capacity')!,
+          }), true),
+        ],
+        state,
+        shedReasons: new Map(),
+        timing: restoreTimingFixture({ nowTs: now }),
+        sheddingActive: false,
+        guardInShortfall: false,
+        ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 8, budgetAvailableKw: null }),
+        headroomReserves: [],
+        restoredOneThisCycle: false,
+        restoredThisCycle: new Set(),
+      });
+    };
+    const heldReason = (movedAddsDemand: boolean) => run(movedAddsDemand).planDevices
+      .find((device) => device.id === 'dev-temp')?.reason.code;
+
+    expect(heldReason(true)).toBe(PLAN_REASON_CODES.restorePending);
+    // An expensive-hour shift below the limit is not a resume awaiting confirmation.
+    expect(heldReason(false)).not.toBe(PLAN_REASON_CODES.restorePending);
+  });
+
+  it('holds against the shed behaviour resolved with this build, not one changed since', () => {
+    // The device was selected under a setpoint limit, but this build's setpoints
+    // were resolved while its behaviour was still "turn off": the hold lane has
+    // no limit to stamp, so it leaves the device alone rather than planning an
+    // undefined setpoint.
+    const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
+    const planned = withBinaryOn(buildPlanDevice({
+      id: 'dev-temp',
+      name: 'Thermostat',
+      currentState: 'keep',
+      plannedState: 'shed',
+      currentTarget: 21,
+      currentTemperature: 21,
+      plannedTarget: 21,
+      shedAction: 'set_temperature',
+      shedTemperature: 16,
+      reason: fixtureDeviceReason('shed due to capacity')!,
+    }), true);
+
+    const result = applyShedTemperatureHold({
+      temperatureSetpoints: new Map([['dev-temp', fixtureTemperatureSetpointsEntry()]]),
+      planDevices: [planned],
+      state,
+      shedReasons: new Map(),
+      timing: restoreTimingFixture({ inShedWindow: true }),
+      sheddingActive: true,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 0, budgetAvailableKw: null }),
+      headroomReserves: [],
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+    });
+
+    expect(result.planDevices[0]).toBe(planned);
+  });
+
   it('keeps existing special shed reasons while temperature hold is active', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
+      temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1010,7 +1117,6 @@ describe('applyShedTemperatureHold', () => {
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     expect(reasonText(result.planDevices[0]?.reason)).toBe('swap pending');
@@ -1021,7 +1127,7 @@ describe('applyShedTemperatureHold', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
+      temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1043,7 +1149,6 @@ describe('applyShedTemperatureHold', () => {
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     expect(result.planDevices[0]?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
@@ -1058,7 +1163,7 @@ describe('applyShedTemperatureHold', () => {
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const held = applyShedTemperatureHold({
-      normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
+      temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -1080,7 +1185,6 @@ describe('applyShedTemperatureHold', () => {
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
       guardInShortfall: true,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     const [device] = normalizeShedReasons(held.planDevices, reasonContext({
@@ -1127,7 +1231,7 @@ describe('applyShedTemperatureHold', () => {
         state.actuation.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
       }
       return applyShedTemperatureHold({
-        normalizedShedFloorCByDevice: heatingShedLimits({ 'dev-temp': 16 }),
+        temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Thermostat',
@@ -1156,7 +1260,6 @@ describe('applyShedTemperatureHold', () => {
         headroomReserves: [],
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       });
     };
 

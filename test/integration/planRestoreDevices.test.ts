@@ -17,8 +17,9 @@ import type {
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildPlanDevice, heatingShedLimits } from '../utils/planTestUtils';
+import { buildPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 
 const makeDevice = (
   overrides: Partial<DevicePlanDevice>
@@ -61,16 +62,18 @@ describe('plan restore device helpers', () => {
       deviceId === 'temp-blocked'
         ? { action: 'set_temperature', temperature: 21 }
         : { action: 'turn_off' }
-    ), heatingShedLimits({ 'temp-blocked': 21 })).map((device) => device.id)).toEqual(['on', 'na']);
+    // At its limit already: limiting it releases nothing, so it is no swap victim.
+    ), new Map([['temp-blocked', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(21, false) })]]))
+      .map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, currentTemperature: 23, plannedTarget: 23 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
-      heatingShedLimits({ 'temp': 20 }),
+      new Map([['temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(20, true) })]]),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, currentTemperature: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
-      heatingShedLimits({ 'temp': 20 }),
+      new Map([['temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(20, false) })]]),
     )).toEqual([]);
   });
 

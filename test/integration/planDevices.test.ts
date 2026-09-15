@@ -22,6 +22,7 @@ import {
 } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -82,9 +83,13 @@ const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>
 /** The plan device's one boost flag. There is no second one, and no kind behind it. */
 const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 
-const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
+const buildContext = (
+  devices: PlanContext['devices'],
+  // The reads the real setpoint resolver runs over for these devices.
+  intent: Partial<TemperatureIntentReads> = {},
+): PlanCycle => buildPlanCycleObject({
   devices,
-  modeTargetCFor: (d) => d.currentTarget,
+  intent,
   total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -101,7 +106,6 @@ const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCy
   minutesRemaining: 60,
   headroomRaw: -1,
   headroom: -1,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 // Shared empty pending-binary-command store for the many cases that do not
@@ -114,7 +118,6 @@ const pendingStoreFor = (state: PlanEngineState) =>
 const defaultDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: emptyPendingStore,
 };
@@ -340,7 +343,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -385,7 +387,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -432,7 +433,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -480,7 +480,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -518,7 +517,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -565,7 +563,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -608,7 +605,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -640,7 +636,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -672,7 +667,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
       },
@@ -695,7 +689,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -724,7 +717,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
       },
@@ -757,7 +749,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -790,7 +781,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -825,7 +815,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -856,7 +845,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -892,7 +880,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -927,7 +914,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -961,7 +947,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -991,7 +976,6 @@ describe('buildInitialPlanDevices', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
       },
@@ -1010,7 +994,6 @@ describe('buildInitialPlanDevices', () => {
 
 const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevicesDeps => ({
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   getInferredSurplusKw: () => 0,
   pendingBinaryCommandStore: emptyPendingStore,
@@ -1299,13 +1282,19 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       ...overrides,
     });
 
+    // The mode target, price shift and deadline floor are resolved before the
+    // planner (`lib/thermostat`); these specs drive the real resolver through the
+    // context fixture and read what the planner picked.
+    const tankTargets = (targetC: number) => ({ getModeDeviceTargets: () => ({ Home: { tank: targetC } }) });
+    const cheapHour = (cheapDelta: number) => ({
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta, expensiveDelta: 0 } }),
+      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
+    });
+
     it('lifts plannedTarget to the deadline target when it exceeds the mode target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: {
-          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]),
-          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: PriceLevel.CHEAP,
-        },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], tankTargets(50)),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1319,7 +1308,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('keeps the mode target when it already exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), modeTargetCFor: (d) => (({ tank: 65 })[d.id] ?? d.currentTarget) },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], tankTargets(65)),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1333,17 +1322,13 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not double-apply the cheap-hour delta on top of the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], { ...tankTargets(50), ...cheapHour(2) }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
         shortfall: { inShortfall: false },
-        deps: {
-          ...defaultDeps,
-          getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: 0 } }),
-        },
+        deps: defaultDeps,
       });
 
       // mode 50 + cheap delta 2 = 52; deadline 60 wins. Delta is not stacked on top of 60.
@@ -1352,30 +1337,43 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('lets mode + cheap delta win when the result still exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: {
-          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]),
-          modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: PriceLevel.CHEAP,
-        },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })], { ...tankTargets(55), ...cheapHour(3) }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
         shortfall: { inShortfall: false },
-        deps: {
-          ...defaultDeps,
-          getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: 0 } }),
-        },
+        deps: defaultDeps,
       });
 
       // mode 55 + cheap delta 3 = 58; deadline 56 — mode side already higher, no override.
       expect(plannedTargetOf(planDevice)).toBe(58);
     });
 
+    it('holds a cooling device at its deadline floor from the other side', () => {
+      // A cooling unit's floor is a ceiling: it must be at least as COLD as the
+      // deadline target. A heating-shaped `max` would take it back up.
+      const [planDevice] = buildInitialPlanDevices({
+        context: buildContext([tempInputDevice({
+          deadlineFloorTargetC: 22,
+          currentTemperature: 26,
+          currentTarget: 25,
+          targets: [{ id: 'target_temperature', value: 25, unit: '°C', min: 16, max: 32 }],
+        })], { ...tankTargets(25), getThermalDirection: () => 'cooling' }),
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        shedStepTargets: new Map(),
+        shortfall: { inShortfall: false },
+        deps: defaultDeps,
+      });
+
+      expect(plannedTargetOf(planDevice)).toBe(22);
+    });
+
     it('seeds plannedTarget from the deadline target when no mode target is configured', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), modeTargetCFor: (d) => d.currentTarget },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1389,7 +1387,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('clips the deadline target to the device capability max', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })], tankTargets(50)),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1404,7 +1402,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not override when the device has no deadline floor stamped', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
+        context: buildContext([tempInputDevice()], tankTargets(50)),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1419,7 +1417,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
       const device = tempInputDevice({ binaryControl: { on: true }, deadlineFloorTargetC: 60 });
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([device]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
+        context: buildContext([device], tankTargets(50)),
         state: createPlanEngineState(),
         shedSet: new Set(['tank']),
         shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
@@ -1445,7 +1443,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         & {
           evChargingState?: string; deviceType?: 'temperature' | 'onoff';
           controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
-          thermostatMode?: string;
         } = {},
     ) => inputDevice({
       id: 'tank',
@@ -1462,13 +1459,13 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     it('uses the mode target when present', () => {
       const debugStructured = vi.fn();
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget) },
+        context: buildContext([tempInputDevice()], { getModeDeviceTargets: () => ({ Home: { tank: 55 } }) }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
         shortfall: { inShortfall: false },
-        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
+        deps: { ...defaultDeps, debugStructured },
       });
 
       expect(plannedTargetOf(planDevice)).toBe(55);
@@ -1479,10 +1476,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('combines a filled target with an active deferred objective', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: {
-          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]),
-          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
-        },
+        context: buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })], { getModeDeviceTargets: () => ({ Home: { tank: 50 } }) }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1503,22 +1497,17 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       // silently disabled price optimization for every device with no stored
       // entry, price-only thermostats included.
       const [planDevice] = buildInitialPlanDevices({
-        context: {
-          ...buildContext([tempInputDevice()]),
-          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: PriceLevel.CHEAP,
-        },
+        context: buildContext([tempInputDevice()], {
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: -1 } }),
+          getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
+        }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
         shortfall: { inShortfall: false },
-        deps: {
-          ...defaultDeps,
-          getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: -1 } }),
-          getOperatingMode: () => 'home',
-        },
+        deps: defaultDeps,
       });
 
       expect(plannedTargetOf(planDevice)).toBe(52);
@@ -1526,47 +1515,34 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     /**
      * The stored deltas are written in heating terms — positive while cheap,
-     * negative while expensive. On a unit whose `thermostat_mode` says cooling,
-     * adding them would
-     * move load INTO the expensive hour: the cheap-hour "boost" would let the
-     * room warm and the expensive-hour "reduction" would make the compressor run
-     * flat out. The same magnitudes are applied the other way instead.
+     * negative while expensive. On a unit that reports it is cooling, adding
+     * them would move load INTO the expensive hour: the cheap-hour "boost" would
+     * let the room warm and the expensive-hour "reduction" would make the
+     * compressor run flat out. The same magnitudes are applied the other way
+     * instead, before the planner, which only reads the result.
      */
     const pricedCoolingTarget = (priceLevel: PriceLevel) => {
       const [planDevice] = buildInitialPlanDevices({
-        context: {
-          ...buildContext([tempInputDevice({
-            thermostatMode: 'cooling',
-            currentTemperature: 25,
-            currentTarget: 22,
-            targets: [{ id: 'target_temperature', value: 22, unit: '°C', min: 16, max: 32 }],
-          })]),
-          modeTargetCFor: (d) => (({ tank: 22 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: priceLevel,
-        },
+        context: buildContext([tempInputDevice({
+          currentTemperature: 25,
+          currentTarget: 22,
+          targets: [{ id: 'target_temperature', value: 22, unit: '°C', min: 16, max: 32 }],
+        })], {
+          getModeDeviceTargets: () => ({ Home: { tank: 22 } }),
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }),
+          getCurrentHourPriceLevel: () => priceLevel,
+          getThermalDirection: () => 'cooling',
+        }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
         shortfall: { inShortfall: false },
-        deps: {
-          ...defaultDeps,
-          getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }),
-          getOperatingMode: () => 'home',
-        },
+        deps: defaultDeps,
       });
       return plannedTargetOf(planDevice);
     };
-
-    it('defaults a fixture with no stated mode to heating, the way the producer does', () => {
-      // The plan input REQUIRES a direction, and the fixture builder's cast to
-      // `PlanInputDevice` is the one place that could ship it absent — which
-      // would read as heating by accident rather than by resolution, and make
-      // the cooling assertions below prove nothing.
-      const device = tempInputDevice();
-      expect(isTemperaturePlanDevice(device) && device.thermalDirection).toBe('heating');
-    });
 
     it('cools harder in a cheap hour on a device reporting a cooling mode', () => {
       // mode 22 - cheap delta 3 = 19.

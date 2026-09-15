@@ -47,7 +47,6 @@ import {
   resolveBoostSupported,
 } from '../../lib/device/deviceActionProjection';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
-import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
@@ -61,7 +60,6 @@ import {
   resolveResidualShedBehavior,
 } from '../../setup/appInit/residualKwForPlanDevice';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
-import type { ShedSetpointLimits } from '../../lib/plan/normalizedShedFloor';
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
@@ -229,19 +227,15 @@ const withFixtureTemperatureKind = <T extends {
   deviceType?: 'temperature' | 'onoff';
   targets?: TargetCapabilitySnapshot[];
 }>(
-  // `thermostatMode` is widened in rather than added to the production probe: it
-  // is the fixture's raw observation, STRIPPED here so it never rides a plan
-  // device. Only `withFixtureTemperatureInputKind` reads it, to resolve the
-  // direction the plan INPUT cluster requires.
-  fields: T & TemperatureDiscriminantProbe & { thermostatMode?: string },
+  fields: T & TemperatureDiscriminantProbe,
 ):
-| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType' | 'thermostatMode'> & { deviceType?: 'onoff' })
-| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType' | 'thermostatMode'>
+| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'> & { deviceType?: 'onoff' })
+| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'>
   & { deviceType: 'temperature' } & TemperatureKind) => {
   const observation = fixtureTemperatureObservation(fields);
   const {
     currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt,
-    thermostatMode: _mode, deviceType, ...rest
+    deviceType, ...rest
   } = fields;
   if (!observation) {
     return {
@@ -261,31 +255,8 @@ const withFixtureTemperatureKind = <T extends {
     // The regrouper's return type is a union because it re-reads `deviceType` at
     // runtime; this call always passes `'temperature'`, so the non-temperature
     // member is unreachable and the cast just says so.
-  }) as Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType' | 'thermostatMode'>
+  }) as Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'>
   & { deviceType: 'temperature' } & TemperatureKind;
-};
-
-/**
- * The plan INPUT temperature cluster: the shared regrouper plus the device's own
- * heating/cooling direction.
- *
- * Only the input carries it. `TemperaturePlanInputKind` requires
- * `thermalDirection`, while the planned `TemperatureKind` a DevicePlanDevice
- * carries does not — by the time a plan device exists the direction has already
- * been spent on the setpoint. Resolved through PRODUCTION's own resolver from
- * the fixture's raw `thermostatMode`, so a fixture that means a cooling unit
- * says `thermostatMode: 'cooling'` exactly as the device would.
- */
-const withFixtureTemperatureInputKind = <T extends {
-  deviceType?: 'temperature' | 'onoff';
-  targets?: TargetCapabilitySnapshot[];
-}>(
-  fields: T & TemperatureDiscriminantProbe & { thermostatMode?: string },
-) => {
-  const kind = withFixtureTemperatureKind(fields);
-  return kind.deviceType === 'temperature'
-    ? { ...kind, thermalDirection: resolveThermalDirection({ thermostatMode: fields.thermostatMode }) }
-    : kind;
 };
 
 /**
@@ -941,13 +912,6 @@ export const buildPlanInputDevice = (
     commandAuthority?: boolean;
     evChargingState?: string;
     deviceType?: 'temperature' | 'onoff';
-    /**
-     * The device's raw reported `thermostat_mode`, exactly as production carries
-     * it. The plan input's `thermalDirection` is resolved from it by the
-     * observer's own resolver, so a fixture that means a cooling unit says
-     * `thermostatMode: 'cooling'` and gets the direction production would.
-     */
-    thermostatMode?: string;
     currentOn?: boolean;
     binaryControl?: { on: boolean };
     binaryControllable?: boolean;
@@ -996,13 +960,10 @@ export const buildPlanInputDevice = (
     name: 'Device',
     ...(!binaryExplicitlyDisabled ? { binaryControl: o.binaryControl ?? { on: true } } : {}),
     currentState,
-    ...withFixtureSteppedTriple(withFixtureTemperatureInputKind({
+    ...withFixtureSteppedTriple(withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTarget !== undefined ? { currentTarget } : {}),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
-      ...(overrides.thermostatMode !== undefined
-        ? { thermostatMode: overrides.thermostatMode }
-        : {}),
     })),
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
     // AFTER the caller spread, and destructured out of `rest` above: a required
@@ -1269,11 +1230,3 @@ export const restoreTimingFixture = (overrides: Partial<RestoreTiming> = {}): Re
   };
 };
 
-/**
- * A build's setpoint limits for heaters, spelled as the floors a spec cares
- * about. A spec about a cooling unit builds its entry directly, so the
- * direction it depends on is on the page.
- */
-export const heatingShedLimits = (floorsC: Record<string, number>): ShedSetpointLimits => new Map(
-  Object.entries(floorsC).map(([deviceId, temperatureC]) => [deviceId, { temperatureC, thermalDirection: 'heating' }]),
-);

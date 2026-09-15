@@ -50,6 +50,9 @@ import {
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { buildTemperatureCandidate } from './candidateBuilders';
+import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import { type PricedShedRung, type ShedCandidate, type SheddingDeps } from './types';
 
@@ -241,13 +244,14 @@ type SteppedCandidateParams = {
   /** The deficit this shed cycle has to close, in kW. Sizes the chosen rung. */
   neededKw: number;
   state: PlanEngineState;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   getShedBehavior: SheddingDeps['getShedBehavior'];
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   recorder?: ShedCandidateSkipRecorder;
 };
 
 export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandidate | null {
-  const { device, getShedBehavior, recorder } = params;
+  const { device, temperatureSetpoints, getShedBehavior, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
   // `currentDrawKw === 0` means the device is drawing nothing. The reason code
   // deliberately does NOT say "measured": how the producer knows is not this
@@ -256,10 +260,11 @@ export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandi
     recorder?.record({ device, reasonCode: 'stepped_zero_draw' });
     return null;
   }
-  const shedBehavior = getShedBehavior(device.id);
-  if (shedBehavior.action === 'set_temperature') {
-    return buildSteppedTemperatureCandidate(params, shedBehavior.temperature);
+  if (isTemperaturePlanDevice(device)) {
+    const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
+    if (shed.action === 'set_temperature') return buildSteppedTemperatureCandidate(params, shed.limitC);
   }
+  const shedBehavior = getShedBehavior(device.id);
   return buildSteppedStepDownCandidate(
     params,
     shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
@@ -283,7 +288,6 @@ function buildSteppedTemperatureCandidate(
     recentlyRestored,
     shedTemperature,
     targetCapabilityId: target.id,
-    targetCapability: target,
     pendingTargetCommands: state.pendingTargetCommands,
     recorder,
   });

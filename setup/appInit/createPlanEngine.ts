@@ -13,6 +13,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
 import type { PlanEngineWiring } from './planEngineWiring';
 import { ComposedPlanEngine } from './composedPlanEngine';
+import { bindTemperatureSetpoints } from './temperatureSetpointsSeam';
 
 export type CreatePlanEngineOptions = {
   /**
@@ -69,11 +70,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getCapacityDryRun: deps.getCapacityDryRun,
     capacityGuard: deps.capacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
-    getOperatingMode: deps.getOperatingMode,
-    getModeDeviceTargets: deps.getModeDeviceTargets,
-    getPriceOptimizationEnabled: deps.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
-    getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
     getInferredSurplusKw: deps.getInferredSurplusKw,
     getPowerTracker: deps.getPowerTracker,
     getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
@@ -83,6 +80,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     structuredLog: deps.structuredLog,
     debugStructured: deps.debugStructured,
     decorateDeferredObjectives: deps.decorateDeferredObjectives,
+    resolveTemperatureSetpoints: bindTemperatureSetpoints(deps),
     pendingBinaryCommandStore,
     log: deps.log,
     logDebug: deps.logDebug,
@@ -217,6 +215,7 @@ export function createPlanEngineComposition(
     // Scope-owned: priorities are ranked per mode, and only the scope knows
     // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
+    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
     getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
     getSteppedLoadCommandSession: (deviceId) => (

@@ -12,6 +12,7 @@ import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dail
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -143,11 +144,15 @@ const buildBuilder = (params: {
   capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-  getOperatingMode: () => 'Home',
-  getModeDeviceTargets: () => ({}),
-  getPriceOptimizationEnabled: () => false,
+  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+    getOperatingMode: () => 'Home',
+    getModeDeviceTargets: () => ({}),
+    getPriceOptimizationEnabled: () => false,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+    getPriceOptimizationSettings: () => ({}),
+    getShedBehavior: () => ({ action: 'turn_off' }),
+  }),
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   // Thermostat outranks the heater so the restore pass evaluates it FIRST:

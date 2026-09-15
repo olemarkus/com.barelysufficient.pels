@@ -11,6 +11,7 @@ import type {
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 let lastPowerW = 0;
@@ -24,8 +25,8 @@ let lastPowerW = 0;
  * build, one 85–116 % CPU spike per rebuild, and every 10-second power sample
  * queued behind it.
  *
- * The level is now producer-resolved once per build onto
- * `PlanContext.currentHourPriceLevel`, through the single
+ * The level is now resolved once per build, before the planner, by the setpoint
+ * resolver (`lib/thermostat/temperatureSetpoints.ts`), through the single
  * `getCurrentHourPriceLevel` seam that answers both flags from one series build.
  * This suite pins the property that regressed: the call count must not scale
  * with the device count.
@@ -48,7 +49,6 @@ const coolingDevice = (id: string): PlanInputDevice => buildPlanInputDevice({
   deviceType: 'temperature',
   currentTemperature: 25,
   targets: [{ id: 'target_temperature', value: 20, unit: 'C' }],
-  thermostatMode: 'cooling',
   controllable: true,
   measuredPowerKw: 0.4,
 });
@@ -83,6 +83,8 @@ const buildBuilder = (params: {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  /** Devices that report they are cooling; every other device heats. */
+  coolingDeviceIds?: string[];
 }): PlanBuilder => {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   lastPowerW = (3) * 1000;
@@ -92,15 +94,22 @@ const buildBuilder = (params: {
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({
-      Home: Object.fromEntries(params.deviceIds.map((id) => [id, 20])),
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({
+        Home: Object.fromEntries(params.deviceIds.map((id) => [id, 20])),
+      }),
+      getPriceOptimizationEnabled: () => params.priceOptimizationEnabled,
+      getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
+      getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? Object.fromEntries(
+        params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
+      ),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      getThermalDirection: (deviceId) => (params.coolingDeviceIds?.includes(deviceId) ? 'cooling' : 'heating'),
     }),
-    getPriceOptimizationEnabled: () => params.priceOptimizationEnabled,
     getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? Object.fromEntries(
       params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
     ),
-    getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
     getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getShedBehavior: () => ({ action: 'turn_off' }),
@@ -174,6 +183,7 @@ describe('current-hour price level is resolved once per plan build', () => {
       priceOptimizationEnabled: true,
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
       deviceIds: ['heater-0'],
+      coolingDeviceIds: ['heater-0'],
       deviceDiagnostics,
     });
 

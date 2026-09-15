@@ -22,11 +22,9 @@ import {
   steppedPlanDevice,
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
-  modeTargetCFor: (d) => d.currentTarget,
   total: 0,
   softLimit: 0,
   capacitySoftLimit: 0,
@@ -37,7 +35,6 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
   minutesRemaining: 60,
   headroomRaw: 3,
   headroom: 3,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -89,7 +86,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -140,7 +137,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -180,7 +177,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

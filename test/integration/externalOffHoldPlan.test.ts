@@ -39,7 +39,6 @@ import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/pl
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -135,7 +134,6 @@ describe('external-off hold — plan-device propagation', () => {
   // and the other plan specs build fixtures with the bit already set.
   const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
     devices,
-    modeTargetCFor: (d) => d.currentTarget,
     total: FIXTURE_TOTAL_KW,
     hourBucketKey: '2026-07-25T12',
     softLimit: 10,
@@ -152,13 +150,11 @@ describe('external-off hold — plan-device propagation', () => {
     minutesRemaining: 60,
     headroomRaw: 5,
     headroom: 5,
-    currentHourPriceLevel: PriceLevel.UNKNOWN,
   });
 
   const deps: PlanDevicesDeps = {
     getInferredSurplusKw: () => 0,
     getShedBehavior: () => ({ action: 'turn_off' }),
-    getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   };

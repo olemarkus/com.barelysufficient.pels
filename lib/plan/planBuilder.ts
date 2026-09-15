@@ -24,7 +24,6 @@
  */
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
-import { PriceLevel } from '../price/priceLevels';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { resolvePowerCycleReading } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice } from './planTypes';
@@ -44,8 +43,6 @@ import { resolveShortfallOffState } from './planOffStateReason';
 import { runStandingPostureHolds, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
-import { resolveNormalizedShedFloors } from './normalizedShedFloor';
-import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -61,11 +58,6 @@ import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
 const SOFT_LIMIT_EPSILON = 1e-3;
-
-// No price call was made this build — nothing in it can spend a price delta —
-// so there is no level to report. `applyPriceOptimizationDelta` adds nothing for
-// it, exactly as for a genuinely unpriced hour.
-const NO_CURRENT_HOUR_PRICE_LEVEL = PriceLevel.UNKNOWN;
 
 type DailySoftLimitResolution = {
   dailySoftLimitKw: number;
@@ -92,8 +84,6 @@ export class PlanBuilder {
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
-  private get operatingMode(): string { return this.deps.getOperatingMode(); }
-  private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
@@ -217,8 +207,8 @@ export class PlanBuilder {
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
       limits: this.resolvePlanLimits(admittedDevices, dailyBudgetSnapshot),
-      modeTargetCFor: this.modeTargetCFor(),
-      currentHourPriceLevel: this.resolveCurrentHourPriceLevel(admittedDevices),
+      // After the decoration, which is what stamps a smart task's deadline floor.
+      temperatureSetpoints: this.deps.resolveTemperatureSetpoints(admittedDevices),
     }));
     // THE seam. The ordinary pipeline below is entered only with a measurement,
     // so nothing inside it asks whether power was measured; the one unmeasured
@@ -253,17 +243,8 @@ export class PlanBuilder {
       sheddingPlan,
       resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
     );
-    // One capability-normalized configured floor per device per build — the
-    // single source the restore/swap pass, the hold lane, reason
-    // normalization, and restore classification all read, so no stage
-    // can disagree about what "at the floor" means within a build
-    // (semantics on `resolveNormalizedShedFloors`).
-    const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(
-      context.devices,
-      (deviceId) => this.deps.getShedBehavior(deviceId),
-    );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, context, power, sheddingPlan, deviceNameById, normalizedShedFloorCByDevice,
+      planDevices, context, power, sheddingPlan, deviceNameById,
     );
     planDevices = restoreResult.planDevices;
 
@@ -271,7 +252,7 @@ export class PlanBuilder {
       planDevices,
       restoreResult,
       sheddingPlan,
-      normalizedShedFloorCByDevice,
+      context.temperatureSetpoints,
     );
     planDevices = holdResult.planDevices;
 
@@ -281,7 +262,6 @@ export class PlanBuilder {
       power,
       restoreResult,
       sheddingPlan,
-      normalizedShedFloorCByDevice,
       holds: {
         deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
         postureHoldReasonById,
@@ -290,7 +270,7 @@ export class PlanBuilder {
     });
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
     this.stages.syncHeadroomCardState(planDevices, nowTs);
-    const finalized = this.stages.finalizePlan(planDevices, normalizedShedFloorCByDevice);
+    const finalized = this.stages.finalizePlan(planDevices, context.temperatureSetpoints);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `ShedDecisions.recordPlannedShed`.
     this.state.shedDecisions.recordPlannedShed(finalized.lastPlannedShedIds, admittedDevices, nowTs);
@@ -331,39 +311,6 @@ export class PlanBuilder {
       meta,
       devices: finalized.planDevices,
     };
-  }
-
-  /**
-   * The one place this build asks the price service what kind of hour it is.
-   * See `PlanContext.currentHourPriceLevel` for why it is resolved here rather than in the
-   * per-device loops that read it.
-   *
-   * Resolves ONLY when some admitted device could actually spend the answer —
-   * both consumer guards are `priceOptimizationEnabled && config?.enabled`, so
-   * this reproduces their combined zero-call case rather than just the master
-   * switch. The per-device half is load-bearing, not belt-and-braces: the global
-   * switch reads `homey.settings.get(PRICE_OPTIMIZATION_ENABLED) !== false`, so
-   * an unset key defaults it ON while the device map is still empty — a fresh
-   * install would otherwise pay two full price-series rebuilds (~50 ms) on every
-   * power-triggered rebuild for a delta no device is configured to receive.
-   *
-   * The device scan is a superset of what the loops need (it ignores modality and
-   * the mode seed), which is the safe direction: never fewer resolutions than a
-   * consumer will read.
-   */
-  private resolveCurrentHourPriceLevel(devices: PlanInputDevice[]): PriceLevel {
-    if (!this.deps.getPriceOptimizationEnabled()) return NO_CURRENT_HOUR_PRICE_LEVEL;
-    const settings = this.priceOptimizationSettings;
-    if (!devices.some((dev) => settings[dev.id]?.enabled === true)) return NO_CURRENT_HOUR_PRICE_LEVEL;
-    // One combined-series build for the resolved level — see
-    // `PriceService.getCurrentHourPriceLevel`. Asking the two predicates
-    // separately rebuilt the whole series twice for one question.
-    return this.deps.getCurrentHourPriceLevel();
-  }
-
-  private modeTargetCFor(): (device: PlanInputDevice & TemperaturePlanInputKind) => number {
-    const stored = this.modeDeviceTargets[this.operatingMode] ?? {};
-    return (device) => stored[device.id] ?? device.currentTarget;
   }
 
   /**

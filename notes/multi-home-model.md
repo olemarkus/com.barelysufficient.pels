@@ -246,7 +246,7 @@ initial snapshot, and retains history across transient snapshot absence.
 **Mode targets apply in EVERY home.** Every home's scope binds
 `getModeDeviceTargets` to its own catalog. This is not a policy choice: the
 mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
-`modeTargetCFor` (`lib/plan/planBuilder.ts`) fall back to the device's live
+the kept setpoint (`TemperatureSetpoints.intendedC`, `lib/thermostat/temperatureSetpoints.ts`) fall back to the device's live
 setpoint for every device instead of only the boot window, which while
 shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
 executor dropped the write, and an area temperature device stayed cold

@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-12: 379 files, 968 bundles.
+# Seeded 2026-09-15: 377 files, 962 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -191,9 +191,9 @@ lib/plan/planContext.ts 1
 lib/plan/planCurrentState.ts 1
 lib/plan/planDailyBudgetWindow.ts 1
 lib/plan/planDebugDedupe.ts 1
-lib/plan/planDevices.ts 5
+lib/plan/planDevices.ts 4
 lib/plan/planDevicesBase.ts 2
-lib/plan/planDiagnostics.ts 6
+lib/plan/planDiagnostics.ts 4
 lib/plan/planLogging.ts 1
 lib/plan/planReasonShortfall.ts 1
 lib/plan/planReasonStrings.ts 1
@@ -207,7 +207,7 @@ lib/plan/planSteppedLoadState.ts 2
 lib/plan/planSteppedRestoreHold.ts 1
 lib/plan/planSteppedRestorePending.ts 2
 lib/plan/planSteppedShedResolution.ts 3
-lib/plan/planSurplusAbsorb.ts 8
+lib/plan/planSurplusAbsorb.ts 7
 lib/plan/planTargetControl.ts 7
 lib/plan/restore/accounting.ts 2
 lib/plan/restore/devices.ts 1

@@ -124,6 +124,7 @@ function planShedding(
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
     // Resolved once on the measurement; no candidate walk re-derives it from a total.
     capacityBreached: power.capacityBreached,
+    temperatureSetpoints: context.temperatureSetpoints,
     state,
     deps,
   };

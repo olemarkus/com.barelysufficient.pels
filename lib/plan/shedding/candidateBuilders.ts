@@ -16,14 +16,14 @@ import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryComm
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { isCanSetControl } from '../../device/deviceActionProjection';
-import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import {
   type BinaryShedCandidate,
   type ShedCandidate,
   type TemperatureShedCandidate,
 } from './types';
-import { setpointAddsDemand } from '../setpointDemand';
+import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export function buildBinaryCandidate(
   device: PlanInputDevice,
@@ -71,16 +71,15 @@ export function buildTemperatureCandidate(params: {
   device: PlanInputDevice;
   priority: number;
   recentlyRestored: boolean;
+  /** The capability-normalized limit, resolved before the planner (`ResolvedShedBehavior`). */
   shedTemperature: number;
   targetCapabilityId: string;
-  targetCapability?: Partial<{ min?: number; max?: number; step?: number }> | null;
   pendingTargetCommands: PlanEngineState['pendingTargetCommands'];
   recorder?: ShedCandidateSkipRecorder;
 }): TemperatureShedCandidate | null {
   const {
-    device, priority, recentlyRestored, targetCapabilityId, targetCapability, pendingTargetCommands, recorder,
+    device, priority, recentlyRestored, shedTemperature, targetCapabilityId, pendingTargetCommands, recorder,
   } = params;
-  const shedTemperature = normalizeTargetCapabilityValue({ target: targetCapability, value: params.shedTemperature });
   const power = device.currentDrawKw;
   if (power <= 0) {
     recorder?.record({ device, reasonCode: 'zero_current_draw' });
@@ -117,11 +116,14 @@ function isNotAtShedTemperature(device: ShedCandidate): boolean {
  * candidate is skipped rather than clamped: a clamped write is a no-op the
  * executor would still issue and wait to confirm. The owner can configure such
  * a limit (the fields only bound the range), and a mode target can move past a
- * limit that was fine when it was set.
+ * limit that was fine when it was set. Which side is the demand side is
+ * resolved before the planner (`ResolvedShedBehavior.releasesDemand`); the
+ * at-limit case is recorded as its own skip first.
  */
-function limitWouldAddDemand(device: ShedCandidate): boolean {
+function limitWouldAddDemand(device: ShedCandidate, temperatureSetpoints: TemperatureSetpointsByDevice): boolean {
   if (device.kind !== 'temperature' || !isTemperaturePlanDevice(device)) return false;
-  return setpointAddsDemand(device.thermalDirection, device.currentTarget, device.shedTemperature);
+  const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
+  return shed.action === 'set_temperature' && !shed.releasesDemand;
 }
 
 /**
@@ -131,13 +133,14 @@ function limitWouldAddDemand(device: ShedCandidate): boolean {
 export function recordSetpointShedSkip(
   candidate: ShedCandidate,
   device: PlanInputDevice,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
   recorder: ShedCandidateSkipRecorder,
 ): boolean {
   if (!isNotAtShedTemperature(candidate)) {
     recorder.record({ device, reasonCode: 'already_at_shed_temperature' });
     return true;
   }
-  if (limitWouldAddDemand(candidate)) {
+  if (limitWouldAddDemand(candidate, temperatureSetpoints)) {
     recorder.record({ device, reasonCode: 'limit_would_add_demand' });
     return true;
   }

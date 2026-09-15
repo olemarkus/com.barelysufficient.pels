@@ -366,28 +366,29 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
       2026-09-03. [P3]
 
-- [ ] **The solar-surplus lift and the deadline floor still move a setpoint as if every device were
-      heating, so on a cooling device they do nothing useful and erase the price shift.** The plan
-      input now carries the device's own direction (`TemperaturePlanInputKind.thermalDirection`,
-      resolved by the observer from the reported `thermostat_mode`), and `applyPriceOptimizationDelta`
-      (`lib/plan/planPriceDelta.ts`) is the only writer that honours it. `applySurplusAbsorbDelta`
-      (`lib/plan/planSurplusAbsorb.ts`) lifts the setpoint to soak up export, which on a cooling unit
-      makes the compressor do LESS work and absorbs nothing; the deadline floor in
-      `resolvePlannedTarget` (`lib/plan/planDevices.ts`) takes
-      `Math.max(plannedTarget, deadlineFloorTargetC)`, which on a cooling unit is a ceiling and lets
-      the deadline miss. Both are `Math.max` against the priced target, so each also DISCARDS the
-      correctly-flipped shift: mode 22 with a cheap-hour delta of 3 resolves to 19, and a deadline of
-      22 or a surplus lift of 2 takes it back to 22 or up to 24. The surplus case additionally
-      mis-reports itself — `state.surplusAbsorbActiveByDevice` is set from "the lift raised the
-      target", so the planner calls surplus absorb the binding cause while it actually reduced
-      consumption.
-      Change: apply the surplus lift in `thermalDirection`, and take the deadline floor as `Math.min`
-      when the device is cooling. Until then `docs/cost-saving-functions.md` warns owners to leave
-      both off on a cooling device.
-      Done when a cooling device with each feature enabled moves its setpoint the way that increases
-      draw — pinned by planner tests mirroring the price-shift pair in
-      `test/integration/planDevices.test.ts` — and the surplus binding cause is claimed only when the
-      lift actually added draw. Source: the price-shift direction work, 2026-09-11. [P1]
+- [ ] **A smart task on a cooling device reads as done while the room is still too warm.**
+      `resolveObjectiveProgress` (`lib/objectives/deferredObjectives/diagnosticProgress.ts`)
+      computes `remainingUnits` as `max(0, targetTemperatureC - usableTemperatureC)`, so a cooling
+      unit at 26 °C with a 22 °C target has nothing left to do and the task plans no hours. The
+      deadline FLOOR it commands is already applied in the device's direction
+      (`lib/thermostat/temperatureSetpoints.ts`); the progress model is what still assumes heating,
+      and `docs/cost-saving-functions.md` warns owners off smart tasks on a cooling device until it
+      does not. Change: the objective input carries the device's direction (the decoration's
+      `DeferredDecorationInput` devices, stamped by the wiring from `AppContext.getThermalDirection`,
+      since `lib/objectives` cannot import the observer), and progress takes the shortfall on that
+      axis. Done when a cooling temperature task above its target reports remaining units and plans
+      hours, pinned by a `diagnosticProgress` test, and the docs warning is removed. Source: the
+      setpoint-resolution move, 2026-09-15. [P2]
+
+- [ ] **The surplus allocator still decides "willing with a lift" from the raw price-opt entry.**
+      `resolvePriceOptimizationConfig` (`lib/price/priceOptimizer.ts`) resolves a device's entry
+      into required fields, and the setpoint resolver and the planner's lift gate read it. The
+      allocator's candidacy (`willingWithLift` over `SurplusConfig | undefined` in
+      `lib/plan/planSurplusAbsorb.ts`, fed by `getConfig`) still re-derives the same answer from
+      the optional `surplusWilling`/`surplusDelta`. Change: feed the allocator the resolved config
+      and delete `willingWithLift` and `SurplusConfig` for temperature devices. Done when no
+      `lib/plan` code reads `surplusWilling` or `surplusDelta` directly. Source:
+      `pels-layering-guardian` on the setpoint-resolution move, 2026-09-15. [P2]
 
 ## Smart tasks
 

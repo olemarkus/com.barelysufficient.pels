@@ -206,7 +206,7 @@ function applyFullRestorePass(
   let restoredOneThisCycle = restoredOne;
   const snapshot = Array.from(deviceMap.values());
   const restoreCandidates = getRestoreCandidates(snapshot);
-  const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.normalizedShedFloorCByDevice);
+  const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints);
   const lane: RestoreLane = {
     onDevices,
     steppedSwapExecutor: buildSteppedSwapExecutor(cycle, onDevices),

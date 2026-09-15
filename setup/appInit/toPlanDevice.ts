@@ -1,7 +1,6 @@
 import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
-import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
   type BoostResolveInput,
@@ -33,7 +32,6 @@ import type {
   TargetPowerSteppedLoadConfig,
   TemperatureBoostConfig,
   TemperatureObservedProbe,
-  ThermostatModeObservedProbe,
 } from '../../packages/contracts/src/types';
 import type {
   DeviceControlPosture,
@@ -364,16 +362,13 @@ function resolveSteppedLadderMissing(
  * the raw `targets` list for the value.
  */
 function resolveTemperatureInputFields(
-  device: TemperatureObservedProbe & ThermostatModeObservedProbe,
+  device: TemperatureObservedProbe,
 ): ({ deviceType: 'temperature' } & TemperaturePlanInputKind) | { deviceType: 'onoff' } {
   if (!device.temperature) return { deviceType: 'onoff' };
   return {
     deviceType: 'temperature',
     currentTemperature: device.temperature.currentTemperature,
     currentTarget: device.temperature.target.value,
-    // The observer's resolution of the raw reported mode, asked for here the
-    // same way `resolveCurrentOn` is — never re-derived from a capability value.
-    thermalDirection: resolveThermalDirection(device),
   };
 }
 
@@ -632,9 +627,9 @@ export function toPlanDevice(
     evChargingState: _evChargingState,
     temperature: _temperature,
     // The RAW reported mode. Stripped for the same reason `temperature` is: the
-    // planner reads the producer-resolved value (`thermalDirection` on the
-    // temperature cluster, from `resolveThermalDirection`) and must not be able
-    // to reach the capability string the observer resolved it from.
+    // planner is never told which way a device moves demand. Every setpoint that
+    // depends on it is resolved before the planner (`lib/thermostat`), from the
+    // observer's `resolveThermalDirection`, never from this capability string.
     thermostatMode: _thermostatMode,
     // `lastFreshDataMs` is deliberately NOT stripped, for the same reason as
     // `stateOfCharge` below: `lib/objectives` reads it off this object

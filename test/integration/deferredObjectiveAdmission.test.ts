@@ -15,6 +15,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -213,11 +214,15 @@ const buildBuilder = (
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => capacitySettings,
-    getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => true,
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => true,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPriceOptimizationSettings: () => ({}),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+    }),
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
@@ -353,12 +358,16 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-      getOperatingMode: () => modeRef.current,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => modeRef.current,
+        getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
+        getPriceOptimizationEnabled: () => true,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       // Mode target sits 3 °C below the deadline target — exactly the bug this test pins.
-      getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
-      getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
@@ -611,11 +620,15 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => true,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => true,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => powerTracker,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),

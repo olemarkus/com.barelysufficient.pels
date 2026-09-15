@@ -7,15 +7,14 @@ import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { SteppedSwapExecutor } from './helpers';
-import type { ShedSetpointLimits } from '../normalizedShedFloor';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  /** This build's capability-normalized configured shed floor per device —
-   * resolved once by the builder (`resolveNormalizedShedFloors`); every
-   * floor comparison in the restore/swap pass reads through it. */
-  normalizedShedFloorCByDevice: ShedSetpointLimits;
+  /** This build's resolved setpoints per temperature device (`PlanContext.temperatureSetpoints`);
+   * the swap lane reads whether limiting a device still releases demand from it. */
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   deviceNameById?: ReadonlyMap<string, string>;

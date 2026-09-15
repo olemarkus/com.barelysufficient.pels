@@ -46,6 +46,7 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -110,11 +111,15 @@ const makeHarness = (params: {
     capacityGuard: guard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw, marginKw: 0.2 }),
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
+      getShedBehavior: () => ({ action: 'turn_off' }),
+    }),
     getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getShedBehavior: () => ({ action: 'turn_off' }),

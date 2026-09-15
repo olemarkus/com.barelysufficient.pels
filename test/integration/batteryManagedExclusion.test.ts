@@ -14,7 +14,7 @@
 // `controllable === true` + temperature requirement) are exactly what keeps the
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.
-import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
@@ -77,9 +77,9 @@ const heaterInputDevice = (): PlanInputDevice =>
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   });
 
-const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
+const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices,
-  modeTargetCFor: (d) => (({ [HEATER_ID]: 21 })[d.id] ?? d.currentTarget),
+  intent: { getModeDeviceTargets: () => ({ Home: { [HEATER_ID]: 21 } }) },
   total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -96,7 +96,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
   minutesRemaining: 60,
   headroomRaw: -1, // overshooting, so shedding WOULD fire for an eligible device
   headroom: -1,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -120,7 +119,6 @@ const emptyRestoreResult: RestorePlanResult = {
 const defaultDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 };
@@ -154,14 +152,19 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     // price-opt config for the battery, in BOTH a cheap and an expensive hour.
     const priceDeps: PlanDevicesDeps = {
       ...defaultDeps,
-      getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({
         [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 },
       }),
     };
     for (const currentHourPriceLevel of [PriceLevel.CHEAP, PriceLevel.EXPENSIVE] as const) {
       const [battery] = buildInitialPlanDevices({
-        context: buildContext([batteryInputDevice()], { currentHourPriceLevel }),
+        context: buildContext([batteryInputDevice()], {
+          intent: {
+            getPriceOptimizationEnabled: () => true,
+            getPriceOptimizationSettings: () => ({ [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 } }),
+            getCurrentHourPriceLevel: () => currentHourPriceLevel,
+          },
+        }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -180,6 +183,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     const context = buildContext([batteryInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
       devices: context.devices,
+      temperatureSetpoints: context.temperatureSetpoints,
       needed: 5, // ask for a large reduction so any eligible device is offered
       deficitKw: 5,
       limitSource: 'capacity',
@@ -250,8 +254,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       power: context,
       planDevices,
       restoreResult: emptyRestoreResult,
-      priceOptimizationEnabled: false,
-      priceOptimizationSettings: {},
     });
     const batteryObservation = observations.find((o) => o.deviceId === BATTERY_ID);
     expect(batteryObservation?.eligibleForStarvation).toBe(false);

@@ -63,7 +63,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
 
 const buildDeps = (lastTimestamp: number) => ({
   powerTracker: { lastTimestamp } as PowerTrackerState,
-  normalizedShedFloorCByDevice: new Map(),
+  temperatureSetpoints: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   structuredLog,
   log: vi.fn(),

@@ -11,6 +11,7 @@ import {
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -133,11 +134,15 @@ describe('PlanBuilder budget exemption handling', () => {
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 3,
@@ -204,11 +209,15 @@ describe('PlanBuilder budget exemption handling', () => {
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 1.8,
@@ -254,11 +263,15 @@ describe('PlanBuilder budget exemption handling', () => {
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [lastSampleHourIso]: 9,

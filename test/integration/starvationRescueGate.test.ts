@@ -20,6 +20,7 @@ import {
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
@@ -208,11 +209,15 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => true,
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => true,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPriceOptimizationSettings: () => ({}),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+    }),
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),

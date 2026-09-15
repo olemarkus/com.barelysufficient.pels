@@ -6,8 +6,9 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { sortByPriorityAsc } from './planSort';
 import { resolvePlannedShedTargetKind } from './planActionMaterialization';
-import { setpointAddsDemand } from './setpointDemand';
-import { shedLimitFor, type ShedSetpointLimits } from './normalizedShedFloor';
+import { resolveNormalizedShedFloors, shedFloorCFor } from './normalizedShedFloor';
+import { unlimitedSetpointAddsDemand } from './planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
 export type PlanReasonPairValidationIssue = {
   deviceId: string;
@@ -218,10 +219,9 @@ function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string
 
 export function finalizePlanDevices(
   planDevices: DevicePlanDevice[],
-  /** This build's capability-normalized configured shed floor per device
-   * (`resolveNormalizedShedFloors`) — the restore classification below reads
-   * it, never raw config. */
-  normalizedShedFloorCByDevice: ShedSetpointLimits,
+  /** This build's resolved setpoints — the restore classification below reads
+   * the limit and the resume facts from them, never raw config. */
+  temperatureSetpoints: TemperatureSetpointsByDevice,
   /** The PREVIOUS build's final shed set: the restore classification counts a
    * raise off it even when the device no longer sits at the configured floor,
    * which is how a mid-hold floor edit still classifies as a restore. */
@@ -241,10 +241,13 @@ export function finalizePlanDevices(
   // the decision. See `PlannedShedTargetKind`. The restore classification
   // (`recordRestoreOnTargetApply`) is stamped here for the same reason, from
   // the same decision-of-record view.
+  const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
   const stamped = planDevices.map((dev): DevicePlanDevice => ({
     ...dev,
     plannedShedTargetKind: resolvePlannedShedTargetKind(dev),
-    recordRestoreOnTargetApply: resolveRecordRestoreOnTargetApply(dev, normalizedShedFloorCByDevice, wasShedLastBuild),
+    recordRestoreOnTargetApply: resolveRecordRestoreOnTargetApply(
+      dev, temperatureSetpoints, normalizedShedFloorCByDevice, wasShedLastBuild,
+    ),
   }));
   const sorted = sortByPriorityAsc(stamped);
   const issues = sorted
@@ -267,11 +270,11 @@ export function finalizePlanDevices(
 /**
  * Planner-resolved restore classification for the executor's target lane
  * (semantics on the `DevicePlanDevice.recordRestoreOnTargetApply` docblock):
- * the device's observed setpoint sits AT a shed floor and this plan RAISES
- * it — applying that write is a restore, and the executor stamps the restore
- * clocks when it lands.
+ * the device's observed setpoint sits AT a shed floor and this plan moves it
+ * off that floor — applying that write is a restore, and the executor stamps
+ * the restore clocks when it lands.
  *
- * Two independent signals, either of which makes the raise a restore, because
+ * Two independent signals, either of which makes the move a restore, because
  * each covers the case the other misses:
  *
  * - The device sits at this build's capability-normalized configured floor.
@@ -285,16 +288,20 @@ export function finalizePlanDevices(
  */
 function resolveRecordRestoreOnTargetApply(
   dev: DevicePlanDevice,
-  normalizedShedFloorCByDevice: ShedSetpointLimits,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   wasShedLastBuild: ReadonlySet<string>,
 ): boolean {
-  // Only a device limited by SETPOINT has a resume to classify here, and only
-  // such a device has a limit entry. A device limited by turning it off records
-  // its resume on the binary write instead.
+  // Only a setpoint limit ends in a setpoint write; a device turned off or
+  // stepped down resumes through its own lane.
   if (!isTemperaturePlanDevice(dev) || !normalizedShedFloorCByDevice.has(dev.id)) return false;
-  const limit = shedLimitFor(normalizedShedFloorCByDevice, dev.id);
-  // A resume moves the setpoint back toward demand: up for a heater, down for a
-  // unit that is cooling.
-  if (!setpointAddsDemand(limit.thermalDirection, dev.currentTarget, dev.plannedTarget)) return false;
-  return limit.temperatureC === dev.currentTarget || wasShedLastBuild.has(dev.id);
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
+  // A write TO the limit is a limit, not a resume.
+  if (dev.plannedTarget === dev.currentTarget || dev.plannedTarget === floorC) return false;
+  // Asked by outcome, never by ordering the two setpoints: which way a resume
+  // moves the setpoint depends on whether the device heats or cools, and the
+  // planner is not told. A move to a setpoint that asks for less work — an
+  // expensive hour or a mode target below the limit — is not ending a limit.
+  if (!unlimitedSetpointAddsDemand(temperatureSetpoints, dev)) return false;
+  return floorC === dev.currentTarget || wasShedLastBuild.has(dev.id);
 }

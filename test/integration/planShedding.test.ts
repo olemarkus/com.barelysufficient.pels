@@ -571,6 +571,8 @@ describe('buildSheddingPlan', () => {
         },
         selectedStepId: 'max',
         targets: [{ id: 'target_temperature', value: 65, unit: 'C' }],
+        // A temperature device always carries its facet; the setpoint facts are resolved from it.
+        currentTarget: 65, currentTemperature: 64,
         currentDrawKw: 3, expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
@@ -584,6 +586,8 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // The setpoint facts are resolved from the same shed behaviour the planner reads.
+        intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }) },
         devices,
         total: 3,
         softLimit: 2.4,
@@ -628,6 +632,8 @@ describe('buildSheddingPlan', () => {
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+        // A temperature device always carries its facet; the setpoint facts are resolved from it.
+        currentTarget: 22, currentTemperature: 21,
         controlModel: 'stepped_load',
         steppedLoadProfile: {
           steps: [
@@ -653,6 +659,12 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // The setpoint facts are resolved from the same shed behaviour the planner reads.
+        intent: { getShedBehavior: (deviceId: string) => (
+          deviceId === 'dev-heater'
+            ? { action: 'set_temperature', temperature: 15 }
+            : { action: 'turn_off' }
+        ) },
         devices,
         total: 3.5,
         softLimit: 3,
@@ -705,6 +717,8 @@ describe('buildSheddingPlan', () => {
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+        // A temperature device always carries its facet; the setpoint facts are resolved from it.
+        currentTarget: 22, currentTemperature: 21,
         controlModel: 'stepped_load',
         steppedLoadProfile: {
           steps: [
@@ -730,6 +744,12 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // The setpoint facts are resolved from the same shed behaviour the planner reads.
+        intent: { getShedBehavior: (deviceId: string) => (
+          deviceId === 'dev-heater'
+            ? { action: 'set_temperature', temperature: 15 }
+            : { action: 'turn_off' }
+        ) },
         devices,
         total: 3.5,
         softLimit: 3,
@@ -770,6 +790,8 @@ describe('buildSheddingPlan', () => {
         binaryControl: { on: true },
         controllable: true,
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+        // A temperature device always carries its facet; the setpoint facts are resolved from it.
+        currentTarget: 22, currentTemperature: 21,
         controlModel: 'stepped_load',
         steppedLoadProfile: {
           steps: [
@@ -788,6 +810,8 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // The setpoint facts are resolved from the same shed behaviour the planner reads.
+        intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 18 }) },
         devices,
         total: 3,
         softLimit: 2,
@@ -2599,12 +2623,11 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
-    // The direction rides on the temperature facet, which the fixture's loose
-    // probe does not spell out; spread it in as the producer stamps it.
-    const cooling = { thermalDirection: 'cooling' as const };
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // Which side of the target is the demand side is resolved before the planner.
+        intent: { getShedBehavior: () => shedBehavior, getThermalDirection: () => 'cooling' },
         devices: [
           buildDevice({
             id: 'ac',
@@ -2614,7 +2637,6 @@ describe('buildSheddingPlan', () => {
             deviceType: 'temperature',
             currentTemperature: 25,
             currentTarget: 24,
-            ...cooling,
             currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 24, unit: 'C' }],
             shedBehavior,
@@ -2657,6 +2679,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        intent: { getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR },
         devices: [
           buildDevice({
             id: 'dev-at-temp',
@@ -4206,6 +4229,10 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        // The setpoint facts are resolved from the same shed behaviour the planner reads.
+        intent: { getShedBehavior: (deviceId) => (deviceId === 'temp'
+          ? { action: 'set_temperature', temperature: 17 }
+          : { action: 'set_step' }) },
         devices: [
           buildDevice({
             id: 'stepped',
@@ -4409,6 +4436,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       ...cycleArgs({
+        intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }) },
         devices: [
           buildDevice({
             id: 'dev-at-temp',

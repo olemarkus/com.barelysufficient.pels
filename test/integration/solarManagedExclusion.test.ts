@@ -31,7 +31,6 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -81,7 +80,7 @@ const heaterInputDevice = (): PlanInputDevice =>
 
 const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
   devices,
-  modeTargetCFor: (d) => (({ [HEATER_ID]: 21 })[d.id] ?? d.currentTarget),
+  intent: { getModeDeviceTargets: () => ({ Home: { [HEATER_ID]: 21 } }) },
   total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -98,7 +97,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
   minutesRemaining: 60,
   headroomRaw: -1,
   headroom: -1,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -120,7 +118,6 @@ const emptyRestoreResult: RestorePlanResult = {
 const defaultDeps: PlanDevicesDeps = {
   getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 };
@@ -148,6 +145,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     const context = buildContext([solarInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
       devices: context.devices,
+      temperatureSetpoints: context.temperatureSetpoints,
       needed: 5,
       deficitKw: 5,
       limitSource: 'capacity',
@@ -218,8 +216,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       power: context,
       planDevices,
       restoreResult: emptyRestoreResult,
-      priceOptimizationEnabled: false,
-      priceOptimizationSettings: {},
     });
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
     expect(solarObservation?.eligibleForStarvation).toBe(false);

@@ -35,6 +35,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -273,11 +274,15 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => true,
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => true,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPriceOptimizationSettings: () => ({}),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+    }),
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => powerTracker,
     // Daily budget ON: the per-hour budget slice is the binding soft limit.
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),

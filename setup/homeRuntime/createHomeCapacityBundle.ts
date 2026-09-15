@@ -347,8 +347,8 @@ function buildSubHomeScope(params: {
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
-    // bind live for every home. Binding them to `{}` made `modeTargetCFor`
-    // fall back to the device's live setpoint (`lib/plan/planBuilder.ts`); while
+    // bind live for every home. Binding them to `{}` made the kept setpoint
+    // fall back to the device's live setpoint (`lib/thermostat/temperatureSetpoints.ts`); while
     // shed that reading IS the shed setpoint, so on release `plannedTarget`
     // equalled `currentTarget`, the executor dropped the write, and an area
     // temperature device stayed cold indefinitely. Price-opt and surplus stay

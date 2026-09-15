@@ -35,7 +35,6 @@ import { emitActivationTransition } from '../../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRecorder';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -43,7 +42,6 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
-  modeTargetCFor: (d) => d.currentTarget,
   total: FIXTURE_TOTAL_KW,
   softLimit: 0,
   capacitySoftLimit: 0,
@@ -59,7 +57,6 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
   minutesRemaining: 60,
   headroomRaw: 1,
   headroom: 1,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -469,7 +466,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -505,7 +502,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -599,7 +596,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

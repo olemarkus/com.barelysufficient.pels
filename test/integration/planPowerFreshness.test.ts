@@ -15,6 +15,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -205,11 +206,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => params.tracker,
       getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'turn_off' }),
@@ -330,11 +335,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => tracker,
       // A daily budget that binds: 0.3 kWh planned for this hour under a 6 kW cap.
       getDailyBudgetSnapshot: () => ({
@@ -398,11 +407,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => tracker,
       getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
@@ -430,6 +443,55 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     expect(isTemperaturePlanDevice(thermo!) ? thermo.plannedTarget : undefined).toBe(16);
   });
 
+  // A limit on the demand side of the device's target: commanding it would make
+  // the device work harder, which the pass has no measurement to admit, and
+  // leaving the device out would materialize its mode target instead.
+  it.each([
+    { direction: 'heating' as const, currentTarget: 16, limitC: 18, modeTargetC: 21 },
+    { direction: 'cooling' as const, currentTarget: 24, limitC: 20, modeTargetC: 22 },
+  ])('holds a $direction device at its target on the silent-meter pass when its limit would add demand', async ({
+    direction, currentTarget, limitC, modeTargetC,
+  }) => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
+      getCapacityDryRun: () => false,
+      setCapacityInShortfall: vi.fn(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getModeDeviceTargets: () => ({ Home: { unit: modeTargetC } }),
+        getThermalDirection: () => direction,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: limitC }),
+      }),
+      getPriceOptimizationSettings: () => ({}),
+      getPowerTracker: () => tracker,
+      getDailyBudgetSnapshot: () => null,
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: limitC }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
+    }, createPlanEngineState());
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({
+        id: 'unit',
+        name: 'Unit',
+        deviceType: 'temperature',
+        currentTemperature: currentTarget,
+        currentTarget,
+        currentDrawKw: 1,
+        targets: [{ id: 'target_temperature', value: currentTarget, unit: 'C' }],
+      } as Partial<PlanInputDevice>),
+    ]);
+
+    const unit = plan.devices.find((dev) => dev.id === 'unit');
+    expect(unit?.plannedState).toBe('shed');
+    expect(isTemperaturePlanDevice(unit!) ? unit.plannedTarget : undefined).toBe(currentTarget);
+  });
+
   it('names a reason for a smart task\'s forced shed on the silent-meter pass, so the plan finalizes cleanly', async () => {
     // A forced shed rides in through the hold merge with no reason of its
     // own; the measured pipeline's reason normalization would name it, and
@@ -443,11 +505,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => tracker,
       getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'turn_off' }),
@@ -486,11 +552,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => tracker,
       getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'turn_off' }),

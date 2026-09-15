@@ -19,6 +19,7 @@ import type {
   BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 /**
  * The "Only PELS starts this device" policy, driven through a WHOLE plan build.
@@ -84,11 +85,15 @@ const buildBuilder = (
   // Deliberately roomy: no capacity pressure anywhere, so the only thing that can
   // put a device in the shed set is the posture under test.
   getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2 }),
-  getOperatingMode: () => 'Home',
-  getModeDeviceTargets: () => ({}),
-  getPriceOptimizationEnabled: () => false,
+  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+    getOperatingMode: () => 'Home',
+    getModeDeviceTargets: () => ({}),
+    getPriceOptimizationEnabled: () => false,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+    getPriceOptimizationSettings: () => ({}),
+    getShedBehavior: () => ({ action: 'turn_off' }),
+  }),
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
   getDailyBudgetSnapshot: () => null,
   getShedBehavior: () => ({ action: 'turn_off' }),

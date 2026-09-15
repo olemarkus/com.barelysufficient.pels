@@ -14,6 +14,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
@@ -70,11 +71,16 @@ const makeBuilder = (params: {
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0.2 }),
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPriceOptimizationSettings: () => ({}),
+      getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
+        ?? { action: 'turn_off' },
+    }),
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).

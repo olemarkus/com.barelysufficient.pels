@@ -6,7 +6,6 @@
  */
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
-import type { PriceLevel } from '../price/priceLevels';
 import type { ShedBehavior } from './planTypes';
 import type { PriceOptDeviceConfig } from './planBuilderSurplus';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
@@ -17,6 +16,7 @@ import type {
   DeferredDecorationBundle,
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
+import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
@@ -25,12 +25,10 @@ export type PlanBuilderDeps = {
   getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getOperatingMode: () => string;
-  getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  getPriceOptimizationEnabled: () => boolean;
+  // The surplus allocator's opt-in (`surplusWilling`, a lift configured at all).
+  // The lift's VALUE is not read here: it is a setpoint, resolved before the
+  // planner with every other one (`resolveTemperatureSetpoints`).
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  // Producer-resolved: both current-hour flags from ONE combined-series build.
-  getCurrentHourPriceLevel: () => PriceLevel;
   // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
   // allocator (zero-export homes); forwarded untouched to the per-device prep
   // pass. 0 is the whole of "nothing inferred" — see `homeScope`.
@@ -56,6 +54,12 @@ export type PlanBuilderDeps = {
   // shape) rather than leaving the member off: "no smart tasks here" is a thing
   // a home says, not a hole the builder papers over with a default of its own.
   decorateDeferredObjectives: (input: DeferredDecorationInput) => DeferredDecorationBundle;
+  // What each temperature device's outcomes command, resolved once per build
+  // right after the decoration above has stamped any deadline floor. The planner
+  // decides outcomes and reads setpoints from this; the mode targets, price
+  // shift, deadline floor, surplus lift and the device's heating/cooling
+  // direction never reach it (`lib/thermostat/temperatureSetpoints.ts`).
+  resolveTemperatureSetpoints: ResolveTemperatureSetpoints;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };

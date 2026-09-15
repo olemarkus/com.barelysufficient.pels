@@ -32,9 +32,11 @@ import type { PlanMaterializationStages } from './planBuilderMaterialization';
 import { buildUnmeasuredPlanMeta } from './planBuilderMeta';
 import type { PlanContext } from './planContext';
 import { NO_SHEDDING_OUTCOME, type PlanEngineState } from './planState';
-import type { DevicePlan } from './planTypes';
+import type { DevicePlan, DevicePlanDevice, TemperatureKind } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { temperatureSetpointsFor } from './planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveNormalizedShedFloors } from './normalizedShedFloor';
 import { runSilentMeterSurplusHold } from './planBuilderSurplus';
 import {
   buildSheddingCandidates,
@@ -44,6 +46,30 @@ import {
   type SheddingPlan,
 } from './shedding';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
+
+/**
+ * The directive names every controllable device, so it names one whose limit
+ * sits on the DEMAND side of its target too — a heating floor above the target,
+ * a cooling ceiling below it. Commanding that limit would make the device work
+ * harder, and commanding the mode target instead may as well; with no
+ * measurement neither is admissible. The device is held where it is: limited, at
+ * the target it holds now. The measured pipeline never gets here for such a
+ * device, because its shed candidate is skipped (`limit_would_add_demand`).
+ */
+function holdShortOfDemandSideLimit(
+  dev: DevicePlanDevice,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+): DevicePlanDevice {
+  if (dev.plannedState !== 'shed' || dev.shedAction !== 'set_temperature' || !isTemperaturePlanDevice(dev)) return dev;
+  const { shed } = temperatureSetpointsFor(temperatureSetpoints, dev.id);
+  if (shed.action !== 'set_temperature' || shed.releasesDemand) return dev;
+  const held: DevicePlanDevice & TemperatureKind = {
+    ...dev,
+    shedTemperature: dev.currentTarget,
+    plannedTarget: dev.currentTarget,
+  };
+  return held;
+}
 
 /**
  * The shedding module's dependencies, from the builder's. Shared with the
@@ -93,7 +119,8 @@ export class SilentMeterPlanBuilder {
       if (!sheddingPlan.shedReasons.has(id)) sheddingPlan.shedReasons.set(id, this.directiveReason());
     }
 
-    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, { inShortfall: false });
+    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, { inShortfall: false })
+      .map((dev) => holdShortOfDemandSideLimit(dev, context.temperatureSetpoints));
     // Smart-task release intents still ride the plan (a release is a negative
     // command, safe without a measurement); a `binary_restore` is the one
     // positive intent and needs a measured cycle, which this is not.
@@ -101,7 +128,7 @@ export class SilentMeterPlanBuilder {
     this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(
       planDevices,
-      resolveNormalizedShedFloors(context.devices, (deviceId) => this.deps.getShedBehavior(deviceId)),
+      context.temperatureSetpoints,
     );
     // Decision-time shed clock: the cooldowns that follow a shed apply to this
     // one like any other, so the first measured cycle after the meter returns
@@ -161,6 +188,7 @@ export class SilentMeterPlanBuilder {
       deficitKw: Number.POSITIVE_INFINITY,
       limitSource: 'capacity',
       capacityBreached: false,
+      temperatureSetpoints: context.temperatureSetpoints,
       state: this.state,
       deps,
     });

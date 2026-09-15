@@ -1,4 +1,5 @@
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
+import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
@@ -640,30 +641,23 @@ export function resolveSurplusEligibility(params: {
 }
 
 /**
- * Apply the surplus-absorb lift to a device's mode setpoint. Eligibility is
- * resolved up-front by {@link resolveSurplusEligibility}; this only reads the flat
- * bit. Capacity-independent — the capacity layer stays the ceiling. Raise-only,
- * and it outranks an expensive-hour reduction (surplus is free even on an
- * expensive grid hour), so the lift comes off the bare mode baseline and wins
- * against the price-adjusted target. Only ever called for a `mode`-seed
- * temperature device.
+ * Whether the allocator has this temperature device absorbing surplus this
+ * cycle. Eligibility is resolved up-front by {@link resolveSurplusEligibility};
+ * this only reads the flat bit. Capacity-independent — the capacity layer stays
+ * the ceiling. The lifted SETPOINT is not computed here: it is resolved before
+ * the planner with every other setpoint, in the device's own heating/cooling
+ * direction (`TemperatureSetpoints.surplusC`).
  */
-export function applySurplusAbsorbDelta(params: {
-  baseTarget: number;
-  pricedTarget: number;
-  dev: PlanInputDevice;
-  config: SurplusConfig | undefined;
-  state: PlanEngineState;
-}): number {
-  const { baseTarget, pricedTarget, dev, config, state } = params;
-  // Finite guard: a corrupt persisted NaN/Infinity must never reach the setpoint.
-  const surplusDelta = isFiniteNumber(config?.surplusDelta) ? config.surplusDelta : 0;
-  if (config?.surplusWilling !== true || surplusDelta <= 0) {
+export function isSurplusLiftEngaged(
+  dev: PlanInputDevice,
+  config: ResolvedPriceOptimizationConfig,
+  state: PlanEngineState,
+): boolean {
+  if (config.surplusLiftC <= 0) {
     // Not a real absorber (unwilling or no lift): drop any stale eligibility the
     // allocator no longer maintains.
     clearSurplusEligibility(state, dev.id);
-    return pricedTarget;
+    return false;
   }
-  if (state.surplusEligibilityByDevice[dev.id]?.eligible !== true) return pricedTarget;
-  return Math.max(pricedTarget, baseTarget + surplusDelta);
+  return state.surplusEligibilityByDevice[dev.id]?.eligible === true;
 }

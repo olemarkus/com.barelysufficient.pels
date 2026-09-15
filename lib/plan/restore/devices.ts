@@ -6,12 +6,12 @@ import {
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
 import type { DevicePlanDevice, ShedBehavior, SteppedPlanDevice } from '../planTypes';
-import { shedLimitFor, type ShedSetpointLimits } from '../normalizedShedFloor';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
-import { setpointAddsDemand } from '../setpointDemand';
+import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -145,7 +145,7 @@ export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCa
 export function getOnDevices(
   planDevices: DevicePlanDevice[],
   getShedBehavior: (deviceId: string) => ShedBehavior,
-  normalizedShedFloorCByDevice: ShedSetpointLimits,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
 ): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => {
@@ -154,9 +154,9 @@ export function getOnDevices(
       if (isSteppedLoadDevice(device)) {
         return behavior.action === 'turn_off'
           && isBinaryPlanDevice(device)
-          && canSwapOutDevice(device, behavior, normalizedShedFloorCByDevice);
+          && canSwapOutDevice(device, behavior, temperatureSetpoints);
       }
-      return canSwapOutDevice(device, behavior, normalizedShedFloorCByDevice);
+      return canSwapOutDevice(device, behavior, temperatureSetpoints);
     });
   return sortByPriorityDesc(filtered);
 }
@@ -233,18 +233,17 @@ export function markOffDevicesStayOff(params: {
 function canSwapOutDevice(
   dev: DevicePlanDevice,
   behavior: ShedBehavior,
-  normalizedShedFloorCByDevice: ShedSetpointLimits,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
 ): boolean {
   if (behavior.action !== 'set_temperature') return true;
   // A non-temperature device has no setpoint to compare — swappable. The old
   // fail-open on a null observed target is gone with the nullable field.
   if (!isTemperaturePlanDevice(dev)) return true;
-  // Normalized floor, never raw config: the device reports the normalized
-  // value, so an off-step configured floor compared raw would classify an
-  // at-floor thermostat as still swappable (`normalizedShedFloor.ts`). Swappable
-  // while moving it to its limit would still release demand.
-  const limit = shedLimitFor(normalizedShedFloorCByDevice, dev.id);
-  return setpointAddsDemand(limit.thermalDirection, limit.temperatureC, dev.currentTarget);
+  // Swappable while moving it to its limit would still release demand — a
+  // thermostat already at its limit frees nothing. Resolved before the planner,
+  // because that is a question of which way the device moves demand.
+  const { shed } = temperatureSetpointsFor(temperatureSetpoints, dev.id);
+  return shed.action === 'set_temperature' && shed.releasesDemand;
 }
 
 /**

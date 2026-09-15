@@ -10,6 +10,7 @@ import {
 } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -86,11 +87,15 @@ describe('shed grace', () => {
       setCapacityInShortfall: vi.fn(),
       capacityGuard,
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
       getDailyBudgetSnapshot: () => null,
       // The binding pace, well under the 6 kW hard cap — the deficit is real and

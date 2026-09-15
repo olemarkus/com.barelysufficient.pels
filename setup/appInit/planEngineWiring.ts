@@ -11,6 +11,7 @@ import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/pla
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 
 /**
  * Setup-owned inputs for composing one planner and executor over shared state.
@@ -64,6 +65,8 @@ export type PlanEngineWiring = {
    */
   decorateDeferredObjectives: PlanBuilderDeps['decorateDeferredObjectives'];
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** Which way a device's setpoint moves demand — the observer's answer, read only before the planner. */
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
   getDynamicSoftLimitOverride: () => number | null;
   logTargetRetryComparison?: (params: {

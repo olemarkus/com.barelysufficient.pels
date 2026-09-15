@@ -8,22 +8,18 @@ import type {
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
 import type { MeasuredPower, PlanContext } from './planContext';
-import { PriceLevel } from '../price/priceLevels';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import type { ThermalDirection } from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { applyPriceOptimizationDelta } from './planPriceDelta';
+import { temperatureSetpointsFor } from './planTemperatureSetpoints';
+import type {
+  TemperatureSetpoints,
+  TemperatureSetpointsByDevice,
+} from '../../packages/planner-types/src/temperatureSetpoints';
 import {
   isStarvationSupportedDeviceClass,
   isTemperatureControlDevice,
 } from '../../packages/shared-domain/src/temperatureDeviceKind';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
-import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
-
-const TARGET_DEFICIT_EPSILON_C = 0.5;
-const STARVATION_LOW_TEMP_STEP_C = 0.5;
-const STARVATION_HIGH_TEMP_STEP_C = 1.0;
 
 const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   suppressionState: 'none',
@@ -42,8 +38,6 @@ type BuildDeviceDiagnosticsObservationsParams = {
   power: MeasuredPower;
   planDevices: DevicePlanDevice[];
   restoreResult: RestorePlanResult;
-  priceOptimizationEnabled: boolean;
-  priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 };
 
 export const buildDeviceDiagnosticsObservations = (
@@ -51,7 +45,7 @@ export const buildDeviceDiagnosticsObservations = (
 ): DeviceDiagnosticsPlanObservation[] => {
   const inputDeviceById = new Map(params.context.devices.map((device) => [device.id, device]));
   return params.planDevices.map((device) => buildDiagnosticsObservation({
-    modeTargetCFor: params.context.modeTargetCFor,
+    temperatureSetpoints: params.context.temperatureSetpoints,
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
@@ -63,17 +57,8 @@ export const buildDeviceDiagnosticsObservations = (
     // term is what stops the rescue widget offering "Let it run now" during a genuine
     // capacity breach while the card correctly keeps the headroom framing.
     budgetReleasableHeadroomHold: params.power.budgetReleasableHeadroomHold,
-    priceOptimizationEnabled: params.priceOptimizationEnabled,
-    priceOptimizationSettings: params.priceOptimizationSettings,
-    // Producer-resolved once per build (see `PlanContext.currentHourPriceLevel`)
-    // — this loop must not ask the price service per device.
-    currentHourPriceLevel: params.context.currentHourPriceLevel,
   }));
 };
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const isTemperatureInputDevice = (inputDevice?: PlanInputDevice): boolean => (
   isTemperatureControlDevice(inputDevice)
@@ -87,14 +72,19 @@ const resolveCurrentTemperatureC = (
   isTemperaturePlanDevice(device) ? device.currentTemperature : null
 );
 
-const resolveIntendedNormalTemperatureTarget = (params: {
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
-  inputDevice?: PlanInputDevice;
-}): number | null => {
-  const { modeTargetCFor, inputDevice } = params;
+/**
+ * The device's resolved setpoints, for a temperature device that exposes a
+ * target to command — `null` for every other device, which has no intended
+ * temperature to be held short of (the observation's temperature fields are
+ * `null` for it too).
+ */
+const resolveObservationSetpoints = (
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  inputDevice?: PlanInputDevice,
+): TemperatureSetpoints | null => {
   if (!inputDevice || !isTemperaturePlanDevice(inputDevice)) return null;
   if (!Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) return null;
-  return modeTargetCFor(inputDevice);
+  return temperatureSetpointsFor(temperatureSetpoints, inputDevice.id);
 };
 
 // The effective target PELS is currently COMMANDING the device toward: the
@@ -123,58 +113,24 @@ const resolvePelsCommandsTurnOffShed = (
   && device.shedAction === 'turn_off'
 );
 
-// Half a target step, the epsilon both below-target checks use. It keeps float
-// quantization noise from reading an equal command as "below".
-const belowTargetEpsilonC = (targetStepC: number | null): number => (
-  isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25
+/** The plan limits this device by moving its setpoint to the limit — the outcome, not a comparison. */
+const isLimitedBySetpoint = (device: DevicePlanDevice): boolean => (
+  device.plannedState === 'shed' && device.shedAction === 'set_temperature'
 );
 
-// PELS is holding the device short of its intended/mode target when the target
-// it is COMMANDING asks for more than half a target step LESS WORK than the
-// intended target. A device PELS commands in full (commanded == intended) is
-// never held back.
-//
-// "Less work" is the device's axis, not a fixed sign. A commanded 19 against an
-// intended 22 is a held-back heater and a harder-working air conditioner, and
-// reading it as the former would accrue persisted starvation time for a device
-// PELS is running flat out — while the expensive hour, when it really is being
-// throttled, would record nothing.
-const pelsCommandsBelowTarget = (
-  intendedNormalTargetC: number | null,
-  commandedTargetC: number | null,
-  targetStepC: number | null,
-  direction: ThermalDirection,
-): boolean => {
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
-  const epsilon = belowTargetEpsilonC(targetStepC);
-  return direction === 'cooling'
-    ? commandedTargetC > intendedNormalTargetC + epsilon
-    : commandedTargetC < intendedNormalTargetC - epsilon;
-};
-
-// PELS is holding a turn_off-shed device below its intended target when it has
-// commanded the device OFF as a shed AND the device's temperature still sits
-// more than half a target step under the intended target. The turn_off shed
-// itself is PELS limiting the device (no setpoint is lowered, so
-// `pelsCommandsBelowTarget` cannot see it); the temperature comparison excludes
-// a device that is off because it has already reached / overshot its target
-// (genuinely satisfied, not starved). Only PELS-commanded turn_off sheds set
-// `pelsCommandsTurnOffShed` — a user-off device never qualifies.
-const pelsHoldsOffBelowTarget = (
-  pelsCommandsTurnOffShed: boolean,
-  intendedNormalTargetC: number | null,
-  currentTemperatureC: number | null,
-  targetStepC: number | null,
-  direction: ThermalDirection,
-): boolean => {
-  if (!pelsCommandsTurnOffShed) return false;
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
-  const epsilon = belowTargetEpsilonC(targetStepC);
-  // Same axis question as above: a room ABOVE an air conditioner's target is the
-  // unsatisfied one, and a room below it is comfortable.
-  return direction === 'cooling'
-    ? currentTemperatureC > intendedNormalTargetC + epsilon
-    : currentTemperatureC < intendedNormalTargetC - epsilon;
+/**
+ * Whether the setpoint PELS commands this cycle asks for less work than the
+ * owner's intended target — asked by OUTCOME. The plan says which setpoint it
+ * commands (the limit, the surplus lift, or the kept target), and the resolved
+ * setpoints say whether that one falls short of the intended target on the
+ * device's own axis. A commanded 19 against an intended 22 is a held-back heater
+ * and a harder-working air conditioner, and the planner cannot tell which.
+ */
+const pelsCommandsBelowTarget = (device: DevicePlanDevice, setpoints: TemperatureSetpoints): boolean => {
+  const { shed } = setpoints;
+  if (shed.action === 'set_temperature' && isLimitedBySetpoint(device)) return shed.asksLessThanIntended;
+  if (device.surplusAbsorbActive === true) return setpoints.surplusAsksLessThanIntended;
+  return setpoints.keepAsksLessThanIntended;
 };
 
 /**
@@ -185,41 +141,19 @@ const pelsHoldsOffBelowTarget = (
  * disagreed for five days in production — the censoring side saw only a lowered
  * setpoint, so a turn_off shed recorded nothing while the badge counted hours —
  * which is exactly the divergence a single producer-side resolution forecloses.
+ *
+ * A turn_off shed leaves no lowered commanded target to detect, so it counts
+ * when the room itself is still short of the intended target; a device that is
+ * off because it already reached its target is satisfied, not starved.
  */
-const resolvePelsHoldsBelowTarget = (params: {
-  intendedNormalTargetC: number | null;
-  commandedTargetC: number | null;
-  currentTemperatureC: number | null;
-  targetStepC: number | null;
-  pelsCommandsTurnOffShed: boolean;
-  thermalDirection: ThermalDirection;
-}): boolean => (
-  pelsCommandsBelowTarget(
-    params.intendedNormalTargetC,
-    params.commandedTargetC,
-    params.targetStepC,
-    params.thermalDirection,
-  )
-  || pelsHoldsOffBelowTarget(
-    params.pelsCommandsTurnOffShed,
-    params.intendedNormalTargetC,
-    params.currentTemperatureC,
-    params.targetStepC,
-    params.thermalDirection,
-  )
+const resolvePelsHoldsBelowTarget = (
+  device: DevicePlanDevice,
+  setpoints: TemperatureSetpoints | null,
+  pelsCommandsTurnOffShed: boolean,
+): boolean => (
+  setpoints !== null
+  && (pelsCommandsBelowTarget(device, setpoints) || (pelsCommandsTurnOffShed && setpoints.roomShortOfIntended))
 );
-
-const resolveTargetStepC = (
-  inputDevice: PlanInputDevice | undefined,
-  intendedNormalTargetC: number | null,
-): number | null => {
-  if (!inputDevice || !isFiniteNumber(intendedNormalTargetC)) return null;
-  const target = getPrimaryTargetCapability(inputDevice.targets);
-  if (isFiniteNumber(target?.step) && target.step > 0) {
-    return target.step;
-  }
-  return intendedNormalTargetC < 30 ? STARVATION_LOW_TEMP_STEP_C : STARVATION_HIGH_TEMP_STEP_C;
-};
 
 const resolveEligibleForStarvation = (params: {
   device: DevicePlanDevice;
@@ -355,24 +289,18 @@ const resolveUnmetDemand = (
 };
 
 const buildDiagnosticsObservation = (params: {
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   inputDevice?: PlanInputDevice;
   device: DevicePlanDevice;
   restoreResult: RestorePlanResult;
   budgetReleasableHeadroomHold: boolean;
-  priceOptimizationEnabled: boolean;
-  priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  currentHourPriceLevel: PriceLevel;
 }): DeviceDiagnosticsPlanObservation => {
   const {
-    modeTargetCFor,
+    temperatureSetpoints,
     inputDevice,
     device,
     restoreResult,
     budgetReleasableHeadroomHold,
-    priceOptimizationEnabled,
-    priceOptimizationSettings,
-    currentHourPriceLevel,
   } = params;
   // Demand metrics and the starvation lanes both ask the same question — does
   // being off mean this device is going without? — and the producer answered it
@@ -380,25 +308,15 @@ const buildDiagnosticsObservation = (params: {
   // this file nor its callers need to know that is what makes it different.
   const { hasStandingDemand } = device;
   const includeDemandMetrics = hasStandingDemand && device.control.commandAuthority && device.available;
-  const desiredTarget = resolveDesiredTemperatureTarget({
-    modeTargetCFor,
-    inputDevice,
-    priceOptimizationEnabled,
-    priceOptimizationSettings,
-    currentHourPriceLevel,
-  });
+  const setpoints = resolveObservationSetpoints(temperatureSetpoints, inputDevice);
+  const desiredTarget = setpoints === null ? null : setpoints.desiredC;
   const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
-  const intendedNormalTargetC = resolveIntendedNormalTemperatureTarget({
-    modeTargetCFor,
-    inputDevice,
-  });
   const currentTemperatureC = resolveCurrentTemperatureC(device);
   const commandedTargetC = resolveCommandedTargetC(device);
   const pelsCommandsTurnOffShed = resolvePelsCommandsTurnOffShed(
     device,
     isTemperatureInputDevice(inputDevice),
   );
-  const targetStepC = resolveTargetStepC(inputDevice, intendedNormalTargetC);
   const eligibleForStarvation = resolveEligibleForStarvation({
     device,
     inputDevice,
@@ -411,19 +329,10 @@ const buildDiagnosticsObservation = (params: {
     budgetReleasableHeadroomHold,
   });
   const targetDeficitActive = includeDemandMetrics
-    && desiredTarget !== null
+    && setpoints !== null
     && currentTarget !== null
-    && desiredTarget - currentTarget >= TARGET_DEFICIT_EPSILON_C;
-  const pelsHoldsBelowTarget = resolvePelsHoldsBelowTarget({
-    intendedNormalTargetC,
-    commandedTargetC,
-    currentTemperatureC,
-    targetStepC,
-    pelsCommandsTurnOffShed,
-    thermalDirection: inputDevice && isTemperaturePlanDevice(inputDevice)
-      ? inputDevice.thermalDirection
-      : 'heating',
-  });
+    && setpoints.targetShortOfDesired;
+  const pelsHoldsBelowTarget = resolvePelsHoldsBelowTarget(device, setpoints, pelsCommandsTurnOffShed);
   const unmetDemand = resolveUnmetDemand(
     desiredTarget,
     includeDemandMetrics,
@@ -449,9 +358,9 @@ const buildDiagnosticsObservation = (params: {
     appliedStateSummary: buildAppliedStateSummary(desiredTarget, currentTarget, device.currentState),
     eligibleForStarvation,
     currentTemperatureC,
-    intendedNormalTargetC,
+    intendedNormalTargetC: setpoints === null ? null : setpoints.intendedC,
     commandedTargetC,
-    targetStepC,
+    targetStepC: setpoints === null ? null : setpoints.targetStepC,
     pelsCommandsTurnOffShed,
     pelsHoldsBelowTarget,
     expectedPowerKw: device.expectedPowerKw,
@@ -459,41 +368,6 @@ const buildDiagnosticsObservation = (params: {
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,
   };
-};
-
-const resolveDesiredTemperatureTarget = (params: {
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
-  inputDevice?: PlanInputDevice;
-  priceOptimizationEnabled: boolean;
-  priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  currentHourPriceLevel: PriceLevel;
-}): number | null => {
-  const {
-    modeTargetCFor,
-    inputDevice,
-    priceOptimizationEnabled,
-    priceOptimizationSettings,
-    currentHourPriceLevel,
-  } = params;
-  if (!inputDevice || !Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) {
-    return null;
-  }
-  // Bail only when the device declares a non-temperature modality; an unset
-  // deviceType is left to the downstream target check (behaviour preserved —
-  // matches the prior `deviceType && deviceType !== 'temperature'` truthiness).
-  if (!isTemperaturePlanDevice(inputDevice)) return null;
-
-  const desiredTarget = modeTargetCFor(inputDevice);
-  const priceOptConfig = priceOptimizationSettings[inputDevice.id];
-  if (!priceOptimizationEnabled || !priceOptConfig?.enabled) return desiredTarget;
-  // The planner's own shift, not a restatement of it — including the flip on a
-  // cooling device, so the target the owner reads is the one PELS asks for.
-  return applyPriceOptimizationDelta(
-    desiredTarget,
-    priceOptConfig,
-    currentHourPriceLevel,
-    inputDevice.thermalDirection,
-  );
 };
 
 const resolveDiagnosticsBlockCause = (params: {
@@ -513,7 +387,7 @@ const resolveDiagnosticsBlockCause = (params: {
   if (!unmetDemand) return 'not_blocked';
 
   if (desiredTarget !== null) {
-    return resolveTemperatureBlockCause(device, desiredTarget, targetDeficitActive, restoreResult);
+    return resolveTemperatureBlockCause(device, targetDeficitActive, restoreResult);
   }
 
   if (device.plannedState === 'inactive' || device.plannedState === 'keep') {
@@ -530,14 +404,13 @@ const resolveDiagnosticsBlockCause = (params: {
 
 const resolveTemperatureBlockCause = (
   device: DevicePlanDevice,
-  desiredTarget: number,
   targetDeficitActive: boolean,
   restoreResult: RestorePlanResult,
 ): DeviceDiagnosticsBlockCause => {
-  const plannedTarget = isTemperaturePlanDevice(device) ? device.plannedTarget : null;
-  const plannedToRecover = targetDeficitActive
-    && plannedTarget !== null
-    && plannedTarget >= desiredTarget - TARGET_DEFICIT_EPSILON_C;
+  // The plan is already taking the device to what the owner wants unless it is
+  // commanding the limit: the kept and surplus setpoints both reach the desired
+  // target by construction (`TemperatureSetpoints.keepC`).
+  const plannedToRecover = targetDeficitActive && !isLimitedBySetpoint(device);
   if (plannedToRecover) return 'not_blocked';
   if (restoreResult.timing.activeOvershoot) {
     return 'headroom';

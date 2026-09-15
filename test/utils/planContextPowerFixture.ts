@@ -1,5 +1,6 @@
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
-import { PriceLevel } from '../../lib/price/priceLevels';
+import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
+import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 /**
  * A measurement a spec pins directly — for the many cases that are about a
@@ -18,12 +19,20 @@ export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): Meas
 });
 
 /**
+ * What a spec may add to a frame override: the reads the fixture resolves the
+ * devices' setpoints from, through the real resolver, when the spec does not pin
+ * `temperatureSetpoints` itself. Absent, every device is a heater kept at its
+ * own setpoint with no price shift — the frame a spec not about setpoints wants.
+ */
+export type PlanContextFixtureOverrides = Partial<PlanContext> & { intent?: Partial<TemperatureIntentReads> };
+
+/**
  * The frame every planner-stage spec starts from: no devices, zero limits,
  * capacity-bound, an unremarkable hour. A spec overrides what it is about.
  */
-export const buildPlanContextFixture = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+export const buildPlanContextFixture = ({ intent = {}, ...overrides }: PlanContextFixtureOverrides = {}): PlanContext => ({
   devices: [],
-  modeTargetCFor: (d) => d.currentTarget,
+  temperatureSetpoints: resolveFixtureTemperatureSetpoints(overrides.devices ?? [], intent),
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,
@@ -34,7 +43,6 @@ export const buildPlanContextFixture = (overrides: Partial<PlanContext> = {}): P
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -45,7 +53,7 @@ export const buildPlanContextFixture = (overrides: Partial<PlanContext> = {}): P
  * the `PlanContext`. `capacityBreached` defaults to the derived answer — the
  * draw above the capacity pace — exactly as the producer resolves it.
  */
-export type PlanCycleSpec = Partial<PlanContext> & Partial<MeasuredPower> & {
+export type PlanCycleSpec = PlanContextFixtureOverrides & Partial<MeasuredPower> & {
   total?: number;
   headroom?: number;
   headroomRaw?: number;

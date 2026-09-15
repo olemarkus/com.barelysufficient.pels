@@ -41,6 +41,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   deficitKw: 1,
   limitSource: 'capacity',
   capacityBreached: true,
+  temperatureSetpoints: new Map(),
   state: createPlanEngineState(),
   deps: {
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

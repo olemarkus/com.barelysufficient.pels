@@ -71,13 +71,13 @@ const peerAllowlistFile = path.join(rootDir, 'scripts/setup-peer-allowlist.txt')
 const sdkAllowlistFile = path.join(rootDir, 'scripts/setup-sdk-allowlist.txt');
 
 /**
- * The twelve domain peers, as `AGENTS.md` § "Hard rules" lists them. Keep this
+ * The thirteen domain peers, as `AGENTS.md` § "Hard rules" lists them. Keep this
  * set and that list in step — a peer missing here is a coupling this guard
  * cannot see.
  */
 const PEERS = new Set([
   'device', 'power', 'objectives', 'plan', 'price', 'dailyBudget',
-  'observer', 'executor', 'actuator', 'weather', 'solar', 'home',
+  'observer', 'executor', 'actuator', 'weather', 'solar', 'home', 'thermostat',
 ]);
 
 const listFiles = async (dir, acc = []) => {

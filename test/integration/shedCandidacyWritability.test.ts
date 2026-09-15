@@ -7,7 +7,6 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -25,7 +24,6 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle => buildPlanCycleObject({
   devices,
-  modeTargetCFor: (d) => d.currentTarget,
   total: FIXTURE_TOTAL_KW,
   softLimit: 4,
   capacitySoftLimit: 4,
@@ -42,7 +40,6 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle =
   minutesRemaining: 60,
   headroomRaw: headroom,
   headroom,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuard: CapacityGuard) => ({

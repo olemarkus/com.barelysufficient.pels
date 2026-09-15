@@ -26,8 +26,6 @@ import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
-import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
@@ -39,7 +37,7 @@ const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
-  modeTargetCFor: (d: PlanInputDevice & TemperaturePlanInputKind) => d.currentTarget,
+  temperatureSetpoints: new Map(),
   total: 1.25,
   hourBucketKey: '2025-01-01T00',
   softLimit: 5,
@@ -56,7 +54,6 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   minutesRemaining: 60,
   headroomRaw: 1,
   headroom: 1,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
@@ -298,7 +295,6 @@ describe('P1 bug proofs', () => {
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),
       },

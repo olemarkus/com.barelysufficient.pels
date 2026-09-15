@@ -34,10 +34,12 @@ of three policies:
 **Observation → mode owner → next meter-driven plan.** `TemperatureAdjustmentObserver`
 classifies command echoes in the device observation path, with no plan comparison.
 `ObservedTemperatureModeUpdates` applies the opt-in and persists the mode edit.
-The executor and drift detector never edit a mode. A live write fence accepts only
-the normalized saved target under Save as current mode target, so a queued
-price/limit command cannot overwrite a newly chosen temperature after the policy
-changes. The SDK settings notifications for these edits (immediate or delayed)
+The executor and drift detector never edit a mode. Under Save as current mode
+target a live write fence (`ObservedTemperatureModeUpdates.allowsTarget`) accepts
+the normalized saved target and the normalized configured limits — both the
+heating and the cooling one, because the fence does not know which way the device
+is moving demand — so a queued price or solar offset cannot overwrite a newly
+chosen temperature after the policy changes, while limiting keeps working. The SDK settings notifications for these edits (immediate or delayed)
 are consumed without a rebuild; the mode caches reload and the next reading
 decides from the new target. Ordinary UI/Flow mode edits keep their existing
 settings-triggered rebuild behavior.
@@ -145,13 +147,23 @@ the problem, not the safety net.
   change, but it is not freshness evidence; the observer owns the vocabulary that turns it
   into a `ThermalDirection` (`resolveThermalDirection`,
   `lib/observer/thermalDirection.ts`, `'cooling'` only on positive evidence), the
-  way it already resolves `currentOn` from the raw binary axis. `toPlanDevice`
-  asks for it and stamps it on `TemperaturePlanInputKind`; the raw mode is
-  stripped there and never reaches the planner. Any policy that moves a setpoint
-  to change how much the device draws must apply its move in that direction. The
-  price-based shift does (`lib/plan/planPriceDelta.ts`), so does the diagnostics
-  "held below target" resolution, and so does the configured `set_temperature`
-  shed: the owner's entry carries a limit per direction (`ConfiguredShedBehavior`
+  way it already resolves `currentOn` from the raw binary axis.
+  **The planner is never told the direction.** It decides outcomes — keep a
+  device, lift it for surplus, limit it — and reads the setpoint each outcome
+  commands from `TemperatureSetpoints` (`packages/planner-types/src/temperatureSetpoints.ts`),
+  resolved once per build before it by `lib/thermostat/temperatureSetpoints.ts`
+  through the builder's `resolveTemperatureSetpoints` seam, right after the
+  smart-task decoration stamps any deadline floor. That module is the only place
+  a setpoint is computed or two setpoints are ordered (`lib/thermostat/setpointDemand.ts`):
+  the mode target, the price shift (`lib/thermostat/priceShift.ts`), the
+  deadline floor and the surplus lift are all applied in the device's direction
+  there, and every question that needs the order — does the limit release
+  demand, is the commanded setpoint below the intended one, is the room short
+  of it — reaches the planner as a fact. The planner compares setpoints only for
+  equality: a resume is a write away from the limit the device sits at, never
+  "a raise" (`no-plan-to-thermostat` in `.dependency-cruiser.cjs` holds it).
+  The raw mode is stripped at `toPlanDevice` and never reaches the planner.
+  The configured `set_temperature` shed follows the same rule: the owner's entry carries a limit per direction (`ConfiguredShedBehavior`
   in `packages/shared-domain/src/settings/shedBehaviors.ts`, `coolingTemperature`
   beside `temperature`), and
   `resolveTemperaturePolicyShedBehavior` picks the one for the device's direction
@@ -159,20 +171,16 @@ the problem, not the safety net.
   (`AppHostApi.getShedBehavior`). Every setpoint entry carries both limits —
   `readShedBehaviors` fills `COOLING_SHED_DEFAULT_C` for one persisted before
   the second existed — so no seam asks whether a limit is configured.
-  Every planner reader that orders two setpoints ("is this a limit or a
-  resume", "would moving it to its limit still release demand") goes through
-  `setpointAddsDemand` (`lib/plan/setpointDemand.ts`), reading the direction
-  off the build's setpoint limit for that device (`ShedSetpointLimit`,
-  `lib/plan/normalizedShedFloor.ts`); a bare `>` between two targets is a
-  heating assumption. The executor never orders setpoints: its restore guard
-  asks only whether the observation is still on the side of the target the plan
-  decided from (`ExecutableTargetIntent.restoreFromTarget`).
-  The surplus lift and the deadline floor still assume heating,
-  and each is a defect for a cooling device rather than a deliberate exemption.
-  **The readers assume it too, and that list is not closed.** `computeTemperatureGap`
+  The executor never orders setpoints either: its restore guard asks only
+  whether the observation is still on the side of the target the plan decided
+  from (`ExecutableTargetIntent.restoreFromTarget`).
+  **Readers outside that module still assume heating, and that list is not closed.**
+  A smart task's temperature progress is `target - current`
+  (`lib/objectives/deferredObjectives/diagnosticProgress.ts`), so a cooling unit
+  above its target reads as done; `computeTemperatureGap`
   (`lib/observer/idleDetector.ts`) is `target - current`, so a cooling unit above
   its setpoint — working hardest — reads as `near_target_idle`; and the
   temperature boost trigger (`lib/device/deviceActionProjection.ts`) fires when
   the room is BELOW `boostBelowC`, which for a cooling unit is when it is already
-  satisfied. Treat the three writers as the known cases, not the complete set:
+  satisfied. Treat these three as the known cases, not the complete set:
   anything that compares a temperature against a target has a direction in it.

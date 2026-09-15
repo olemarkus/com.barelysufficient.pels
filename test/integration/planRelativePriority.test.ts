@@ -6,6 +6,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 const buildDevice = (id: string, priority: number): PlanInputDevice => withBinaryDiscriminant({
   ...buildPlanInputDevice({
@@ -40,11 +41,15 @@ describe('PlanBuilder relative priority constraint', () => {
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+        getPriceOptimizationSettings: () => ({}),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      }),
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this

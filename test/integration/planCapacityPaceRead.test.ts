@@ -21,6 +21,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 /** 5 kWh of hourly allowance, so a 6 kWh bucket is a spent hour and 1 kWh is not. */
 const buildPaceBuilder = (params: {
@@ -33,11 +34,15 @@ const buildPaceBuilder = (params: {
   setCapacityInShortfall: vi.fn(),
   getCapacityDryRun: () => false,
   getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
-  getOperatingMode: () => 'Home',
-  getModeDeviceTargets: () => ({}),
-  getPriceOptimizationEnabled: () => false,
+  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+    getOperatingMode: () => 'Home',
+    getModeDeviceTargets: () => ({}),
+    getPriceOptimizationEnabled: () => false,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+    getPriceOptimizationSettings: () => ({}),
+    getShedBehavior: () => ({ action: 'turn_off' }),
+  }),
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: params.getPowerTracker,
   getDailyBudgetSnapshot: () => null,
   // No override is a value the seam carries, not a member left off.

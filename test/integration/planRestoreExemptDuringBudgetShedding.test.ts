@@ -27,6 +27,7 @@ import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/pla
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -34,7 +35,6 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
-  modeTargetCFor: (d) => d.currentTarget,
   softLimit: 1.2,
   capacitySoftLimit: 7,
   dailySoftLimit: 1.2,
@@ -44,7 +44,6 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
   minutesRemaining: 40,
   headroomRaw: -0.8,
   headroom: -0.8,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
   total: FIXTURE_TOTAL_KW,
   ...overrides,
 });
@@ -94,7 +93,7 @@ const runLane = (params: {
     sheddingActive: true,
     deps: {
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
-      normalizedShedFloorCByDevice: new Map(),
+      temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       logDebug: vi.fn(),
     },
@@ -351,11 +350,15 @@ const buildBuilder = (params: {
   capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-  getOperatingMode: () => 'Home',
-  getModeDeviceTargets: () => ({}),
-  getPriceOptimizationEnabled: () => false,
+  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
+    getOperatingMode: () => 'Home',
+    getModeDeviceTargets: () => ({}),
+    getPriceOptimizationEnabled: () => false,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+    getPriceOptimizationSettings: () => ({}),
+    getShedBehavior: () => ({ action: 'turn_off' }),
+  }),
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   getShedBehavior: () => ({ action: 'turn_off' }),

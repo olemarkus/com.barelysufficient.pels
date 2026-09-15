@@ -19,18 +19,20 @@ import {
 import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
+import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
 
 const r = (reason: string) => fixtureDeviceReason(reason)!;
 
 const buildContext = (
   device: PlanInputDevice,
-  modeTargets: Record<string, number> = {},
+  intent: Partial<TemperatureIntentReads>,
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
   fixtureTotalKw = 4,
-  currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = PriceLevel.UNKNOWN,
 ): PlanCycle => buildPlanCycleObject({
   devices: [device],
-  modeTargetCFor: (d) => modeTargets[d.id] ?? d.currentTarget,
+  // The real resolver, over the spec's mode targets, price settings and direction.
+  intent,
   total: fixtureTotalKw,
   softLimit: 5,
   capacitySoftLimit: 5,
@@ -49,7 +51,6 @@ const buildContext = (
   minutesRemaining: 30,
   headroomRaw: 1,
   headroom: 1,
-  currentHourPriceLevel,
 });
 
 // A real epoch, not 0: `nowTs` is `Date.now()` in production and now dates the
@@ -75,8 +76,6 @@ type InputDeviceFixture = Partial<PlanInputDevice>
   & TemperatureDiscriminantProbe
   & {
     evChargingState?: string; binaryCapabilityId?: string; deviceType?: 'temperature' | 'onoff';
-    /** The device's raw reported mode; the observer resolves the direction from it. */
-    thermostatMode?: string;
     // Fixture shorthands for the control posture; `buildPlanInputDevice`
     // resolves them the way `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
@@ -101,14 +100,27 @@ const buildObservation = (params: {
   fixtureTotalKw?: number;
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
+  currentHourPriceLevel?: PriceLevel;
+  thermalDirection?: ThermalDirection;
 }) => {
   const cycle = buildContext(
     buildPlanInputDevice(params.inputDevice),
-    params.modeTargets,
+    {
+      getModeDeviceTargets: () => ({ Home: params.modeTargets ?? {} }),
+      getPriceOptimizationEnabled: () => params.priceOptimizationEnabled ?? false,
+      getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? {},
+      getCurrentHourPriceLevel: () => params.currentHourPriceLevel ?? PriceLevel.UNKNOWN,
+      getThermalDirection: () => params.thermalDirection ?? 'heating',
+      // The shed behaviour the plan device was limited by, from the same config
+      // the planner read: a setpoint shed carries its limit.
+      getShedBehavior: () => (
+        params.planDevice.shedAction === 'set_temperature' && typeof params.planDevice.shedTemperature === 'number'
+          ? { action: 'set_temperature', temperature: params.planDevice.shedTemperature }
+          : { action: 'turn_off' }
+      ),
+    },
     params.softLimitSource,
     params.fixtureTotalKw,
-    params.currentHourPriceLevel,
   );
   return buildDeviceDiagnosticsObservations({
     context: cycle,
@@ -119,8 +131,6 @@ const buildObservation = (params: {
     // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
     planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
     restoreResult: buildRestoreResult(params.restoreResult),
-    priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
-    priceOptimizationSettings: params.priceOptimizationSettings ?? {},
   })[0];
 };
 
@@ -142,6 +152,9 @@ describe('plan diagnostics observations', () => {
         name: 'Hall Heater',
         currentState: 'not_applicable',
         plannedState: 'shed',
+        // Limited by setpoint: the plan's own shed fields, as the hold lane stamps them.
+        shedAction: 'set_temperature',
+        shedTemperature: 18,
         currentTarget: 18,
         currentTemperature: 18,
         plannedTarget: 18,
@@ -249,6 +262,9 @@ describe('plan diagnostics observations', () => {
         name: 'Hall Heater',
         currentState: 'not_applicable',
         plannedState: 'shed',
+        // Limited by setpoint: the plan's own shed fields, as the hold lane stamps them.
+        shedAction: 'set_temperature',
+        shedTemperature: 18,
         currentTarget: 18,
         currentTemperature: 18,
         plannedTarget: 18,
@@ -573,7 +589,6 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 25,
-        thermostatMode: 'cooling',
         binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
       },
@@ -594,6 +609,7 @@ describe('plan diagnostics observations', () => {
       priceOptimizationEnabled: true,
       priceOptimizationSettings: { 'ac-1': { enabled: true, cheapDelta: 3, expensiveDelta: -2 } },
       currentHourPriceLevel: level,
+      thermalDirection: 'cooling',
     });
 
     expect(observation.pelsHoldsBelowTarget).toBe(held);
@@ -1105,7 +1121,10 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       name: 'Termostat Synne',
       deviceClass: 'thermostat',
       currentState: 'off',
-      plannedState: 'keep',
+      // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      shedTemperature: 18,
       currentTarget: 18,
       plannedTarget: 18,
       reason: {
@@ -1181,7 +1200,10 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       name: 'Termostat Synne',
       deviceClass: 'thermostat',
       currentState: 'off',
-      plannedState: 'keep',
+      // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      shedTemperature: 18,
       currentTarget: 18,
       plannedTarget: 18,
       reason: { code: PLAN_REASON_CODES.dailyBudget },
@@ -1267,7 +1289,10 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
       name: 'Hall Heater',
       deviceClass: 'thermostat',
       currentState: 'off',
-      plannedState: 'keep',
+      // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      shedTemperature: 18,
       currentTarget: 18,
       plannedTarget: 18,
       reason: r('cooldown (restore, 45s remaining)'),

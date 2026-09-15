@@ -34,6 +34,13 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `lib/objectives/deferredObjectives/diagnosticProgress.ts`, and removing it turned every EV smart
   task's progress into `objective_progress_stale`. The contract and the runtime disagree about that
   field on purpose, and the mismatch stays until someone reconciles the two spellings deliberately.
+- **No setpoint arithmetic and no heating/cooling direction.** The planner decides outcomes — keep,
+  lift for surplus, limit — and reads the setpoint each outcome commands from
+  `PlanContext.temperatureSetpoints` (`temperatureSetpointsFor`). It never applies a price delta,
+  folds a deadline floor or lift, or compares two setpoints with `<`/`>`: which way is "more demand"
+  depends on the device, and every such question arrives as a fact on `TemperatureSetpoints`,
+  resolved by `lib/thermostat` before the build (`no-plan-to-thermostat`). Compare setpoints only
+  for equality.
 - **No `lib/device` imports** except the producer seams `deviceActionProjection.ts` and
   `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.

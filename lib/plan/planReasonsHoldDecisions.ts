@@ -1,8 +1,10 @@
 import type {
-  DevicePlanDevice, ShedBehavior, TemperatureKind,
+  DevicePlanDevice, TemperatureKind,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { shedFloorCFor, shedLimitFor, type ShedSetpointLimits } from './normalizedShedFloor';
+import { resolveNormalizedShedFloors, shedFloorCFor } from './normalizedShedFloor';
+import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from './planTemperatureSetpoints';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState } from './planState';
 import type { HeadroomReserve } from './admission';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
@@ -25,7 +27,6 @@ import {
   resolveRestoreDecision,
   type HoldDecision,
 } from './planReasonsRestoreGating';
-import { setpointAddsDemand } from './setpointDemand';
 
 
 // The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
@@ -149,19 +150,17 @@ export type ShedHoldParams = {
    * setpoint lane must fork the same way to name the same cause.
    */
   sheddingActive: boolean;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
   /**
-   * The capability-normalized shed floor per temperature device, resolved once
-   * per build from the INPUT devices (the plan device carries no capability
-   * metadata). This is the SAME value `resolveShedIntent` stamps on a freshly
-   * shed device and the shed candidate builder filters on — one floor value
-   * per device per build. `applyHoldUpdate` must stamp from here, never the
-   * raw configured `behavior.temperature`: an at-floor device is filtered out
-   * of shed candidacy, so the held-build fallback is the COMMON case, and a
-   * raw stamp for an off-step configured floor plans a setpoint the device
-   * can never report back — a futile re-write per cycle.
+   * This build's resolved setpoints. The limit on them is capability-normalized
+   * before the planner — the SAME value `resolveShedIntent` stamps on a freshly
+   * shed device and the shed candidate builder filters on, one limit per device
+   * per build. `applyHoldUpdate` must stamp from it, never the raw configured
+   * `behavior.temperature`: an at-limit device is filtered out of shed
+   * candidacy, so the held-build fallback is the COMMON case, and a raw stamp
+   * for an off-step configured limit plans a setpoint the device can never
+   * report back — a futile re-write per cycle.
    */
-  normalizedShedFloorCByDevice: ShedSetpointLimits;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
 };
 
 export function applyShedTemperatureHold(params: ShedHoldParams): {
@@ -185,14 +184,14 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     headroomReserves,
     guardInShortfall,
     sheddingActive,
-    getShedBehavior,
-    normalizedShedFloorCByDevice,
+    temperatureSetpoints,
   } = params;
+  const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
 
   let restoredOne = restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(
-    planDevices, state, getShedBehavior, normalizedShedFloorCByDevice,
+    planDevices, state, temperatureSetpoints, normalizedShedFloorCByDevice,
   );
   const pass: HoldPass = {
     state,
@@ -202,14 +201,14 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     headroomReserves,
     guardInShortfall,
     sheddingActive,
+    temperatureSetpoints,
     normalizedShedFloorCByDevice,
     restoredThisCycle,
   };
 
   for (const dev of planDevices) {
-    const behavior = getShedBehavior(dev.id);
     const availableForDevice = ledger.availableFor(dev);
-    const result = applyHoldToDevice(pass, dev, behavior, {
+    const result = applyHoldToDevice(pass, dev, {
       availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
     });
@@ -324,7 +323,6 @@ function resolvePostHoldRestoreDecision(
 function applyHoldToDevice(
   pass: HoldPass,
   dev: DevicePlanDevice,
-  behavior: ShedBehavior,
   loop: HoldLoopState,
 ): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { availableHeadroom, restoredOneThisCycle } = loop;
@@ -337,8 +335,11 @@ function applyHoldToDevice(
   // writes a `plannedTarget`, so it needs a device with a setpoint and a
   // behaviour that names one. Both narrows used to sit inside
   // `resolveHoldDecision` as `skip`s, which return this same value; they are
-  // hoisted so `applyHoldUpdate` inherits them instead of re-checking.
-  if (behavior.action !== 'set_temperature' || !isTemperaturePlanDevice(dev)) {
+  // hoisted so `applyHoldUpdate` inherits them instead of re-checking. The
+  // behaviour is the one resolved with this build's setpoints, never a live
+  // read: a setting changed mid-build must not name a limit the floor map,
+  // resolved from the same setpoints, has no entry for.
+  if (!isTemperaturePlanDevice(dev) || !isLimitedBySetpointThisBuild(pass.temperatureSetpoints, dev.id)) {
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
@@ -366,22 +367,30 @@ function applyHoldToDevice(
   return { device: dev, availableHeadroom, restoredOneThisCycle };
 }
 
+/** This build's resolved shed behaviour limits the device by setpoint. */
+const isLimitedBySetpointThisBuild = (
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  deviceId: string,
+): boolean => (
+  temperatureSetpointsFor(temperatureSetpoints, deviceId).shed.action === 'set_temperature'
+);
+
 function getPendingRestoreDelay(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
-  getShedBehavior: (deviceId: string) => ShedBehavior,
-  normalizedShedFloorCByDevice: ShedSetpointLimits,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
 ): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
   let countdownStartedAtMs: number | null = null;
   const nowMs = Date.now();
   for (const dev of planDevices) {
-    const behavior = getShedBehavior(dev.id);
-    if (behavior.action !== 'set_temperature') continue;
-    if (!isTemperaturePlanDevice(dev)) continue;
-    const limit = shedLimitFor(normalizedShedFloorCByDevice, dev.id);
-    if (dev.currentTarget !== limit.temperatureC) continue;
-    if (!setpointAddsDemand(limit.thermalDirection, limit.temperatureC, dev.plannedTarget)) continue;
+    if (!isTemperaturePlanDevice(dev) || !isLimitedBySetpointThisBuild(temperatureSetpoints, dev.id)) continue;
+    const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
+    if (dev.currentTarget !== floorC) continue;
+    // Still limited, planned back onto the limit, or moved to a setpoint that
+    // asks for less than the limit does: nothing is resuming.
+    if (dev.plannedTarget === floorC || !unlimitedSetpointAddsDemand(temperatureSetpoints, dev)) continue;
 
     const lastRestoreMs = state.actuation.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;
@@ -415,7 +424,7 @@ function applyHoldUpdate(
   // narrow has already decided, and one that could never have been false.
   //
   // The floor VALUE comes from the per-build normalized map (semantics on
-  // `ShedHoldParams.normalizedShedFloorCByDevice`) so every stage stamps the
+  // `ShedHoldParams.temperatureSetpoints`) so every stage stamps the
   // SAME capability-normalized floor a fresh shed would.
   const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
   const device: DevicePlanDevice & TemperatureKind = {

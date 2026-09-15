@@ -6,8 +6,7 @@ import { sumBudgetExemptMeasuredUsageKw } from '../power/usageAttribution';
 import { toUsageDevice } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
-import type { PriceLevel } from '../price/priceLevels';
-import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
 export type SoftLimitSource = 'capacity' | 'daily';
 
@@ -32,7 +31,8 @@ export type PlanLimits = {
 
 /**
  * The frame one plan cycle is decided in: the admitted devices, the limits,
- * the hour's bookkeeping, the mode's setpoints, the hour's price level.
+ * the hour's bookkeeping, and the setpoints each temperature device's outcomes
+ * command.
  *
  * It carries NO measurement. Every measurement-derived quantity — the draw,
  * the headroom against each axis, whether capacity is breached — lives on
@@ -45,36 +45,16 @@ export type PlanLimits = {
 export type PlanContext = PlanLimits & {
   devices: PlanInputDevice[];
   /**
-   * The setpoint this home's active mode holds a temperature device at.
-   *
-   * A TOTAL function of the device, not a map: "does this mode have a target for
-   * this device" is not a question any planner stage can ask, because there is
-   * no absent case to observe. The producer resolves it once — the stored
-   * per-mode entry, else the device's own setpoint, which commands nothing new.
+   * What each temperature device's outcomes command, resolved once per build
+   * before the planner (`lib/thermostat`). The planner picks an outcome and
+   * reads its setpoint here; it never computes one or orders two
+   * (`temperatureSetpointsFor`).
    */
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   hourBucketKey: string;
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
-  /**
-   * The producer-resolved price level of the current hour, for the
-   * price-optimization deltas only.
-   *
-   * Resolved ONCE per plan build instead of per device: resolving it in the
-   * consumer cost ~25 ms a time on a Homey Pro (every `isCurrentHourCheap()`
-   * rebuilt the whole combined price series from settings), and the two
-   * per-device loops asked it 52 times per rebuild between them — ~1.28 s of a
-   * ~1.29 s plan build in production. The answer cannot change within a cycle.
-   *
-   * It is `UNKNOWN` when nothing in the build can spend a price delta — price
-   * optimization switched off, or no admitted device configured for it (see
-   * `PlanBuilder.resolveCurrentHourPriceLevel`), so a home that cannot use a
-   * level never pays to resolve one. ONE resolved `PriceLevel`, not two raw
-   * flags: those were not mutually exclusive, and every consumer broke the tie
-   * cheap-first; the producer applies that precedence once.
-   */
-  currentHourPriceLevel: PriceLevel;
 };
 
 /**
@@ -125,22 +105,20 @@ export function buildPlanContext(params: {
   /** Hourly usage/bucket math only. Not a freshness input — that is the reading's. */
   powerTracker: PowerTrackerState;
   limits: PlanLimits;
-  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
-  currentHourPriceLevel: PriceLevel;
+  temperatureSetpoints: TemperatureSetpointsByDevice;
 }): PlanContext {
   const {
-    devices, capacitySettings, powerTracker, limits, modeTargetCFor, currentHourPriceLevel,
+    devices, capacitySettings, powerTracker, limits, temperatureSetpoints,
   } = params;
   const hourContext = getCurrentHourContext(powerTracker, Date.now());
   return {
     ...limits,
     devices,
-    modeTargetCFor,
+    temperatureSetpoints,
     hourBucketKey: hourContext.bucketKey,
     budgetKWh: resolveUsableCapacityKw(capacitySettings),
     usedKWh: hourContext.usedKWh,
     minutesRemaining: hourContext.minutesRemaining,
-    currentHourPriceLevel,
   };
 }
 
