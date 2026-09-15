@@ -59,7 +59,6 @@ const stateChangedOutcome = (
   valueChanged: true,
   freshnessAdvanced: true,
   refreshSnapshot: true,
-  rebuildPlan: true,
   ...overrides,
 });
 
@@ -115,7 +114,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     reportSteppedLoadActualStep: vi.fn((): ReportSteppedLoadActualStepResult => 'changed'),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
-    rebuildPlan: vi.fn(),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
@@ -314,7 +312,7 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('writes a clean boolean map for budget exemption flow cards without direct rebuild work', async () => {
+  it('writes a clean boolean map for budget exemption flow cards', async () => {
     const settingsGet = vi.fn((key: string) => {
       if (key === 'budget_exempt_devices') return [true];
       return undefined;
@@ -361,7 +359,6 @@ describe('registerFlowCards', () => {
     }));
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   // `powerCapable: false` is the transport's durable verdict that PELS cannot
@@ -538,7 +535,7 @@ describe('registerFlowCards', () => {
     ]);
   });
 
-  it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
+  it('reports stepped-load actual step and requests a snapshot refresh', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
         {
@@ -577,7 +574,6 @@ describe('registerFlowCards', () => {
 
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
     expect(deps.refreshSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_actual_step');
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_received',
       sourceCardId: 'report_stepped_load_actual_step',
@@ -867,9 +863,8 @@ describe('registerFlowCards', () => {
     });
   });
 
-  it('rebuilds the plan after an EV charger battery report when the report outcome requests it', async () => {
+  it('records an EV charger battery report and refreshes the snapshot', async () => {
     const { deps, actionListeners } = buildDeps({
-      reportFlowBackedCapability: vi.fn(() => stateChangedOutcome({ rebuildPlan: true })),
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
           { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
@@ -894,7 +889,12 @@ describe('registerFlowCards', () => {
       battery_percent: 39,
     })).resolves.toBe(true);
 
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_evcharger_battery_level');
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 39,
+    });
+    expect(deps.refreshSnapshot).toHaveBeenCalled();
   });
 
   it('rejects EV charger battery reports outside 0-100 or non-numeric input', async () => {
@@ -969,7 +969,6 @@ describe('registerFlowCards', () => {
 
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
     expect(deps.refreshSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_actual_step');
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_resolved',
       sourceCardId: 'report_stepped_load_actual_step',
@@ -1033,7 +1032,6 @@ describe('registerFlowCards', () => {
       reasonCode: 'unexpected_error',
       errorMessage: 'refresh failed',
     }));
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
@@ -1076,7 +1074,6 @@ describe('registerFlowCards', () => {
 
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   it('does not let actual-step flow reports interfere with native stepped-load wiring', async () => {
@@ -1097,7 +1094,6 @@ describe('registerFlowCards', () => {
 
     expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_resolved',
       sourceCardId: 'report_stepped_load_actual_step',
@@ -1127,7 +1123,6 @@ describe('registerFlowCards', () => {
 
     expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_resolved',
       sourceCardId: 'report_stepped_load_actual_step',
@@ -1210,7 +1205,6 @@ describe('registerFlowCards', () => {
 
     expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_received',
       sourceCardId: 'report_stepped_load_power',
@@ -1248,7 +1242,6 @@ describe('registerFlowCards', () => {
 
     expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(structuredWarn).not.toHaveBeenCalled();
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_resolved',
@@ -1304,7 +1297,6 @@ describe('registerFlowCards', () => {
 
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'low', 1750);
     expect(deps.refreshSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_power');
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_received',
       sourceCardId: 'report_stepped_load_power',
@@ -1669,7 +1661,6 @@ describe('registerFlowCards', () => {
 
     expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_rejected',
       sourceCardId: 'report_stepped_load_power',
@@ -1735,14 +1726,13 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('does not refresh snapshot or rebuild when a flow-backed report is unchanged', async () => {
+  it('does not refresh snapshot when a flow-backed report is unchanged', async () => {
     const { deps, actionListeners } = buildDeps({
       reportFlowBackedCapability: vi.fn(() => stateChangedOutcome({
         kind: 'noop',
         valueChanged: false,
         freshnessAdvanced: false,
         refreshSnapshot: false,
-        rebuildPlan: false,
       })),
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
@@ -1762,7 +1752,6 @@ describe('registerFlowCards', () => {
       value: true,
     });
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_capability_report_native_overlap',
       sourceCardId: 'report_flow_backed_device_onoff',

@@ -22,7 +22,6 @@ import { registerCapacityShortfallSustainedTrigger } from './capacityShortfallCa
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import { registerAllowSmartTaskRescueCard } from './smartTaskRescueCard';
-import { requestPlanRebuildFromFlow } from './flowCardShared';
 import { registerCapacityAndModeCards, registerOperatingModeChangedTrigger } from './modeCards';
 import {
   registerFlowPriceCards,
@@ -43,7 +42,7 @@ import type {
 } from '../lib/objectives/deferredObjectives';
 
 // Device-scoped objective writes the Flow cards delegate to. Both write the
-// target device's OWN settings key + run the shared notify/flush/rebuild
+// target device's OWN settings key + run the shared notify/flush
 // chokepoint in `lib/objectives/deferredObjectives/objectiveWrite.ts` (wired with the
 // app's recorders in appInit). A per-key write touches only that one device, so
 // it cannot clobber a sibling task. It can still REFUSE on a transient
@@ -110,7 +109,6 @@ export type FlowCardDeps = {
     storedCount: number;
     missingHours: number[];
   };
-  rebuildPlan: (source: string) => void;
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
   // Required — the deadline / clear / rescue cards write each device's own
   // settings key through these (a per-key write cannot clobber a sibling).
@@ -152,7 +150,6 @@ export function registerFlowCards(deps: FlowCardDeps): void {
       getDeviceDescriptors: () => deps.getDeviceDescriptors(),
       setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
       refreshSnapshot: () => deps.refreshSnapshot(),
-      rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
       getStructuredLogger: (component: string) => deps.getStructuredLogger(component),
     });
 

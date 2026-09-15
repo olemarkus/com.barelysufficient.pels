@@ -269,7 +269,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     // Simulate a price-coordinator rebuild arriving during the warmup window.
     void planService.rebuildPlanFromCache('price', { detail: 'cheap' });
     void planService.rebuildPlanFromCache('settings', { detail: 'capacity_changed' });
-    void planService.rebuildPlanFromCache('flow_card', { detail: 'set_priority' });
+    void planService.rebuildPlanFromCache('home_membership_changed');
     await flushMicrotasks();
     expect(buildDevicePlanSnapshot).not.toHaveBeenCalled();
 

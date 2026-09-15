@@ -89,7 +89,7 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     // makes the op write this entry's rescue field verbatim (including clearing
     // a permission to `undefined`) rather than preserving the prior one — this
     // card IS the authority on rescue. A rescue-only change keeps the same
-    // kind/deadline/target, so the recorder notification no-ops; the plan
+    // kind/deadline/target, so the recorder notification no-ops; the next plan
     // rebuild applies the new permission. A per-key write touches only this
     // device's key, so it cannot clobber a sibling task.
     const outcome = deps.upsertDeferredObjectiveForDevice({

@@ -1,5 +1,4 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import type { Mock } from 'vitest';
 import { registerDeadlineObjectiveCards } from '../../flowCards/deadlineObjectiveCards';
 import {
   clearObjectiveForDevice,
@@ -265,21 +264,18 @@ const buildDeps = (overrides: {
   isDeviceInMainHome?: (deviceId: string) => boolean;
   hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
   resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
-  rebuildPlan?: Mock<(reason: string) => unknown>;
   recorders?: MockRecorders;
   structuredError?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey>; recorders: MockRecorders } => {
   const mock = createMockHomey();
   const recorders = overrides.recorders ?? buildMockRecorders();
-  const rebuildPlan = overrides.rebuildPlan ?? vi.fn();
   // Wire the device-scoped write ops over the mock homey settings + recorders,
   // exactly as appInit does in production — so the cards exercise the real
-  // per-device-key write + notify/flush/rebuild chokepoint.
-  const buildWriteDeps = (rebuildReason: string) => ({
+  // per-device-key write + notify/flush chokepoint.
+  const buildWriteDeps = () => ({
     store: mock.homey.settings,
     activePlanRecorder: recorders.activePlanRecorder,
     planHistoryRecorder: recorders.planHistoryRecorder,
-    rebuildPlan: () => rebuildPlan(rebuildReason),
     nowMs: MOCK_NOW_MS,
     ...(overrides.resolveDeviceHomeScope
       ? { resolveDeviceHomeScope: overrides.resolveDeviceHomeScope }
@@ -300,16 +296,15 @@ const buildDeps = (overrides: {
     getSnapshot: async () => overrides.snapshot,
     refreshSnapshot: async () => {},
     getHomeyDevicesForFlow: async () => [],
-    reportFlowBackedCapability: () => ({ kind: 'noop', valueChanged: false, freshnessAdvanced: false, refreshSnapshot: false, rebuildPlan: false }) as never,
+    reportFlowBackedCapability: () => ({ kind: 'noop', valueChanged: false, freshnessAdvanced: false, refreshSnapshot: false }) as never,
     reportSteppedLoadActualStep: () => 'unchanged' as never,
     setExpectedOverride: () => false,
     storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
-    rebuildPlan,
     upsertDeferredObjectiveForDevice: (params: Parameters<typeof upsertObjectiveForDevice>[1]) => (
-      upsertObjectiveForDevice(buildWriteDeps('deadline_objective_card_set'), params)
+      upsertObjectiveForDevice(buildWriteDeps(), params)
     ),
     clearDeferredObjectiveForDevice: (params: Parameters<typeof clearObjectiveForDevice>[1]) => (
-      clearObjectiveForDevice(buildWriteDeps('deadline_objective_card_clear'), params)
+      clearObjectiveForDevice(buildWriteDeps(), params)
     ),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     loadDailyBudgetSettings: () => {},
@@ -345,7 +340,6 @@ describe('deadline objective flow cards', () => {
   it('writes a temperature objective entry on set_temperature_deadline', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_temperature_deadline')!;
@@ -359,7 +353,6 @@ describe('deadline objective flow cards', () => {
       targetTemperatureC: 55,
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
     });
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('deadline_objective_card_set');
   });
 
   it('rejects malformed ready_by values', async () => {
@@ -404,7 +397,6 @@ describe('deadline objective flow cards', () => {
     // nothing persisted.
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     mock.homey.settings.getKeys = () => []; // transient store-wide flake
     registerDeadlineObjectiveCards(deps);
@@ -412,7 +404,6 @@ describe('deadline objective flow cards', () => {
     await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' }))
       .rejects.toThrow(/try again/i);
     expect(readObjective(mock.settings, 'heater-1')).toBeUndefined(); // nothing persisted
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   it('set_temperature_deadline durably rejects a device used as an electricity meter', async () => {
@@ -430,7 +421,6 @@ describe('deadline objective flow cards', () => {
   it('clear_deadline THROWS (retryable) when the clear refuses on an empty-getKeys flake', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     seedObjectives(mock.settings, {
       'heater-1': { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 55, deadlineAtMs: HH_MM_TO_UTC_MS(7, 0) },
@@ -440,13 +430,11 @@ describe('deadline objective flow cards', () => {
     const card = mock.actions.get('clear_deadline')!;
     await expect(card.run!({ device: 'heater-1' })).rejects.toThrow(/try again/i);
     expect(readObjective(mock.settings, 'heater-1')).toBeDefined(); // still persisted — not falsely cleared
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   it('writes an EV objective on set_ev_charge_deadline with normal task behavior', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
-      rebuildPlan: vi.fn(),
     });
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_ev_charge_deadline')!;
@@ -468,7 +456,6 @@ describe('deadline objective flow cards', () => {
   it('ignores any stray enforcement arg and persists soft enforcement', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
-      rebuildPlan: vi.fn(),
     });
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_ev_charge_deadline')!;
@@ -510,11 +497,9 @@ describe('deadline objective flow cards', () => {
 
   it('clear_deadline forgets the bus snapshot after the clear persists', async () => {
     const bus = createDeferredObjectiveStatusBus();
-    const rebuildPlan = vi.fn();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       bus,
-      rebuildPlan,
     });
     bus.publish({
       deviceId: 'heater-1',
@@ -540,7 +525,7 @@ describe('deadline objective flow cards', () => {
     });
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
-    expect(rebuildPlan).toHaveBeenCalledWith('deadline_objective_card_clear');
+    expect(readObjective(mock.settings, 'heater-1')).toBeUndefined();
     expect(bus.hasActive('heater-1')).toBe(false);
   });
 
@@ -559,7 +544,6 @@ describe('deadline objective flow cards', () => {
     };
     const { deps, mock, recorders } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
@@ -594,7 +578,6 @@ describe('deadline objective flow cards', () => {
     };
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
@@ -628,7 +611,6 @@ describe('deadline objective flow cards', () => {
     };
     const { deps, mock, recorders } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
@@ -646,7 +628,6 @@ describe('deadline objective flow cards', () => {
     const recorders = buildMockRecorders();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
       recorders,
     });
     const sibling = {
@@ -660,7 +641,6 @@ describe('deadline objective flow cards', () => {
     // The new task is written; the sibling's key is byte-for-byte intact.
     expect(readObjective(mock.settings, 'heater-1')).toBeDefined();
     expect(readObjective(mock.settings, 'other-1')).toEqual(sibling);
-    expect(deps.rebuildPlan).toHaveBeenCalled();
     expect(recorders.activePlanRecorder.markPending).toHaveBeenCalled();
   });
 
@@ -679,7 +659,6 @@ describe('deadline objective flow cards', () => {
     };
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      rebuildPlan: vi.fn(),
     });
     seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
@@ -1564,7 +1543,6 @@ describe('deadline objective flow cards', () => {
       snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
       hoursRemainingBus,
       hoursRemainingTracker,
-      rebuildPlan: vi.fn(),
     });
     registerDeadlineObjectiveCards(deps);
     const setCard = mock.actions.get('set_ev_charge_deadline')!;

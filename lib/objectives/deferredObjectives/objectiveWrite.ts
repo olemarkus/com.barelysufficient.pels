@@ -62,7 +62,6 @@ export type DeferredObjectiveDeviceWriteDeps = {
   store: ObjectiveSettingsStore;
   planHistoryRecorder: DeferredObjectivePlanHistoryRecorder;
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
-  rebuildPlan: () => void;
   nowMs: number;
   // Main-home scope gate, wired by `buildDeferredObjectiveDeviceWriteDeps`
   // from the membership service. A separate-meter sub-home refuses as
@@ -104,11 +103,12 @@ const refuse = (
   return { persisted: false, reason };
 };
 
-// Notify both recorders, flush them, and request a plan rebuild. This is the
-// single chokepoint every objective write funnels through so the active-plan
-// hero, the plan-history audit trail, and the planner stay consistent — there
-// is no parallel notify/flush/rebuild sequence to drift from.
-const notifyAndRebuild = (
+// Notify both recorders and flush them. This is the single chokepoint every
+// objective write funnels through so the active-plan hero and the plan-history
+// audit trail stay consistent — there is no parallel notify/flush sequence to
+// drift from. The planner reads the new objective at the next power reading that
+// rebuilds; the write itself requests no rebuild.
+const notifyAndFlush = (
   deps: DeferredObjectiveDeviceWriteDeps,
   change: Omit<DeferredObjectiveChangeInput, 'activePlanRecorder' | 'planHistoryRecorder'>,
 ): void => {
@@ -119,7 +119,6 @@ const notifyAndRebuild = (
   });
   deps.activePlanRecorder.flushIfDirty();
   deps.planHistoryRecorder.flushIfDirty();
-  deps.rebuildPlan();
 };
 
 /**
@@ -179,7 +178,7 @@ export const upsertObjectiveForDevice = (
     : params.entry;
 
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
-  notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
+  notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
   return { persisted: true };
 };
 
@@ -199,13 +198,13 @@ export const clearObjectiveForDevice = (
   if (!ensureMigrated(deps)) return refuse(deps, 'clear', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
-  // a genuine no-op worth avoiding the plan rebuild for. A present key OR a
+  // a genuine no-op worth skipping the notify for. A present key OR a
   // store-wide empty `getKeys()` flake both fall through to the (idempotent) unset,
   // so a transient/malformed read can't make the clear silently no-op while the
   // objective stays persisted and reappears on the next clean cycle.
   if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return { persisted: true };
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   clearObjectiveKey(deps.store, deviceId);
-  notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs });
+  notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs });
   return { persisted: true };
 };

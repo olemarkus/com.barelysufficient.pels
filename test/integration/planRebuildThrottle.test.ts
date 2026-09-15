@@ -11,12 +11,12 @@ vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
 import { createTestCapacityGuard, planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { RebuildOutcome } from '../../lib/plan/rebuildScheduler/policy';
 import {
   actedRebuildOutcome,
   createGuardInShortfall,
+  createTestPlanRebuildScheduler,
   createTestPlanRebuildThrottle,
   sampleThrottle,
   unchangedRebuildOutcome,
@@ -129,9 +129,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     // A stub scheduler on purpose: this case is about which intent wins the
     // queue, so nothing runs until the spec runs it.
-    const scheduler = new PlanRebuildScheduler({
+    const scheduler = createTestPlanRebuildScheduler({
       getNowMs: Date.now,
-      resolveDueAtMs: (_intent, currentState) => currentState.nowMs + 1000,
+      resolveDueAtMs: (_intent, atMs) => atMs + 1000,
       executeIntent: async () => undefined,
     });
     const throttle = new PlanRebuildThrottle({
@@ -686,7 +686,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
   });
 
   it('does not floor the first rebuild on a monotonic clock', async () => {
-    // Reproduces prod: getAppPlanRebuildNowMs is performance.now() (monotonic, small
+    // Reproduces prod: the rebuild clock is performance.now() (monotonic, small
     // values) and the throttle starts with no rebuild remembered. Were the floor
     // anchored to a zero timestamp instead of to a rebuild that ran, an
     // unactionable initial sample would floor its due time to 0 + 15_000 and

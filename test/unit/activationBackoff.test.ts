@@ -299,7 +299,6 @@ describe('activation backoff', () => {
     const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
 
     expect(closingSync.attemptOpen).toBe(false);
-    expect(closingSync.stateChanged).toBe(true);
     expect(closingSync.penaltyLevel).toBe(0);
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(0);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
@@ -437,7 +436,7 @@ describe('activation backoff', () => {
     };
     state.headroomCardByDevice['dev-1'] = { lastUsageKw: 1.8 };
 
-    expect(syncHeadroomCardSnapshot(state, [], now + 5_000, 'snapshot_refresh', undefined)).toBe(true);
+    syncHeadroomCardSnapshot(state, [], now + 5_000, 'snapshot_refresh', undefined);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(state.activationPenaltyByDevice['dev-1']).toEqual({ level: 2, lastSetbackMs: now - 60_000 });
@@ -671,7 +670,7 @@ describe('activation backoff', () => {
 
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 60_000);
 
-    expect(syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics)).toBe(true);
+    syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
       kind: 'tracked_usage_drop',
@@ -728,7 +727,7 @@ describe('activation backoff', () => {
         currentDrawKw: 3.2,
       }], start, undefined);
 
-    expect(syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics)).toBe(true);
+    syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
       kind: 'tracked_usage_drop',
@@ -764,11 +763,11 @@ describe('activation backoff', () => {
       ], start, undefined);
     const before = getPerfSnapshot();
 
-    expect(syncHeadroomCardSnapshot(state, [
+    syncHeadroomCardSnapshot(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2 }),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4 }),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8 }),
-      ], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(false);
+      ], start + 5_000, 'snapshot_refresh', diagnostics);
 
     const after = getPerfSnapshot();
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
@@ -822,14 +821,14 @@ describe('activation backoff', () => {
 
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 6_000);
 
-    expect(syncHeadroomCardSnapshot(state, [buildTrackedDevice({
+    syncHeadroomCardSnapshot(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
         currentState: 'off',
         expectedPowerKw: 0,
         lastFreshDataMs: start + 1_000,
-      })], start + 7_000, 'snapshot_refresh', diagnostics)).toBe(false);
+      })], start + 7_000, 'snapshot_refresh', diagnostics);
 
     expect(state.activationAttemptByDevice['dev-1']).toEqual({
       startedMs: start + 6_000,
@@ -905,7 +904,7 @@ describe('activation backoff', () => {
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
 
     const closesAt = start + 6_000 + ACTIVATION_INACTIVE_MIN_ELAPSED_MS;
-    expect(syncHeadroomCardSnapshot(state, buildOffDevice(), closesAt, 'snapshot_refresh', diagnostics)).toBe(true);
+    syncHeadroomCardSnapshot(state, buildOffDevice(), closesAt, 'snapshot_refresh', diagnostics);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
@@ -955,11 +954,11 @@ describe('activation backoff', () => {
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 1.8, expectedPowerKw: 1.8}),
       ], start, undefined);
 
-    expect(syncHeadroomCardSnapshot(state, [
+    syncHeadroomCardSnapshot(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 0.8, expectedPowerKw: 0.8}),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 0.5, expectedPowerKw: 0.5}),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 0.2, expectedPowerKw: 0.2}),
-      ], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(true);
+      ], start + 5_000, 'snapshot_refresh', diagnostics);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledTimes(3);
     expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -997,27 +996,27 @@ describe('activation backoff', () => {
         currentDrawKw: 0,
       }], start, undefined);
 
-    expect(syncHeadroomCardSnapshot(state, [{
+    syncHeadroomCardSnapshot(state, [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 1.0,
         currentDrawKw: 0,
-      }], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(false);
+      }], start + 5_000, 'snapshot_refresh', diagnostics);
 
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
 
-    expect(syncHeadroomCardState(state, [{
+    syncHeadroomCardState(state, [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
         currentDrawKw: 0,
-      }], start + 24_000, diagnostics)).toBe(false);
+      }], start + 24_000, diagnostics);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(resolveActivationRestoreBlock(state, 'dev-1', start + 24_000)).toBeNull();
@@ -1033,7 +1032,7 @@ describe('activation backoff', () => {
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics)).toBe(false);
+    syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -1051,7 +1050,7 @@ describe('activation backoff', () => {
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + (2 * 60 * 1000), diagnostics)).toBe(false);
+    syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + (2 * 60 * 1000), diagnostics);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -1072,7 +1071,7 @@ describe('activation backoff', () => {
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS), diagnostics)).toBe(false);
+    syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS), diagnostics);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -1090,7 +1089,7 @@ describe('activation backoff', () => {
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 45_000, diagnostics)).toBe(false);
+    syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 45_000, diagnostics);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -1115,7 +1114,7 @@ describe('activation backoff', () => {
 
     state.restoreBackoff.startupRestoreBlockedUntilMs = start + 4_999;
 
-    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics)).toBe(false);
+    syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({

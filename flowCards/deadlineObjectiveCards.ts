@@ -268,7 +268,7 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
       deadlineAtMs,
     };
     // Device-scoped op writes this device's own settings key + runs the shared
-    // notify/flush/rebuild chokepoint. It preserves any standing rescue
+    // notify/flush chokepoint. It preserves any standing rescue
     // permission across this update by default (the rescue card promises it
     // sticks until changed/cleared). A per-key write touches only this device,
     // so it cannot clobber a sibling task.
@@ -320,7 +320,7 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       deadlineAtMs,
     };
     // Device-scoped op writes this device's own settings key + runs the shared
-    // notify/flush/rebuild chokepoint, preserving any standing rescue permission
+    // notify/flush chokepoint, preserving any standing rescue permission
     // by default. A per-key write touches only this device, so it cannot clobber
     // a sibling task.
     throwIfWriteRefused(
@@ -367,7 +367,7 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     if (!deviceId) throw new Error('Device must be provided.');
     const hadEntry = Boolean(requireSettingsRead(deps)().objectivesByDeviceId[deviceId]);
     // Device-scoped op unsets this device's own settings key plus runs the
-    // shared notify/flush/rebuild chokepoint. A per-key unset cannot drop a
+    // shared notify/flush chokepoint. A per-key unset cannot drop a
     // sibling task, so there is no refusal branch.
     // Throw on a refused clear BEFORE the forget side effects below — dropping
     // the bus / hours-tracker memory while the objective is still persisted

@@ -209,14 +209,12 @@ describe('createDeferredObjective (app)', () => {
       app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
-        'settings_ui:smart_task_update',
         'replace',
       );
       app.setSnapshotForTests([buildPlannedHeater() as unknown as TargetDeviceSnapshot]);
       const result = app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
-        'settings_ui:smart_task_update',
         'replace',
       );
       expect(result).toEqual({ ok: true });
@@ -236,7 +234,6 @@ describe('createDeferredObjective (app)', () => {
       app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
-        'settings_ui:smart_task_update',
         'replace',
       );
       expect(readStored().objectivesByDeviceId['heater-1'].rescue)
@@ -245,7 +242,6 @@ describe('createDeferredObjective (app)', () => {
       const result = app.createDeferredObjective(
         'heater-1',
         withRescue({ limitLowerPriorityDevices: 'always' }),
-        'settings_ui:smart_task_update',
         'replace',
       );
       expect(result).toEqual({ ok: true });
@@ -275,7 +271,6 @@ describe('createDeferredObjective (app)', () => {
       const result = app.createDeferredObjective(
         'heater-1',
         { ...tempCandidate(62), rescue: { limitLowerPriorityDevices: 'always' } },
-        'settings_ui:smart_task_update',
         'replace',
       );
       expect(result).toEqual({ ok: true });
@@ -293,7 +288,6 @@ describe('createDeferredObjective (app)', () => {
       const result = app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
-        'settings_ui:smart_task_update',
         'replace',
       );
       expect(result).toEqual({ ok: true });

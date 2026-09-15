@@ -9,7 +9,7 @@
 // - a pin-to-main device inside a sub-home zone included again.
 // Only outward seams are mocked: the membership service runs real over the
 // shared mock settings store; the pipeline runs the real sample ingest.
-import { unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
+import { createTestPlanRebuildScheduler, unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -19,7 +19,7 @@ import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterS
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
@@ -357,11 +357,10 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
         rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
       },
     );
-    const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
+    const scheduler: PlanRebuildScheduler = createTestPlanRebuildScheduler({
       getNowMs: () => nowMs,
       resolveDueAtMs: () => nowMs,
       executeIntent: () => throttle.execute(),
-      shouldExecuteImmediately: () => true,
     });
     const pipeline = createHomePowerPipeline({
       ctx,

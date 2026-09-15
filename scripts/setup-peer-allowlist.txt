@@ -37,7 +37,7 @@ setup/appNativeWiring.ts 2  # device, plan
 setup/appPowerTracker.ts 3  # dailyBudget, device, power
 setup/appRuntimeApi.ts 5  # dailyBudget, device, observer, plan, power
 setup/appServiceWiring.ts 5  # device, observer, plan, solar, weather
-setup/appSettingsHelpers.ts 3  # device, power, price
+setup/appSettingsHelpers.ts 2  # device, price
 setup/appSnapshotHelpers.ts 3  # device, plan, power
 setup/appTargetPowerReachability.ts 3  # device, executor, observer
 setup/appTargetPowerReachabilityWiring.ts 2  # device, plan

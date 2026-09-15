@@ -36,10 +36,7 @@ export const cancelDeferredObjectiveForContext = (
   }
   const deviceName = ctx.latestTargetSnapshot.find((entry) => entry.id === deviceId)?.name ?? null;
   const outcome = clearObjectiveForDevice(
-    buildDeferredObjectiveDeviceWriteDeps(ctx, {
-      nowMs: ctx.getNow().getTime(),
-      rebuildReason: 'settings_ui:smart_task_cancel',
-    }),
+    buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
     { deviceId, deviceName },
   );
   if (!outcome.persisted) return { ok: false, reason: 'write_refused' };

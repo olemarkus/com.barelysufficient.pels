@@ -4,7 +4,7 @@ import type { FlowReportedCapabilityId } from '../lib/device/transport/flowRepor
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { resolveFlowAugmentedDeviceType } from '../lib/device/transport/flowReportedCapabilities';
 import { getCapabilities, resolveDeviceClassKey } from '../lib/device/transport/managerHelpers';
-import { incPerfCounter, incPerfCounters } from '../lib/utils/perfCounters';
+import { incPerfCounter } from '../lib/utils/perfCounters';
 import { readFlowDeviceArg, readFlowRawArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
 import { getLogger } from '../lib/logging/logger';
@@ -205,9 +205,6 @@ function registerFlowBackedCapabilityCard(params: {
     }
 
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
-    if (reportOutcome.rebuildPlan) {
-      requestPlanRebuildFromFlow(deps, cardId);
-    }
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => (
@@ -425,11 +422,3 @@ function isCapabilityProvidedNatively(params: {
   return capabilities.includes(capabilityId);
 }
 
-function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
-  incPerfCounters([
-    'plan_rebuild_requested_total',
-    'plan_rebuild_requested.flow_total',
-    `plan_rebuild_requested.flow.${source}_total`,
-  ]);
-  deps.rebuildPlan(source);
-}

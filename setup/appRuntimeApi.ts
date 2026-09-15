@@ -8,7 +8,6 @@ import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCa
 import type {
   ObservedDeviceState,
   ProjectedObservedDeviceState,
-  TargetDeviceSnapshot,
   ThermalDirection,
 } from '../packages/contracts/src/types';
 import {
@@ -62,7 +61,6 @@ import type { AppServiceWiring } from './appServiceWiring';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import type { PowerSamplePipeline } from './powerSamplePipeline';
-import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { withAppHostApi } from './appHostApi';
 
 /** Lifecycle and runtime adapter façade above the stable host/UI surface. */
@@ -75,7 +73,6 @@ abstract class AppRuntimeApi extends Base {
   protected abstract flowReportedCapabilities: FlowReportedCapabilitiesByDevice;
   protected abstract readonly backgroundTasks: BackgroundTasksController;
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
-  protected abstract readonly planRebuildScheduler: PlanRebuildScheduler;
   protected abstract observedDeviceStateProjection: ObservedDeviceStateProjection;
   protected abstract powerCalibrationStore: PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
@@ -115,9 +112,6 @@ abstract class AppRuntimeApi extends Base {
   }
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
-  }
-  public requestFlowPlanRebuild(source: string): void {
-    this.planRebuildScheduler.request({ kind: 'flow', reason: 'flow_card', detail: source });
   }
   public getObservationRevision(): number {
     return this.observedDeviceStateProjection.getRevision();
@@ -240,14 +234,6 @@ abstract class AppRuntimeApi extends Base {
   protected initPriceCoordinator(): Promise<void> { return this.serviceWiring.initPriceCoordinator(); }
   protected initDailyBudgetService(): void { this.serviceWiring.initDailyBudgetService(); }
   protected initDeviceManager(): Promise<void> { return this.serviceWiring.initDeviceManager(); }
-  protected getSnapshotDevice(deviceId: string): TargetDeviceSnapshot | undefined {
-    return this.context.deviceManager?.getSnapshotByDeviceId(deviceId);
-  }
-  protected hasEnabledEvBoostForSnapshot(device: TargetDeviceSnapshot | undefined): boolean {
-    if (!device || device.deviceClass !== 'evcharger') return false;
-    const config = this.getEvBoostConfig(device.id);
-    return config?.enabled === true && Number.isFinite(config.boostBelowPercent);
-  }
   protected initCapacityGuard(): void { this.serviceWiring.initCapacityGuard(); }
   protected initPlanRuntime(): void { this.serviceWiring.initPlanRuntime(); }
   protected initDeviceDiagnosticsService(): void { this.serviceWiring.initDeviceDiagnosticsService(); }

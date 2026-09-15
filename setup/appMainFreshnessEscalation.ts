@@ -7,7 +7,7 @@ import type { AppContext } from '../lib/app/appContext';
  * Main's silent-meter clock — SOURCE-AGNOSTIC (owner ruling 2026-08-31).
  *
  * It used to be gated to `homey_energy`, with the Flow source's fail-closed
- * escalation living in `FlowPowerSampleFreshnessClock`. Both sources now share
+ * escalation living in a separate Flow-source clock. Both sources now share
  * this one clock and the one silence policy behind it
  * (`lib/power/meterSilence.ts`): a silent Flow and a dead meter are the same
  * absence, answered the same way — one fail-closed shed pass, then the

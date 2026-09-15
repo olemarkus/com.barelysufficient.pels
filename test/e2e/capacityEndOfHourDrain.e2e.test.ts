@@ -347,7 +347,7 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     expect(soloShed()).toBe(true);
   });
 
-  it('replans from a held Flow sample during short silence as the end-of-hour drain falls', async () => {
+  it('replans on the next Flow report as the end-of-hour drain falls', async () => {
     const hourStartMs = Date.UTC(2026, 0, 15, 10, 0, 0);
     let nowMs = hourStartMs + 57 * MIN_MS + 50 * 1000;
     vi.setSystemTime(nowMs);
@@ -381,11 +381,6 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
         await flushDetached();
       }
     };
-    const flushFlowScheduler = async (): Promise<void> => {
-      await vi.advanceTimersByTimeAsync(1);
-      nowMs += 1;
-      await flushDetached(20);
-    };
     const soloShed = (): boolean => putSpy.mock.calls.some((call: unknown[]) => isOnoffShed('solo', call));
     const reportPowerUsage = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
 
@@ -393,12 +388,16 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     await flushDetached(20);
     expect(soloShed()).toBe(false);
 
+    // :58:00 — the ceiling is still above 8 kW, so the same draw is not shed.
     await stepTo(hourStartMs + 58 * MIN_MS);
-    await flushFlowScheduler();
+    await reportPowerUsage({ power: 8000 });
+    await flushDetached(20);
     expect(soloShed()).toBe(false);
 
+    // :58:10 — the drain has taken the ceiling below 8 kW: the Flow's next report
+    // replans and sheds.
     await stepTo(hourStartMs + 58 * MIN_MS + POLL_MS);
-    await flushFlowScheduler();
+    await reportPowerUsage({ power: 8000 });
     await drainUntil(() => soloShed());
     expect(soloShed()).toBe(true);
     expect(getSpy.mock.calls.some((call: unknown[]) => call[0] === 'manager/energy/live')).toBe(false);

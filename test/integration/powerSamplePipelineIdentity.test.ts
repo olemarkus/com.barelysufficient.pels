@@ -40,7 +40,7 @@ const buildPipeline = (
     request: vi.fn(() => {
         onRebuildRequest?.();
       void throttle.execute();
-      return { status: 'accepted' as const, keptIntent: { kind: 'signal' as const, reason: 'power_delta' as const } };
+      return 'queued' as const;
     }),
   } as unknown as PlanRebuildScheduler;
   const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(

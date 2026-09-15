@@ -64,6 +64,26 @@ export const sampleThrottle = (
   );
 };
 
+type PlanRebuildSchedulerDeps = ConstructorParameters<typeof PlanRebuildScheduler>[0];
+
+/**
+ * A scheduler for a spec that states only when intents are due and what runs
+ * them: real timers and the performance clock, and callbacks that report
+ * nothing unless the spec passes its own.
+ */
+export const createTestPlanRebuildScheduler = (
+  deps: Pick<PlanRebuildSchedulerDeps, 'resolveDueAtMs' | 'executeIntent'> & Partial<PlanRebuildSchedulerDeps>,
+): PlanRebuildScheduler => new PlanRebuildScheduler({
+  getNowMs: () => performance.now(),
+  setTimeoutFn: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeoutFn: (handle) => clearTimeout(handle),
+  onIntentDropped: () => undefined,
+  onPendingIntentReplaced: () => undefined,
+  onIntentCancelled: () => undefined,
+  onIntentError: () => undefined,
+  ...deps,
+});
+
 /** A capacity guard whose hard-cap incident is already open: the planner found nothing left to shed. */
 export const createGuardInShortfall = async (
   options: Parameters<typeof createTestCapacityGuard>[0] = { homeId: 'main' },
@@ -108,16 +128,11 @@ export const createTestPlanRebuildThrottle = async (params: {
       priming ? Promise.resolve(unchangedRebuildOutcome()) : params.rebuildPlanFromCache(trigger)
     ),
   });
-  const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
+  const scheduler: PlanRebuildScheduler = createTestPlanRebuildScheduler({
     getNowMs,
-    resolveDueAtMs: (intent, state) => throttle.dueAtMs(intent, state.nowMs),
-    executeIntent: (intent) => {
-      if (intent.kind !== 'signal' && intent.kind !== 'hardCap') return undefined;
-      return throttle.execute();
-    },
-    onIntentCancelled: (intent, reason) => {
-      if (intent.kind === 'signal' || intent.kind === 'hardCap') throttle.cancel(reason);
-    },
+    resolveDueAtMs: (intent, atMs) => throttle.dueAtMs(intent, atMs),
+    executeIntent: () => throttle.execute(),
+    onIntentCancelled: (_intent, reason) => throttle.cancel(reason),
     onIntentError: (_intent, error) => {
       params.logError?.(error);
     },
@@ -131,9 +146,17 @@ export const createTestPlanRebuildThrottle = async (params: {
   return { throttle, scheduler, recordReading };
 };
 
-/** A throttle for a context stub that never samples. */
+/** A throttle for a context stub that never samples: a sample reaching it is a spec bug. */
 export const createInertPlanRebuildThrottle = (): PlanRebuildThrottle => new PlanRebuildThrottle({
-  getScheduler: () => new PlanRebuildScheduler({ resolveDueAtMs: () => Number.POSITIVE_INFINITY, executeIntent: () => undefined }),
+  getScheduler: () => createTestPlanRebuildScheduler({
+    resolveDueAtMs: (_intent, atMs) => atMs,
+    executeIntent: async () => {
+      throw new Error('createInertPlanRebuildThrottle: this context stub was never meant to sample');
+    },
+    onIntentError: (_intent, error) => {
+      throw error;
+    },
+  }),
   getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
   getNowMs: Date.now,
   rebuildPlanFromCache: async () => unchangedRebuildOutcome(),

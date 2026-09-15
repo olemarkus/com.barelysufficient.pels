@@ -233,8 +233,7 @@ export class PlanRebuildThrottle {
       ? this.lastRebuild.atMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
       : Number.NEGATIVE_INFINITY;
     if (intent.kind === 'hardCap') return Math.max(nowMs, floorMs);
-    if (intent.kind === 'signal') return Math.max(this.queued === null ? nowMs : this.queued.dueMs, floorMs);
-    return Number.POSITIVE_INFINITY;
+    return Math.max(this.queued === null ? nowMs : this.queued.dueMs, floorMs);
   }
 
   private memory(): PlanRebuildThrottleMemory {
@@ -342,8 +341,7 @@ export class PlanRebuildThrottle {
 
     // The scheduler may execute this request synchronously — which takes it off
     // the queue — so everything below reads the staged record, not the field.
-    const requestResult = this.deps.getScheduler().request({ kind: intentKind, reason: trigger });
-    if (requestResult.status === 'dropped') {
+    if (this.deps.getScheduler().request({ kind: intentKind, reason: trigger }) === 'dropped') {
       this.queued = queuedBefore;
       this.noopStreak = noopStreakBefore;
       this.holdoff = holdoffBefore;

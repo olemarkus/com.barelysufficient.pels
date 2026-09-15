@@ -104,7 +104,6 @@ const buildContext = (): AppContext => {
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
-    requestFlowPlanRebuild: vi.fn(),
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),

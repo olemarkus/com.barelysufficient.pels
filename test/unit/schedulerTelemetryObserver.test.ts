@@ -24,23 +24,23 @@ const buildRig = (overrides: { getNowMs?: () => number } = {}) => {
   return { observer, child, childLogger };
 };
 
-const FLOW_CARD: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
+const SIGNAL: RebuildIntent = { kind: 'signal', reason: 'power_delta' };
 const HARD_CAP: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
 
 describe('SchedulerTelemetryObserver', () => {
   it('emits rate-limited structured plan rebuild scheduler replacement events', () => {
     const { observer, child, childLogger } = buildRig();
 
-    observer.onPendingIntentReplaced(FLOW_CARD, HARD_CAP);
-    observer.onPendingIntentReplaced(FLOW_CARD, HARD_CAP);
+    observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
+    observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
 
     expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_replaced',
       homeId: 'main',
-      previousKind: 'flow',
-      previousReason: 'flow_card',
+      previousKind: 'signal',
+      previousReason: 'power_delta',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -50,14 +50,14 @@ describe('SchedulerTelemetryObserver', () => {
   it('does not rate-limit distinct plan rebuild scheduler replacement keys', () => {
     const { observer, childLogger } = buildRig();
 
-    observer.onPendingIntentReplaced(FLOW_CARD, HARD_CAP);
-    observer.onPendingIntentReplaced({ kind: 'flow', reason: 'settings' }, HARD_CAP);
+    observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
+    observer.onPendingIntentReplaced({ kind: 'signal', reason: 'headroom_tight' }, HARD_CAP);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
       event: 'plan_rebuild_scheduler_intent_replaced',
-      previousKind: 'flow',
-      previousReason: 'settings',
+      previousKind: 'signal',
+      previousReason: 'headroom_tight',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -67,15 +67,15 @@ describe('SchedulerTelemetryObserver', () => {
   it('emits rate-limited structured plan rebuild scheduler dropped events', () => {
     const { observer, childLogger } = buildRig();
 
-    observer.onIntentDropped(FLOW_CARD, HARD_CAP);
-    observer.onIntentDropped(FLOW_CARD, HARD_CAP);
+    observer.onIntentDropped(SIGNAL, HARD_CAP);
+    observer.onIntentDropped(SIGNAL, HARD_CAP);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_dropped',
       homeId: 'main',
-      droppedKind: 'flow',
-      droppedReason: 'flow_card',
+      droppedKind: 'signal',
+      droppedReason: 'power_delta',
       keptKind: 'hardCap',
       keptReason: 'shortfall',
       debugTopic: 'plan',
@@ -87,14 +87,29 @@ describe('SchedulerTelemetryObserver', () => {
     const { observer, childLogger } = buildRig({ getNowMs });
     const map = observer['lastEmittedAtMsByKey'];
 
-    observer.onIntentDropped(FLOW_CARD, HARD_CAP);
+    observer.onIntentDropped(SIGNAL, HARD_CAP);
     expect(map.size).toBe(1);
 
-    observer.onIntentDropped(FLOW_CARD, HARD_CAP);
+    observer.onIntentDropped(SIGNAL, HARD_CAP);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(map.size).toBe(1);
-    expect(map.get('dropped:flow:flow_card:hardCap:shortfall')).toBe(60_000);
+    expect(map.get('dropped:signal:power_delta:hardCap:shortfall')).toBe(60_000);
+  });
+
+  it('releases the rebuild the throttle queued for a cancelled intent', () => {
+    const cancelQueuedPowerRebuild = vi.fn();
+    const observer = new SchedulerTelemetryObserver({
+      homeId: 'main',
+      getStructuredLogger: () => undefined,
+      isDebugTopicEnabled: () => false,
+      getNowMs: () => 0,
+      cancelQueuedPowerRebuild,
+    });
+
+    observer.onIntentCancelled(SIGNAL, 'app_uninit');
+
+    expect(cancelQueuedPowerRebuild).toHaveBeenCalledExactlyOnceWith('app_uninit');
   });
 
   it('names the home on a failed rebuild, so two homes are tellable apart', () => {

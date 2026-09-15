@@ -16,11 +16,9 @@ describe('describePlanRebuildTrigger', () => {
   // asserted literally because they are the searchable strings in production logs
   // (`reasonCode`, the `plan_rebuild(...)` span) — closing the SET must not move
   // what an operator greps for.
-  it('composes the settings and flow-card labels the log has always carried', () => {
+  it('composes the settings label the log has always carried', () => {
     expect(describePlanRebuildTrigger('settings', 'capacity_priorities'))
       .toBe('settings:capacity_priorities');
-    expect(describePlanRebuildTrigger('flow_card', 'expected_power'))
-      .toBe('flow_card:expected_power');
   });
 
   it('keeps the price label a sentence rather than a path', () => {

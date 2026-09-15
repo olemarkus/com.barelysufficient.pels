@@ -177,28 +177,6 @@ export function updateStateOfChargeFromCarObservation(params: {
   return hasCarStateOfChargeChanged(previous, snapshot.stateOfCharge, carId);
 }
 
-/**
- * Would a report at `reportedAt` give this charger a level it does not have?
- *
- * The producer answers its own question. The app-wiring seam used to clone the
- * snapshot, run the mutator on the copy and read the result back — simulating
- * the producer in order to predict it — which is a consumer holding a private
- * model of resolution that the producer is free to change underneath it.
- */
-export function wouldReportRestoreStateOfChargeLevel(
-  stateOfCharge: DeviceStateOfChargeSnapshot | undefined,
-  reportedAt: number,
-): boolean {
-  if (!stateOfCharge || stateOfCharge.level.kind === 'known') return false;
-  return resolveStateOfChargeLevel({
-    percent: stateOfCharge.report.percent,
-    observedAtMs: Math.max(stateOfCharge.report.observedAtMs ?? 0, reportedAt),
-    sessionStartedAtMs: stateOfCharge.sessionStartedAtMs,
-    invalidatedAtMs: stateOfCharge.invalidatedAtMs,
-    source: stateOfCharge.source,
-  }).kind === 'known';
-}
-
 export function updateStateOfChargeObservationFreshness(params: {
   snapshot: TransportDeviceSnapshot;
   reportedAt: number;

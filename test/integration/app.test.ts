@@ -827,12 +827,12 @@ describe('MyApp initialization', () => {
     await Promise.all(warmUp);
     const pending = sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9700, capacityPaceKw: 9 });
 
-    expect(app['planRebuildScheduler'].now().hasTimer).toBe(true);
+    expect(app.timers.has('planRebuild')).toBe(true);
 
     await app.onUninit();
 
     await expect(pending).resolves.toBe('app_uninit');
-    expect(app['planRebuildScheduler'].now().hasTimer).toBe(false);
+    expect(app.timers.has('planRebuild')).toBe(false);
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
@@ -3320,7 +3320,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: false,
       refreshSnapshot: false,
-      rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
     expect(app['flowReportedCapabilities']).toEqual({
@@ -3330,7 +3329,7 @@ describe('periodic snapshot refresh scheduling', () => {
     });
   });
 
-  it('requests snapshot refresh and plan rebuild when flow-backed control state changes', async () => {
+  it('requests snapshot refresh when flow-backed control state changes', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {};
@@ -3347,11 +3346,10 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: true,
       freshnessAdvanced: true,
       refreshSnapshot: true,
-      rebuildPlan: true,
     });
   });
 
-  it('requests snapshot refresh without plan rebuild when flow-backed EV state of charge changes', async () => {
+  it('requests snapshot refresh when flow-backed EV state of charge changes', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {
@@ -3372,182 +3370,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: true,
       freshnessAdvanced: true,
       refreshSnapshot: true,
-      rebuildPlan: false,
-    });
-  });
-
-  it.each([
-    { name: 'below', previousPercent: 42, nextPercent: 39 },
-    { name: 'above or equal', previousPercent: 39, nextPercent: 40 },
-  ])(
-    'requests plan rebuild when flow-backed EV state of charge changes for EV boost ($name threshold case)',
-    async ({ previousPercent, nextPercent }) => {
-      const app = createApp();
-      const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-      app.evBoostSettings = {
-        'ev-1': { enabled: true, boostBelowPercent: 40 },
-      };
-      app.deviceManager = deviceTransportDouble({
-        getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
-          {
-            available: true,
-            id: 'ev-1',
-            expectedPowerKw: 1, expectedPowerSource: 'default',
-            name: 'Garage Charger',
-            deviceClass: 'evcharger',
-            flowBacked: true,
-            flowBackedCapabilityIds: ['measure_battery'],
-            targets: [],
-            stateOfCharge: stateOfChargeFixture({ percent: previousPercent, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
-          },
-        ],
-      });
-      app['flowReportedCapabilities'] = {
-        'ev-1': {
-          measure_battery: {
-            value: previousPercent,
-            reportedAt: Date.parse('2026-03-20T09:00:00Z'),
-            source: 'flow',
-          },
-        },
-      };
-
-      const result = app.reportFlowBackedCapability({
-        deviceId: 'ev-1',
-        capabilityId: 'measure_battery',
-        value: nextPercent,
-        reportedAt,
-      });
-
-      expect(result).toEqual({
-        kind: 'state_changed',
-        valueChanged: true,
-        freshnessAdvanced: true,
-        refreshSnapshot: true,
-        rebuildPlan: true,
-      });
-    },
-  );
-
-  it('does not request plan rebuild when changed EV state of charge is not flow-backed for the snapshot', async () => {
-    const app = createApp();
-    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    app.evBoostSettings = {
-      'ev-1': { enabled: true, boostBelowPercent: 40 },
-    };
-    app.deviceManager = deviceTransportDouble({
-      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
-        {
-          available: true,
-          id: 'ev-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Garage Charger',
-          deviceClass: 'evcharger',
-          flowBacked: true,
-          flowBackedCapabilityIds: ['evcharger_charging'],
-          targets: [],
-          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z'), capabilityId: 'measure_battery' }),
-        },
-      ],
-    });
-    app['flowReportedCapabilities'] = {
-      'ev-1': {
-        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
-      },
-    };
-
-    const result = app.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 39,
-      reportedAt,
-    });
-
-    expect(result).toEqual({
-      kind: 'state_changed',
-      valueChanged: true,
-      freshnessAdvanced: true,
-      refreshSnapshot: true,
-      rebuildPlan: false,
-    });
-  });
-
-  it('does not request plan rebuild when EV state of charge changes without EV boost config', async () => {
-    const app = createApp();
-    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    app.deviceManager = deviceTransportDouble({
-      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
-        {
-          available: true,
-          id: 'ev-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Garage Charger',
-          deviceClass: 'evcharger',
-          targets: [],
-          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
-        },
-      ],
-    });
-    app['flowReportedCapabilities'] = {
-      'ev-1': {
-        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
-      },
-    };
-
-    const result = app.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 39,
-      reportedAt,
-    });
-
-    expect(result).toEqual({
-      kind: 'state_changed',
-      valueChanged: true,
-      freshnessAdvanced: true,
-      refreshSnapshot: true,
-      rebuildPlan: false,
-    });
-  });
-
-  it('does not request plan rebuild for non-EV battery reports', async () => {
-    const app = createApp();
-    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    app.evBoostSettings = {
-      'battery-1': { enabled: true, boostBelowPercent: 40 },
-    };
-    app.deviceManager = deviceTransportDouble({
-      getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
-        {
-          available: true,
-          id: 'battery-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Battery Sensor',
-          deviceClass: 'sensor',
-          targets: [],
-          stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-20T09:00:00Z') }),
-        },
-      ],
-    });
-    app['flowReportedCapabilities'] = {
-      'battery-1': {
-        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
-      },
-    };
-
-    const result = app.reportFlowBackedCapability({
-      deviceId: 'battery-1',
-      capabilityId: 'measure_battery',
-      value: 39,
-      reportedAt,
-    });
-
-    expect(result).toEqual({
-      kind: 'state_changed',
-      valueChanged: true,
-      freshnessAdvanced: true,
-      refreshSnapshot: true,
-      rebuildPlan: false,
     });
   });
 
@@ -3593,7 +3415,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: false,
     });
     expect(settingsSetSpy).toHaveBeenCalledWith(
       'flow_reported_device_capabilities',
@@ -3605,13 +3426,10 @@ describe('periodic snapshot refresh scheduling', () => {
     );
   });
 
-  it('requests plan rebuild when same-value EV state of charge freshness can become fresh for EV boost', async () => {
+  it('makes a same-value EV state of charge report the snapshot\'s known level again', async () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    app.evBoostSettings = {
-      'ev-1': { enabled: true, boostBelowPercent: 40 },
-    };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       available: true,
       id: 'ev-1',
@@ -3644,7 +3462,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: true,
     });
     expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
       report: { percent: 32, observedAtMs: nextReportedAt },
@@ -3652,13 +3469,10 @@ describe('periodic snapshot refresh scheduling', () => {
     }));
   });
 
-  it('does not request same-value EV state of charge rebuild when native snapshot freshness cannot be advanced', async () => {
+  it('leaves native snapshot state of charge alone on a same-value report it does not back', async () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    app.evBoostSettings = {
-      'ev-1': { enabled: true, boostBelowPercent: 40 },
-    };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
       available: true,
       id: 'ev-1',
@@ -3691,7 +3505,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: false,
     });
     expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
       report: { percent: 32, observedAtMs: previousReportedAt },
@@ -3736,7 +3549,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
     expect(app['flowReportedCapabilities']).toEqual({
@@ -3788,14 +3600,12 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('dev-1', 'onoff');
   });
 
-  it('dispatches an already-fresh EV SoC heartbeat without asking for a rebuild', async () => {
+  it('dispatches an already-fresh EV SoC heartbeat', async () => {
     // This used to assert the opposite — that the EV-SoC freshness branch must NOT
-    // dispatch — on the grounds that doing so would re-advertise measure_battery and
-    // undo the work `shouldRebuildPlanForFlowEvSocReport` skips for a fresh heartbeat.
+    // dispatch — on the grounds that doing so would re-advertise measure_battery.
     // The dispatch does not do that: the observed-state subscribers are the projection
     // and `planObservedStateSubscription`, and no listener there requests a rebuild
-    // (an observation never rebuilds the plan). The rebuild assertion below is what
-    // actually pins that invariant, and it still holds.
+    // (an observation never rebuilds the plan).
     //
     // Not dispatching, meanwhile, became a defect at stage 6 of the snapshot
     // decomposition: the plan input reads `stateOfCharge` off the observer's record
@@ -3818,7 +3628,6 @@ describe('periodic snapshot refresh scheduling', () => {
       stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: initialReportedAt }),
     }];
     const dispatchObservedStateForDevice = vi.fn();
-    app.evBoostSettings = { 'ev-1': { enabled: true, boostBelowPercent: 40 } };
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
       dispatchObservedStateForDevice,
@@ -3828,8 +3637,6 @@ describe('periodic snapshot refresh scheduling', () => {
         measure_battery: { value: 80, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
-    const rebuildSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
-
     app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
@@ -3838,10 +3645,6 @@ describe('periodic snapshot refresh scheduling', () => {
     });
 
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('ev-1', 'measure_battery');
-    // The invariant that matters, and the falsifiable one: a fresh heartbeat asks
-    // the scheduler for nothing at all. Dispatching the observation does not
-    // change that.
-    expect(rebuildSpy).not.toHaveBeenCalled();
   });
 
   it('treats resumable-only flow heartbeats as freshness updates', async () => {
@@ -3882,7 +3685,6 @@ describe('periodic snapshot refresh scheduling', () => {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
     expect(app['flowReportedCapabilities']).toEqual({

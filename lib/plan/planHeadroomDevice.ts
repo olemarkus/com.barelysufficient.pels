@@ -86,7 +86,6 @@ export type HeadroomForDeviceDecision = {
   clearRemainingSec: number | null;
   dropFromKw: number | null;
   dropToKw: number | null;
-  stateChanged: boolean;
 };
 
 export const evaluateHeadroomForDevice = (
@@ -96,7 +95,7 @@ export const evaluateHeadroomForDevice = (
   diagnostics: DeviceDiagnosticsRecorder | undefined,
 ): HeadroomForDeviceDecision => {
   const { devices, device, headroom, requiredKw } = query;
-  const stateChanged = syncHeadroomCardSnapshot(state, devices, nowTs, undefined, diagnostics);
+  syncHeadroomCardSnapshot(state, devices, nowTs, undefined, diagnostics);
   const penaltyInfo = syncActivationPenaltyState(state, device.id, nowTs, device);
   emitActivationTransition(diagnostics, device.name, penaltyInfo.transition);
 
@@ -121,6 +120,5 @@ export const evaluateHeadroomForDevice = (
     clearRemainingSec,
     dropFromKw: cooldown?.dropFromKw ?? null,
     dropToKw: cooldown?.dropToKw ?? null,
-    stateChanged: stateChanged || penaltyInfo.stateChanged,
   };
 };

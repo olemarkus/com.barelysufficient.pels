@@ -64,7 +64,6 @@ export type ActivationBackoffObservation = {
 export type ActivationPenaltyInfo = {
   penaltyLevel: number;
   attemptOpen: boolean;
-  stateChanged: boolean;
   transition: DeviceDiagnosticsBackoffTransition | null;
 };
 
@@ -206,14 +205,13 @@ export function syncActivationPenaltyState(
   const penaltyLevel = getPenaltyLevel(state, deviceId);
 
   if (!attempt) {
-    return { penaltyLevel, attemptOpen: false, stateChanged: false, transition: null };
+    return { penaltyLevel, attemptOpen: false, transition: null };
   }
 
   if (shouldCloseAttemptAsInactive(observation, attempt.startedMs, nowTs)) {
     return {
       penaltyLevel,
       attemptOpen: false,
-      stateChanged: true,
       transition: closeAttemptWithTransition(state, deviceId, nowTs, 'attempt_closed_inactive'),
     };
   }
@@ -236,13 +234,12 @@ export function syncActivationPenaltyState(
     // stayed safe through the window.
     closeAttempt(state, deviceId);
     if (!attempt.cleanWholeHomeSampleSeen || penaltyLevel === 0) {
-      return { penaltyLevel, attemptOpen: false, stateChanged: true, transition: null };
+      return { penaltyLevel, attemptOpen: false, transition: null };
     }
     clearPenalty(state, deviceId);
     return {
       penaltyLevel: 0,
       attemptOpen: false,
-      stateChanged: true,
       transition: {
         kind: 'attempt_closed_by_admission',
         deviceId,
@@ -255,7 +252,7 @@ export function syncActivationPenaltyState(
     };
   }
 
-  return { penaltyLevel, attemptOpen: true, stateChanged: false, transition: null };
+  return { penaltyLevel, attemptOpen: true, transition: null };
 }
 
 /**

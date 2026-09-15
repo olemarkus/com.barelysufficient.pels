@@ -2,10 +2,37 @@ import { PlanRebuildScheduler, type RebuildIntent } from '../../lib/plan/rebuild
 
 type TimerHandle = { id: number };
 
-const createHarness = () => {
+const signal: RebuildIntent = { kind: 'signal', reason: 'headroom_tight' };
+const laterSignal: RebuildIntent = { kind: 'signal', reason: 'power_delta' };
+const hardCap: RebuildIntent = { kind: 'hardCap', reason: 'hard_cap_breach' };
+
+const createDeferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+};
+
+const flushMicrotasks = async (): Promise<void> => {
+  for (let i = 0; i < 4; i += 1) await Promise.resolve();
+};
+
+/**
+ * A scheduler on a hand-driven clock and timer table. `dueAtByKind` stands in
+ * for the throttle: a spec sets the absolute time each kind may run from, and
+ * anything already past runs at once.
+ */
+const createHarness = (execute: (intent: RebuildIntent) => Promise<void> = async () => undefined) => {
   let nowMs = 0;
   let nextId = 1;
   const timers = new Map<number, { dueMs: number; callback: () => void }>();
+  const dueAtByKind: Record<RebuildIntent['kind'], number> = { hardCap: 0, signal: 0 };
+  const executed: RebuildIntent[] = [];
+  const dropped: Array<{ dropped: RebuildIntent; kept: RebuildIntent }> = [];
+  const replaced: Array<{ previous: RebuildIntent; next: RebuildIntent }> = [];
+  const cancelled: Array<{ intent: RebuildIntent; reason: string }> = [];
+  const errors: Array<{ intent: RebuildIntent; error: Error }> = [];
 
   const scheduler = new PlanRebuildScheduler({
     getNowMs: () => nowMs,
@@ -17,279 +44,133 @@ const createHarness = () => {
     clearTimeoutFn: (handle) => {
       timers.delete((handle as unknown as TimerHandle).id);
     },
-    resolveDueAtMs: (intent, state) => {
-      if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
-      if (intent.kind === 'signal') return state.nowMs;
-      if (intent.kind === 'hardCap') return state.nowMs;
-      return Number.POSITIVE_INFINITY;
-    },
+    resolveDueAtMs: (intent, atMs) => Math.max(atMs, dueAtByKind[intent.kind]),
     executeIntent: async (intent) => {
       executed.push(intent);
+      await execute(intent);
     },
-    shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    onIntentDropped: (dropped, kept) => droppedEvents.push({ dropped, kept }),
-    onPendingIntentReplaced: (previous, next) => replacedEvents.push({ previous, next }),
-    onIntentCancelled: (intent, reason) => cancelledEvents.push({ intent, reason }),
+    onIntentDropped: (droppedIntent, kept) => dropped.push({ dropped: droppedIntent, kept }),
+    onPendingIntentReplaced: (previous, next) => replaced.push({ previous, next }),
+    onIntentCancelled: (intent, reason) => cancelled.push({ intent, reason }),
+    onIntentError: (intent, error) => errors.push({ intent, error }),
   });
-
-  const executed: RebuildIntent[] = [];
-  const droppedEvents: Array<{ dropped: RebuildIntent; kept: RebuildIntent }> = [];
-  const replacedEvents: Array<{ previous: RebuildIntent; next: RebuildIntent }> = [];
-  const cancelledEvents: Array<{ intent: RebuildIntent; reason: string }> = [];
 
   const advance = async (deltaMs: number): Promise<void> => {
     nowMs += deltaMs;
-    while (true) {
-      const nextTimerEntry = [...timers.entries()]
+    for (;;) {
+      const due = [...timers.entries()]
         .sort((left, right) => left[1].dueMs - right[1].dueMs)
         .find(([, timer]) => timer.dueMs <= nowMs);
-      if (!nextTimerEntry) break;
-      timers.delete(nextTimerEntry[0]);
-      nextTimerEntry[1].callback();
-      await Promise.resolve();
-      await Promise.resolve();
+      if (!due) break;
+      timers.delete(due[0]);
+      due[1].callback();
+      await flushMicrotasks();
     }
   };
 
-  return {
-    scheduler,
-    executed,
-    droppedEvents,
-    replacedEvents,
-    cancelledEvents,
-    timers,
-    advance,
-    getNowMs: () => nowMs,
-  };
-};
-
-const createDeferred = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((nextResolve) => {
-    resolve = nextResolve;
-  });
-  return { promise, resolve };
+  return { scheduler, timers, dueAtByKind, executed, dropped, replaced, cancelled, errors, advance };
 };
 
 describe('PlanRebuildScheduler', () => {
-  it('coalesces flow and signal requests down to the highest-priority reason', async () => {
+  it('runs an intent that is already due at once, arming no timer', () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
+    harness.scheduler.request(signal);
 
-    expect(harness.executed).toEqual([{ kind: 'signal', reason: 'headroom_tight' }]);
-    expect(harness.replacedEvents).toEqual([{
-      previous: { kind: 'flow', reason: 'flow_card', detail: 'first' },
-      next: { kind: 'signal', reason: 'headroom_tight' },
-    }]);
-    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
-    expect(harness.droppedEvents).toEqual([]);
+    expect(harness.executed).toEqual([signal]);
     expect(harness.timers.size).toBe(0);
-
-    await harness.advance(100);
-    expect(harness.executed).toEqual([{ kind: 'signal', reason: 'headroom_tight' }]);
   });
 
-  it('clears a lower-priority timer when an immediate higher-priority intent replaces it', () => {
+  it('replaces a pending signal with a hard-cap breach and runs the breach instead', () => {
     const harness = createHarness();
+    harness.dueAtByKind.signal = 2_000;
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
+    harness.scheduler.request(signal);
     expect(harness.timers.size).toBe(1);
 
-    harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    expect(harness.timers.size).toBe(0);
+    harness.scheduler.request(hardCap);
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
+    expect(harness.replaced).toEqual([{ previous: signal, next: hardCap }]);
+    expect(harness.executed).toEqual([hardCap]);
     expect(harness.timers.size).toBe(0);
-    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
   });
 
-  it('coalesces within a kind and keeps the latest reason', async () => {
+  it('drops a signal that arrives behind a pending hard-cap breach', () => {
     const harness = createHarness();
+    harness.dueAtByKind.hardCap = 15_000;
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'latest' });
+    harness.scheduler.request(hardCap);
+    harness.scheduler.request(signal);
 
-    expect(harness.replacedEvents).toEqual([{
-      previous: { kind: 'flow', reason: 'flow_card', detail: 'first' },
-      next: { kind: 'flow', reason: 'flow_card', detail: 'latest' },
-    }]);
+    expect(harness.dropped).toEqual([{ dropped: signal, kept: hardCap }]);
+    expect(harness.executed).toEqual([]);
+  });
 
-    await harness.advance(30_000);
+  it('keeps the latest reason within a kind and runs it when due', async () => {
+    const harness = createHarness();
+    harness.dueAtByKind.signal = 2_000;
 
-    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'latest' }]);
+    harness.scheduler.request(signal);
+    harness.scheduler.request(laterSignal);
+    expect(harness.replaced).toEqual([{ previous: signal, next: laterSignal }]);
+
+    await harness.advance(2_000);
+
+    expect(harness.executed).toEqual([laterSignal]);
+  });
+
+  it('asks for the due time again when its timer fires, and waits if it moved', async () => {
+    const harness = createHarness();
+    harness.dueAtByKind.signal = 2_000;
+
+    harness.scheduler.request(signal);
+    // The throttle moved the due time on (a floor it learned meanwhile), so the
+    // fire re-arms rather than running early.
+    harness.dueAtByKind.signal = 4_000;
+    await harness.advance(2_000);
+    expect(harness.executed).toEqual([]);
+    expect(harness.timers.size).toBe(1);
+
+    await harness.advance(2_000);
+    expect(harness.executed).toEqual([signal]);
+  });
+
+  it('holds an intent behind an active rebuild and runs it once that ends', async () => {
+    const deferred = createDeferred();
+    const harness = createHarness((intent) => (intent === hardCap ? deferred.promise : Promise.resolve()));
+
+    harness.scheduler.request(hardCap);
+    harness.scheduler.request(signal);
+    expect(harness.executed).toEqual([hardCap]);
+    expect(harness.timers.size).toBe(0);
+
+    deferred.resolve();
+    await flushMicrotasks();
+
+    expect(harness.executed).toEqual([hardCap, signal]);
+  });
+
+  it('reports a rebuild that threw and keeps scheduling', async () => {
+    const harness = createHarness((intent) => (
+      intent === hardCap ? Promise.reject(new Error('boom')) : Promise.resolve()
+    ));
+
+    harness.scheduler.request(hardCap);
+    await flushMicrotasks();
+    harness.scheduler.request(signal);
+
+    expect(harness.errors).toEqual([{ intent: hardCap, error: new Error('boom') }]);
+    expect(harness.executed).toEqual([hardCap, signal]);
   });
 
   it('cancels the pending timer and reports the cancelled intent', () => {
     const harness = createHarness();
+    harness.dueAtByKind.signal = 2_000;
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    expect(harness.timers.size).toBe(1);
-
+    harness.scheduler.request(signal);
     harness.scheduler.cancelAll('app_uninit');
 
     expect(harness.timers.size).toBe(0);
-    expect(harness.cancelledEvents).toEqual([{
-      intent: { kind: 'flow', reason: 'flow_card', detail: 'first' },
-      reason: 'app_uninit',
-    }]);
-  });
-
-  it('tracks time from the injected monotonic clock rather than wall-clock dates', async () => {
-    const harness = createHarness();
-    const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => 123456789);
-
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    expect(harness.scheduler.now().pendingDueMs).toBe(harness.getNowMs() + 30_000);
-
-    await harness.advance(30_000);
-
-    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
-    dateNowSpy.mockRestore();
-  });
-
-  it('queues a deferred flow intent behind an active rebuild', async () => {
-    const deferred = createDeferred();
-    let nowMs = 0;
-    let nextId = 1;
-    const timers = new Map<number, { dueMs: number; callback: () => void }>();
-    const executed: RebuildIntent[] = [];
-    const scheduler = new PlanRebuildScheduler({
-      getNowMs: () => nowMs,
-      setTimeoutFn: (callback, delayMs) => {
-        const handle = { id: nextId++ };
-        timers.set(handle.id, { dueMs: nowMs + delayMs, callback });
-        return handle as TimerHandle & ReturnType<typeof setTimeout>;
-      },
-      clearTimeoutFn: (handle) => {
-        timers.delete((handle as unknown as TimerHandle).id);
-      },
-      resolveDueAtMs: (intent, state) => {
-        if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
-        return state.nowMs;
-      },
-      executeIntent: async (intent) => {
-        executed.push(intent);
-        if (intent.kind === 'hardCap') {
-          await deferred.promise;
-        }
-      },
-      shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    });
-
-    scheduler.request({ kind: 'hardCap', reason: 'hard_cap_breach' });
-    expect(executed).toEqual([{ kind: 'hardCap', reason: 'hard_cap_breach' }]);
-
-    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-
-    expect(scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    expect(timers.size).toBe(0);
-
-    deferred.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(timers.size).toBe(1);
-    const [timer] = [...timers.values()];
-    timers.clear();
-    nowMs = 30_000;
-    timer.callback();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(executed).toEqual([
-      { kind: 'hardCap', reason: 'hard_cap_breach' },
-      { kind: 'flow', reason: 'flow_card', detail: 'first' },
-    ]);
-  });
-
-  it('queues a higher-priority intent behind an active lower-priority one without running concurrently', async () => {
-    const deferred = createDeferred();
-    const nowMs = 0;
-    let nextId = 1;
-    const timers = new Map<number, { dueMs: number; callback: () => void }>();
-    const executed: RebuildIntent[] = [];
-    const scheduler = new PlanRebuildScheduler({
-      getNowMs: () => nowMs,
-      setTimeoutFn: (callback, delayMs) => {
-        const handle = { id: nextId++ };
-        timers.set(handle.id, { dueMs: nowMs + delayMs, callback });
-        return handle as TimerHandle & ReturnType<typeof setTimeout>;
-      },
-      clearTimeoutFn: (handle) => {
-        timers.delete((handle as unknown as TimerHandle).id);
-      },
-      resolveDueAtMs: (_intent, state) => state.nowMs,
-      executeIntent: async (intent) => {
-        executed.push(intent);
-        if (intent.kind === 'flow') {
-          await deferred.promise;
-        }
-      },
-      shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    });
-
-    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    expect(timers.size).toBe(1);
-
-    const timer = [...timers.values()][0];
-    timers.clear();
-    timer.callback();
-    await Promise.resolve();
-
-    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
-    expect(scheduler.now().activeIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-
-    scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
-    expect(scheduler.now().pendingIntent).toEqual({ kind: 'signal', reason: 'headroom_tight' });
-    expect(timers.size).toBe(0);
-
-    deferred.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(executed).toEqual([
-      { kind: 'flow', reason: 'flow_card', detail: 'first' },
-      { kind: 'signal', reason: 'headroom_tight' },
-    ]);
-  });
-
-  it('clears a pending intent when its recomputed due time becomes non-finite', async () => {
-    let allowFlow = true;
-    const harness = createHarness();
-    const scheduler = new PlanRebuildScheduler({
-      getNowMs: harness.getNowMs,
-      setTimeoutFn: (callback, delayMs) => {
-        const handle = { id: harness.timers.size + 1 };
-        harness.timers.set(handle.id, { dueMs: harness.getNowMs() + delayMs, callback });
-        return handle as TimerHandle & ReturnType<typeof setTimeout>;
-      },
-      clearTimeoutFn: (handle) => {
-        harness.timers.delete((handle as unknown as TimerHandle).id);
-      },
-      resolveDueAtMs: (_intent, state) => (allowFlow ? state.nowMs + 100 : Number.POSITIVE_INFINITY),
-      executeIntent: async (intent) => {
-        harness.executed.push(intent);
-      },
-    });
-
-    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
-    expect(harness.timers.size).toBe(1);
-
-    allowFlow = false;
-    await harness.advance(100);
-
-    expect(harness.executed).toEqual([]);
-    expect(scheduler.now().pendingIntent).toBeNull();
-    expect(scheduler.now().pendingDueMs).toBeNull();
+    expect(harness.cancelled).toEqual([{ intent: signal, reason: 'app_uninit' }]);
   });
 });

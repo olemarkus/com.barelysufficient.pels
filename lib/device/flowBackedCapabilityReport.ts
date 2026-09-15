@@ -11,5 +11,4 @@ export type FlowBackedCapabilityReportOutcome = {
   valueChanged: boolean;
   freshnessAdvanced: boolean;
   refreshSnapshot: boolean;
-  rebuildPlan: boolean;
 };

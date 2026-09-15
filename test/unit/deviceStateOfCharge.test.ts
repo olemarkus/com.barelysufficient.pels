@@ -3,7 +3,6 @@ import {
   resolveStateOfChargeSnapshot,
   updateStateOfChargeFromCarObservation,
   updateStateOfChargeObservationFreshness,
-  wouldReportRestoreStateOfChargeLevel,
 } from '../../lib/device/transport/stateOfCharge';
 import { clearCarStateOfCharge } from '../../lib/device/transport/carStateOfChargeWrite';
 
@@ -372,56 +371,33 @@ describe('car-sourced state of charge', () => {
   });
 });
 
-describe('wouldReportRestoreStateOfChargeLevel', () => {
-  // The predictor must answer with the SAME rules the mutator it predicts uses.
-  // `updateStateOfChargeObservationFreshness` has always re-resolved the level
-  // with `previous.source`, so a predictor that assumed charger semantics
-  // disagreed with it for a car-sourced reading. Production never noticed because
-  // `shouldRebuildPlanForFlowEvSocReport` filters car-sourced chargers out before
-  // asking (`lib/device/flowBackedDeviceState.ts`) — an unstated guard in another
-  // file, which is exactly why this is pinned here.
-  // `reportedAt` deliberately lands BEFORE `sessionStartedAtMs`: that is the only
-  // window where the two rule sets disagree. A later report pushes the stamp past
-  // the anchor and both answer "restored", which is why an earlier version of this
-  // test proved nothing.
-  it('predicts a car-sourced level by the car rules, not the charger rules', () => {
+describe('updateStateOfChargeObservationFreshness', () => {
+  const refreshLevel = (
+    stateOfCharge: ReturnType<typeof stateOfChargeFixture>,
+    reportedAt: number,
+  ): string | undefined => {
+    const snapshot = { stateOfCharge } as unknown as
+      Parameters<typeof updateStateOfChargeObservationFreshness>[0]['snapshot'];
+    updateStateOfChargeObservationFreshness({ snapshot, reportedAt });
+    return snapshot.stateOfCharge?.level.kind;
+  };
+
+  // The level is re-resolved with the reading's own source. `reportedAt`
+  // deliberately lands BEFORE `sessionStartedAtMs`: that is the only window where
+  // the car and charger rules disagree. A later report pushes the stamp past the
+  // anchor and both answer "restored".
+  it('restores a car-sourced level by the car rules, not the charger rules', () => {
     const session = { percent: 63, observedAtMs: 1_000, sessionStartedAtMs: 4_000 } as const;
-    const carReading = stateOfChargeFixture({
+    const carReading = () => stateOfChargeFixture({
       ...session, carId: 'car-1', unavailable: 'not_reported',
     });
-    const chargerReading = stateOfChargeFixture({ ...session, unavailable: 'not_reported' });
+    const chargerReading = () => stateOfChargeFixture({ ...session, unavailable: 'not_reported' });
 
     // A car's reading survives the replug, so a report inside the window restores
     // it; the charger's own pre-session reading identifies no particular car and
     // stays retired until a report post-dates the anchor.
-    expect(wouldReportRestoreStateOfChargeLevel(carReading, 3_000)).toBe(true);
-    expect(wouldReportRestoreStateOfChargeLevel(chargerReading, 3_000)).toBe(false);
-    expect(wouldReportRestoreStateOfChargeLevel(chargerReading, 5_000)).toBe(true);
-  });
-
-  // The predictor is only worth anything if it agrees with the mutator. Asserted
-  // rather than reasoned about, because the two live in different functions and
-  // only one of them used to be told the provenance.
-  it('agrees with the mutator it predicts', () => {
-    for (const carId of [undefined, 'car-1']) {
-      for (const reportedAt of [3_000, 5_000]) {
-        const stateOfCharge = stateOfChargeFixture({
-          percent: 63, observedAtMs: 1_000, sessionStartedAtMs: 4_000, carId, unavailable: 'not_reported',
-        });
-        const predicted = wouldReportRestoreStateOfChargeLevel(stateOfCharge, reportedAt);
-        const snapshot = { stateOfCharge } as unknown as
-          Parameters<typeof updateStateOfChargeObservationFreshness>[0]['snapshot'];
-        updateStateOfChargeObservationFreshness({ snapshot, reportedAt });
-        expect(snapshot.stateOfCharge?.level.kind === 'known').toBe(predicted);
-      }
-    }
-  });
-
-  it('answers no when the charger already has a level', () => {
-    expect(wouldReportRestoreStateOfChargeLevel(
-      stateOfChargeFixture({ percent: 63, observedAtMs: 1_000 }),
-      5_000,
-    )).toBe(false);
-    expect(wouldReportRestoreStateOfChargeLevel(undefined, 5_000)).toBe(false);
+    expect(refreshLevel(carReading(), 3_000)).toBe('known');
+    expect(refreshLevel(chargerReading(), 3_000)).not.toBe('known');
+    expect(refreshLevel(chargerReading(), 5_000)).toBe('known');
   });
 });

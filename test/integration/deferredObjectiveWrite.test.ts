@@ -63,20 +63,18 @@ describe('device-scoped objective ops (per-device-key)', () => {
       finalizeElapsedDeadline: vi.fn(),
       flushIfDirty: vi.fn(),
     } as unknown as DeferredObjectivePlanHistoryRecorder;
-    const rebuildPlan = vi.fn();
     const debugStructured = vi.fn();
     const deps: DeferredObjectiveDeviceWriteDeps = {
       store,
       activePlanRecorder,
       planHistoryRecorder,
-      rebuildPlan,
       nowMs: NOW_MS,
       debugStructured,
     };
-    return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan, debugStructured };
+    return { deps, activePlanRecorder, planHistoryRecorder, debugStructured };
   };
 
-  it('upsert writes the device key and runs notify→flush→rebuild for a fresh create', () => {
+  it('upsert writes the device key and runs notify→flush for a fresh create', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
@@ -85,7 +83,6 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.flushIfDirty).toHaveBeenCalledOnce();
-    expect(h.rebuildPlan).toHaveBeenCalledOnce();
   });
 
   it('PER-KEY ISOLATION: writing device A never touches device B\'s key (clobber-immunity proof)', () => {
@@ -108,15 +105,15 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(readObjectiveForDevice(store, 'ev-2')).toEqual({ ...evEntry, targetPercent: 50 });
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned');
     expect(h.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('ev-1');
-    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+    expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
 
-  it('clear is a no-op (no rebuild) when the device has no key at all', () => {
+  it('clear is a no-op (no notify) when the device has no key at all', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
     clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
     expect(h.activePlanRecorder.clearForDevice).not.toHaveBeenCalled();
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
   it('clear STILL unsets the key when its value reads as undefined (flaky read must not no-op the clear)', () => {
@@ -125,7 +122,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const h = buildDeviceDeps(store);
     clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
     expect(store.raw.has(keyFor('ev-1'))).toBe(false); // genuinely cleared
-    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+    expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
 
   it('clear REFUSES on a store-wide empty getKeys() flake (migration unconfirmable → retry, no wrong-place unset)', () => {
@@ -139,7 +136,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
     expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
     expect(store.raw.has(keyFor('ev-1'))).toBe(true); // NOT unset — refused
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
   it('upsert REFUSES (no write) when the key exists but its value reads as undefined — never clobber on a flaky read', () => {
@@ -149,7 +146,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
     expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
     expect(store.raw.get(keyFor('ev-1'))).toBeUndefined(); // NOT overwritten
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
   it('upsert finalizes the prior run as replaced when overwriting an active objective', () => {
@@ -207,7 +204,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const h = buildDeviceDeps(flaky);
     const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-2', deviceName: 'Garage', entry: evEntry });
     expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
   // ── Refusal observability: a topic-gated `deferred_objectives` debug trace ──

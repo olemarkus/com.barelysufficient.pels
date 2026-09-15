@@ -29,7 +29,6 @@ describe('registerAppFlowCards', () => {
     powerSourceKeyPresent?: boolean;
     now?: Date;
     recordPowerSample?: AppContext['recordPowerSample'];
-    requestFlowPlanRebuild?: AppContext['requestFlowPlanRebuild'];
     timers?: TimerRegistry;
     powerTracker?: PowerTrackerState;
   } = {}): AppContext => {
@@ -61,7 +60,6 @@ describe('registerAppFlowCards', () => {
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
-      requestFlowPlanRebuild: params.requestFlowPlanRebuild ?? vi.fn(),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       updateDailyBudgetState: vi.fn(),
       getCombinedHourlyPrices: vi.fn(() => []),
@@ -102,7 +100,6 @@ describe('registerAppFlowCards', () => {
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
-      requestFlowPlanRebuild: vi.fn(),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       updateDailyBudgetState: vi.fn(),
       getCombinedHourlyPrices: vi.fn(() => []),
@@ -163,7 +160,6 @@ describe('registerAppFlowCards', () => {
 
     expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();
-    expect(ctx.requestFlowPlanRebuild).not.toHaveBeenCalled();
   });
 
   it('separates durable smart-task membership from transient Main authority', () => {
@@ -213,7 +209,6 @@ describe('registerAppFlowCards', () => {
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
-      requestFlowPlanRebuild: vi.fn(),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       dailyBudgetService: {
         loadSettings: vi.fn(),
@@ -240,18 +235,14 @@ describe('registerAppFlowCards', () => {
     expect(dailyBudgetServiceUpdateState).not.toHaveBeenCalled();
   });
 
-  it('records Flow power with the same timestamp used to start the freshness clock', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-16T10:05:30.000Z'));
+  it('records Flow power stamped with the app clock', async () => {
     const now = new Date('2026-04-16T10:05:30.000Z');
     const recordPowerSample = vi.fn(async () => admitted());
-    const requestFlowPlanRebuild = vi.fn();
     const noteAdmittedFlowHomeSample = vi.fn();
     const ctx = buildContext({
       powerSource: 'flow',
       now,
       recordPowerSample,
-      requestFlowPlanRebuild,
     });
     ctx.homeMembership = {
       noteAdmittedFlowHomeSample,
@@ -265,8 +256,6 @@ describe('registerAppFlowCards', () => {
 
     expect(recordPowerSample).toHaveBeenCalledWith(1234, now.getTime());
     expect(noteAdmittedFlowHomeSample).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
   });
 
   it('does not admit a late Flow sample after the source switches back to Homey Energy', async () => {
@@ -318,27 +307,6 @@ describe('registerAppFlowCards', () => {
     expect(noteAdmittedFlowHomeSample).not.toHaveBeenCalled();
   });
 
-  it('starts the freshness clock from the persisted Flow sample timestamp during registration', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-16T10:05:30.000Z'));
-    const now = new Date('2026-04-16T10:05:30.000Z');
-    const recordPowerSample = vi.fn(async () => admitted());
-    const requestFlowPlanRebuild = vi.fn();
-    const ctx = buildContext({
-      powerSource: 'flow',
-      now,
-      recordPowerSample,
-      requestFlowPlanRebuild,
-      powerTracker: { lastTimestamp: now.getTime() - 15_000 },
-    });
-
-    registerAppFlowCards(ctx);
-
-    expect(recordPowerSample).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
-  });
-
   it('abandons a Flow sample when an existing source key transiently reads undefined', async () => {
     const recordPowerSample = vi.fn(async () => admitted());
     const structuredError = vi.fn();
@@ -369,11 +337,9 @@ describe('registerAppFlowCards', () => {
 
   it('ignores Flow-reported power when Homey Energy is the active power source', async () => {
     const recordPowerSample = vi.fn(async () => admitted());
-    const requestFlowPlanRebuild = vi.fn();
     const ctx = buildContext({
       powerSource: 'homey_energy',
       recordPowerSample,
-      requestFlowPlanRebuild,
     });
 
     registerAppFlowCards(ctx);
@@ -383,6 +349,5 @@ describe('registerAppFlowCards', () => {
     await deps.recordPowerSample(1234);
 
     expect(recordPowerSample).not.toHaveBeenCalled();
-    expect(requestFlowPlanRebuild).not.toHaveBeenCalled();
   });
 });

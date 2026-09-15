@@ -24,7 +24,6 @@ import {
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveRescueMode,
   type DeferredObjectiveSettingsEntry,
-  type SmartTaskWriteOrigin,
 } from '../lib/objectives/deferredObjectives';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
@@ -68,14 +67,6 @@ type StoredObjectiveState = {
   entry: DeferredObjectiveSettingsEntry | undefined;
   absenceTrustworthy: boolean;
 };
-
-/**
- * Rebuild-reason tag for a write that did not name its own lane: the widget
- * create surface and the budget-exempt rescue (which delegates to the create
- * engine). ONE literal, referenced by the `app.ts` stub's default and by the
- * rescue lane, so the two can never drift apart.
- */
-export const SMART_TASK_WIDGET_WRITE_ORIGIN: SmartTaskWriteOrigin = 'flow_card:create_smart_task_widget';
 
 /**
  * The app's smart-task (deferred-objective) WRITE surface: preview, create,
@@ -502,20 +493,15 @@ export class AppSmartTaskApi {
   // Returns `{ ok: false }` with a stable reason code on rejection so the
   // widget can surface an honest error without leaking internal detail.
   //
-  // `origin` (the requesting lane's rebuild-reason tag) is REQUIRED here on
-  // purpose: a second default on this body could drift from the app stub's.
-  // Callers with no lane of their own pass `SMART_TASK_WIDGET_WRITE_ORIGIN`.
-  //
-  // `rescuePolicy` is REQUIRED here for the same reason `origin` is: the app
-  // stub already defaults it, and a second default on this body could drift
-  // from that one. `'preserve'` is the additive lane, where a candidate that
-  // names no permissions leaves a standing grant alone; the settings-UI edit
-  // lane passes `'replace'` because its request states the COMPLETE desired
-  // set, so an unchecked toggle must actually revoke.
+  // `rescuePolicy` is REQUIRED here on purpose: the app stub already defaults
+  // it, and a second default on this body could drift from that one.
+  // `'preserve'` is the additive lane, where a candidate that names no
+  // permissions leaves a standing grant alone; the settings-UI edit lane passes
+  // `'replace'` because its request states the COMPLETE desired set, so an
+  // unchecked toggle must actually revoke.
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-    origin: SmartTaskWriteOrigin,
     rescuePolicy: 'preserve' | 'replace',
   ): SmartTaskWriteResult {
     const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
@@ -536,10 +522,7 @@ export class AppSmartTaskApi {
     // absence read; surface that as a retryable failure instead of a false
     // success so the widget can re-offer the create.
     const outcome = upsertObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
-        nowMs: this.ctx.getNow().getTime(),
-        rebuildReason: origin,
-      }),
+      buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
       { deviceId, deviceName: device.name ?? null, entry, rescue: rescuePolicy },
     );
     // Refusal → reject union mapping (durable scope reasons stay typed; the
@@ -599,7 +582,7 @@ export class AppSmartTaskApi {
     // `'preserve'`: this lane is a strictly-fresh create (the guard above
     // refuses a device that already has a task), so there is no standing rescue
     // to preserve OR replace — it takes the additive default the widget lane uses.
-    return this.createDeferredObjective(deviceId, candidate, SMART_TASK_WIDGET_WRITE_ORIGIN, 'preserve');
+    return this.createDeferredObjective(deviceId, candidate, 'preserve');
   }
 
 }

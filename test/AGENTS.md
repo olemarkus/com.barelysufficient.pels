@@ -24,7 +24,7 @@ Answer two questions: **what is real**, and **how is the subject driven/observed
   (UI e2e is Playwright and lives in `packages/settings-ui`, not here.)
   - **createApp e2e using fake timers MUST fake `'performance'`** (vitest's default set includes it;
     an explicit `toFake` list must name it). The plan-rebuild scheduler reads the monotonic clock
-    (`lib/plan/rebuildScheduler/intentPolicy.ts` `getAppPlanRebuildNowMs`), and the rebuild cadence
+    (`lib/plan/rebuildScheduler/homeRebuildRuntime.ts`), and the rebuild cadence
     is production's in tests too (2 s between the rebuilds a boundary asks for, a 30 s max
     interval): without a faked `performance` the scheduler runs on real time while the test
     advances fake time, and a queued rebuild strands.

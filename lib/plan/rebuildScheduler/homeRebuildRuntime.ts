@@ -1,24 +1,15 @@
 /**
  * One home's plan-rebuild loop: the throttle that paces power-driven rebuilds,
- * the scheduler that queues every rebuild intent, the policy that decides when
- * a queued intent is due, and the telemetry that reports what the scheduler did
- * with it. Four components that only ever appear together.
+ * the scheduler that queues them, and the telemetry that reports what the
+ * scheduler did. Three components that only ever appear together.
  *
- * The main home and every meter area assembled them separately, and the area's
- * assembly was a partial copy of the main home's rather than a different
- * design. It inlined `resolveDueAtMs` as `throttle.dueAtMs(intent, nowMs)` for
- * EVERY intent kind — but the throttle answers `+Infinity` to anything that is
- * not `signal` or `hardCap`, so an area's `flow` intent was queued, deferred by
- * its own `shouldExecuteImmediately`, and then never due. Nothing reaches that
- * today (`requestFlowPlanRebuild` is the one producer and it targets the main
- * scheduler), so this was a trap rather than a live defect: the day flow
- * rebuilds fan out per home, an area would have gone quiet with no error to
- * show for it. It also ran on a different clock and emitted no scheduler
- * telemetry at all.
+ * The main home and every meter area used to assemble them separately, the
+ * area's assembly a partial copy of the main home's that ran on a different
+ * clock and emitted no scheduler telemetry at all.
  *
- * This lives in `lib/plan` and not in the wiring layer because it decides: due
- * times, coalesce windows, and which intent kind the throttle owns are plan
- * policy. `setup/` hands it the home's collaborators and nothing else.
+ * This lives in `lib/plan` and not in the wiring layer because it decides: the
+ * clock and which component answers a due time are plan policy. `setup/` hands
+ * it the home's collaborators and nothing else.
  */
 import type CapacityGuard from '../../power/capacityGuard';
 import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
@@ -26,10 +17,6 @@ import type { Logger as PinoLogger } from 'pino';
 import type { HomeId } from '../../utils/settingsKeys';
 import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { PlanService } from '../planService';
-import {
-  getAppPlanRebuildNowMs,
-  PlanRebuildIntentPolicy,
-} from './intentPolicy';
 import { PlanRebuildScheduler } from './scheduler';
 import { SchedulerTelemetryObserver } from './telemetryObserver';
 import { PlanRebuildThrottle } from './throttle';
@@ -63,20 +50,18 @@ export const createHomeRebuildRuntime = (
   getStructuredLogger: () => PinoLogger | undefined,
   isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean,
 ): HomeRebuildRuntime => {
-  // One clock for the scheduler, the throttle and the telemetry rate-limiter.
-  // They compare their stamps against each other, so a home that read wall time
-  // in one and the monotonic clock in another would be comparing two different
-  // origins. A meter area used to do exactly that.
-  const nowMs = getAppPlanRebuildNowMs;
+  // One monotonic clock for the scheduler, the throttle and the telemetry
+  // rate-limiter, so an NTP correction cannot make a queued rebuild due early or
+  // strand it. They compare their stamps against each other, so a home that read
+  // wall time in one and the monotonic clock in another would be comparing two
+  // different origins. A meter area used to do exactly that. A spec driving fake
+  // timers advances it as long as `performance` is among the faked globals.
+  const nowMs = (): number => performance.now();
   const throttle: PlanRebuildThrottle = new PlanRebuildThrottle({
     getScheduler: () => scheduler,
     getCapacityGuard,
     getNowMs: nowMs,
     rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
-  });
-  const intentPolicy = new PlanRebuildIntentPolicy({
-    getPlanRebuildThrottle: () => throttle,
-    getPlanService,
   });
   const telemetry = new SchedulerTelemetryObserver({
     homeId,
@@ -90,9 +75,8 @@ export const createHomeRebuildRuntime = (
   });
   const scheduler = new PlanRebuildScheduler({
     getNowMs: nowMs,
-    resolveDueAtMs: (intent, state) => intentPolicy.resolveDueAtMs(intent, state),
-    executeIntent: (intent) => intentPolicy.executeIntent(intent),
-    shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
+    resolveDueAtMs: (intent, atMs) => throttle.dueAtMs(intent, atMs),
+    executeIntent: () => throttle.execute(),
     onIntentDropped: telemetry.onIntentDropped,
     onPendingIntentReplaced: telemetry.onPendingIntentReplaced,
     onIntentCancelled: telemetry.onIntentCancelled,

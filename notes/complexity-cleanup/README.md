@@ -31,13 +31,14 @@ Remaining work:
 
 The scheduler family now lives under `lib/plan/rebuildScheduler/` (`scheduler.ts`, `throttle.ts` —
 the `PlanRebuildThrottle` that owns the power-sample throttle's memory — `policy.ts`,
-`rebuildSignal.ts`, `telemetryObserver.ts`, `intentPolicy.ts` and `homeRebuildRuntime.ts`) after the move out of
+`rebuildSignal.ts`, `telemetryObserver.ts` and `homeRebuildRuntime.ts`) after the move out of
 `lib/app/` in `dac04420`. Power-sample ingestion was extracted into the `PowerSamplePipeline` class
 at `setup/powerSamplePipeline.ts` (`941c29ef`), so the old `appPowerRebuildScheduler.ts` compatibility
-wrapper is gone — `hardCap`, `signal`, `flow`, and power-sample intents all flow through the unified
-scheduler. The bridging cleanup that used to live here is complete.
+wrapper is gone — the `hardCap` and `signal` power-sample intents flow through the unified
+scheduler. A `flow` intent kind existed for Flow-card and Flow-heartbeat rebuilds; its due time never
+came due in production, and it was removed rather than switched on. The bridging cleanup that used to live here is complete.
 
-`homeRebuildRuntime.ts` composes the four — throttle, scheduler, due-time policy and telemetry —
+`homeRebuildRuntime.ts` composes the three — throttle, scheduler and telemetry —
 for ONE home, and the main home and every meter area both call it. The scheduler's timer registers
 with the calling home's `TimerRegistry` key, which settles the question this section used to leave
 open.

@@ -23,13 +23,6 @@ import {
  * source of truth for projection and persistence.
  */
 
-// Plan-rebuild attribution tag for the two UI lanes that persist a smart-task
-// candidate through `createDeferredObjective`. The widget lane keeps its
-// historical (pre-existing) string verbatim so existing log queries stay valid.
-export type SmartTaskWriteOrigin =
-  | 'flow_card:create_smart_task_widget'
-  | 'settings_ui:smart_task_update';
-
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // Outer bound for a client-echoed previewed deadline. The "Ready by" resolver

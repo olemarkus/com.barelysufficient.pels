@@ -431,8 +431,6 @@ class PelsApp extends PelsAppBase implements AppContext {
     getDeviceManager: () => this.deviceManager,
     getLatestTargetSnapshot: () => this.latestTargetSnapshot,
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
-    getSnapshotDevice: (deviceId) => this.getSnapshotDevice(deviceId),
-    hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     getSteppedLoadProfile: (deviceId) => this.deviceControlHelpers.getSteppedLoadProfile(deviceId),
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
     getLearnedPowerPeaks: () => this.lastKnownPowerKw,

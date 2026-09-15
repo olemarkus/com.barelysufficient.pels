@@ -39,7 +39,6 @@ import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdv
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
 import type {
   DeferredObjectivePlanPreviewCandidate,
-  SmartTaskWriteOrigin,
 } from '../lib/objectives/deferredObjectives';
 import {
   buildStarvedRescueDevices,
@@ -51,7 +50,6 @@ import { assembleWeatherAdvisorReadout } from './appInit/weatherAdvisorReadoutAs
 import { requirePlanService as requireInitializedPlanService } from './appInit/contextGuards';
 import { projectDeviceDescriptors } from '../lib/device/deviceDescriptorProjection';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
-import { SMART_TASK_WIDGET_WRITE_ORIGIN } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
 
@@ -316,10 +314,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-    origin: SmartTaskWriteOrigin = SMART_TASK_WIDGET_WRITE_ORIGIN,
     rescuePolicy: 'preserve' | 'replace' = 'preserve',
   ): SmartTaskWriteResult {
-    return this.smartTaskApi.createDeferredObjective(deviceId, candidate, origin, rescuePolicy);
+    return this.smartTaskApi.createDeferredObjective(deviceId, candidate, rescuePolicy);
   }
   public cancelDeferredObjective(deviceId: string) {
     return this.smartTaskApi.cancelDeferredObjective(deviceId);

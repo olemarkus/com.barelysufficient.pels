@@ -7,7 +7,6 @@ import {
   readFlowRawArg,
   readFlowStringArg,
 } from './flowArgParsers';
-import { requestPlanRebuildFromFlow } from './flowCardShared';
 import {
   createSteppedLoadReportError,
   emitSteppedLoadClampDeviationLog,
@@ -212,7 +211,6 @@ async function handleSteppedLoadReportResult(params: {
     return;
   }
   await deps.refreshSnapshot();
-  requestPlanRebuildFromFlow(deps, source);
   emitSteppedLoadReportResolvedLog({
     deps,
     sourceCardId: source,

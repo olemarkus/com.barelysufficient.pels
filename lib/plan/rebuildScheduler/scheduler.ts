@@ -1,15 +1,14 @@
-import type { PlanRebuildTrigger } from '../planRebuildTrigger';
+import type { PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 
 /**
- * `detail` is carried alongside the trigger rather than spliced into it, so the
- * intent stays a closed value: `flow_card` + `set_deadline`, never the string
- * `flow_card:set_deadline`. The log label is composed at the edge by
- * `describePlanRebuildTrigger`.
+ * A power-driven rebuild the throttle asked for. A hard-cap breach outranks an
+ * ordinary signal: it replaces a pending signal, and a signal arriving behind a
+ * pending breach is dropped.
  */
-export type RebuildIntent =
-  | { kind: 'hardCap'; reason: PlanRebuildTrigger; detail?: string }
-  | { kind: 'signal'; reason: PlanRebuildTrigger; detail?: string }
-  | { kind: 'flow'; reason: PlanRebuildTrigger; detail?: string };
+export type RebuildIntent = {
+  kind: 'hardCap' | 'signal';
+  reason: PowerSampleRebuildTrigger;
+};
 
 type RebuildIntentKind = RebuildIntent['kind'];
 
@@ -18,41 +17,23 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 const priorityByKind: Record<RebuildIntentKind, number> = {
   hardCap: 0,
   signal: 1,
-  flow: 2,
 };
 
-export type SchedulerState = {
-  nowMs: number;
-  activeIntent: RebuildIntent | null;
-  pendingIntent: RebuildIntent | null;
-  pendingDueMs: number | null;
-  hasTimer: boolean;
-  lastCompletedAtMsByKind: Partial<Record<RebuildIntentKind, number>>;
-};
-
-export type RequestResult =
-  | { status: 'accepted'; keptIntent: RebuildIntent }
-  | { status: 'replaced'; keptIntent: RebuildIntent }
-  | { status: 'dropped'; keptIntent: RebuildIntent };
+/** `dropped`: a higher-priority intent is already pending, and this one was not queued. */
+export type RequestResult = 'queued' | 'dropped';
 
 type PlanRebuildSchedulerDeps = {
-  resolveDueAtMs: (intent: RebuildIntent, state: SchedulerState) => number;
-  executeIntent: (intent: RebuildIntent) => Promise<void> | void;
-  shouldExecuteImmediately?: (intent: RebuildIntent, state: SchedulerState) => boolean;
-  onIntentDropped?: (dropped: RebuildIntent, kept: RebuildIntent) => void;
-  onPendingIntentReplaced?: (previous: RebuildIntent, next: RebuildIntent) => void;
-  onIntentCancelled?: (intent: RebuildIntent, reason: string) => void;
-  onIntentError?: (intent: RebuildIntent, error: Error) => void;
-  getNowMs?: () => number;
-  setTimeoutFn?: (callback: () => void, delayMs: number) => TimerHandle;
-  clearTimeoutFn?: (handle: TimerHandle) => void;
+  /** When the intent may run. The throttle always has an answer. */
+  resolveDueAtMs: (intent: RebuildIntent, nowMs: number) => number;
+  executeIntent: (intent: RebuildIntent) => Promise<void>;
+  onIntentDropped: (dropped: RebuildIntent, kept: RebuildIntent) => void;
+  onPendingIntentReplaced: (previous: RebuildIntent, next: RebuildIntent) => void;
+  onIntentCancelled: (intent: RebuildIntent, reason: string) => void;
+  onIntentError: (intent: RebuildIntent, error: Error) => void;
+  getNowMs: () => number;
+  setTimeoutFn: (callback: () => void, delayMs: number) => TimerHandle;
+  clearTimeoutFn: (handle: TimerHandle) => void;
 };
-
-const defaultNowMs = (): number => (
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now()
-);
 
 const comparePriority = (left: RebuildIntentKind, right: RebuildIntentKind): number => (
   priorityByKind[left] - priorityByKind[right]
@@ -63,89 +44,36 @@ export class PlanRebuildScheduler {
 
   private pendingIntent: RebuildIntent | null = null;
 
-  private pendingDueMs: number | null = null;
-
   private timer?: TimerHandle;
 
-  private readonly lastCompletedAtMsByKind: Partial<Record<RebuildIntentKind, number>> = {};
-
-  private readonly getNowMs: () => number;
-
-  private readonly setTimeoutFn: (callback: () => void, delayMs: number) => TimerHandle;
-
-  private readonly clearTimeoutFn: (handle: TimerHandle) => void;
-
-  constructor(private readonly deps: PlanRebuildSchedulerDeps) {
-    this.getNowMs = deps.getNowMs ?? defaultNowMs;
-    this.setTimeoutFn = deps.setTimeoutFn ?? ((callback, delayMs) => setTimeout(callback, delayMs));
-    this.clearTimeoutFn = deps.clearTimeoutFn ?? ((handle) => clearTimeout(handle));
-  }
+  constructor(private readonly deps: PlanRebuildSchedulerDeps) {}
 
   request(intent: RebuildIntent): RequestResult {
-    const nowMs = this.getNowMs();
-    const dueMs = this.resolveDueAtMs(intent, nowMs);
-
-    if (!this.pendingIntent) {
-      this.pendingIntent = intent;
-      this.pendingDueMs = dueMs;
-      this.refreshPendingSchedule();
-      return { status: 'accepted', keptIntent: intent };
-    }
-
-    const priorityComparison = comparePriority(intent.kind, this.pendingIntent.kind);
-    if (priorityComparison > 0) {
-      this.deps.onIntentDropped?.(intent, this.pendingIntent);
-      return { status: 'dropped', keptIntent: this.pendingIntent };
-    }
-
     const previousIntent = this.pendingIntent;
-    if (priorityComparison < 0 || previousIntent.kind === intent.kind) {
+    if (previousIntent === null) {
       this.pendingIntent = intent;
-      this.pendingDueMs = priorityComparison < 0
-        ? dueMs
-        : Math.min(this.pendingDueMs ?? dueMs, dueMs);
-      this.deps.onPendingIntentReplaced?.(previousIntent, intent);
       this.refreshPendingSchedule();
-      return {
-        status: priorityComparison < 0 ? 'replaced' : 'accepted',
-        keptIntent: intent,
-      };
+      return 'queued';
     }
 
-    this.deps.onIntentDropped?.(intent, previousIntent);
-    return { status: 'dropped', keptIntent: previousIntent };
+    const priorityComparison = comparePriority(intent.kind, previousIntent.kind);
+    if (priorityComparison > 0) {
+      this.deps.onIntentDropped(intent, previousIntent);
+      return 'dropped';
+    }
+
+    this.pendingIntent = intent;
+    this.deps.onPendingIntentReplaced(previousIntent, intent);
+    this.refreshPendingSchedule();
+    return 'queued';
   }
 
   cancelAll(reason: string): void {
     this.clearTimer();
     if (this.pendingIntent) {
-      this.deps.onIntentCancelled?.(this.pendingIntent, reason);
+      this.deps.onIntentCancelled(this.pendingIntent, reason);
     }
     this.pendingIntent = null;
-    this.pendingDueMs = null;
-  }
-
-  now(): SchedulerState {
-    return this.buildState(this.getNowMs());
-  }
-
-  private buildState(nowMs: number): SchedulerState {
-    return {
-      nowMs,
-      activeIntent: this.activeIntent,
-      pendingIntent: this.pendingIntent,
-      pendingDueMs: this.pendingDueMs,
-      hasTimer: this.timer !== undefined,
-      lastCompletedAtMsByKind: { ...this.lastCompletedAtMsByKind },
-    };
-  }
-
-  private resolveDueAtMs(intent: RebuildIntent, nowMs: number): number {
-    const resolvedDueMs = this.deps.resolveDueAtMs(intent, this.buildState(nowMs));
-    if (!Number.isFinite(resolvedDueMs)) {
-      return Number.POSITIVE_INFINITY;
-    }
-    return resolvedDueMs;
   }
 
   private refreshPendingSchedule(): void {
@@ -154,32 +82,19 @@ export class PlanRebuildScheduler {
       this.clearTimer();
       return;
     }
-
-    const nowMs = this.getNowMs();
-    const recomputedDueMs = this.resolveDueAtMs(this.pendingIntent, nowMs);
-    this.pendingDueMs = recomputedDueMs;
-
-    if (!Number.isFinite(recomputedDueMs)) {
-      this.clearTimer();
-      return;
-    }
-
-    const state = this.buildState(nowMs);
-    const shouldExecuteImmediately = recomputedDueMs <= nowMs
-      && (this.deps.shouldExecuteImmediately?.(this.pendingIntent, state) ?? true);
-    if (shouldExecuteImmediately) {
+    const nowMs = this.deps.getNowMs();
+    const dueMs = this.deps.resolveDueAtMs(this.pendingIntent, nowMs);
+    if (dueMs <= nowMs) {
       this.clearTimer();
       this.dispatchPendingIntent();
       return;
     }
-
-    const delayMs = Math.max(0, recomputedDueMs - nowMs);
-    this.armTimer(delayMs);
+    this.armTimer(dueMs - nowMs);
   }
 
   private armTimer(delayMs: number): void {
     this.clearTimer();
-    this.timer = this.setTimeoutFn(() => {
+    this.timer = this.deps.setTimeoutFn(() => {
       this.timer = undefined;
       this.dispatchPendingIntent();
     }, delayMs);
@@ -187,7 +102,7 @@ export class PlanRebuildScheduler {
 
   private clearTimer(): void {
     if (!this.timer) return;
-    this.clearTimeoutFn(this.timer);
+    this.deps.clearTimeoutFn(this.timer);
     this.timer = undefined;
   }
 
@@ -199,29 +114,21 @@ export class PlanRebuildScheduler {
       return;
     }
 
-    const nowMs = this.getNowMs();
-    const dueMs = this.resolveDueAtMs(intent, nowMs);
-    this.pendingDueMs = dueMs;
-    if (!Number.isFinite(dueMs)) {
-      this.pendingIntent = null;
-      this.pendingDueMs = null;
-      return;
-    }
-    if (Number.isFinite(dueMs) && dueMs > nowMs) {
-      this.armTimer(Math.max(0, dueMs - nowMs));
+    const nowMs = this.deps.getNowMs();
+    const dueMs = this.deps.resolveDueAtMs(intent, nowMs);
+    if (dueMs > nowMs) {
+      this.armTimer(dueMs - nowMs);
       return;
     }
 
     this.pendingIntent = null;
-    this.pendingDueMs = null;
     this.activeIntent = intent;
 
-    Promise.resolve(this.deps.executeIntent(intent))
+    this.deps.executeIntent(intent)
       .catch((error: unknown) => {
-        this.deps.onIntentError?.(intent, error instanceof Error ? error : new Error(String(error)));
+        this.deps.onIntentError(intent, error instanceof Error ? error : new Error(String(error)));
       })
       .finally(() => {
-        this.lastCompletedAtMsByKind[intent.kind] = this.getNowMs();
         this.activeIntent = null;
         if (this.pendingIntent) {
           this.refreshPendingSchedule();

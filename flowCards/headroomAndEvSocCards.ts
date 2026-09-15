@@ -11,7 +11,6 @@ import {
   readFlowNumberArg,
   readFlowRawArg,
 } from './flowArgParsers';
-import { requestPlanRebuildFromFlow } from './flowCardShared';
 import type { FlowCardDeps } from './registerFlowCards';
 
 const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
@@ -60,9 +59,6 @@ async function checkHeadroomForDevice(
     headroom,
     requiredKw,
   });
-  if (decision.stateChanged) {
-    requestPlanRebuildFromFlow(deps, 'flow_headroom_cooldown');
-  }
   logHeadroomCheck({
     deps,
     deviceSnap,
@@ -128,9 +124,6 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
 
   if (reportOutcome.refreshSnapshot) {
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
-  }
-  if (reportOutcome.rebuildPlan) {
-    requestPlanRebuildFromFlow(deps, EV_SOC_CARD_ID);
   }
 
   const updatedCharger = await getBestEffortEvChargerSnapshot(deps, chargerDeviceId);

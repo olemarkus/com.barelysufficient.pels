@@ -57,10 +57,11 @@ export const PLAN_REBUILD_TRIGGERS = [
   'freshness_heartbeat',
 
   // An input other than the reading changed, so a re-decision is owed regardless
-  // of how current the reading is. Each of these carries a `detail`.
+  // of how current the reading is. Each of these carries a `detail`. What a Flow
+  // card or a smart-task write changes is not here on purpose: it is read at the
+  // next reading that rebuilds, which is when it has ever taken effect.
   'settings',
   'price',
-  'flow_card',
 
   // Startup and per-home lifecycle.
   'startup_snapshot_bootstrap',
@@ -86,7 +87,7 @@ export type PlanRebuildTrigger = (typeof PLAN_REBUILD_TRIGGERS)[number];
 export type PlanRebuildRequestOptions = {
   /**
    * Narrows an open-ended trigger for the log line: the settings key that moved,
-   * the flow card that fired, the price mode that resolved. Free text on purpose
+   * the price mode that resolved. Free text on purpose
    * — those sets are genuinely unbounded — and it reaches the log and nothing
    * else. No decision, counter, or gate reads it.
    */

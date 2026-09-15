@@ -105,8 +105,6 @@ export type SettingsHandlerDeps = {
    * event waits behind the serialized settings queue.
    */
   onHomeOwnershipConfigurationObserved?: () => void;
-  stopFlowPowerSampleFreshnessClock?: () => void;
-  syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
   /**
    * Re-read the "Leave off until turned on again" opt-in and release any hold
@@ -634,8 +632,6 @@ async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void>
   settingsLogger.info({ event: 'power_source_changed' });
   deps.onHomeRuntimePowerSourceChanged?.();
   deps.restartHomeyEnergyPoll?.();
-  deps.stopFlowPowerSampleFreshnessClock?.();
-  deps.syncFlowPowerSampleFreshnessClock?.();
   // Flow and Homey Energy are different producers of the power-tracker
   // history the weather insight's kWh layer consumes, so the source is part
   // of the meter-scope fingerprint: restart the collector so its start()-time

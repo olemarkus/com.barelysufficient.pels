@@ -8,10 +8,6 @@ import {
   isSmartTaskDeviceInMainHome,
 } from './smartTaskHomeScope';
 import {
-  FlowPowerSampleFreshnessClock,
-  registerFlowPowerSampleFreshnessClock,
-} from '../../lib/power/flowPowerSampleFreshnessClock';
-import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
@@ -20,24 +16,9 @@ import {
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
 import {
   readConfiguredPowerSource,
-  requireConfiguredPowerSource,
 } from '../powerSourceSettings';
 
 export function registerAppFlowCards(ctx: AppContext): void {
-  const flowPowerSampleFreshnessClock = new FlowPowerSampleFreshnessClock({
-    timers: ctx.timers,
-    getNowMs: () => ctx.getNow().getTime(),
-    getPowerSource: () => requireConfiguredPowerSource(ctx.homey.settings),
-    requestPlanRebuild: (reason) => ctx.requestFlowPlanRebuild(reason),
-    onPowerSourceReadError: (error) => ctx.getStructuredLogger('power')?.error({
-      event: 'flow_freshness_power_source_read_failed',
-      err: normalizeError(error),
-    }),
-  });
-  registerFlowPowerSampleFreshnessClock(ctx.timers, flowPowerSampleFreshnessClock);
-  const syncLatestSample = () => {
-    flowPowerSampleFreshnessClock.syncLatestSample(ctx.powerTracker.lastTimestamp);
-  };
   registerFlowCards({
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
@@ -72,7 +53,6 @@ export function registerAppFlowCards(ctx: AppContext): void {
       const admittedSource = readConfiguredPowerSource(ctx.homey.settings);
       if (admittedSource.state !== 'resolved' || admittedSource.value !== 'flow') return;
       ctx.homeMembership?.noteAdmittedFlowHomeSample();
-      flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
     // Resolved here, not inside the guard: the guard holds neither power nor a
     // limit. `capacityPaceKw` is the planner's live threshold and the tracker is
@@ -95,7 +75,6 @@ export function registerAppFlowCards(ctx: AppContext): void {
     ),
     setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
-    rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done), so
@@ -107,19 +86,13 @@ export function registerAppFlowCards(ctx: AppContext): void {
     // Both writes route through the device-scoped ops over the hardened
     // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
     // so the Flow cards and the create-smart-task widget share one
-    // read-modify-write + notify/flush/rebuild path.
+    // read-modify-write + notify/flush path.
     upsertDeferredObjectiveForDevice: (params) => upsertObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(ctx, {
-        nowMs: ctx.getNow().getTime(),
-        rebuildReason: 'deadline_objective_card_set',
-      }),
+      buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
       params,
     ),
     clearDeferredObjectiveForDevice: (params) => clearObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(ctx, {
-        nowMs: ctx.getNow().getTime(),
-        rebuildReason: 'deadline_objective_card_clear',
-      }),
+      buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
       params,
     ),
     // Existing status follows durable membership, while new-task discovery
@@ -144,5 +117,4 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
     debugStructured: ctx.getStructuredDebugEmitter('flow', 'settings'),
   });
-  syncLatestSample();
 }

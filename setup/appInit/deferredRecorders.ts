@@ -402,7 +402,7 @@ export function requireDeferredObjectiveActivePlanRecorder(
  */
 export const buildDeferredObjectiveDeviceWriteDeps = (
   ctx: AppContext,
-  params: { nowMs: number; rebuildReason: string },
+  nowMs: number,
 ): DeferredObjectiveDeviceWriteDeps => {
   const activePlanRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
   const planHistoryRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
@@ -410,8 +410,7 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     store: ctx.homey.settings,
     activePlanRecorder,
     planHistoryRecorder,
-    rebuildPlan: () => ctx.requestFlowPlanRebuild(params.rebuildReason),
-    nowMs: params.nowMs,
+    nowMs,
     // Multi-home v1 scope gate: durable relocation is a hard
     // `device_in_sub_home` refusal, while a provisional/global ownership fence
     // is the retryable `ownership_unavailable` lane. Every write surface builds

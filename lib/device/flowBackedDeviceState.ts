@@ -20,7 +20,6 @@ import {
 import {
   EV_SOC_CAPABILITY_ID,
   updateStateOfChargeObservationFreshness,
-  wouldReportRestoreStateOfChargeLevel,
 } from './transport/stateOfCharge';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { normalizeError } from '../utils/errorUtils';
@@ -42,8 +41,6 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
   stateChanged: boolean;
   valueChanged: boolean;
   freshnessAdvanced: boolean;
-  capabilityId: FlowReportedCapabilityId;
-  evSocRebuildPlan?: boolean;
 }): FlowBackedCapabilityReportOutcome {
   if (update.stateChanged) {
     return {
@@ -51,9 +48,6 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
       valueChanged: update.valueChanged,
       freshnessAdvanced: update.freshnessAdvanced,
       refreshSnapshot: true,
-      rebuildPlan: update.capabilityId === EV_SOC_CAPABILITY_ID
-        ? update.evSocRebuildPlan === true
-        : true,
     };
   }
   if (update.freshnessAdvanced) {
@@ -62,7 +56,6 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: update.capabilityId === EV_SOC_CAPABILITY_ID && update.evSocRebuildPlan === true,
     };
   }
   return {
@@ -70,7 +63,6 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
     valueChanged: false,
     freshnessAdvanced: false,
     refreshSnapshot: false,
-    rebuildPlan: false,
   };
 }
 
@@ -78,8 +70,8 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
  * Dependencies for {@link FlowBackedDeviceState}. Flow-reported capability state stays
  * on `PelsApp` (read by the snapshot/UI seams) and flows in via getter/setter;
  * `expectedPowerKwOverrides` is shared with `DeviceTransport`, so the helper
- * mutates the same object via the getter. Cross-layer reads (`getSnapshotDevice`,
- * `hasEnabledEvBoostForSnapshot`, `resolveManagedState`) are app callbacks.
+ * mutates the same object via the getter. The cross-layer read
+ * (`resolveManagedState`) is an app callback.
  */
 export type FlowBackedDeviceStateDeps = {
   persistence: DevicePersistencePort;
@@ -98,8 +90,6 @@ export type FlowBackedDeviceStateDeps = {
   getDeviceManager: () => DeviceTransport | undefined;
   getLatestTargetSnapshot: () => DecoratedDeviceSnapshot[];
   resolveManagedState: (deviceId: string) => boolean | undefined;
-  getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
-  hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   getSteppedLoadProfile: (deviceId: string) => unknown;
   getExpectedPowerKwOverrides: () => ExpectedPowerOverridesByDeviceId;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
@@ -324,7 +314,6 @@ export class FlowBackedDeviceState {
         valueChanged: false,
         freshnessAdvanced: false,
         refreshSnapshot: false,
-        rebuildPlan: false,
       };
     }
     const update = upsertFlowReportedCapability({
@@ -337,11 +326,6 @@ export class FlowBackedDeviceState {
     if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.deps.persistence.saveFlowReportedCapabilities(this.deps.getFlowReportedCapabilities());
     }
-    const evSocRebuildPlan = this.shouldRebuildPlanForFlowEvSocReport({
-      deviceId: params.deviceId,
-      capabilityId: params.capabilityId,
-      update,
-    });
     if (!update.stateChanged && update.freshnessAdvanced) {
       this.syncFlowBackedObservationFreshness({
         deviceId: params.deviceId,
@@ -349,48 +333,7 @@ export class FlowBackedDeviceState {
         reportedAt: update.entry.reportedAt,
       });
     }
-    return resolveFlowBackedCapabilityReportOutcome({
-      ...update,
-      capabilityId: params.capabilityId,
-      evSocRebuildPlan,
-    });
-  }
-
-  private shouldRebuildPlanForFlowEvSocReport(params: {
-    deviceId: string;
-    capabilityId: FlowReportedCapabilityId;
-    update: {
-      valueChanged: boolean;
-      freshnessAdvanced: boolean;
-      entry: { reportedAt: number };
-    };
-  }): boolean {
-    const { deviceId, capabilityId, update } = params;
-    if (capabilityId !== EV_SOC_CAPABILITY_ID) return false;
-    // Probe-widened for the same reason as `canEvSocFreshnessBecomeFreshForBoost`
-    // below: the snapshot physically carries the observed SoC bag the base type
-    // omits.
-    const device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined = this.deps
-      .getSnapshotDevice(deviceId);
-    // A charger reading its level off an associated car ignores this flow card
-    // entirely, so letting the report wake the planner would replan for a value
-    // nothing reads.
-    if (device && hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return false;
-    if (!this.deps.hasEnabledEvBoostForSnapshot(device)) return false;
-    if (this.deps.getDeviceManager()?.isFlowBackedCapability?.(deviceId, EV_SOC_CAPABILITY_ID) !== true) return false;
-    if (update.valueChanged) return true;
-    if (!update.freshnessAdvanced) return false;
-    return this.canEvSocFreshnessBecomeFreshForBoost(device, update.entry.reportedAt);
-  }
-
-  private canEvSocFreshnessBecomeFreshForBoost(
-    // Probe-widened: the snapshot physically carries the observed SoC bag the
-    // base type omits. The producer answers whether the report would give this
-    // charger a level; this seam only asks.
-    device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined,
-    reportedAt: number,
-  ): boolean {
-    return wouldReportRestoreStateOfChargeLevel(device?.stateOfCharge, reportedAt);
+    return resolveFlowBackedCapabilityReportOutcome(update);
   }
 
   private syncFlowBackedObservationFreshness(params: {

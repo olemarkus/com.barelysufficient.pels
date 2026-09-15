@@ -227,12 +227,12 @@ export class ComposedPlanEngine implements PlanEngine {
     return evaluateHeadroomForDevice(this.state, query, Date.now(), this.deviceDiagnostics);
   }
 
-  public syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): boolean {
-    return syncHeadroomCardSnapshot(this.state, devices, Date.now(), 'snapshot_refresh', this.deviceDiagnostics);
+  public syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): void {
+    syncHeadroomCardSnapshot(this.state, devices, Date.now(), 'snapshot_refresh', this.deviceDiagnostics);
   }
 
-  public syncHeadroomUsageObservation(deviceId: string, usageKw: number): boolean {
-    return syncHeadroomUsageObservation(this.state, deviceId, usageKw, Date.now(), this.deviceDiagnostics);
+  public syncHeadroomUsageObservation(deviceId: string, usageKw: number): void {
+    syncHeadroomUsageObservation(this.state, deviceId, usageKw, Date.now(), this.deviceDiagnostics);
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {

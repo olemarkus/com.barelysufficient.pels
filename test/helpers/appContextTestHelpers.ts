@@ -252,7 +252,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
-    requestFlowPlanRebuild: vi.fn(),
     getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
     getFlowReportedDeviceIds: vi.fn(() => []),
     reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
@@ -433,5 +432,4 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
     valueChanged: true,
     freshnessAdvanced: true,
     refreshSnapshot: true,
-    rebuildPlan: true,
   };

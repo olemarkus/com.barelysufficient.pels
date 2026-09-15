@@ -1,6 +1,5 @@
 import type { Logger as PinoLogger } from 'pino';
 import type { RebuildIntent } from './scheduler';
-import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
 import type { HomeId } from '../../utils/settingsKeys';
@@ -24,7 +23,7 @@ export type SchedulerTelemetryObserverDeps = {
 
 /**
  * Telemetry observer for `PlanRebuildScheduler` lifecycle callbacks.
- * Owns the per-key debug rate-limiter and the cross-cutting perf counters.
+ * Owns the per-key debug rate-limiter.
  *
  * Lives with the scheduler it observes. It used to sit in `setup/`, which made
  * its rate-limiter state ownerless — and put a component that names
@@ -56,12 +55,6 @@ export class SchedulerTelemetryObserver {
   };
 
   readonly onPendingIntentReplaced = (previous: RebuildIntent, next: RebuildIntent): void => {
-    if (previous.kind === 'flow' && next.kind === 'flow') {
-      incPerfCounter('plan_rebuild_requested.flow_coalesced_total');
-      if (previous.reason !== next.reason) {
-        incPerfCounter('plan_rebuild_requested.flow_pending_source_replaced_total');
-      }
-    }
     this.emit(
       `replaced:${previous.kind}:${previous.reason}:${next.kind}:${next.reason}`,
       {
@@ -75,31 +68,17 @@ export class SchedulerTelemetryObserver {
     );
   };
 
-  readonly onIntentCancelled = (intent: RebuildIntent, reason: string): void => {
-    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      this.deps.cancelQueuedPowerRebuild(reason);
-    }
+  readonly onIntentCancelled = (_intent: RebuildIntent, reason: string): void => {
+    this.deps.cancelQueuedPowerRebuild(reason);
   };
 
   readonly onIntentError = (intent: RebuildIntent, error: Error): void => {
-    const logger = this.deps.getStructuredLogger()?.child({ component: 'plan' });
-    if (intent.kind === 'flow') {
-      logger?.error({
-        event: 'plan_rebuild_flow_failed',
-        homeId: this.deps.homeId,
-        intentReason: intent.reason,
-        err: normalizeError(error),
-      });
-      return;
-    }
-    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      logger?.error({
-        event: 'plan_rebuild_power_sample_failed',
-        homeId: this.deps.homeId,
-        intentKind: intent.kind,
-        err: normalizeError(error),
-      });
-    }
+    this.deps.getStructuredLogger()?.child({ component: 'plan' }).error({
+      event: 'plan_rebuild_power_sample_failed',
+      homeId: this.deps.homeId,
+      intentKind: intent.kind,
+      err: normalizeError(error),
+    });
   };
 
   private emit(key: string, payload: Record<string, unknown>): void {

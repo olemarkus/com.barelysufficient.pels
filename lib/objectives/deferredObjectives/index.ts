@@ -63,7 +63,6 @@ export {
   parseSmartTaskCandidateRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
-  type SmartTaskWriteOrigin,
 } from './smartTaskCandidateRequest';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {

@@ -254,7 +254,6 @@ describe('updateSettingsUiSmartTask', () => {
     expect(createDeferredObjective).toHaveBeenCalledWith(
       DEVICE_ID,
       expect.objectContaining({ deadlineAtMs: echoed, targetTemperatureC: 70 }),
-      'settings_ui:smart_task_update',
       // The candidate already carries the fully-merged permission set, so the
       // write layer must not second-guess it with its whole-object `preserve`.
       'replace',
@@ -280,7 +279,6 @@ describe('updateSettingsUiSmartTask', () => {
     expect(createDeferredObjective).toHaveBeenCalledWith(
       DEVICE_ID,
       expect.objectContaining({ deadlineAtMs: expectedDeadline('07:00') }),
-      'settings_ui:smart_task_update',
       'replace',
     );
   });
@@ -308,8 +306,8 @@ describe('updateSettingsUiSmartTask', () => {
       }),
     });
     expect(result).toEqual({ ok: true });
-    const [, candidate, , policy] = createDeferredObjective.mock.calls[0]! as unknown as [
-      string, DeferredObjectivePlanPreviewCandidate, string, string,
+    const [, candidate, policy] = createDeferredObjective.mock.calls[0]! as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate, string,
     ];
     // The unchecked pause toggle is gone from the candidate AND the write is
     // authoritative, so the standing grant is actually cleared.

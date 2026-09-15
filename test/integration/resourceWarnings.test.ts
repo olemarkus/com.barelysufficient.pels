@@ -172,7 +172,7 @@ describe('Homey resource warning perf logging', () => {
       // A trigger no other lane emits during this test. `unknown` is the power
       // lane's own fallback label (`rebuildScheduler/policy.ts`), so a stray
       // power sample would satisfy the count assertions below on its own.
-      await app.planService.rebuildPlanFromCache('flow_card');
+      await app.planService.rebuildPlanFromCache('target_power_probe_due');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -192,7 +192,7 @@ describe('Homey resource warning perf logging', () => {
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
-      await app.planService.rebuildPlanFromCache('flow_card');
+      await app.planService.rebuildPlanFromCache('target_power_probe_due');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -253,10 +253,10 @@ describe('Homey resource warning perf logging', () => {
       }));
       expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
       expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
-        flow_card: expect.any(Number),
+        target_power_probe_due: expect.any(Number),
       }));
       expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
-        reason: 'flow_card',
+        reason: 'target_power_probe_due',
         totalMs: expect.any(Number),
         ageMs: expect.any(Number),
       }));

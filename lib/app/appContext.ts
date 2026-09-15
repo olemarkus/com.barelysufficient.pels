@@ -165,7 +165,6 @@ export type AppContext = {
   };
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
-  requestFlowPlanRebuild: (source: string) => void;
   /** App-wiring route to the PlanService that owns one device (main or sub-home). */
   rebuildOwningHomePlanForDevice?: (
     deviceId: string,

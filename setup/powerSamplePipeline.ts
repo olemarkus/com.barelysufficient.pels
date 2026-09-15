@@ -26,11 +26,6 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 
-// Tightened to zero in tests so coalesced rebuild requests don't block on
-// the throttle while a test is awaiting the resulting plan revision; prod
-// values preserve the 2s/15s/30s envelope that gates `signal` intent
-// scheduling. Mirrors the constants previously inlined on `PelsApp`.
-
 export type PowerSamplePipelineDeps = {
   /**
    * Builds the coalescing queue this pipeline runs its samples through. Passed

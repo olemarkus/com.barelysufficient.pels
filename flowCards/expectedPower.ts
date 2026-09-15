@@ -70,7 +70,6 @@ export function registerExpectedPowerCard(
     getDeviceDescriptors: () => Promise<ExpectedPowerDeviceSnapshot[]>;
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
-    rebuildPlan: () => void;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
   },
 ): void {
@@ -96,7 +95,6 @@ export function registerExpectedPowerCard(
       expectedPowerKw: requestedKw,
     });
     await deps.refreshSnapshot();
-    deps.rebuildPlan();
     return true;
   });
 

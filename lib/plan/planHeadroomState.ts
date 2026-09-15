@@ -49,8 +49,7 @@ const collectTrackedDeviceIds = (state: PlanEngineState): Set<string> => (
 const cleanupMissingHeadroomDevices = (
   state: PlanEngineState,
   devices: HeadroomCardDeviceLike[],
-): boolean => {
-  let stateChanged = false;
+): void => {
   const activeIds = new Set(devices.map((device) => device.id));
   const trackedIds = collectTrackedDeviceIds(state);
   for (const deviceId of trackedIds) {
@@ -66,9 +65,7 @@ const cleanupMissingHeadroomDevices = (
     clearSurplusTracking(state, deviceId);
     // A missing snapshot should close any open attempt, but it must not forgive prior failed activations.
     closeActivationAttemptForDevice(state, deviceId);
-    stateChanged = true;
   }
-  return stateChanged;
 };
 
 const wasRecentlySteppedDown = (
@@ -129,17 +126,17 @@ const syncTrackedUsage = (
   attemptOpen: boolean,
   reconciliation: DeviceDiagnosticsTrackedTransitionReconciliation | undefined,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-): boolean => {
+): void => {
   const usageKw = device.currentDrawKw;
   const previousUsageKw = state.headroomCardByDevice[device.id]?.lastUsageKw;
   if (previousUsageKw === usageKw) {
     incPerfCounter('tracked_usage_update_skipped_noop');
-    return false;
+    return;
   }
   const entry = ensureHeadroomEntry(state, device.id);
   entry.lastUsageKw = usageKw;
   entry.deviceName = device.name;
-  if (previousUsageKw === undefined) return false;
+  if (previousUsageKw === undefined) return;
 
   const dropped = previousUsageKw - usageKw >= HEADROOM_STEP_DOWN_THRESHOLD_KW;
   if (dropped) entry.lastStepDownMs = nowTs;
@@ -156,7 +153,6 @@ const syncTrackedUsage = (
       reconciliation: reconciliation ?? resolveTrackedTransitionReconciliation(state, device.id, nowTs),
     });
   }
-  return dropped;
 };
 
 const syncHeadroomCardDevice = (
@@ -165,7 +161,7 @@ const syncHeadroomCardDevice = (
   nowTs: number,
   reconciliation: DeviceDiagnosticsTrackedTransitionReconciliation | undefined,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-): boolean => {
+): void => {
   // Every build syncs the penalty, unconditionally. This used to be gated on the
   // incoming observation's timestamp being no older than the stored one — the
   // planner deciding an observation was not worth acting on, which is the
@@ -173,10 +169,7 @@ const syncHeadroomCardDevice = (
   // value; there is no stamp here to weigh it by.
   const penaltyInfo = syncActivationPenaltyState(state, device.id, nowTs, device);
   emitActivationTransition(diagnostics, device.name, penaltyInfo.transition);
-  const usageStateChanged = syncTrackedUsage(
-    state, device, nowTs, penaltyInfo.attemptOpen, reconciliation, diagnostics,
-  );
-  return penaltyInfo.stateChanged || usageStateChanged;
+  syncTrackedUsage(state, device, nowTs, penaltyInfo.attemptOpen, reconciliation, diagnostics);
 };
 
 /** Sync the devices a plan build just planned. Not every device is here, so nothing is cleaned up. */
@@ -185,12 +178,10 @@ export const syncHeadroomCardState = (
   devices: HeadroomCardDeviceLike[],
   nowTs: number,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-): boolean => {
-  let stateChanged = false;
+): void => {
   for (const device of devices) {
-    if (syncHeadroomCardDevice(state, device, nowTs, undefined, diagnostics)) stateChanged = true;
+    syncHeadroomCardDevice(state, device, nowTs, undefined, diagnostics);
   }
-  return stateChanged;
 };
 
 /**
@@ -205,12 +196,11 @@ export const syncHeadroomCardSnapshot = (
   nowTs: number,
   reconciliation: DeviceDiagnosticsTrackedTransitionReconciliation | undefined,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-): boolean => {
-  let stateChanged = cleanupMissingHeadroomDevices(state, snapshot);
+): void => {
+  cleanupMissingHeadroomDevices(state, snapshot);
   for (const device of snapshot) {
-    if (syncHeadroomCardDevice(state, device, nowTs, reconciliation, diagnostics)) stateChanged = true;
+    syncHeadroomCardDevice(state, device, nowTs, reconciliation, diagnostics);
   }
-  return stateChanged;
 };
 
 /**
@@ -224,15 +214,15 @@ export const syncHeadroomUsageObservation = (
   usageKw: number,
   nowTs: number,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-): boolean => {
+): void => {
   const previousUsageKw = state.headroomCardByDevice[deviceId]?.lastUsageKw;
   if (previousUsageKw === usageKw) {
     incPerfCounter('tracked_usage_update_skipped_noop');
-    return false;
+    return;
   }
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastUsageKw = usageKw;
-  if (previousUsageKw === undefined || previousUsageKw - usageKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) return false;
+  if (previousUsageKw === undefined || previousUsageKw - usageKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) return;
   entry.lastStepDownMs = nowTs;
   if (diagnostics && entry.deviceName) {
     diagnostics.recordControlEvent({
@@ -245,7 +235,6 @@ export const syncHeadroomUsageObservation = (
       reconciliation: resolveTrackedTransitionReconciliation(state, deviceId, nowTs),
     });
   }
-  return true;
 };
 
 export const resolveHeadroomCardCooldown = (

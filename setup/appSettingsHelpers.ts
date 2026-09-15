@@ -15,10 +15,6 @@ import {
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
 import { createSettingsHandler } from '../lib/utils/settingsHandlers';
-import {
-  stopFlowPowerSampleFreshnessClock,
-  syncFlowPowerSampleFreshnessClock,
-} from '../lib/power/flowPowerSampleFreshnessClock';
 import { createCapacitySettingsStore } from './capacitySettingsStoreAdapter';
 import {
   isDeviceControlProfiles,
@@ -461,11 +457,6 @@ export function initSettingsHandlerForApp(
       // source change must re-evaluate both or the home ends up with neither.
       ctx.generationPollSource.restart();
     },
-    stopFlowPowerSampleFreshnessClock: () => stopFlowPowerSampleFreshnessClock(ctx.timers),
-    syncFlowPowerSampleFreshnessClock: () => syncFlowPowerSampleFreshnessClock(
-      ctx.timers,
-      ctx.powerTracker.lastTimestamp,
-    ),
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
     releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
     reloadExpectedPowerOverrides: () => ctx.reloadExpectedPowerOverrides(),

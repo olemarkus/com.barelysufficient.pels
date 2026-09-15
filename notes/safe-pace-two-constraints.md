@@ -329,17 +329,16 @@ obvious:
   at the boundary — defeating exactly what the drain is for. All four sites now receive a
   producer-resolved `capacityPaceKw`, which carries the drain by construction. Any future
   accessor that can answer with a non-decaying substitute reintroduces this.
-- **The drain is only applied when a plan is rebuilt, and both sources do rebuild.**
-  There is no hour-boundary tick in `lib/plan/rebuildScheduler/**`, but none is
-  needed. Under `power_source = homey_energy` the 10 s poll
-  (`lib/power/sources/homeyEnergyPoll.ts:5`) drives rebuilds. Under
-  `power_source = flow`, `FlowPowerSampleFreshnessClock.runTick` requests a
-  `flow_power_sample_hold` rebuild every 10 s for as long as the last sample is
-  fresh and reschedules itself (`lib/power/flowPowerSampleFreshnessClock.ts:128-132`,
-  `216-224`), so the wind-down is recomputed without new Flow events. Past 60 s of
-  silence the same clock moves the sample to stale-hold and then fail-closed, and
-  actuating a drain off stale power would be wrong anyway. Do not add a
-  boundary timer here; the freshness policy already owns this window.
+- **The drain is only applied when a plan is rebuilt, and a reading is what rebuilds.**
+  There is no hour-boundary tick in `lib/plan/rebuildScheduler/**`. Under
+  `power_source = homey_energy` the 10 s poll (`lib/power/sources/homeyEnergyPoll.ts:5`)
+  drives rebuilds, so the wind-down is recomputed every poll. Under
+  `power_source = flow` it is recomputed when the owner's Flow reports power, and
+  not between reports: a home whose Flow falls silent near the boundary holds the
+  last decision until the next report or the 10-minute silence escalation. A 10 s
+  Flow-source heartbeat was meant to cover that window, but its rebuild request
+  never came due in production and it was removed. Covering it again is a new
+  rebuild source, and it has to go through the throttle's gates.
 
 **`capacityPaceKw` is not `hardCapKw`.** It budgets `hourlyAllowanceKWh` over the
 time left in the hour, so its instantaneous value legitimately exceeds the

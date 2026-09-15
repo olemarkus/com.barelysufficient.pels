@@ -71,8 +71,8 @@ export type PlanEngine = {
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
   /** The snapshot refresh's sync: every device in the refreshed snapshot, and cleanup of the ones that left. */
-  syncHeadroomCardState: (devices: HeadroomCardDeviceLike[]) => boolean;
-  syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => boolean;
+  syncHeadroomCardState: (devices: HeadroomCardDeviceLike[]) => void;
+  syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => void;
   applySheddingToDevice: (deviceId: string, deviceName: string, reason?: string) => Promise<boolean>;
   beginStartupRestoreStabilization: (nowMs: number) => void;
   clearStartupRestoreStabilization: (nowTs: number) => boolean;

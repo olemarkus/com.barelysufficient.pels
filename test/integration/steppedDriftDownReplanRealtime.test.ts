@@ -133,7 +133,7 @@ const settleThroughNextReading = async () => {
 describe('stepped device drifting down from the planned step', () => {
   beforeEach(() => {
     // 'performance' MUST be faked: the plan-rebuild scheduler reads the monotonic
-    // clock (`lib/plan/rebuildScheduler/intentPolicy.ts`). Without it the rebuild
+    // clock (`lib/plan/rebuildScheduler/homeRebuildRuntime.ts`). Without it the rebuild
     // runs on real time while the test drives fake timers.
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],

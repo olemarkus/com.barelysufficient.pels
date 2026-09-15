@@ -86,8 +86,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
-    stopFlowPowerSampleFreshnessClock: vi.fn(),
-    syncFlowPowerSampleFreshnessClock: vi.fn(),
     ...overrides,
   };
 };
@@ -691,8 +689,6 @@ describe('createSettingsHandler', () => {
     expect(deps.onHomeRuntimePowerSourceChanged).toHaveBeenCalled();
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
     expect(order).toEqual(['home-runtime', 'poll']);
-    expect(deps.stopFlowPowerSampleFreshnessClock).toHaveBeenCalled();
-    expect(deps.syncFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     // The source is part of the weather meter-scope fingerprint: the switch
     // must hit the collector's restart edge so its reconcile can invalidate.
     expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
@@ -708,9 +704,8 @@ describe('createSettingsHandler', () => {
 
     expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'homey_energy_meter_changed' }));
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
-    // Unlike a power-source change, the flow freshness clock and snapshot are
-    // untouched — the source itself did not change.
-    expect(deps.stopFlowPowerSampleFreshnessClock).not.toHaveBeenCalled();
+    // Unlike a power-source change, the snapshot is untouched — the source
+    // itself did not change.
     expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('homey_energy_meter');
   });

@@ -351,12 +351,12 @@ export class PlanService {
     return this.deps.planEngine.evaluateHeadroomForDevice(query);
   }
 
-  syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): boolean {
-    return this.deps.planEngine.syncHeadroomCardState(devices);
+  syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): void {
+    this.deps.planEngine.syncHeadroomCardState(devices);
   }
 
-  syncHeadroomUsageObservation(deviceId: string, usageKw: number): boolean {
-    return this.deps.planEngine.syncHeadroomUsageObservation(deviceId, usageKw);
+  syncHeadroomUsageObservation(deviceId: string, usageKw: number): void {
+    this.deps.planEngine.syncHeadroomUsageObservation(deviceId, usageKw);
   }
 
   /**

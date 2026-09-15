@@ -103,18 +103,16 @@ const buildDeviceDeps = (
     finalizeElapsedDeadline: vi.fn(),
     flushIfDirty: vi.fn(),
   } as unknown as DeferredObjectivePlanHistoryRecorder;
-  const rebuildPlan = vi.fn();
   const debugStructured = vi.fn();
   const deps: DeferredObjectiveDeviceWriteDeps = {
     store,
     activePlanRecorder,
     planHistoryRecorder,
-    rebuildPlan,
     nowMs: NOW_MS,
     ...(resolveDeviceHomeScope ? { resolveDeviceHomeScope } : {}),
     debugStructured,
   };
-  return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan, debugStructured };
+  return { deps, activePlanRecorder, planHistoryRecorder, debugStructured };
 };
 
 describe('device-scoped write op: sub-home gate', () => {
@@ -131,7 +129,7 @@ describe('device-scoped write op: sub-home gate', () => {
     expect(outcome).toEqual({ persisted: false, reason: 'device_in_sub_home' });
     expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
     expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     // The refusal leaves a topic-gated debug breadcrumb like the transient ones.
     expect(h.debugStructured).toHaveBeenCalledWith({
       event: 'objective_write_refused',
@@ -175,7 +173,7 @@ describe('device-scoped write op: sub-home gate', () => {
     });
     expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
     expect(readObjectiveForDevice(store, 'heater-main')).toBeUndefined();
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     expect(h.debugStructured).toHaveBeenCalledWith({
       event: 'objective_write_refused',
       op: 'upsert',
@@ -194,7 +192,7 @@ describe('device-scoped write op: sub-home gate', () => {
     });
     expect(outcome).toEqual({ persisted: false, reason: 'device_not_planned' });
     expect(readObjectiveForDevice(store, 'meter-main')).toBeUndefined();
-    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     expect(h.debugStructured).toHaveBeenCalledWith({
       event: 'objective_write_refused',
       op: 'upsert',

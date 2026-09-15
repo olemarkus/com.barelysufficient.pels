@@ -24,7 +24,6 @@ import {
   readObjectiveForDevice,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
-  type SmartTaskWriteOrigin,
 } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives/settings';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
@@ -48,7 +47,6 @@ type SmartTaskEditApp = Homey.App & {
   createDeferredObjective?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-    origin?: SmartTaskWriteOrigin,
     rescuePolicy?: 'preserve' | 'replace',
   ) => WidgetObjectiveWriteResult;
   cancelDeferredObjective?: (deviceId: string) => CancelDeferredObjectiveOutcome;
@@ -211,7 +209,6 @@ export const updateSettingsUiSmartTask = (
   const result = app.createDeferredObjective(
     request.deviceId,
     candidate,
-    'settings_ui:smart_task_update',
     'replace',
   );
   if (result.ok) return { ok: true };
