@@ -85,12 +85,18 @@ import {
 import { initWeatherInsight } from './weatherInsight.ts';
 import {
   initDeviceDetailHandlers,
+  openDeviceDetail,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
   loadEvCarAssociations,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
 } from './deviceDetail/index.ts';
+import {
+  initRecommendationSurfaces,
+  loadRecommendationData,
+  refreshRecommendationSurfaces,
+} from './recommendations.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { loadStarvationRescuableDevices } from './starvationRescue.ts';
 import { coerceDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
@@ -410,6 +416,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadEvBoostSettings(),
     loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),
+    loadRecommendationData(),
     loadDeferredObjectiveSettings(),
     loadStarvationRescuableDevices(),
     loadAdvancedSettings(),
@@ -418,6 +425,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // Hub exception chips need the loads above (dry-run state, budget setting,
   // power/price payloads) — one sync after the parallel phase settles.
   syncSettingsHubChips();
+  refreshRecommendationSurfaces();
 
   // Phase 3: Render everything once with all state populated
   // Device-dependent renders (renderPriorities, renderDevices)
@@ -455,8 +463,20 @@ const initializeBootHandlers = () => {
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
+  initRecommendationSurfaces({
+    openPanel: showTab,
+    openDevice: openDeviceDetail,
+  });
   showTab('overview');
   initTabHandlers();
+  // Register deep-link interception before awaited startup reads begin. The
+  // overview can paint smart-task links while those reads are still pending;
+  // without the capture handler, an early tap performs a full navigation.
+  initDeadlinePlanRouter({
+    mount: mountDeadlinePlan,
+    unmount: unmountDeadlinePlan,
+    setCloseHandler: setDeadlinePlanCloseHandler,
+  });
   // After initTabHandlers: the scope bar's visibility depends on the shown
   // panel, and that handler is what updates `state.activePanel` for the
   // `pels:tab-shown` event both listeners receive.
@@ -523,11 +543,6 @@ export const boot = async () => {
     markSettingsUi('boot:bootstrap-loaded');
     initializeBootHandlers();
     await loadInitialData(bootstrap);
-    initDeadlinePlanRouter({
-      mount: mountDeadlinePlan,
-      unmount: unmountDeadlinePlan,
-      setCloseHandler: setDeadlinePlanCloseHandler,
-    });
     startStaleDataRefreshInterval();
     markBootComplete();
     startDailyBudgetRefreshInterval();

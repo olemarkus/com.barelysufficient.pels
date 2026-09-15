@@ -24,6 +24,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -84,6 +85,7 @@ export type MockHomeyUiState = {
   // compat fallback in the handlers, but new tests should prefer this field.
   devices?: TargetDeviceSnapshot[];
   homeyDevices?: unknown;
+  recommendationCars?: unknown;
   // `/homey_energy_meters` payload (`HomeyEnergyMeterEntry[]`) backing both
   // whole-home meter pickers. Defaults to an empty list.
   homeyEnergyMeters?: unknown;
@@ -404,6 +406,10 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     return override ? { kind: 'readout', payload: override } : { kind: 'inactive' };
   },
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
+  [buildRouteKey('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH)]: (homey) => async () => ({
+    state: 'resolved',
+    cars: getUiOverride(homey, 'recommendationCars') ?? [],
+  }),
   [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homeyEnergyMeters') ?? []
   ),

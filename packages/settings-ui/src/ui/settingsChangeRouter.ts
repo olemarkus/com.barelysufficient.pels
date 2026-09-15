@@ -21,6 +21,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
+  EV_CAR_ASSOCIATIONS,
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_START_POLICIES,
@@ -61,9 +62,16 @@ import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import {
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
+  loadEvCarAssociations,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
 } from './deviceDetail/index.ts';
+import {
+  clearRecommendationDismissals,
+  loadRecommendationData,
+  refreshRecommendationSurfaces,
+  SETUP_RECOMMENDATION_DISMISSALS,
+} from './recommendations.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
@@ -349,6 +357,24 @@ const reloadWeatherInsightIfWeatherKey = (key: string, context: string): void =>
   );
 };
 
+const reloadRecommendationsIfKey = (key: string, context: string): void => {
+  if (key === SETUP_RECOMMENDATION_DISMISSALS) {
+    if (context === 'settings.unset') {
+      clearRecommendationDismissals();
+      return;
+    }
+    runLoggedTask(loadRecommendationData(), 'Failed to reload setup recommendations', context);
+    return;
+  }
+  if (key === EV_CAR_ASSOCIATIONS) {
+    runLoggedTask(
+      loadEvCarAssociations().then(refreshRecommendationSurfaces),
+      'Failed to reload car associations for recommendations',
+      context,
+    );
+  }
+};
+
 export const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
@@ -367,6 +393,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadActivePlansIfActivePlansKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
+  reloadRecommendationsIfKey(key, 'settings.unset');
   refreshModeCatalogSurfaces(key, 'settings.unset');
   // An unset device-control map is a real configuration change — the runtime
   // reads an absent map as "nobody opted in" — so it has to reload here too.
@@ -403,6 +430,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
   reloadActivePlansIfActivePlansKey(key, 'settings.set');
   reloadWeatherInsightIfWeatherKey(key, 'settings.set');
+  reloadRecommendationsIfKey(key, 'settings.set');
 
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');

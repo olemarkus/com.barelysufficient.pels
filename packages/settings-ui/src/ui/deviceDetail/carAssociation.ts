@@ -11,7 +11,7 @@ import {
   deviceDetailCarSection,
   deviceDetailCarStatus,
 } from '../dom.ts';
-import { callApi, getSetting } from '../homey.ts';
+import { callApi, getSetting, getSettingFresh, sleep } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
@@ -29,6 +29,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
 type CarOption = { id: string; name: string };
 
 const runSerializedCarWrite = createSerializedAsyncRunner();
+const ASSOCIATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
 
 // Cars are fetched lazily on the first charger page. `null` means never loaded.
 let carOptions: CarOption[] | null = null;
@@ -44,7 +45,23 @@ export const supportsCarAssociation = (
 
 export const loadEvCarAssociations = async (): Promise<void> => {
   try {
-    state.evCarAssociations = normalizeEvCarAssociations(await getSetting(EV_CAR_ASSOCIATIONS));
+    let value = await getSetting(EV_CAR_ASSOCIATIONS);
+    for (const delayMs of ASSOCIATION_READ_RETRY_DELAYS_MS) {
+      if (value !== null && value !== undefined) break;
+      await sleep(delayMs);
+      value = await getSettingFresh(EV_CAR_ASSOCIATIONS);
+    }
+    if (value !== null && value !== undefined
+      && (typeof value !== 'object' || Array.isArray(value))) {
+      await logSettingsError(
+        'Ignoring malformed car associations',
+        new TypeError('Invalid car association setting.'),
+        'loadEvCarAssociations',
+      );
+      return;
+    }
+    state.evCarAssociations = normalizeEvCarAssociations(value);
+    state.evCarAssociationsLoaded = true;
   } catch (error) {
     // Deliberately NOT reset to `{}`: the last-known map is better than none, and
     // an empty one becomes the fallback for the next write, which would persist
@@ -237,6 +254,7 @@ const writeAssociation = async (deviceId: string, carId: string, ticked: boolean
     commit: (next) => {
       state.evCarAssociations = next;
       renderCarAssociation(getRenderDevice());
+      document.dispatchEvent(new Event('ev-car-associations-updated'));
     },
     rollback: () => renderCarAssociation(getRenderDevice()),
   });

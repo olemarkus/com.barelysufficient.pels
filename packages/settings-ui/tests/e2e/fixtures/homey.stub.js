@@ -1741,6 +1741,7 @@
         { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
       ];
     },
+    'GET /ui_recommendation_cars': () => ({ state: 'resolved', cars: [] }),
     'GET /homey_energy_meters': () => {
       // Backs both whole-home meter pickers: the meters the endpoint resolved
       // from the Homey Energy report (whole-home cumulative + sensor-class

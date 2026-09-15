@@ -194,6 +194,10 @@
       "method": "GET",
       "path": "/homey_devices"
     },
+    "ui_recommendation_cars": {
+      "method": "GET",
+      "path": "/ui_recommendation_cars"
+    },
     "homey_energy_meters": {
       "method": "GET",
       "path": "/homey_energy_meters"

@@ -35,6 +35,16 @@ export type HomeyEnergyMeterEntry = { id: string; name: string };
 export const SETTINGS_UI_PLAN_PATH = '/ui_plan';
 export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
+export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
+
+export type SettingsUiRecommendationCar = {
+  id: string;
+  name: string;
+};
+
+export type SettingsUiRecommendationCarsRead =
+  | { state: 'resolved'; cars: SettingsUiRecommendationCar[] }
+  | { state: 'unavailable' };
 
 /**
  * Query parameter naming ONE sub-home on `ui_plan` / `ui_power` / `ui_devices`

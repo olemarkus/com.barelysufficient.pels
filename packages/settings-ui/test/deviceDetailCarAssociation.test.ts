@@ -8,12 +8,15 @@ import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
 const callApi = vi.fn();
 const getSetting = vi.fn();
+const getSettingFresh = vi.fn();
 const setSetting = vi.fn();
+const sleep = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApi(...args),
   getSetting: (...args: unknown[]) => getSetting(...args),
-  getSettingFresh: (...args: unknown[]) => getSetting(...args),
+  getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
+  sleep: (...args: unknown[]) => sleep(...args),
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: vi.fn(),
 }));
@@ -61,6 +64,7 @@ beforeEach(() => {
   buildDom();
   callApi.mockResolvedValue(CARS);
   getSetting.mockResolvedValue({});
+  getSettingFresh.mockResolvedValue(undefined);
   setSetting.mockResolvedValue(undefined);
 });
 
@@ -168,6 +172,24 @@ describe('charger car picker', () => {
     // Resetting to {} would make the empty map the fallback for the next write,
     // persisting every charger's cars away on the strength of one failed read.
     expect(state.evCarAssociations).toEqual({ 'charger-1': { carIds: ['car-1'] } });
+    expect(state.evCarAssociationsLoaded).toBe(true);
+  });
+
+  it('keeps associations unresolved after a failed first read and resolves absence after retries', async () => {
+    const { loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockRejectedValueOnce(new Error('transient'));
+
+    await loadEvCarAssociations();
+    expect(state.evCarAssociationsLoaded).toBe(false);
+
+    getSetting.mockResolvedValueOnce(undefined);
+    getSettingFresh.mockResolvedValue(undefined);
+    await loadEvCarAssociations();
+
+    expect(getSettingFresh).toHaveBeenCalledTimes(2);
+    expect(state.evCarAssociations).toEqual({});
+    expect(state.evCarAssociationsLoaded).toBe(true);
   });
 
   it('does not render a non-finite battery level', async () => {

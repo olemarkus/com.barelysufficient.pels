@@ -31,7 +31,10 @@ import api from '../../api';
 import * as stubs from '../../setup/settingsUiApi';
 
 type LoggerMock = { error: ReturnType<typeof vi.fn> };
-type AppMock = { getApiStructuredLogger: ReturnType<typeof vi.fn> };
+type AppMock = {
+  getApiStructuredLogger: ReturnType<typeof vi.fn>;
+  deviceManager?: { getDevicesForDebug: ReturnType<typeof vi.fn> };
+};
 type HomeyMock = { app: AppMock };
 type Handler = (ctx: { homey: HomeyMock }) => Promise<unknown>;
 
@@ -62,6 +65,41 @@ beforeEach(() => {
 });
 
 describe('api handler error logging', () => {
+  it('distinguishes a resolved empty recommendation car list from an unavailable manager', async () => {
+    const { homey } = buildHomey();
+    const handler = (api as unknown as Record<string, Handler>).ui_recommendation_cars;
+
+    await expect(handler({ homey })).resolves.toEqual({ state: 'unavailable' });
+
+    homey.app.deviceManager = {
+      getDevicesForDebug: vi.fn().mockResolvedValue([
+        {
+          id: 'car-1', name: 'Polestar 3', class: 'car',
+          capabilities: ['ev_charging_state', 'measure_battery'],
+        },
+        { id: 'heater-1', name: 'Tank', class: 'heater', capabilities: ['measure_temperature'] },
+      ]),
+    };
+    await expect(handler({ homey })).resolves.toEqual({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3' }],
+    });
+
+    homey.app.deviceManager.getDevicesForDebug.mockResolvedValue([]);
+    await expect(handler({ homey })).resolves.toEqual({ state: 'resolved', cars: [] });
+  });
+
+  it('reports recommendation cars as unavailable when the device read fails', async () => {
+    const { homey } = buildHomey();
+    homey.app.deviceManager = {
+      getDevicesForDebug: vi.fn().mockRejectedValue(new Error('device API unavailable')),
+    };
+
+    await expect(
+      (api as unknown as Record<string, Handler>).ui_recommendation_cars({ homey }),
+    ).resolves.toEqual({ state: 'unavailable' });
+  });
+
   it('falls back to console.error when the structured logger is not wired (restart window)', async () => {
     const cause = new Error('bootstrap blew up before app was ready');
     stubFor('buildSettingsUiBootstrap').mockImplementation(() => { throw cause; });

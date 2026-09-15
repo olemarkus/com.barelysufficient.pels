@@ -90,6 +90,7 @@ export type UiState = {
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
   evCarAssociations: EvCarAssociations;
+  evCarAssociationsLoaded: boolean;
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
@@ -180,6 +181,7 @@ export const state: UiState = {
   temperatureBoostSettings: {},
   evBoostSettings: {},
   evCarAssociations: {},
+  evCarAssociationsLoaded: false,
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
