@@ -189,6 +189,7 @@ export const loadDevicesForOverview = () => {
     .then((devices) => {
       state.devicesLoaded = true;
       state.latestDevices = devices;
+      document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
       refreshOverviewPlanIfVisible('overviewDeviceLoad');
     })
     .catch((error) => {

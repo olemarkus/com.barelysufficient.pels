@@ -237,6 +237,7 @@ const writeAssociation = async (deviceId: string, carId: string, ticked: boolean
     commit: (next) => {
       state.evCarAssociations = next;
       renderCarAssociation(getRenderDevice());
+      document.dispatchEvent(new Event('ev-car-associations-updated'));
     },
     rollback: () => renderCarAssociation(getRenderDevice()),
   });
