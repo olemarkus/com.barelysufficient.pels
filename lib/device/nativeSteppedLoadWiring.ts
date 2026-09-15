@@ -20,7 +20,7 @@ import {
 import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
 import type { DeviceCapabilityMap } from './managerControl';
 
-export const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
+const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',
   'max_power_2000',
   'max_power',
@@ -44,6 +44,29 @@ const HOIAX_DRIVER_ID_PREFIXES = [
 const HOIAX_DRIVER_IDS = new Set([
   'homey:app:com.myuplink:hoiax',
   'com.myuplink:hoiax',
+]);
+
+/**
+ * Easee charger (`no.easee`, Athom-maintained since 2.0). Its setable
+ * `target_charger_current` capability is the charger's *dynamic* current, in
+ * whole amps: the listener and the app's own "Set dynamic charger current" Flow
+ * card both end in the same `setDynamicChargerCurrent` call (checked against the
+ * deployed 2.0.5 build), and the app republishes the value the Easee cloud
+ * reports back into the same capability. So PELS writing the capability does
+ * exactly what the bridge Flow did, and reads its answer from the same place.
+ * The permanent charger limit is a separate device setting PELS never touches.
+ */
+export const EASEE_CHARGER_CURRENT_CAPABILITY_ID = 'target_charger_current';
+// Zaptec's read-only report of the installation current it offers, in amps.
+export const AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID = 'available_installation_current';
+// The app's Flow action card for the same write. A user Flow using it is a
+// conflict exactly as a Flow writing the capability would be, so it belongs in
+// the owned native-write set the flow-conflict classifier intersects.
+const EASEE_CHARGER_CURRENT_FLOW_CARD_ID = 'setDynamicChargerCurrent';
+const EASEE_OWNER_URIS = new Set(['homey:app:no.easee']);
+const EASEE_CHARGER_DRIVER_IDS = new Set([
+  'homey:app:no.easee:charger',
+  'no.easee:charger',
 ]);
 
 const NATIVE_VALUES_BY_RANK = {
@@ -89,7 +112,22 @@ export function isNativeSteppedLoadWiringCandidate(params: {
 }): boolean {
   const { device, capabilities, capabilityObj } = params;
   if (isHoiaxDevice(device) && resolveNativeSteppedLoadCapabilityId(capabilities) !== undefined) return true;
+  if (capabilityObj !== undefined && isEaseeChargerCurrentCandidate(device, capabilityObj)) return true;
   return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
+}
+
+/**
+ * An Easee charger whose dynamic charger current PELS can write. The ladder is
+ * not the device's to suggest: amps only become watts through the phase count,
+ * so the charger needs the owner's EV 1-phase / 3-phase control mode, and the
+ * native overlay only ever runs with that preset's ladder.
+ */
+export function isEaseeChargerCurrentCandidate(
+  device: HomeyDeviceLike,
+  capabilityObj: DeviceCapabilityMap,
+): boolean {
+  return isEaseeChargerDevice(device)
+    && capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.setable === true;
 }
 
 export function isTargetPowerSteppedLoadWiringCandidate(params: {
@@ -109,6 +147,11 @@ export function hasTargetPowerCapability(capabilities: readonly string[]): boole
  *   - target_power steppers  → `target_power` (off step writes 0, same cap)
  *   - max_power_* steppers    → the present `max_power_*` cap, plus `onoff`
  *     when the device exposes it (the off step writes `onoff:false`)
+ *   - Easee chargers          → `target_charger_current` (off step writes 0 A),
+ *     plus the app's `setDynamicChargerCurrent` Flow card, which is the same
+ *     write. It is a card id rather than a capability id, but a user Flow's
+ *     device card is recorded under the same `homey:device:<id>:<suffix>` key,
+ *     so the classifier intersects it like any other owned write.
  *
  * Operates on the capability-id list alone (no `capabilityObj`): callers pass
  * the capabilities of a device already classified as a stepped-load candidate
@@ -123,11 +166,29 @@ export function resolveNativeSteppedLoadWriteCapabilities(
   capabilities: readonly string[],
 ): string[] {
   if (capabilities.includes(TARGET_POWER_CAPABILITY_ID)) return [TARGET_POWER_CAPABILITY_ID];
+  if (capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) {
+    return [EASEE_CHARGER_CURRENT_CAPABILITY_ID, EASEE_CHARGER_CURRENT_FLOW_CARD_ID];
+  }
 
   const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
   if (!nativeCapabilityId) return [];
 
   return capabilities.includes('onoff') ? [nativeCapabilityId, 'onoff'] : [nativeCapabilityId];
+}
+
+/**
+ * Whether a native-write set (`resolveNativeSteppedLoadWriteCapabilities`)
+ * belongs to a device whose native control sits behind the owner-visible
+ * "built-in device control" switch, and so is auto-enabled only when no user
+ * Flow already does the same write: Hoiax `max_power_*` and Easee charger
+ * current. `target_power` steppers are default-on with no switch, so they are
+ * not gated.
+ */
+export function isToggleGatedNativeWriteSet(ownedCapabilities: readonly string[]): boolean {
+  return ownedCapabilities.some((capabilityId) => (
+    capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
+    || NATIVE_STEPPED_LOAD_CAPABILITY_SET.has(capabilityId)
+  ));
 }
 
 export function resolveNativeSteppedLoadProfileSuggestion(params: {
@@ -244,6 +305,24 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
     capabilities,
     capabilityObj,
   } = params;
+  if (capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) {
+    // The current is the whole answer. Easee's `onoff` mirrors "is charging"
+    // (and a paused charger keeps its current), so the off-by-onoff fallback
+    // below would misreport a paused 16 A charger as standing on the off step.
+    const currentA = capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value;
+    if (typeof currentA !== 'number' || !Number.isFinite(currentA)) return undefined;
+    const sortedSteps = sortSteppedLoadSteps(profile.steps);
+    if (currentA <= 0) return sortedSteps.find((step) => isSteppedLoadOffStep(profile, step.id))?.id;
+    // The rung whose current is nearest; a tie goes to the lower rung, which
+    // the stable sort over the ascending ladder keeps first.
+    return sortedSteps
+      .flatMap((step) => (
+        step.planningCurrentA === undefined || isSteppedLoadOffStep(profile, step.id)
+          ? []
+          : [{ id: step.id, distanceA: Math.abs(step.planningCurrentA - currentA) }]
+      ))
+      .sort((left, right) => left.distanceA - right.distanceA)[0]?.id;
+  }
   const capabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
   if (!capabilityId && isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj })) {
     return resolveTargetPowerReportedStepId({ profile, capabilityObj });
@@ -279,6 +358,16 @@ export function resolveNativeSteppedLoadCommand(params: {
     };
   }
 
+  if (capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) {
+    // Every rung of the EV preset ladder carries its current. A step without
+    // one cannot be expressed as a charger current, so there is no write.
+    if (desiredStep.planningCurrentA === undefined) return null;
+    return {
+      capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID,
+      value: Math.round(desiredStep.planningCurrentA),
+    };
+  }
+
   if (isSteppedLoadOffStep(profile, desiredStep.id)) {
     return capabilities.includes('onoff') ? { capabilityId: 'onoff', value: false } : null;
   }
@@ -307,6 +396,12 @@ export function isNativeSteppedLoadControlCapabilityId(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): boolean {
   if (resolveNativeSteppedLoadCapabilityId([params.capabilityId]) !== undefined) return true;
+  if (
+    params.capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
+    && params.capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)
+  ) {
+    return true;
+  }
   return params.capabilityId === TARGET_POWER_CAPABILITY_ID
     && isTargetPowerSteppedLoadCandidate(params);
 }
@@ -315,6 +410,7 @@ export function resolveNativeSteppedLoadObservationCapabilityId(params: {
   capabilities: readonly string[];
   capabilityObj?: DeviceCapabilityMap;
 }): string | undefined {
+  if (params.capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) return EASEE_CHARGER_CURRENT_CAPABILITY_ID;
   return resolveNativeSteppedLoadCapabilityId(params.capabilities)
     ?? (
       isTargetPowerSteppedLoadCandidate(params)
@@ -331,6 +427,15 @@ function isHoiaxDevice(device: HomeyDeviceLike): boolean {
   const driverId = normalizeText(device.driverId ?? device.driver?.id);
   return HOIAX_DRIVER_IDS.has(driverId)
     || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
+}
+
+// The Easee app also ships an Equalizer driver. Matching the app is enough:
+// only the charger driver exposes `target_charger_current`, and the candidate
+// check gates on that capability.
+function isEaseeChargerDevice(device: HomeyDeviceLike): boolean {
+  if (EASEE_OWNER_URIS.has(normalizeText(device.ownerUri ?? device.driver?.owner_uri))) return true;
+  if (EASEE_OWNER_URIS.has(normalizeText(device.driverUri ?? device.driver?.uri))) return true;
+  return EASEE_CHARGER_DRIVER_IDS.has(normalizeText(device.driverId ?? device.driver?.id));
 }
 
 function isTargetPowerSteppedLoadCandidate(params: {

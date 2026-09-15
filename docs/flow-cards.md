@@ -125,7 +125,7 @@ For water heaters and similar non-EV devices using the built-in stepped-load mod
 
 The full worked example lives in [Wire a Flow-Based Load Device](/how-to-headroom-expected-power-flow-control).
 
-For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger).
+For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger). An Easee charger needs neither card: PELS sets and reads its current directly, see [Configure an Easee EV Charger](/easee-ev-charger).
 
 ### EV battery reporting
 

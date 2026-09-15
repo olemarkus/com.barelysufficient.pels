@@ -9,6 +9,7 @@ import type {
   EvChargingState,
   DeviceStartPolicy,
   SettingsUiLogEntry,
+  TargetPowerSteppedLoadPreset,
 } from './types.js';
 
 export type { DeviceStartPolicy };
@@ -345,6 +346,18 @@ export type SettingsUiPlanPayload = {
  */
 export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe;
 
+/**
+ * The EV control mode each charger's own app implies from how the charger is
+ * wired, keyed by device id. Only chargers that report a phase count have an
+ * entry; every other device is simply not a key.
+ *
+ * A fact about the installation, not the car (a single-phase car draws one
+ * phase from a three-phase charger), so the settings UI uses it only as the
+ * starting control mode it saves when the owner turns Managed on for a charger
+ * with no control mode yet. Nothing keeps it in sync afterwards.
+ */
+export type ChargerPhasePresets = Readonly<Record<string, TargetPowerSteppedLoadPreset>>;
+
 export type SettingsUiDevicesPayload = {
   // Served from the app-layer DECORATED device list (`latestTargetSnapshot`),
   // so the payload carries the stepped-load step-command/planning decoration
@@ -364,6 +377,11 @@ export type SettingsUiDevicesPayload = {
   // type is the point — while the payload merely carried the bag, the settings
   // UI's own device type widened straight back to it and read the raw report.
   devices: SettingsUiDeviceSnapshot[];
+  // Read from the same device list `devices` comes from, unmanaged chargers
+  // included (the opt-in it serves happens before a charger is managed). The
+  // empty map on an `unavailable` scoped read is the empty shape, like its
+  // empty `devices`.
+  chargerPhasePresets: ChargerPhasePresets;
   // True when the home has at least one auto-tracked solar/PV device (deviceClass
   // 'solarpanel'). The PV device itself is excluded from `devices` (observe-only), so
   // this home-level flag is the only signal the settings UI has that solar exists — it

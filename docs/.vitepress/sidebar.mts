@@ -69,6 +69,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         link: '/how-to-headroom-expected-power-flow-control',
       },
       { text: 'Configure an EV Charger', link: '/ev-charger' },
+      { text: 'Configure an Easee EV Charger', link: '/easee-ev-charger' },
       { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
     ],
   },

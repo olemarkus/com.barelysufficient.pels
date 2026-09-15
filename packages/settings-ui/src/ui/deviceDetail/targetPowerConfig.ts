@@ -21,8 +21,8 @@ import {
   deviceDetailTargetPowerSave,
   deviceDetailTargetPowerStep,
 } from '../dom.ts';
-import { normalizeDeviceTargetPowerConfigs } from '../deviceControlProfiles.ts';
-import { state } from '../state.ts';
+import { getStoredDeviceControlProfile, normalizeDeviceTargetPowerConfigs } from '../deviceControlProfiles.ts';
+import { state, type SettingsUiDeviceView } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
@@ -112,6 +112,70 @@ export const initTargetPowerConfigHandlers = (params: {
   });
 };
 
+/**
+ * What turning Managed on does to a device's control mode: save the EV preset
+ * its charger app reports, or leave the mode as it is.
+ *
+ * Saved once, at opt-in, and never again. The charger reports how it is wired,
+ * not what the car draws: a single-phase car on a three-phase charger is why
+ * the "Set EV charging phase" Flow card exists, and an owner who picks a mode
+ * by hand has made the call. So only a device with no control mode of any kind
+ * (no preset, range, explicit off or stepped profile) gets one.
+ */
+export type ManagedOptInControlMode =
+  | { kind: 'save_charger_preset'; config: TargetPowerSteppedLoadConfig }
+  | { kind: 'leave' };
+
+const LEAVE_CONTROL_MODE: ManagedOptInControlMode = { kind: 'leave' };
+
+export const resolveManagedOptInControlMode = (device: SettingsUiDeviceView): ManagedOptInControlMode => {
+  const reportedPreset = state.chargerPhasePresets[device.id];
+  if (reportedPreset === undefined) return LEAVE_CONTROL_MODE;
+  if (Object.hasOwn(state.deviceTargetPowerConfigs, device.id)) return LEAVE_CONTROL_MODE;
+  if (getStoredDeviceControlProfile(device.id) || device.controlModel) return LEAVE_CONTROL_MODE;
+  return { kind: 'save_charger_preset', config: createEvTargetPowerConfig(reportedPreset) };
+};
+
+// Only a real object is normalised; anything else hands `writeFreshSetting`
+// its "unreadable" signal so it falls back to the snapshot instead of
+// normalising garbage into `{}` and erasing every other device's entry.
+const readFreshTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs | null => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? normalizeDeviceTargetPowerConfigs(value)
+    : null
+);
+
+/**
+ * Apply `resolveManagedOptInControlMode` after the owner turned Managed on. The
+ * fresh read decides again: a mode saved elsewhere since the UI last loaded
+ * (the Flow card, a second settings window) wins, and the map is written back
+ * unchanged.
+ */
+export async function applyManagedOptInControlMode(deviceId: string, refresh: () => void): Promise<void> {
+  const device = state.latestDevices.find((entry) => entry.id === deviceId);
+  if (!device) return;
+  const decision = resolveManagedOptInControlMode(device);
+  if (decision.kind === 'leave') return;
+  await runSerializedTargetPowerWrite(async () => {
+    await writeFreshSetting<DeviceTargetPowerConfigs>({
+      key: DEVICE_TARGET_POWER_CONFIGS,
+      context: 'device detail',
+      logMessage: 'Failed to save the charger control mode',
+      toastMessage: 'Failed to save the charger control mode.',
+      fallbackValue: state.deviceTargetPowerConfigs,
+      readFresh: readFreshTargetPowerConfigs,
+      mutate: (currentMap) => (
+        Object.hasOwn(currentMap, deviceId) ? currentMap : { ...currentMap, [deviceId]: decision.config }
+      ),
+      commit: (nextMap) => {
+        state.deviceTargetPowerConfigs = nextMap;
+        refresh();
+      },
+      rollback: refresh,
+    });
+  });
+}
+
 export async function persistTargetPowerConfig(params: {
   deviceId: string;
   config: TargetPowerSteppedLoadConfig | null;
@@ -127,14 +191,7 @@ export async function persistTargetPowerConfig(params: {
       // transient null or non-object SDK read does not erase entries for
       // other devices.
       fallbackValue: state.deviceTargetPowerConfigs,
-      // Only normalize when the fresh SDK value is a real object.
-      // Anything else returns null so `writeFreshSetting` falls back to
-      // the snapshot instead of normalising garbage into `{}`.
-      readFresh: (value) => (
-        value && typeof value === 'object' && !Array.isArray(value)
-          ? normalizeDeviceTargetPowerConfigs(value)
-          : null
-      ),
+      readFresh: readFreshTargetPowerConfigs,
       mutate: (currentMap) => {
         const nextMap = { ...currentMap };
         if (params.config) nextMap[params.deviceId] = params.config;

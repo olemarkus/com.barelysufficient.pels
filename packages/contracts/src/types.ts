@@ -363,9 +363,11 @@ export type DeviceDescriptor = {
     // not part of the stepped cluster.
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
     // Capabilities PELS writes when it natively controls this stepped-load
-    // device (max_power_* / onoff / target_power). Populated for stepped-load
-    // candidates even when native wiring is off. Used by native-wiring
-    // flow-conflict detection (notes/native-wiring/); not a control input.
+    // device (max_power_* / onoff / target_power / an Easee's
+    // target_charger_current, plus that app's equivalent Flow card id).
+    // Populated for stepped-load candidates even when native wiring is off.
+    // Used by native-wiring flow-conflict detection (notes/native-wiring/);
+    // not a control input.
     nativeWriteCapabilities?: readonly string[];
     // Set when a user Homey Flow writes a capability PELS would natively
     // control for this device, so PELS holds off auto-enabling native wiring

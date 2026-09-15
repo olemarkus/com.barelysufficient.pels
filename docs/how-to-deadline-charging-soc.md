@@ -73,7 +73,7 @@ First make PELS able to control charging current.
 4. Choose **EV 1-phase** or **EV 3-phase**, matching your charger setup.
 5. Create the current-control Flow described in [Configure an EV Charger](/ev-charger).
 
-For a Zaptec charger, use the shorter [Zaptec EV Charger](/zaptec-ev-charger) guide.
+For a Zaptec charger, use the shorter [Zaptec EV Charger](/zaptec-ev-charger) guide. An Easee charger needs no current-control Flow; see [Easee EV Charger](/easee-ev-charger).
 
 ### Choose The Default Charging Behavior
 

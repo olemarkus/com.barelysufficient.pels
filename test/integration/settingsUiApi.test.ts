@@ -486,6 +486,8 @@ describe('settingsUiApi', () => {
           reportedStepId: 'low',
         },
       ],
+      // No app on this fixture homey, so no transport to report charger wiring.
+      chargerPhasePresets: {},
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
       // No export history and no curtailment seam wired: the surplus engine has

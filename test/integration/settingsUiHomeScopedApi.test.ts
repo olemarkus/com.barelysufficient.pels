@@ -214,7 +214,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
         expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-          devices: [], homeScope: { state: 'unavailable' },
+          devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
         });
 
         // No settings read at all — so in particular no `<base>:<homeId>` key
@@ -288,7 +288,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // absence meaning.
       const { homey } = installBoundary({ hasMembership: false });
       expect(getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        devices: [], homeScope: { state: 'unavailable' },
+        devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
         tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
@@ -305,7 +305,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary(provisional);
       const query = { homeId: AREA_ID };
       expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-        devices: [], homeScope: { state: 'unavailable' },
+        devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
         tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },

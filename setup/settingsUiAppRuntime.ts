@@ -13,6 +13,7 @@ import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type {
+  ChargerPhasePresets,
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
   SettingsUiPowerStatus,
@@ -46,7 +47,10 @@ type SettingsUiRuntimeApp = Homey.App & {
   capacityPriorities?: Record<string, Record<string, number>>;
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
-  deviceManager?: { getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined };
+  deviceManager?: {
+    getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined;
+    getChargerPhasePresets: () => ChargerPhasePresets;
+  };
   getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
   getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   powerTracker?: PowerTrackerState;
@@ -205,6 +209,11 @@ export const getObservedStateForUiFromApp = (
   deviceId: string,
 ): ProjectedObservedDeviceState | undefined => (
   getRuntimeApp(homey)?.getObservedRecord?.(deviceId)
+);
+
+/** Reported charger wiring; empty while the app shell or its transport is not up, like the picker list. */
+export const getChargerPhasePresetsFromApp = (homey: Homey.App['homey']): ChargerPhasePresets => (
+  getRuntimeApp(homey)?.deviceManager?.getChargerPhasePresets() ?? {}
 );
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {

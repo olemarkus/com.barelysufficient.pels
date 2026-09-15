@@ -19,7 +19,7 @@ Use this setup when you want to:
 - use peak shaving to keep short high-load periods below the hard cap
 - keep EV charging from competing blindly with heating or hot water
 - let higher-priority devices win when available power is limited
-- use Homey Flows to connect PELS to a charger app such as Zaptec, Easee, or another charger integration
+- control an Easee charger directly, or use Homey Flows to connect PELS to a charger app such as Zaptec or another charger integration
 
 PELS plays the brain role and lets your charger app keep doing what it does best: PELS decides the desired charging current or available power based on price, total power, and priorities; the charger app delivers it to the charger.
 
@@ -114,6 +114,12 @@ For example:
 
 This keeps PELS focused on whole-home power management instead of duplicating every charger integration.
 
+## Easee example
+
+With the Easee app for Homey, PELS sets the charging current itself and reads it back from the charger, so there is no Flow to build for it. Pick the EV control mode for the charger and PELS turns on built-in control, unless one of your Flows already sets the charger's current.
+
+[Configure an Easee EV charger](../easee-ev-charger.md)
+
 ## Zaptec example
 
 Zaptec chargers are a good example because the Zaptec Homey app can expose actions for available charging current. PELS can calculate the desired current, and a Flow can pass that value to Zaptec.
@@ -131,6 +137,7 @@ General EV charger setup:
 - [Getting Started](../getting-started.md)
 - [Using Homey Energy](../homey-energy.md)
 - [Configure an EV charger](../ev-charger.md)
+- [Configure an Easee EV charger](../easee-ev-charger.md)
 - [Configure a Zaptec EV charger](../zaptec-ev-charger.md)
 - [Compare cost-saving functions](../cost-saving-functions.md)
 - [Smart Tasks](../smart-tasks.md)

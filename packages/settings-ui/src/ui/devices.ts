@@ -5,8 +5,10 @@ import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
+  type ChargerPhasePresets,
   type SettingsUiDevicesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { isEvTargetPowerPreset } from '../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
   callApi,
   getApiReadModel,
@@ -38,6 +40,7 @@ import {
 } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { appendHomeBadge, refreshHomeBadges } from './homeBadges.ts';
+import { applyManagedOptInControlMode } from './deviceDetail/targetPowerConfig.ts';
 
 const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -51,6 +54,16 @@ const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListI
   typeof value === 'object'
   && value !== null
   && typeof (value as { available?: unknown }).available === 'boolean'
+);
+
+// The map crosses the API bridge untyped. A missing or malformed map, or an
+// entry that is not an EV preset, reports no wiring for that charger: the
+// owner then picks the control mode, exactly as for a charger that never
+// reported one.
+const parseChargerPhasePresets = (value: unknown): ChargerPhasePresets => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([, preset]) => isEvTargetPowerPreset(preset)))
+    : {}
 );
 
 const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
@@ -75,6 +88,7 @@ export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> =>
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   state.hasExhibitedExport = payload?.hasExhibitedExport === true;
   state.surplusPoolReachable = payload?.surplusPoolReachable === true;
+  state.chargerPhasePresets = parseChargerPhasePresets(payload?.chargerPhasePresets);
   return devices;
 };
 
@@ -147,7 +161,9 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
   } catch (error) {
     await logSettingsError('Failed to update managed device', error, 'device list');
     await showToastError(error, 'Failed to update managed devices.');
+    return;
   }
+  if (checked) await applyManagedOptInControlMode(deviceId, () => renderDevices(state.latestDevices));
 });
 
 const buildControllableToggleHandler = (deviceId: string) => withInitialLoadGuard('controllable', async (checked) => {
@@ -397,8 +413,10 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       // the bare entry; every home-scoped entry it did not refresh is dropped
       // rather than left to serve a pre-refresh device list.
       invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+      state.chargerPhasePresets = parseChargerPhasePresets(response.chargerPhasePresets);
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
         devices: refreshedDevices,
+        chargerPhasePresets: state.chargerPhasePresets,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,
         hasExhibitedExport: response.hasExhibitedExport === true,
         surplusPoolReachable: response.surplusPoolReachable === true,

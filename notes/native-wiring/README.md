@@ -23,6 +23,20 @@ capabilities instead of round-tripping through user-authored Flow cards.
   the devices that motivate this initiative: we want native stepped control
   ON by default, but a user who already built a Flow writing `max_power_*`
   would then have two writers racing the same capability.
+- **Easee EV charger current** (`no.easee`, charger driver): native stepped
+  control writes the EV preset step's whole-amp current to the setable
+  `target_charger_current` (0 A for the off step) and reads the step back from
+  the same capability, replacing both halves of the bridge Flow. Checked
+  against the deployed Easee 2.0.5 build (installed on the SHS; the GitHub
+  repo is the archived community 1.9.6): the capability listener and the
+  app's "Set dynamic charger current" card (`setDynamicChargerCurrent`) both
+  call the same `setDynamicChargerCurrent` → `POST /chargers/<id>/settings
+  { dynamicChargerCurrent }`, and the app publishes the cloud's value back on
+  `target_charger_current`. Needs the owner's EV 1-phase / 3-phase preset
+  (amps only become watts through it). Same opt-in gate and flow-conflict
+  auto-enable as Hoiax. Start/stop stays on `evcharger_charging`. The
+  session-start reset to the charger maximum arrives as an observed step and
+  is corrected by the ordinary stepped mismatch path, as it was with the Flow.
 
 ## The conflict rule
 
@@ -41,6 +55,13 @@ intersection, consumed by the conflict classifier in a later PR):
 | Zaptec EV | `charging_button` |
 | Hoiax stepped | `max_power_3000`, `max_power_2000`, `max_power`, `onoff` (off step) |
 | Generic `target_power` stepped | `target_power` |
+| Easee EV charger | `target_charger_current`, plus the `setDynamicChargerCurrent` card id |
+
+The Easee card id is not a capability, but a user Flow's device action card is
+recorded under the same `homey:device:<deviceId>:<suffix>` key as a capability
+write, so listing the card that performs the same write makes the classifier
+catch the bridge Flow owners actually build (prod "Elbillader" uses the card,
+not the capability).
 
 A bridge Flow (PELS `desired_stepped_load_changed` trigger → vendor action)
 is **not** detected via the PELS card. It surfaces through the vendor

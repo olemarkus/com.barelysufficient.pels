@@ -378,6 +378,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    chargerPhasePresets: {},
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
   }),
@@ -437,6 +438,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   },
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    chargerPhasePresets: {},
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
   }),
