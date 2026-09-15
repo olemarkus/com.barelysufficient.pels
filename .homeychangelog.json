@@ -520,5 +520,8 @@
   },
   "3.1.2": {
     "en": "Minor stability improvements. PELS no longer keeps checking in the background for a whole-home meter when none has been chosen, and it avoids sending device commands while it is still starting up and cannot yet control your devices."
+  },
+  "3.2.0": {
+    "en": "Heat pumps and air conditioners that report cooling mode now lower their target in cheap hours and when using solar surplus, and raise it in expensive hours. They also have a separate cooling temperature limit, so heating and cooling can use different limits. Devices in auto mode still use heating behaviour; leave price response and Smart tasks off if they may cool in that mode. Saving external temperature changes as the current mode target now keeps temperature-based power limiting enabled. Temperature changes made elsewhere while PELS is limiting the device no longer replace its saved mode target. Price-adjustment fields now show the size of the adjustment PELS applies. This update also reduces memory allocations durin power tracking and avoids duplicate device subscriptions."
   }
 }
