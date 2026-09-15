@@ -1,5 +1,4 @@
 import type { PlanEngineState, SurplusEligibilityState } from '../planState';
-import { RESTORE_ADMISSION_RESERVE_KW } from '../planConstants';
 import { getLogger } from '../../logging/logger';
 
 const logger = getLogger('plan/surplus-absorb');
@@ -61,9 +60,16 @@ const isFiniteNumber = (value: unknown): value is number => (
  */
 
 // Engage when the allocated surplus covers expected draw plus this reserve;
-// release at the bare expected draw. The reserve band is the hysteresis. Reuses
-// the restore reserve.
-export const SURPLUS_ABSORB_RESERVE_KW = RESTORE_ADMISSION_RESERVE_KW;
+// release at the bare expected draw. The reserve band is the hysteresis.
+//
+// Its own number, deliberately. It used to alias the restore-admission reserve,
+// which made a hysteresis band for solar absorb move whenever someone retuned
+// restore admission — two unrelated decisions sharing one constant because the
+// values happened to agree. The restore reserve is gone now (restore admission
+// leans on the activation-penalty ladder instead); this band's justification is
+// unaffected and lives in the release-aftermath invariant above, which assumes
+// the >= 0.6 kW whole-home swing this value and the hard-off bar produce.
+export const SURPLUS_ABSORB_RESERVE_KW = 0.25;
 // A flip condition must persist this long before eligibility toggles (settle).
 export const SURPLUS_ABSORB_SETTLE_MS = 90 * 1000;
 // Minimum time an eligibility state holds after a flip (limit-cycle / chatter guard).

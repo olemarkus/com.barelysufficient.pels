@@ -5,7 +5,7 @@ import {
   resolveHeadroomReserves,
   resolveReserveAdmission,
 } from '../../lib/plan/admission/headroomReserve';
-import { HEADROOM_RESERVE_MAX_MS, RESTORE_ADMISSION_FLOOR_KW } from '../../lib/plan/planConstants';
+import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import { resolveRestoreShortfallKw } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
@@ -350,7 +350,7 @@ describe('resolveReserveAdmission', () => {
     // device fell through to the swap path with a plain shortfall reason.
     const result = resolveReserveAdmission({
       dev: { id: 'thermostat', priority: 10 },
-      availableHeadroom: RESTORE_ADMISSION_FLOOR_KW + 0.25,
+      availableHeadroom: 0.5,
       neededKw: 0,
       reserves: [reserve('heater', 1, 10)],
     });
@@ -366,7 +366,7 @@ describe('buildReservedForStartReason', () => {
   it('names the most important device holding power ahead of this one', () => {
     const result = resolveReserveAdmission({
       dev: { id: 'thermostat', priority: 10 },
-      availableHeadroom: RESTORE_ADMISSION_FLOOR_KW + 0.25,
+      availableHeadroom: 0.5,
       neededKw: 0,
       reserves: [reserve('charger', 3, 1.4), reserve('heater', 1, 1.25)],
     });

@@ -12,10 +12,9 @@ export const fixtureDeviceReason = (reason: string | undefined): DeviceReason | 
 // `insufficient_headroom` has no prose fixture form — see the header of
 // `planReasonFixtureParser.ts`. Its admission figures follow
 // `buildRestoreAdmissionMetrics` (`lib/plan/admission/reserve.ts`):
-// `postReserveMarginKw = availableKw − needKw − RESTORE_ADMISSION_RESERVE_KW`,
-// and admission passes at `RESTORE_ADMISSION_FLOOR_KW`. Both constants are 0.25,
-// and both are inlined here rather than imported so a fixture never moves when
-// the planner retunes them — a fixture asserts a shape, not a live constant.
+// `marginKw = availableKw − needKw`, and admission passes at `marginKw >= 0`.
+// Inlined rather than imported so the fixtures stay stable if the planner
+// retunes — a fixture asserts a shape, not a live constant.
 export const insufficientHeadroomFixtureReason = (params: {
   needKw: number;
   availableKw: number;
@@ -23,8 +22,7 @@ export const insufficientHeadroomFixtureReason = (params: {
   code: PLAN_REASON_CODES.insufficientHeadroom,
   needKw: params.needKw,
   availableKw: params.availableKw,
-  postReserveMarginKw: Number((params.availableKw - params.needKw - 0.25).toFixed(3)),
-  minimumRequiredPostReserveMarginKw: 0.25,
+  marginKw: Number((params.availableKw - params.needKw).toFixed(3)),
   penaltyExtraKw: null,
   swapReserveKw: null,
   effectiveAvailableKw: null,

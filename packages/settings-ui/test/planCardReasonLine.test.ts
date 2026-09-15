@@ -79,13 +79,12 @@ describe('resolveHeldCardReasonLine', () => {
           code: PLAN_REASON_CODES.insufficientHeadroom,
           needKw: 1.36,
           availableKw: 1.03,
-          postReserveMarginKw: -0.58,
-          minimumRequiredPostReserveMarginKw: 0.25,
+          marginKw: -0.33,
           penaltyExtraKw: null,
           swapReserveKw: null,
           effectiveAvailableKw: null,
         },
-      })).toBe('Waiting to resume — 0.9 kW more needed');
+      })).toBe('Waiting to resume — 0.4 kW more needed');
     });
 
     // Since 2026-08-02 every power-liftable ceiling hold carries the device's

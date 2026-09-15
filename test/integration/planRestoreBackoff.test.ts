@@ -14,7 +14,7 @@ import {
   recordActivationAttemptStart,
   recordActivationSetback,
 } from '../../lib/plan/admission';
-import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
+import { SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
@@ -2768,9 +2768,9 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.restoredThisCycle).toEqual(new Set());
   });
 
-  it('admits device when headroom exactly meets base need plus admission reserve plus floor', () => {
+  it('admits device when headroom exactly meets its need', () => {
     const state = createPlanEngineState();
-    // expected=2kW, buffer=0.3kW → needed=2.3kW, plus 0.25kW reserve + 0.25kW floor = 2.80kW
+    // expected=2kW, buffer=0.3kW → needed=2.3kW, and that is the whole bar.
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -2781,7 +2781,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      ...buildContext({ headroomRaw: 2.80, headroom: 2.80 }),
+      ...buildContext({ headroomRaw: 2.30, headroom: 2.30 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2789,7 +2789,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
 
-  it('blocks device when headroom is just below base need plus admission reserve', () => {
+  it('blocks device when headroom is just below its need', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
@@ -2801,7 +2801,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      ...buildContext({ headroomRaw: 2.54, headroom: 2.54 }),
+      ...buildContext({ headroomRaw: 2.29, headroom: 2.29 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2811,9 +2811,10 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(reasonText(dev?.reason)).toMatch(/insufficient headroom/);
   });
 
-  it('requires postReserveMarginKw >= 0.25kW floor in addition to the 0.25kW admission reserve', () => {
+  it('admits at exactly the need and rejects a watt below it', () => {
     const state = createPlanEngineState();
-    // expected=0.522kW, buffer=0.2kW → needed=0.722kW, plus 0.25kW reserve + 0.25kW floor = 1.222kW
+    // expected=0.522kW, buffer=0.2kW → needed=0.722kW, and nothing is withheld
+    // on top, so that figure is the whole bar.
 
     const rejected = applyRestorePlan({
       planDevices: [
@@ -2825,7 +2826,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      ...buildContext({ headroomRaw: 1.1, headroom: 1.1 }),
+      ...buildContext({ headroomRaw: 0.721, headroom: 0.721 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2841,7 +2842,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      ...buildContext({ headroomRaw: 1.25, headroom: 1.25 }),
+      ...buildContext({ headroomRaw: 0.722, headroom: 0.722 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2849,8 +2850,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     expect(rejected.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
     expect(reasonText(rejected.planDevices.find((d) => d.id === 'dev')?.reason)).toBe(
-      'insufficient headroom to restore after reserves (need 0.72kW, available 1.10kW, '
-      + 'post-reserve margin 0.128kW < 0.250kW)',
+      'insufficient headroom to restore (need 0.72kW, available 0.72kW)',
     );
     expect(admitted.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
@@ -3215,7 +3215,7 @@ describe('restore admission — headroom and penalty gates', () => {
   });
 });
 
-describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () => {
+describe('restore admission — the device need is the whole bar', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -3226,17 +3226,13 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     logDebug: vi.fn(),
   });
 
-  it(`RESTORE_ADMISSION_FLOOR_KW is ${RESTORE_ADMISSION_FLOOR_KW}kW`, () => {
-    expect(RESTORE_ADMISSION_FLOOR_KW).toBe(0.25);
-  });
-
-  it('rejects binary restore when postReserveMarginKw is 0.249 (below floor)', () => {
+  it('rejects binary restore one watt short of the device need', () => {
     const state = createPlanEngineState();
-    // needed = 1.2kW (expected=1 + buffer=0.2), reserve=0.25, floor=0.25 → min headroom = 1.70kW
-    // headroom = 1.699 → postReserveMarginKw = 1.699 - 1.2 - 0.25 = 0.249 < floor
+    // needed = 1.2kW (expected=1 + buffer=0.2) and nothing is withheld on top,
+    // so the bar is the need itself. headroom = 1.199 → marginKw = -0.001.
     const result = applyRestorePlan({
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
-      ...buildContext({ headroomRaw: 1.699, headroom: 1.699 }),
+      ...buildContext({ headroomRaw: 1.199, headroom: 1.199 }),
       state,
       sheddingActive: false,
       deps: makeDepsFloor(),
@@ -3244,12 +3240,12 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
   });
 
-  it('admits binary restore when postReserveMarginKw is exactly 0.250 (at floor)', () => {
+  it('admits binary restore at exactly the device need', () => {
     const state = createPlanEngineState();
-    // headroom = 1.700 → postReserveMarginKw = 1.700 - 1.2 - 0.25 = 0.250 = floor
+    // headroom = 1.200 → marginKw = 0, which admits.
     const result = applyRestorePlan({
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
-      ...buildContext({ headroomRaw: 1.7, headroom: 1.7 }),
+      ...buildContext({ headroomRaw: 1.2, headroom: 1.2 }),
       state,
       sheddingActive: false,
       deps: makeDepsFloor(),
@@ -3257,7 +3253,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
 
-  it('rejects target restore when postReserveMarginKw is below floor', () => {
+  it('rejects target restore when the margin is negative', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
@@ -3282,7 +3278,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       timing: restoreTimingFixture(),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1.699, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1.199, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -3290,48 +3286,11 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     const device = result.planDevices.find((d) => d.id === 'dev-temp');
     expect(device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined).toBe(16);
     expect(reasonText(device?.reason)).toBe(
-      'insufficient headroom to restore after reserves (need 1.20kW, available 1.70kW, '
-      + 'post-reserve margin 0.249kW < 0.250kW)',
+      'insufficient headroom to restore (need 1.20kW, available 1.20kW)',
     );
   });
 
-  it('keeps binary restore summaries non-contradictory when raw available exceeds need', () => {
-    const state = createPlanEngineState();
-    const result = applyRestorePlan({
-      planDevices: [
-        buildPlanDevice({
-          id: 'dev',
-          name: 'Termostat barnebad',
-          currentState: 'off',
-          expectedPowerKw: 0.45,
-          measuredPowerKw: 0,
-        }),
-      ],
-      ...buildContext({ headroomRaw: 0.995, headroom: 0.995 }),
-      state,
-      sheddingActive: false,
-      deps: {
-        ...makeDepsFloor(),
-      },
-    });
-
-    const device = result.planDevices.find((entry) => entry.id === 'dev');
-    expect(reasonText(device?.reason)).toBe(
-      'insufficient headroom to restore after reserves (need 0.65kW, available 1.00kW, '
-      + 'post-reserve margin 0.095kW < 0.250kW)',
-    );
-    expect(capture.findEvents('restore_rejected')).toContainEqual(expect.objectContaining({
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      availableKw: 0.995,
-      neededKw: 0.65,
-      postReserveMarginKw: 0.09499999999999997,
-      minimumRequiredPostReserveMarginKw: 0.25,
-      rejectionReason: 'insufficient_headroom',
-    }));
-  });
-
-  it('rejects stepped restore when postReserveMarginKw is below floor', () => {
+  it('rejects stepped restore a watt short of the step need', () => {
     const state = createPlanEngineState();
     const deviceMap = new Map([
       ['dev-step', steppedPlanDevice({
@@ -3346,8 +3305,8 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       })],
     ]);
 
-    // low step = 1.25kW, buffer≈0.225, needed≈1.475, reserve=0.25, floor=0.25 → min=1.975kW
-    // Use 1.974 → postReserveMarginKw = 1.974 - 1.475 - 0.25 = 0.249 < floor
+    // low step = 1.25kW, buffer≈0.225 → needed≈1.475, and nothing is withheld on
+    // top. Use 1.474 → marginKw ≈ -0.001, a watt short of admission.
     planRestoreForSteppedDevice({
       dev: steppedDevOf(deviceMap),
       deviceMap,
@@ -3361,7 +3320,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         measurementTs: null,
         restoreCooldownMs: 60_000,
       },
-      availableHeadroom: 1.974,
+      availableHeadroom: 1.474,
       restoredOneThisCycle: false,
     });
 
@@ -3400,7 +3359,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         measurementTs: null,
         restoreCooldownMs: 60_000,
       },
-      availableHeadroom: 1.974,
+      availableHeadroom: 1.474,
       restoredOneThisCycle: false,
     });
 
@@ -3441,7 +3400,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         measurementTs: null,
         restoreCooldownMs: 60_000,
       },
-      availableHeadroom: 1.974,
+      availableHeadroom: 1.474,
       restoredOneThisCycle: false,
     });
 
@@ -3581,7 +3540,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     expect(reasonText(dev.reason)).toBe('meter settling (50s remaining)');
   });
 
-  it('admits stepped restore when postReserveMarginKw is exactly at the floor', () => {
+  it('admits stepped restore at exactly the step need', () => {
     const state = createPlanEngineState();
     const deviceMap = new Map([
       ['dev-step', steppedPlanDevice({
@@ -3596,7 +3555,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       })],
     ]);
 
-    // needed≈1.475, reserve=0.25, floor=0.25 → exact min = 1.975kW
+    // needed≈1.475, and nothing is withheld on top → exact min = 1.475kW
     planRestoreForSteppedDevice({
       dev: steppedDevOf(deviceMap),
       deviceMap,
@@ -3610,7 +3569,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         measurementTs: null,
         restoreCooldownMs: 60_000,
       },
-      availableHeadroom: 1.975,
+      availableHeadroom: 1.475,
       restoredOneThisCycle: false,
     });
 

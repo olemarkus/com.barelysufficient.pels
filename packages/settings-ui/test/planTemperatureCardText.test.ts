@@ -53,11 +53,12 @@ describe('resolveTemperatureLine', () => {
 });
 
 describe('resolveTemperatureReasonLine', () => {
-  // The gap is the admission-accurate shortfall
-  // `minimumRequired − postReserveMargin`, never `need − available` — the latter
-  // understates by the reserve stack (prod 2026-08-01). A reason with no margins
-  // is not a shape any producer can emit, so there is nothing else to test here.
-  it('shows the admission-accurate gap when reserve margins are present', () => {
+  // The gap is the negated admission margin, which is now exactly
+  // `need − available`: nothing is withheld on top of the device's own need. It
+  // used to differ, and `need − available` understated the real bar by the flat
+  // reserve stack (prod 2026-08-01); those constants are gone. A reason with no
+  // margin is not a shape any producer can emit, so there is nothing else here.
+  it('shows the admission-accurate gap', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
       currentState: 'off',
@@ -68,12 +69,11 @@ describe('resolveTemperatureReasonLine', () => {
         needKw: 1.25,
         availableKw: 0.45,
         effectiveAvailableKw: null,
-        postReserveMarginKw: -1.05,
-        minimumRequiredPostReserveMarginKw: 0.25,
+        marginKw: -0.8,
         penaltyExtraKw: null,
         swapReserveKw: null,
       },
-    })).toBe('Waiting to resume — 1.3 kW more needed');
+    })).toBe('Waiting to resume — 0.8 kW more needed');
   });
 
   it('does not show idle as a reason line', () => {

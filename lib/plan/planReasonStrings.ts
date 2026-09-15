@@ -18,8 +18,7 @@ export type PlanReasonDecision =
   | { code: 'restore_headroom'; params: {
     neededKw: number;
     availableKw: number;
-    postReserveMarginKw: number;
-    minimumRequiredPostReserveMarginKw: number;
+    marginKw: number;
     penaltyExtraKw?: number;
     swapReserveKw?: number;
     effectiveAvailableKw?: number;
@@ -102,8 +101,7 @@ export function buildMeterSettlingReason(
 export function buildRestoreHeadroomReason(params: {
   neededKw: number;
   availableKw: number;
-  postReserveMarginKw: number;
-  minimumRequiredPostReserveMarginKw: number;
+  marginKw: number;
   penaltyExtraKw?: number;
   swapReserveKw?: number;
   effectiveAvailableKw?: number;
@@ -112,8 +110,7 @@ export function buildRestoreHeadroomReason(params: {
     code: PLAN_REASON_CODES.insufficientHeadroom,
     needKw: params.neededKw,
     availableKw: params.availableKw,
-    postReserveMarginKw: params.postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw: params.minimumRequiredPostReserveMarginKw,
+    marginKw: params.marginKw,
     penaltyExtraKw: params.penaltyExtraKw ?? null,
     swapReserveKw: params.swapReserveKw ?? null,
     effectiveAvailableKw: params.effectiveAvailableKw ?? null,

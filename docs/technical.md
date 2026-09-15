@@ -165,7 +165,7 @@ When available power returns:
 
 1. **Highest priority first** (lowest number): Priority 1 resumes before priority 3
 2. **One device per cycle**: Wait for power measurement after each resume
-3. **Hysteresis buffer**: Require extra available power beyond the device's power draw to prevent immediate limiting. A hard minimum post-reserve margin of 0.25 kW is enforced on every resume regardless of device size.
+3. **Hysteresis buffer**: Require extra available power beyond the device's power draw to prevent immediate limiting. The buffer scales with the device: 10% of its draw plus 0.1 kW, bounded to 0.2–0.6 kW.
 4. **Delayed restart after failed activation**: Devices that are resumed and then quickly need to be limited again require increasingly more available power before the next resume attempt
 5. **Respect swap targets**: If a lower-priority device was limited for a higher-priority device, the high-priority one must resume first
 

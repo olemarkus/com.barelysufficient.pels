@@ -56,7 +56,6 @@ import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
-import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
 
 // The per-cycle admission context the shortfall computation gates against —
@@ -109,12 +108,13 @@ export function buildCeilingShortfallInputs(params: {
 // The kW that, if it became available, would let PELS run this device right
 // now — including by swapping. Two gates, mirroring the restore lane exactly:
 //
-//  - plain admission: `RESTORE_ADMISSION_FLOOR_KW − postReserveMarginKw`
-//    (`postReserveMargin = available − needed − RESERVE`);
+//  - plain admission: `needed − available`, i.e. the negated margin. Nothing is
+//    withheld on top of the device's own inflated need, so the gap the card
+//    states and the bar the gate applies are the same number;
 //  - swap admission, when viable lower-priority victims are running
 //    (`buildSwapCandidates`): the victims' draw folds INTO the available side
 //    and the 0.3 kW swap reserve folds into the requirement, so the number is
-//    `needed − victimDraw − available + margins` — what must still appear
+//    `needed − victimDraw − available + swapReserve` — what must still appear
 //    before PELS can act, not what the user must free by hand.
 //
 /**
@@ -164,11 +164,11 @@ export function resolveCeilingShortfall(params: {
   if (reserved.kind === 'blocked_by_reserve') {
     return { kind: 'blocked_by_reserve', holderName: reserved.holderName };
   }
-  const plainGapKw = RESTORE_ADMISSION_FLOOR_KW - reserved.admission.postReserveMarginKw;
+  const plainGapKw = -reserved.admission.marginKw;
 
   // Swap-aware gap, off the reservation-adjusted base (the restore lane hands
   // the swap path `available − reservedKw` for the same reason — a swap must
-  // not eat a promised block). `displayPostReserveMarginKw` is the unclamped
+  // not eat a promised block). `displayMarginKw` is the unclamped
   // variant, so deep over-pace gaps stay honest instead of flattening to
   // `needed + reserves`.
   const swap = buildSwapCandidates(
@@ -180,7 +180,7 @@ export function resolveCeilingShortfall(params: {
     inputs.restoredThisCycle,
   );
   const gapKw = swap.toShed.length > 0
-    ? Math.min(plainGapKw, RESTORE_ADMISSION_FLOOR_KW - swap.displayPostReserveMarginKw)
+    ? Math.min(plainGapKw, -swap.displayMarginKw)
     : plainGapKw;
   const shortfallKw = ceilToDisplayKw(gapKw);
   return shortfallKw === null ? { kind: 'no_gap' } : { kind: 'gap', shortfallKw };

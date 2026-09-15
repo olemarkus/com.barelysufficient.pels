@@ -9,7 +9,6 @@ import {
   estimateRestorePower,
   resolveRestorePowerSource,
 } from '../../lib/plan/restore/accounting';
-import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
@@ -92,7 +91,7 @@ describe('buildSwapCandidates', () => {
     expect(result.toShed).toHaveLength(1);
   });
 
-  it('explains swap failures caused by post-reserve margin after swap reserve', () => {
+  it('explains swap failures caused by the swap reserve', () => {
     const result = buildSwapCandidates(buildPlanDevice({ id: 'dev-off', name: 'Off Heater', priority: 50 }), [
         buildPlanDevice({
           id: 'candidate',
@@ -100,14 +99,17 @@ describe('buildSwapCandidates', () => {
           priority: 90,
           measuredPowerKw: 1.2,
         }),
-      ], new SwapLedger(), 0.4, 1.0, new Set());
+      ], new SwapLedger(), 0.4, 1.4, new Set());
 
     // The numbers the rejection turns on, asserted as numbers. They used to be
     // read out of a formatted sentence, which meant this test passed or failed on
     // the wording as much as on the arithmetic.
+    //
+    // Potential 0.4 + 1.2 = 1.6, less the 0.3 swap reserve = 1.3 effective,
+    // against a 1.4 kW need: the swap frees real power and still falls short.
     expect(result.ready).toBe(false);
     expect(result.displayEffectiveHeadroomKw).toBeCloseTo(1.30, 6);
-    expect(result.displayPostReserveMarginKw).toBeCloseTo(0.05, 6);
+    expect(result.displayMarginKw).toBeCloseTo(-0.10, 6);
     expect(result.reserveKw).toBeCloseTo(0.30, 6);
   });
 
@@ -170,8 +172,7 @@ describe('restore swap helpers', () => {
     const update = buildInsufficientHeadroomUpdate({
       neededKw: 2,
       availableKw: 1,
-      postReserveMarginKw: -1.25,
-      minimumRequiredPostReserveMarginKw: 0.25,
+      marginKw: -1.25,
     });
     expect(update.plannedState).toBe('shed');
     expect(reasonText(update.reason)).toContain('need 2.00kW');
@@ -181,40 +182,13 @@ describe('restore swap helpers', () => {
     const update = buildInsufficientHeadroomUpdate({
       neededKw: 4.6,
       availableKw: 3,
-      postReserveMarginKw: -1.85,
-      minimumRequiredPostReserveMarginKw: 0.25,
+      marginKw: -1.85,
       penaltyExtraKw: 2.3,
     });
 
     expect(reasonText(update.reason)).toContain('effective need 4.60kW');
     expect(reasonText(update.reason)).toContain('base 2.30kW + penalty 2.30kW');
     expect(reasonText(update.reason)).toContain('available 3.00kW');
-  });
-
-  it('preserves negative half-step rounding when formatting reserve deficits', () => {
-    const reason = buildRestoreHeadroomReason({
-      neededKw: 1,
-      availableKw: 1.5,
-      postReserveMarginKw: -0.0005,
-      minimumRequiredPostReserveMarginKw: 0.25,
-    });
-
-    expect(reasonText(reason)).toContain('post-reserve margin -0.001kW < 0.250kW');
-  });
-
-  it('uses potential swap headroom in reserve-limited swap rejection summaries', () => {
-    const update = buildInsufficientHeadroomUpdate({
-      neededKw: 1.0,
-      availableKw: 1.6,
-      postReserveMarginKw: 0.05,
-      minimumRequiredPostReserveMarginKw: 0.25,
-      swapReserveKw: 0.3,
-      effectiveAvailableKw: 1.3,
-    });
-
-    expect(reasonText(update.reason)).toContain('available 1.60kW');
-    expect(reasonText(update.reason)).toContain('effective 1.30kW after 0.30kW swap reserve');
-    expect(reasonText(update.reason)).toContain('post-reserve margin 0.050kW < 0.250kW');
   });
 
   it('estimates restore power from expected, measured, or fallback values', () => {

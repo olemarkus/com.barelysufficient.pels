@@ -474,8 +474,7 @@ describe('resolveSteppedStatusLine', () => {
             needKw: 1.25,
             availableKw: 0.85,
             effectiveAvailableKw: null,
-            postReserveMarginKw: -0.65,
-            minimumRequiredPostReserveMarginKw: 0.25,
+            marginKw: -0.4,
             penaltyExtraKw: null,
             swapReserveKw: null,
           },
@@ -483,7 +482,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to resume — 0.9 kW more needed');
+      expect(result).toBe('Waiting to resume — 0.4 kW more needed');
     });
 
     it('returns waiting-to-increase text when on at low and blocked from medium', () => {
@@ -497,8 +496,7 @@ describe('resolveSteppedStatusLine', () => {
             needKw: 1.75,
             availableKw: 1.25,
             effectiveAvailableKw: null,
-            postReserveMarginKw: -0.75,
-            minimumRequiredPostReserveMarginKw: 0.25,
+            marginKw: -0.5,
             penaltyExtraKw: null,
             swapReserveKw: null,
           },
@@ -506,7 +504,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to increase — 1.0 kW more needed');
+      expect(result).toBe('Waiting to increase — 0.5 kW more needed');
     });
 
     // A swap victim denied a step-up carries the normalizer-attached gap —
@@ -542,12 +540,11 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe("Waiting to increase — this hour's budget is spent");
     });
 
-    // Production-shaped reason (margins present): the gap is the
-    // admission-accurate shortfall `minimumRequired − postReserveMargin`
-    // (0.25 − (−0.75) = 1.0 kW), NOT the understated `need − available`
-    // (1.2 − 0.7 = 0.5 kW). Prod 2026-08-01: cards claimed "0.5 kW more
-    // needed" for a device admission would only pass with ~1.0 kW more.
-    it('renders the admission-accurate shortfall when reserve margins are present', () => {
+    // Production-shaped reason: the gap is the negated margin, which is now
+    // exactly `need − available` (1.2 − 0.7 = 0.5 kW). The lesson that made this
+    // case worth keeping is recorded where it now lives, in
+    // `planReasonFormatting.ts`'s `resolveRestoreShortfallKw`.
+    it('renders the admission-accurate shortfall', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -558,8 +555,7 @@ describe('resolveSteppedStatusLine', () => {
             needKw: 1.2,
             availableKw: 0.7,
             effectiveAvailableKw: null,
-            postReserveMarginKw: -0.75,
-            minimumRequiredPostReserveMarginKw: 0.25,
+            marginKw: -0.5,
             penaltyExtraKw: null,
             swapReserveKw: null,
           },
@@ -567,7 +563,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to resume — 1.0 kW more needed');
+      expect(result).toBe('Waiting to resume — 0.5 kW more needed');
     });
 
     it('uses shortfall reason headroomKw to compute gap', () => {

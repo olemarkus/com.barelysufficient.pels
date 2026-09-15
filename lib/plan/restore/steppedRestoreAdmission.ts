@@ -5,7 +5,6 @@ import {
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { computeRestoreBufferKw } from './accounting';
-import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
 import {
@@ -136,7 +135,6 @@ export function admitSteppedRestore(params: {
       neededKw: needed,
       availableKw: effectiveHeadroomKw,
       ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'admitted',
     },
   });
@@ -239,8 +237,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
   const reason = buildRestoreHeadroomReason({
     neededKw: needed,
     availableKw: availableHeadroom,
-    postReserveMarginKw: admission.postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    marginKw: admission.marginKw,
   });
   const update: Partial<DevicePlanDevice> = isOffSteppedRestoreCandidate(dev)
     ? { ...buildOffSteppedRestoreShedUpdate(dev), reason }
@@ -262,7 +259,6 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       neededKw: needed,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },

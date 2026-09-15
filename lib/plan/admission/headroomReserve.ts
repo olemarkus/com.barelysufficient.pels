@@ -10,8 +10,8 @@ import { isSteppedLoadDevice, resolveStepPowerKw } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
-import { HEADROOM_RESERVE_MAX_MS, RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
-import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './reserve';
+import { HEADROOM_RESERVE_MAX_MS } from '../planConstants';
+import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from './reserve';
 
 /**
  * Startup power reservation: a device carrying `reservesStartupPower` holds back the power it
@@ -245,7 +245,7 @@ export function resolveReserveAdmission(params: {
   const reservedKw = claimedKw;
 
   const admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroomKw, neededKw });
-  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
+  if (isRestoreAdmitted(admission)) {
     return { kind: 'admitted', admission, effectiveHeadroomKw, reservedKw };
   }
   // Branch on the claiming reserve itself, not on whether the two headroom figures happen to
@@ -257,13 +257,13 @@ export function resolveReserveAdmission(params: {
   const holder = resolveClaimingReserveHolder({ dev, reserves });
   if (holder !== null) {
     const rawAdmission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw });
-    if (rawAdmission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
+    if (isRestoreAdmitted(rawAdmission)) {
       // Deliberately carries NO kW shortfall. This branch means raw power is
       // already sufficient — it is simply promised to a more important device —
       // so a gap derived from the post-reserve admission resolves to
-      // `claimedKw + neededKw − availableHeadroom + 0.5`, i.e. it is dominated by
+      // `claimedKw + neededKw − availableHeadroom`, i.e. it is dominated by
       // the OTHER device's reserved block. Prod-shaped example: 2.5 kW free, this
-      // device needs 2.0 kW, holder reserves 3.6 kW → the card would read "3.6 kW
+      // device needs 2.0 kW, holder reserves 3.6 kW → the card would read "3.1 kW
       // more needed". That states another device's quantity as this one's, the
       // same error `swapPending`/`swappedOut` avoid by not carrying the field.
       // The honest line here names the holder ("Waiting so X can start").

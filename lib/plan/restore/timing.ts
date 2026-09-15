@@ -114,8 +114,16 @@ export const shouldPlanRestores = (
  * Known accepted corner: `softLimitSource` is instantaneous while
  * `sheddingActive` is a latch, so a capacity-latched shed whose binding source
  * flips to `daily` mid-latch opens the lane while capacity headroom sits in
- * the hysteresis band. Bounded by the admission floor and the shed/restore
- * cooldowns; recording the latch cause would close it.
+ * the hysteresis band. It USED to be bounded by the flat admission floor, which
+ * put the smallest admissible candidate at 0.7 kW — above the 0.4 kW band, so
+ * the corner provably could not fire. That floor is gone (2026-09-15), and the
+ * bar is now the device's own need, which floors at 0.2 kW via
+ * `computeRestoreBufferKw`. So a budget-exempt candidate drawing ~0.2 kW or
+ * less is admissible with capacity headroom inside the band.
+ *
+ * What is left bounding it: the shed/restore cooldowns, and the recent-shed
+ * inflation for the first five minutes after the shed that latched. Narrow, but
+ * no longer provably inert — recording the latch cause would close it properly.
  */
 export const shouldPlanBudgetExemptRestores = (params: {
   sheddingActive: boolean;

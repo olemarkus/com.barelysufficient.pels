@@ -1,5 +1,4 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
@@ -135,7 +134,6 @@ export function planRestoreForDevice(
         neededKw: restoreNeed.needed,
         availableKw: effectiveHeadroomKw,
         ...buildRestoreAdmissionLogFields(admission),
-        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
         decision: 'admitted',
         ...penaltyFields,
       },
@@ -246,8 +244,7 @@ function rejectBinaryRestoreForInsufficientHeadroom(
   setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
     neededKw: restoreNeed.needed,
     availableKw: availableHeadroom,
-    postReserveMarginKw: admission.postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    marginKw: admission.marginKw,
     penaltyExtraKw: restoreNeed.penaltyExtraKw,
   }));
   emitRestoreDebugEventOnChange({
@@ -263,7 +260,6 @@ function rejectBinaryRestoreForInsufficientHeadroom(
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },

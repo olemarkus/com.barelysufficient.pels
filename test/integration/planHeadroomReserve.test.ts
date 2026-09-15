@@ -154,9 +154,12 @@ describe('PlanBuilder startup power reservation', () => {
     // Premise check: without this shed the later assertions would pass vacuously.
     expect(stateOf(pressured, 'thermostat')).toBe('shed');
 
-    // Pressure eases: the soft limit lifts to 4.6 kW, leaving 1.6 kW available — enough to resume
+    // Pressure eases: the soft limit lifts to 4.0 kW, leaving 1.0 kW available — enough to resume
     // the 0.6 kW thermostat on its own, not once a 1.19 kW startup block is set aside for the heater.
-    harness.setSoftLimitKw(4.6);
+    // Deliberately short of the heater's OWN need too, so the block stays armed:
+    // give it enough to start and it starts, and there is no reservation left to
+    // hold the thermostat back.
+    harness.setSoftLimitKw(4.0);
     vi.advanceTimersByTime(2 * 60_000);
     const settled = [
       params.heater,
@@ -296,7 +299,7 @@ describe('PlanBuilder startup power reservation', () => {
       expect(stateOf(pressured, 'thermostat')).toBe('shed');
       expect(deviceOf(pressured, 'thermostat')?.shedAction).toBe('set_temperature');
 
-      harness.setSoftLimitKw(4.6);
+      harness.setSoftLimitKw(4.0);
       vi.advanceTimersByTime(2 * 60_000);
       const settled = [
         params.heater,

@@ -390,6 +390,60 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `lib/plan` code reads `surplusWilling` or `surplusDelta` directly. Source:
       `pels-layering-guardian` on the setpoint-resolution move, 2026-09-15. [P2]
 
+## Restore admission
+
+- [ ] **The budget-exempt restore lane can now open inside the shedding hysteresis band.**
+      `shouldPlanBudgetExemptRestores` (`lib/plan/restore/timing.ts`) gates on
+      `capacityHeadroomKw > 0`, and its own comment recorded the resulting corner as bounded by the
+      flat admission floor: the smallest admissible candidate was 0.7 kW, above the 0.4 kW
+      `SHEDDING_CLEAR_THRESHOLD_KW` band, so it could not fire. That floor was removed 2026-09-15
+      and the bar is now the device's own need, flooring at 0.2 kW. A budget-exempt candidate
+      drawing ~0.2 kW or less is admissible while capacity headroom sits inside the band the latch
+      exists to protect. Fix: gate the lane on `capacityHeadroomKw > SHEDDING_CLEAR_THRESHOLD_KW`,
+      or record the latch cause so the lane can ask whether the latch was capacity-driven at all.
+      Done when a capacity-latched shed whose source flipped to `daily` admits no exempt restore
+      until headroom clears the band. Persona: a home with a small always-permitted device and a
+      daily budget tighter than its capacity; hypothesis: that device flaps around the latch
+      boundary. Source: adversarial review of the admission-slack removal, 2026-09-15. [P2]
+
+- [ ] **A second restore can be admitted against a reading that never saw the first.**
+      `resolveMeterSettlingRemainingSec` (`lib/plan/restore/timing.ts`) holds the lane until a
+      measurement newer than the last restore arrives, but gives up after `RESTORE_COOLDOWN_MS`
+      whether or not one did. Under `power_source = flow` samples follow the owner's Flow and a
+      reading is trusted for ten minutes, so back-to-back restores can both be decided from one
+      stale figure. The flat admission slack used to absorb part of that; it no longer exists.
+      `notes/restore-eagerness/README.md` already lists the missing coverage. Fix: hold the gate on
+      a strictly newer measurement (the 10-minute silent-meter escalation bounds it, and fails
+      closed), or pin the exposure with the integration regression the note asks for. Done when two
+      restores cannot be admitted from the same sample. Source: runtime-reality review of the
+      admission-slack removal, 2026-09-15. [P2]
+
+- [ ] **The stepped restore lane gets the per-device buffer but neither the recent-shed inflation
+      nor the activation penalty.** `steppedRestoreAdmission.ts` computes `deltaKw +
+      computeRestoreBufferKw(deltaKw)` directly; `applyRecentShedInflation` and
+      `applyActivationPenalty` are reachable only through `getRestoreNeed`, which that lane never
+      calls. So the highest-draw device class faces the same bar 61 seconds after a shed as an hour
+      later. This was survivable while a flat 0.5 kW sat on every admission; it is the lane's only
+      margin now. Fix: route the stepped need through `applyRecentShedInflation` (already pure, and
+      takes `lastDeviceShedMs`). Done when a stepped device shed inside the recent-shed window
+      faces a higher bar than one shed an hour ago. Source: runtime-reality review, 2026-09-15. [P2]
+
+- [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
+      one.** The payloads carry `availableKw`, `neededKw` and `marginKw` — the third is arithmetic
+      on the first two — but no sample age and no decomposition of the need, so an operator cannot
+      tell a bar of `1.38 + 0.24` from `1.2 + 0.2 + inflation`, nor whether the reading was fresh.
+      `notes/restore-eagerness/README.md` open question 3 asks exactly this. Both values are already
+      in scope at the call sites (`RestoreTiming` holds `measurementTs` and `nowTs`). Fix: add
+      `powerSampleAgeMs` and `baseNeededKw` in `restore/gating.ts`, `steppedRestoreAdmission.ts`
+      and `restore/swap.ts`. Done when a restore's log line states how old its evidence was.
+      Source: runtime-reality review, 2026-09-15. [P3]
+
+- [ ] **`DeviceReason.marginKw` collides with the capacity safety margin of the same name.**
+      `capacitySettings.marginKw` is `safetyMarginKw` (`lib/power/capacityModel.ts`) and is read
+      across the settings UI; the admission margin introduced on the shared reason contract
+      2026-09-15 is an unrelated quantity. Fix: rename the reason field to `admissionMarginKw`.
+      Done when the two are not spelled alike. Source: adversarial review, 2026-09-15. [P3]
+
 ## Smart tasks
 
 - [ ] **A smart-task miss the daily budget only CONTRIBUTED to feeds nothing.**

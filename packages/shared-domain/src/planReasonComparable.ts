@@ -41,8 +41,7 @@ export type ComparablePlanReason =
   | (ComparablePlanReasonBase & {
     needW: number;
     availableW: number;
-    postReserveMarginW: number;
-    minimumRequiredPostReserveMarginW: number;
+    marginW: number;
     penaltyExtraW: number | null;
     swapReserveW: number | null;
     effectiveAvailableW: number | null;
@@ -204,8 +203,7 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         code: reason.code,
         needW: quantizeKwToW(reason.needKw),
         availableW: quantizeKwToW(reason.availableKw),
-        postReserveMarginW: quantizeKwToW(reason.postReserveMarginKw),
-        minimumRequiredPostReserveMarginW: quantizeKwToW(reason.minimumRequiredPostReserveMarginKw),
+        marginW: quantizeKwToW(reason.marginKw),
         penaltyExtraW: quantizeKwToW(reason.penaltyExtraKw),
         swapReserveW: quantizeKwToW(reason.swapReserveKw),
         effectiveAvailableW: quantizeKwToW(reason.effectiveAvailableKw),

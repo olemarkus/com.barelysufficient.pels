@@ -36,6 +36,7 @@ export {
 
 export {
   buildRestoreAdmissionLogFields,
+  isRestoreAdmitted,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
 } from './reserve';

@@ -1,30 +1,33 @@
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
+  isRestoreAdmitted,
 } from '../../lib/plan/admission';
 
 describe('admission/reserve', () => {
-  it('computes margin fields with a fixed 0.25kW admission reserve', () => {
-    const result = buildRestoreAdmissionMetrics({ availableKw: 1.02, neededKw: 0.98 });
-    expect(result.admissionReserveKw).toBeCloseTo(0.25, 6);
-    expect(result.marginKw).toBeCloseTo(0.04, 6);
-    expect(result.postReserveMarginKw).toBeCloseTo(-0.21, 6);
-    expect(result.requiredKw).toBeCloseTo(1.23, 6);
+  it('reports the power left over once the device is put back', () => {
+    expect(buildRestoreAdmissionMetrics({ availableKw: 1.02, neededKw: 0.98 }).marginKw)
+      .toBeCloseTo(0.04, 6);
+    expect(buildRestoreAdmissionMetrics({ availableKw: 0.9, neededKw: 0.98 }).marginKw)
+      .toBeCloseTo(-0.08, 6);
   });
 
-  it('accepts restores only when available headroom meets needed plus reserve', () => {
-    expect(buildRestoreAdmissionMetrics({ availableKw: 1.22, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(-0.01, 6);
-    expect(buildRestoreAdmissionMetrics({ availableKw: 1.23, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0, 6);
-    expect(buildRestoreAdmissionMetrics({ availableKw: 1.4, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0.17, 6);
+  it('admits a device that fits in the room available to it, and nothing less', () => {
+    // The bar is the device's own inflated need, with nothing withheld on top.
+    // It used to be need + 0.25 reserve + 0.25 floor: two flat constants that
+    // charged every restore of every device for the possibility that some other
+    // restore might overshoot. Overshoot is now answered by the per-device
+    // buffer, the recent-shed inflation and the activation-penalty ladder, all
+    // of which scale to the device or to its own measured behaviour.
+    expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 0.97, neededKw: 0.98 }))).toBe(false);
+    expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 0.98, neededKw: 0.98 }))).toBe(true);
+    expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 1.4, neededKw: 0.98 }))).toBe(true);
   });
 
-  it('builds a canonical non-redundant set of log fields', () => {
-    const result = buildRestoreAdmissionLogFields(buildRestoreAdmissionMetrics({
-      availableKw: 1.02,
-      neededKw: 0.98,
-    }));
-    expect(result.reserveKw).toBeCloseTo(0.25, 6);
-    expect(result.marginKw).toBeCloseTo(0.04, 6);
-    expect(result.postReserveMarginKw).toBeCloseTo(-0.21, 6);
+  it('logs the one figure the decision was made on', () => {
+    const fields = buildRestoreAdmissionLogFields(
+      buildRestoreAdmissionMetrics({ availableKw: 1.02, neededKw: 0.98 }),
+    );
+    expect(fields).toEqual({ marginKw: expect.closeTo(0.04, 6) });
   });
 });

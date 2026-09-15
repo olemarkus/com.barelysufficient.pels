@@ -15,10 +15,10 @@ import {
 } from './planReasonStrings';
 import {
   buildRestoreAdmissionLogFields,
+  isRestoreAdmitted,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
 } from './admission';
-import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
@@ -138,15 +138,14 @@ export function resolveInsufficientHeadroomHold(
   admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
 ): HoldDecision | null {
   const restoreDebugKey = `target:${dev.id}`;
-  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) return null;
+  if (isRestoreAdmitted(admission)) return null;
 
   const reason: PlanReasonDecision = {
     code: 'restore_headroom',
     params: {
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
-      postReserveMarginKw: admission.postReserveMarginKw,
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      marginKw: admission.marginKw,
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
     },
   };
@@ -156,7 +155,6 @@ export function resolveInsufficientHeadroomHold(
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,

@@ -2581,12 +2581,12 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Soft limit = 4.8 kW, total = 3 kW, headroom = 1.8 kW
+    // Soft limit = 4.3 kW, total = 3 kW, headroom = 1.3 kW
     // Shedding both low-priority devices yields 2.8 kW potential headroom.
-    // After the swap reserve (0.3) that leaves 2.5 kW, enough for the stricter gate,
+    // After the swap reserve (0.3) that leaves 2.0 kW, enough for the 1.75 kW need,
     // while one low-priority device alone is still insufficient.
-    app.computeDynamicSoftLimit = () => 4.8;
-    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.3;
+    app.computeDynamicSoftLimit = () => 4.3;
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2850,8 +2850,8 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Set up conditions for swap
-    app.computeDynamicSoftLimit = () => 4.8;
-    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.3;
+    app.computeDynamicSoftLimit = () => 4.3;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -3024,8 +3024,8 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 4.8;
-    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.3;
+    app.computeDynamicSoftLimit = () => 4.3;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -4280,8 +4280,8 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.7; // 0.7kW limit
-    app.computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.4; // 0.4kW limit
+    app.computeDynamicSoftLimit = () => 0.4;
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -4358,8 +4358,8 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.7;
-    app.computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.4;
+    app.computeDynamicSoftLimit = () => 0.4;
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;

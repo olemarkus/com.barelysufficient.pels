@@ -429,11 +429,14 @@ instead (§ "Device state words"): it is still charging, just slower, and
 The kW figure on blocked-resume lines (and the sibling status
 `Not enough available power to resume — N kW more needed`) is the
 **admission-accurate shortfall** — the amount that, if it became available,
-would actually admit the device, with the restore buffer and admission
-reserves folded in, ceiled to the 0.1 kW display resolution
-(`resolveRestoreShortfallKw` in shared-domain). Never render raw
-`need − available` there: it understates the real gate by the reserve stack
-(prod 2026-08-01: a card said 0.5 kW when admission needed ~1.0 kW more). The
+would actually admit the device, with the restore buffer folded in, ceiled to
+the 0.1 kW display resolution (`resolveRestoreShortfallKw` in shared-domain).
+Always take it from that resolver rather than subtracting the two numbers on
+the reason yourself. On the plain admission path the two now agree, since the
+flat admission reserve and floor were removed (2026-09-15); on the swap and
+startup-reservation paths they still diverge, and `need − available`
+understates the real gate there (prod 2026-08-01: a card said 0.5 kW when
+admission needed ~1.0 kW more). The
 `restoreNeed` keep-side line keeps its `needs X kW, Y kW available` pair: it
 describes a planned raise, carries no admission margins, and is not a promise
 that freeing the difference resumes anything.

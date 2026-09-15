@@ -38,8 +38,7 @@ describe('buildComparableDeviceReason', () => {
     const baseReason = (overrides: Partial<{
       needKw: number;
       availableKw: number;
-      postReserveMarginKw: number;
-      minimumRequiredPostReserveMarginKw: number;
+      marginKw: number;
       penaltyExtraKw: number | null;
       swapReserveKw: number | null;
       effectiveAvailableKw: number | null;
@@ -47,10 +46,7 @@ describe('buildComparableDeviceReason', () => {
       code: PLAN_REASON_CODES.insufficientHeadroom,
       needKw: overrides.needKw ?? 2.345,
       availableKw: overrides.availableKw === undefined ? 1.234 : overrides.availableKw,
-      postReserveMarginKw: overrides.postReserveMarginKw === undefined ? 0.123 : overrides.postReserveMarginKw,
-      minimumRequiredPostReserveMarginKw: overrides.minimumRequiredPostReserveMarginKw === undefined
-        ? 0.5
-        : overrides.minimumRequiredPostReserveMarginKw,
+      marginKw: overrides.marginKw === undefined ? 0.123 : overrides.marginKw,
       penaltyExtraKw: overrides.penaltyExtraKw === undefined ? 0.05 : overrides.penaltyExtraKw,
       swapReserveKw: overrides.swapReserveKw === undefined ? 0.3 : overrides.swapReserveKw,
       effectiveAvailableKw: overrides.effectiveAvailableKw === undefined ? 1.5 : overrides.effectiveAvailableKw,
@@ -62,8 +58,7 @@ describe('buildComparableDeviceReason', () => {
         code: PLAN_REASON_CODES.insufficientHeadroom,
         needW: 2300,
         availableW: 1200,
-        postReserveMarginW: 100,
-        minimumRequiredPostReserveMarginW: 500,
+        marginW: 100,
         penaltyExtraW: 100,
         swapReserveW: 300,
         effectiveAvailableW: 1500,

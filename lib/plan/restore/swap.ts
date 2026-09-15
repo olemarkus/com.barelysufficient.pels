@@ -1,7 +1,6 @@
 import { getDebugEmitter } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import {
   buildSwapCandidates,
   hasSwappableDraw,
@@ -203,7 +202,6 @@ function rejectSwapRestoreWithCandidates(
       availableKw: availableHeadroom,
       effectiveAvailableKw: swap.effectiveHeadroom,
       ...buildRestoreAdmissionLogFields(swap.admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       swapReserveKw: swap.reserveKw,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
@@ -323,10 +321,9 @@ function buildRejectedSwapUpdate(
       availableKw: shouldDescribeSwapReserve ? swap?.potentialHeadroom ?? availableHeadroom : availableHeadroom,
       // Display margin from the UNCLAMPED swap headroom (see buildSwapCandidates):
       // the clamped admission margin flattens the shortfall in deep over-pace.
-      postReserveMarginKw: shouldDescribeSwapReserve
-        ? swap?.displayPostReserveMarginKw ?? directAdmission.postReserveMarginKw
-        : directAdmission.postReserveMarginKw,
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      marginKw: shouldDescribeSwapReserve
+        ? swap?.displayMarginKw ?? directAdmission.marginKw
+        : directAdmission.marginKw,
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
       swapReserveKw: shouldDescribeSwapReserve ? swap?.reserveKw : undefined,
       effectiveAvailableKw: shouldDescribeSwapReserve ? swap?.displayEffectiveHeadroomKw : undefined,

@@ -1,9 +1,8 @@
 import type { DevicePlanDevice } from '../planTypes';
 import {
-  RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
-import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../admission';
+import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from '../admission';
 import type { SwapLedger } from './swapLedger';
 
 /**
@@ -83,7 +82,7 @@ export function buildSwapCandidates(
   // Reason-payload display values from the UNCLAMPED effective headroom —
   // `effectiveHeadroom`/`admission` stay clamped for the admission arithmetic.
   displayEffectiveHeadroomKw: number;
-  displayPostReserveMarginKw: number;
+  displayMarginKw: number;
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
 } {
@@ -101,10 +100,10 @@ export function buildSwapCandidates(
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
     admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
-    if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) break;
+    if (isRestoreAdmitted(admission)) break;
   }
 
-  const ready = admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW;
+  const ready = isRestoreAdmitted(admission);
   const names = toShed.map((d) => d.name).join(', ');
   // Display values from the UNCLAMPED effective headroom. The `Math.max(0, …)`
   // clamp above protects the admission arithmetic, but a margin computed off
@@ -127,7 +126,7 @@ export function buildSwapCandidates(
     potentialHeadroom: currentPotential,
     effectiveHeadroom,
     displayEffectiveHeadroomKw,
-    displayPostReserveMarginKw: displayAdmission.postReserveMarginKw,
+    displayMarginKw: displayAdmission.marginKw,
     admission,
     reserveKw: SWAP_RESTORE_RESERVE_KW,
   };

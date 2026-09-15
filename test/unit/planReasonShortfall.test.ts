@@ -58,26 +58,27 @@ const gapKw = (params: Parameters<typeof resolveCeilingShortfall>[0]): number | 
 };
 
 describe('resolveCeilingShortfall', () => {
-  it('computes the admission gap FLOOR − (available − needed − RESERVE)', () => {
-    // available 0.5, needed 1.2 → postReserveMargin = 0.5 − 1.2 − 0.25 = −0.95
-    // → gap = 0.25 − (−0.95) = 1.2 kW, exact on the display grid.
+  it('computes the admission gap as needed − available', () => {
+    // available 0.5, needed 1.2 → margin = −0.7 → gap = 0.7 kW. Nothing is
+    // withheld on top of the need, so the gap the card states is the whole of
+    // what has to appear before the gate admits.
     expect(gapKw({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 0.5 }),
-    })).toBe(1.2);
+    })).toBe(0.7);
   });
 
   it('ceils to the 0.1 kW display step, never floors', () => {
-    // available 1.16 → gap = 0.25 − (1.16 − 1.2 − 0.25) = 0.54 → renders 0.6:
-    // rounding down would invite freeing 0.5 kW and still being short.
+    // available 1.16, needed 1.2 → gap = 0.04 → renders 0.1: rounding down
+    // would invite freeing nothing and still being short.
     expect(gapKw({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 1.16 }),
-    })).toBe(0.6);
+    })).toBe(0.1);
   });
 
   it('reports no_gap when admission would pass — the hold is not a power gap', () => {
-    // available 2.0 → postReserveMargin 0.55 ≥ 0.25 floor.
+    // available 2.0, needed 1.2 → margin 0.8 ≥ 0, so admission would pass.
     expect(resolveCeilingShortfall({
       dev: heldDevice(),
       inputs: inputs({ capacityAvailableKw: 2.0 }),
@@ -110,11 +111,11 @@ describe('resolveCeilingShortfall', () => {
       dev: heldDevice({ budgetExempt: true }),
       inputs: inputs(axes),
     })).toBeNull();
-    // gap = 0.25 − (0.1 − 1.2 − 0.25) = 1.6 kW
+    // gap = needed 1.2 − available 0.1 = 1.1 kW
     expect(gapKw({
       dev: heldDevice({ budgetExempt: false }),
       inputs: inputs(axes),
-    })).toBe(1.6);
+    })).toBe(1.1);
   });
 
   // Swap-aware gap (user ruling 2026-08-02): PELS can free a viable
@@ -132,13 +133,13 @@ describe('resolveCeilingShortfall', () => {
     });
 
     it('shrinks the gap by the victim draw plus the swap reserve', () => {
-      // Plain gap: 0.25 − (0.5 − 1.2 − 0.25) = 1.2. Swap potential:
-      // 0.5 + 1.0 = 1.5 → effective 1.2 after the 0.3 swap reserve →
-      // post = 1.2 − 1.2 − 0.25 = −0.25 → gap = 0.5 kW.
+      // Plain gap: needed 1.2 − available 0.5 = 0.7. Swap potential:
+      // 0.5 + 0.6 = 1.1 → effective 0.8 after the 0.3 swap reserve →
+      // margin = 0.8 − 1.2 = −0.4 → gap = 0.4 kW.
       expect(gapKw({
         dev: heldDevice(),
-        inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim()] }),
-      })).toBe(0.5);
+        inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ measuredPowerKw: 0.6 })] }),
+      })).toBe(0.4);
     });
 
     it('returns null when the swap alone would admit the device', () => {
@@ -152,14 +153,14 @@ describe('resolveCeilingShortfall', () => {
       expect(gapKw({
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ priority: 1 })] }),
-      })).toBe(1.2);
+      })).toBe(0.7);
     });
 
     it('ignores a budget-exempt victim for a non-exempt device (axis mismatch rule)', () => {
       expect(gapKw({
         dev: heldDevice({ budgetExempt: false }),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ budgetExempt: true })] }),
-      })).toBe(1.2);
+      })).toBe(0.7);
     });
   });
 
@@ -170,13 +171,13 @@ describe('resolveCeilingShortfall', () => {
   // admitted right now" — on the very cycle the gate rejected it on the larger
   // number.
   describe('measures against the same need the restore gate uses', () => {
-    // Base need 1.2 kW admits at available ≥ 1.7 (need + FLOOR + RESERVE).
-    // Inflated need max(1.2 × 1.15, 1.2 + 0.15) = 1.38 kW admits at ≥ 1.88.
-    // 1.8 kW therefore sits between the two.
-    const BETWEEN_KW = 1.8;
+    // Base need 1.2 kW admits at available ≥ 1.2. Inflated need
+    // max(1.2 × 1.15, 1.2 + 0.15) = 1.38 kW admits at ≥ 1.38. 1.3 kW therefore
+    // sits between the two.
+    const BETWEEN_KW = 1.3;
 
     it('reports a gap for a device shed inside the recent-shed window', () => {
-      // gap = 0.25 − (1.8 − 1.38 − 0.25) = 0.08 → 0.1 on the display grid.
+      // gap = 1.38 − 1.3 = 0.08 → 0.1 on the display grid.
       expect(resolveCeilingShortfall({
         dev: heldDevice(),
         inputs: inputs({

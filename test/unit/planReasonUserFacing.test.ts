@@ -161,21 +161,23 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Holding — cannot increase while 3 devices are limited',
     },
     {
-      // Production-shaped reason: the shortfall is admission-accurate,
-      // `minimumRequired − postReserveMargin` (0.25 − (−0.75) = 1.0), NOT the
-      // understated `need − available` (2.0 − 1.5 = 0.5). Prod 2026-08-01.
-      label: 'insufficient headroom renders the admission-accurate shortfall when margins are present',
+      // Swap-shaped on purpose. On the plain path the negated margin and the
+      // naive `need − available` now agree, so a plain fixture cannot tell the
+      // resolver from the shortcut. Here they still diverge: raw available is
+      // 2.4 kW against a 2.0 kW need, yet the swap reserve leaves 1.7 kW
+      // effective, so the honest gap is 0.3 kW and `need − available` would say
+      // there is no gap at all. Prod 2026-08-01 was this class of error.
+      label: 'insufficient headroom renders the admission-accurate shortfall, not need − available',
       reason: {
         code: PLAN_REASON_CODES.insufficientHeadroom,
         needKw: 2,
-        availableKw: 1.5,
-        postReserveMarginKw: -0.75,
-        minimumRequiredPostReserveMarginKw: 0.25,
+        availableKw: 2.4,
+        marginKw: -0.3,
         penaltyExtraKw: null,
-        swapReserveKw: null,
-        effectiveAvailableKw: null,
+        swapReserveKw: 0.3,
+        effectiveAvailableKw: 1.7,
       },
-      expected: 'Not enough available power to resume — 1.0 kW more needed',
+      expected: 'Not enough available power to resume — 0.3 kW more needed',
     },
     {
       label: 'startup stabilization maps to the waiting-after-startup label',

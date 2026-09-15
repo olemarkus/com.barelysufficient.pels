@@ -13,7 +13,16 @@ These earlier issues have already been addressed and should not be re-triaged as
   so a heater switching off while a charger starts hides the load entirely. Protection is the
   restore cooldown alone (`notes/state-management/actuation-clocks-and-settle.md`)
 - target-based restores go through the same restore admission gate as normal restores
-- near-zero post-reserve restores are blocked by a hard admission floor
+- ~~near-zero post-reserve restores are blocked by a hard admission floor~~ — **removed
+  2026-09-15.** A flat `RESTORE_ADMISSION_RESERVE_KW` was withheld from every candidate and the
+  gate then required the remainder to clear an equally flat `RESTORE_ADMISSION_FLOOR_KW`: 0.5 kW
+  of slack charged to every restore of every device, on the chance that some restore somewhere
+  might overshoot. That is 100% of a 0.5 kW thermostat's own draw and 17% of a 3 kW charger's, so
+  the devices that never overshoot were paying for the ones that do. Three mechanisms already
+  answer overshoot with evidence: `computeRestoreBufferKw` scales a buffer to the device's own
+  draw, the recent-shed inflation raises the bar for five minutes after a shed, and the
+  activation-penalty ladder attributes a MEASURED overshoot to the restores that caused it and
+  raises that device's bar exponentially. Admission is now `marginKw >= 0`
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
   still shed — EXCEPT for a device with an ACTIVE boost, which bypasses the invariant (boost is
   the user's priority override; 2026-07-05). The restore lane itself asks no further question
@@ -83,14 +92,22 @@ After a batch, the normal meter-settling / restore-cooldown behavior still block
 
 1. Is the remaining overshoot pattern primarily stale whole-home power, device-level ramp delay,
    or both?
-2. Is the current admission reserve still too optimistic for common high-draw heating elements?
+2. Is the per-device restore buffer (`clamp(0.1·P + 0.1, 0.2, 0.6)`) still too optimistic for
+   common high-draw heating elements? It is the only slack applied to a FIRST restore — before the
+   recent-shed inflation or the activation-penalty ladder have anything to act on. It is not the
+   only thing standing between a restore and a re-shed: the shedding latch will not release until
+   capacity headroom clears `SHEDDING_CLEAR_THRESHOLD_KW` (0.4 kW), a freshly restored device is
+   deprioritised from shedding for `RECENT_RESTORE_SHED_GRACE_MS` (3 min) unless the deficit
+   exceeds `RECENT_RESTORE_OVERSHOOT_BYPASS_KW`, and the restore cooldown doubles 60 → 300 s on any
+   instability inside 5 minutes of a restore.
 3. Do the existing structured events make it obvious which restore was admitted on stale data?
 
 ## Evidence to collect when it happens
 
 - `restore_admitted` fields including `estimatedPowerKw`, `powerSource`, `availableKw`,
-  `neededKw`, `reserveKw`, `marginKw`, and `postReserveMarginKw`. (`pendingRestoreKw` and
-  `postReserveSlackKw` went with the pending-restore reservation, removed 2026-08-28 —
+  `neededKw`, and `marginKw`. (`reserveKw` and `postReserveMarginKw` went with the flat
+  admission slack, removed 2026-09-15; `pendingRestoreKw` and `postReserveSlackKw` went with the
+  pending-restore reservation, removed 2026-08-28 —
   `notes/state-management/actuation-clocks-and-settle.md`.)
 - the next few whole-home power samples and device-level power observations
 - whether the rebuild that admitted the restore was triggered by `power_delta`, `max_interval`,

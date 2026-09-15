@@ -15,8 +15,7 @@ export type { RestorePowerSource };
 export function buildInsufficientHeadroomUpdate(params: {
   neededKw: number;
   availableKw: number;
-  postReserveMarginKw: number;
-  minimumRequiredPostReserveMarginKw: number;
+  marginKw: number;
   penaltyExtraKw?: number;
   swapReserveKw?: number;
   effectiveAvailableKw?: number;

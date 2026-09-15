@@ -67,8 +67,6 @@ export const SWAP_TIMEOUT_MS = 60000;
 // closed. Same role and same size as `HEADROOM_RESERVE_MAX_MS`, which bounds a
 // startup reserve that can never be satisfied for the same reason.
 export const SWAP_RESERVATION_MAX_MS = 15 * 60 * 1000;
-export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
-export const RESTORE_ADMISSION_FLOOR_KW = 0.25; // Minimum postReserveMarginKw for any restore to be admitted
 // When power is fresh and headroom is abundant, allow a small restore batch instead of draining
 // large shed backlogs one device per cooldown window.
 export const RESTORE_BATCH_MAX_DEVICES = 3;

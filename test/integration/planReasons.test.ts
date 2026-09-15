@@ -4,7 +4,6 @@ import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } f
 import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
 import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
-import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_ADMISSION_RESERVE_KW } from '../../lib/plan/planConstants';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
@@ -298,8 +297,7 @@ describe('normalizeShedReasons', () => {
         reason: buildRestoreHeadroomReason({
           neededKw: 1.2,
           availableKw: 0.7,
-          postReserveMarginKw: -0.75,
-          minimumRequiredPostReserveMarginKw: 0.25,
+          marginKw: -0.75,
         }),
       })], reasonContext({
       shedReasons: new Map(),
@@ -326,8 +324,7 @@ describe('normalizeShedReasons', () => {
         reason: buildRestoreHeadroomReason({
           neededKw: 1.2,
           availableKw: 0.7,
-          postReserveMarginKw: -0.75,
-          minimumRequiredPostReserveMarginKw: 0.25,
+          marginKw: -0.75,
         }),
       })], reasonContext({
       shedReasons: new Map(),
@@ -355,8 +352,7 @@ describe('normalizeShedReasons', () => {
         reason: buildRestoreHeadroomReason({
           neededKw: 1.4,
           availableKw: 1.7,
-          postReserveMarginKw: -0.28,
-          minimumRequiredPostReserveMarginKw: 0.25,
+          marginKw: -0.28,
         }),
       })], reasonContext({
       shedReasons: new Map(),
@@ -379,8 +375,7 @@ describe('normalizeShedReasons', () => {
         reason: buildRestoreHeadroomReason({
           neededKw: 1.2,
           availableKw: 0.7,
-          postReserveMarginKw: -0.75,
-          minimumRequiredPostReserveMarginKw: 0.25,
+          marginKw: -0.75,
         }),
       })], reasonContext({
       shedReasons: new Map(),
@@ -576,7 +571,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   it('attaches the admission gap to a carry-forward capacity hold', () => {
     // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW
     const [device] = normalize({ devices: [heldDevice()], capacityAvailableKw: 0.5 });
-    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 0.7 });
   });
 
   it('attaches THIS device\'s own gap to a swap victim', () => {
@@ -584,7 +579,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       devices: [heldDevice({ reason: { code: 'swapped_out', targetName: 'Water heater' } })],
       capacityAvailableKw: 0.5,
     });
-    expect(device?.reason).toEqual({ code: 'swapped_out', targetName: 'Water heater', shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'swapped_out', targetName: 'Water heater', shortfallKw: 0.7 });
   });
 
   // Freshness wins: a producer number is a snapshot of the rejection that
@@ -596,7 +591,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       devices: [heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })],
       capacityAvailableKw: 0.5,
     });
-    expect(device?.reason).toEqual({ code: 'daily_budget', shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'daily_budget', shortfallKw: 0.7 });
   });
 
   it('strips a carried shortfall the fresh arithmetic would no longer produce', () => {
@@ -632,14 +627,13 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     expect(device?.reason).toEqual({ code: 'swap_pending', targetName: null });
   });
 
-  // Parity with the restore gate, stated without repeating its constants: the
-  // gate admits at `available ≥ getRestoreNeed().needed + RESERVE + FLOOR`, so
-  // the card must find no gap exactly there and a gap just below it. The
+  // Parity with the restore gate, stated without repeating its arithmetic: the
+  // gate admits at `available ≥ getRestoreNeed().needed`, so the card must find
+  // no gap exactly there and a gap just below it. The
   // recent-shed inflation lives inside `getRestoreNeed`, and computing the card
   // from the un-inflated base made the resolver answer `no_gap` — "would be
   // admitted right now" — on the very cycle the gate rejected the device.
   describe('agrees with the restore gate at its own admission boundary', () => {
-    const ADMISSION_MARGIN_KW = RESTORE_ADMISSION_RESERVE_KW + RESTORE_ADMISSION_FLOOR_KW;
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -669,11 +663,11 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       expect(gateNeededKw).toBeGreaterThan(computeBaseRestoreNeed(dev).needed);
       expect(resolveCeilingShortfall({
         dev,
-        inputs: shortfallInputs(gateNeededKw + ADMISSION_MARGIN_KW),
+        inputs: shortfallInputs(gateNeededKw),
       }).kind).toBe('no_gap');
       expect(resolveCeilingShortfall({
         dev,
-        inputs: shortfallInputs(gateNeededKw + ADMISSION_MARGIN_KW - 0.05),
+        inputs: shortfallInputs(gateNeededKw - 0.05),
       }).kind).toBe('gap');
     });
   });
@@ -713,7 +707,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       })],
       capacityAvailableKw: 0.5,
     });
-    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 1.2 });
+    expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 0.7 });
     expect(device?.reason).not.toHaveProperty('reserveHolderName');
   });
 
@@ -741,7 +735,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     // is honest. The non-exempt sibling gates on min(cap, budget):
     // gap = 0.25 − (0.1 − 1.2 − 0.25) = 1.6 kW.
     expect(exempt?.reason).toEqual({ code: 'capacity' });
-    expect(bound?.reason).toEqual({ code: 'capacity', shortfallKw: 1.6 });
+    expect(bound?.reason).toEqual({ code: 'capacity', shortfallKw: 1.1 });
   });
 
   // Prod repro (2026-08-02): pace 0.55 kW, draw 1.54 kW → available −0.99 kW,
@@ -758,7 +752,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     });
     for (const device of devices) {
       // gap = 0.25 − (−0.99 − 1.2 − 0.25) = 2.69 → 2.7 kW on the display grid.
-      expect(device.reason).toEqual({ code: 'daily_budget', shortfallKw: 2.7 });
+      expect(device.reason).toEqual({ code: 'daily_budget', shortfallKw: 2.2 });
     }
   });
 
@@ -801,15 +795,15 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       })[0];
 
       expect(roll({ softLimitSource: 'daily' })?.reason)
-        .toEqual({ code: 'daily_budget', shortfallKw: 1.2 });
+        .toEqual({ code: 'daily_budget', shortfallKw: 0.7 });
       expect(roll({ softLimitSource: 'daily', capacityBreached: true })?.reason)
-        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 0.7 });
       // Per-axis admission evaluates an exempt candidate on capacity, so its
       // hold is a capacity hold — never a budget label next to a "Budget exempt" chip.
       expect(roll({ softLimitSource: 'daily', budgetExempt: true })?.reason)
-        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 0.7 });
       expect(roll({ softLimitSource: 'capacity' })?.reason)
-        .toEqual({ code: 'capacity', shortfallKw: 1.2 });
+        .toEqual({ code: 'capacity', shortfallKw: 0.7 });
     });
   });
 });

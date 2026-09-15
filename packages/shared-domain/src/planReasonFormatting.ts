@@ -192,13 +192,6 @@ function formatEffectiveSummary(
     + `${formatSignedKw(reason.swapReserveKw, 2)}kW swap reserve`;
 }
 
-function formatPostReserveMarginSummary(
-  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
-): string {
-  return `post-reserve margin ${formatSignedKw(reason.postReserveMarginKw, 3)}kW < `
-    + `${formatSignedKw(reason.minimumRequiredPostReserveMarginKw, 3)}kW`;
-}
-
 function formatInsufficientHeadroom(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
 ): string {
@@ -207,17 +200,20 @@ function formatInsufficientHeadroom(
   const availableSummary = `available ${formatSignedKw(reason.availableKw, 2)}kW`;
   const effectiveSummary = formatEffectiveSummary(reason);
 
+  // Two forms, and there is no third. Admission fails exactly when the margin is
+  // negative, and every producer builds `marginKw` off the same figure it puts
+  // in `availableKw` (or in `effectiveAvailableKw` on the swap path) — so a
+  // rejection always has one of these two short of the need.
+  //
+  // There used to be an `after reserves` form for the window where raw
+  // availability cleared the need but a flat 0.25 kW reserve and a 0.25 kW floor
+  // still refused admission. That window closed with those constants; the branch
+  // became unreachable from every producer, and the only tests still exercising
+  // it were feeding hand-built payloads no producer can emit.
   if (effectiveSummary && reason.effectiveAvailableKw !== null && reason.effectiveAvailableKw < reason.needKw) {
     return `${prefix} (${needSummary}, ${availableSummary}, ${effectiveSummary})`;
   }
-  // Raw availability already short of the need: the reserve breakdown adds
-  // nothing the reader cannot see, so the short form stands.
-  if (reason.availableKw < reason.needKw) {
-    return `${prefix} (${needSummary}, ${availableSummary})`;
-  }
-  const reserveSummary = effectiveSummary ? `${effectiveSummary}, ` : '';
-  return `${prefix} after reserves `
-    + `(${needSummary}, ${availableSummary}, ${reserveSummary}${formatPostReserveMarginSummary(reason)})`;
+  return `${prefix} (${needSummary}, ${availableSummary})`;
 }
 
 // The three reasons whose whole payload is "who is this for": swap source, swap target, and a
@@ -325,16 +321,17 @@ const readFiniteNumber = (value: unknown): number | null => (
 );
 
 // The kW a blocked restore is actually short by — the number that, if it became
-// available, would admit the device. Admission passes at
-// `postReserveMarginKw >= minimumRequiredPostReserveMarginKw`
-// (`lib/plan/admission/reserve.ts` + `lib/plan/planReasonsRestoreGating.ts`), and
-// `postReserveMarginKw` already folds in the inflated need, the admission
-// reserve, and any swap reserve (via effective available). So the honest gap is
-// `minimumRequired − postReserveMargin` — NOT `need − available`, which
-// understates by the reserve stack (~0.5 kW, +0.3 kW on swap paths). Prod
-// 2026-08-01: cards read "0.5 kW more needed" for a device admission would only
-// pass with ~1.05 kW more. `shortfall` reasons keep `need − headroom`: that is a
-// shed-side deficit with no admission reserves in play. Accepts `unknown`
+// available, would admit the device. Admission passes at `marginKw >= 0`
+// (`isRestoreAdmitted`, `lib/plan/admission/reserve.ts`), and `marginKw` already
+// folds in the inflated need and any swap reserve (via effective available), so
+// the honest gap is simply the negated margin.
+//
+// This used to be `minimumRequired − postReserveMargin`, because two flat
+// constants sat between "fits" and "admitted" and a gap of `need − available`
+// understated the real bar by ~0.5 kW — prod 2026-08-01, cards read "0.5 kW more
+// needed" for a device that needed ~1.05 kW more. Those constants are gone, so
+// the two quantities have converged and the correction with them. `shortfall`
+// reasons keep `need − headroom`: a shed-side deficit, unchanged. Accepts `unknown`
 // because temperature-card callers hold the reason untyped after the snapshot
 // boundary — so the finiteness guards below stay even though the type now
 // promises both margins (a snapshot from another build is untrusted input).
@@ -357,14 +354,13 @@ export function resolveRestoreShortfallKw(reason: unknown): number | null {
   const carried = readFiniteNumber(r['shortfallKw']);
   if (carried !== null) return carried > 0 ? carried : null;
   if (r['code'] === PLAN_REASON_CODES.insufficientHeadroom) {
-    const postReserveMarginKw = readFiniteNumber(r['postReserveMarginKw']);
-    const minimumRequiredKw = readFiniteNumber(r['minimumRequiredPostReserveMarginKw']);
-    // Both are required `number` on the reason type. A snapshot that still
-    // lacks them is malformed, not "legacy": derive nothing and let the card
-    // fall to its bare waiting line rather than fabricating a gap from `needKw`
-    // against an availability figure the producer never resolved.
-    if (postReserveMarginKw === null || minimumRequiredKw === null) return null;
-    return ceilToDisplayKw(minimumRequiredKw - postReserveMarginKw);
+    const marginKw = readFiniteNumber(r['marginKw']);
+    // Required `number` on the reason type. A snapshot that still lacks it is
+    // malformed, not "legacy": derive nothing and let the card fall to its bare
+    // waiting line rather than fabricating a gap from `needKw` against an
+    // availability figure the producer never resolved.
+    if (marginKw === null) return null;
+    return ceilToDisplayKw(-marginKw);
   }
   if (r['code'] === PLAN_REASON_CODES.shortfall) {
     // Both are required `number` on the reason type; a snapshot missing either is
