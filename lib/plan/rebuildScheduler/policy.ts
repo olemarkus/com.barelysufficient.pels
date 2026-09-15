@@ -3,6 +3,7 @@ import {
   resolveHeadroomTight,
   type HardCapBreach,
   type PowerRebuildSignal,
+  type RebuildCadence,
 } from './rebuildSignal';
 import type { LastRebuild, PlanRebuildThrottleMemory, RebuildHoldoff } from './throttleMemory';
 
@@ -27,6 +28,18 @@ export type RebuildOutcome = {
   actionChanged: boolean;
   appliedActions: boolean;
   failed: boolean;
+};
+
+/**
+ * How often a home's rebuild throttle may rebuild — one cadence for every home.
+ * `minIntervalMs` spaces the rebuilds a capacity boundary asks for; away from a
+ * boundary nothing asks, and `maxIntervalMs` is the refresh however quiet the
+ * house is. There is no separate calm floor: a calm reading only rebuilds once
+ * the max interval has passed, which is later than any such floor could be.
+ */
+export const POWER_SAMPLE_REBUILD_CADENCE: RebuildCadence = {
+  minIntervalMs: 2000,
+  maxIntervalMs: 30_000,
 };
 
 const MIN_REBUILD_DELTA_W = 100;

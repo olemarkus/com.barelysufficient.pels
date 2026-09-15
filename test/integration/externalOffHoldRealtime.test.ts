@@ -78,7 +78,7 @@ const heldDeviceIds = (): string[] => mockHomeyInstance.settings.getKeys()
 describe('external-off hold — realtime lifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 6, 25, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

@@ -90,7 +90,7 @@ const readTracker = (): PowerTrackerState | null => (
 describe('production parity on the flow power source (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 5, 19, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

@@ -189,11 +189,11 @@ const countBoostRaises = (putSpy: { mock: { calls: unknown[][] } }): number => (
 
 describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', () => {
   beforeEach(() => {
-    // 'Date' MUST be faked — under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now(); a real-vs-fake split intermittently strands the
-    // rebuild under CI load.
+    // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
+    // the monotonic clock and the rest of the app reads Date. Either left real
+    // runs on real time against the fake timers and strands the rebuild.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(NOW_MS);
     mockHomeyInstance.settings.removeAllListeners();

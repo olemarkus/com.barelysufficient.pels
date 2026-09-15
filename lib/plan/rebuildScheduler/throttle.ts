@@ -3,6 +3,7 @@ import { addPerfDuration, incPerfCounter, incPerfCounters } from '../../utils/pe
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 import {
   isTightReason,
+  POWER_SAMPLE_REBUILD_CADENCE,
   resolveRebuildDecision,
   resolveRebuildIntentKind,
   resolveRebuildReason,
@@ -16,36 +17,21 @@ import {
 } from './policy';
 import {
   resolveHardCapBreach,
-  resolveHeadroomTight,
   type AdmittedPowerReading,
   type HardCapBreach,
   type PlanRebuildPosture,
   type PowerRebuildSignal,
-  type RebuildCadence,
 } from './rebuildSignal';
 import type { PlanRebuildScheduler, RebuildIntent } from './scheduler';
 import type { LastRebuild, PlanRebuildThrottleMemory, RebuildHoldoff } from './throttleMemory';
 
 export {
-  initialPlanRebuildThrottleMemory,
   type LastRebuild,
   type PlanRebuildThrottleMemory,
   type RebuildHoldoff,
 } from './throttleMemory';
 
 const NO_BREACH: HardCapBreach = { breached: false, deficitKw: 0 };
-
-/** Read-only view for diagnostics and specs: the memory plus the live work. */
-export type PlanRebuildThrottleSnapshot = PlanRebuildThrottleMemory & {
-  queued: {
-    dueMs: number;
-    trigger: PowerSampleRebuildTrigger;
-    signal: PowerRebuildSignal;
-    /** What every sample that joined this request is awaiting. */
-    promise: Promise<void | string>;
-  } | null;
-  inFlight: boolean;
-};
 
 type RebuildDeferred = {
   promise: Promise<void | string>;
@@ -87,20 +73,6 @@ const createDeferred = (): RebuildDeferred => {
     resolve = nextResolve;
   });
   return { promise, resolve };
-};
-
-const resolveEffectiveMinIntervalMs = (signal: PowerRebuildSignal, cadence: RebuildCadence): number => {
-  const boundaryActive = signal.planConvergenceActive
-    || resolveHeadroomTight(signal.headroomKw)
-    || signal.isInShortfall
-    || signal.hardCapBreach.breached;
-  const effectiveMinIntervalMs = boundaryActive
-    ? cadence.minIntervalMs
-    : Math.max(cadence.minIntervalMs, cadence.stableMinIntervalMs);
-  if (effectiveMinIntervalMs > cadence.minIntervalMs) {
-    incPerfCounter('plan_rebuild_signal_stable_interval_total');
-  }
-  return effectiveMinIntervalMs;
 };
 
 const incReasonCounter = (base: string, reason: string): void => {
@@ -145,44 +117,7 @@ export class PlanRebuildThrottle {
 
   private inFlight: Promise<void | string> | null = null;
 
-  constructor(
-    private readonly deps: PlanRebuildThrottleDeps,
-    private readonly cadence: RebuildCadence,
-    memory: PlanRebuildThrottleMemory,
-  ) {
-    this.restore(memory);
-  }
-
-  snapshot(): PlanRebuildThrottleSnapshot {
-    return {
-      ...this.memory(),
-      queued: this.queued === null
-        ? null
-        : {
-          dueMs: this.queued.dueMs,
-          trigger: this.queued.trigger,
-          signal: this.queued.signal,
-          promise: this.queued.deferred.promise,
-        },
-      inFlight: this.inFlight !== null,
-    };
-  }
-
-  /**
-   * Take on a memory — the constructor's seed, and nothing else in production.
-   * Private on purpose: the class owns its memory. A spec that must put a live
-   * throttle into a known memory reaches it by element access
-   * (`throttle['restore'](memory)`, root `AGENTS.md` testing rules), so a
-   * production rename still breaks the spec.
-   */
-  private restore(memory: PlanRebuildThrottleMemory): void {
-    this.lastRebuild = memory.lastRebuild;
-    this.noopStreak = memory.noopStreak;
-    this.holdoff = memory.holdoff;
-    this.suppressionInvalidated = memory.suppressionInvalidated;
-    this.observationSeq = memory.observationSeq;
-    this.lastDecisionUnactionable = memory.lastDecisionUnactionable;
-  }
+  constructor(private readonly deps: PlanRebuildThrottleDeps) {}
 
   /**
    * One admitted whole-home reading. Resolves the signal once, then walks the
@@ -203,24 +138,13 @@ export class PlanRebuildThrottle {
       planConvergenceActive: posture.planConvergenceActive,
       unactionable: posture.unactionable,
     };
-    return this.onSignal(signal, posture).finally(() => {
+    // The latch is not spent here. Only a rebuild that read the observed device
+    // spends it (`execute`): a reading that rebuilds nothing leaves the
+    // pre-observation verdict standing, and spending the latch on one held the
+    // next breach to the max interval behind a plan built without that device.
+    return this.decide(signal, posture, this.deps.getCapacityGuard()).finally(() => {
       addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
     });
-  }
-
-  /**
-   * The signal-level entry: `onSample` with the reading already resolved (specs
-   * vary one field at a time). One path from here: the latch rule and the gates
-   * are not repeated anywhere else.
-   */
-  onSignal(signal: PowerRebuildSignal, posture: PlanRebuildPosture): Promise<void | string> {
-    // A sample taken outside shortfall spends the latch before deciding. Kept
-    // from the free-function version as is: it means an observation's re-check
-    // only lands on a sample taken inside shortfall, although the unactionable
-    // gate the latch lifts can hold outside it too. Narrowing that is a
-    // behaviour change, not this refactor's.
-    if (!signal.isInShortfall) this.suppressionInvalidated = false;
-    return this.decide(signal, posture, this.deps.getCapacityGuard());
   }
 
   /**
@@ -329,7 +253,7 @@ export class PlanRebuildThrottle {
     posture: PlanRebuildPosture,
     guard: ThrottleCapacityGuardView,
   ): Promise<void | string> {
-    const { cadence } = this;
+    const cadence = POWER_SAMPLE_REBUILD_CADENCE;
     const now = this.deps.getNowMs();
     const maxIntervalExceeded = cadence.maxIntervalMs > 0
       && (this.lastRebuild === null || now - this.lastRebuild.atMs >= cadence.maxIntervalMs);
@@ -349,9 +273,6 @@ export class PlanRebuildThrottle {
       incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
       return guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
     }
-    // Resolved before the decision so its telemetry counts every sample that
-    // reached the gates, skipped or not.
-    const minIntervalMs = resolveEffectiveMinIntervalMs(signal, cadence);
     const memory = this.memory();
     const decision = resolveRebuildDecision(signal, memory, now, cadence.maxIntervalMs);
     if (!decision.shouldRebuild) {
@@ -363,7 +284,7 @@ export class PlanRebuildThrottle {
       // clear ride the max-interval rebuild instead.
       return Promise.resolve();
     }
-    return this.request(signal, decision, resolveRebuildReason(signal, memory, decision), now, minIntervalMs);
+    return this.request(signal, decision, resolveRebuildReason(signal, memory, decision), now);
   }
 
   private recordSkip(signal: PowerRebuildSignal, decision: RebuildDecision, nowMs: number): void {
@@ -395,7 +316,6 @@ export class PlanRebuildThrottle {
     decision: RebuildDecision,
     trigger: PowerSampleRebuildTrigger,
     nowMs: number,
-    minIntervalMs: number,
   ): Promise<void | string> {
     // Staged before the scheduler hears of it, because the scheduler may execute
     // synchronously; restored whole if the scheduler drops the intent.
@@ -405,7 +325,9 @@ export class PlanRebuildThrottle {
     const lastDecisionUnactionableBefore = this.lastDecisionUnactionable;
     if (decision.deltaMeaningful && this.hasBackoffState()) this.resetBackoff();
     const intentKind = resolveRebuildIntentKind(signal.hardCapBreach);
-    const earliestMs = this.lastRebuild === null ? nowMs : this.lastRebuild.atMs + minIntervalMs;
+    const earliestMs = this.lastRebuild === null
+      ? nowMs
+      : this.lastRebuild.atMs + POWER_SAMPLE_REBUILD_CADENCE.minIntervalMs;
     const dueMs = intentKind === 'hardCap' ? nowMs : Math.max(nowMs, earliestMs);
     const previous = this.queued;
     const queued: QueuedRebuild = {

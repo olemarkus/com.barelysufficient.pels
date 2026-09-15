@@ -11,7 +11,7 @@ import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
 const buildOnOffDevice = async (options?: { id?: string; name?: string; on?: boolean; powerW?: number }) => {
   const deviceId = options?.id ?? 'device-a';

@@ -28,16 +28,17 @@ export type RebuildHoldoff = { untilMs: number; cause: 'noop' | 'mitigation' };
  * and its holdoff (the backoff gate), the invalidation latch and observation
  * counter (what un-suppresses), and the last decision's execution floor. The
  * queued request and the in-flight rebuild are NOT memory — they are the
- * throttle's live work, and `snapshot()` reports them beside it.
+ * throttle's live work. The throttle starts from nothing remembered and builds
+ * this from readings, rebuild outcomes and observations alone.
  */
 export type PlanRebuildThrottleMemory = {
   lastRebuild: LastRebuild | null;
   noopStreak: number;
   holdoff: RebuildHoldoff | null;
   /**
-   * Set by a device observation, cleared by the next completed rebuild or by
-   * leaving shortfall: the "nothing is actionable" verdict the shortfall
-   * throttle rests on has been falsified, so the next reading gets one re-check.
+   * Set by a device observation, cleared by the next completed rebuild that read
+   * the house after it: the "nothing is actionable" verdict the throttles rest on
+   * has been falsified, so the next reading that can decide gets one re-check.
    */
   suppressionInvalidated: boolean;
   /**
@@ -49,12 +50,3 @@ export type PlanRebuildThrottleMemory = {
   /** The last decision proved nothing actionable while a boundary was active — floors executed rebuilds at 15 s. */
   lastDecisionUnactionable: boolean;
 };
-
-export const initialPlanRebuildThrottleMemory = (): PlanRebuildThrottleMemory => ({
-  lastRebuild: null,
-  noopStreak: 0,
-  holdoff: null,
-  suppressionInvalidated: false,
-  observationSeq: 0,
-  lastDecisionUnactionable: false,
-});

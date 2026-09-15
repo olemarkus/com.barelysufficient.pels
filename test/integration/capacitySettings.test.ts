@@ -7,7 +7,7 @@ import {
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
 // Mock CapacityGuard to capture limit updates.
 type MockCapacityGuardInstance = {

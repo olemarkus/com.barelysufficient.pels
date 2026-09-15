@@ -83,12 +83,11 @@ const tempWrites = (putSpy: ReturnType<typeof vi.spyOn>) =>
 
 describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
   beforeEach(() => {
-    // 'Date' MUST be faked here: under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (lib/plan/rebuildScheduler/intentPolicy.ts getAppPlanRebuildNowMs). Without a faked Date it
-    // runs on real wall-clock while the test drives fake timers — a real-vs-fake split
-    // that intermittently strands the rebuild under CI load (the drainUntil flake).
+    // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
+    // the monotonic clock and the rest of the app reads Date. Either left real
+    // runs on real time against the fake timers and strands the rebuild.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

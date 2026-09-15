@@ -3,7 +3,7 @@ import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
 
-vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 

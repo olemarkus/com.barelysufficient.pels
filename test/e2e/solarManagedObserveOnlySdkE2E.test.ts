@@ -120,7 +120,7 @@ describe('Solar device as managed observe-only (SDK-boundary e2e)', () => {
     solarEvents = [];
     planEvents = [];
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

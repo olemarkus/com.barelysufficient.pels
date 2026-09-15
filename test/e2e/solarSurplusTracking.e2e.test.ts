@@ -124,11 +124,11 @@ const chargingPuts = (putSpy: { mock: { calls: unknown[][] } }): boolean[] => pu
 
 describe('Solar surplus tracking (SDK-boundary e2e)', () => {
   beforeEach(() => {
-    // 'Date' MUST be faked — under NODE_ENV=test the plan-rebuild scheduler
-    // reads its clock via Date.now(); a real-vs-fake split intermittently
-    // strands the rebuild under CI load.
+    // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
+    // the monotonic clock and the rest of the app reads Date. Either left real
+    // runs on real time against the fake timers and strands the rebuild.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     homePowerW = 0;

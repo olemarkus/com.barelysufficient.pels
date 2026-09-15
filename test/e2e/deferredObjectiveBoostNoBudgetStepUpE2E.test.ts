@@ -249,7 +249,7 @@ describe('smart-task boost — no daily budget, hourly hard cap (SDK-boundary e2
     // app clock, so without a faked clock the simulated prices fall outside the
     // window and the allocation horizon is empty.
     vi.useFakeTimers({
-      toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date'],
+      toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

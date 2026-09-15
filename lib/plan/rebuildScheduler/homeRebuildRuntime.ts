@@ -27,13 +27,12 @@ import type { HomeId } from '../../utils/settingsKeys';
 import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { PlanService } from '../planService';
 import {
-  createHomePlanRebuildThrottle,
   getAppPlanRebuildNowMs,
   PlanRebuildIntentPolicy,
 } from './intentPolicy';
 import { PlanRebuildScheduler } from './scheduler';
 import { SchedulerTelemetryObserver } from './telemetryObserver';
-import type { PlanRebuildThrottle } from './throttle';
+import { PlanRebuildThrottle } from './throttle';
 
 export type HomeRebuildRuntime = {
   scheduler: PlanRebuildScheduler;
@@ -69,7 +68,7 @@ export const createHomeRebuildRuntime = (
   // in one and the monotonic clock in another would be comparing two different
   // origins. A meter area used to do exactly that.
   const nowMs = getAppPlanRebuildNowMs;
-  const throttle = createHomePlanRebuildThrottle({
+  const throttle: PlanRebuildThrottle = new PlanRebuildThrottle({
     getScheduler: () => scheduler,
     getCapacityGuard,
     getNowMs: nowMs,

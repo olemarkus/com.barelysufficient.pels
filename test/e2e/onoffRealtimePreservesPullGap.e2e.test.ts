@@ -204,7 +204,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
   beforeEach(() => {
     vi.useFakeTimers({
       now: new Date(FRESH_ISO),
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     socketHarness.reset();
     mockHomeyInstance.settings.removeAllListeners();

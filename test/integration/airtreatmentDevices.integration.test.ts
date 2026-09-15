@@ -1,4 +1,3 @@
-import { initialPlanRebuildThrottleMemory } from '../../lib/plan/rebuildScheduler/throttle';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
@@ -13,7 +12,7 @@ import {
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
 const buildTemperatureApiDevice = (overrides?: Partial<{
   id: string;
@@ -196,10 +195,14 @@ describe('Airtreatment device integration', () => {
     expect(reportedTargets['flexit-1']).toBe(16);
     expect(reportedTargets['flexit-2']).toBe(16);
 
+    // Let the rebuild throttle's max interval pass while the house is still over
+    // its limit: the same reading on a calmer house is re-decided on that
+    // refresh, not on a change in the soft limit. The re-decide heartbeats that
+    // run meanwhile restore nothing.
+    await vi.advanceTimersByTimeAsync(30_000);
     setCapSpy.mockClear();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
     app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
-    app.planRebuildThrottle['restore'](initialPlanRebuildThrottleMemory());
     app.computeDynamicSoftLimit = () => 10;
     app.computeDynamicSoftLimit = () => 10;
     app.capacityGuard.isInShortfall = () => false;

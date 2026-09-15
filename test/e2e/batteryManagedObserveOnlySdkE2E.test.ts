@@ -131,7 +131,7 @@ describe('Home battery as managed observe-only (SDK-boundary e2e)', () => {
     batteryEvents = [];
     planEvents = [];
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

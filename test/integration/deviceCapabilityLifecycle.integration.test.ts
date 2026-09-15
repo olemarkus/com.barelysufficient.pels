@@ -7,7 +7,7 @@ import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/a
 
 // Use fake timers to prevent resource leaks from periodic refresh and control
 // timing deterministically.
-vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
 type ApiCapabilityObj = Record<string, { id: string; value?: unknown }>;
 type ApiDevice = {

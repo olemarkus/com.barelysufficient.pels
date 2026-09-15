@@ -42,13 +42,11 @@ export type HardCapBreach = {
 };
 
 /**
- * How often the scheduler may rebuild. `stableMinIntervalMs` is the relaxed
- * floor used while no capacity boundary is active; the throttle collapses the
- * two into the effective minimum before the decision chain sees it.
+ * How often the scheduler may rebuild: never within `minIntervalMs` of the last
+ * rebuild, and never more than `maxIntervalMs` after it once a reading arrives.
  */
 export type RebuildCadence = {
   minIntervalMs: number;
-  stableMinIntervalMs: number;
   maxIntervalMs: number;
 };
 

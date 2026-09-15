@@ -69,7 +69,7 @@ type Structured = { event?: string; gainKwhPerWm2?: number; trainingMode?: strin
 describe('Learning a PV device through the app (SDK-boundary e2e, Open-Meteo mocked)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 5, 19, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

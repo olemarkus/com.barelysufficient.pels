@@ -120,21 +120,23 @@ const startApp = async (): Promise<AppLike> => {
 };
 
 /**
- * Advance past the next Homey Energy poll (10 s) and the rebuild floor it feeds.
- * This is the ONLY thing that re-plans now — the observation itself schedules
- * nothing, so a test that only drains microtasks sees no rebuild at all.
+ * Advance until a Homey Energy poll re-decides. The whole-home reading here does
+ * not change, so the poll that re-plans is the one past the rebuild throttle's
+ * 30 s max interval. A reading is the ONLY thing that re-plans now — the
+ * observation itself schedules nothing, so a test that only drains microtasks
+ * sees no rebuild at all.
  */
 const settleThroughNextReading = async () => {
-  await vi.advanceTimersByTimeAsync(15_000);
+  await vi.advanceTimersByTimeAsync(30_000);
 };
 
 describe('stepped device drifting down from the planned step', () => {
   beforeEach(() => {
-    // 'Date' MUST be faked: under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (`lib/plan/rebuildScheduler/intentPolicy.ts`). Without it the
-    // rebuild runs on real wall-clock while the test drives fake timers.
+    // 'performance' MUST be faked: the plan-rebuild scheduler reads the monotonic
+    // clock (`lib/plan/rebuildScheduler/intentPolicy.ts`). Without it the rebuild
+    // runs on real time while the test drives fake timers.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 7, 5, 20, 1, 24));
     mockHomeyInstance.settings.removeAllListeners();

@@ -21,7 +21,7 @@ import {
 } from '../../lib/utils/dateUtils';
 
 // Use fake timers to control throttling, but keep real Date behavior
-vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
 describe('power tracker integration', () => {
   beforeEach(() => {

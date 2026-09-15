@@ -80,6 +80,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
         'clearTimeout',
         'clearInterval',
         'clearImmediate',
+        'performance',
       ],
     });
     vi.setSystemTime(NOW_MS);

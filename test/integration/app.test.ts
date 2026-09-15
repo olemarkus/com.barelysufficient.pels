@@ -13,7 +13,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { rememberLastRebuild, schedulePowerSampleForTest } from '../helpers/powerRebuildScheduler';
+import { sampleThrottle } from '../helpers/powerRebuildScheduler';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { StateOfChargeObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -64,7 +64,6 @@ import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudge
 import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
-import { getAppPlanRebuildNowMs } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -121,6 +120,21 @@ const getPlanDeviceState = (plan: { devices?: unknown } | null | undefined, devi
   return undefined;
 };
 
+/**
+ * The rebuild throttle's first reading always rebuilds (`initial`). Sends one at
+ * `powerW` through the pipeline, so a spec's later readings are judged against a
+ * rebuild that actually ran, then clears the spy for what the spec asserts.
+ */
+const rebuildAtFirstReading = async (
+  app: MyApp,
+  rebuildSpy: { mock: { calls: unknown[][] }; mockClear: () => void },
+  powerW: number,
+): Promise<void> => {
+  await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: powerW, nowMs: Date.now(), revision: 0 });
+  expect(rebuildSpy.mock.calls.map((call) => call[0])).toContain('initial');
+  rebuildSpy.mockClear();
+};
+
 const initApp = async (app: MyApp) => {
   app['updateDebugLoggingEnabled']();
   app['openUserdata']();
@@ -160,7 +174,7 @@ const clearRecentLocalCapabilityWrites = (app: MyApp) => {
 
 describe('MyApp initialization', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
@@ -791,7 +805,7 @@ describe('MyApp initialization', () => {
 
   it('clears a queued power rebuild and resolves its pending promise on uninit', async () => {
     vi.useRealTimers();
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
@@ -802,18 +816,16 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    // Under the test cadence nothing waits on the min interval, so the queued
-    // rebuild this case cancels is held by the tight-unactionable execution
-    // floor instead: an unactionable sample past the max interval is admitted,
-    // then floored 15 s after the last rebuild.
-    rememberLastRebuild(app.planRebuildThrottle, getAppPlanRebuildNowMs() - 200);
-    const pending = schedulePowerSampleForTest({
-      throttle: app.planRebuildThrottle,
-      limitKw: 10,
-      currentPowerW: 9500,
-      capacityPaceKw: 9,
-      unactionable: true,
-    });
+    // Two tight readings, then 2 s: whether the first ran at once or queued, the
+    // last rebuild dispatched just now. A third reading that has moved therefore
+    // queues behind the 2 s min interval — the rebuild this case cancels.
+    const warmUp = [
+      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9300, capacityPaceKw: 9 }),
+      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9500, capacityPaceKw: 9 }),
+    ];
+    await vi.advanceTimersByTimeAsync(2000);
+    await Promise.all(warmUp);
+    const pending = sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9700, capacityPaceKw: 9 });
 
     expect(app['planRebuildScheduler'].now().hasTimer).toBe(true);
 
@@ -821,7 +833,6 @@ describe('MyApp initialization', () => {
 
     await expect(pending).resolves.toBe('app_uninit');
     expect(app['planRebuildScheduler'].now().hasTimer).toBe(false);
-    expect(app.planRebuildThrottle.snapshot().queued).toBeNull();
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
@@ -995,13 +1006,13 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
 
+    vi.useFakeTimers({ toFake: ['performance'] });
     const app = createApp();
     await initApp(app);
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
-    rebuildSpy.mockClear();
+    await rebuildAtFirstReading(app, rebuildSpy, 5000);
 
-    const nowMs = getAppPlanRebuildNowMs();
-    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
+    const nowMs = Date.now();
     app.planEngine.state.actuation.lastRestoreMs = nowMs - 1_000;
     app.planEngine.state.actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
@@ -1012,6 +1023,7 @@ describe('MyApp initialization', () => {
   });
 
   it('still schedules convergence rebuilds for active overshoot', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
@@ -1045,11 +1057,12 @@ describe('MyApp initialization', () => {
     await app.planService.rebuildPlanFromCache('unknown');
 
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
-    rebuildSpy.mockClear();
+    await rebuildAtFirstReading(app, rebuildSpy, 5000);
+    // Past the 2 s min interval, so a convergence rebuild runs at once.
+    vi.advanceTimersByTime(2000);
 
-    const nowMs = getAppPlanRebuildNowMs();
-    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
-    app.planEngine.state.overshoot.enter(Date.now());
+    const nowMs = Date.now();
+    app.planEngine.state.overshoot.enter(nowMs);
 
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
@@ -1071,14 +1084,14 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
 
+    vi.useFakeTimers({ toFake: ['performance'] });
     const app = createApp();
     await initApp(app);
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
-    rebuildSpy.mockClear();
+    await rebuildAtFirstReading(app, rebuildSpy, 5000);
 
-    const nowMs = getAppPlanRebuildNowMs();
-    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
-    app.planEngine.state.overshoot.enter(Date.now());
+    const nowMs = Date.now();
+    app.planEngine.state.overshoot.enter(nowMs);
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
@@ -1521,9 +1534,7 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    app.planRebuildThrottle['restore']({
-      ...app.planRebuildThrottle.snapshot(), noopStreak: 3, holdoff: { untilMs: 120_000, cause: 'noop' },
-    });
+    const observation = vi.spyOn(app.planRebuildThrottle, 'onObservation');
 
     app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
@@ -1542,13 +1553,10 @@ describe('MyApp initialization', () => {
 
     // `measure_temperature` is not a control capability, so the producer reports
     // `observedControlStateChanged: false` and the observation reaches neither the
-    // external-off hold nor the suppression latches — the tight-noop backoff
-    // stands. That filter is the producer's job, and it is what keeps a chatty
-    // sensor from un-suppressing a rebuild every few seconds.
-    expect(app.planRebuildThrottle.snapshot()).toMatchObject({
-      noopStreak: 3,
-      holdoff: { untilMs: 120_000, cause: 'noop' },
-    });
+    // external-off hold nor the suppression latches — whatever backoff the
+    // throttle holds stands. That filter is the producer's job, and it is what
+    // keeps a chatty sensor from un-suppressing a rebuild every few seconds.
+    expect(observation).not.toHaveBeenCalled();
     expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       temperature: {
         currentTemperature: 23,
@@ -1629,7 +1637,7 @@ describe('MyApp initialization', () => {
   });
 
   it('coalesces same-hour power tracker settings persistence while a save is pending', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -1669,7 +1677,7 @@ describe('MyApp initialization', () => {
   });
 
   it('flushes pending power tracker persistence when samples cross a UTC hour boundary', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2026-03-03T10:59:58.000Z'));
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -2245,6 +2253,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
+    // Wall time is stubbed per phase; the rebuild clock is faked and moved with it.
+    vi.useFakeTimers({ toFake: ['performance'] });
     const nowSpy = vi.spyOn(Date, 'now');
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     try {
@@ -2264,6 +2274,7 @@ describe('MyApp initialization', () => {
       // (simulates the prolonged shedding observed in production logs)
       const afterLongOvershoot = baseNow + SHED_COOLDOWN_MS + 30_000;
       nowSpy.mockReturnValue(afterLongOvershoot);
+      vi.advanceTimersByTime(afterLongOvershoot - baseNow);
 
       // --- Phase 3: power drops, system recovers ---
       app.computeDynamicSoftLimit = () => 5;
@@ -2282,6 +2293,7 @@ describe('MyApp initialization', () => {
       // --- Phase 4: after cooldown expires, the device is restored ---
       const afterCooldown = afterLongOvershoot + SHED_COOLDOWN_MS + 1000;
       nowSpy.mockReturnValue(afterCooldown);
+      vi.advanceTimersByTime(afterCooldown - afterLongOvershoot);
       await app['powerSamplePipeline'].recordPowerSample(500, afterCooldown);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') !== 'shed'
@@ -2293,6 +2305,7 @@ describe('MyApp initialization', () => {
     } finally {
       nowSpy.mockRestore();
       putSpy.mockRestore();
+      vi.useRealTimers();
     }
   });
 });
@@ -2709,7 +2722,7 @@ describe('computeDynamicSoftLimit', () => {
 
 describe('periodic snapshot refresh scheduling', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
 
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

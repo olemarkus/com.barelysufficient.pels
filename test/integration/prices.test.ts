@@ -40,7 +40,7 @@ vi.mock('https', () => ({
 
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));

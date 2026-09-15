@@ -128,6 +128,7 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
         'clearTimeout',
         'clearInterval',
         'clearImmediate',
+        'performance',
       ],
     });
     vi.setSystemTime(Date.UTC(2026, 7, 8, 20, 2, 0));

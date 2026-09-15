@@ -201,11 +201,11 @@ const publishedDryRunEffective = (app: { planStatuses: PlanStatusRegistry }, hom
 
 describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
   beforeEach(() => {
-    // 'Date' MUST be faked: under NODE_ENV=test the plan-rebuild scheduler
-    // (and the bundle scheduler) read their clocks via Date.now(); an unfaked
-    // Date runs real wall-clock against fake timers and strands rebuilds.
+    // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
+    // the monotonic clock and the rest of the app reads Date. Either left real
+    // runs on real time against the fake timers and strands the rebuild.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

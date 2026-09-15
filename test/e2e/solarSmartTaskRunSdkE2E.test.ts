@@ -127,7 +127,7 @@ describe('smart task running during a sunny hour (SDK-boundary e2e via createApp
   beforeEach(() => {
     // 'Date' MUST be faked: the price store prunes its window relative to the clock.
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

@@ -20,8 +20,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import { powerSampleRebuildCadence } from '../../lib/plan/rebuildScheduler/intentPolicy';
+import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildHomePlanDevices } from '../../setup/homeRuntime/planDevicePrePass';
@@ -357,8 +356,6 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
         getNowMs: () => nowMs,
         rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
       },
-      powerSampleRebuildCadence(),
-      initialPlanRebuildThrottleMemory(),
     );
     const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
       getNowMs: () => nowMs,

@@ -1,4 +1,3 @@
-import { rememberLastRebuild } from '../helpers/powerRebuildScheduler';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type MyApp from '../../app.ts';
@@ -20,7 +19,6 @@ import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/p
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { getAppPlanRebuildNowMs } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import {
   hasReservation,
   seedServedSwapReservation,
@@ -30,7 +28,7 @@ import {
 } from '../utils/swapLedgerFixture';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
 const flushPromises = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
 const setManagedControllableDevices = (devices: Record<string, boolean>) => {
@@ -291,9 +289,9 @@ describe('Device plan snapshot', () => {
     expect(app.planEngine.state.overshoot.isActive()).toBe(true);
 
     // The shed-everything plan is unactionable, so subsequent rebuilds ride the
-    // max-interval escape — simulate that interval having elapsed before each cycle.
+    // max-interval escape — let that interval pass before each cycle.
     const openMaxIntervalEscape = () => {
-      rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
+      vi.advanceTimersByTime(31_000);
     };
 
     // Second cycle: still in overshoot, state remains stable (no double-log)
@@ -447,6 +445,8 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(5300);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
@@ -529,6 +529,8 @@ describe('Device plan snapshot', () => {
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.8, controllable: true },
     ]);
 
+    // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(4500);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
@@ -592,6 +594,8 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(1300);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
@@ -656,6 +660,8 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(4500);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
@@ -728,6 +734,8 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
@@ -892,9 +900,12 @@ describe('Device plan snapshot', () => {
     app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
 
-    // Now plan with ample headroom but still within cooldown.
+    // Now plan with ample headroom but still within cooldown. The plan is still
+    // converging on the shed it sent, so the reading rebuilds once the min
+    // interval has passed.
     app.computeDynamicSoftLimit = () => 5;
     app.computeDynamicSoftLimit = () => 5;
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -970,8 +981,8 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 5;
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
-    // max-interval escape — simulate that interval having elapsed.
-    rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
+    // max-interval escape — let that interval pass.
+    vi.advanceTimersByTime(31_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1189,8 +1200,8 @@ describe('Device plan snapshot', () => {
     app.planEngine.state.sheddingActive = false;
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
-    // max-interval escape — simulate that interval having elapsed.
-    rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
+    // max-interval escape — let that interval pass.
+    vi.advanceTimersByTime(31_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1515,9 +1526,9 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 2.5;
     app.computeDynamicSoftLimit = () => 2.5;
 
-    // Soft-limit changes alone no longer trigger an immediate rebuild.
-    // Force the periodic max-interval rebuild path for this restore check.
-    rememberLastRebuild(app.planRebuildThrottle, getAppPlanRebuildNowMs() - 200);
+    // Soft-limit changes alone no longer trigger an immediate rebuild: let the
+    // max interval pass so the restore check rides the periodic refresh.
+    vi.advanceTimersByTime(30_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
     plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('keep');
@@ -1908,14 +1919,19 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 1;
     app.computeDynamicSoftLimit = () => 1;
 
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
+
     // First overshoot triggers shedding.
     await app['powerSamplePipeline'].recordPowerSample(5000);
     // Let async plan actions flush before second sample.
     await flushPromises();
-    // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
+    // Second overshoot arrives before cooldown, past the min interval so it is
+    // decided; should not call setCapabilityValue again.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(5000);
     await flushPromises();
 
+    expect(rebuildSpy).toHaveBeenCalledTimes(2);
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -1976,7 +1992,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     // Shortfall triggers when power exceeds the shortfall threshold AND no devices left to shed.
     // The shortfall threshold is based on remaining hourly budget / remaining time.
@@ -2030,7 +2046,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
   it('does not trigger capacity_shortfall when controllables can cover the deficit', async () => {
@@ -2067,7 +2083,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
@@ -2114,11 +2130,11 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
   it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
@@ -2162,30 +2178,23 @@ describe('Device plan snapshot', () => {
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
-    // The shed-everything plan is unactionable, so recovery rebuilds (which drive
-    // `recordPlanVerdict`) ride the max-interval escape and its execution floor —
-    // simulate that interval having elapsed before each recovery sample.
-    const openMaxIntervalEscape = () => {
-      rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
-    };
-
-    openMaxIntervalEscape();
+    // The shed-everything plan is unactionable, so the throttle holds recovery
+    // readings to the max-interval cadence and hands the guard the reading
+    // between rebuilds: the recovery clock moves either way.
     await advanceTimeAndRecordPower(app, 1000, 1000);
-    openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 30000, 1000);
-    openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
     expect(app.timers.has('shortfallAlertSustained')).toBe(false);
 
-    openMaxIntervalEscape();
-    await app['powerSamplePipeline'].recordPowerSample(500000);
+    // Nothing is actionable, so a fresh breach also rides the max-interval refresh.
+    await advanceTimeAndRecordPower(app, 30_000, 500000);
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
 
@@ -3823,6 +3832,8 @@ describe('Dry run mode', () => {
     // Ensure we don't skip shedding due to same-measurement throttling.
     app.planEngine.state.lastShedPlanMeasurementTs = null;
 
+    // Over the limit, the reading rebuilds once the min interval has passed.
+    vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(2000);
 
     // Expectations:
@@ -3890,7 +3901,8 @@ describe('Dry run mode', () => {
 
 
   it('should throttle restoration of set_temperature devices to one per cycle', async () => {
-    vi.useFakeTimers();
+    // Only the clocks are faked: the spec lets minutes pass without running any timer.
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
     try {
       // Detects bug where multiple devices shed via set_temperature restore simultaneously
       const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
@@ -3945,10 +3957,10 @@ describe('Dry run mode', () => {
       app.computeDynamicSoftLimit = () => 5.0;
       app.computeDynamicSoftLimit = () => 5.0;
 
-      // Move the CLOCK without running the intervals: firing them would let
-      // the freshness heartbeat restore one device per cycle across the gap,
+      // Let five minutes pass without running the timers: firing them would let
+      // the rebuilds they request restore one device per cycle across the gap,
       // so the spec's own rebuild would find nothing left to throttle.
-      vi.setSystemTime(new Date('2023-01-01T12:05:00Z'));
+      vi.advanceTimersByTime(5 * 60_000);
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
       app.planEngine.state.restoreBackoff.lastInstabilityMs = null;

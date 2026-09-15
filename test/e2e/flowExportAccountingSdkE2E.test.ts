@@ -49,7 +49,7 @@ const sumBuckets = (buckets: Record<string, number> | undefined): number => (
 describe('export accounting on the flow power source (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

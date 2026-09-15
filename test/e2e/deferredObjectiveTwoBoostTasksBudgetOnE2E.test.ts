@@ -116,7 +116,7 @@ const buildTank = async (id: string): Promise<MockDevice> => {
 describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-boundary e2e via createApp)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date'],
+      toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
     });
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

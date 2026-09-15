@@ -13,7 +13,6 @@
 // This lane used to request a plan rebuild too, and most of this file tested
 // where that rebuild was routed. It does not any more: a device event is not what
 // a whole-home capacity decision is about (root `AGENTS.md` § Control Flow).
-import { throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateOwningHomeRebuildSuppression,
@@ -179,19 +178,12 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 // unrouted write is silent — main's state changes (a house that saw nothing) and
 // the owning home's does not (the one whose "nothing is actionable" verdict the
 // moved device just falsified, worth up to 120 s of tight-noop backoff).
+// What the invalidation does to a throttle is the throttle's own spec
+// (`planRebuildThrottle.test.ts`); here the question is only whose throttle hears it.
 describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
-  const buildCtxWithSuppressions = (): AppContext => {
-    const ctx = createAppContextMock({});
-    ctx.planRebuildThrottle['restore'](throttleMemoryFixture({
-      lastRebuild: { atMs: 1_000, powerW: 0, hardCapBreach: { breached: false, deficitKw: 0 } },
-      noopStreak: 3,
-      holdoff: { untilMs: 120_000, cause: 'noop' },
-    }));
-    return ctx;
-  };
-
   it('clears the OWNING sub-home\'s suppressions and leaves main\'s alone', () => {
-    const ctx = buildCtxWithSuppressions();
+    const ctx = createAppContextMock({});
+    const mainObservation = vi.spyOn(ctx.planRebuildThrottle, 'onObservation');
     const invalidateSubHome = vi.fn();
 
     invalidateOwningHomeRebuildSuppression({
@@ -213,11 +205,12 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
 
     expect(invalidateSubHome).toHaveBeenCalledTimes(1);
     // Main's state is a different house and must not move.
-    expect(ctx.planRebuildThrottle.snapshot()).toMatchObject({ noopStreak: 3, holdoff: { untilMs: 120_000, cause: 'noop' } });
+    expect(mainObservation).not.toHaveBeenCalled();
   });
 
   it('clears main\'s suppressions when no sub-home owns the device', () => {
-    const ctx = buildCtxWithSuppressions();
+    const ctx = createAppContextMock({});
+    const mainObservation = vi.spyOn(ctx.planRebuildThrottle, 'onObservation');
 
     invalidateOwningHomeRebuildSuppression({
       ctx,
@@ -225,10 +218,6 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
       getHomeRuntimeRegistry: () => routerFor({}),
     });
 
-    expect(ctx.planRebuildThrottle.snapshot()).toMatchObject({
-      suppressionInvalidated: true,
-      noopStreak: 0,
-      holdoff: null,
-    });
+    expect(mainObservation).toHaveBeenCalledTimes(1);
   });
 });

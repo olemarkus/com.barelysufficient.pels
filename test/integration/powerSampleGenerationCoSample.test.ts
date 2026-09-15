@@ -22,8 +22,7 @@ import { PowerSamplePipeline } from '../../setup/powerSamplePipeline';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import { powerSampleRebuildCadence } from '../../lib/plan/rebuildScheduler/intentPolicy';
+import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 
@@ -55,8 +54,6 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
       getNowMs: Date.now,
       rebuildPlanFromCache: async () => ({ actionChanged: false, appliedActions: false, failed: false }),
     },
-    powerSampleRebuildCadence(),
-    initialPlanRebuildThrottleMemory(),
   );
   const pipeline = new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),

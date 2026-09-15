@@ -42,7 +42,7 @@ async function start(policy: string, hasBinary = true, seedOperatingMode = true)
 
 describe('external temperature changes reach the mode through observation', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
     vi.setSystemTime(Date.UTC(2026, 8, 8, 12));
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

@@ -128,7 +128,7 @@ export function createBinaryCommandReachability(params: {
       //
       // That ordering is the whole argument, and it is sufficient. Deliberately
       // do NOT prop it up with a claim about how soon the next rebuild arrives —
-      // two such claims look true and are not. `powerSampleRebuildCadence().maxIntervalMs`
+      // two such claims look true and are not. `POWER_SAMPLE_REBUILD_CADENCE.maxIntervalMs`
       // (30 s) is evaluated per ARRIVING sample, so it bounds nothing on
       // `power_source = flow`, where cadence is the owner's Flow cadence and
       // `installPowerSampleFreshnessEscalation` is explicitly not a heartbeat. And

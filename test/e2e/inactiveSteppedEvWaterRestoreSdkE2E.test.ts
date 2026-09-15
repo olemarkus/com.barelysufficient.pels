@@ -108,6 +108,7 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
         'clearTimeout',
         'clearInterval',
         'clearImmediate',
+        'performance',
       ],
     });
     vi.setSystemTime(Date.UTC(2026, 6, 24, 5, 55, 0));

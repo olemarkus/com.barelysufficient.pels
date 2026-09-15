@@ -61,7 +61,7 @@ const planDevice = (app: { latestTargetSnapshot: IdedSnapshot[] }, id: string): 
 describe('Targeted refresh with a single failing device id (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

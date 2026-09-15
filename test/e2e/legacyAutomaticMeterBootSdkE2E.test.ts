@@ -51,7 +51,7 @@ const hasEvent = (events: CapturedEvent[], name: string): boolean => events.some
 describe('Whole-home meter not chosen at boot (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();
@@ -146,7 +146,7 @@ describe('Whole-home meter not chosen at boot (SDK-boundary e2e)', () => {
 describe('Readings already arriving through a Flow (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
+      toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     mockHomeyInstance.settings.removeAllListeners();

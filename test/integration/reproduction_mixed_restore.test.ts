@@ -7,7 +7,7 @@ import { reasonText } from '../utils/deviceReasonTestUtils';
 let currentTime = 1000000000000;
 
 beforeAll(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
 });
 
 afterAll(() => {
@@ -111,7 +111,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // Advance time past Shed Cooldown (60s)
         currentTime += 61000;
-        vi.setSystemTime(currentTime);
+        vi.advanceTimersByTime(61000);
 
         // 2. Headroom returns - enough for BOTH
         app.computeDynamicSoftLimit = () => 10.0;
@@ -145,10 +145,12 @@ describe('Mixed Type Restoration Throttling', () => {
         // Assume D2 (Temp) restored (based on user logs/priority).
         // Or whoever restored, verify the OTHER restores later.
 
-        // 3. Immediate next cycle (within 30s)
-        // Should NOT restore the other one due to Cooldown
-        currentTime += 5000; // +5s
-        vi.setSystemTime(currentTime);
+        // 3. Next cycle, late inside the restore cooldown
+        // Should NOT restore the other one due to Cooldown. A calm house with an
+        // unchanged draw is re-decided once the 30 s max interval has passed, so
+        // one decision falls inside the 60 s cooldown: take it late, at 45 s.
+        currentTime += 45000; // +45s
+        vi.advanceTimersByTime(45000);
         await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
@@ -180,27 +182,9 @@ describe('Mixed Type Restoration Throttling', () => {
             expect(reasonText(d1Cycles2.reason)).toMatch(/^cooldown \(restore/);
         }
 
-        // 4. After Cooldown (60s)
-        currentTime += 35000; // +35s (Total 40s from first restore)
-        vi.setSystemTime(currentTime);
-        await app['powerSamplePipeline'].recordPowerSample(5000);
-        plan = getLatestPlanSnapshotForTests();
-
-        // Still in restore cooldown, and the still-shed peer still says so.
-        const d1Cycles3 = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
-        const d2Cycles3 = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
-
-        if (d1Restored) {
-            expect(d2Cycles3.plannedState).toBe('shed');
-            expect(reasonText(d2Cycles3.reason)).toMatch(/^cooldown \(restore/);
-        } else {
-            expect(d1Cycles3.plannedState).toBe('shed');
-            expect(reasonText(d1Cycles3.reason)).toMatch(/^cooldown \(restore/);
-        }
-
-        // 5. After restore cooldown window
-        currentTime += 90000; // +90s (Total 130s from first restore)
-        vi.setSystemTime(currentTime);
+        // 4. After restore cooldown window
+        currentTime += 90000; // +90s (Total 135s from first restore)
+        vi.advanceTimersByTime(90000);
         await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 

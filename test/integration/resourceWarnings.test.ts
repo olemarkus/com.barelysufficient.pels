@@ -144,7 +144,7 @@ describe('Homey resource warning perf logging', () => {
       await app.onInit();
       // A second, module-level start on the same emitter, under fake timers so
       // only ITS interval is driven — the app's own polling stays real.
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
       const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
       expect(stop).toBeDefined();
       logSpy.mockClear();

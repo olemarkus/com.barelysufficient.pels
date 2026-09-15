@@ -22,11 +22,14 @@ Answer two questions: **what is real**, and **how is the subject driven/observed
   add the structured output instead of reaching inside. See
   `lib/objectives/deferredObjectives/AGENTS.md` for the canonical harness.
   (UI e2e is Playwright and lives in `packages/settings-ui`, not here.)
-  - **createApp e2e using fake timers MUST fake `'Date'`** (`vi.useFakeTimers({ toFake: ['Date', …] })`
-    and `vi.setSystemTime(...)`). Under `NODE_ENV=test` the plan-rebuild scheduler reads its clock via
-    `Date.now()` (`lib/plan/rebuildScheduler/intentPolicy.ts` `getAppPlanRebuildNowMs`); without a faked `Date` it runs on real wall-clock
-    while the test advances fake time, and the rebuild intermittently strands under CI load (the
-    historical `*ShedControl` "drainUntil … 50 rounds" flake).
+  - **createApp e2e using fake timers MUST fake `'performance'`** (vitest's default set includes it;
+    an explicit `toFake` list must name it). The plan-rebuild scheduler reads the monotonic clock
+    (`lib/plan/rebuildScheduler/intentPolicy.ts` `getAppPlanRebuildNowMs`), and the rebuild cadence
+    is production's in tests too (2 s between the rebuilds a boundary asks for, a 30 s max
+    interval): without a faked `performance` the scheduler runs on real time while the test
+    advances fake time, and a queued rebuild strands.
+    `vi.setSystemTime` moves `Date` but not `performance`; let time pass with
+    `vi.advanceTimersByTime` so both move, as they do in production.
 
 ## Shared infrastructure stays at the root
 
