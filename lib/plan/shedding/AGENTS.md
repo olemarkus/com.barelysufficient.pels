@@ -13,6 +13,8 @@ The shedding planner decides what to shed and HOW FAR — for a stepped device, 
 - `steppedCandidates.ts` — every stepped builder, plus the ladder pricing (`resolveSteppedShedLadder`) and the rung choice (`chooseShedRung`) that selection spends against.
 - `candidateSkipLog.ts` — why a controlled device did not become a candidate.
 - `selection.ts` — the greedy pick over the ranked candidates, and the rung each one is taken at.
+- `sheddingLatch.ts` — the shedding-active latch a build leaves behind.
+- `shortfallVerdict.ts` — what a build tells the capacity guard: over the hard-cap threshold, a verdict whose actionable load is the relief this build's candidates still hold after selection; otherwise, only the reading. Only a verdict can open an incident, and it lives here because it is a question about these candidates — a rebuild that changed nothing is not one (the planner also changes nothing while it waits out a shed grace), and a separate count of managed load credits devices the candidate walk skips.
 
 ## A device may only be selected when limiting it releases power
 
@@ -85,7 +87,7 @@ A held cycle re-asserts the shed this module itself decided (`PlanEngineState.sh
 
 ## Declining to shed is not deciding there is no overshoot
 
-`buildSheddingPlan` takes both halves of the soft-overshoot decision (`SheddingOvershootInput`). `shedActionable` gates SELECTION — may this cycle choose devices. `actionable` gates the shedding-active LATCH through `updateGuardState`. Never collapse them back into one flag.
+`buildSheddingPlan` takes both halves of the soft-overshoot decision (`SheddingOvershootInput`). `shedActionable` gates SELECTION — may this cycle choose devices. `actionable` gates the shedding-active LATCH through `resolveSheddingLatch`. Never collapse them back into one flag.
 
 The whole restore side stands down while headroom is negative, on the assumption that this module has already said what stays limited: `resolveOffDeviceReason` returns the caller's own reason on `activeOvershoot`, `resolveCapacityRestoreBlockReason` returns `null`, and `applyRestorePlan` reaches its stay-off marking through `sheddingActive`. So a cycle that both selects nothing *and* leaves the latch off has nothing at all holding a device that is already off — it materializes as `keep`, and the executor turns it on. That is the 2026-08-16 restore-all: the shed grace (`resolveShedGraceMs`) deferred a shed, the latch went with it, and five thermostats came back on into a hard-cap crossing. Regression cover: `test/integration/planShedGraceHoldsExistingShed.test.ts`.
 

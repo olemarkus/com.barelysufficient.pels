@@ -48,7 +48,3 @@ export {
   resolveReserveAdmission,
 } from './headroomReserve';
 export type { HeadroomReserve } from './headroomReserve';
-
-export {
-  updateGuardState,
-} from './sheddingGuard';

@@ -110,7 +110,7 @@ export class PlanBuilder {
    * the event loop, so nothing can get between the stamp and the reads — but the
    * guard's shortfall path awaits a settings write (`ShortfallExecutor`), and
    * that await sits between the shed decision (`buildSheddingPlan` reads
-   * `hourlyBudgetExhausted` before `updateGuardState`) and the reason and meta
+   * `hourlyBudgetExhausted` before `reportShortfallToGuard`) and the reason and meta
    * passes that label it (`planBuilderMaterialization`, `buildPlanMeta`, both
    * after). While this method also wrote, a caller firing in that window across
    * an hour boundary re-stamped the flag, and the plan explained itself against

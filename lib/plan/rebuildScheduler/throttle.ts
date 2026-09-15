@@ -1,9 +1,7 @@
 import type CapacityGuard from '../../power/capacityGuard';
-import { buildNullCapacityStateSummary } from '../../power/capacityStateSummary';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../../utils/perfCounters';
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 import {
-  isTightNoopOutcome,
   isTightReason,
   resolveRebuildDecision,
   resolveRebuildIntentKind,
@@ -63,10 +61,18 @@ type QueuedRebuild = {
   deferred: RebuildDeferred;
 };
 
+/**
+ * What the throttle may ask of the guard: whether an incident is latched, and
+ * to take a reading. Not a plan verdict — the throttle holds no device list, and
+ * the one time it passed the guard a verdict of its own it opened incidents
+ * with kilowatts still reducible.
+ */
+export type ThrottleCapacityGuardView = Pick<CapacityGuard, 'isInShortfall' | 'recordReading'>;
+
 export type PlanRebuildThrottleDeps = {
   /** Late-bound: the scheduler's `executeIntent` calls back into this throttle. */
   getScheduler: () => PlanRebuildScheduler;
-  getCapacityGuard: () => CapacityGuard;
+  getCapacityGuard: () => ThrottleCapacityGuardView;
   getNowMs: () => number;
   rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome | void>;
 };
@@ -236,19 +242,14 @@ export class PlanRebuildThrottle {
     incReasonCounter('plan_rebuild_execute.power_sample_reason', trigger);
 
     return this.deps.rebuildPlanFromCache(trigger)
-      .then(async (outcome) => {
-        // A tight no-op under a hard-cap breach still owes the guard the deficit:
-        // it decided from THIS reading, and a breach the guard never hears about
-        // is indistinguishable from no breach.
-        if (isTightNoopOutcome(trigger, outcome) && signal.hardCapBreach.breached && !signal.isInShortfall) {
-          await this.deps.getCapacityGuard().checkShortfall({
-            hasCandidates: false,
-            deficitKw: signal.hardCapBreach.deficitKw,
-            totalKw: signal.totalKw,
-            shortfallThresholdKw: signal.shortfallThresholdKw,
-            capacityStateSummary: buildNullCapacityStateSummary(),
-          });
-        }
+      .then((outcome) => {
+        // Nothing here tells the guard about the breach. A build that ran told
+        // it with the plan's own verdict (`reportShortfallToGuard`); a gated one had
+        // no plan to give a verdict from. An outcome that changed nothing is not
+        // that verdict — the planner also changes nothing while it waits out a
+        // shed grace — and reading it as "nothing left to shed" is what opened
+        // hard-cap incidents, and fired the owner's Flow, with kilowatts still
+        // reducible.
         this.lastRebuild = { atMs: dispatchedAtMs, powerW: signal.currentPowerW, hardCapBreach: signal.hardCapBreach };
         if (this.observedDuringFlight(observationSeqAtDispatch)) {
           this.settleAfterOvertakenRebuild(trigger, outcome);
@@ -338,7 +339,7 @@ export class PlanRebuildThrottle {
   private decide(
     signal: PowerRebuildSignal,
     posture: PlanRebuildPosture,
-    guard: CapacityGuard,
+    guard: ThrottleCapacityGuardView,
   ): Promise<void | string> {
     const { cadence } = this;
     const now = this.deps.getNowMs();
@@ -346,8 +347,10 @@ export class PlanRebuildThrottle {
       && (this.lastRebuild === null || now - this.lastRebuild.atMs >= cadence.maxIntervalMs);
     // Nothing actionable in shortfall: a rebuild cannot change any action, so
     // hold to the max-interval cadence — but never longer, so a device that
-    // returned load without a power signal is still re-discovered — and give
-    // the guard the deficit it would otherwise only learn from the rebuild.
+    // returned load without a power signal is still re-discovered — and hand the
+    // guard the reading it would otherwise only get from the rebuild, so the
+    // latched incident's recovery clock and alert condition keep moving. A
+    // reading, not a verdict: the guard judges it against the last plan's.
     if (
       posture.shortfallUnrecoverable
       && !this.suppressionInvalidated
@@ -356,13 +359,7 @@ export class PlanRebuildThrottle {
       && !maxIntervalExceeded
     ) {
       incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-      return Promise.resolve(guard.checkShortfall({
-        hasCandidates: false,
-        deficitKw: signal.hardCapBreach.deficitKw,
-        totalKw: signal.totalKw,
-        shortfallThresholdKw: signal.shortfallThresholdKw,
-        capacityStateSummary: buildNullCapacityStateSummary(),
-      }));
+      return guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
     }
     // Resolved before the decision so its telemetry counts every sample that
     // reached the gates, skipped or not.
@@ -371,7 +368,7 @@ export class PlanRebuildThrottle {
     const decision = resolveRebuildDecision(signal, memory, now, cadence.maxIntervalMs);
     if (!decision.shouldRebuild) {
       this.recordSkip(signal, decision, now);
-      // Deliberately NOT driving `checkShortfall` from a throttled skip: entering
+      // Deliberately NOT telling the guard anything from a throttled skip: entering
       // shortfall without a rebuild having observed the live device state would
       // let a stale "unactionable" summary keep suppressing rebuilds — a device
       // that returned load could then never be discovered. Shortfall entry and

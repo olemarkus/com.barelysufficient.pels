@@ -178,8 +178,8 @@ its only caller. Everyone else — the periodic status log, a `has_headroom` Flo
 the rebuild scheduler's threshold input, the shortfall log line — goes through the public
 `computeDynamicSoftLimit`, which returns the same number and writes nothing. Keep it that
 way when you add a caller: the build's reads of those two fields are not all in one
-synchronous turn (the shed decision runs before `updateGuardState`, the reason and meta
-passes that label it run after), so a foreign stamp landing in that window would have the
+synchronous turn (the shed decision and the shedding latch run before the guard's
+shortfall report awaits, the reason and meta passes that label it run after), so a foreign stamp landing in that window would have the
 plan explain itself against an hour its own decision never saw.
 
 ## Not in this module

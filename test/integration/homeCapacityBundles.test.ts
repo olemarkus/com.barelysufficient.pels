@@ -1326,18 +1326,18 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       if (sourceReadUnavailable && key === POWER_SOURCE) throw new Error('settings unavailable');
       return originalGet(key);
     });
-    const realCheckShortfall = CapacityGuard.prototype.checkShortfall;
+    const realRecordPlanVerdict = CapacityGuard.prototype.recordPlanVerdict;
     let injectFailure = true;
-    vi.spyOn(CapacityGuard.prototype, 'checkShortfall')
+    vi.spyOn(CapacityGuard.prototype, 'recordPlanVerdict')
       .mockImplementation(function checked(
         this: CapacityGuard,
-        ...args: Parameters<CapacityGuard['checkShortfall']>
+        ...args: Parameters<CapacityGuard['recordPlanVerdict']>
       ) {
-        if (injectFailure && args[0].deficitKw > 0) {
+        if (injectFailure) {
           injectFailure = false;
           sourceReadUnavailable = true;
         }
-        return realCheckShortfall.call(this, ...args);
+        return realRecordPlanVerdict.call(this, ...args);
       });
 
     rig.registry.routeMeterReadings({ 'm-a': 50_000 }, Date.now());

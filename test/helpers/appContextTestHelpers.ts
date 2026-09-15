@@ -374,7 +374,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     capacityGuard: {
       isInShortfall: vi.fn(() => false),
       getCurrentIncidentId: vi.fn(() => null),
-      checkShortfall: vi.fn(async () => undefined),
+      recordPlanVerdict: vi.fn(async () => undefined),
+      recordReading: vi.fn(async () => undefined),
       isShortfallAlertConditionActive: vi.fn(() => false),
     } as never,
     dailyBudgetService: {

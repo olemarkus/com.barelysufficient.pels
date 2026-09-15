@@ -11,7 +11,13 @@ import { estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { updateGuardState } from '../../lib/plan/admission';
+import { resolveSheddingLatch } from '../../lib/plan/shedding/sheddingLatch';
+import { reportShortfallToGuard } from '../../lib/plan/shedding/shortfallVerdict';
+import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
+import type { PendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
+import { partialDouble } from '../helpers/partialDouble';
 import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from '../../lib/plan/planUsage';
 import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
 import {
@@ -124,55 +130,31 @@ describe('P1 bug proofs', () => {
     expect(sumControlledUsageKw([toUsageDevice(device)])).toBe(0);
   });
 
-  it('keeps shedding active after a single sample just above the restore margin', async () => {
-    const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
-    } as unknown as CapacityGuard;
-    const base = {
-      shortfallThresholdKw: 5,
-      capacityGuard,
-      devices: [],
-      shedSet: new Set<string>(),
-      softLimitSource: 'capacity' as const,
-      hourlyBudgetExhausted: false,
-      isBinaryCommandPending: () => false,
-    };
+  it('keeps shedding active after a single sample just above the restore margin', () => {
+    const state = createPlanEngineState();
+    const inOvershoot = { actionable: true, shedActionable: true };
+    const clear = { actionable: false, shedActionable: false };
 
-    // The latch is threaded build to build now, so the proof is that a single
+    // The latch is threaded build to build, so the proof is that a single
     // sample 0.21 kW above the restore margin — short of the 0.4 kW clear
     // threshold — does not release it.
-    const shed = await updateGuardState({
-      ...base, sheddingActive: false, headroom: -0.05, overshootActionable: true, drawKw: 5.05, capacityBreached: true,
-    });
-    expect(shed.sheddingActive).toBe(true);
+    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
+    expect(state.sheddingActive).toBe(true);
 
-    const eased = await updateGuardState({
-      ...base, sheddingActive: shed.sheddingActive, headroom: 0.21, overshootActionable: false, drawKw: 4.79, capacityBreached: false,
-    });
-    expect(eased.sheddingActive).toBe(true);
+    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: 0.21 }), state, clear, new Set());
+    expect(state.sheddingActive).toBe(true);
 
-    const again = await updateGuardState({
-      ...base, sheddingActive: eased.sheddingActive, headroom: -0.05, overshootActionable: true, drawKw: 5.05, capacityBreached: true,
-    });
-    expect(again.sheddingActive).toBe(true);
+    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
+    expect(state.sheddingActive).toBe(true);
   });
 
   it('passes the in-flight shed summary to shortfall logging', async () => {
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
     } as unknown as CapacityGuard;
-
-    await updateGuardState({
-      sheddingActive: false,
-      hourlyBudgetExhausted: false,
-      shortfallThresholdKw: 5,
-      capacityGuard,
-      headroom: -1,
-      overshootActionable: true,
-      drawKw: 6, capacityBreached: true,
-      // In flight per the executor's command store, not per a field on the
-      // device: the plan-input seam does not carry binary command state.
-      isBinaryCommandPending: (deviceId) => deviceId === 'shed',
+    const state = createPlanEngineState();
+    const context = buildPlanContextFixture({
       devices: [
         withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
@@ -213,14 +195,37 @@ describe('P1 bug proofs', () => {
           binaryCapabilityId: 'onoff',
         })) as PlanInputDevice,
       ],
-      shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
     });
 
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: true,
-      deficitKw: 1,
-      capacityStateSummary: expect.objectContaining({
+    await reportShortfallToGuard(
+      context,
+      buildMeasuredPower({ drawKw: 6, headroomKw: -1, capacityBreached: true }),
+      state,
+      {
+        shedSet: new Set(['shed']),
+        shedReasons: new Map(),
+        shedStepTargets: new Map(),
+        outcome: NO_SHEDDING_OUTCOME,
+        overshootStats: null,
+      },
+      {
+        capacityGuard,
+        shortfallThresholdKw: 5,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        // In flight per the executor's command store, not per a field on the
+        // device: the plan-input seam does not carry binary command state.
+        pendingBinaryCommandStore: partialDouble<PendingBinaryCommandStore>({
+          hasActiveCommand: (deviceId: string) => deviceId === 'shed',
+          hasActiveTurnOff: () => false,
+        }),
+        log: vi.fn(),
+      },
+    );
+
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(6, 5, expect.objectContaining({
+      remainingActionableControlledLoad: true,
       controlledDevices: 2,
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
@@ -230,7 +235,6 @@ describe('P1 bug proofs', () => {
       zeroDrawControlledDevices: 1,
       pendingControlledDevices: 1,
       summarySource: 'plan_input',
-      }),
     }));
   });
 

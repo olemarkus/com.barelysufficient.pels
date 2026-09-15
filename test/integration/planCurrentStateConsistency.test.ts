@@ -3,7 +3,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
-import { buildSheddingPlan } from '../../lib/plan/shedding';
+import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
@@ -99,7 +99,7 @@ describe('planner current-state consistency', () => {
 
     const mergedPlan = buildLiveStatePlan(plan, [liveDevice], noPendingBinary);
     const cycle = buildContext(liveDevice);
-    const sheddingPlan = await buildSheddingPlan(
+    const sheddingPlan = await buildSheddingPlanForSpec(
       cycle,
       cycle,
       state,

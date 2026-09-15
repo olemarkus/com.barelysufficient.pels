@@ -2023,7 +2023,7 @@ describe('Device plan snapshot', () => {
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
     await app['powerSamplePipeline'].recordPowerSample(600000); // 600kW definitely exceeds threshold
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
-    // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
+    // Shortfall is detected by the plan build's verdict (`recordPlanVerdict`) - no need for tick()
     // The payload names the home: this app is the Main home, and every home
     // fires the same global card.
     expect(triggerSpy).toHaveBeenCalledWith({ home: 'Main home' });
@@ -2163,7 +2163,7 @@ describe('Device plan snapshot', () => {
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     // The shed-everything plan is unactionable, so recovery rebuilds (which drive
-    // `checkShortfall`) ride the max-interval escape and its execution floor —
+    // `recordPlanVerdict`) ride the max-interval escape and its execution floor —
     // simulate that interval having elapsed before each recovery sample.
     const openMaxIntervalEscape = () => {
       rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);

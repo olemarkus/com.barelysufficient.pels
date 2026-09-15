@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
-import type { PlanCapacityStateSummary } from './capacityStateSummary';
+import type { PlanInputCapacityStateSummary } from './capacityStateSummary';
 
 type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
@@ -34,7 +34,7 @@ export type CapacityShortfallAlertCandidate = {
 };
 
 /** Panic is a hard-cap question, so it is asked against the hard-cap budget. */
-const isOverShortfallThreshold = (
+export const isOverShortfallThreshold = (
   totalKw: number | null,
   shortfallThresholdKw: number,
 ): boolean => totalKw !== null && totalKw > shortfallThresholdKw;
@@ -51,7 +51,10 @@ const isOverShortfallThreshold = (
  * hysteresis, and the incident identity plus its sustained-recovery clock.
  *
  * The Plan (`buildDevicePlanSnapshot`) is still the single decision-maker for
- * shedding; this only records what it decided.
+ * shedding; this only records what it decided. That is why the two ways in are
+ * shaped differently: a plan verdict (`recordPlanVerdict`) carries the evidence
+ * an incident is recorded with, and a bare reading (`recordReading`) carries
+ * none and so cannot open one.
  */
 export default class CapacityGuard {
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
@@ -71,7 +74,8 @@ export default class CapacityGuard {
   private homeId: HomeId;
   private incidentId: string | null = null;
   private incidentStartMs = 0;
-  private shortfallHasCandidates: boolean | null = null;
+  /** The last plan verdict over the threshold found nothing left it could shed. */
+  private planLeftNothingToShed = false;
 
   constructor(options: CapacityGuardOptions) {
     this.homeId = options.homeId;
@@ -93,62 +97,59 @@ export default class CapacityGuard {
   }
 
   /**
-   * Called by Plan after shedding decisions to check/update shortfall state.
+   * The plan's verdict on a reading over the shortfall threshold: the capacity
+   * state its build decided from, whose `remainingActionableControlledLoad` says
+   * whether its shed candidates could still relieve anything, and
+   * `shedReliefInFlight` whether a shed it already decided has yet to land.
+   * Opens an incident only when nothing is left AND nothing is on its way — the
+   * build that sheds the last device has not run out of options, it has just
+   * used one, and the reading it decided from predates the relief. It is the
+   * only call that can open one.
    *
-   * `totalKw` is the caller's resolved whole-home total (`null` = no
-   * trustworthy reading). The guard holds no power of its own: the tracker is
-   * the single latch, so the value and its freshness describe one sample
-   * instead of two objects that can disagree.
-   *
-   * An unmeasured cycle is a no-op: nothing enters, nothing clears, and the
-   * recovery sustain is neither advanced nor restarted. Callers need not withhold
-   * the call to keep an incident latched. (`hasCandidates` is still recorded: it
-   * is a device-list fact the caller measured, not a power question.)
+   * Only `reportShortfallToGuard` (`lib/plan/shedding/shortfallVerdict.ts`)
+   * builds one, because only a plan build holds the device list and the
+   * candidates the question is asked of. A rebuild that changed nothing is not
+   * a verdict: the planner also changes nothing when it
+   * chooses to wait out a shed grace, and the rebuild throttle once read one as
+   * the other, opening incidents and firing the owner's Flow with kilowatts
+   * still reducible.
    */
-  async checkShortfall(params: {
-    /** Whether there are still devices that could be shed. */
-    hasCandidates: boolean;
-    /** Current kW above the shortfall threshold. */
-    deficitKw: number;
-    /**
-     * The caller's resolved whole-home total. Both control-path callers hold a
-     * plain number — `MeasuredPower.drawKw` in `lib/plan/admission/sheddingGuard`,
-     * the finiteness-gated tracker latch in `lib/plan/rebuildScheduler`. There is
-     * no absence to model here, so there is no branch for one.
-     */
-    totalKw: number;
-    /**
-     * `capacityPaceKw` on the hard-cap budget — resolved by the caller from
-     * `computeShortfallThreshold`, which is a pure function of capacity
-     * settings and the tracker. The guard used to relay it through a provider
-     * with a hard-cap fallback; every caller already holds the inputs.
-     */
-    shortfallThresholdKw: number;
-    capacityStateSummary: PlanCapacityStateSummary;
-  }): Promise<void> {
-    const {
-      hasCandidates, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
-    } = params;
-    this.shortfallHasCandidates = hasCandidates;
-
-    const alertConditionActive = !hasCandidates
-      && isOverShortfallThreshold(totalKw, shortfallThresholdKw);
-
-    // Enter shortfall if over threshold AND no candidates left
+  async recordPlanVerdict(
+    totalKw: number,
+    shortfallThresholdKw: number,
+    capacityStateSummary: PlanInputCapacityStateSummary,
+  ): Promise<void> {
+    this.planLeftNothingToShed = !capacityStateSummary.remainingActionableControlledLoad
+      && !capacityStateSummary.shedReliefInFlight;
+    const alertConditionActive = this.isShortfallAlertConditionActive(totalKw, shortfallThresholdKw);
     const enterPromise = alertConditionActive && !this.inShortfall
-      ? this.enterShortfall(deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary)
+      ? this.enterShortfall(totalKw, shortfallThresholdKw, capacityStateSummary)
       : null;
-    this.publishShortfallAlertCondition(alertConditionActive, deficitKw);
+    this.publishShortfallAlertCondition(alertConditionActive, totalKw - shortfallThresholdKw);
     await enterPromise;
+    await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
+  }
 
-    // Check for shortfall clearing (requires sustained positive headroom)
-    if (this.inShortfall) {
-      await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
-    }
+  /**
+   * A reading that came with no plan verdict: one at or under the threshold, or
+   * one the rebuild throttle declined to rebuild for while an incident is
+   * latched. It moves the recovery clock and re-evaluates the alert condition
+   * against the last verdict, and it can never open an incident — a reading on
+   * its own does not say whether anything is left to shed.
+   *
+   * `totalKw` is the caller's resolved whole-home total. Both callers hold a
+   * plain number — `MeasuredPower.drawKw` in `lib/plan/shedding/shortfallVerdict`,
+   * the finiteness-gated tracker latch in `lib/plan/rebuildScheduler` — so there
+   * is no absence to model here.
+   */
+  async recordReading(totalKw: number, shortfallThresholdKw: number): Promise<void> {
+    const alertConditionActive = this.isShortfallAlertConditionActive(totalKw, shortfallThresholdKw);
+    this.publishShortfallAlertCondition(alertConditionActive, totalKw - shortfallThresholdKw);
+    await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
   }
 
   public isShortfallAlertConditionActive(totalKw: number | null, shortfallThresholdKw: number): boolean {
-    return this.shortfallHasCandidates === false
+    return this.planLeftNothingToShed
       && isOverShortfallThreshold(totalKw, shortfallThresholdKw);
   }
 
@@ -166,10 +167,9 @@ export default class CapacityGuard {
   }
 
   private async enterShortfall(
-    deficitKw: number,
     totalKw: number,
     shortfallThresholdKw: number,
-    capacityStateSummary: PlanCapacityStateSummary,
+    capacityStateSummary: PlanInputCapacityStateSummary,
   ): Promise<void> {
     this.incidentId = `inc_${randomUUID()}`;
     this.incidentStartMs = Date.now();
@@ -187,13 +187,14 @@ export default class CapacityGuard {
     });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;
-    await this.onShortfall?.(deficitKw);
+    await this.onShortfall?.(totalKw - shortfallThresholdKw);
   }
 
   private async maybeClearShortfall(
     shortfallThreshold: number,
     totalKw: number,
   ): Promise<void> {
+    if (!this.inShortfall) return;
     const thresholdHeadroom = shortfallThreshold - totalKw;
     if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
       await this.updateShortfallClearTimer(shortfallThreshold, totalKw);
@@ -233,6 +234,9 @@ export default class CapacityGuard {
       this.shortfallClearStartTime = null;
       this.incidentId = null;
       this.incidentStartMs = 0;
+      // The verdict was about a reading this incident has recovered from; the
+      // next breach gets its own before anything reads the alert condition.
+      this.planLeftNothingToShed = false;
       await this.onShortfallCleared?.();
     }
   }

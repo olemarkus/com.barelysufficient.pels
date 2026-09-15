@@ -23,12 +23,12 @@ const signalWith = (overrides: Partial<PowerRebuildSignal> = {}): PowerRebuildSi
 // holds a house in shortfall to the max-interval cadence. `request` counts what
 // reached the scheduler (a stub that accepts and never executes, so a sample
 // that got through is left un-awaited); a gated sample reaches nothing and
-// instead hands the guard the deficit it would otherwise only learn from the
-// rebuild.
+// instead hands the guard the reading it would otherwise only get from the
+// rebuild — a reading, never a verdict that nothing is left to shed.
 const buildThrottle = (options: { lastRebuiltAtMs: number | null; suppressionInvalidated?: boolean }) => {
   const request = vi.fn(() => ({ status: 'accepted' as const, keptIntent: { kind: 'signal' as const, reason: 'shortfall' as const } }));
   const guard = createTestCapacityGuard({ homeId: 'main' });
-  const checkShortfall = vi.spyOn(guard, 'checkShortfall');
+  const recordReading = vi.spyOn(guard, 'recordReading');
   const throttle = new PlanRebuildThrottle(
     {
       getScheduler: () => ({ request }) as unknown as PlanRebuildScheduler,
@@ -44,7 +44,7 @@ const buildThrottle = (options: { lastRebuiltAtMs: number | null; suppressionInv
       suppressionInvalidated: options.suppressionInvalidated ?? false,
     }),
   );
-  return { throttle, request, checkShortfall };
+  return { throttle, request, recordReading };
 };
 
 const sample = (
@@ -60,11 +60,11 @@ const sample = (
 };
 
 describe('PlanRebuildThrottle — the unrecoverable-shortfall gate', () => {
-  it('holds the rebuild while the shortfall is unrecoverable and unchanged, and reports the deficit', () => {
-    const { throttle, request, checkShortfall } = buildThrottle({ lastRebuiltAtMs: 9_000 });
+  it('holds the rebuild while the shortfall is unrecoverable and unchanged, and hands the guard the reading', () => {
+    const { throttle, request, recordReading } = buildThrottle({ lastRebuiltAtMs: 9_000 });
     sample(throttle, signalWith());
     expect(request).not.toHaveBeenCalled();
-    expect(checkShortfall).toHaveBeenCalledTimes(1);
+    expect(recordReading).toHaveBeenCalledExactlyOnceWith(5, 10);
   });
 
   // The max-interval escape: a stale "unactionable" summary must never suppress

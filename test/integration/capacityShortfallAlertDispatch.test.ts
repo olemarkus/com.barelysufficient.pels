@@ -13,9 +13,9 @@ import type { FlowTriggerCard } from '../../lib/ports/homeyRuntime';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { partialDouble } from '../helpers/partialDouble';
+import { planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
 const TEST_SHORTFALL_THRESHOLD_KW = 6;
@@ -159,13 +159,7 @@ describe('capacity shortfall alert dispatch', () => {
       () => false,
     );
 
-    await guard.checkShortfall({
-      hasCandidates: false,
-      deficitKw: 0.5,
-      totalKw: 99,
-      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
-      capacityStateSummary: buildNullCapacityStateSummary(),
-    });
+    await guard.recordPlanVerdict(6.5, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
     await vi.advanceTimersByTimeAsync(0);
 
     expect(handleShortfall).toHaveBeenCalledExactlyOnceWith(0.5);

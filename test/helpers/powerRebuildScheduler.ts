@@ -28,8 +28,8 @@ export const throttleMemoryFixture = (
  * cancelled intent releases the rebuild queued for it. Specs drive the throttle
  * and read its `snapshot()`; nothing here is a second code path.
  *
- * `checkShortfall` is a pass-through spy on the guard, so a spec can assert
- * the deficit a tight no-op reported without stubbing the guard away.
+ * `recordReading` is a pass-through spy on the guard, so a spec can assert
+ * what reading the throttle handed it without stubbing the guard away.
  */
 export const createTestPlanRebuildThrottle = (params: {
   rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
@@ -38,10 +38,10 @@ export const createTestPlanRebuildThrottle = (params: {
   getNowMs?: () => number;
   logError?: (error: Error) => void;
   capacityGuard?: CapacityGuard;
-}): { throttle: PlanRebuildThrottle; scheduler: PlanRebuildScheduler; checkShortfall: MockInstance } => {
+}): { throttle: PlanRebuildThrottle; scheduler: PlanRebuildScheduler; recordReading: MockInstance } => {
   const getNowMs = params.getNowMs ?? Date.now;
   const guard = params.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
-  const checkShortfall = vi.spyOn(guard, 'checkShortfall');
+  const recordReading = vi.spyOn(guard, 'recordReading');
   const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(
     {
       getScheduler: () => scheduler,
@@ -66,7 +66,7 @@ export const createTestPlanRebuildThrottle = (params: {
       params.logError?.(error);
     },
   });
-  return { throttle, scheduler, checkShortfall };
+  return { throttle, scheduler, recordReading };
 };
 
 /**

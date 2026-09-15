@@ -1,4 +1,5 @@
 import type { PlanEngineState } from '../planState';
+import type { MeasuredPower, PlanContext } from '../planContext';
 import type { PlanInputDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { compareDeviceIdAsc } from '../planSort';
@@ -23,6 +24,30 @@ import {
   type ShedCandidateParams,
   type SheddingDeps,
 } from './types';
+
+/** One build's shed candidate walk, as selection and the shortfall verdict both ask it. */
+export function buildShedCandidateParams(
+  context: PlanContext,
+  power: MeasuredPower,
+  state: PlanEngineState,
+  deps: SheddingDeps,
+): ShedCandidateParams {
+  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
+  const needed = Math.max(0, -power.headroomKw);
+  return {
+    devices: context.devices,
+    needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
+    // The measured deficit, never the severity sentinel: rung sizing compares
+    // kW against it. See `ShedCandidateParams`.
+    deficitKw: needed,
+    limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
+    // Resolved once on the measurement; no candidate walk re-derives it from a total.
+    capacityBreached: power.capacityBreached,
+    temperatureSetpoints: context.temperatureSetpoints,
+    state,
+    deps,
+  };
+}
 
 export function summarizeSheddingCandidates(params: ShedCandidateParams): {
   eligibleCandidateCount: number;

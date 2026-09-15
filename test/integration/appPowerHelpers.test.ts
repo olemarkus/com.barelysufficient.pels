@@ -10,7 +10,7 @@ vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
 });
 
 import CapacityGuard from '../../lib/power/capacityGuard';
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { createTestCapacityGuard, planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   recordDailyBudgetCap,
@@ -43,7 +43,6 @@ import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
-import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
 const TEST_SHORTFALL_THRESHOLD_KW = 4.961;
@@ -823,12 +822,13 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   // Regression: the CPU-watchdog crash-loop. A hard-cap breach with an oscillating
   // (meaningful-delta) uncontrolled load used to force a full ~1.4s rebuild on every
   // power sample even when nothing was actionable, saturating CPU.
-  // Also guards the P1 fix: the throttled skip must NOT enter shortfall (calling
-  // checkShortfall here without a rebuild would let a stale "unactionable" summary
-  // deadlock the unrecoverable-shortfall skip against ever discovering returned load).
+  // Also guards the P1 fix: the throttled skip must NOT tell the guard anything
+  // (entering shortfall here without a rebuild would let a stale "unactionable"
+  // summary deadlock the unrecoverable-shortfall skip against ever discovering
+  // returned load).
   it('throttles an unactionable hard-cap breach without entering shortfall from the skip', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
-    const { throttle, checkShortfall } = createTestPlanRebuildThrottle({
+    const { throttle, recordReading } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
       memory: throttleMemoryFixture({ lastRebuild: { atMs: Date.now() - 5000, powerW: 10_400, hardCapBreach: { breached: true, deficitKw: 0 } } }),
@@ -844,7 +844,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(checkShortfall).not.toHaveBeenCalled();
+    expect(recordReading).not.toHaveBeenCalled();
   });
 
   it('still refreshes an unactionable state once the max interval elapses', async () => {
@@ -1077,7 +1077,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('rebuilds convergence samples through the scheduler and preserves shortfall fallback', async () => {
+  it('rebuilds convergence samples through the scheduler', async () => {
     const onShortfall = vi.fn();
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
@@ -1103,8 +1103,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
-    expect(onShortfall).toHaveBeenCalledWith(1);
-    expect(capacityGuard.isInShortfall()).toBe(true);
+    // The stub builds no plan, so no verdict reached the guard.
+    expect(onShortfall).not.toHaveBeenCalled();
   });
 
   it('bypasses tight no-op backoff during newly observed hard-cap breaches', async () => {
@@ -1234,9 +1234,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
-    expect(onShortfall).toHaveBeenCalledTimes(1);
-    expect(onShortfall.mock.calls[0]?.[0]).toBeCloseTo(0.1, 6);
-    expect(capacityGuard.isInShortfall()).toBe(true);
+    // The stub builds no plan, so no verdict reached the guard.
+    expect(onShortfall).not.toHaveBeenCalled();
   });
 
   it('coalesces convergence samples within the min interval', async () => {
@@ -1308,7 +1307,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('bypasses the stable interval and checks shortfall when the hard-cap threshold is breached', async () => {
+  it('bypasses the stable interval when the hard-cap threshold is breached', async () => {
     const onShortfall = vi.fn();
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
@@ -1333,9 +1332,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(onShortfall).toHaveBeenCalledTimes(1);
-    expect(onShortfall.mock.calls[0]?.[0]).toBeCloseTo(0.1, 6);
-    expect(capacityGuard.isInShortfall()).toBe(true);
+    // The stub builds no plan, so no verdict reached the guard.
+    expect(onShortfall).not.toHaveBeenCalled();
   });
 
   it('runs immediately when a hard-cap breach preempts a pending stable timer', async () => {
@@ -1375,7 +1373,11 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     await pending;
   });
 
-  it('enters shortfall when a tight no-op rebuild leaves the hard cap breached', async () => {
+  // The throttle holds no device list, so a rebuild that changed nothing is not
+  // evidence that nothing is left to shed: the planner also changes nothing
+  // while it waits out a shed grace. The plan build tells the guard itself
+  // (`reportShortfallToGuard`); this stub builds no plan, so the guard hears nothing.
+  it('opens no incident from a rebuild that changed nothing, even over the hard cap', async () => {
     const onShortfall = vi.fn();
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
@@ -1399,8 +1401,9 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
     });
 
-    expect(onShortfall).toHaveBeenCalledWith(1);
-    expect(capacityGuard.isInShortfall()).toBe(true);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
+    expect(onShortfall).not.toHaveBeenCalled();
+    expect(capacityGuard.isInShortfall()).toBe(false);
   });
 
   it('does not enter shortfall for soft-limit-only no-op rebuilds', async () => {
@@ -1433,14 +1436,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   it('skips full rebuilds while shortfall is active and no actionable reduction remains', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
-    await capacityGuard.checkShortfall({
-      hasCandidates: false,
-      deficitKw: 0.306,
-      totalKw: 5.267,
-      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
-      capacityStateSummary: buildNullCapacityStateSummary(),
-    });
-    const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
+    await capacityGuard.recordPlanVerdict(5.267, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
+    const recordReadingSpy = vi.spyOn(capacityGuard, 'recordReading');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1464,10 +1461,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(checkShortfallSpy).toHaveBeenLastCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: expect.closeTo(0.306, 3),
-    }));
+    expect(recordReadingSpy).toHaveBeenLastCalledWith(5.267, 4.961);
   });
 
   // Regression: the 2026-07-06 cpuwarn crash. A persistent unwinnable overshoot
@@ -1479,13 +1473,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   // WITH the unactionable summary must let the skip engage.
   it('suppresses the rebuild storm when overshoot persists but the plan is unactionable', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
-    await capacityGuard.checkShortfall({
-      hasCandidates: false,
-      deficitKw: 0.306,
-      totalKw: 5.267,
-      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
-      capacityStateSummary: buildNullCapacityStateSummary(),
-    });
+    await capacityGuard.recordPlanVerdict(5.267, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1522,14 +1510,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   it('drives recovery checks during suppression then yields a rebuild at the max interval', async () => {
     const onShortfallCleared = vi.fn();
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn(), onShortfallCleared });
-    await capacityGuard.checkShortfall({
-      hasCandidates: false,
-      deficitKw: 0.306,
-      totalKw: 5.267,
-      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
-      capacityStateSummary: buildNullCapacityStateSummary(),
-    });
-    const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
+    await capacityGuard.recordPlanVerdict(5.267, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
+    const recordReadingSpy = vi.spyOn(capacityGuard, 'recordReading');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1543,7 +1525,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     });
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
-    // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
+    // rebuild but still hands the guard the reading, so recovery detection stays alive.
     await scheduleSignalForTest({
       throttle,
       capacityPaceKw: 3.9,
@@ -1555,7 +1537,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(checkShortfallSpy).toHaveBeenCalled();
+    expect(recordReadingSpy).toHaveBeenCalledWith(4.6, 4.961);
     expect(capacityGuard.isInShortfall()).toBe(true);
 
     // Past the max interval, the escape yields a real rebuild rather than suppressing
@@ -1576,13 +1558,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   it('rebuilds when shortfall suppression was invalidated by newly returned controlled load', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
-    await capacityGuard.checkShortfall({
-      hasCandidates: false,
-      deficitKw: 0.306,
-      totalKw: 5.267,
-      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
-      capacityStateSummary: buildNullCapacityStateSummary(),
-    });
+    await capacityGuard.recordPlanVerdict(5.267, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: true,
       appliedActions: true,

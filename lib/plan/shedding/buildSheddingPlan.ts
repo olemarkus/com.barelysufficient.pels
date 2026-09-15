@@ -2,7 +2,6 @@ import type { DeviceReason } from '../../../packages/shared-domain/src/planReaso
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type ShedPlanLatch, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 
-import { updateGuardState } from '../admission';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   type PlanSheddingResult,
@@ -18,59 +17,40 @@ import {
   type SameMeasurementSheddingDecision,
 } from './overshoot';
 import { resolveShedReason, selectShedDevices } from './selection';
-import { buildSheddingCandidates, summarizeSheddingCandidates } from './candidates';
+import { buildShedCandidateParams, buildSheddingCandidates, summarizeSheddingCandidates } from './candidates';
+import { resolveSheddingLatch } from './sheddingLatch';
+import { reportShortfallToGuard } from './shortfallVerdict';
 
 export async function buildSheddingPlan(
   context: PlanContext,
   power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
-  overshoot: SheddingOvershootInput = {
-    actionable: power.headroomKw < 0,
-    shedActionable: power.headroomKw < 0,
-  },
+  overshoot: SheddingOvershootInput,
 ): Promise<SheddingPlan> {
+  const selection = planShedding(context, power, state, deps, overshoot.shedActionable);
   const {
     shedSet,
     shedReasons,
     shedStepTargets,
     outcome,
     overshootStats,
-  } = planShedding(context, power, state, deps, overshoot.shedActionable);
-  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  // `actionable`, not `shedActionable`: the latch answers "is the house in an
-  // overshoot", which a deferred shed does not change. See
-  // `SheddingOvershootInput` for what tying it to the shed choice cost.
-  const sheddingActionable = overshoot.actionable || hourlyBudgetExhausted;
-  const sheddingLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
+  } = selection;
   const wasSheddingActive = state.sheddingActive;
-  const guardResult = await updateGuardState({
-    headroom: power.headroomKw,
-    drawKw: power.drawKw,
-    capacityBreached: power.capacityBreached,
-    overshootActionable: sheddingActionable,
-    devices: context.devices,
-    shedSet,
-    softLimitSource: sheddingLimitSource,
-    capacityGuard: deps.capacityGuard,
-    shortfallThresholdKw: deps.shortfallThresholdKw,
-    sheddingActive: wasSheddingActive,
-    hourlyBudgetExhausted,
-    // Any direction: the shortfall log counts devices mid-actuation, and a
-    // turn-OFF in flight is as much in flight as a turn-ON. Kept a callback
-    // rather than a prebuilt id set so the `deficitKw <= 0` early return still
-    // spares every ordinary rebuild the device walk.
-    isBinaryCommandPending: (deviceId) => deps.pendingBinaryCommandStore.hasActiveCommand(deviceId),
-  });
+  // Resolved before the guard hears about the reading: its shortfall path
+  // awaits a settings write, and the latch must read the hour this build
+  // decided on (`PlanBuilder.computeDynamicSoftLimit`).
+  const sheddingActive = resolveSheddingLatch(power, state, overshoot, shedSet);
+  await reportShortfallToGuard(context, power, state, selection, deps);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
-  state.sheddingActive = guardResult.sheddingActive;
+  state.sheddingActive = sheddingActive;
   const guardInShortfall = deps.capacityGuard.isInShortfall() ?? false;
-  const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;
+  const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
     shedSet,
     shedReasons,
     shedStepTargets,
-    sheddingActive: guardResult.sheddingActive,
+    sheddingActive,
     guardInShortfall,
     outcome,
     recoveredAtMs: recoveredFromShedding ? Date.now() : null,
@@ -115,19 +95,7 @@ function planShedding(
     state, measurementTs, measurementPowerW, needed, nowTs, power.capacityBreached,
   );
 
-  const candidateParams: ShedCandidateParams = {
-    devices: context.devices,
-    needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
-    // The measured deficit, never the severity sentinel: rung sizing compares
-    // kW against it. See `ShedCandidateParams`.
-    deficitKw: needed,
-    limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    // Resolved once on the measurement; no candidate walk re-derives it from a total.
-    capacityBreached: power.capacityBreached,
-    temperatureSetpoints: context.temperatureSetpoints,
-    state,
-    deps,
-  };
+  const candidateParams = buildShedCandidateParams(context, power, state, deps);
   // An exhausted hour sheds on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's.
   if (!hourlyBudgetExhausted && measurementDecision.kind !== 'proceed') {

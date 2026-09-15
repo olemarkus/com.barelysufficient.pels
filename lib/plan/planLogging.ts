@@ -2,6 +2,7 @@ import {
   buildEmptyCapacityStateSummary,
   buildNullCapacityStateSummary,
   type CapacityStateSummarySource,
+  type PlanInputCapacityStateSummary,
   type PlanCapacityStateSummary,
 } from '../power/capacityStateSummary';
 import {
@@ -112,9 +113,26 @@ export function buildPlanCapacityStateSummary(
   };
 }
 
-// blockedByCooldownDevices, blockedByPenaltyDevices, blockedByInvariantDevices are not populated here
-// because PlanInputDevice has no reason field — those fields remain 0 in the returned summary.
-export function buildPlanInputCapacityStateSummary(
+/**
+ * The device-count half of the plan input's capacity state
+ * (`PlanInputCapacityStateSummary`): what the device list alone answers. The
+ * power split and the remaining load are the shortfall verdict's to compose
+ * (`lib/plan/shedding/shortfallVerdict.ts`), and the restore-side hold counts are
+ * not here at all, because a plan input carries no reasons to count them from.
+ */
+export type PlanInputDeviceCounts = Pick<
+  PlanInputCapacityStateSummary,
+  'controlledDevices'
+  | 'plannedShedDevices'
+  | 'pendingPlannedShedDevices'
+  | 'activePlannedShedDevices'
+  | 'activeControlledDevices'
+  | 'zeroDrawControlledDevices'
+  | 'pendingControlledDevices'
+  | 'actuationInFlight'
+>;
+
+export function countPlanInputDevices(
   devices: PlanInputDevice[],
   shedSet: ReadonlySet<string>,
   /**
@@ -129,12 +147,19 @@ export function buildPlanInputCapacityStateSummary(
    * drift between a fresh build and a republish.
    */
   isBinaryCommandPending: (deviceId: string) => boolean,
-  metadata: CapacityStateSummaryMetadata = {},
-): PlanCapacityStateSummary {
-  const summary = buildEmptyCapacityStateSummary();
+): PlanInputDeviceCounts {
+  const counts = {
+    controlledDevices: 0,
+    plannedShedDevices: 0,
+    pendingPlannedShedDevices: 0,
+    activePlannedShedDevices: 0,
+    activeControlledDevices: 0,
+    zeroDrawControlledDevices: 0,
+    pendingControlledDevices: 0,
+  };
   for (const device of devices) {
     if (device.control.commandAuthority === false) continue;
-    summary.controlledDevices += 1;
+    counts.controlledDevices += 1;
     // Resolved once: the reader reaches the command store, and asking it twice
     // per device was the shape this summary had before the store owned the
     // question.
@@ -144,21 +169,14 @@ export function buildPlanInputCapacityStateSummary(
       pending,
       active: isActiveInputDevice(device),
     });
-    summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
-    summary.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
-    summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
-    summary.activeControlledDevices += Number(isActiveInputDevice(device));
-    summary.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
-    summary.pendingControlledDevices += Number(pending);
+    counts.plannedShedDevices += plannedShedCounts.plannedShedDevices;
+    counts.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
+    counts.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
+    counts.activeControlledDevices += Number(isActiveInputDevice(device));
+    counts.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
+    counts.pendingControlledDevices += Number(pending);
   }
-  return {
-    ...summary,
-    remainingActionableControlledLoadW: 0,
-    remainingActionableControlledLoad: false,
-    actuationInFlight: summary.pendingControlledDevices > 0,
-    summarySource: metadata.summarySource ?? null,
-    summarySourceAtMs: metadata.summarySourceAtMs ?? null,
-  };
+  return { ...counts, actuationInFlight: counts.pendingControlledDevices > 0 };
 }
 
 function buildPlannedShedCounts(

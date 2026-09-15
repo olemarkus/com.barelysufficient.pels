@@ -5,7 +5,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { buildSheddingPlan } from '../../lib/plan/shedding';
+import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -54,7 +54,8 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
 });
 
 const buildCapacityGuard = (): CapacityGuard => ({
-  checkShortfall: vi.fn().mockResolvedValue(undefined),
+  recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+  recordReading: vi.fn().mockResolvedValue(undefined),
   isInShortfall: vi.fn().mockReturnValue(false),
   getRestoreMargin: vi.fn().mockReturnValue(0.2),
 } as unknown as CapacityGuard);
@@ -101,7 +102,7 @@ describe('shed candidacy gates on writability', () => {
   it('sheds the writable device, not a cap-less target-bearing one credited first', async () => {
     const state = createPlanEngineState();
     const cycle = buildContext([capLessTargetBearing, writableBinary], -2);
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       cycle,
       cycle,
       state,
@@ -119,7 +120,7 @@ describe('shed candidacy gates on writability', () => {
   it('does not shed a cap-less target-bearing device even when it is the only candidate', async () => {
     const state = createPlanEngineState();
     const cycle = buildContext([capLessTargetBearing], -2);
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       cycle,
       cycle,
       state,

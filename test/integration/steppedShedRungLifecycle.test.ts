@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildSheddingPlan } from '../../lib/plan/shedding';
+import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
@@ -90,12 +90,13 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       headroom: -3.77,
     });
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const getShedBehavior = () => ({ action: 'turn_off' as const });
 
-    const sheddingPlan = await buildSheddingPlan(context, context, state, {
+    const sheddingPlan = await buildSheddingPlanForSpec(context, context, state, {
       capacityGuard,
       shortfallThresholdKw: 10,
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,

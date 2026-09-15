@@ -215,10 +215,6 @@ export const shouldApplyTightNoopBackoff = (reason: PlanRebuildTrigger, outcome:
     && outcome.failed === false;
 };
 
-export const isTightNoopOutcome = (reason: PlanRebuildTrigger, outcome: RebuildOutcome | void): boolean => (
-  shouldApplyTightNoopBackoff(reason, outcome)
-);
-
 export const shouldApplyTightMitigationHoldoff = (
   reason: PlanRebuildTrigger,
   outcome: RebuildOutcome | void,

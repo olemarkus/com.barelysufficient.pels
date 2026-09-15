@@ -48,7 +48,8 @@ describe('Shed vs Restore Logic', () => {
         // Negative headroom comes from the seeded powerTracker (12 kW) against
         // the forced 10 kW soft limit; the guard double only quiets shortfall.
         const mockGuard = partialDouble<CapacityGuard>({
-            checkShortfall: vi.fn(),
+            recordPlanVerdict: vi.fn(),
+            recordReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;
@@ -89,7 +90,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Headroom -0.4 kW: powerTracker 10.4 kW against the forced 10 kW limit.
         const mockGuard = partialDouble<CapacityGuard>({
-            checkShortfall: vi.fn(),
+            recordPlanVerdict: vi.fn(),
+            recordReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;
@@ -125,7 +127,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Headroom +2.0 kW: powerTracker 8 kW against the forced 10 kW limit.
         const mockGuard = partialDouble<CapacityGuard>({
-            checkShortfall: vi.fn(),
+            recordPlanVerdict: vi.fn(),
+            recordReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;

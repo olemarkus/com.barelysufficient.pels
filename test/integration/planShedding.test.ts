@@ -4,6 +4,7 @@ import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFix
 import type { Mock } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
+import type { PlanInputCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
@@ -13,7 +14,7 @@ import type {
   BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildSheddingPlan } from '../../lib/plan/shedding';
+import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import {
@@ -27,6 +28,18 @@ import {
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
 // pending state.
+/** The last plan verdict a guard double received, as `[totalKw, shortfallThresholdKw, summary]`. */
+const lastVerdict = (guard: CapacityGuard): Parameters<CapacityGuard['recordPlanVerdict']> => {
+  const calls = (guard.recordPlanVerdict as unknown as Mock<CapacityGuard['recordPlanVerdict']>).mock.calls;
+  return calls[calls.length - 1];
+};
+const lastVerdictSummary = (guard: CapacityGuard): PlanInputCapacityStateSummary => lastVerdict(guard)[2];
+/** The guard derives the deficit from the reading. */
+const lastVerdictDeficitKw = (guard: CapacityGuard): number => {
+  const [totalKw, shortfallThresholdKw] = lastVerdict(guard);
+  return totalKw - shortfallThresholdKw;
+};
+
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
@@ -93,7 +106,8 @@ describe('buildSheddingPlan', () => {
   it('does not shed for a tiny negative headroom until it persists', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -117,7 +131,7 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -146,7 +160,8 @@ describe('buildSheddingPlan', () => {
   it('keeps the shedding latch engaged while a grace defers selection', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -169,7 +184,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -196,7 +211,8 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.overshoot['softPendingSinceMs'] = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -220,7 +236,7 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -244,7 +260,8 @@ describe('buildSheddingPlan', () => {
   it('still enters hard-cap shortfall immediately when above the shortfall threshold', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(true),
     } as unknown as CapacityGuard;
 
@@ -260,7 +277,7 @@ describe('buildSheddingPlan', () => {
 
     const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -278,10 +295,10 @@ describe('buildSheddingPlan', () => {
 
     expect(overshootDecision.actionable).toBe(false);
     expect(result.shedSet.size).toBe(0);
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [{ hasCandidates, deficitKw }] = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
-    expect(hasCandidates).toBe(false);
-    expect(deficitKw).toBeCloseTo(0.2, 6);
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledTimes(1);
+    expect(capacityGuard.recordReading).not.toHaveBeenCalled();
+    expect(lastVerdictSummary(capacityGuard).remainingActionableControlledLoad).toBe(false);
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.2, 6);
     expect(result.guardInShortfall).toBe(true);
   });
 
@@ -294,12 +311,13 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.hourlyBudgetExhausted = true;
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const { context, power } = buildContext({ total: 0, softLimit: 0, capacitySoftLimit: 5, headroom: 0 });
 
-    const result = await buildSheddingPlan(context, power, state, {
+    const result = await buildSheddingPlanForSpec(context, power, state, {
       capacityGuard,
       shortfallThresholdKw: 5,
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
@@ -347,11 +365,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.4,
@@ -384,10 +403,10 @@ describe('buildSheddingPlan', () => {
     expect(reasonText(result.shedReasons.get('dev-nonrecent'))).toBe('shed due to capacity');
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [{ hasCandidates, deficitKw }] = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
-    expect(hasCandidates).toBe(true);
-    expect(deficitKw).toBeCloseTo(0.4, 6);
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledTimes(1);
+    expect(capacityGuard.recordReading).not.toHaveBeenCalled();
+    expect(lastVerdictSummary(capacityGuard).remainingActionableControlledLoad).toBe(true);
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.4, 6);
   });
 
   it('allows shedding recently restored devices when they are lower priority', async () => {
@@ -414,11 +433,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 5,
@@ -466,11 +486,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 6,
@@ -494,24 +515,23 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('dev-restore')).toBe(true);
     expect(reasonText(result.shedReasons.get('dev-restore'))).toBe('shed due to capacity');
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: true,
-      deficitKw: 2,
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
+      remainingActionableControlledLoad: true,
       controlledDevices: 2,
       plannedShedDevices: 1,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(2, 6);
   });
 
   it('does not shed a device reporting off, even with a stale measured draw (an off device cannot be commanded off)', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -580,11 +600,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // The setpoint facts are resolved from the same shed behaviour the planner reads.
         intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }) },
@@ -653,11 +674,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // The setpoint facts are resolved from the same shed behaviour the planner reads.
         intent: { getShedBehavior: (deviceId: string) => (
@@ -738,11 +760,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // The setpoint facts are resolved from the same shed behaviour the planner reads.
         intent: { getShedBehavior: (deviceId: string) => (
@@ -804,11 +827,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // The setpoint facts are resolved from the same shed behaviour the planner reads.
         intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 18 }) },
@@ -866,11 +890,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -931,11 +956,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -993,11 +1019,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1057,11 +1084,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 2.2,
@@ -1123,11 +1151,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1184,11 +1213,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1255,11 +1285,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 3.6,
@@ -1321,11 +1352,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4,
@@ -1387,11 +1419,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4,
@@ -1451,11 +1484,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 2.9,
@@ -1508,11 +1542,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 1.5,
@@ -1567,11 +1602,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.23,
@@ -1631,11 +1667,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1700,11 +1737,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.0,
@@ -1770,11 +1808,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1840,11 +1879,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.1,
@@ -1904,14 +1944,15 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     // Need 0.5kW of relief. The binary device has higher priority (sheds first
     // normally), but the stepped device is above its lowest active step so its
     // preemptive step-down sorts first.
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4,
@@ -1978,12 +2019,13 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     const debugStructured = vi.fn();
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 8.77,
@@ -2036,12 +2078,13 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     const debugStructured = vi.fn();
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2128,12 +2171,13 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     const debugStructured = vi.fn();
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2259,13 +2303,14 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     // Need 1.5kW relief. heater-high is above lowest active and should step down
     // preemptively. heater-low is already at lowest active so it's not preemptive.
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4,
@@ -2324,11 +2369,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 3.1,
@@ -2391,11 +2437,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 4.23,
@@ -2430,11 +2477,12 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2474,11 +2522,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    await buildSheddingPlan(
+    await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 7,
@@ -2501,25 +2550,24 @@ describe('buildSheddingPlan', () => {
     );
 
     // Daily soft-limit hours should still evaluate hourly shortfall risk.
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: 1,
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
+      remainingActionableControlledLoad: false,
       controlledDevices: 0,
       plannedShedDevices: 0,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(1, 6);
   });
 
   it('does not count zero-power devices as remaining shortfall candidates', async () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    await buildSheddingPlan(
+    await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2549,25 +2597,24 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: 1,
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
+      remainingActionableControlledLoad: false,
       controlledDevices: 1,
       plannedShedDevices: 0,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(1, 6);
   });
 
   it('excludes zero-power devices from shed candidate stats', async () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2619,12 +2666,13 @@ describe('buildSheddingPlan', () => {
     // would ADD demand. The candidate is skipped, and the counters say why.
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // Which side of the target is the demand side is resolved before the planner.
         intent: { getShedBehavior: () => shedBehavior, getThermalDirection: () => 'cooling' },
@@ -2673,11 +2721,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         intent: { getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR },
         devices: [
@@ -2731,16 +2780,13 @@ describe('buildSheddingPlan', () => {
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'already_at_shed_temperature', count: 1 }],
     });
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: expect.closeTo(0.8, 6),
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
       remainingReducibleControlledLoadW: 0,
       remainingReducibleControlledLoad: false,
       remainingActionableControlledLoadW: 0,
       remainingActionableControlledLoad: false,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.8, 6);
   });
 
   it('counts stepped lowest non-zero load as blocked-or-minimum, not reducible, when cooldown blocks further shedding', async () => {
@@ -2748,11 +2794,12 @@ describe('buildSheddingPlan', () => {
     state.actuation.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2812,11 +2859,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2864,11 +2912,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2915,11 +2964,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -2965,11 +3015,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -3037,11 +3088,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 1.5,
@@ -3071,7 +3123,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     // Device already at off step — no further step-down possible.
-    // countRemainingCandidates should NOT count it even though expectedPowerKw > 0,
+    // The verdict must NOT count it even though expectedPowerKw > 0,
     // because the stepped target equals selectedStepId (no further step to shed to).
     const devices = [
       buildDevice({
@@ -3093,11 +3145,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    await buildSheddingPlan(
+    await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 2.5,
@@ -3120,14 +3173,70 @@ describe('buildSheddingPlan', () => {
     );
 
     // With no remaining candidates, shortfall check should report remaining=0
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: 0.5,
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
+      remainingActionableControlledLoad: false,
       controlledDevices: 1,
       plannedShedDevices: 0,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.5, 6);
+  });
+
+  it('counts the deeper rungs of a stepped device limited to an intermediate step as load left to shed', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlanForSpec(
+      ...cycleArgs({
+        devices: [
+          buildDevice({
+            id: 'charger',
+            name: 'Charger',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1000 },
+                { id: 'mid', planningPowerW: 2000 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+            selectedStepId: 'max',
+            currentDrawKw: 3, expectedPowerKw: 3,
+            binaryControl: { on: true },
+            controllable: true,
+          }),
+        ],
+        total: 2.8,
+        softLimit: 2,
+        capacitySoftLimit: 2,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 2,
+        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        log: vi.fn(),
+        debugStructured: vi.fn(),
+      },
+    );
+
+    // One step down covers the 0.8 kW deficit; the steps below it are still
+    // relief PELS holds, so this build is not out of options.
+    expect(result.shedStepTargets.get('charger')).toBe('mid');
+    expect(lastVerdictSummary(capacityGuard)).toMatchObject({
+      plannedShedDevices: 1,
+      remainingActionableControlledLoad: true,
+      remainingActionableControlledLoadW: 2000,
+    });
   });
 
   it('does not count zero-power stepped-load devices as remaining shortfall candidates', async () => {
@@ -3153,11 +3262,12 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    await buildSheddingPlan(
+    await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
         total: 2.5,
@@ -3181,15 +3291,12 @@ describe('buildSheddingPlan', () => {
 
     // The meter says the device is pulling nothing, so there is no rung to shed
     // it to and nothing to gain by trying — it is skipped rather than planned.
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: false,
-      deficitKw: 0.5,
-      capacityStateSummary: expect.objectContaining({
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
       controlledDevices: 1,
       plannedShedDevices: 0,
       remainingActionableControlledLoad: false,
-      }),
     }));
+    expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.5, 6);
   });
 
   it('emits lastRecoveryMs when the latch transitions from active to inactive', async () => {
@@ -3197,11 +3304,12 @@ describe('buildSheddingPlan', () => {
     state.sheddingActive = true;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 1,
@@ -3230,11 +3338,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 1,
@@ -3301,7 +3410,8 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3332,7 +3442,7 @@ describe('buildSheddingPlan', () => {
     // sized to the deficit, a 5 kW breach would price every step-down as
     // insufficient, take each device's whole draw, and shed all three — correct,
     // but not the ordering this test exists to pin.)
-    const result1 = await buildSheddingPlan(
+    const result1 = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'max', currentDrawKw: 2.8 }),
@@ -3360,7 +3470,7 @@ describe('buildSheddingPlan', () => {
     // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive). Its
     // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
     // the step-down wins the cycle ahead of the higher-priority binary.
-    const result2 = await buildSheddingPlan(
+    const result2 = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
@@ -3385,7 +3495,7 @@ describe('buildSheddingPlan', () => {
 
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
-    const result3 = await buildSheddingPlan(
+    const result3 = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
@@ -3413,12 +3523,13 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -3457,7 +3568,8 @@ describe('buildSheddingPlan', () => {
     state.overshoot.enter(Date.now() - 31_000);
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3487,7 +3599,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const freshResult = await buildSheddingPlan(
+    const freshResult = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -3507,7 +3619,7 @@ describe('buildSheddingPlan', () => {
 
     vi.setSystemTime(new Date(Date.now() + 5_000));
 
-    const sameSampleResult = await buildSheddingPlan(
+    const sameSampleResult = await buildSheddingPlanForSpec(
       context,
       power,
       state,
@@ -3594,7 +3706,8 @@ describe('buildSheddingPlan', () => {
     const incidentDeps = (): Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> => ({
       shortfallThresholdKw: 6,
       capacityGuard: {
-        checkShortfall: vi.fn().mockResolvedValue(undefined),
+        recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+        recordReading: vi.fn().mockResolvedValue(undefined),
         isInShortfall: vi.fn().mockReturnValue(false),
         getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
       } as unknown as CapacityGuard,
@@ -3610,7 +3723,7 @@ describe('buildSheddingPlan', () => {
     ) => {
       const state = createPlanEngineState();
       state.overshoot.enter(Date.now());
-      const result = await buildSheddingPlan(
+      const result = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
@@ -3638,7 +3751,7 @@ describe('buildSheddingPlan', () => {
       // The water heater is confirmed off; only the two metered devices are left
       // to give, and together they are exactly the deficit the stale reading
       // still claims — so without the hold both go, including the user's #1.
-      const repeatResult = await buildSheddingPlan(
+      const repeatResult = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
         state,
         {
@@ -3670,7 +3783,7 @@ describe('buildSheddingPlan', () => {
 
       // The decided device is still on — dry-run, a failed write, or someone
       // switching it back. The hold must freeze that decision, not drop it.
-      const repeatResult = await buildSheddingPlan(
+      const repeatResult = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
@@ -3696,7 +3809,7 @@ describe('buildSheddingPlan', () => {
 
       vi.setSystemTime(new Date(Date.now() + 10_000));
 
-      const repeatResult = await buildSheddingPlan(
+      const repeatResult = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
@@ -3719,7 +3832,7 @@ describe('buildSheddingPlan', () => {
       vi.setSystemTime(new Date(Date.now() + 20_000));
 
       // The meter has now caught up with the shed water heater (~1.08kW).
-      const correctedResult = await buildSheddingPlan(
+      const correctedResult = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 3.271 }),
         state,
         {
@@ -3744,7 +3857,7 @@ describe('buildSheddingPlan', () => {
       // release below would never come.
       const pollWithUnchangedReading = async (atMs: number, lastTimestamp: number) => {
         vi.setSystemTime(new Date(shedAtMs + atMs));
-        const heldResult = await buildSheddingPlan(
+        const heldResult = await buildSheddingPlanForSpec(
           ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
           state,
           {
@@ -3763,7 +3876,7 @@ describe('buildSheddingPlan', () => {
 
       // The water heater is confirmed off and the reading still has not moved,
       // so the shed really did achieve nothing and deepening is warranted.
-      const sustainedResult = await buildSheddingPlan(
+      const sustainedResult = await buildSheddingPlanForSpec(
         ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
         state,
         {
@@ -3787,11 +3900,12 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -3841,11 +3955,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -3898,11 +4013,12 @@ describe('buildSheddingPlan', () => {
   it('sheds a stepped device whose adjacent rung prices at zero relief', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -3960,11 +4076,12 @@ describe('buildSheddingPlan', () => {
   it('does not treat a descent to the off step as a preemptive step-down', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           // Stale measurement: only `max -> off` releases anything (1.193 kW).
@@ -4017,11 +4134,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     const debugStructured = vi.fn();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           // Same stale-measurement shape on a `set_step` device. The walk now
@@ -4092,11 +4210,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     const debugStructured = vi.fn();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           // The `inc_26449fb9` stale-meter shape, one notch less stale: the
@@ -4158,11 +4277,12 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4223,11 +4343,12 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         // The setpoint facts are resolved from the same shed behaviour the planner reads.
         intent: { getShedBehavior: (deviceId) => (deviceId === 'temp'
@@ -4300,12 +4421,13 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
     const debugStructured = vi.fn();
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4372,11 +4494,12 @@ describe('buildSheddingPlan', () => {
     state.hourlyBudgetExhausted = true;
 
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4429,12 +4552,13 @@ describe('buildSheddingPlan', () => {
       info: vi.fn(),
     };
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-77'),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         intent: { getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }) },
         devices: [
@@ -4491,12 +4615,13 @@ describe('buildSheddingPlan', () => {
       info: vi.fn(),
     };
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-88'),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4539,11 +4664,12 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4585,11 +4711,12 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
           buildDevice({
@@ -4629,7 +4756,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.sheddingActive = true;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 3.65,
@@ -4659,11 +4786,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.sheddingActive = true;
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 4.79,
@@ -4696,7 +4824,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.sheddingActive = true;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 3.65,
@@ -4727,7 +4855,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.sheddingActive = true;
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [],
         total: 3.59,
@@ -4760,7 +4888,8 @@ describe('buildSheddingPlan', () => {
     // one frees real power, so it must be a candidate.
     const state = createPlanEngineState();
     const capacityGuard = {
-      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
+      recordReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4775,7 +4904,7 @@ describe('buildSheddingPlan', () => {
     });
     expect(unmetered.currentDrawKw).toBeCloseTo(1.5, 6);
 
-    const result = await buildSheddingPlan(
+    const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [unmetered],
         total: 3,

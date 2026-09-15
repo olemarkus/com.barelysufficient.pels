@@ -1615,22 +1615,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Pre-existing parity with the retired hold, not a regression. Don't latch when `fire()`
       resolves `rejected`. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
 
-- [ ] **The signal-driven shortfall paths log a hard-cap incident with no capacity evidence.**
-      `lib/plan/rebuildScheduler/signalDriven.ts` passes `buildNullCapacityStateSummary()` into
-      `checkShortfall` at both sites that can reach `enterShortfall`, so
-      `hard_cap_shortfall_detected` emits `summarySource: null` and every count/power field
-      `null`. Until `refactor/capacity-guard-strip` the guard filled this in itself from
-      `capacityStateSummaryProvider`, which both factories wired to
-      `buildPlanCapacityStateSummary(planService.getLatestPlanSnapshot(), ...)`; removing the
-      provider made the omission visible rather than causing it, since a caller that passed no
-      summary always meant to pass one. The worse of the two is the
-      `skipWhileShortfallUnrecoverable` branch, which exists precisely because the plan is
-      unwinnable — the incident where an operator most needs
-      `remainingActionableControlledLoad` and the managed/background split. The caller already
-      holds the data: `setup/powerSamplePipeline.ts` builds `latestPlanSummary` from the same
-      snapshot a few lines above and does not pass it down. Thread it through; the planner path
-      (`lib/plan/admission/sheddingGuard.ts`) already builds a real summary and is the model. [P2]
-
 - [ ] **Four shed-device reason codes have no starvation classification at all.**
       *Persona:* owner (`notes/personas.md`) reading device detail on a held-back device.
       *Hypothesis:* `neutralStartupHold`, `startupStabilization`, `capacityControlOff` and

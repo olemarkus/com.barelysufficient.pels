@@ -495,7 +495,7 @@ deficitKw        = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)
 
 **`deficitKw` is not an available name.** It already means the shortfall deficit
 across `lib/executor` and `lib/plan/rebuildScheduler` (`handleShortfall(deficitKw)`,
-`onTightNoopHardCapBreach`), so introducing a second meaning in the same layer would
+`HardCapBreach.deficitKw`), so introducing a second meaning in the same layer would
 recreate the exact `softLimit` failure this note exists to remove. Pick a distinct
 name for the two-predicate quantity — or rename the shortfall one first — before
 writing the identifier anywhere. The admission-scoped slice that shipped avoided

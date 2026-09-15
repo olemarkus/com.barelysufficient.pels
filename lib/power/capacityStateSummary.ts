@@ -45,6 +45,25 @@ export type KnownPlanCapacityStateCounts = {
   actuationInFlight: boolean;
 };
 
+/**
+ * The plan input's capacity state at a hard-cap verdict: what one build walked
+ * from its device list over the shortfall threshold, and nothing it did not. The
+ * restore-side hold counts (`blockedBy*`) are absent because a plan input carries
+ * no reasons to count them from; `remainingActionable*` is the load the build's
+ * own shed candidates could still relieve, and `shedReliefInFlight` whether a
+ * shed this build or an earlier one decided has yet to land — together, the
+ * verdict itself (`CapacityGuard.recordPlanVerdict`). No field can be the null stand-in a
+ * caller without the device list would otherwise reach for.
+ */
+export type PlanInputCapacityStateSummary = Omit<
+  KnownPlanCapacityStateCounts,
+  'blockedByCooldownDevices' | 'blockedByPenaltyDevices' | 'blockedByInvariantDevices'
+> & {
+  shedReliefInFlight: boolean;
+  summarySource: 'plan_input';
+  summarySourceAtMs: number;
+};
+
 export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
   return {
     controlledDevices: null,
