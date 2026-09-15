@@ -523,5 +523,8 @@
   },
   "3.2.0": {
     "en": "Heat pumps and air conditioners that report cooling mode now lower their target in cheap hours and when using solar surplus, and raise it in expensive hours. They also have a separate cooling temperature limit, so heating and cooling can use different limits. Devices in auto mode still use heating behaviour; leave price response and Smart tasks off if they may cool in that mode. Saving external temperature changes as the current mode target now keeps temperature-based power limiting enabled. Temperature changes made elsewhere while PELS is limiting the device no longer replace its saved mode target. Price-adjustment fields now show the size of the adjustment PELS applies. This update also reduces memory allocations durin power tracking and avoids duplicate device subscriptions."
+  },
+  "3.2.1": {
+    "en": "Devices can now resume sooner when available power covers their expected draw and device-specific safety buffer. The 'more power needed' amount shown in the Overview follows the same calculation.\n\nHard-cap shortfall alerts now better distinguish between a device still being limited and a home where PELS has no more useful actions available. This update also streamlines planning and reduces unnecessary background work."
   }
 }
