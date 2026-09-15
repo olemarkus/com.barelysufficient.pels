@@ -42,7 +42,6 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle =
   minutesRemaining: 60,
   headroomRaw: headroom,
   headroom,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 

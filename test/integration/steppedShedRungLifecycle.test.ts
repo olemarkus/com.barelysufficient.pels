@@ -53,7 +53,6 @@ const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
     minutesRemaining: 60,
     headroomRaw: 0,
     headroom: 0,
-    restoreMarginPlanning: 0.2,
     currentHourPriceLevel: PriceLevel.UNKNOWN,
     total: 3,
     ...overrides,

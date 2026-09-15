@@ -72,7 +72,6 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanCycle => bui
   minutesRemaining: 60,
   headroomRaw: 12,
   headroom: 12,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 

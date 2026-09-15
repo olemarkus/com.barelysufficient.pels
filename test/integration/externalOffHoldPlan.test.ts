@@ -152,7 +152,6 @@ describe('external-off hold — plan-device propagation', () => {
     minutesRemaining: 60,
     headroomRaw: 5,
     headroom: 5,
-    restoreMarginPlanning: 0.2,
     currentHourPriceLevel: PriceLevel.UNKNOWN,
   });
 

@@ -34,7 +34,6 @@ export const buildPlanContextFixture = (overrides: Partial<PlanContext> = {}): P
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });

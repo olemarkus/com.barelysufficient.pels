@@ -96,7 +96,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
   minutesRemaining: 60,
   headroomRaw: -1, // overshooting, so shedding WOULD fire for an eligible device
   headroom: -1,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });

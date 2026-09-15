@@ -57,7 +57,6 @@ export type PlanContext = PlanLimits & {
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
-  restoreMarginPlanning: number;
   /**
    * The producer-resolved price level of the current hour, for the
    * price-optimization deltas only.
@@ -141,7 +140,6 @@ export function buildPlanContext(params: {
     budgetKWh: resolveUsableCapacityKw(capacitySettings),
     usedKWh: hourContext.usedKWh,
     minutesRemaining: hourContext.minutesRemaining,
-    restoreMarginPlanning: Math.max(0.1, capacitySettings.marginKw || 0),
     currentHourPriceLevel,
   };
 }

@@ -49,7 +49,6 @@ const buildContext = (
   minutesRemaining: 30,
   headroomRaw: 1,
   headroom: 1,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel,
 });
 

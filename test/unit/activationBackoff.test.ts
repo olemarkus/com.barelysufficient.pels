@@ -59,7 +59,6 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
   minutesRemaining: 60,
   headroomRaw: 1,
   headroom: 1,
-  restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
