@@ -45,12 +45,13 @@ const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensive
 
 export const setDeviceDetailDeltaValues = (deviceId: string) => {
   const priceConfig = state.priceOptimizationSettings[deviceId];
+  // Both fields render magnitudes, whatever sign an older save stored: the
+  // planner applies each delta by its magnitude, so that is the number that
+  // takes effect.
   if (deviceDetailCheapDelta) {
-    deviceDetailCheapDelta.value = (priceConfig?.cheapDelta ?? 5).toString();
+    deviceDetailCheapDelta.value = Math.abs(priceConfig?.cheapDelta ?? 5).toString();
   }
   if (deviceDetailExpensiveDelta) {
-    // Store keeps the signed value (negative = lowers the target); the field
-    // renders its magnitude.
     deviceDetailExpensiveDelta.value = Math.abs(priceConfig?.expensiveDelta ?? -5).toString();
   }
 };
@@ -139,6 +140,8 @@ export const initDeviceDetailPriceOptHandlers = (params: {
 
     try {
       await savePriceOptimizationSettings();
+      // Show what was saved: a typed "-3" is stored, and applied, as 3.
+      if (params.getCurrentDetailDeviceId() === deviceId) setDeviceDetailDeltaValues(deviceId);
       renderPriceOptDependents();
     } catch (error) {
       // Roll back this device's fields only if a later successful save has

@@ -147,8 +147,11 @@ const DeviceRow = ({
   onCheapChange: (val: number) => void;
   onExpensiveChange: (val: number) => void;
 }) => {
-  const cheapBoost = Math.max(DELTA_MIN, device.cheapDelta);
-  const expensiveReduction = Math.max(DELTA_MIN, -device.expensiveDelta);
+  // Magnitudes, whatever sign an older save stored: the planner applies each
+  // delta by its magnitude, so clamping a backwards sign to zero here showed a
+  // number that does not take effect.
+  const cheapBoost = Math.abs(device.cheapDelta);
+  const expensiveReduction = Math.abs(device.expensiveDelta);
   const displayName = formatDisplayDeviceName(device.name);
 
   return (

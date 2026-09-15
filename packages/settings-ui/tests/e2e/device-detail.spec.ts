@@ -177,6 +177,23 @@ test.describe('Device detail panel', () => {
     }, { timeout: 3000 }).toMatchObject({ cheapDelta: 3, expensiveDelta: -2.5 });
   });
 
+  test('A signed delta is saved as a magnitude, and the field shows what was saved', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+
+    // Both fields are magnitudes: a typed "-3" boost is applied as 3.
+    await setMdValue(page, '#device-detail-cheap-delta', '-3');
+
+    await expect.poll(async () => {
+      const settings = await readHomeySetting<Record<string, { cheapDelta?: number }>>(
+        page,
+        'price_optimization_settings',
+      );
+      return settings?.dev_heatpump?.cheapDelta;
+    }, { timeout: 3000 }).toBe(3);
+    await expect.poll(() => page.locator('#device-detail-cheap-delta')
+      .evaluate((field) => (field as HTMLInputElement).value), { timeout: 3000 }).toBe('3');
+  });
+
   test('Use solar surplus toggle reveals the boost section and persists', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
     await page.locator('#device-detail-setup-section summary').click();
