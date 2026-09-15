@@ -9,6 +9,8 @@
 // - a pin-to-main device inside a sub-home zone included again.
 // Only outward seams are mocked: the membership service runs real over the
 // shared mock settings store; the pipeline runs the real sample ingest.
+import { unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
@@ -334,13 +336,13 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
     const ctx = makeCtx(service);
     let saved: PowerTrackerState = {};
     const planEngine = {
-      state: undefined,
+      state: createPlanEngineState(),
       clearStartupRestoreStabilization: vi.fn(),
     } as unknown as PlanEngine;
     const planService = {
       getLatestPlanSnapshot: vi.fn(() => null),
-      getLatestPlanSnapshotUpdatedAtMs: vi.fn(() => null),
-      rebuildPlanFromCache: vi.fn(async () => undefined),
+      getLatestPublishedPlan: () => null,
+      rebuildPlanFromCache: vi.fn(async () => unchangedRebuildOutcome()),
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService;
     const nowMs = Date.UTC(2026, 0, 15, 12, 0, 0);
@@ -353,7 +355,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
         getScheduler: () => scheduler,
         getCapacityGuard: () => guard,
         getNowMs: () => nowMs,
-        rebuildPlanFromCache: async () => undefined,
+        rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
       },
       powerSampleRebuildCadence(),
       initialPlanRebuildThrottleMemory(),

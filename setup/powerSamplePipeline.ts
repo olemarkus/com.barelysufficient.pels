@@ -13,7 +13,7 @@ import { sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
-import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
+import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type {
@@ -289,14 +289,8 @@ export class PowerSamplePipeline {
     try {
       const planEngine = this.deps.getPlanEngine();
       const planService = this.deps.getPlanService();
-      const planState = planEngine?.state;
-      const latestPlanSummary = buildPlanCapacityStateSummary(
-        planService.getLatestPlanSnapshot(),
-        {
-          summarySource: 'plan_snapshot',
-          summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
-        },
-      );
+      const planState = planEngine.state;
+      const latestPlanSummary = buildPublishedPlanCapacityStateSummary(planService.getLatestPublishedPlan());
       // What the last plan says about whether rebuilding can change anything,
       // resolved by the planner (`resolvePlanRebuildPosture`); the throttle gates
       // on it so an unwinnable state rides the max-interval cadence instead of

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
+import { throttleMemoryFixture, unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 
 // What a device observation may do to the throttle's memory — and what it must
 // leave alone. The scheduler stub never executes; only `onObservation` runs.
@@ -11,7 +11,7 @@ const suppressedThrottle = (holdoffCause: 'noop' | 'mitigation'): PlanRebuildThr
     getScheduler: () => ({ request: () => ({ status: 'accepted' }) }) as unknown as PlanRebuildScheduler,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getNowMs: () => 10_000,
-    rebuildPlanFromCache: async () => undefined,
+    rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
   },
   { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 30_000 },
   throttleMemoryFixture({

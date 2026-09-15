@@ -15,12 +15,18 @@ export type CapacityGuardOptions = {
    * Required so every hard-cap incident record is attributable.
    */
   homeId: HomeId;
-  onShortfall?: ShortfallCallback;
-  onShortfallCleared?: TriggerCallback;
-  onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
-  onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
   /**
-   * Required: both factories always inject the home-attributed `capacity`
+   * The four incident callbacks are required for the same reason as the
+   * logger: the one factory (`createHomeCapacityGuard`) always wires them, so
+   * an optional here would only ever be absent in a test — and a guard missing
+   * its alert callbacks silently never alerts.
+   */
+  onShortfall: ShortfallCallback;
+  onShortfallCleared: TriggerCallback;
+  onShortfallAlertCandidate: ShortfallAlertCandidateCallback;
+  onShortfallAlertConditionCleared: ShortfallAlertConditionClearedCallback;
+  /**
+   * Required: the one factory always injects the home-attributed `capacity`
    * logger, so a module-logger default would only ever fire in a test and would
    * silently drop the `homeId` correlation every incident log depends on.
    */
@@ -65,10 +71,10 @@ export default class CapacityGuard {
   private inShortfall = false;
 
   // Callbacks
-  private onShortfall?: ShortfallCallback;
-  private onShortfallCleared?: TriggerCallback;
-  private onShortfallAlertCandidate?: ShortfallAlertCandidateCallback;
-  private onShortfallAlertConditionCleared?: ShortfallAlertConditionClearedCallback;
+  private onShortfall: ShortfallCallback;
+  private onShortfallCleared: TriggerCallback;
+  private onShortfallAlertCandidate: ShortfallAlertCandidateCallback;
+  private onShortfallAlertConditionCleared: ShortfallAlertConditionClearedCallback;
 
   private structuredLog: CapacityGuardLogger;
   private homeId: HomeId;
@@ -155,11 +161,11 @@ export default class CapacityGuard {
 
   private publishShortfallAlertCondition(active: boolean, deficitKw: number): void {
     if (!active) {
-      this.onShortfallAlertConditionCleared?.();
+      this.onShortfallAlertConditionCleared();
       return;
     }
     if (this.incidentId === null) return;
-    this.onShortfallAlertCandidate?.({
+    this.onShortfallAlertCandidate({
       incidentId: this.incidentId,
       deficitKw,
       detectedAtMs: this.incidentStartMs,
@@ -187,7 +193,7 @@ export default class CapacityGuard {
     });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;
-    await this.onShortfall?.(totalKw - shortfallThresholdKw);
+    await this.onShortfall(totalKw - shortfallThresholdKw);
   }
 
   private async maybeClearShortfall(
@@ -237,7 +243,7 @@ export default class CapacityGuard {
       // The verdict was about a reading this incident has recovered from; the
       // next breach gets its own before anything reads the alert condition.
       this.planLeftNothingToShed = false;
-      await this.onShortfallCleared?.();
+      await this.onShortfallCleared();
     }
   }
 

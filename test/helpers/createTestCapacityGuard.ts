@@ -1,24 +1,28 @@
 import CapacityGuard, { type CapacityGuardOptions } from '../../lib/power/capacityGuard';
 import type { PlanInputCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 
+type TestCapacityGuardOptions = Pick<CapacityGuardOptions, 'homeId'>
+  & Partial<Omit<CapacityGuardOptions, 'homeId'>>;
+
 /**
- * Constructs a `CapacityGuard` for tests that do not assert on its structured
- * logs.
+ * Constructs a `CapacityGuard` for tests that do not assert on everything it
+ * reports.
  *
- * `structuredLog` is required on the production type on purpose: both factories
- * always inject the home-attributed `capacity` logger, and a default inside the
- * guard would silently drop the `homeId` correlation every incident log depends
- * on. Tests that *do* assert on logging pass their own spy through here; the
- * rest get a sink, so the requirement stays honest in production without
- * forcing a logger into every fixture.
+ * `structuredLog` and the four incident callbacks are required on the
+ * production type on purpose: the one factory always injects them, and a
+ * default inside the guard would silently drop the `homeId` correlation every
+ * incident log depends on, or an alert. Tests that *do* assert on one pass their
+ * own spy through here; the rest get a sink, so the requirement stays honest in
+ * production without forcing every fixture to wire what it never reads.
  */
-export function createTestCapacityGuard(
-  options: Omit<CapacityGuardOptions, 'structuredLog'>
-    & Partial<Pick<CapacityGuardOptions, 'structuredLog'>>,
-): CapacityGuard {
+export function createTestCapacityGuard(options: TestCapacityGuardOptions): CapacityGuard {
   return new CapacityGuard({
+    structuredLog: { info: () => undefined },
+    onShortfall: () => undefined,
+    onShortfallCleared: () => undefined,
+    onShortfallAlertCandidate: () => undefined,
+    onShortfallAlertConditionCleared: () => undefined,
     ...options,
-    structuredLog: options.structuredLog ?? { info: () => undefined },
   });
 }
 

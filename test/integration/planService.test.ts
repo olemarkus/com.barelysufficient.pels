@@ -797,7 +797,7 @@ describe('PlanService', () => {
       isOverviewDebugEnabled: () => true,
     });
 
-    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
+    const publishedPlan = buildPlan(20, 'keep', {}, {
       currentState: 'off',
       plannedState: 'keep',
       boostActive: false,
@@ -805,7 +805,8 @@ describe('PlanService', () => {
       expectedPowerKw: 3,
       binaryCommandPending: true,
     });
-    service['emitPlanUpdated'](service['latestPlanSnapshot']);
+    service['rebuildHost'].publishPlan(publishedPlan, Date.now());
+    service['emitPlanUpdated'](publishedPlan);
     overviewDebugStructured.mockClear();
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
@@ -871,7 +872,7 @@ describe('PlanService', () => {
         },
       },
     );
-    service['latestPlanSnapshot'] = runtimePlan;
+    service['rebuildHost'].publishPlan(runtimePlan, Date.now());
 
     expect(service.getLatestPlanSnapshot()).toBe(runtimePlan);
     expect(service.getLatestPlanSnapshotForUi()).toEqual({
@@ -1170,14 +1171,14 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       currentTemperature: 20,
       plannedState: 'keep',
       boostActive: false,
       plannedTarget: 20,
-    });
+    }), Date.now());
 
     // `syncLivePlanState` must not publish drifted live state as the committed
     // snapshot: the device reads off while the plan wants it on, which is NOT a
@@ -1258,14 +1259,14 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
     });
 
-    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       currentTemperature: 20,
       plannedState: 'keep',
       boostActive: false,
       plannedTarget: 20,
-    });
+    }), Date.now());
 
     // Predicate reports the revision moved → the rebuild aborts before planning
     // or touching devices.
@@ -1348,7 +1349,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['latestPlanSnapshot'] = buildPlan(18, 'keep');
+    service['rebuildHost'].publishPlan(buildPlan(18, 'keep'), Date.now());
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
@@ -1451,7 +1452,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['latestPlanSnapshot'] = decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep'));
+    service['rebuildHost'].publishPlan(decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep')), Date.now());
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -1520,14 +1521,14 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['latestPlanSnapshot'] = {
+    service['rebuildHost'].publishPlan({
       ...buildPlan(20, 'meter settling (30s remaining)', {}, {
         currentState: 'on',
         plannedState: 'shed',
         boostActive: false,
       }),
       generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
-    };
+    }, Date.now());
 
     vi.setSystemTime(new Date('2026-02-07T00:00:10.000Z'));
 
@@ -1604,14 +1605,14 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['latestPlanSnapshot'] = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
+    service['rebuildHost'].publishPlan(buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
       currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 20,
       currentTemperature: 20,
       plannedTarget: 20,
-    });
+    }), Date.now());
 
     await expect(service.syncLivePlanState('device_update')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -2518,7 +2519,7 @@ describe('PlanService', () => {
       }),
     ], 'rebuild');
 
-    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, { binaryCommandPending: true });
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, { binaryCommandPending: true }), Date.now());
     liveDevices = [buildLiveDevice(realtimeEvidence)];
     settleDevices = [{
       id: 'dev-1',
@@ -3648,20 +3649,20 @@ describe('rebuild ordering', () => {
       const { service } = createPlanService();
       expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
 
-      service['latestPlanSnapshot'] = buildPlan(20, 'shed due to capacity', {}, {
+      service['rebuildHost'].publishPlan(buildPlan(20, 'shed due to capacity', {}, {
         plannedState: 'shed', shedAction: 'set_temperature',
-      });
+      }), Date.now());
       expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(true);
       expect(service.isDeviceLimitedInLatestPlan('someone-else')).toBe(false);
 
       // Limited BY SETPOINT only: a device PELS turned off has not had its
       // setpoint touched, so a change there is a preference and is adopted.
-      service['latestPlanSnapshot'] = buildPlan(20, 'shed due to capacity', {}, {
+      service['rebuildHost'].publishPlan(buildPlan(20, 'shed due to capacity', {}, {
         plannedState: 'shed', shedAction: 'turn_off',
-      });
+      }), Date.now());
       expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
 
-      service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, { plannedState: 'keep' });
+      service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, { plannedState: 'keep' }), Date.now());
       expect(service.isDeviceLimitedInLatestPlan('dev-1')).toBe(false);
     });
   });

@@ -21,6 +21,16 @@ export const throttleMemoryFixture = (
 ): PlanRebuildThrottleMemory => ({ ...initialPlanRebuildThrottleMemory(), ...overrides });
 
 /**
+ * What `PlanService.rebuildPlanFromCache` resolves for a build that changed
+ * nothing — the outcome a stub that builds no plan honestly stands for.
+ */
+export const unchangedRebuildOutcome = (): RebuildOutcome => ({
+  actionChanged: false,
+  appliedActions: false,
+  failed: false,
+});
+
+/**
  * A throttle and the scheduler it queues into, wired as production wires them
  * (`lib/plan/rebuildScheduler/homeRebuildRuntime.ts`, the one factory the main
  * home and every meter area build theirs with): due times and execution come
@@ -32,7 +42,7 @@ export const throttleMemoryFixture = (
  * what reading the throttle handed it without stubbing the guard away.
  */
 export const createTestPlanRebuildThrottle = (params: {
-  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome>;
   cadence: RebuildCadence;
   memory?: PlanRebuildThrottleMemory;
   getNowMs?: () => number;
@@ -166,6 +176,6 @@ export const rememberLastRebuild = (throttle: PlanRebuildThrottle, atMs: number,
 
 /** A throttle for a context stub that never samples: inert scheduler, no-op rebuild. */
 export const createInertPlanRebuildThrottle = (): PlanRebuildThrottle => createTestPlanRebuildThrottle({
-  rebuildPlanFromCache: async () => undefined,
+  rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
   cadence: { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 100 },
 }).throttle;

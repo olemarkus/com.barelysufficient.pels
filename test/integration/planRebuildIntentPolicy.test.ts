@@ -6,7 +6,7 @@ import type { PlanRebuildScheduler, RebuildIntent, SchedulerState } from '../../
 import { PlanRebuildThrottle, type PlanRebuildThrottleMemory } from '../../lib/plan/rebuildScheduler/throttle';
 import { PlanRebuildIntentPolicy } from '../../lib/plan/rebuildScheduler/intentPolicy';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { schedulePowerSampleForTest, throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
+import { schedulePowerSampleForTest, throttleMemoryFixture, unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 
 // `FLOW_REBUILD_COALESCE_MS` is 0 under NODE_ENV=test (the suite must not be
 // delayed); the trailing cooldown is 1 s in every environment.
@@ -37,7 +37,7 @@ const buildPolicy = (options: {
   memory?: Partial<PlanRebuildThrottleMemory>;
   planRebuildNowMs?: number;
 } = {}) => {
-  const rebuildPlanFromCache = vi.fn(async () => undefined);
+  const rebuildPlanFromCache = vi.fn(async () => unchangedRebuildOutcome());
   const scheduler = {
     request: () => ({ status: 'accepted' as const, keptIntent: signal }),
   } as unknown as PlanRebuildScheduler;

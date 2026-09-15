@@ -79,6 +79,7 @@ import { emitDeviceOverviewTransitions } from './planOverviewEmit';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanServiceDeps } from './planServiceDeps';
+import type { PublishedPlan } from './publishedPlan';
 
 const logger = getLogger('plan/service');
 
@@ -101,8 +102,7 @@ const serializePlanForUi = (
 };
 
 export class PlanService {
-  private latestPlanSnapshot: DevicePlan | null = null;
-  private latestPlanSnapshotUpdatedAtMs: number | null = null;
+  private latestPublishedPlan: PublishedPlan | null = null;
   private lastOverviewSignatureByDeviceId = new Map<string, string>();
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
@@ -131,10 +131,9 @@ export class PlanService {
     });
     this.rebuildHost = {
       deps,
-      getLatestPlanSnapshot: () => this.latestPlanSnapshot,
-      setLatestPlanSnapshot: (plan) => { this.latestPlanSnapshot = plan; },
-      getLatestPlanSnapshotUpdatedAtMs: () => this.latestPlanSnapshotUpdatedAtMs,
-      setLatestPlanSnapshotUpdatedAtMs: (ms) => { this.latestPlanSnapshotUpdatedAtMs = ms; },
+      getLatestPlanSnapshot: () => this.getLatestPlanSnapshot(),
+      getLatestPublishedPlan: () => this.latestPublishedPlan,
+      publishPlan: (plan, publishedAtMs) => { this.latestPublishedPlan = { plan, publishedAtMs }; },
       settleDevices: () => this.settleDevices(),
       steppedSettleDevices: () => this.deps.getSteppedSettleDevices(),
       trackChanges: (plan, metaSignature) => this.changeTracker.track(plan, metaSignature),
@@ -207,7 +206,11 @@ export class PlanService {
 
 
   getLatestPlanSnapshot(): DevicePlan | null {
-    return this.latestPlanSnapshot;
+    return this.latestPublishedPlan?.plan ?? null;
+  }
+
+  getLatestPublishedPlan(): PublishedPlan | null {
+    return this.latestPublishedPlan;
   }
 
   /**
@@ -222,14 +225,15 @@ export class PlanService {
    * yet means nothing is limited.
    */
   isDeviceLimitedInLatestPlan(deviceId: string): boolean {
-    if (this.latestPlanSnapshot === null) return false;
-    return this.latestPlanSnapshot.devices.some(
+    const plan = this.getLatestPlanSnapshot();
+    if (plan === null) return false;
+    return plan.devices.some(
       (device) => device.id === deviceId && device.plannedState === 'shed' && device.shedAction === 'set_temperature',
     );
   }
 
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
-    return serializePlanForUi(this.latestPlanSnapshot, this.deps, this.idleClassifier);
+    return serializePlanForUi(this.getLatestPlanSnapshot(), this.deps, this.idleClassifier);
   }
 
   serializePlanSnapshotForUi(plan: DevicePlan | null): SettingsUiPlanSnapshot | null {
@@ -237,7 +241,7 @@ export class PlanService {
   }
 
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
-    return this.latestPlanSnapshotUpdatedAtMs;
+    return this.latestPublishedPlan?.publishedAtMs ?? null;
   }
 
   private stampPlanGeneratedAt(plan: DevicePlan, nowMs = Date.now()): DevicePlan {
@@ -293,22 +297,21 @@ export class PlanService {
       ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged || steppedChanged;
-    if (!this.latestPlanSnapshot) {
+    const current = this.getLatestPlanSnapshot();
+    if (current === null) {
       return pendingChanged;
     }
 
     const livePlan = this.decoratePlanWithPendingTargetCommands(
       buildLiveStatePlan(
-        this.latestPlanSnapshot,
+        current,
         liveDevices,
         (deviceId) => this.deps.planEngine.hasActiveBinaryTurnOnCommand(deviceId),
       ),
     );
-    if (this.deps.planEngine.hasSettledActuation(this.latestPlanSnapshot, livePlan)) {
-      const refreshedPlan = this.preservePlanGeneratedAt(livePlan, this.latestPlanSnapshot);
-      const nowMs = Date.now();
-      this.latestPlanSnapshot = refreshedPlan;
-      this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    if (this.deps.planEngine.hasSettledActuation(current, livePlan)) {
+      const refreshedPlan = this.preservePlanGeneratedAt(livePlan, current);
+      this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
       this.emitPlanUpdated(refreshedPlan);
       return true;
     }
@@ -317,14 +320,12 @@ export class PlanService {
       return false;
     }
 
-    const nextPlan = this.decoratePlanWithPendingTargetCommands(this.latestPlanSnapshot);
-    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
+    const nextPlan = this.decoratePlanWithPendingTargetCommands(current);
+    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) {
       return false;
     }
-    const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, this.latestPlanSnapshot);
-    const nowMs = Date.now();
-    this.latestPlanSnapshot = refreshedPlan;
-    this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, current);
+    this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
     this.emitPlanUpdated(refreshedPlan);
     return true;
   }

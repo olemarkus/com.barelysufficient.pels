@@ -44,7 +44,7 @@ export async function buildSheddingPlan(
   await reportShortfallToGuard(context, power, state, selection, deps);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
-  const guardInShortfall = deps.capacityGuard.isInShortfall() ?? false;
+  const guardInShortfall = deps.capacityGuard.isInShortfall();
   const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
     shedSet,

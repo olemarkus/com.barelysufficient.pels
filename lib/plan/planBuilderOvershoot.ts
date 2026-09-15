@@ -143,7 +143,7 @@ export class OvershootTracker {
             ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
           },
           devices: planDevices,
-        }),
+        }, { summarySource: 'plan_build', summarySourceAtMs: nowTs }),
         ...overshootDiagnostics.logFields,
       });
       this.attributeOvershootToRecentRestores(deviceNameById, nowTs, overshootDiagnostics);

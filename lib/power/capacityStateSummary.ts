@@ -1,29 +1,9 @@
-export type CapacityStateSummarySource = 'plan_input' | 'plan_snapshot' | null;
-
-export type PlanCapacityStateCounts = {
-  controlledDevices: number | null;
-  plannedShedDevices: number | null;
-  pendingPlannedShedDevices: number | null;
-  activePlannedShedDevices: number | null;
-  activeControlledDevices: number | null;
-  zeroDrawControlledDevices: number | null;
-  pendingControlledDevices: number | null;
-  blockedByCooldownDevices: number | null;
-  blockedByPenaltyDevices: number | null;
-  blockedByInvariantDevices: number | null;
-  controlledPowerW: number | null;
-  uncontrolledPowerW: number | null;
-  remainingReducibleControlledLoadW: number | null;
-  remainingReducibleControlledLoad: boolean | null;
-  remainingActionableControlledLoadW: number | null;
-  remainingActionableControlledLoad: boolean | null;
-  actuationInFlight: boolean | null;
-};
-
-export type PlanCapacityStateSummary = PlanCapacityStateCounts & {
-  summarySource: CapacityStateSummarySource;
-  summarySourceAtMs: number | null;
-};
+/**
+ * Where a capacity summary was read from: a plan build's input at a shortfall
+ * verdict, the plan being assembled (the overshoot record), or the published
+ * snapshot.
+ */
+export type CapacityStateSummarySource = 'plan_input' | 'plan_build' | 'plan_snapshot';
 
 export type KnownPlanCapacityStateCounts = {
   controlledDevices: number;
@@ -46,6 +26,21 @@ export type KnownPlanCapacityStateCounts = {
 };
 
 /**
+ * A published plan's capacity state. Every count and every load figure is
+ * known whenever there is a plan; "no plan yet" is the whole summary being
+ * absent (`buildPublishedPlanCapacityStateSummary` answers `null`), not
+ * nineteen fields each free to be null on their own. One pair stays nullable,
+ * for the one reachable state that needs it: the managed/background split on an
+ * unmeasured build.
+ */
+export type PlanCapacityStateSummary = Omit<KnownPlanCapacityStateCounts, 'controlledPowerW' | 'uncontrolledPowerW'> & {
+  controlledPowerW: number | null;
+  uncontrolledPowerW: number | null;
+  summarySource: CapacityStateSummarySource;
+  summarySourceAtMs: number;
+};
+
+/**
  * The plan input's capacity state at a hard-cap verdict: what one build walked
  * from its device list over the shortfall threshold, and nothing it did not. The
  * restore-side hold counts (`blockedBy*`) are absent because a plan input carries
@@ -63,30 +58,6 @@ export type PlanInputCapacityStateSummary = Omit<
   summarySource: 'plan_input';
   summarySourceAtMs: number;
 };
-
-export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
-  return {
-    controlledDevices: null,
-    plannedShedDevices: null,
-    pendingPlannedShedDevices: null,
-    activePlannedShedDevices: null,
-    activeControlledDevices: null,
-    zeroDrawControlledDevices: null,
-    pendingControlledDevices: null,
-    blockedByCooldownDevices: null,
-    blockedByPenaltyDevices: null,
-    blockedByInvariantDevices: null,
-    controlledPowerW: null,
-    uncontrolledPowerW: null,
-    remainingReducibleControlledLoadW: null,
-    remainingReducibleControlledLoad: null,
-    remainingActionableControlledLoadW: null,
-    remainingActionableControlledLoad: null,
-    actuationInFlight: null,
-    summarySource: null,
-    summarySourceAtMs: null,
-  };
-}
 
 export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateCounts {
   return {

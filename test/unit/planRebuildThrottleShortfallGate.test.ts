@@ -3,7 +3,7 @@ import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PowerRebuildSignal } from '../../lib/plan/rebuildScheduler/rebuildSignal';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
+import { throttleMemoryFixture, unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 
 const signalWith = (overrides: Partial<PowerRebuildSignal> = {}): PowerRebuildSignal => ({
   currentPowerW: 5000,
@@ -34,7 +34,7 @@ const buildThrottle = (options: { lastRebuiltAtMs: number | null; suppressionInv
       getScheduler: () => ({ request }) as unknown as PlanRebuildScheduler,
       getCapacityGuard: () => guard,
       getNowMs: () => 10_000,
-      rebuildPlanFromCache: async () => undefined,
+      rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
     },
     { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 30_000 },
     throttleMemoryFixture({

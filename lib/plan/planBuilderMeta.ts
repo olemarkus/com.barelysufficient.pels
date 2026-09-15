@@ -62,7 +62,7 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     budgetPaceKw: context.budgetPaceKw,
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
-    capacityShortfall: capacityGuard.isInShortfall() ?? false,
+    capacityShortfall: capacityGuard.isInShortfall(),
     shortfallBudgetThresholdKw,
     hardCapLimitKw: capacityLimitKw,
     hourlyBudgetExhausted,

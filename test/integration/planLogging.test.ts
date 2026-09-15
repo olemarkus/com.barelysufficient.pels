@@ -1,5 +1,6 @@
 import {
   buildPlanCapacityStateSummary,
+  buildPublishedPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignatureFromEvent,
   buildPlanSignature,
@@ -11,6 +12,8 @@ import { fixtureControlPosture } from '../utils/planTestUtils';
 const r = fixtureDeviceReason;
 const KEEP_REASON = r('keep')!;
 const CAPACITY_REASON = r('shed due to capacity')!;
+
+const SNAPSHOT_SOURCE = { summarySource: 'plan_snapshot', summarySourceAtMs: 1234 } as const;
 
 describe('plan logging helpers', () => {
   it('builds a deterministic plan signature', () => {
@@ -114,7 +117,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual({
       controlledDevices: 5,
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
@@ -127,8 +130,8 @@ describe('plan logging helpers', () => {
       blockedByCooldownDevices: 1,
       blockedByPenaltyDevices: 1,
       blockedByInvariantDevices: 1,
-      summarySource: null,
-      summarySourceAtMs: null,
+      summarySource: 'plan_snapshot',
+      summarySourceAtMs: 1234,
       controlledPowerW: null,
       uncontrolledPowerW: null,
       remainingReducibleControlledLoadW: 4000,
@@ -166,7 +169,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual(expect.objectContaining({
       remainingReducibleControlledLoadW: 2000,
       remainingReducibleControlledLoad: true,
       remainingActionableControlledLoadW: 0,
@@ -191,7 +194,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual(expect.objectContaining({
       blockedByInvariantDevices: 1,
       remainingReducibleControlledLoadW: 1000,
       remainingReducibleControlledLoad: true,
@@ -238,7 +241,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual(expect.objectContaining({
       activeControlledDevices: 1,
       blockedByInvariantDevices: 1,
       remainingReducibleControlledLoadW: 0,
@@ -287,7 +290,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual(expect.objectContaining({
       activeControlledDevices: 1,
       remainingReducibleControlledLoadW: 1193,
       remainingReducibleControlledLoad: true,
@@ -326,7 +329,7 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+    expect(buildPlanCapacityStateSummary(plan, SNAPSHOT_SOURCE)).toEqual(expect.objectContaining({
       remainingReducibleControlledLoadW: 0,
       remainingReducibleControlledLoad: false,
       remainingActionableControlledLoadW: 0,
@@ -334,28 +337,10 @@ describe('plan logging helpers', () => {
     }));
   });
 
-  it('returns explicit null summary fields when no plan is available', () => {
-    expect(buildPlanCapacityStateSummary(null)).toEqual({
-      controlledDevices: null,
-      plannedShedDevices: null,
-      pendingPlannedShedDevices: null,
-      activePlannedShedDevices: null,
-      activeControlledDevices: null,
-      zeroDrawControlledDevices: null,
-      pendingControlledDevices: null,
-      blockedByCooldownDevices: null,
-      blockedByPenaltyDevices: null,
-      blockedByInvariantDevices: null,
-      summarySource: null,
-      summarySourceAtMs: null,
-      controlledPowerW: null,
-      uncontrolledPowerW: null,
-      remainingReducibleControlledLoadW: null,
-      remainingReducibleControlledLoad: null,
-      remainingActionableControlledLoadW: null,
-      remainingActionableControlledLoad: null,
-      actuationInFlight: null,
-    });
+  it('has no summary at all when no plan has been published', () => {
+    // Absence is the whole summary, not nineteen null fields a reader could
+    // mistake for a plan that proved nothing is left.
+    expect(buildPublishedPlanCapacityStateSummary(null)).toBeNull();
   });
 
   it('builds grouped structured debug summaries for restore-blocked and inactive devices', () => {

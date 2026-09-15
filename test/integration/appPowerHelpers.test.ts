@@ -32,11 +32,13 @@ import type {
 } from '../../packages/contracts/src/types';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import type { RebuildOutcome } from '../../lib/plan/rebuildScheduler/policy';
 import {
   createTestPlanRebuildThrottle,
   throttleMemoryFixture,
   schedulePowerSampleForTest,
   scheduleSignalForTest,
+  unchangedRebuildOutcome,
 } from '../helpers/powerRebuildScheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
@@ -114,7 +116,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('rebuilds immediately when a control boundary is already crossed', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -134,7 +136,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('schedules and coalesces rebuilds when a boundary sample arrives too soon', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const logError = vi.fn();
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
@@ -166,7 +168,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('uses the latest coalesced sample values when a timed rebuild fires', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
@@ -195,7 +197,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('creates a pending rebuild when a boundary sample arrives within the min interval', () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
@@ -215,7 +217,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('resolves the pending promise with the cancel reason when the scheduler cancels a queued rebuild', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle, scheduler } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
@@ -248,7 +250,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
         getScheduler: () => scheduler,
         getCapacityGuard: createCapacityGuardMock,
         getNowMs: Date.now,
-        rebuildPlanFromCache: async () => undefined,
+        rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
       },
       { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
       throttleMemoryFixture({ lastRebuild: { atMs: Date.now(), powerW: 0, hardCapBreach: { breached: false, deficitKw: 0 } } }),
@@ -274,31 +276,8 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     expect(throttle.snapshot().queued?.signal.hardCapBreach).toEqual({ breached: true, deficitKw: 0.6 });
   });
 
-  it('logs errors from scheduled boundary rebuilds', async () => {
-    const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
-    const logError = vi.fn();
-    const { throttle } = createTestPlanRebuildThrottle({
-      rebuildPlanFromCache,
-      logError,
-      cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
-      memory: throttleMemoryFixture({ lastRebuild: { atMs: Date.now(), powerW: 0, hardCapBreach: { breached: false, deficitKw: 0 } } }),
-    });
-
-    const pending = schedulePowerSampleForTest({
-      throttle,
-      limitKw: 10,
-      currentPowerW: 9500,
-      capacityPaceKw: 9,
-    });
-
-    vi.advanceTimersByTime(1000);
-    await expect(pending).rejects.toThrow('boom');
-
-    expect(logError).toHaveBeenCalledWith(expect.any(Error));
-  });
-
   it('skips rebuild when power change is below threshold and soft limit is stable', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -316,7 +295,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('does not rebuild only because the soft limit changes', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -337,7 +316,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     // Power crosses the 9 kW danger threshold with only a 30 W delta — below the 100 W
     // meaningful-delta threshold. Without headroom pressure or an exceeded max interval
     // there is no reason to rebuild; the previous plan is still valid.
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -359,7 +338,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
 
   it('does not rebuild when already in danger zone with no meaningful power change', async () => {
     // lastRebuildPowerW in danger zone (9050 W >= 9000 W threshold), so treated as sustained
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -377,7 +356,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('rebuilds when sustained in danger zone after max interval', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 10000 },
@@ -395,7 +374,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('does not rebuild while headroom stays safely positive even if power changes meaningfully', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 30000 },
@@ -413,7 +392,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('rebuilds after max interval even if delta is small', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 500, stableMinIntervalMs: 500, maxIntervalMs: 1000 },
@@ -434,7 +413,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   // possible to hand one in as a `powerDeltaW` hint instead, but no producer
   // ever did, so the sample is now the only source.
   it('rebuilds on a meaningful delta from the last rebuild power and stamps the new sample', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 10000 },
@@ -459,9 +438,9 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('preserves a follow-up pending rebuild when a new boundary sample arrives during a timed rebuild', async () => {
-    let resolveRebuild: (() => void) | undefined;
+    let resolveRebuild: ((outcome: RebuildOutcome) => void) | undefined;
     const rebuildPlanFromCache = vi.fn().mockImplementation(
-      () => new Promise<void>((resolve) => {
+      () => new Promise<RebuildOutcome>((resolve) => {
         resolveRebuild = resolve;
       }),
     );
@@ -495,7 +474,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     expect(throttle.snapshot().queued?.signal.currentPowerW).toBe(9700);
     expect(throttle.snapshot().queued?.signal.capacityPaceKw).toBe(8.7);
 
-    resolveRebuild?.();
+    resolveRebuild?.(unchangedRebuildOutcome());
     await Promise.resolve();
     await Promise.resolve();
 
@@ -508,7 +487,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('cancels pending timer and performs an immediate rebuild when interval is exceeded', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const logError = vi.fn();
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
@@ -734,7 +713,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('skips unchanged repeated hard-cap breaches before shortfall is active', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 30_000 },
@@ -755,7 +734,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('rebuilds repeated hard-cap breaches when power changes meaningfully', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 30_000 },
@@ -777,7 +756,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('clears hard-cap breach state once a sample is no longer breached', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 0, stableMinIntervalMs: 0, maxIntervalMs: 30_000 },
@@ -827,7 +806,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   // summary deadlock the unrecoverable-shortfall skip against ever discovering
   // returned load).
   it('throttles an unactionable hard-cap breach without entering shortfall from the skip', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle, recordReading } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -848,7 +827,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('still refreshes an unactionable state once the max interval elapses', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -868,7 +847,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('does not throttle a hard-cap breach when there is still something to shed', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -888,7 +867,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('does not throttle an unactionable state while the plan is actively converging', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -909,7 +888,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
   });
 
   it('allows one re-check rebuild when the invalidation latch is set, then clears the latch', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -932,33 +911,54 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     expect(throttle.snapshot().suppressionInvalidated).toBeFalsy();
   });
 
-  it('clears the invalidation latch when a re-check rebuild rejects (error-path one-shot)', async () => {
-    const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
+  it('clears the invalidation latch when a re-check rebuild fails (one-shot)', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({ ...unchangedRebuildOutcome(), failed: true });
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
       memory: throttleMemoryFixture({ lastRebuild: { atMs: Date.now() - 20_000, powerW: 10_400, hardCapBreach: { breached: true, deficitKw: 0 } }, suppressionInvalidated: true }),
     });
 
-    await expect(
-      schedulePowerSampleForTest({
-        throttle,
-        limitKw: 10,
-        currentPowerW: 10_600,
-        capacityPaceKw: 9,
-        hardCapBreach: { breached: true, deficitKw: 0.6 },
-        // A sample outside shortfall spends the latch before deciding (kept from
-        // the free-function version), so the re-check is exercised in shortfall.
-        isInShortfall: true,
-        unactionable: true,
-      }),
-    ).rejects.toThrow('boom');
+    await schedulePowerSampleForTest({
+      throttle,
+      limitKw: 10,
+      currentPowerW: 10_600,
+      capacityPaceKw: 9,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      // A sample outside shortfall spends the latch before deciding (kept from
+      // the free-function version), so the re-check is exercised in shortfall.
+      isInShortfall: true,
+      unactionable: true,
+    });
 
     expect(throttle.snapshot().suppressionInvalidated).toBeFalsy();
   });
 
+  // The plan queue resolves a failed build as `failed: true` rather than
+  // rejecting, so this is the failure production actually delivers. It must back
+  // off like a thrown one, or a planner failing on every build re-runs at the
+  // minimum cadence for as long as the house stays tight.
+  it('backs a failed tight rebuild off like one that threw', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({ ...unchangedRebuildOutcome(), failed: true });
+    const { throttle } = createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 10000 },
+      memory: throttleMemoryFixture({ lastRebuild: { atMs: Date.now() - 2000, powerW: 0, hardCapBreach: { breached: false, deficitKw: 0 } } }),
+    });
+
+    await schedulePowerSampleForTest({
+      throttle,
+      limitKw: 10,
+      currentPowerW: 9500,
+      capacityPaceKw: 9,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('headroom_tight');
+    expect(throttle.snapshot()).toMatchObject({ noopStreak: 1, holdoff: { cause: 'noop' } });
+  });
+
   it('floors executed rebuilds while unactionable — even a hard-cap intent waits out the interval', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
@@ -993,7 +993,7 @@ describe('PlanRebuildThrottle — signal-level gates', () => {
     // unactionable initial sample would floor its due time to 0 + 15_000 and
     // defer the first rebuild to uptime 15s, despite the initial sample being
     // required to rebuild immediately.
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     // The scheduler resolves the due time, so it must be on the SAME monotonic
     // clock as the call — on epoch time the bogus 15_000 floor would compare
     // against `Date.now()`, execute anyway, and hide a regression of the
@@ -1030,7 +1030,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('does not rebuild for non-urgent power deltas even after the stable interval elapses', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 15000, maxIntervalMs: 30000 },
@@ -1057,7 +1057,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('skips the stable interval when convergence is active', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 15000, maxIntervalMs: 30000 },
@@ -1139,7 +1139,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   it('skips signal scheduling for unchanged repeated hard-cap breaches', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
@@ -1162,7 +1162,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   it('rebuilds repeated hard-cap breaches when the deficit grows without a power delta', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
@@ -1186,7 +1186,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   it('still rebuilds repeated hard-cap breaches at the max interval', async () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
@@ -1239,7 +1239,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('coalesces convergence samples within the min interval', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 1000, stableMinIntervalMs: 1000, maxIntervalMs: 30000 },
@@ -1267,7 +1267,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('does not rebuild convergence samples when the delta is not meaningful', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 15000, maxIntervalMs: 30000 },
@@ -1288,7 +1288,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('bypasses the stable interval when headroom is tight', async () => {
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       cadence: { minIntervalMs: 2000, stableMinIntervalMs: 15000, maxIntervalMs: 30000 },
@@ -1587,8 +1587,8 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
   });
 
   it('records rebuild timing after the async rebuild settles', async () => {
-    let resolveRebuild: (() => void) | undefined;
-    const rebuildPlanFromCache = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+    let resolveRebuild: ((outcome: RebuildOutcome) => void) | undefined;
+    const rebuildPlanFromCache = vi.fn().mockImplementation(() => new Promise<RebuildOutcome>((resolve) => {
       resolveRebuild = resolve;
     }));
     const { throttle } = createTestPlanRebuildThrottle({
@@ -1609,7 +1609,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
     expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));
 
     vi.advanceTimersByTime(25);
-    resolveRebuild?.();
+    resolveRebuild?.(unchangedRebuildOutcome());
     await pending;
 
     expect(addPerfDurationMock).toHaveBeenCalledWith('power_sample_rebuild_ms', 25);

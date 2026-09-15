@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { buildEmptyCapacityStateSummary, buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+import { buildEmptyCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import { resolvePlanRebuildPosture } from '../../lib/plan/planRebuildPosture';
+
+/** A state with nothing pending and no overshoot. */
+const idleState = () => ({
+  actuation: { hasInFlight: () => false },
+  pendingTargetCommands: {},
+  pendingBinaryCommands: {},
+  overshoot: new OvershootIncident(),
+});
 
 /** A state whose overshoot incident is open. */
 const activeIncident = (): OvershootIncident => {
@@ -15,8 +23,8 @@ const activeIncident = (): OvershootIncident => {
 // flag say why load is not actionable, not whether any is.
 const summaryWith = (overrides: Partial<ReturnType<typeof buildEmptyCapacityStateSummary>>) => ({
   ...buildEmptyCapacityStateSummary(),
-  summarySource: null,
-  summarySourceAtMs: null,
+  summarySource: 'plan_snapshot' as const,
+  summarySourceAtMs: 0,
   ...overrides,
 });
 
@@ -30,15 +38,15 @@ describe('resolvePlanRebuildPosture', () => {
     ]) {
       const posture = resolvePlanRebuildPosture(
         summaryWith({ remainingActionableControlledLoad: false, ...extra }),
-        null,
+        idleState(),
       );
       expect(posture.shortfallUnrecoverable).toBe(true);
     }
   });
 
-  it('is not unrecoverable when the summary could not say, or load remains', () => {
-    expect(resolvePlanRebuildPosture(buildNullCapacityStateSummary(), null).shortfallUnrecoverable).toBe(false);
-    expect(resolvePlanRebuildPosture(summaryWith({ remainingActionableControlledLoad: true }), null)
+  it('is not unrecoverable when there is no plan yet, or load remains', () => {
+    expect(resolvePlanRebuildPosture(null, idleState()).shortfallUnrecoverable).toBe(false);
+    expect(resolvePlanRebuildPosture(summaryWith({ remainingActionableControlledLoad: true }), idleState())
       .shortfallUnrecoverable).toBe(false);
   });
 

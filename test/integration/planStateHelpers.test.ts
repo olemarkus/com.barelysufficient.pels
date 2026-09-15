@@ -11,9 +11,8 @@ describe('isPlanActivelyConverging', () => {
     vi.useRealTimers();
   });
 
-  it('returns false for empty state', () => {
-    expect(isPlanActivelyConverging(null, { unactionable: false })).toBe(false);
-    expect(isPlanActivelyConverging(undefined, { unactionable: false })).toBe(false);
+  it('returns false for a state with no pending work and no overshoot', () => {
+    expect(isPlanActivelyConverging(createPlanEngineState(), { unactionable: false })).toBe(false);
   });
 
   it('returns true for active overshoot', () => {

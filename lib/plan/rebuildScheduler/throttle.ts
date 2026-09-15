@@ -50,7 +50,6 @@ export type PlanRebuildThrottleSnapshot = PlanRebuildThrottleMemory & {
 type RebuildDeferred = {
   promise: Promise<void | string>;
   resolve: (value: string | undefined) => void;
-  reject: (error: Error) => void;
 };
 
 /** The ONE rebuild waiting for its due time; later samples coalesce into it. */
@@ -74,17 +73,20 @@ export type PlanRebuildThrottleDeps = {
   getScheduler: () => PlanRebuildScheduler;
   getCapacityGuard: () => ThrottleCapacityGuardView;
   getNowMs: () => number;
-  rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome | void>;
+  /**
+   * `PlanService.rebuildPlanFromCache`. It never rejects: the plan queue
+   * contains a build that threw and resolves it as `failed: true`, which is the
+   * only failure this throttle handles.
+   */
+  rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome>;
 };
 
 const createDeferred = (): RebuildDeferred => {
   let resolve!: (value: string | undefined) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<void | string>((nextResolve, nextReject) => {
+  const promise = new Promise<void | string>((nextResolve) => {
     resolve = nextResolve;
-    reject = nextReject;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 };
 
 const resolveEffectiveMinIntervalMs = (signal: PowerRebuildSignal, cadence: RebuildCadence): number => {
@@ -259,20 +261,6 @@ export class PlanRebuildThrottle {
         }
         this.inFlight = null;
         deferred.resolve(undefined);
-      })
-      .catch((error: unknown) => {
-        const normalizedError = error instanceof Error ? error : new Error(String(error));
-        // No mitigation holdoff on the error path: a failed rebuild acted on
-        // nothing, so there is no command to let settle. The latch is still
-        // cleared, so a failed re-check cannot disarm the shortfall throttle for
-        // the rest of the incident — it stays a true one-shot.
-        if (!this.observedDuringFlight(observationSeqAtDispatch)) {
-          this.updateTightSuppressionAfterError(trigger);
-          this.suppressionInvalidated = false;
-        }
-        this.inFlight = null;
-        deferred.reject(normalizedError);
-        throw normalizedError;
       });
   }
 
@@ -468,7 +456,17 @@ export class PlanRebuildThrottle {
     return this.observationSeq !== seqAtDispatch;
   }
 
-  private updateTightSuppression(trigger: PlanRebuildTrigger, outcome: RebuildOutcome | void): void {
+  private updateTightSuppression(trigger: PlanRebuildTrigger, outcome: RebuildOutcome): void {
+    // A failed build backs off like a no-op, without the mitigation holdoff: it
+    // acted on nothing, so there is no command to let settle. Resetting the
+    // backoff instead would let a planner that fails on every build re-run at
+    // the minimum cadence for as long as the house stays tight. The caller still
+    // spends the invalidation latch, so a failed re-check cannot disarm the
+    // shortfall throttle for the rest of the incident.
+    if (outcome.failed) {
+      this.updateTightSuppressionAfterFailure(trigger);
+      return;
+    }
     const nowMs = this.deps.getNowMs();
     if (shouldApplyTightMitigationHoldoff(trigger, outcome)) {
       this.resetBackoff();
@@ -485,7 +483,7 @@ export class PlanRebuildThrottle {
     this.holdoff = { untilMs: nowMs + resolveTightNoopBackoffMs(this.noopStreak), cause: 'noop' };
   }
 
-  private updateTightSuppressionAfterError(trigger: PlanRebuildTrigger): void {
+  private updateTightSuppressionAfterFailure(trigger: PlanRebuildTrigger): void {
     if (!isTightReason(trigger)) {
       this.resetBackoff();
       return;
@@ -503,7 +501,7 @@ export class PlanRebuildThrottle {
    * never does is install the tight-NOOP backoff or spend the invalidation
    * latch: both rest on a verdict the observation just falsified.
    */
-  private settleAfterOvertakenRebuild(trigger: PlanRebuildTrigger, outcome: RebuildOutcome | void): void {
+  private settleAfterOvertakenRebuild(trigger: PlanRebuildTrigger, outcome: RebuildOutcome): void {
     if (!shouldApplyTightMitigationHoldoff(trigger, outcome)) return;
     // The overtaking observation already cleared any `noop` holdoff, so this is
     // the only clock left — the same 15 s the un-overtaken path arms.

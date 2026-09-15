@@ -208,8 +208,8 @@ export const resolveTightNoopBackoffMs = (streak: number): number => {
   );
 };
 
-export const shouldApplyTightNoopBackoff = (reason: PlanRebuildTrigger, outcome: RebuildOutcome | void): boolean => {
-  if (!isTightReason(reason) || !outcome) return false;
+export const shouldApplyTightNoopBackoff = (reason: PlanRebuildTrigger, outcome: RebuildOutcome): boolean => {
+  if (!isTightReason(reason)) return false;
   return outcome.actionChanged === false
     && outcome.appliedActions === false
     && outcome.failed === false;
@@ -217,9 +217,9 @@ export const shouldApplyTightNoopBackoff = (reason: PlanRebuildTrigger, outcome:
 
 export const shouldApplyTightMitigationHoldoff = (
   reason: PlanRebuildTrigger,
-  outcome: RebuildOutcome | void,
+  outcome: RebuildOutcome,
 ): boolean => {
-  if (!isTightReason(reason) || !outcome || outcome.failed) return false;
+  if (!isTightReason(reason) || outcome.failed) return false;
   return outcome.actionChanged || outcome.appliedActions;
 };
 

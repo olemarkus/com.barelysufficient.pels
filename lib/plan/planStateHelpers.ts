@@ -34,10 +34,9 @@ const hasPendingPlanWork = (planState: PlanConvergenceState): boolean => (
  * every power sample until Homey's cpuwarn watchdog kills the app.
  */
 export function isPlanActivelyConverging(
-  planState: PlanConvergenceState | null | undefined,
+  planState: PlanConvergenceState,
   options: PlanConvergenceOptions,
 ): boolean {
-  if (!planState) return false;
   if (hasPendingPlanWork(planState)) return true;
   return planState.overshoot.isActive() && !options.unactionable;
 }

@@ -1,6 +1,5 @@
 import {
   buildEmptyCapacityStateSummary,
-  buildNullCapacityStateSummary,
   type CapacityStateSummarySource,
   type PlanInputCapacityStateSummary,
   type PlanCapacityStateSummary,
@@ -10,6 +9,7 @@ import {
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import type { PublishedPlan } from './publishedPlan';
 import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type {
@@ -34,20 +34,18 @@ import {
 export type { PlanCapacityStateSummary } from '../power/capacityStateSummary';
 
 type CapacityStateSummaryMetadata = {
-  summarySource?: CapacityStateSummarySource;
-  summarySourceAtMs?: number | null;
+  summarySource: CapacityStateSummarySource;
+  summarySourceAtMs: number;
 };
 
 /**
  * Unwinnable plan state: the last plan proved there is nothing left to shed AND
  * nothing left to reduce, so a full rebuild cannot change any device action.
- * `=== false` (not `!== true`) so a null/startup summary is not unactionable.
  * Owns this resolution for every consumer (rebuild throttling, convergence) —
  * do not re-derive it from summary fields at call sites.
  */
 export function isPlanUnactionable(summary: PlanCapacityStateSummary): boolean {
-  return summary.remainingActionableControlledLoad === false
-    && summary.remainingReducibleControlledLoad === false;
+  return !summary.remainingActionableControlledLoad && !summary.remainingReducibleControlledLoad;
 }
 
 /**
@@ -65,13 +63,24 @@ export type PlanCapacityStateSummaryInput = Pick<DevicePlan, 'devices'> & {
     & (PlanMeasuredMetaFields | PlanUnmeasuredMetaFields);
 };
 
+/**
+ * The published plan's capacity state, or none when nothing has been published
+ * yet — the one place "no plan" becomes the absence of a summary.
+ */
+export function buildPublishedPlanCapacityStateSummary(
+  published: PublishedPlan | null,
+): PlanCapacityStateSummary | null {
+  if (published === null) return null;
+  return buildPlanCapacityStateSummary(published.plan, {
+    summarySource: 'plan_snapshot',
+    summarySourceAtMs: published.publishedAtMs,
+  });
+}
+
 export function buildPlanCapacityStateSummary(
-  plan: PlanCapacityStateSummaryInput | null | undefined,
-  metadata: CapacityStateSummaryMetadata = {},
+  plan: PlanCapacityStateSummaryInput,
+  metadata: CapacityStateSummaryMetadata,
 ): PlanCapacityStateSummary {
-  if (!plan) {
-    return buildNullCapacityStateSummary();
-  }
 
   const summary = buildEmptyCapacityStateSummary();
   for (const device of plan.devices) {
@@ -104,12 +113,12 @@ export function buildPlanCapacityStateSummary(
     controlledPowerW: plan.meta.powerIsMeasured ? roundPowerW(plan.meta.controlledKw) : null,
     uncontrolledPowerW: plan.meta.powerIsMeasured ? roundPowerW(plan.meta.uncontrolledKw) : null,
     remainingReducibleControlledLoadW,
-    remainingReducibleControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
+    remainingReducibleControlledLoad: remainingReducibleControlledLoadW > 0,
     remainingActionableControlledLoadW,
-    remainingActionableControlledLoad: (remainingActionableControlledLoadW ?? 0) > 0,
+    remainingActionableControlledLoad: remainingActionableControlledLoadW > 0,
     actuationInFlight: summary.pendingControlledDevices > 0,
-    summarySource: metadata.summarySource ?? null,
-    summarySourceAtMs: metadata.summarySourceAtMs ?? null,
+    summarySource: metadata.summarySource,
+    summarySourceAtMs: metadata.summarySourceAtMs,
   };
 }
 
@@ -231,8 +240,7 @@ function sumActionableControlledLoadKw(
   return totalKw;
 }
 
-function roundPowerW(powerKw: number | null | undefined): number | null {
-  if (typeof powerKw !== 'number' || !Number.isFinite(powerKw)) return null;
+function roundPowerW(powerKw: number): number {
   return Math.round(Math.max(0, powerKw * 1000));
 }
 

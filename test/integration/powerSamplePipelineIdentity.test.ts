@@ -6,6 +6,7 @@
 // identity claim together with its watts; samples that carry no identity field
 // (flow, sub-home meters) never publish. This is the seam that makes the fence
 // unable to move ahead of — or on different evidence than — the tracker.
+import { unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
@@ -69,8 +70,8 @@ const buildPipeline = (
     } as unknown as PlanEngine),
     getPlanService: () => ({
       getLatestPlanSnapshot: () => null,
-      getLatestPlanSnapshotUpdatedAtMs: () => null,
-      rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
+      getLatestPublishedPlan: () => null,
+      rebuildPlanFromCache: vi.fn(async () => unchangedRebuildOutcome()),
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     planRebuildThrottle: throttle,

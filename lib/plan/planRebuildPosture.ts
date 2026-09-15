@@ -10,21 +10,22 @@ import type { PlanRebuildPosture } from './rebuildScheduler/rebuildSignal';
  * classify the summary itself (`setup/AGENTS.md` § "No domain logic").
  *
  * `shortfallUnrecoverable` is the plan's half of the unrecoverable-shortfall
- * gate: no controlled load left to act on. A summary that could not say
- * (`null`, no plan yet) is not unrecoverable — a first rebuild is never held.
+ * gate: no controlled load left to act on. With no plan yet (`null`) nothing has
+ * been proved, so nothing is unactionable or unrecoverable — a first rebuild is
+ * never held. That is decided here, once.
  */
 export function resolvePlanRebuildPosture(
-  summary: PlanCapacityStateSummary,
-  planState: PlanConvergenceState | null | undefined,
+  summary: PlanCapacityStateSummary | null,
+  planState: PlanConvergenceState,
 ): PlanRebuildPosture {
   // An unwinnable overshoot must not count as "converging": convergence bypasses
   // the throttle's anti-storm gates, and that bypass is what let a persistent
   // 0-allowance shortfall rebuild ~1.6 s of plan on every power sample until the
   // cpuwarn watchdog killed the app. In-flight commands still win inside the helper.
-  const unactionable = isPlanUnactionable(summary);
+  const unactionable = summary !== null && isPlanUnactionable(summary);
   return {
     planConvergenceActive: isPlanActivelyConverging(planState, { unactionable }),
     unactionable,
-    shortfallUnrecoverable: summary.remainingActionableControlledLoad === false,
+    shortfallUnrecoverable: summary !== null && !summary.remainingActionableControlledLoad,
   };
 }

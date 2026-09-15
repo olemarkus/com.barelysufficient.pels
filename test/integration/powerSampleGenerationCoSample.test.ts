@@ -76,7 +76,7 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
     } as unknown as PlanEngine),
     getPlanService: () => ({
       getLatestPlanSnapshot: () => null,
-      getLatestPlanSnapshotUpdatedAtMs: () => null,
+      getLatestPublishedPlan: () => null,
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),

@@ -25,7 +25,6 @@ const runRebuild = async (params: {
   onFlight?: (throttle: PlanRebuildThrottle) => void;
   beforeDispatch?: (throttle: PlanRebuildThrottle) => void;
   outcome?: RebuildOutcome;
-  reject?: boolean;
 }): Promise<PlanRebuildThrottleSnapshot> => {
   // The scheduler stub accepts and never executes: the spec dispatches itself.
   const scheduler = {
@@ -39,7 +38,6 @@ const runRebuild = async (params: {
       rebuildPlanFromCache: async () => {
         // Mid-flight: the observation lands after the rebuild read its devices.
         params.onFlight?.(throttle);
-        if (params.reject) throw new Error('build exploded');
         return params.outcome ?? TIGHT_NOOP;
       },
     },
@@ -47,18 +45,12 @@ const runRebuild = async (params: {
     throttleMemoryFixture({ lastRebuild: { atMs: 1_000, powerW: 9_500, hardCapBreach: { breached: false, deficitKw: 0 } } }),
   );
   // A tight sample queues a `headroom_tight` rebuild; its promise settles with
-  // the rebuild, so a failing one rejects it too.
+  // the rebuild.
   const sample = schedulePowerSampleForTest({ throttle, limitKw: 10, currentPowerW: 9_500, capacityPaceKw: 9 });
   expect(throttle.snapshot().queued?.trigger).toBe('headroom_tight');
   params.beforeDispatch?.(throttle);
-  const run = throttle.execute();
-  if (params.reject) {
-    await expect(run).rejects.toThrow('build exploded');
-    await expect(sample).rejects.toThrow('build exploded');
-  } else {
-    await run;
-    await sample;
-  }
+  await throttle.execute();
+  await sample;
   return throttle.snapshot();
 };
 
@@ -90,7 +82,10 @@ describe('a device observation landing during an in-flight rebuild', () => {
   });
 
   it('does the same when the in-flight rebuild fails', async () => {
-    const state = await runRebuild({ reject: true, onFlight: (throttle) => throttle.onObservation() });
+    const state = await runRebuild({
+      outcome: { actionChanged: false, appliedActions: false, failed: true },
+      onFlight: (throttle) => throttle.onObservation(),
+    });
 
     expect(state.holdoff).toBeNull();
     expect(state.suppressionInvalidated).toBe(true);

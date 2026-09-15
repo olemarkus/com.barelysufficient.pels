@@ -17,7 +17,8 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { getLogger, withRebuildContext } from '../logging/logger';
-import { buildPlanCapacityStateSummary, buildPlanDetailSignature } from './planLogging';
+import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
+import type { PublishedPlan } from './publishedPlan';
 import { hasShedding } from './planServiceInternals';
 import {
   buildPlanHeadroomLogFields,
@@ -45,9 +46,9 @@ const logger = getLogger('plan/service');
 export type PlanRebuildHost = {
   deps: PlanServiceDeps;
   getLatestPlanSnapshot: () => DevicePlan | null;
-  setLatestPlanSnapshot: (plan: DevicePlan | null) => void;
-  getLatestPlanSnapshotUpdatedAtMs: () => number | null;
-  setLatestPlanSnapshotUpdatedAtMs: (ms: number | null) => void;
+  getLatestPublishedPlan: () => PublishedPlan | null;
+  /** Publishes a plan and its time together (`PublishedPlan`). */
+  publishPlan: (plan: DevicePlan, publishedAtMs: number) => void;
   settleDevices: () => PendingBinaryLiveDevice[];
   steppedSettleDevices: () => readonly SteppedSettleDevice[];
   trackChanges: (plan: DevicePlan, metaSignature: string) => PlanChangeSet;
@@ -111,10 +112,7 @@ export async function performPlanRebuild(
           commandRequestCount: outcome.commandRequestCount,
           failed: outcome.failed,
           ...buildPlanHeadroomLogFields(host.getLatestPlanSnapshot()),
-          ...buildPlanCapacityStateSummary(host.getLatestPlanSnapshot(), {
-            summarySource: 'plan_snapshot',
-            summarySourceAtMs: host.getLatestPlanSnapshotUpdatedAtMs(),
-          }),
+          ...buildPublishedPlanCapacityStateSummary(host.getLatestPublishedPlan()),
         });
       }
     }
@@ -133,8 +131,7 @@ async function executePlanRebuild(
   const { plan, buildMs, observationRevision } = await buildPlanForRebuild(host, trigger);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
-  host.setLatestPlanSnapshot(stampedPlan);
-  host.setLatestPlanSnapshotUpdatedAtMs(nowMs);
+  host.publishPlan(stampedPlan, nowMs);
   const { changes, changeMs } = measurePlanChanges(host, stampedPlan);
   const { snapshotMs } = measureSnapshotUpdate(host, stampedPlan, changes);
   const { statusMs, statusWriteMs } = measureStatusUpdate(host, stampedPlan, changes);
@@ -373,8 +370,7 @@ function refreshLatestPlanSnapshotFromSettledLiveState(host: PlanRebuildHost, ba
   if (!host.deps.planEngine.hasSettledActuation(basePlan, livePlan)) return false;
   const refreshedPlan = host.preservePlanGeneratedAt(livePlan, basePlan);
   const nowMs = Date.now();
-  host.setLatestPlanSnapshot(refreshedPlan);
-  host.setLatestPlanSnapshotUpdatedAtMs(nowMs);
+  host.publishPlan(refreshedPlan, nowMs);
   host.emitPlanUpdated(refreshedPlan);
   return true;
 }
@@ -388,8 +384,7 @@ function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): boolean {
   }
   const refreshedPlan = host.preservePlanGeneratedAt(nextPlan, current);
   const nowMs = Date.now();
-  host.setLatestPlanSnapshot(refreshedPlan);
-  host.setLatestPlanSnapshotUpdatedAtMs(nowMs);
+  host.publishPlan(refreshedPlan, nowMs);
   host.emitPlanUpdated(refreshedPlan);
   return true;
 }
