@@ -140,7 +140,9 @@ the problem, not the safety net.
   "Raise = more load" holds for a water heater and a panel radiator and is exactly
   backwards for a reversible unit running in cooling. The transport reports the
   device's raw `thermostat_mode` and retains it across a partial update, exactly
-  as it does `evChargingState`; the observer owns the vocabulary that turns it
+  as it does `evChargingState`. A live capability event for the mode updates it too
+  (`lib/device/transport/thermostatModeRealtime.ts`) and is published as a control
+  change, but it is not freshness evidence; the observer owns the vocabulary that turns it
   into a `ThermalDirection` (`resolveThermalDirection`,
   `lib/observer/thermalDirection.ts`, `'cooling'` only on positive evidence), the
   way it already resolves `currentOn` from the raw binary axis. `toPlanDevice`

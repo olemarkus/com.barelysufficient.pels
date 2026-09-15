@@ -43,6 +43,7 @@ import {
   updateTemperatureTarget,
 } from './temperatureObservation';
 import { requestTemperatureRecovery } from './temperatureRecovery';
+import { handleThermostatModeCapabilityUpdate } from './thermostatModeRealtime';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -466,6 +467,8 @@ export function handleRealtimeCapabilityUpdate(
         recoverMissingTemperatureSnapshot(ctx, deviceId, capabilityId, value);
         return;
     }
+    // Neither an EV nor a stepped-load capability, and not a target PELS writes.
+    if (handleThermostatModeCapabilityUpdate(ctx, snapshot, capabilityId, value)) return;
 
     const normalizedEvents = normalizeNativeEvCapabilityUpdate({
         snapshot,

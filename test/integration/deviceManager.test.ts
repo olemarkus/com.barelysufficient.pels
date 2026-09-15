@@ -850,6 +850,47 @@ describe('DeviceTransport', () => {
 
                 expect(observedMode()).toBe('heat');
             });
+
+            it('takes a live mode event, publishes the change, and counts it as no freshness', async () => {
+                vi.useFakeTimers();
+                try {
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    await seedCooling();
+                    const freshnessAtRefresh = deviceManager.getSnapshot()[0]?.lastFreshDataMs;
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    const liveStateListener = vi.fn();
+                    const controlListener = vi.fn();
+                    onObservedState(deviceManager, liveStateListener);
+                    onObservedControlState(deviceManager, controlListener);
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'thermostat_mode', ' Heat ');
+
+                    expect(observedMode()).toBe('heat');
+                    expect(deviceManager.getSnapshot()[0]?.lastFreshDataMs).toBe(freshnessAtRefresh);
+                    expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                        source: 'realtime_capability', deviceId: 'dev1', capabilityId: 'thermostat_mode',
+                    }));
+                    expect(controlListener).toHaveBeenCalledWith(expect.objectContaining({
+                        deviceId: 'dev1',
+                        changes: [{ capabilityId: 'thermostat_mode', previousValue: 'cooling', nextValue: 'heat' }],
+                    }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('ignores a live mode event that repeats the mode or says nothing', async () => {
+                await seedCooling();
+                const controlListener = vi.fn();
+                onObservedControlState(deviceManager, controlListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'thermostat_mode', 'cooling');
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'thermostat_mode', '  ');
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'thermostat_mode', 42);
+
+                expect(observedMode()).toBe('cooling');
+                expect(controlListener).not.toHaveBeenCalled();
+            });
         });
 
         it('populates snapshot with controllable devices', async () => {

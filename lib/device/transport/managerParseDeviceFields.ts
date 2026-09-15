@@ -6,6 +6,11 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import {
+    isReportedThermostatMode,
+    normalizeReportedThermostatMode,
+    THERMOSTAT_MODE_CAPABILITY_ID,
+} from './thermostatModeRealtime';
 import type { HomeyDeviceLike } from '../../utils/types';
 import {
     getCapabilities,
@@ -116,8 +121,6 @@ export function resolveDeviceCapabilityProfile(params: {
     return { overlay, capsStatus };
 }
 
-const THERMOSTAT_MODE_CAPABILITY_ID = 'thermostat_mode';
-
 /**
  * The device's raw reported `thermostat_mode`, retained across a partial update.
  *
@@ -136,9 +139,7 @@ function readReportedThermostatMode(
 ): string | undefined {
     if (!overlay.capabilities.includes(THERMOSTAT_MODE_CAPABILITY_ID)) return undefined;
     const value = overlay.capabilityObj[THERMOSTAT_MODE_CAPABILITY_ID]?.value;
-    if (typeof value !== 'string') return previousSnapshot?.thermostatMode;
-    const normalized = value.trim().toLowerCase();
-    return normalized.length > 0 ? normalized : previousSnapshot?.thermostatMode;
+    return isReportedThermostatMode(value) ? normalizeReportedThermostatMode(value) : previousSnapshot?.thermostatMode;
 }
 
 function resolveDeviceControlBundle(params: {
