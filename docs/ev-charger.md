@@ -9,8 +9,11 @@ Use this guide when an EV charger is paired in Homey and PELS should decide how 
 
 The convenient setup is to let PELS use an EV charger control mode. PELS then calculates the current in amps for you, and your Homey Flow only maps that value to the charger app's current-control action.
 
-Vendor-specific examples:
+For some chargers PELS sets the current directly through the charger app, and no Flow is needed for it.
 
+Vendor-specific guides:
+
+- [Easee EV Charger](/easee-ev-charger): PELS controls the current directly, so skip Step 3.
 - [Zaptec EV Charger](/zaptec-ev-charger)
 
 ## Before You Begin
@@ -45,6 +48,8 @@ Then configure the charger as a normal managed device:
 Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under the hard cap.
 
 ## Step 3: Create the Charger Current Flow
+
+Skip this step for an Easee charger. See [Easee EV Charger](/easee-ev-charger).
 
 Create the Flows that connect PELS to the charger app. The first Flow sends PELS' desired current to the charger. The second Flow reports the selected current back to PELS when your charger app can expose it.
 
@@ -130,4 +135,5 @@ For problems beyond the charger — budget, capacity, or a missed task — see t
 - [Configuration](/configuration)
 - [Flow Cards](/flow-cards)
 - [Deadline Charging With State of Charge](/how-to-deadline-charging-soc)
+- [Easee EV Charger](/easee-ev-charger)
 - [Zaptec EV Charger](/zaptec-ev-charger)

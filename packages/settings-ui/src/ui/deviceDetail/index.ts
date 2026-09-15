@@ -467,6 +467,7 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailManagedControlHandlers({
     getCurrentDetailDeviceId,
     refreshCurrentDeviceControlStates,
+    refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   });
   initDeviceDetailControlModelHandler();

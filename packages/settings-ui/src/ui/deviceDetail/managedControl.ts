@@ -5,10 +5,12 @@ import {
 import { renderDevices } from '../devices.ts';
 import { state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
+import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
 
 export function initDeviceDetailManagedControlHandlers(params: {
   getCurrentDetailDeviceId: () => string | null;
   refreshCurrentDeviceControlStates: () => void;
+  refreshOpenDeviceDetail: () => void;
   refreshSharedDeviceViews: () => void;
 }) {
   deviceDetailControllable?.addEventListener('change', async () => {
@@ -50,7 +52,7 @@ export function initDeviceDetailManagedControlHandlers(params: {
     if (!deviceId || !deviceDetailManaged) return;
 
     const nextChecked = deviceDetailManaged.selected;
-    await writeFreshSetting<Record<string, boolean>>({
+    const saved = await writeFreshSetting<Record<string, boolean>>({
       key: 'managed_devices',
       context: 'device detail',
       logMessage: 'Failed to update managed device',
@@ -71,5 +73,8 @@ export function initDeviceDetailManagedControlHandlers(params: {
       },
       rollback: params.refreshCurrentDeviceControlStates,
     });
+    if (saved && nextChecked) {
+      await applyManagedOptInControlMode(deviceId, params.refreshOpenDeviceDetail);
+    }
   });
 }

@@ -1,4 +1,7 @@
-import { resolveNativeSteppedLoadWriteCapabilities } from '../../lib/device/nativeSteppedLoadWiring';
+import {
+  isToggleGatedNativeWriteSet,
+  resolveNativeSteppedLoadWriteCapabilities,
+} from '../../lib/device/nativeSteppedLoadWiring';
 
 describe('resolveNativeSteppedLoadWriteCapabilities', () => {
   it('returns target_power for a target_power stepper', () => {
@@ -24,5 +27,21 @@ describe('resolveNativeSteppedLoadWriteCapabilities', () => {
   it('returns empty for a device with no native-write capability', () => {
     expect(resolveNativeSteppedLoadWriteCapabilities(['measure_power', 'onoff'])).toEqual([]);
     expect(resolveNativeSteppedLoadWriteCapabilities([])).toEqual([]);
+  });
+
+  it('returns the charger current and its equivalent Flow card for an Easee charger', () => {
+    expect(resolveNativeSteppedLoadWriteCapabilities(['onoff', 'target_charger_current', 'evcharger_charging']))
+      .toEqual(['target_charger_current', 'setDynamicChargerCurrent']);
+  });
+});
+
+describe('isToggleGatedNativeWriteSet', () => {
+  it('gates Hoiax and Easee native writes behind the built-in control switch', () => {
+    expect(isToggleGatedNativeWriteSet(['max_power_3000', 'onoff'])).toBe(true);
+    expect(isToggleGatedNativeWriteSet(['target_charger_current', 'setDynamicChargerCurrent'])).toBe(true);
+  });
+
+  it('does not gate target_power steppers, which are default-on', () => {
+    expect(isToggleGatedNativeWriteSet(['target_power'])).toBe(false);
   });
 });

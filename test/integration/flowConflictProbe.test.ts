@@ -5,6 +5,8 @@ import type { Logger as PinoLogger } from 'pino';
 
 const hoiaxId = 'hoiax-1';
 const targetPowerId = 'tp-1';
+const easeeId = 'easee-1';
+const easeeNativeWrites = ['target_charger_current', 'setDynamicChargerCurrent'];
 
 const candidateDevice = (id: string, nativeWriteCapabilities: string[]): TargetDeviceSnapshot => ({
   id,
@@ -61,6 +63,42 @@ describe('detectNativeWiringConflicts', () => {
       getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
     expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
+  });
+
+  it('auto-enables an Easee charger with no Flow setting its current', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
+      getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
+    });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [easeeId], conflicts: [] });
+  });
+
+  it('holds an Easee charger on the Flow when a Flow uses the app\'s dynamic current card', async () => {
+    // The production bridge Flow: PELS' stepped-load trigger drives Easee's
+    // "Set dynamic charger current" card, which is the same write as the
+    // capability, so it is a conflict and names the Flow.
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: {
+          adv: {
+            name: 'Elbillader',
+            cards: {
+              trigger: { id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed', type: 'trigger' },
+              readback: { id: `homey:device:${easeeId}:target_charger_current_changed`, type: 'trigger' },
+              set: { id: `homey:device:${easeeId}:setDynamicChargerCurrent`, type: 'action' },
+              report: { id: 'homey:app:com.barelysufficient.pels:report_stepped_load_power', type: 'action' },
+            },
+          },
+        },
+      }),
+      getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
+    });
+    expect(result).toEqual({
+      status: 'ok',
+      autoEnableDeviceIds: [],
+      conflicts: [{ deviceId: easeeId, conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' }],
+    });
   });
 
   it('does not auto-enable target_power steppers (already default-on, out of scope)', async () => {

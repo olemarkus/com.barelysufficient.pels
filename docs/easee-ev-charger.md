@@ -1,0 +1,64 @@
+---
+title: Configure an Easee EV Charger
+description: "Let PELS control an Easee EV charger directly through the Easee Homey app, with no Flows for the charging current."
+---
+
+# Configure an Easee EV Charger
+
+Start with [Configure an EV Charger](/ev-charger) for **Managed by PELS**, **Power-limit control** and priority. This page only covers what is different for Easee.
+
+PELS sets the charging current of an Easee charger itself, through the Easee app for Homey. You do not need a Flow that sends the current to the charger, and you do not need a Flow that reports the current back to PELS.
+
+## Before You Begin
+
+- The Easee app is installed in Homey and your charger is paired.
+
+## Step 1: Check the EV Control Mode
+
+Open **Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger. If the charger has no control model yet, PELS picks **EV 1-phase** or **EV 3-phase** from how the Easee app reports the charger is wired: its phase mode, or the grid type it detected.
+
+Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is. If the Easee app cannot tell, for example before the charger has detected its grid, choose it yourself.
+
+PELS picks the control model only once. If your car charges on one phase from a three-phase charger, choose **EV 1-phase** yourself, or switch between the two with the **Set EV charging phase** Flow card when you charge different cars. PELS never changes it back.
+
+## Step 2: Check Built-in Device Control
+
+In the charger's **Setup** section, **Use built-in device control** should be on.
+
+PELS turns it on by itself when none of your Flows already sets the charger's current. With it on, PELS:
+
+- sets the charger's dynamic charging current, in whole amps
+- reads the current back from the charger, so it knows which level the charger actually runs at
+- starts and stops charging, as it does for any EV charger
+
+PELS does not change the charger's maximum current setting in the Easee app.
+
+### If you already have a charger Flow
+
+If one of your Flows already sets the charger's current with the Easee card **Set dynamic charger current**, PELS leaves built-in control off and shows **The Flow "…" already controls this device** on the charger's page. Your Flow keeps working as before.
+
+To switch to built-in control, disable or delete the part of that Flow that sets the current. PELS picks that up within 30 minutes and turns built-in control on. You can also turn **Use built-in device control** on yourself right away.
+
+A Flow that only reports the car's battery level to PELS is not a conflict. Keep it.
+
+## Charging Session Starts
+
+An Easee charger goes back to its maximum current whenever a charging session starts. PELS sees that on the charger and sets the planned current again within a few seconds. For that short moment the car can draw more than PELS planned.
+
+## Battery Reporting
+
+The generic EV charger guide covers battery reporting for boost mode and smart tasks. Choose the Easee charger in **Report battery level for charger**.
+
+## Troubleshooting
+
+| Problem | What to check |
+| --- | --- |
+| **Use built-in device control** is not shown | Check that **Control model** is **EV 1-phase** or **EV 3-phase**, and that the charger is paired with the Easee app. |
+| Built-in control stays off | Look for the Flow notice on the charger's page, and disable the part of that Flow that sets the charger current. |
+| The charger uses more or less power per step than PELS expects | Check that the control model matches the charger's phases. |
+
+## Related Pages
+
+- [Configure an EV Charger](/ev-charger)
+- [Deadline Charging With State of Charge](/how-to-deadline-charging-soc)
+- [Flow Cards](/flow-cards)

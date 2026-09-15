@@ -3,15 +3,16 @@
  *
  * Reads the owner's configured Homey Flows once, classifies per-device
  * conflicts against what PELS would natively write, and returns the set of
- * Hoiax (max_power_*) devices that are safe to auto-enable native wiring for
- * (eligible candidates with no conflicting Flow). The caller applies that
- * decision; this module computes and structured-logs it.
+ * toggle-gated devices (Hoiax max_power_*, Easee charger current) that are
+ * safe to auto-enable native wiring for (eligible candidates with no
+ * conflicting Flow). The caller applies that decision; this module computes
+ * and structured-logs it.
  *
  * Fail-closed: on an unreadable flow list (`status: 'unknown'`) it returns no
  * auto-enable decisions, so a transient Web API failure never flips native
  * wiring on over a real conflict. target_power steppers are already
  * default-on and are intentionally not part of the auto-enable set; only the
- * Hoiax max_power_* population is gated here.
+ * toggle-gated population is (`isToggleGatedNativeWriteSet`).
  *
  * Best-effort by design: the read fails closed (see readUserFlows) and the
  * caller invokes this fire-and-forget, so a slow or failing Web API never
@@ -19,7 +20,7 @@
  */
 import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
-import { NATIVE_STEPPED_LOAD_CAPABILITY_IDS } from '../lib/device/nativeSteppedLoadWiring';
+import { isToggleGatedNativeWriteSet } from '../lib/device/nativeSteppedLoadWiring';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 
 // Minimal sink for the probe's outcome line. Narrower than a full pino logger
@@ -60,13 +61,6 @@ function resolveStepCandidates(
   });
 }
 
-/** A Hoiax candidate is one whose native-write set includes a max_power_* cap. */
-function isHoiaxAutoEnableCandidate(ownedCapabilities: readonly string[]): boolean {
-  return ownedCapabilities.some((capabilityId) => (
-    (NATIVE_STEPPED_LOAD_CAPABILITY_IDS as readonly string[]).includes(capabilityId)
-  ));
-}
-
 export async function detectNativeWiringConflicts(deps: {
   get: FlowApiGet;
   getDescriptors: () => readonly DeviceDescriptorRead[];
@@ -84,12 +78,12 @@ export async function detectNativeWiringConflicts(deps: {
   }
 
   const candidates = resolveStepCandidates(deps.getDescriptors());
-  // Scope conflicts AND auto-enable to the Hoiax/max_power_* population the
-  // gate governs. target_power steppers are always default-on with their
-  // toggle hidden, so surfacing a conflict for them would render a banner
-  // claiming control was "left off" with a switch that does not exist.
+  // Scope conflicts AND auto-enable to the toggle-gated population the gate
+  // governs. target_power steppers are always default-on with their toggle
+  // hidden, so surfacing a conflict for them would render a banner claiming
+  // control was "left off" with a switch that does not exist.
   const gatedCandidates = candidates.filter(
-    (candidate) => isHoiaxAutoEnableCandidate(candidate.ownedCapabilities),
+    (candidate) => isToggleGatedNativeWriteSet(candidate.ownedCapabilities),
   );
   const conflicts = classifyFlowConflicts(result.writes, gatedCandidates);
   const conflictedIds = new Set(conflicts.map((conflict) => conflict.deviceId));

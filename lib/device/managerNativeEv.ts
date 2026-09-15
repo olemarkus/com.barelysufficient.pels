@@ -20,9 +20,12 @@ import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerCont
 import { resolveDeviceCapabilities } from './transport/managerParse';
 import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
 import {
+  AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
+  EASEE_CHARGER_CURRENT_CAPABILITY_ID,
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
   hasTargetPowerCapability,
+  isEaseeChargerCurrentCandidate,
   isNativeSteppedLoadWiringCandidate,
   isTargetPowerSteppedLoadWiringCandidate,
   resolveNativeSteppedLoadObservationCapabilityId,
@@ -39,6 +42,7 @@ import {
 } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
+import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -261,6 +265,26 @@ function resolveActiveNativeSteppedProfile(params: {
     : undefined;
 }
 
+/**
+ * The capability carrying the charger current an EV preset ladder is read back
+ * from. `available_installation_current` (Zaptec) is a read-only report and is
+ * always read. An Easee's `target_charger_current` is only read while PELS
+ * controls it natively: with built-in control off, the owner's Flow writes that
+ * capability and reports it through `Report stepped load`, and reading it here
+ * as well would put a second reporter on the same step.
+ */
+function resolveInstallationCurrentCapabilityId(
+  device: HomeyDeviceLike,
+  deviceId: string,
+  capabilityObj: DeviceCapabilityMap,
+  providers: DeviceTransportParseProviders,
+): string {
+  return isEaseeChargerCurrentCandidate(device, capabilityObj)
+    && providers.getNativeEvWiringEnabled?.(deviceId) === true
+    ? EASEE_CHARGER_CURRENT_CAPABILITY_ID
+    : AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID;
+}
+
 function applySyntheticTargetPowerOverlay(params: {
   device: HomeyDeviceLike;
   deviceId: string;
@@ -294,10 +318,14 @@ function applySyntheticTargetPowerOverlay(params: {
   const capabilities = hasTargetPowerCapability(params.capabilities)
     ? params.capabilities
     : [...params.capabilities, 'target_power'];
-  const observedTargetPower = resolveAvailableInstallationTargetPowerObservation({
-    config,
-    capabilityObj: params.capabilityObj,
-  });
+  const installationCurrent = params.capabilityObj[resolveInstallationCurrentCapabilityId(
+    params.device,
+    params.deviceId,
+    params.capabilityObj,
+    params.providers,
+  )];
+  const observedTargetPower = installationCurrent
+    && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
   const reportedStepPowerW = resolveReportedTargetPowerW(params.capabilityObj, observedTargetPower?.value);
   // All-or-nothing: no ladder means no stepped control, so the synthetic
   // `target_power` capability is not injected either and the device is left to
@@ -344,21 +372,15 @@ function isEvTargetPowerPresetConfig(
   return config?.preset === 'ev_charger_1_phase' || config?.preset === 'ev_charger_3_phase';
 }
 
-function resolveAvailableInstallationTargetPowerObservation(params: {
-  config: TargetPowerSteppedLoadConfig;
-  capabilityObj: DeviceCapabilityMap;
-}): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
-  let phaseCount: number | undefined;
-  if (params.config?.preset === 'ev_charger_1_phase') {
-    phaseCount = 1;
-  } else if (params.config?.preset === 'ev_charger_3_phase') {
-    phaseCount = 3;
-  }
-  const availableCurrent = params.capabilityObj.available_installation_current?.value;
-  if (!phaseCount || typeof availableCurrent !== 'number' || !Number.isFinite(availableCurrent)) return undefined;
+function resolveInstallationCurrentTargetPowerObservation(
+  config: TargetPowerSteppedLoadConfig,
+  current: DeviceCapabilityMap[string],
+): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
+  const phaseCount = resolveTargetPowerPresetPhaseCount(config.preset);
+  if (!phaseCount || typeof current.value !== 'number' || !Number.isFinite(current.value)) return undefined;
   return {
-    value: Math.round(availableCurrent * 230 * phaseCount),
-    observedAt: params.capabilityObj.available_installation_current?.lastUpdated,
+    value: Math.round(current.value * 230 * phaseCount),
+    observedAt: current.lastUpdated,
   };
 }
 

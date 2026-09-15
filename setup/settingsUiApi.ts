@@ -58,6 +58,7 @@ import {
   getPlanSnapshotForUiFromHomey,
   getCurtailmentCanContributeForUiFromApp,
   getPowerTrackerForUiFromApp,
+  getChargerPhasePresetsFromApp,
   getUiPickerDevicesFromApp,
   refreshSettingsUiDevicesForApp,
   refreshSettingsUiGridTariffForApp,
@@ -509,7 +510,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
-  devices: [], homeScope: { state: 'unavailable' },
+  devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
 };
 
 const planPayloadForHome = (
@@ -581,6 +582,10 @@ const devicesPayloadForHome = (
   if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
   return {
     devices: members.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    // Keyed by device id and consulted only for a device the owner is looking
+    // at, so the whole-home map serves a sub-home unchanged: a charger outside
+    // this home is never looked up here.
+    chargerPhasePresets: getChargerPhasePresetsFromApp(homey),
     hasManagedSolarDevice: hasSolarProductionCandidate(members),
     // Source-blind: export is whatever this home's accrued export families say
     // it is. Both sources report signed net, so a flow home exports on exactly
@@ -617,6 +622,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // the user-facing device list. The BACKEND snapshot + telemetry stay untouched; they earn
     // a proper tracked / EMS view later.
     devices: candidates.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    chargerPhasePresets: getChargerPhasePresetsFromApp(homey),
     // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).

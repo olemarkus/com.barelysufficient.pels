@@ -104,6 +104,8 @@ import {
   refreshSnapshot as runRefreshSnapshot,
   syncTrackedDevices as runSyncTrackedDevices,
 } from './transport/snapshotRefresh';
+import { resolveChargerPhasePresets } from './chargerPhasePreset';
+import type { ChargerPhasePresets } from '../../packages/contracts/src/settingsUiApi';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
 const moduleLogger = getLogger('device/transport');
@@ -398,6 +400,8 @@ export class DeviceTransport {
      */
     getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
     getUiPickerDevices(): TransportDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
+    /** Reported charger wiring, over the same raw list the picker parses, so unmanaged chargers count. */
+    getChargerPhasePresets(): ChargerPhasePresets { return resolveChargerPhasePresets(this.ctx.getLatestRawDevices()); }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home
     // R7b) — see `pollHomePowerWithMeterFanOut` in `homePowerPoll.ts`.

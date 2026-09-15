@@ -17,6 +17,7 @@ import {
   type DeferredObjectiveSettingsV1,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { ChargerPhasePresets } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 
@@ -111,6 +112,10 @@ export type UiState = {
   // declines the posture without it: offering the toggle here would let a user
   // switch on a feature that cannot engage.
   surplusPoolReachable: boolean;
+  // How each charger's own app reports it is wired, from the `/ui_devices`
+  // payload; only reporting chargers are keys. Read once, when the owner turns
+  // Managed on, to pick a starting control mode (`applyManagedOptInControlMode`).
+  chargerPhasePresets: ChargerPhasePresets;
   // Device IDs the overview "Let it run now" rescue chip may offer the action on,
   // resolved server-side (task-free + a known target). The card view gates the
   // chip on membership, which keeps stale affordances rare — but this is a
@@ -181,6 +186,7 @@ export const state: UiState = {
   hasManagedSolarDevice: false,
   hasExhibitedExport: false,
   surplusPoolReachable: false,
+  chargerPhasePresets: {},
   starvationRescuableDeviceIds: new Set<string>(),
   meterAreaSimulation: [],
 };
