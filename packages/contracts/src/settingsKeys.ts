@@ -42,6 +42,10 @@ export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 // empty = off for that charger). Mirror of EV_CAR_ASSOCIATIONS in
 // lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import lib).
 export const EV_CAR_ASSOCIATIONS = 'ev_car_associations';
+// Settings-UI-only acknowledgement map for configuration recommendations:
+// `Record<recommendationId, recommendationVersion>`. A recommendation is
+// shown again when its version increases. Runtime code does not read this key.
+export const SETUP_RECOMMENDATION_DISMISSALS = 'setup_recommendation_dismissals';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';

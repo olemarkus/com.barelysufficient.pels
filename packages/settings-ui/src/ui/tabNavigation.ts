@@ -36,6 +36,7 @@ import { loadModeAndPriorities, renderPriorities } from './modes.ts';
  */
 
 const REDESIGN_SETTINGS_SECTIONS = new Set([
+  'recommendations',
   'limits',
   'devices',
   'modes',
@@ -47,6 +48,7 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
 ]);
 
 const DEVICE_DEPENDENT_TABS = new Set([
+  'recommendations',
   'devices',
   'modes',
   'electricity-prices',

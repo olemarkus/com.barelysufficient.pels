@@ -4872,6 +4872,51 @@ md-filled-button.is-busy {
   min-width: 18ch;
 }
 
+#setup-recommendations-banner-root:empty {
+  display: none;
+}
+
+.setup-recommendations-banner {
+  margin-bottom: var(--spacing-3);
+}
+
+.setup-recommendations-banner__icon {
+  color: var(--color-role-warn);
+  font-size: var(--font-size-md);
+}
+
+.setup-recommendations-list {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.setup-recommendation-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.setup-recommendation-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.setup-recommendations-empty {
+  margin: 0;
+}
+
+.setup-recommendations-loading {
+  margin: var(--spacing-4) 0 0;
+}
+
+.setup-recommendations-dismissed {
+  margin-top: var(--spacing-4);
+}
+
 .price-last-fetched {
   color: var(--muted);
   font-size: var(--font-size-xs);
