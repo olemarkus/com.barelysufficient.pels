@@ -930,6 +930,27 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       solar surplus** visible without reopening the page, pinned in
       `packages/settings-ui/test/deviceDetailSurplusTrackingGate.test.ts`. [P2]
 
+- [ ] **Homey Energy owners cannot use the export price Homey already holds for them.**
+      Homey models feed-in pricing itself — `manager/energy/price/electricity/exported/type`
+      (`fixed | dynamic | disabled`), the fixed per-kWh option `electricityPriceExportedFixed`, and
+      for dynamic a formula at `.../dynamic/exported-user-costs` over each interval's raw spot,
+      referencing `[[price]]` and/or `[[importPrice]]` (the all-in import price). PELS reads none of
+      it: on the Homey price source an owner must retype their feed-in terms into the app's own
+      export section, and because that section can only offer a flat amount there (no isolatable
+      spot was available before the import formula landed), an hourly export tariff cannot be
+      expressed at all. The import half of this now exists — `lib/price/priceFormula.ts` evaluates
+      Homey's expressions and `lib/price/homeyPriceFormula.ts` mirrors and applies the import one —
+      so the export half is the same three reads plus `resolveExportPriceInclVat`'s existing slot.
+      **Change:** read the export type and its fixed/dynamic terms alongside the import formula,
+      and produce `CombinedHourlyPrice.exportPrice` from them on the Homey scheme, feeding
+      `[[importPrice]]` with the resolved import price for that hour. Decide there whether the
+      app's own export-price settings section stays authoritative on this source, defers to Homey,
+      or disappears for it.
+      **Done when:** a Homey-scheme home with a fixed feed-in tariff and one with a spot-linked
+      export formula both get a per-hour `exportPrice` with no PELS-side export configuration, and
+      an owner on that source is no longer asked to retype terms Homey already holds. Verified
+      against the test Homey, whose export type is `fixed` at 0.30 NOK/kWh. [P2]
+
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
       shaping/allocation, smart-task horizons, price levels, cheapest-hours — all `budgetPrice ?? total`,

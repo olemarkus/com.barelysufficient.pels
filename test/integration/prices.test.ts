@@ -30,6 +30,7 @@ import {
   getNextLocalDayStartUtcMs,
   getZonedParts,
 } from '../../lib/utils/dateUtils';
+import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 // Mock the https module
 vi.mock('https', () => ({
@@ -1344,6 +1345,7 @@ describe('Price optimization', () => {
     priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
+    homeyWebApiGet: noHomeyWebApi,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,

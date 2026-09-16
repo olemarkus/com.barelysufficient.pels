@@ -513,6 +513,9 @@ export const mockHomeyInstance = {
     // serves per-local-date bodies, and a date with no entry throws an
     // `HTTP 404`-shaped error (no forecast basis for that day).
     _solarForecastByDate: null as Record<string, unknown> | null,
+    // Body of `manager/energy/price/electricity/dynamic/user-costs`: `null` is
+    // a real Homey with no user costs configured.
+    _priceUserCosts: null as unknown,
     _realtimeEvents: [] as Array<{ event: string; data: unknown }>,
     realtime: async (event: string, data: unknown) => {
       // Track realtime events for testing
@@ -562,6 +565,13 @@ export const mockHomeyInstance = {
           throw new HomeyHttpStatusError(404, '{"error":"not_found","error_description":"No solar forecast"}');
         }
         return body;
+      }
+      // The owner's price formula. A real Homey answers the option route with
+      // `null` when no user costs are configured, which is the default here:
+      // raw prices are then the prices. A spec that needs a formula sets
+      // `_priceUserCosts` to the option body Homey would return.
+      if (path === 'manager/energy/price/electricity/dynamic/user-costs') {
+        return mockHomeyInstance.api._priceUserCosts;
       }
       if (path === 'manager/geolocation/option/location') {
         return {

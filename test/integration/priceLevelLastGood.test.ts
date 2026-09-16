@@ -4,6 +4,7 @@ import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptim
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { mockHomeyInstance } from '../mocks/homey';
+import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 // The current-hour level is what the `price_level_is` condition and the
 // status writer ask for, and its build reads a dozen settings keys. A Homey
@@ -16,6 +17,7 @@ describe('PriceCoordinator.getCurrentHourPriceLevel', () => {
     priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
+    homeyWebApiGet: noHomeyWebApi,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,

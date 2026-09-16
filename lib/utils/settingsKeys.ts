@@ -195,6 +195,11 @@ export const FLOW_REPORTED_DEVICE_CAPABILITIES = 'flow_reported_device_capabilit
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
+// The owner's Homey Energy price formula, mirrored from
+// `manager/energy/price/electricity/dynamic/user-costs` so the raw spot series
+// Homey hands us can be resolved into the price they actually pay. Runtime-only
+// (the settings UI never reads it); owned by lib/price/homeyPriceFormula.ts.
+export const HOMEY_PRICE_FORMULA = 'homey_price_formula';
 // Export (feed-in) price model — pure-math markups on the same wholesale spot the
 // import price uses. Off by default; written by the settings UI's "Export price"
 // section. Mirrored in packages/contracts/src/settingsKeys.ts — keep both in sync

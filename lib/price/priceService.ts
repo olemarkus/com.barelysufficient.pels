@@ -64,6 +64,8 @@ import {
 } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
 import type { CombinedHourlyPrice, CombinedPricePeriod, PriceScheme } from './priceTypes';
+import { dropsPersistedPrices, resolveHomeyPriceSeries, syncHomeyPriceFormula } from './homeyPriceFormula';
+import type { HomeyPriceResolution, HomeyWebApiGet } from './homeyPriceFormula';
 import type { PriceDataStore } from './priceDataStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
@@ -82,6 +84,13 @@ export default class PriceService {
     private readonly priceDataStore: PriceDataStore,
     /** The Main home's live power tracker, for the Norgespris usage estimates. */
     private readonly getPowerTracker: () => PowerTrackerReadout,
+    /**
+     * Reads Homey's own Web API, for the owner's price formula. Homey publishes
+     * RAW SPOT per interval and keeps the tariff/tax/VAT expression on a
+     * separate route, so without this the Homey scheme plans against wholesale
+     * spot — see `lib/price/priceFormula.ts`.
+     */
+    private readonly homeyWebApiGet: HomeyWebApiGet,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -307,7 +316,13 @@ export default class PriceService {
     // empty; its fingerprint differs from the populated cache, so the set()
     // below would otherwise clobber good today/tomorrow prices on a transient
     // read (boot catch-up, midnight rotation, every caller). Keep the cache.
-    if (combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
+    // ...unless the emptiness is a verdict rather than a gap: a home whose
+    // price formula is unknown or unevaluable HAS no prices, and keeping the
+    // cache would leave every persisted consumer spending against prices built
+    // from a formula that no longer applies.
+    const homeyPrices = this.getPriceScheme() === 'homey' ? this.resolveHomeyPricePeriods() : null;
+    if (!(homeyPrices && dropsPersistedPrices(homeyPrices, this.sinks))
+      && combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
       this.sinks.debugStructured({ event: 'combined_prices_rebuild_lost_entries_kept_cache' });
       this.emitRealtime('prices_updated', existingPayload);
       return;
@@ -393,13 +408,26 @@ export default class PriceService {
     if (scheme === 'flow') {
       return this.getPricePeriodsFromPayloads(FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, 'Flow prices');
     }
-    if (scheme === 'homey') {
-      return this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
-    }
+    if (scheme === 'homey') return this.resolveHomeyPricePeriods().periods;
     // Norwegian spot prices are hourly, and each entry carries the whole cost
     // stack, so the hour IS the period here.
     return this.getCombinedHourlyPricesNorway()
       .map((entry) => ({ ...entry, durationMinutes: DEFAULT_PERIOD_MINUTES }));
+  }
+
+  /**
+   * The Homey series, priced through the owner's formula.
+   *
+   * What Homey stores per period is wholesale spot; the owner's grid tariff,
+   * taxes and VAT live in a separate expression Homey applies only inside its
+   * own features, so resolving it here is what makes these the prices the owner
+   * actually pays (`lib/price/priceFormula.ts`). One classifier answers both
+   * "what are the prices" and "can this home be priced at all", so the two can
+   * never disagree.
+   */
+  private resolveHomeyPricePeriods(): HomeyPriceResolution {
+    const raw = this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
+    return resolveHomeyPriceSeries(raw, this.homey.settings);
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
@@ -555,6 +583,11 @@ export default class PriceService {
       this.sinks.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
       return;
     }
+    // Before the cache check, because the cached path still rebuilds the
+    // combined series: a formula the owner changed since the last refresh has
+    // to be mirrored even on a day whose raw prices are already stored.
+    const formulaChanged = await syncHomeyPriceFormula(this.homeyWebApiGet, this.homey.settings, this.sinks);
+    if (formulaChanged) this.updateCombinedPrices();
     const info = buildHomeyEnergyDateInfo(this.getTimeZone());
     if (shouldUseHomeyEnergyCache({
       info,

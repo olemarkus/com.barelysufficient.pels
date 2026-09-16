@@ -6,12 +6,16 @@ import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
+  HOMEY_PRICE_FORMULA,
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
   PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
+import { PRICE_USER_COSTS_API_PATH, type HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import { mirrorNoHomeyPriceFormula, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { captureLogger } from '../utils/loggerCapture';
@@ -77,6 +81,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -113,6 +118,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(false);
@@ -133,6 +139,7 @@ describe('Homey price service', () => {
       () => null,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -157,6 +164,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -192,6 +200,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -226,6 +235,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -255,6 +265,7 @@ describe('Homey price service', () => {
       undefined,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -291,6 +302,7 @@ describe('Homey price service', () => {
       undefined,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -329,6 +341,9 @@ describe('Homey price service', () => {
     };
     mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, yesterdayPayload);
     mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, stalePayload);
+    // This spec is about slot rotation: the owner has no price formula, so the
+    // stored prices are the prices.
+    mirrorNoHomeyPriceFormula(mockHomeyInstance.settings);
 
     const debugStructured = vi.fn();
     const service = new PriceService(
@@ -338,6 +353,7 @@ describe('Homey price service', () => {
       undefined,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -370,6 +386,7 @@ describe('Homey price service', () => {
       undefined,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -403,6 +420,7 @@ describe('Homey price service', () => {
       undefined,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -454,6 +472,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -509,6 +528,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -557,6 +577,7 @@ describe('Homey price service', () => {
       () => energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
+      noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
@@ -574,5 +595,256 @@ describe('Homey price service', () => {
     ));
     expect(repeatedClockHour).toHaveLength(2);
     expect(repeatedClockHour[0].totalPrice).not.toBe(repeatedClockHour[1].totalPrice);
+  });
+
+  describe("the owner's Homey price formula", () => {
+    // Homey publishes RAW SPOT per interval and keeps the owner's tariff, taxes
+    // and VAT in a separate expression it applies only inside its own features.
+    // These specs pin what PELS does with that expression, because planning
+    // against unresolved spot is planning against a price nobody pays.
+    const storeTodayPrices = (values: Record<string, number>): void => {
+      const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+      mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+      mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
+        dateKey: todayKey,
+        pricesByHour: values,
+        updatedAt: fixedNow.toISOString(),
+      });
+    };
+
+    /**
+     * Answer the user-costs route the way Homey does: the option's value, or
+     * `null` when the owner has configured no formula. A throw stands in for
+     * every failure — the transport surfaces no status this read can use.
+     */
+    type FormulaAnswer = { expression: string } | 'none' | 'fails' | 'missing-route' | 'malformed';
+
+    const serveFormula = (answer: FormulaAnswer): HomeyWebApiGet => (
+      async (path: string) => {
+        if (path !== PRICE_USER_COSTS_API_PATH) throw new Error(`unexpected path ${path}`);
+        // A transient failure and a 404 arrive the same way and are told apart
+        // by status alone, exactly as the REST client surfaces them.
+        if (answer === 'fails') throw new HomeyHttpStatusError(500, 'Internal Server Error');
+        if (answer === 'missing-route') throw new HomeyHttpStatusError(404, 'Cannot GET');
+        if (answer === 'malformed') return { error: 'partial response' };
+        if (answer === 'none') return null;
+        return { mathExpression: answer.expression, type: 'tariff_and_tax_math_expression' };
+      }
+    );
+
+    const createService = (
+      homeyWebApiGet: HomeyWebApiGet,
+      overrides: Partial<PriceServiceLoggingSinks> = {},
+    ): PriceService => new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(overrides),
+      () => timeZone,
+      () => ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+      homeyWebApiGet,
+    );
+
+    it('prices every hour through the formula the owner configured', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      const service = createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' }));
+
+      await service.refreshSpotPrices(true);
+
+      const prices = service.getCombinedHourlyPrices();
+      expect(prices.map((price) => price.totalPrice)).toEqual([1.75, 3]);
+    });
+
+    it('leaves raw spot alone when the owner has configured no formula', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      const service = createService(serveFormula('none'));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1, 2]);
+    });
+
+    it('publishes no prices at all when the formula cannot be evaluated', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      // Wholesale spot is always lower than what the owner pays, so presenting
+      // it as their price would be a plausible-looking lie; no price is honest.
+      const service = createService(serveFormula({ expression: '{{ max([[price]], 0) }}' }));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices()).toEqual([]);
+    });
+
+    it('keeps pricing on the last known formula when the read fails', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+
+      const failing = createService(serveFormula('fails'));
+      await failing.refreshSpotPrices(true);
+
+      expect(failing.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1.75]);
+    });
+
+    it('stops applying a formula the owner has removed', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+
+      const cleared = createService(serveFormula('none'));
+      await cleared.refreshSpotPrices(true);
+
+      expect(cleared.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1]);
+    });
+
+    it('keeps persisted prices when the formula has never been read', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      // An upgrade that priced raw before this existed, whose first read fails.
+      // We cannot price now, but nothing here says the stored prices are wrong
+      // — and blanking them would also blank a home the moment its owner picks
+      // this price source, which rebuilds derived state without reading.
+      mockHomeyInstance.settings.set(COMBINED_PRICES, {
+        version: 2,
+        days: { [getDateKeyInTimeZone(fixedNow, timeZone)]: { hours: [{ startsAt: fixedNow.toISOString(), total: 1, isCheap: false, isExpensive: false }] } },
+      });
+
+      await createService(serveFormula('fails')).refreshSpotPrices(true);
+
+      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, { hours?: unknown[] }> };
+      expect(Object.values(persisted?.days ?? {}).flatMap((day) => day.hours ?? [])).not.toEqual([]);
+    });
+
+    it('publishes no prices when the formula has never been read', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      // A fresh install, or an upgrade, whose very first read fails: nothing is
+      // mirrored yet, so how this home prices electricity is UNKNOWN. Passing
+      // raw wholesale spot through here is the exact bug this file fixes, and
+      // an absent mirror must not be read as "the owner has no formula".
+      const service = createService(serveFormula('fails'));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices()).toEqual([]);
+    });
+
+    it('prices off raw spot on firmware with no user-cost route', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      // A 404 is the one failure that settles the question: this firmware has
+      // no user costs to apply, so the raw price IS the owner's price.
+      const service = createService(serveFormula('missing-route'));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1, 2]);
+    });
+
+    it('keeps the mirrored formula when the route answers with a malformed body', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+
+      // A partial or error-shaped 200 says nothing about the owner's
+      // configuration; only a literal `null` means they removed the formula.
+      const malformed = createService(serveFormula('malformed'));
+      await malformed.refreshSpotPrices(true);
+
+      expect(malformed.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1.75]);
+    });
+
+    it('drops persisted prices when the formula becomes unevaluable', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toBeTruthy();
+
+      // The live service reports no prices; the persisted payload must not go
+      // on serving prices built from a formula that no longer applies — the
+      // daily budget, smart-task horizons, Flow tags and UI all read it.
+      const unevaluable = createService(serveFormula({ expression: '{{ max([[price]], 0) }}' }));
+      await unevaluable.refreshSpotPrices(true);
+
+      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, unknown> };
+      const persistedEntries = Object.values(persisted?.days ?? {})
+        .flatMap((day) => (day as { hours?: unknown[] }).hours ?? []);
+      expect(persistedEntries).toEqual([]);
+    });
+
+    it('keeps persisted prices when the mirrored formula reads back empty', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+      const persistedBefore = mockHomeyInstance.settings.get(COMBINED_PRICES);
+
+      // The SDK hands back nothing for a key it still lists — a transient miss
+      // this platform does produce. That settles nothing about the home, so it
+      // must not be read as "never configured" and used to bin good prices.
+      const get = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+      vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+        key === HOMEY_PRICE_FORMULA ? undefined : get(key)
+      ));
+      createService(serveFormula('fails')).updateCombinedPrices();
+      vi.mocked(mockHomeyInstance.settings.get).mockRestore();
+
+      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toEqual(persistedBefore);
+    });
+
+    it('drops persisted prices when a compiled formula prices nothing', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
+
+      // This one parses, so it is not `unsupported` — but it evaluates
+      // non-finite at every period, so the home has no prices. The verdict has
+      // to come from what the formula actually produced, not from the fact
+      // that it compiled.
+      const pricesNothing = createService(serveFormula({ expression: '{{ 1 / ([[price]] - [[price]]) }}' }));
+      await pricesNothing.refreshSpotPrices(true);
+
+      expect(pricesNothing.getCombinedHourlyPrices()).toEqual([]);
+      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, unknown> };
+      const persistedEntries = Object.values(persisted?.days ?? {})
+        .flatMap((day) => (day as { hours?: unknown[] }).hours ?? []);
+      expect(persistedEntries).toEqual([]);
+    });
+
+    it('recovers once a later read answers with the formula', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1 });
+      await createService(serveFormula('missing-route')).refreshSpotPrices(true);
+      expect(mockHomeyInstance.settings.get(HOMEY_PRICE_FORMULA)).toEqual({ mathExpression: null });
+
+      // Firmware updated, or the owner configured costs: the mirror must move
+      // off its recorded "no formula" the first time a read says otherwise.
+      const configured = createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' }));
+      await configured.refreshSpotPrices(true);
+
+      expect(configured.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1.75]);
+    });
+
+    it('does not rewrite the mirrored formula when it has not changed', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1 });
+      const formula = serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' });
+      await createService(formula).refreshSpotPrices(true);
+
+      expect(mockHomeyInstance.settings.get(HOMEY_PRICE_FORMULA))
+        .toEqual({ mathExpression: '{{ (0.4 + [[price]]) * 1.25 }}' });
+      // An earlier spec in this file spies on the same method and nothing
+      // restores it, so vi.spyOn hands back that spy with its calls already on
+      // it; only the writes from here on are this spec's business.
+      const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+      setSpy.mockClear();
+      await createService(formula).refreshSpotPrices(true);
+
+      // Every settings write ships the whole settings object to core; this key
+      // is re-read every three hours and changes about never.
+      expect(setSpy.mock.calls.filter(([key]) => key === HOMEY_PRICE_FORMULA)).toHaveLength(0);
+    });
   });
 });

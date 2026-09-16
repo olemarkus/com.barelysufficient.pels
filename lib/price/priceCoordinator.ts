@@ -45,6 +45,11 @@ export type PriceCoordinatorDeps = {
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   /** The Main home's live power tracker, for the Norgespris usage estimates. */
   getPowerTracker: () => import('./priceServiceNorgespris').PowerTrackerReadout;
+  /**
+   * Reads Homey's own Web API, for the owner's price formula (see
+   * `PriceService`); supplied by the wiring layer's `homeyWebApiGet`.
+   */
+  homeyWebApiGet: import('./homeyPriceFormula').HomeyWebApiGet;
   getCurrentPriceLevel: () => PriceLevel;
   /** Names the price MODE; the wiring turns it into the `price` rebuild trigger. */
   rebuildPlanFromCache: (priceMode: string) => Promise<void>;
@@ -86,6 +91,7 @@ export class PriceCoordinator {
       deps.getHomeyEnergyApi,
       deps.priceDataStore,
       deps.getPowerTracker,
+      deps.homeyWebApiGet,
     );
     if (deps.onCombinedPricesUpdated) {
       this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);

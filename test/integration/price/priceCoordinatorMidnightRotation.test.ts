@@ -5,6 +5,7 @@ import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOp
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
 import { PriceLevel } from '../../../lib/price/priceLevels';
 import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
+import { noHomeyWebApi } from '../../helpers/homeyWebApiStub';
 
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
@@ -12,6 +13,7 @@ const createCoordinator = () => new PriceCoordinator({
   priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
+  homeyWebApiGet: noHomeyWebApi,
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   rebuildPlanFromCache: async () => undefined,
   log: () => undefined,
@@ -80,6 +82,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
+      homeyWebApiGet: noHomeyWebApi,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
@@ -266,6 +269,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
+      homeyWebApiGet: noHomeyWebApi,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,

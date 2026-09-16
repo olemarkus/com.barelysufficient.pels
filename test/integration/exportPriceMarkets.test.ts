@@ -30,6 +30,7 @@ import {
   PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
+import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const TZ = 'Europe/Oslo';
 
@@ -40,6 +41,7 @@ const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceSer
   energyApi ? () => energyApi : undefined,
   createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
+  noHomeyWebApi,
 );
 
 // Export config is separate from import config: its own keys, read at price-build

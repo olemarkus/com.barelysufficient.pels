@@ -74,7 +74,8 @@ from outside PELS.
 - A caller that needs to know how the bytes are shaped is a caller that should be
   asking the owner.
 
-Keys with owners so far: `mode_device_targets`, `pv_forecast_source`.
+Keys with owners so far: `mode_device_targets`, `pv_forecast_source`,
+`homey_price_formula`.
 `capacity_priorities` has the same shape and the same two parsers and is the
 obvious next one — until then it keeps the older reject-the-whole-map policy,
 which is why `parseModeNumberMap` still exists alongside
@@ -87,10 +88,36 @@ have been one drift away from planning and the UI naming different sources for
 the same bytes. Its policy is recognise-or-default rather than sanitize-and-keep
 — see the module for why defaulting is safe at this particular key.
 
+`homey_price_formula` (owner: `lib/price/homeyPriceFormula.ts`) is a
+runtime-only key, and the interesting part is its READ policy: neither
+sanitize-and-keep nor recognise-or-default, because absence here is not one
+state but three. The key mirrors what Homey answered for the owner's price
+formula, so the reader must tell "Homey says there is no formula" (a recorded
+`{ mathExpression: null }`, which makes raw spot the right price) from "Homey
+has never answered us" (no key — we cannot price at all) from "the key is
+listed but this read did not produce it" (a transient miss, which settles
+nothing). The first two are facts about the home and drive opposite behaviour;
+the third must change nothing, so it is told apart with the `getKeys()`
+cross-check this note's transport section describes. A stored expression the
+evaluator cannot parse is a fourth state, and it is a verdict: the home's real
+prices are unknowable and any prices persisted under the old formula are now
+wrong. The write policy refuses a failed read outright and skips a write that
+would not change the value.
+
 ## Which store a key lives in
 
 Part of an owner's contract is *where* the bytes live, and there are two stores
 with opposite cost profiles:
+
+`homey_price_formula` sits in `homey.settings` deliberately, and the call is
+close enough to state it: it is regenerable from Homey on any successful read,
+which by the taxonomy below is the mark of a cache. What settles it the other
+way is that PELS refuses to price at all without it, so it is the app's own
+mission-critical configuration mirror rather than a cache of fetched data — and
+it is one short string, rewritten perhaps once a year, so the write cost the
+`/userdata` store exists to avoid does not arise. The prices themselves stay
+out: `combined_prices` and the raw slot payloads are the bulk, and they are the
+ones named below as the next to move.
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership
