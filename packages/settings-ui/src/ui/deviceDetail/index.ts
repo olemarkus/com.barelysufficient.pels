@@ -83,9 +83,8 @@ import {
 } from './temperatureBoost.ts';
 import { persistDeviceControlProfile as persistDeviceControlProfileWrite } from './controlProfileWrite.ts';
 import {
-  clearPendingNativeWiringEnable,
+  resetNativeWiringSetupDisclosure,
   initDeviceDetailNativeWiringHandler,
-  retainPendingNativeWiringEnable,
   setDeviceDetailNativeWiringState,
 } from './nativeWiring.ts';
 import {
@@ -348,7 +347,6 @@ export const openDeviceDetail = (deviceId: string) => {
   // preserve A's in-progress edits — only `closeSteppedLoadDraft`, called from
   // `closeDeviceDetail` when the pane itself closes, drops a device's draft.
   // The draft for B (if any) is loaded via renderSteppedLoadDraft below.
-  retainPendingNativeWiringEnable(deviceId);
   currentDetailDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
@@ -397,7 +395,7 @@ export const closeDeviceDetail = () => {
   if (currentDetailDeviceId) {
     closeSteppedLoadDraft(currentDetailDeviceId);
   }
-  clearPendingNativeWiringEnable();
+  resetNativeWiringSetupDisclosure();
   hideDeviceDetailLiveStatus();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
@@ -461,7 +459,6 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     getDeviceById,
     refreshCurrentDeviceControlStates,
-    refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   });
   initDeviceDetailManagedControlHandlers(

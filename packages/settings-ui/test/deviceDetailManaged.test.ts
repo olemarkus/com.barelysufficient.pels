@@ -39,8 +39,6 @@ const buildDom = () => {
         <md-text-button id="device-detail-native-wiring-notice-action"></md-text-button>
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
-        <div id="device-detail-native-wiring-confirm-row" hidden></div>
-        <md-switch id="device-detail-native-wiring-confirm"></md-switch>
         <md-switch id="device-detail-managed"></md-switch>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
@@ -200,7 +198,7 @@ describe('device detail managed state saves', () => {
     expect(managedInput?.selected).toBe(false);
   });
 
-  it('requires transient confirmation before enabling built-in device control', async () => {
+  it('saves built-in device control directly from its single switch', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -258,26 +256,30 @@ describe('device detail managed state saves', () => {
     await flushPromises();
 
     const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
-    const confirmRow = document.querySelector('#device-detail-native-wiring-confirm-row') as HTMLElement | null;
-    const confirmInput = document.querySelector('#device-detail-native-wiring-confirm') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const controlModelRow = document.querySelector('#device-detail-control-model-row') as HTMLElement | null;
 
     expect(nativeWiringInput?.selected).toBe(false);
-    expect(confirmRow?.hidden).toBe(true);
     expect(managedInput?.disabled).toBe(true);
     expect(controlModelRow?.hidden).toBe(true);
 
+    let finishSave: () => void = () => { throw new Error('Save has not started'); };
+    homey.set.mockImplementationOnce((key: string, value: unknown, callback: (error: Error | null) => void) => {
+      finishSave = () => {
+        homey.__settingsStore[key] = value;
+        callback(null);
+      };
+    });
     nativeWiringInput!.selected = true;
     nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(confirmRow?.hidden).toBe(false);
-    expect(homey.set).not.toHaveBeenCalledWith('native_ev_wiring_devices', expect.anything(), expect.any(Function));
-
-    confirmInput!.selected = true;
-    confirmInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(nativeWiringInput?.disabled).toBe(true);
+    openDeviceDetail('zaptec-1');
+    expect(nativeWiringInput?.disabled).toBe(true);
+    finishSave();
     await flushPromises();
+    expect(nativeWiringInput?.disabled).toBe(false);
 
     expect(homey.set).toHaveBeenCalledWith(
       'native_ev_wiring_devices',

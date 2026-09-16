@@ -12,8 +12,6 @@ const buildDom = () => {
     </div>
     <div id="device-detail-native-wiring-row" hidden></div>
     <md-switch id="device-detail-native-wiring"></md-switch>
-    <div id="device-detail-native-wiring-confirm-row" hidden></div>
-    <md-switch id="device-detail-native-wiring-confirm"></md-switch>
   `;
 };
 

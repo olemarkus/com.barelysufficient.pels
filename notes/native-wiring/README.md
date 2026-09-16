@@ -238,6 +238,11 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    override each other. Missing required activation retains its own setup
    notice; a supported legacy Flow setup is not labelled unusable.
 
+   There is one built-in-control switch, which saves the owner's choice
+   directly. There is no "only device controller" confirmation: PELS cannot
+   guarantee exclusive control or disable another app or Flow. Detected Flow
+   conflicts are explained by the separate notice.
+
    *Follow-ups:*
    - ~~Re-run conflict detection after snapshot refreshes so a Flow added after
      startup is reflected without a restart and a degraded empty-snapshot startup

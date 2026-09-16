@@ -161,10 +161,6 @@ export const deviceDetailTitle = qs('#device-detail-title');
 export const deviceDetailClose = qs('#device-detail-close') as MdButtonElement;
 export const deviceDetailNativeWiringRow = qs('#device-detail-native-wiring-row');
 export const deviceDetailNativeWiring = document.querySelector('#device-detail-native-wiring') as MdSwitchElement;
-export const deviceDetailNativeWiringConfirmRow = qs('#device-detail-native-wiring-confirm-row');
-export const deviceDetailNativeWiringConfirm = document.querySelector(
-  '#device-detail-native-wiring-confirm',
-) as MdSwitchElement;
 export const deviceDetailSetupDisclosure = document.querySelector<HTMLDetailsElement>(
   '#device-detail-setup-disclosure',
 );

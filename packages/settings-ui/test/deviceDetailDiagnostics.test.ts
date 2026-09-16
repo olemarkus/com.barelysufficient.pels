@@ -17,8 +17,6 @@ const buildDom = () => {
     <md-text-button id="device-detail-native-wiring-notice-action"></md-text-button>
     <div id="device-detail-native-wiring-row" hidden></div>
     <md-switch id="device-detail-native-wiring"></md-switch>
-    <div id="device-detail-native-wiring-confirm-row" hidden></div>
-    <md-switch id="device-detail-native-wiring-confirm"></md-switch>
     <md-switch id="device-detail-managed"></md-switch>
     <md-switch id="device-detail-controllable"></md-switch>
     <md-switch id="device-detail-price-opt"></md-switch>

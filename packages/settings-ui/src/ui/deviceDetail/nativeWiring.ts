@@ -4,8 +4,6 @@ import {
   deviceDetailFlowConflictNotice,
   deviceDetailFlowConflictTitle,
   deviceDetailNativeWiring,
-  deviceDetailNativeWiringConfirm,
-  deviceDetailNativeWiringConfirmRow,
   deviceDetailNativeWiringNotice,
   deviceDetailNativeWiringNoticeAction,
   deviceDetailNativeWiringRow,
@@ -20,19 +18,14 @@ import {
 import { state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 
-let nativeWiringActivationPendingDeviceId: string | null = null;
 // Tracks the device id we have already auto-expanded the Setup disclosure
 // for. Refresh paths (devices-updated, snapshot refresh, plan-updated) call
 // setDeviceDetailNativeWiringState repeatedly; without this guard we would
 // fight the user every time they manually close the disclosure.
 let setupAutoExpandedForDeviceId: string | null = null;
+let nativeWiringSaveInProgress = false;
 
-export const retainPendingNativeWiringEnable = (deviceId: string) => {
-  nativeWiringActivationPendingDeviceId = nativeWiringActivationPendingDeviceId === deviceId ? deviceId : null;
-};
-
-export const clearPendingNativeWiringEnable = () => {
-  nativeWiringActivationPendingDeviceId = null;
+export const resetNativeWiringSetupDisclosure = () => {
   setupAutoExpandedForDeviceId = null;
 };
 
@@ -84,28 +77,14 @@ export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailI
   const nativeWiringEffectiveEnabled = device
     ? state.nativeWiringMap[device.id] === true || device.controlAdapter?.activationEnabled === true
     : false;
-  // `device !== null`, not a truthiness `device &&`: this is a predicate that
-  // feeds `.selected` / `.hidden` on the DOM elements below, and `device && …`
-  // evaluates to `null` for a null device rather than `false`.
-  const nativeWiringActivationPending = device !== null
-    && nativeWiringActivationPendingDeviceId === device.id
-    && !nativeWiringEffectiveEnabled;
-  const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device)
-    && !nativeWiringActivationPending;
+  const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device);
 
   if (deviceDetailNativeWiringRow) {
     deviceDetailNativeWiringRow.hidden = !nativeWiringSupported;
   }
   if (deviceDetailNativeWiring) {
-    deviceDetailNativeWiring.selected = nativeWiringEffectiveEnabled || nativeWiringActivationPending;
-    deviceDetailNativeWiring.disabled = !nativeWiringSupported;
-  }
-  if (deviceDetailNativeWiringConfirmRow) {
-    deviceDetailNativeWiringConfirmRow.hidden = !nativeWiringActivationPending;
-  }
-  if (deviceDetailNativeWiringConfirm) {
-    deviceDetailNativeWiringConfirm.selected = false;
-    deviceDetailNativeWiringConfirm.disabled = !nativeWiringActivationPending;
+    deviceDetailNativeWiring.selected = nativeWiringEffectiveEnabled;
+    deviceDetailNativeWiring.disabled = !nativeWiringSupported || nativeWiringSaveInProgress;
   }
   syncNativeWiringRequirementSurfaces(nativeWiringRequiredAndMissing);
   const hasFlowConflict = syncFlowConflictNotice(device, nativeWiringEffectiveEnabled);
@@ -131,14 +110,12 @@ export const initDeviceDetailNativeWiringHandler = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshCurrentDeviceControlStates: () => void;
-  refreshOpenDeviceDetail: () => void;
   refreshSharedDeviceViews: () => void;
 }) => {
   const {
     getCurrentDetailDeviceId,
     getDeviceById,
     refreshCurrentDeviceControlStates,
-    refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   } = params;
 
@@ -160,7 +137,6 @@ export const initDeviceDetailNativeWiringHandler = (params: {
       commit: (nextMap) => {
         state.nativeWiringMap = nextMap;
         updateCurrentDeviceNativeWiringSnapshot(getDeviceById(deviceId), nativeWiringEnabled);
-        nativeWiringActivationPendingDeviceId = null;
         refreshSharedDeviceViews();
         refreshCurrentDeviceControlStates();
       },
@@ -170,38 +146,22 @@ export const initDeviceDetailNativeWiringHandler = (params: {
 
   deviceDetailNativeWiring?.addEventListener('change', async () => {
     const deviceId = getCurrentDetailDeviceId();
-    if (!deviceId || !deviceDetailNativeWiring) return;
+    if (!deviceId || !deviceDetailNativeWiring || nativeWiringSaveInProgress) return;
 
     const device = getDeviceById(deviceId);
     if (!supportsNativeWiringActivation(device)) return;
 
     const nativeWiringEffectiveEnabled = state.nativeWiringMap[deviceId] === true
       || device.controlAdapter?.activationEnabled === true;
-    if (deviceDetailNativeWiring.selected) {
-      if (nativeWiringEffectiveEnabled) return;
-      nativeWiringActivationPendingDeviceId = deviceId;
-      refreshOpenDeviceDetail();
-      return;
+    if (deviceDetailNativeWiring.selected === nativeWiringEffectiveEnabled) return;
+    nativeWiringSaveInProgress = true;
+    deviceDetailNativeWiring.disabled = true;
+    try {
+      await persistNativeWiringEnabled(deviceId, deviceDetailNativeWiring.selected);
+    } finally {
+      nativeWiringSaveInProgress = false;
+      refreshCurrentDeviceControlStates();
     }
-
-    nativeWiringActivationPendingDeviceId = null;
-
-    if (!nativeWiringEffectiveEnabled) {
-      refreshSharedDeviceViews();
-      refreshOpenDeviceDetail();
-      return;
-    }
-
-    await persistNativeWiringEnabled(deviceId, false);
-  });
-
-  deviceDetailNativeWiringConfirm?.addEventListener('change', async () => {
-    const deviceId = getCurrentDetailDeviceId();
-    if (!deviceId || !deviceDetailNativeWiringConfirm) return;
-    if (nativeWiringActivationPendingDeviceId !== deviceId) return;
-    if (!deviceDetailNativeWiringConfirm.selected) return;
-
-    await persistNativeWiringEnabled(deviceId, true);
   });
 
   deviceDetailNativeWiringNoticeAction?.addEventListener('click', () => {
