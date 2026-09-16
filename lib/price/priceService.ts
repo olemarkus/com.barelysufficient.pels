@@ -31,11 +31,12 @@ import {
   updateHomeyEnergyCurrency,
 } from './homeyEnergyRefresh';
 import {
-  buildCombinedHourlyPricesFromPayloads,
+  buildCombinedPricePeriodsFromPayloads,
   purgeStaleFlowPriceSlots,
   storeFlowPriceData as storeFlowPriceDataHelper,
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
+import { toHourlyPrices } from './hourlyPriceProjection';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
@@ -425,14 +426,19 @@ export default class PriceService {
       tomorrowSettingKey,
       label,
     });
-    return buildCombinedHourlyPricesFromPayloads({
+    // A stored payload carries periods at the source's own length (a Homey
+    // Energy zone on the 15-minute market stores four per hour). Everything
+    // reading this method reasons in whole hours, so the periods are projected
+    // onto hours here, in the producer, rather than each consumer guessing a
+    // period's span.
+    return toHourlyPrices(buildCombinedPricePeriodsFromPayloads({
       now,
       timeZone,
       todayPayload,
       tomorrowPayload,
       debugStructured: this.sinks.debugStructured,
       label,
-    });
+    }), timeZone);
   }
 
   private getCombinedHourlyPricesFromFlow(): CombinedHourlyPrice[] {

@@ -4,7 +4,6 @@ import { getTimeAgo } from './utils.ts';
 import {
   getFlowPricePayload,
   getExpectedFlowHours,
-  buildFlowDaySlots,
   getMissingFlowHours,
 } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
@@ -20,17 +19,14 @@ const getFlowPayloadStatus = (
   if (!payload) return { text: 'No data received', tone: 'warn' };
 
   const expectedHours = getExpectedFlowHours(payload.dateKey, timeZone);
-  const expectedSlots = buildFlowDaySlots(payload.dateKey, timeZone);
-  const hasExactSlots = Array.isArray(payload.pricesBySlot) && payload.pricesBySlot.length > 0;
-
-  const storedCount = hasExactSlots
-    ? (payload.pricesBySlot?.length ?? 0)
-    : Object.keys(payload.pricesByHour).length;
-  const expectedCount = hasExactSlots ? expectedSlots.length : expectedHours.length;
-  const missingCount = hasExactSlots
-    ? Math.max(0, expectedSlots.length - storedCount)
-    : getMissingFlowHours(payload.pricesByHour, expectedHours).length;
-  const unitLabel = hasExactSlots ? 'slots' : 'hours';
+  // Counted in hours whatever the source's period length: a zone on the
+  // 15-minute market sends four prices per hour, and "96/24" would read as a
+  // fault rather than as a full day. `pricesByHour` is the producer's own hour
+  // view of the same day, so the count needs no second derivation here.
+  const storedCount = Object.keys(payload.pricesByHour).length;
+  const expectedCount = expectedHours.length;
+  const missingCount = getMissingFlowHours(payload.pricesByHour, expectedHours).length;
+  const unitLabel = 'hours';
 
   const updatedAt = new Date(payload.updatedAt);
   const updatedText = Number.isNaN(updatedAt.getTime())

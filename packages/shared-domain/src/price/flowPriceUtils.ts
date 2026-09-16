@@ -15,17 +15,45 @@ import {
   getZonedParts,
 } from '../utils/dateUtils';
 
-export type FlowHourlyPrice = {
+/**
+ * One priced period. `durationMinutes` is what the period covers: 60 for an
+ * hourly source (owner Flow input, Norwegian spot), 15 for a Homey Energy zone
+ * publishing quarter-hour prices. It is required so no consumer has to assume a
+ * span — an assumed hour over a quarter-hour series silently reads the :00
+ * price as the whole hour.
+ *
+ * Persisted payloads written before periods carried a duration have none; the
+ * read boundary (`normalizeFlowSlotEntries`) resolves those to 60, which is
+ * what they were.
+ */
+export type FlowPricePeriod = {
   startsAt: string;
   totalPrice: number;
+  durationMinutes: number;
 };
 
 export type FlowPricePayload = {
   dateKey: string;
   pricesByHour: Record<string, number>;
   updatedAt: string;
-  pricesBySlot?: FlowHourlyPrice[];
+  /**
+   * One entry per local hour, at the exact instant that hour starts. Every
+   * version of PELS that has ever stored this key has meant exactly that by it,
+   * so it keeps meaning it: an older build reinstalled over a payload written
+   * here reads the same hourly prices it wrote itself.
+   */
+  pricesBySlot?: FlowPricePeriod[];
+  /**
+   * The source's own periods, written only when they are shorter than an hour
+   * (a Homey Energy zone on the 15-minute market). A build that predates
+   * sub-hourly prices ignores the field and reads `pricesBySlot`, which is why
+   * the finer series could not simply replace it.
+   */
+  pricesByPeriod?: FlowPricePeriod[];
 };
+
+/** A period a source publishes without saying how long it lasts is an hour. */
+export const DEFAULT_PERIOD_MINUTES = 60;
 
 type FlowDaySlot = {
   startsAt: string;
@@ -39,7 +67,7 @@ type FlowHourValueEntry = {
 
 type ParsedFlowPricePayloadInput = {
   pricesByHour: Record<string, number>;
-  pricesBySlot?: FlowHourlyPrice[];
+  pricesBySlot?: FlowPricePeriod[];
 };
 
 const DEFAULT_FLOW_HOURS = Object.freeze(Array.from({ length: 24 }, (_, hour) => hour));
@@ -87,34 +115,63 @@ const buildPricesByHour = (input: unknown): Record<string, number> => (
   buildPricesByHourFromEntries(buildHourValueEntries(input))
 );
 
-const buildPricesByHourFromSlotEntries = (
-  entries: FlowHourlyPrice[],
+/**
+ * Local-hour averages of a period series, each hour weighted by how long its
+ * periods last. Equal-length periods (four quarters, or one hour) make this the
+ * plain mean; the weighting only matters for an hour a source covered
+ * unevenly, where a plain mean would let a 15-minute period count as much as a
+ * 45-minute one.
+ */
+export const buildPricesByHourFromPeriods = (
+  entries: FlowPricePeriod[],
   timeZone: string,
 ): Record<string, number> => {
-  const buckets = entries.reduce<Record<string, { sum: number; count: number }>>((acc, entry) => {
+  const buckets = entries.reduce<Record<string, { weighted: number; minutes: number }>>((acc, entry) => {
     const timestamp = Date.parse(entry.startsAt);
     if (!Number.isFinite(timestamp)) return acc;
     const hour = getZonedParts(new Date(timestamp), timeZone).hour;
     const key = String(hour);
-    const current = acc[key] ?? { sum: 0, count: 0 };
+    const current = acc[key] ?? { weighted: 0, minutes: 0 };
     return {
       ...acc,
-      [key]: { sum: current.sum + entry.totalPrice, count: current.count + 1 },
+      [key]: {
+        weighted: current.weighted + entry.totalPrice * entry.durationMinutes,
+        minutes: current.minutes + entry.durationMinutes,
+      },
     };
   }, {});
 
   return Object.entries(buckets).reduce<Record<string, number>>((acc, [hour, bucket]) => {
-    if (bucket.count <= 0) return acc;
+    if (bucket.minutes <= 0) return acc;
     return {
       ...acc,
-      [hour]: bucket.sum / bucket.count,
+      [hour]: bucket.weighted / bucket.minutes,
     };
   }, {});
 };
 
-const normalizeFlowSlotEntries = (input: unknown): FlowHourlyPrice[] => {
+/**
+ * A period stored without a duration is an hour: that is what every payload
+ * written before periods carried one was. A duration that is present but
+ * unusable is not the same fact — it is junk, and the entry goes the way a junk
+ * price does, rather than being priced for a span nobody stated.
+ */
+const resolveStoredPeriodMinutes = (value: unknown): number | null => {
+  if (value === undefined || value === null) return DEFAULT_PERIOD_MINUTES;
+  const minutes = normalizeNumeric(value);
+  if (minutes === null || minutes <= 0 || minutes > 24 * 60) return null;
+  return minutes;
+};
+
+/**
+ * Read boundary for a persisted period array. Drops entries without a usable
+ * instant, price or duration, and keeps the first of a repeated start — Homey
+ * Energy lists every quarter twice at the 15-minute interval, and a repeat is
+ * not a second period.
+ */
+const normalizeFlowSlotEntries = (input: unknown): FlowPricePeriod[] => {
   if (!Array.isArray(input)) return [];
-  const slotMap = input.reduce<Map<string, number>>((acc, entry) => {
+  const slotMap = input.reduce<Map<string, FlowPricePeriod>>((acc, entry) => {
     if (!entry || typeof entry !== 'object') return acc;
     const record = entry as Record<string, unknown>;
     const startsAtRaw = record.startsAt;
@@ -123,13 +180,16 @@ const normalizeFlowSlotEntries = (input: unknown): FlowHourlyPrice[] => {
     if (!Number.isFinite(startsAtMs)) return acc;
     const totalPrice = normalizeNumeric(record.totalPrice ?? record.total);
     if (totalPrice === null) return acc;
-    acc.set(new Date(startsAtMs).toISOString(), totalPrice);
+    const durationMinutes = resolveStoredPeriodMinutes(record.durationMinutes);
+    if (durationMinutes === null) return acc;
+    const startsAt = new Date(startsAtMs).toISOString();
+    if (acc.has(startsAt)) return acc;
+    acc.set(startsAt, { startsAt, totalPrice, durationMinutes });
     return acc;
-  }, new Map<string, number>());
+  }, new Map<string, FlowPricePeriod>());
 
-  return Array.from(slotMap.entries())
-    .sort(([left], [right]) => Date.parse(left) - Date.parse(right))
-    .map(([startsAt, totalPrice]) => ({ startsAt, totalPrice }));
+  return Array.from(slotMap.values())
+    .sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt));
 };
 
 const parseFlowPriceRaw = (raw: unknown): unknown => {
@@ -176,9 +236,9 @@ export const parseFlowPricePayloadInput = (
     const pricesBySlot = daySlots.flatMap((slot, index) => {
       const totalPrice = normalizeNumeric(parsed[index]);
       if (totalPrice === null) return [];
-      return [{ startsAt: slot.startsAt, totalPrice }];
+      return [{ startsAt: slot.startsAt, totalPrice, durationMinutes: DEFAULT_PERIOD_MINUTES }];
     });
-    const slotPricesByHour = buildPricesByHourFromSlotEntries(pricesBySlot, context.timeZone);
+    const slotPricesByHour = buildPricesByHourFromPeriods(pricesBySlot, context.timeZone);
     const pricesByHour = slotPricesByHour;
     if (pricesBySlot.length === 0 && Object.keys(pricesByHour).length === 0) {
       throw new Error('No valid hourly prices found in price data.');
@@ -197,7 +257,7 @@ export const parseFlowPricePayloadInput = (
       if (totalPrice === null) return [];
       const matchingSlot = daySlots.find((slot) => slot.startsAt === key);
       if (!matchingSlot) return [];
-      return [{ startsAt: matchingSlot.startsAt, totalPrice }];
+      return [{ startsAt: matchingSlot.startsAt, totalPrice, durationMinutes: DEFAULT_PERIOD_MINUTES }];
     })
     : [];
 
@@ -205,7 +265,7 @@ export const parseFlowPricePayloadInput = (
     throw new Error('No valid hourly prices found in price data.');
   }
 
-  const slotPricesByHour = buildPricesByHourFromSlotEntries(exactSlotPrices, context.timeZone);
+  const slotPricesByHour = buildPricesByHourFromPeriods(exactSlotPrices, context.timeZone);
   return {
     pricesByHour: {
       ...basePricesByHour,
@@ -221,16 +281,21 @@ export const getFlowPricePayload = (raw: unknown): FlowPricePayload | null => {
     dateKey?: unknown;
     pricesByHour?: unknown;
     pricesBySlot?: unknown;
+    pricesByPeriod?: unknown;
     updatedAt?: unknown;
   };
   if (typeof record.dateKey !== 'string' || !record.dateKey) return null;
   const pricesByHour = buildPricesByHour(record.pricesByHour);
   const pricesBySlot = normalizeFlowSlotEntries(record.pricesBySlot);
-  if (Object.keys(pricesByHour).length === 0 && pricesBySlot.length === 0) return null;
+  const pricesByPeriod = normalizeFlowSlotEntries(record.pricesByPeriod);
+  if (Object.keys(pricesByHour).length === 0 && pricesBySlot.length === 0 && pricesByPeriod.length === 0) {
+    return null;
+  }
   return {
     dateKey: record.dateKey,
     pricesByHour,
     pricesBySlot: pricesBySlot.length > 0 ? pricesBySlot : undefined,
+    pricesByPeriod: pricesByPeriod.length > 0 ? pricesByPeriod : undefined,
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString(),
   };
 };
@@ -243,19 +308,49 @@ export const getMissingFlowHours = (
     .filter((hour) => !Number.isFinite(pricesByHour[String(hour)]))
 );
 
-export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): FlowHourlyPrice[] => {
+/**
+ * The payload's priced periods for its own local day, in order.
+ *
+ * Exact-instant periods are carried through at the length the source published
+ * them (a quarter-hour source yields four periods per hour), and an hour no
+ * period covers falls back to that hour's value in `pricesByHour` as a single
+ * hour-long period. Periods outside the payload's local day are dropped: the
+ * payload names one day, and its neighbour owns the rest.
+ */
+export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): FlowPricePeriod[] => {
   const daySlots = buildFlowDaySlots(payload.dateKey, timeZone);
-  const exactSlotPrices = new Map<string, number>(
-    normalizeFlowSlotEntries(payload.pricesBySlot).map((entry) => [entry.startsAt, entry.totalPrice]),
-  );
+  const dayStartMs = getDateKeyStartMs(payload.dateKey, timeZone);
+  const dayEndMs = getNextLocalDayStartUtcMs(dayStartMs, timeZone);
 
-  return daySlots.flatMap((slot) => {
-    const price = exactSlotPrices.get(slot.startsAt) ?? payload.pricesByHour[String(slot.hour)];
+  // The payload is already resolved — `getFlowPricePayload` is the seam that
+  // validated it — so the periods are read as they stand, not re-normalized.
+  // The source's own periods win when it published sub-hourly ones; otherwise
+  // the hourly series is the finest thing there is.
+  const periods = (payload.pricesByPeriod ?? payload.pricesBySlot ?? []).filter((entry) => {
+    const startMs = Date.parse(entry.startsAt);
+    return startMs >= dayStartMs && startMs < dayEndMs;
+  });
+  // Keyed on the hour's start instant, not its clock hour: a DST day repeats a
+  // clock hour, and a period covering the first one leaves the second uncovered.
+  const slotStartsDescMs = daySlots.map((slot) => Date.parse(slot.startsAt)).reverse();
+  const coveredSlotStarts = new Set(periods.flatMap((entry) => {
+    const startMs = Date.parse(entry.startsAt);
+    const containing = slotStartsDescMs.find((slotStart) => slotStart <= startMs);
+    return containing === undefined ? [] : [containing];
+  }));
+
+  const hourlyFallback = daySlots.flatMap((slot) => {
+    if (coveredSlotStarts.has(Date.parse(slot.startsAt))) return [];
+    const price = payload.pricesByHour[String(slot.hour)];
     // An hour the payload never carried a price for is simply not an entry.
     if (price === undefined || !Number.isFinite(price)) return [];
     return [{
       startsAt: slot.startsAt,
       totalPrice: price,
+      durationMinutes: DEFAULT_PERIOD_MINUTES,
     }];
   });
+
+  return [...periods, ...hourlyFallback]
+    .sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt));
 };

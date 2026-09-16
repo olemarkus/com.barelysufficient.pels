@@ -7,8 +7,48 @@ import {
   NETTLEIE_DATA,
 } from '../utils/settingsKeys';
 import type { SpotPriceEntry } from './spotPriceFetch';
-import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
+import {
+  DEFAULT_PERIOD_MINUTES,
+  type FlowPricePayload,
+  type FlowPricePeriod,
+} from '../../packages/shared-domain/src/price/flowPriceUtils';
 import type { CombinedPricesV2 } from './priceTypes';
+
+/**
+ * The persisted form of a priced period. The duration is omitted when the
+ * period is an hour long, because that is exactly what the read boundary gives
+ * a period that carries none (`normalizeFlowSlotEntries`), and because the SDK
+ * ships the whole settings object on every write of any key — so an hourly
+ * source stores what it always stored, and only a sub-hourly source pays the
+ * bytes for saying how long its periods are.
+ */
+type StoredFlowPricePeriod = {
+  startsAt: string;
+  totalPrice: number;
+  durationMinutes?: number;
+};
+
+type StoredFlowPricePayload = Omit<FlowPricePayload, 'pricesBySlot' | 'pricesByPeriod'> & {
+  pricesBySlot?: StoredFlowPricePeriod[];
+  pricesByPeriod?: StoredFlowPricePeriod[];
+};
+
+const toStoredPeriods = (periods: FlowPricePeriod[]): StoredFlowPricePeriod[] => (
+  periods.map(({ startsAt, totalPrice, durationMinutes }) => (
+    durationMinutes === DEFAULT_PERIOD_MINUTES
+      ? { startsAt, totalPrice }
+      : { startsAt, totalPrice, durationMinutes }
+  ))
+);
+
+const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPricePayload | null => {
+  if (!payload) return payload;
+  return {
+    ...payload,
+    ...(payload.pricesBySlot ? { pricesBySlot: toStoredPeriods(payload.pricesBySlot) } : {}),
+    ...(payload.pricesByPeriod ? { pricesByPeriod: toStoredPeriods(payload.pricesByPeriod) } : {}),
+  };
+};
 
 /**
  * Producer-side typed boundary for PriceService's cached price-data settings
@@ -54,7 +94,7 @@ export const createPriceDataStore = (settings: SettingsPort): PriceDataStore => 
   readNettleie: () => settings.get(NETTLEIE_DATA),
   writeNettleie: (data) => settings.set(NETTLEIE_DATA, data),
   readFlowPayload: (key) => settings.get(key),
-  writeFlowPayload: (key, payload) => settings.set(key, payload),
+  writeFlowPayload: (key, payload) => settings.set(key, toStoredFlowPayload(payload)),
   writeHomeyPricesCurrency: (unit) => settings.set(HOMEY_PRICES_CURRENCY, unit),
   readCombinedRaw: () => settings.get(COMBINED_PRICES),
   writeCombined: (payload) => settings.set(COMBINED_PRICES, payload),

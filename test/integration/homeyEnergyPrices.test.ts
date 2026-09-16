@@ -44,6 +44,95 @@ describe('Homey energy price fetch', () => {
     expect(result.priceUnit).toBe('NOK');
   });
 
+  it('keeps each 15-minute period, at its own length', () => {
+    const intervals = buildIntervals(localMidnightUtcMs, [1, 3, 5, 7], 15);
+    const result = normalizeHomeyEnergyPrices({
+      response: { priceInterval: '15', pricesPerInterval: intervals, priceUnit: 'NOK' },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesByPeriod).toEqual([
+      { startsAt: new Date(localMidnightUtcMs).toISOString(), totalPrice: 1, durationMinutes: 15 },
+      { startsAt: new Date(localMidnightUtcMs + 15 * 60_000).toISOString(), totalPrice: 3, durationMinutes: 15 },
+      { startsAt: new Date(localMidnightUtcMs + 30 * 60_000).toISOString(), totalPrice: 5, durationMinutes: 15 },
+      { startsAt: new Date(localMidnightUtcMs + 45 * 60_000).toISOString(), totalPrice: 7, durationMinutes: 15 },
+    ]);
+  });
+
+  // An older app build reinstalled over a payload written here reads
+  // `pricesBySlot`, which has always meant one entry per local hour.
+  it('keeps the hourly series an older build would read', () => {
+    const intervals = buildIntervals(localMidnightUtcMs, [1, 3, 5, 7], 15);
+    const result = normalizeHomeyEnergyPrices({
+      response: { priceInterval: '15', pricesPerInterval: intervals, priceUnit: 'NOK' },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesBySlot).toEqual([
+      { startsAt: new Date(localMidnightUtcMs).toISOString(), totalPrice: 4, durationMinutes: 60 },
+    ]);
+  });
+
+  it('writes no separate period series for an hourly zone', () => {
+    const intervals = buildIntervals(localMidnightUtcMs, [0.5, 1.5], 60);
+    const result = normalizeHomeyEnergyPrices({
+      response: { interval: 60, pricesPerInterval: intervals, priceUnit: 'NOK' },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesByPeriod).toBeUndefined();
+    expect(result.payload?.pricesBySlot).toHaveLength(2);
+  });
+
+  // Homey Energy lists every quarter twice at the 15-minute interval — 192
+  // entries for one day, 96 distinct starts (verified against a live zone
+  // 2026-09-15). A repeat is the same period, not a second one.
+  it('drops the duplicate listing of each 15-minute period', () => {
+    const intervals = buildIntervals(localMidnightUtcMs, [1, 3, 5, 7], 15);
+    const doubled = intervals.flatMap((interval) => [interval, { ...interval }]);
+    const result = normalizeHomeyEnergyPrices({
+      response: { priceInterval: '15', pricesPerInterval: doubled, priceUnit: 'NOK' },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesByPeriod).toHaveLength(4);
+    // The hour average is unchanged by the repeats — as it was when every
+    // quarter was averaged away at the fetch.
+    expect(result.payload?.pricesByHour['0']).toBeCloseTo(4);
+  });
+
+  it('falls back to the document interval when a period carries no end', () => {
+    const intervals = buildIntervals(localMidnightUtcMs, [1, 3], 15)
+      .map(({ periodStart, value }) => ({ periodStart, value }));
+    const result = normalizeHomeyEnergyPrices({
+      response: { interval: 15, pricesPerInterval: intervals, priceUnit: 'NOK' },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesByPeriod?.map((entry) => entry.durationMinutes)).toEqual([15, 15]);
+  });
+
+  it('treats a period as an hour when neither it nor the document says otherwise', () => {
+    const result = normalizeHomeyEnergyPrices({
+      response: {
+        pricesPerInterval: [{ periodStart: new Date(localMidnightUtcMs).toISOString(), value: 2 }],
+        priceUnit: 'NOK',
+      },
+      date,
+      timeZone,
+    });
+
+    expect(result.payload?.pricesByPeriod).toBeUndefined();
+    expect(result.payload?.pricesBySlot).toEqual([
+      { startsAt: new Date(localMidnightUtcMs).toISOString(), totalPrice: 2, durationMinutes: 60 },
+    ]);
+  });
+
   it('keeps hourly values when intervals are 60 minutes', () => {
     const intervals = buildIntervals(localMidnightUtcMs, [0.5, 1.5], 60);
     const response = {
@@ -189,8 +278,8 @@ describe('Homey energy price fetch', () => {
     expect(repeatedHourSlots).toHaveLength(2);
     expect(result.payload?.pricesBySlot).toHaveLength(25);
     expect(repeatedEntries).toEqual([
-      { startsAt: repeatedHourSlots[0].startsAt, totalPrice: 3 },
-      { startsAt: repeatedHourSlots[1].startsAt, totalPrice: 4 },
+      { startsAt: repeatedHourSlots[0].startsAt, totalPrice: 3, durationMinutes: 60 },
+      { startsAt: repeatedHourSlots[1].startsAt, totalPrice: 4, durationMinutes: 60 },
     ]);
   });
 });

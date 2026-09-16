@@ -7,12 +7,8 @@ import {
   getMissingFlowHours,
   parseFlowPricePayloadInput,
   type FlowPricePayload,
+  type FlowPricePeriod,
 } from '../../packages/shared-domain/src/price/flowPriceUtils';
-
-type BaseHourlyPrice = {
-  startsAt: string;
-  totalPrice: number;
-};
 
 type CombinedPayloadParams = {
   now: Date;
@@ -23,7 +19,15 @@ type CombinedPayloadParams = {
   label: 'Flow prices' | 'Homey prices';
 };
 
-export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadParams): BaseHourlyPrice[] => {
+/**
+ * The two stored day payloads as one ordered series of priced periods.
+ *
+ * Periods, not hours: a Homey Energy zone on the 15-minute market stores four
+ * per hour, and the hour-shaped consumers get `toHourlyPrices` applied on top
+ * (`PriceService.getCombinedHourlyPrices`). A payload from an hourly source
+ * yields one 60-minute period per hour, as before.
+ */
+export const buildCombinedPricePeriodsFromPayloads = (params: CombinedPayloadParams): FlowPricePeriod[] => {
   const { now, timeZone, todayPayload, tomorrowPayload, debugStructured, label } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   // Compare payloads by local calendar day instead of adding 24h to the current instant.
@@ -31,7 +35,7 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
   const resolvePayload = (
     payload: FlowPricePayload | null,
     key: string,
-  ): { entries: BaseHourlyPrice[]; used: boolean } => {
+  ): { entries: FlowPricePeriod[]; used: boolean } => {
     if (payload?.dateKey !== key) return { entries: [], used: false };
     return { entries: buildFlowEntries(payload, timeZone), used: true };
   };

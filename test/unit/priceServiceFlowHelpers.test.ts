@@ -1,5 +1,5 @@
 import {
-  buildCombinedHourlyPricesFromPayloads,
+  buildCombinedPricePeriodsFromPayloads,
   purgeStaleFlowPriceSlots,
   storeFlowPriceData,
 } from '../../lib/price/priceServiceFlowHelpers';
@@ -7,7 +7,7 @@ import {
 describe('priceServiceFlowHelpers DST date keys', () => {
   it('keeps tomorrow payload on the spring-forward eve boundary', () => {
     const debugStructured = vi.fn();
-    const result = buildCombinedHourlyPricesFromPayloads({
+    const result = buildCombinedPricePeriodsFromPayloads({
       now: new Date('2024-03-30T22:30:00.000Z'),
       timeZone: 'Europe/Oslo',
       todayPayload: {

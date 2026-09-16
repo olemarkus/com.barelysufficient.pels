@@ -419,4 +419,109 @@ describe('Homey price service', () => {
     expect(combinedWrites).toHaveLength(2);
     expect(mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'prices_updated')).toHaveLength(2);
   });
+
+  // A zone on the 15-minute market publishes four prices per hour. Everything
+  // downstream of `getCombinedHourlyPrices` reasons in whole hours, so what it
+  // sees must stay exactly what an hourly zone would have published — the
+  // quarters are averaged in the producer, not read as whole hours by accident.
+  it('serves a 15-minute zone as the hourly prices an hourly zone would give', async () => {
+    vi.useFakeTimers().setSystemTime(fixedNow);
+    const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+    const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
+
+    // Two hours of quarters: hour 0 averages to 4, hour 1 to 16.
+    const quarterValues = [1, 3, 5, 7, 10, 14, 18, 22];
+    const quarterIntervals = buildIntervals(todayStartMs, quarterValues, 15);
+    // Every quarter arrives twice, the way the live API sends it.
+    const doubled = quarterIntervals.flatMap((interval) => [interval, { ...interval }]);
+
+    const energyApi: HomeyEnergyApi = {
+      fetchDynamicElectricityPrices: vi.fn().mockImplementation(async ({ date }) => (
+        date === todayKey
+          ? { interval: 15, pricesPerInterval: doubled, priceUnit: 'NOK' }
+          : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
+      )),
+      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
+    };
+
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(),
+      () => timeZone,
+      () => energyApi,
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+    );
+
+    await service.refreshSpotPrices(true);
+
+    const stored = mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY) as {
+      pricesBySlot?: Array<{ durationMinutes?: number }>;
+      pricesByPeriod?: Array<{ durationMinutes?: number }>;
+    };
+    // Stored at the source's own resolution, deduplicated...
+    expect(stored.pricesByPeriod).toHaveLength(quarterValues.length);
+    expect(stored.pricesByPeriod?.every((period) => period.durationMinutes === 15)).toBe(true);
+    // ...alongside the hourly series an older app build reads, which is stored
+    // without a duration because an hour is what a period with none means.
+    expect(stored.pricesBySlot).toHaveLength(2);
+    expect(stored.pricesBySlot?.every((period) => period.durationMinutes === undefined)).toBe(true);
+
+    const hourly = service.getCombinedHourlyPrices();
+    expect(hourly).toEqual([
+      { startsAt: new Date(todayStartMs).toISOString(), totalPrice: 4 },
+      { startsAt: new Date(todayStartMs + 3_600_000).toISOString(), totalPrice: 16 },
+    ]);
+  });
+
+  // The whole day, on the day the clock goes back: 25 hours, 100 quarters, and
+  // the repeated 02:00 hour priced twice — once for each hour it actually was.
+  it('gives a 15-minute zone 25 separate hours on the fall-back day', async () => {
+    const fallBackNoon = new Date(Date.UTC(2026, 9, 25, 12, 0, 0));
+    vi.useFakeTimers().setSystemTime(fallBackNoon);
+    const todayKey = getDateKeyInTimeZone(fallBackNoon, timeZone);
+    const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
+
+    // Quarter n is priced n, so each hour averages to its own distinct value.
+    const quarterValues = Array.from({ length: 100 }, (_, index) => index);
+    const quarterIntervals = buildIntervals(todayStartMs, quarterValues, 15);
+
+    const energyApi: HomeyEnergyApi = {
+      fetchDynamicElectricityPrices: vi.fn().mockImplementation(async ({ date }) => (
+        date === todayKey
+          ? { interval: 15, pricesPerInterval: quarterIntervals, priceUnit: 'NOK' }
+          : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
+      )),
+      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
+    };
+
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(),
+      () => timeZone,
+      () => energyApi,
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+    );
+
+    await service.refreshSpotPrices(true);
+    const hourly = service.getCombinedHourlyPrices();
+
+    expect(hourly).toHaveLength(25);
+    // Each hour is the mean of its own four quarters: 1.5, 5.5, 9.5, …
+    expect(hourly.map((entry) => entry.totalPrice)).toEqual(
+      Array.from({ length: 25 }, (_, hour) => hour * 4 + 1.5),
+    );
+    // The two 02:00 hours are separate hours with separate prices.
+    const repeatedClockHour = hourly.filter((entry) => (
+      new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hour12: false })
+        .format(new Date(entry.startsAt)) === '02'
+    ));
+    expect(repeatedClockHour).toHaveLength(2);
+    expect(repeatedClockHour[0].totalPrice).not.toBe(repeatedClockHour[1].totalPrice);
+  });
 });
