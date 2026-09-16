@@ -27,6 +27,13 @@ const evPreset: TargetPowerSteppedLoadConfig = {
   max: 7_360,
 };
 
+const continuousPowerConfig: TargetPowerSteppedLoadConfig = {
+  enabled: true,
+  min: 0,
+  max: 7_000,
+  step: 1_000,
+};
+
 const presetProfile: SteppedLoadProfile = buildEvTargetPowerCandidateProfile(evPreset);
 
 const EASEE_CAPABILITIES = [
@@ -82,12 +89,15 @@ const createLogger = () => ({
   },
 }) as unknown as Logger;
 
-const createEaseeTransport = (nativeWiringEnabled: boolean) => createTestDeviceTransport(
+const createEaseeTransport = (
+  nativeWiringEnabled: boolean,
+  targetPowerConfig: TargetPowerSteppedLoadConfig = evPreset,
+) => createTestDeviceTransport(
   mockHomeyInstance as unknown as Homey.App,
   createLogger(),
   {
     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getDeviceTargetPowerConfig: (deviceId) => (deviceId === EASEE_ID ? evPreset : undefined),
+    getDeviceTargetPowerConfig: (deviceId) => (deviceId === EASEE_ID ? targetPowerConfig : undefined),
     getNativeEvWiringEnabled: () => nativeWiringEnabled,
   },
 );
@@ -175,6 +185,46 @@ describe('Easee native charger current', () => {
     // writes it and reports it.
     expect(parsed.reportedStepId).toBeUndefined();
     expect(parsed.nativeWriteCapabilities).toEqual(['target_charger_current', 'setDynamicChargerCurrent']);
+  });
+
+  it('keeps a continuous power model on Flow control even when built-in control is saved on', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { [EASEE_ID]: buildEaseeCharger() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get, put });
+    mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
+    try {
+      const deviceManager = createTestDeviceTransport(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+          getDeviceTargetPowerConfig: () => continuousPowerConfig,
+          getNativeEvWiringEnabled: () => true,
+        },
+        undefined,
+        { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
+      );
+      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
+      deviceManager.setSnapshotForTests([parsed!]);
+
+      expect(parsed).toEqual(expect.objectContaining({
+        controlModel: 'stepped_load',
+        controlAdapter: undefined,
+      }));
+      await expect(deviceManager.requestSteppedLoadStep({
+        deviceId: EASEE_ID,
+        profile: parsed!.steppedLoadProfile!,
+        desiredStepId: '1000w',
+        planningPowerW: 1_000,
+        planningCurrentA: 0,
+      })).resolves.toEqual({ requested: true, transport: 'flow' });
+      expect(put).not.toHaveBeenCalled();
+    } finally {
+      restoreMockRestClient();
+    }
   });
 
   it('reports the control mode the charger app implies, for managed and unmanaged chargers alike', async () => {

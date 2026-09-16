@@ -23,6 +23,16 @@ describe('resolveManagedOptInControlMode', () => {
     });
   });
 
+  it('saves the EV preset when the API decorated an unconfigured charger with the binary default', () => {
+    expect(resolveManagedOptInControlMode(
+      charger({ controlModel: 'binary_power' }),
+      state.chargerPhasePresets,
+    )).toEqual({
+      kind: 'save_charger_preset',
+      config: createEvTargetPowerConfig('ev_charger_1_phase'),
+    });
+  });
+
   it('leaves the mode alone when the charger reports no wiring', () => {
     state.chargerPhasePresets = {};
     expect(resolveManagedOptInControlMode(charger(), state.chargerPhasePresets)).toEqual({ kind: 'leave' });
@@ -36,6 +46,13 @@ describe('resolveManagedOptInControlMode', () => {
 
     state.deviceTargetPowerConfigs = { 'easee-1': { enabled: false } };
     expect(resolveManagedOptInControlMode(charger(), state.chargerPhasePresets)).toEqual({ kind: 'leave' });
+  });
+
+  it('leaves a compatibility-provided explicit off choice alone', () => {
+    expect(resolveManagedOptInControlMode(charger({
+      controlModel: 'binary_power',
+      targetPowerConfig: { enabled: false },
+    }), state.chargerPhasePresets)).toEqual({ kind: 'leave' });
   });
 
   it('leaves a stepped profile or a producer-resolved control model alone', () => {

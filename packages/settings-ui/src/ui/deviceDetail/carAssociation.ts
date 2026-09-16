@@ -60,6 +60,18 @@ export const loadEvCarAssociations = async (): Promise<void> => {
       );
       return;
     }
+    if (value === null || value === undefined) {
+      // A cold read that stays absent after the grace retries means the key has
+      // never been written. Once a trusted map is loaded, absence is a
+      // transient SDK failure and must not erase the merge base for the next
+      // write. A real deletion arrives through settings.unset and is handled by
+      // clearEvCarAssociations.
+      if (!state.evCarAssociationsLoaded) {
+        state.evCarAssociations = {};
+        state.evCarAssociationsLoaded = true;
+      }
+      return;
+    }
     state.evCarAssociations = normalizeEvCarAssociations(value);
     state.evCarAssociationsLoaded = true;
   } catch (error) {
@@ -68,6 +80,11 @@ export const loadEvCarAssociations = async (): Promise<void> => {
     // every charger's cars away on the strength of one failed read.
     await logSettingsError('Failed to load car associations', error, 'loadEvCarAssociations');
   }
+};
+
+export const clearEvCarAssociations = (): void => {
+  state.evCarAssociations = {};
+  state.evCarAssociationsLoaded = true;
 };
 
 type HomeyDeviceEntry = {

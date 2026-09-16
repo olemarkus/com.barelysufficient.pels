@@ -100,7 +100,6 @@ export function resolveFlowCapabilityOverlay(params: {
     providers,
     logger,
   });
-
   const overlayCapabilities = nativeEvOverlay.capabilities;
   const overlayCapabilityObj = nativeEvOverlay.capabilityObj;
   const targetPowerOverlay = applySyntheticTargetPowerOverlay({
@@ -117,11 +116,11 @@ export function resolveFlowCapabilityOverlay(params: {
     capabilities: targetPowerOverlay.capabilities,
     capabilityObj: targetPowerOverlay.capabilityObj,
     profileOverride: targetPowerOverlay.steppedLoadProfile,
+    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     providers,
   });
-  const targetCapabilityIds = targetPowerOverlay.capabilities.filter(
-    (capabilityId) => capabilityId === 'target_temperature',
-  );
+  const targetCapabilityIds = targetPowerOverlay.capabilities
+    .filter((capabilityId) => capabilityId === 'target_temperature');
   const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
     deviceClassKey,
     targetCapabilityIds,
@@ -155,7 +154,6 @@ export function resolveFlowCapabilityOverlay(params: {
     rawCapabilities,
     rawCapabilityObj,
   });
-
   return {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
     capabilityObj,
@@ -390,6 +388,7 @@ function resolveNativeSteppedLoadOverlay(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   profileOverride?: SteppedLoadProfile;
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   providers: DeviceTransportParseProviders;
 }): {
   controlAdapter?: DeviceControlAdapterSnapshot;
@@ -403,6 +402,7 @@ function resolveNativeSteppedLoadOverlay(params: {
     capabilities,
     capabilityObj,
     profileOverride,
+    targetPowerConfig,
     providers,
   } = params;
   const targetPowerSteppedCandidate = isTargetPowerSteppedLoadWiringCandidate({ capabilities, capabilityObj });
@@ -417,6 +417,12 @@ function resolveNativeSteppedLoadOverlay(params: {
     capabilityObj,
   });
   if (!nativeSteppedCandidate || !suggestedSteppedLoadProfile) return {};
+  // Easee's native capability accepts amps. Only an EV preset resolves every
+  // watt rung to an installation current; a continuous watt ladder must keep
+  // using the owner's Flow rather than claiming a native command it cannot
+  // express.
+  if (isEaseeChargerCurrentCandidate(device, capabilityObj)
+    && !isEvTargetPowerPresetConfig(targetPowerConfig)) return {};
 
   const nativeSteppedEnabled = targetPowerSteppedCandidate || providers.getNativeEvWiringEnabled?.(deviceId) === true;
   let reportedStepId: string | undefined;

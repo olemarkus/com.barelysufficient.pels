@@ -120,8 +120,10 @@ export const initTargetPowerConfigHandlers = (params: {
  * Saved once, at opt-in, and never again. The charger reports how it is wired,
  * not what the car draws: a single-phase car on a three-phase charger is why
  * the "Set EV charging phase" Flow card exists, and an owner who picks a mode
- * by hand has made the call. So only a device with no control mode of any kind
- * (no preset, range, explicit off or stepped profile) gets one.
+ * by hand has made the call. So only a device with no authored control mode
+ * (no preset, range, explicit off or stepped profile) gets one. The backend's
+ * `binary_power` fallback describes an unconfigured device and is not an
+ * owner-authored choice.
  */
 export type ManagedOptInControlMode =
   | { kind: 'save_charger_preset'; config: TargetPowerSteppedLoadConfig }
@@ -135,8 +137,12 @@ export const resolveManagedOptInControlMode = (
 ): ManagedOptInControlMode => {
   const reportedPreset = chargerPhasePresets[device.id];
   if (reportedPreset === undefined) return LEAVE_CONTROL_MODE;
-  if (Object.hasOwn(state.deviceTargetPowerConfigs, device.id)) return LEAVE_CONTROL_MODE;
-  if (getStoredDeviceControlProfile(device.id) || device.controlModel) return LEAVE_CONTROL_MODE;
+  if (Object.hasOwn(state.deviceTargetPowerConfigs, device.id) || device.targetPowerConfig) {
+    return LEAVE_CONTROL_MODE;
+  }
+  if (getStoredDeviceControlProfile(device.id) || device.controlModel === 'stepped_load') {
+    return LEAVE_CONTROL_MODE;
+  }
   return { kind: 'save_charger_preset', config: createEvTargetPowerConfig(reportedPreset) };
 };
 

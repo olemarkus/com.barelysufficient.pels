@@ -175,6 +175,45 @@ describe('charger car picker', () => {
     expect(state.evCarAssociationsLoaded).toBe(true);
   });
 
+  it('keeps the last-known selections when a live reload remains absent after retries', async () => {
+    const { loadEvCarAssociations, renderCarAssociation } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockResolvedValueOnce({ 'other-charger': { carIds: ['car-2'] } });
+    await loadEvCarAssociations();
+
+    getSetting.mockResolvedValueOnce(undefined);
+    getSettingFresh.mockResolvedValue(undefined);
+    await loadEvCarAssociations();
+    expect(state.evCarAssociations).toEqual({ 'other-charger': { carIds: ['car-2'] } });
+
+    renderCarAssociation(charger());
+    await flush();
+    rows()[0].checked = true;
+    rows()[0].dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(setSetting).toHaveBeenCalledWith('ev_car_associations', {
+      'other-charger': { carIds: ['car-2'] },
+      'charger-1': { carIds: ['car-1'] },
+    });
+  });
+
+  it('clears the last-known selections for an authoritative settings unset event', async () => {
+    const { clearEvCarAssociations, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+
+    clearEvCarAssociations();
+
+    expect(state.evCarAssociations).toEqual({});
+    expect(state.evCarAssociationsLoaded).toBe(true);
+  });
+
   it('keeps associations unresolved after a failed first read and resolves absence after retries', async () => {
     const { loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
     const { state } = await import('../src/ui/state.ts');

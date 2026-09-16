@@ -75,7 +75,11 @@ import {
   loadDeviceExpectedPowerOverrides,
   renderExpectedPowerField,
 } from './expectedPower.ts';
-import { loadEvCarAssociations, renderCarAssociation } from './carAssociation.ts';
+import {
+  clearEvCarAssociations,
+  loadEvCarAssociations,
+  renderCarAssociation,
+} from './carAssociation.ts';
 import {
   initTemperatureBoostHandlers,
   loadTemperatureBoostSettings,
@@ -438,6 +442,7 @@ const initDeviceDetailControlModelHandler = () => {
 };
 
 export {
+  clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
   loadEvCarAssociations,

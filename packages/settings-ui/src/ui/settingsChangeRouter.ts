@@ -60,6 +60,7 @@ import { reloadPriceConfigSettings } from './priceConfig.ts';
 import { refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import {
+  clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
   loadEvCarAssociations,
@@ -367,6 +368,11 @@ const reloadRecommendationsIfKey = (key: string, context: string): void => {
     return;
   }
   if (key === EV_CAR_ASSOCIATIONS) {
+    if (context === 'settings.unset') {
+      clearEvCarAssociations();
+      refreshRecommendationSurfaces();
+      return;
+    }
     runLoggedTask(
       loadEvCarAssociations().then(refreshRecommendationSurfaces),
       'Failed to reload car associations for recommendations',
