@@ -32,6 +32,12 @@ export type FlowReadResult =
 
 export type FlowApiGet = (path: string) => Promise<unknown>;
 
+// Advanced Flow includes graph-control and annotation blocks without card ids.
+// Verified against the production API; these blocks cannot themselves write a device.
+const ADVANCED_FLOW_NON_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'trigger', 'condition', 'start', 'delay', 'any', 'all', 'note',
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -52,8 +58,9 @@ function isTrustedAdvancedFlowMap(value: Record<string, unknown>): boolean {
     if (!isRecord(flow.cards)) return false;
     return Object.values(flow.cards).every((card) => (
       isRecord(card)
-      && (card.type === 'trigger' || card.type === 'condition' || card.type === 'action')
-      && (card.type !== 'action' || typeof card.id === 'string')
+      && (card.type === 'action'
+        ? typeof card.id === 'string'
+        : typeof card.type === 'string' && ADVANCED_FLOW_NON_ACTION_TYPES.has(card.type))
     ));
   });
 }

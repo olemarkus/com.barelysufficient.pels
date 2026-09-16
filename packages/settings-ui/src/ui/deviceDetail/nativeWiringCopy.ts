@@ -11,7 +11,19 @@ export type NativeWiringFlowConflictNotice = {
   body: string;
 };
 
-export function nativeWiringFlowConflictNotice(flowName?: string): NativeWiringFlowConflictNotice {
+export function nativeWiringFlowConflictNotice(
+  flowName: string | undefined,
+  nativeControlEnabled: boolean,
+): NativeWiringFlowConflictNotice {
+  if (nativeControlEnabled) {
+    const flowReference = flowName ? `the Flow “${flowName}”` : 'a Homey Flow';
+    return {
+      title: 'Built-in device control and a Flow control the same setting',
+      body: `Built-in device control is on, and ${flowReference} can still write the same setting. `
+        + 'They may override each other. Turn off only the conflicting Flow action to use built-in control, '
+        + 'or turn off built-in control to keep using your Flow.',
+    };
+  }
   if (flowName !== undefined && flowName.length > 0) {
     return {
       title: `The Flow “${flowName}” already controls this device`,

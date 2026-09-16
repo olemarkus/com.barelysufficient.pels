@@ -26,6 +26,41 @@ const resolve = (
 ) => resolveSetupRecommendations(devices, cars, associations, nativeWiringEnabledByDeviceId);
 
 describe('setup recommendations', () => {
+  it.each(['Easee', 'Høiax'])(
+    'recommends available built-in control for %s without claiming a Flow was detected', (name) => {
+      const recommendations = resolve([device({
+        name,
+        controlAdapter: {
+          kind: 'capability_adapter', activationAvailable: true,
+          activationRequired: false, activationEnabled: false,
+        },
+      })]);
+      expect(recommendations).toHaveLength(1);
+      expect(recommendations[0]?.title).toBe(`Use built-in device control for ${name}`);
+      expect(recommendations[0]?.body).not.toContain('Your current Flow keeps working');
+      expect(recommendations[0]?.body).toContain('If you use a Flow');
+    },
+  );
+
+  it('does not recommend built-in control for devices without an available switch', () => {
+    expect(resolve([device()])).toEqual([]);
+    expect(resolve([device({
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: false,
+        activationRequired: false, activationEnabled: false,
+      },
+    })])).toEqual([]);
+  });
+
+  it('removes the independent recommendation when the effective adapter is enabled', () => {
+    expect(resolve([device({
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: true,
+        activationRequired: false, activationEnabled: true,
+      },
+    })])).toEqual([]);
+  });
+
   it('recommends built-in control for each device held on a conflicting Flow', () => {
     const recommendations = resolve([
       device({

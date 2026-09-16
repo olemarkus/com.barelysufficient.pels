@@ -30,6 +30,36 @@ const advancedWrite = (deviceId: string, capabilityId: string) => ({
 });
 
 describe('detectNativeWiringConflicts', () => {
+  it('reports both Easee and Høiax conflicts despite graph blocks in unrelated Flows', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: {
+          easee: {
+            name: 'Elbillader',
+            cards: { set: { type: 'action', id: `homey:device:${easeeId}:setDynamicChargerCurrent` } },
+          },
+          hoiax: {
+            name: 'Water heater',
+            cards: { set: { type: 'action', id: `homey:device:${hoiaxId}:max_power_3000` } },
+          },
+          unrelated: { cards: { start: { type: 'start' }, any: { type: 'any' }, note: { type: 'note' } } },
+        },
+      }),
+      getDescriptors: () => [
+        candidateDevice(easeeId, easeeNativeWrites),
+        candidateDevice(hoiaxId, ['max_power_3000', 'onoff']),
+      ],
+    });
+    expect(result).toEqual({
+      status: 'ok', autoEnableDeviceIds: [],
+      conflicts: [
+        { deviceId: easeeId, conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' },
+        { deviceId: hoiaxId, conflictingCapabilities: ['max_power_3000'], flowName: 'Water heater' },
+      ],
+    });
+  });
+
   it('auto-enables a Hoiax candidate with no conflicting Flow', async () => {
     const { logger, events } = captureLog();
     const result = await detectNativeWiringConflicts({

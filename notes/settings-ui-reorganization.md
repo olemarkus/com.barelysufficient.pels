@@ -122,6 +122,11 @@ Keep the configuration owners as the place where the user acts:
 - Limits & safety validates the hard cap and safety margin beside the fields;
 - device detail surfaces missing built-in control and conflicting Flow setup.
 
+Built-in-control recommendations use the device's available, disabled control
+switch independently of Flow detection. Without a detected Flow, advice about
+removing a conflicting action is conditional. The separate Flow notice persists
+when built-in control is on and explains that both writers may override each other.
+
 These signals are current-state facts, not a sequence the user completes once.
 Recommendations may link to them and may be dismissed, but must not duplicate
 their controls, present an optional migration as a warning, or turn incomplete

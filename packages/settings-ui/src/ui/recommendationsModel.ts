@@ -3,7 +3,7 @@ import type {
   SettingsUiRecommendationCarsRead,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
-import type { SettingsUiDeviceDetailItem } from './deviceUtils.ts';
+import { supportsNativeWiringActivation, type SettingsUiDeviceDetailItem } from './deviceUtils.ts';
 
 export type RecommendationDismissals = Record<string, number>;
 
@@ -61,18 +61,23 @@ export const resolveNativeControlRecommendations = (
     const conflict = device.flowConflict;
     const nativeControlEnabled = nativeWiringEnabledByDeviceId[device.id] === true
       || device.controlAdapter?.activationEnabled === true;
-    if (!conflict || conflict.conflictingCapabilities.length === 0 || nativeControlEnabled) return [];
-    const flowReference = conflict.flowName
+    const hasConflict = conflict !== undefined && conflict.conflictingCapabilities.length > 0;
+    if (nativeControlEnabled || (!hasConflict && !supportsNativeWiringActivation(device))) return [];
+    const flowReference = hasConflict && conflict.flowName
       ? `To switch, disable or remove only the device-control action in “${conflict.flowName}”, `
         + 'then turn on Built-in device control on the device page.'
       : 'To switch, disable or remove only the Flow action that controls this device, '
         + 'then turn on Built-in device control on the device page.';
+    const body = hasConflict
+      ? `Your current Flow keeps working. PELS can also control this device directly. ${flowReference}`
+      : 'PELS can control this device directly. If you use a Flow to control the same setting, '
+        + 'turn off only that action before enabling Built-in device control on the device page.';
     return [{
       id: recommendationId('built-in-control', device.id),
       version: RECOMMENDATION_VERSION,
       category: 'recommendation',
       title: `Use built-in device control for ${device.name}`,
-      body: `Your current Flow keeps working. PELS can also control this device directly. ${flowReference}`,
+      body,
       actionLabel: 'Review device',
       target: { kind: 'device', deviceId: device.id },
     }];

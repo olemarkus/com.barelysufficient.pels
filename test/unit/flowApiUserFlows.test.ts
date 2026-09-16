@@ -193,6 +193,36 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
     throw new Error(`unexpected path ${path}`);
   };
 
+  it.each(['start', 'delay', 'any', 'all', 'note'])(
+    'retains device writes when an unrelated Advanced Flow contains a %s block', async (type) => {
+      const result = await readFlowCapabilityWrites({
+        get: okGet({
+          [FLOW_API_PATH]: {},
+          [ADVANCED_FLOW_API_PATH]: {
+            ...advancedFlowsFixture,
+            unrelated: { cards: { block: { type } } },
+          },
+        }),
+      });
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') throw new Error('expected readable Advanced Flows');
+      expect(writtenCapabilities(result.writes, easeeId)).toEqual(new Set(['max_power_3000']));
+    },
+  );
+
+  it('still refuses a malformed action beside a valid graph block', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: {
+          broken: { cards: { start: { type: 'start' }, write: { type: 'action' } } },
+        },
+      }),
+    });
+    expect(result.status).toBe('unknown');
+  });
+
   it('returns status ok with the merged write map when both endpoints read', async () => {
     const result = await readFlowCapabilityWrites({
       get: okGet({ [FLOW_API_PATH]: flatFlowsFixture, [ADVANCED_FLOW_API_PATH]: advancedFlowsFixture }),

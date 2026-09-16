@@ -110,6 +110,14 @@ Advanced flows were the easy thing to miss: the early spike only hit
 `/flow/flow/` and saw `{}` on a Homey whose Flows were all advanced. **Both
 endpoints must be read.**
 
+The `cards` map also holds `start`, `delay`, `any`, `all`, and `note` blocks.
+They have no device-write card id and must not invalidate the inventory.
+Production verification on 2026-09-16 found `start`, `delay`, `any`, and `note`
+in unrelated Flows; rejecting them hid the valid `Elbillader` Easee conflict.
+The boundary accepts these known non-action types, while malformed actions,
+missing types, and unrecognized types still fail closed. Only action cards
+contribute device writes.
+
 ### Card id → device-capability write
 
 In both shapes a direct device-capability card carries:
@@ -220,6 +228,15 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    the Flow, turn off only its conflicting device-control action, then enable
    built-in control. `flowConflict` is display-only and does not affect the
    control gate.
+
+   The two notices answer separate questions. **Setup & recommendations**
+   recommends available built-in control while it is off, even without Flow
+   metadata; in that case its advice is conditional and never claims a Flow
+   was detected. A detected conflict adds the safe migration instructions and
+   Flow name. The device-detail Flow notice remains visible after built-in
+   control is enabled, with different copy explaining that the two writers may
+   override each other. Missing required activation retains its own setup
+   notice; a supported legacy Flow setup is not labelled unusable.
 
    *Follow-ups:*
    - ~~Re-run conflict detection after snapshot refreshes so a Flow added after

@@ -25,6 +25,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
+import api from '../../api';
 
 const CHARGER_ID = 'easee-charger';
 const CHARGER_CURRENT_PATH = `manager/devices/device/${CHARGER_ID}/capability/target_charger_current`;
@@ -57,6 +58,9 @@ function reportHomePower(totalW: number, withLegacyEaseeFlow: boolean): void {
     if (path === 'manager/flow/flow/') return {};
     if (path === 'manager/flow/advancedflow/') {
       return withLegacyEaseeFlow ? {
+        // Production has these blocks in unrelated Flows. One such block used
+        // to invalidate the whole inventory, hiding the charger's valid Flow.
+        unrelated: { cards: { start: { type: 'start' }, delay: { type: 'delay' }, note: { type: 'note' } } },
         'legacy-easee-current': {
           name: 'Easee current',
           cards: {
@@ -168,6 +172,12 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     expect(legacyFlowRequests.every((request) => (
       request.state !== undefined && request.state.deviceId === CHARGER_ID
     ))).toBe(true);
+
+    const payload = await api.ui_devices({ homey: app.homey });
+    expect(payload.devices.find((device) => device.id === CHARGER_ID)).toMatchObject({
+      controlAdapter: { activationAvailable: true, activationEnabled: false },
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Easee current' },
+    });
 
     // The old return lane remains accepted while native current observation is disabled.
     await expect(reportStep({ device: CHARGER_ID, power_w: '1380 W' })).resolves.toBe(true);

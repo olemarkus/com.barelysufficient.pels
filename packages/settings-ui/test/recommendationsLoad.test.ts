@@ -70,6 +70,24 @@ beforeEach(() => {
 });
 
 describe('recommendation loading', () => {
+  it('shows the global banner for disabled built-in control without Flow metadata', async () => {
+    const recommendations = await loadSubject([device({
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: true,
+        activationRequired: false, activationEnabled: false,
+      },
+    })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+
+    await recommendations.loadRecommendationData();
+
+    expect(document.getElementById('setup-recommendations-banner-root')?.textContent)
+      .toContain('1 recommendation');
+    expect(document.getElementById('setup-recommendations-root')?.textContent)
+      .toContain('If you use a Flow');
+  });
+
   it('shows the built-in-control migration while optional car inventory is unavailable', async () => {
     const recommendations = await loadSubject([device({
       flowConflict: { conflictingCapabilities: ['target_charger_current'], flowName: 'Easee current' },

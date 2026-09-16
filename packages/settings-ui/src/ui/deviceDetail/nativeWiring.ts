@@ -46,16 +46,13 @@ const syncFlowConflictNotice = (
   device: SettingsUiDeviceDetailItem | null,
   nativeWiringEffectiveEnabled: boolean,
 ): boolean => {
-  // Only surface the conflict while native wiring is actually held off. Once
-  // the user overrides (turns the switch on) the "left control off" copy is no
-  // longer true even though the conflicting Flow still exists.
-  const hasConflict = !nativeWiringEffectiveEnabled
-    && (device?.flowConflict?.conflictingCapabilities?.length ?? 0) > 0;
+  // A Flow remains relevant after opt-in: both writers may now be enabled.
+  const hasConflict = (device?.flowConflict?.conflictingCapabilities?.length ?? 0) > 0;
   if (deviceDetailFlowConflictNotice) {
     deviceDetailFlowConflictNotice.hidden = !hasConflict;
   }
   if (!hasConflict) return false;
-  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName);
+  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName, nativeWiringEffectiveEnabled);
   if (deviceDetailFlowConflictTitle) deviceDetailFlowConflictTitle.textContent = notice.title;
   if (deviceDetailFlowConflictBody) deviceDetailFlowConflictBody.textContent = notice.body;
   return true;

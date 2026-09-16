@@ -34,6 +34,30 @@ describe('device detail flow-conflict banner', () => {
   const title = () => document.getElementById('device-detail-flow-conflict-title');
   const body = () => document.getElementById('device-detail-flow-conflict-body');
 
+  it('shows missing required activation independently of Flow detection', async () => {
+    buildDom();
+    const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
+    setDeviceDetailNativeWiringState(buildDevice({
+      controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
+    }));
+    expect(document.getElementById('device-detail-native-wiring-notice')?.hidden).toBe(false);
+    expect(notice()?.hidden).toBe(true);
+  });
+
+  it('does not label optional, disabled built-in control as required for a legacy Flow setup', async () => {
+    buildDom();
+    const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
+    setDeviceDetailNativeWiringState(buildDevice({
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: true,
+        activationRequired: false, activationEnabled: false,
+      },
+      flowConflict: { conflictingCapabilities: ['max_power_3000'] },
+    }));
+    expect(document.getElementById('device-detail-native-wiring-notice')?.hidden).toBe(true);
+    expect(notice()?.hidden).toBe(false);
+  });
+
   it('shows the banner with settings-UI-owned copy when the device has a flow conflict', async () => {
     buildDom();
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
@@ -82,7 +106,7 @@ describe('device detail flow-conflict banner', () => {
     expect(notice()?.hidden).toBe(false);
   });
 
-  it('hides the banner once native wiring is enabled (override), even with a conflict', async () => {
+  it('warns about competing control when built-in control and a conflicting Flow are both enabled', async () => {
     buildDom();
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
 
@@ -91,8 +115,10 @@ describe('device detail flow-conflict banner', () => {
       controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
     }));
 
-    // Control is on (override), so "PELS left control off" no longer applies.
-    expect(notice()?.hidden).toBe(true);
+    expect(notice()?.hidden).toBe(false);
+    expect(body()?.textContent).toContain('may override each other');
+    expect(body()?.textContent).not.toContain('left built-in device control');
+    expect(document.getElementById('device-detail-native-wiring-notice')?.hidden).toBe(true);
   });
 
   it('hides the banner when there is no flow conflict', async () => {
