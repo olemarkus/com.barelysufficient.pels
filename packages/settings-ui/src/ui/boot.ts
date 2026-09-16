@@ -416,12 +416,14 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadEvBoostSettings(),
     loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),
-    loadRecommendationData(),
     loadDeferredObjectiveSettings(),
     loadStarvationRescuableDevices(),
     loadAdvancedSettings(),
     initWeatherInsight(),
   ]);
+  // Recommendations are advisory. A slow or unavailable Homey device read
+  // must never hold the core settings UI behind it.
+  void loadRecommendationData();
   // Hub exception chips need the loads above (dry-run state, budget setting,
   // power/price payloads) — one sync after the parallel phase settles.
   syncSettingsHubChips();

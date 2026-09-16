@@ -107,8 +107,14 @@ Diagnostics, cleanup, logs, experiments
 
 ### Setup guidance stays contextual
 
-Do not add a separate setup wizard or persistent first-run checklist while the
-configuration owners already expose the relevant recovery paths:
+The **Setup & recommendations** page may collect optional, producer-backed
+suggestions whose owning recovery path remains on the relevant settings or
+device page. It is a summary and navigation surface, not a setup wizard or a
+claim that the whole installation is complete. Each suggestion must be
+independently resolvable: an unavailable optional source cannot hide unrelated
+guidance or block the settings UI.
+
+Keep the configuration owners as the place where the user acts:
 
 - the global missing/stale-power banner routes to the power source;
 - the Overview empty state routes a zero-managed-device home to Devices;
@@ -117,11 +123,9 @@ configuration owners already expose the relevant recovery paths:
 - device detail surfaces missing built-in control and conflicting Flow setup.
 
 These signals are current-state facts, not a sequence the user completes once.
-Improve the owning banner, empty state, or field notice when a concrete
-onboarding failure is found instead of duplicating the same state in a
-dismissable progress card. A future consolidated summary would need a
-producer-resolved readiness contract and evidence that the contextual paths are
-still insufficient; it is not the current product direction.
+Recommendations may link to them and may be dismissed, but must not duplicate
+their controls, present an optional migration as a warning, or turn incomplete
+readiness into a global “setup complete” verdict.
 
 ## Ownership Boundaries
 

@@ -113,7 +113,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 1. The charger is visible as a managed device in PELS.
 2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
-3. The current-control Flow receives **EV charger current (A)** when PELS changes the desired charging level.
+3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. Other chargers receive **EV charger current (A)** in their current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
 5. If you configured boost mode battery reporting, battery percentage appears in PELS after the battery reporting Flow runs.
 
@@ -122,7 +122,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | Problem | What to check |
 | --- | --- |
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and refresh the Devices tab. |
-| The Flow does not trigger | Confirm the charger is managed, power-limit control is enabled, and PELS has live whole-home power data. |
+| The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup can use built-in device control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |
 | PELS never limits the charger | Check the charger priority, hard cap, safety margin, and whether Simulation mode is still enabled. |

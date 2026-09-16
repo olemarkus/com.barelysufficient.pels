@@ -48,17 +48,35 @@ async function buildEaseeCharger(): Promise<MockDevice> {
   return charger;
 }
 
-function reportHomePower(totalW: number): void {
+function reportHomePower(totalW: number, withLegacyEaseeFlow: boolean): void {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
       return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: totalW } }] };
     }
+    if (path === 'manager/flow/flow/') return {};
+    if (path === 'manager/flow/advancedflow/') {
+      return withLegacyEaseeFlow ? {
+        'legacy-easee-current': {
+          name: 'Easee current',
+          cards: {
+            trigger: {
+              id: 'homey:app:com.barelysufficient.pels:desired_stepped_load_changed',
+              type: 'trigger',
+            },
+            write: {
+              id: `homey:device:${CHARGER_ID}:setDynamicChargerCurrent`,
+              type: 'action',
+            },
+          },
+        },
+      } : {};
+    }
     return originalGet(path);
   });
 }
 
-function configureRuntime(): void {
+function configureRuntime(nativeWiringEnabled: boolean): void {
   const enabled = { [CHARGER_ID]: true };
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
@@ -68,7 +86,7 @@ function configureRuntime(): void {
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
   mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, enabled);
   mockHomeyInstance.settings.set(MANAGED_DEVICES, enabled);
-  mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, enabled);
+  if (nativeWiringEnabled) mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, enabled);
   mockHomeyInstance.settings.set('overshoot_behaviors', { [CHARGER_ID]: { action: 'set_step' } });
   mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
     [CHARGER_ID]: { enabled: true, preset: 'ev_charger_1_phase', max: RESET_POWER_W },
@@ -104,9 +122,9 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
   it('lowers the charger current on target_charger_current without a bridge Flow', async () => {
     const charger = await buildEaseeCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
-    configureRuntime();
+    configureRuntime(true);
     // The 32 A reset plus 2 kW of background load, against an 8 kW hard cap.
-    reportHomePower(RESET_POWER_W + 2_000);
+    reportHomePower(RESET_POWER_W + 2_000, false);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
@@ -123,5 +141,35 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     expect(Number.isInteger(firstWrite)).toBe(true);
     expect(firstWrite).toBeLessThan(RESET_CURRENT_A);
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+  });
+
+  it('keeps an existing Easee bridge Flow authoritative after upgrade', async () => {
+    const charger = await buildEaseeCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime(false);
+    reportHomePower(RESET_POWER_W + 2_000, true);
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+
+    const reportStep = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+    if (!reportStep) throw new Error('Expected report_stepped_load_power to be registered.');
+    await expect(reportStep({ device: CHARGER_ID, power_w: `${RESET_POWER_W} W` })).resolves.toBe(true);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntil(() => (
+      (mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).length > 0
+    ));
+
+    expect(putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH)).toEqual([]);
+    const legacyFlowRequests = mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? [];
+    expect(legacyFlowRequests.length).toBeGreaterThan(0);
+    expect(legacyFlowRequests.every((request) => (
+      request.state !== undefined && request.state.deviceId === CHARGER_ID
+    ))).toBe(true);
+
+    // The old return lane remains accepted while native current observation is disabled.
+    await expect(reportStep({ device: CHARGER_ID, power_w: '1380 W' })).resolves.toBe(true);
   });
 });

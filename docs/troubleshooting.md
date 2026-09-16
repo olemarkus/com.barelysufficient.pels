@@ -178,8 +178,10 @@ The banner above the Overview tells you which state you are in:
 ## EV charging starts at the wrong time or won't change current
 
 - **Charging current never changes:** confirm the charger is configured as
-  **EV 1-phase** or **EV 3-phase** and the Flow uses the **EV charger current (A)**
-  tag. Re-check the current-control Flow in [Configure an EV Charger](/ev-charger).
+  **EV 1-phase** or **EV 3-phase**. For Easee, check the path you chose:
+  **Use built-in device control**, or the existing current-control Flow. For
+  other chargers, re-check the **EV charger current (A)** Flow in
+  [Configure an EV Charger](/ev-charger).
 - **The charger starts in an expensive hour on its own:** turn **Power-limit control**
   off so charging only happens during planned Smart task or Flow-booked hours.
   See [Smart Tasks → Power-Limit Control and Tasks](/smart-tasks#power-limit-control-and-tasks).

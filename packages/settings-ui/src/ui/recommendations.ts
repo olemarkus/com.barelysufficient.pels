@@ -7,14 +7,19 @@ import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
   parseRecommendationCarsRead,
-  resolveSetupRecommendations,
+  resolveCarAssociationRecommendations,
+  resolveNativeControlRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
-  type SupportedCar,
 } from './recommendationsModel.ts';
+import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
 import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
-import { createSerializedAsyncRunner, writeFreshSetting } from './deviceDetail/settingsWrite.ts';
+import {
+  createSerializedAsyncRunner,
+  readRecordSetting,
+  writeFreshSetting,
+} from './deviceDetail/settingsWrite.ts';
 import {
   renderSetupRecommendationsBanner,
   renderSetupRecommendationsView,
@@ -28,13 +33,47 @@ export type RecommendationNavigation = {
 // Browser-owned acknowledgement state. The runtime never reads this key.
 export const SETUP_RECOMMENDATION_DISMISSALS = 'setup_recommendation_dismissals';
 
-let dismissals: RecommendationDismissals | null = null;
-let cars: SupportedCar[] | null = null;
-let navigation: RecommendationNavigation | null = null;
+type DismissalReadState =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'resolved'; dismissals: RecommendationDismissals }
+  | { state: 'stale'; dismissals: RecommendationDismissals };
+
+type CarInventoryState =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'resolved'; cars: SettingsUiRecommendationCar[] }
+  | { state: 'stale'; cars: SettingsUiRecommendationCar[] };
+
+type NavigationState =
+  | { state: 'uninitialized' }
+  | { state: 'resolved'; navigation: RecommendationNavigation };
+
+type RecommendationReadiness = 'loading' | 'unavailable' | 'partial' | 'resolved';
+
+type LoadedDismissalReadState = Extract<DismissalReadState, { state: 'resolved' | 'stale' }>;
+
+let dismissalRead: DismissalReadState = { state: 'loading' };
+let carInventory: CarInventoryState = { state: 'loading' };
+let navigationRead: NavigationState = { state: 'uninitialized' };
 let loadGeneration = 0;
-let carInventoryUnavailable = false;
+let dismissalRevision = 0;
 const runSerializedDismissalWrite = createSerializedAsyncRunner();
 const RECOMMENDATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
+
+const hasLoadedDismissals = (read: DismissalReadState): read is LoadedDismissalReadState => (
+  read.state === 'resolved' || read.state === 'stale'
+);
+
+const resolveRecommendationReadiness = (read: DismissalReadState): RecommendationReadiness => {
+  if (read.state === 'unavailable') return 'unavailable';
+  if (!hasLoadedDismissals(read) || !state.devicesLoaded) return 'loading';
+  return read.state === 'resolved'
+    && state.evCarAssociationsLoaded
+    && carInventory.state === 'resolved'
+    ? 'resolved'
+    : 'partial';
+};
 
 const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null } => ({
   banner: document.getElementById('setup-recommendations-banner-root'),
@@ -42,13 +81,14 @@ const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null }
 });
 
 const resolveCurrentRecommendations = (): SetupRecommendation[] => {
-  if (!state.devicesLoaded || !state.evCarAssociationsLoaded || cars === null) return [];
-  return resolveSetupRecommendations(
-    state.latestDevices,
-    cars,
-    state.evCarAssociations,
-    state.nativeWiringMap,
-  );
+  if (!state.devicesLoaded) return [];
+  const nativeRecommendations = resolveNativeControlRecommendations(state.latestDevices, state.nativeWiringMap);
+  const carRecommendations = state.evCarAssociationsLoaded
+    && (carInventory.state === 'resolved' || carInventory.state === 'stale')
+    ? resolveCarAssociationRecommendations(state.latestDevices, carInventory.cars, state.evCarAssociations)
+    : [];
+  return [...nativeRecommendations, ...carRecommendations]
+    .sort((left, right) => left.title.localeCompare(right.title));
 };
 
 const isDismissalRecord = (value: unknown): value is Record<string, unknown> => (
@@ -68,7 +108,7 @@ const loadDismissalSetting = async (): Promise<unknown> => {
 const loadRecommendationCars = async (): Promise<unknown> => {
   let value = await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH);
   for (const delayMs of RECOMMENDATION_READ_RETRY_DELAYS_MS) {
-    if (parseRecommendationCarsRead(value)?.state !== 'unavailable') break;
+    if (parseRecommendationCarsRead(value).state !== 'unavailable') break;
     await sleep(delayMs);
     value = await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH);
   }
@@ -77,6 +117,9 @@ const loadRecommendationCars = async (): Promise<unknown> => {
 
 const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promise<void> => {
   if (result.status === 'rejected') {
+    dismissalRead = dismissalRead.state === 'resolved' || dismissalRead.state === 'stale'
+      ? { state: 'stale', dismissals: dismissalRead.dismissals }
+      : { state: 'unavailable' };
     await logSettingsError(
       'Failed to load recommendation acknowledgements',
       result.reason,
@@ -86,15 +129,19 @@ const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promis
   }
   const rawDismissals = result.value;
   if (isDismissalRecord(rawDismissals)) {
-    dismissals = normalizeRecommendationDismissals(rawDismissals);
+    dismissalRead = { state: 'resolved', dismissals: normalizeRecommendationDismissals(rawDismissals) };
     return;
   }
-  if (dismissals === null && (rawDismissals === null || rawDismissals === undefined)) {
+  if ((dismissalRead.state === 'loading' || dismissalRead.state === 'unavailable')
+    && (rawDismissals === null || rawDismissals === undefined)) {
     // An absent key is the normal first-run state. Once a last-good map exists,
     // the same SDK result is treated as unavailable and remains a no-op.
-    dismissals = {};
+    dismissalRead = { state: 'resolved', dismissals: {} };
     return;
   }
+  dismissalRead = dismissalRead.state === 'resolved' || dismissalRead.state === 'stale'
+    ? { state: 'stale', dismissals: dismissalRead.dismissals }
+    : { state: 'unavailable' };
   await logSettingsError(
     'Ignoring unavailable recommendation acknowledgements',
     new TypeError('Invalid recommendation acknowledgement setting.'),
@@ -104,29 +151,27 @@ const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promis
 
 const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Promise<void> => {
   if (result.status === 'rejected') {
-    carInventoryUnavailable = true;
+    carInventory = carInventory.state === 'resolved' || carInventory.state === 'stale'
+      ? { state: 'stale', cars: carInventory.cars }
+      : { state: 'unavailable' };
     await logSettingsError('Failed to load cars for recommendations', result.reason, 'setup recommendations');
     return;
   }
   const parsed = parseRecommendationCarsRead(result.value);
-  if (parsed === null) {
-    carInventoryUnavailable = true;
-    await logSettingsError(
-      'Ignoring malformed car list for recommendations',
-      new TypeError('Invalid recommendation car response.'),
-      'setup recommendations',
-    );
+  if (parsed.state === 'resolved') {
+    carInventory = { state: 'resolved', cars: parsed.cars };
     return;
   }
-  carInventoryUnavailable = parsed.state === 'unavailable';
-  if (parsed.state === 'resolved') cars = parsed.cars;
+  carInventory = carInventory.state === 'resolved' || carInventory.state === 'stale'
+    ? { state: 'stale', cars: carInventory.cars }
+    : { state: 'unavailable' };
 };
 
 const openRecommendationTarget = (recommendation: SetupRecommendation): void => {
-  if (!navigation) return;
-  navigation.openPanel('devices');
+  if (navigationRead.state !== 'resolved') return;
+  navigationRead.navigation.openPanel('devices');
   if (recommendation.target.kind === 'device') {
-    navigation.openDevice(recommendation.target.deviceId);
+    navigationRead.navigation.openDevice(recommendation.target.deviceId);
   }
 };
 
@@ -136,12 +181,10 @@ const writeDismissal = async (recommendation: SetupRecommendation, dismissed: bo
     context: 'setup recommendations',
     logMessage: 'Failed to update recommendation acknowledgement',
     toastMessage: 'Failed to update the recommendation.',
-    fallbackValue: dismissals ?? {},
-    readFresh: (value) => (
-      typeof value === 'object' && value !== null && !Array.isArray(value)
-        ? normalizeRecommendationDismissals(value)
-        : null
-    ),
+    fallbackValue: dismissalRead.state === 'resolved' || dismissalRead.state === 'stale'
+      ? dismissalRead.dismissals
+      : {},
+    readFresh: (value, fallback) => normalizeRecommendationDismissals(readRecordSetting(value, fallback)),
     mutate: (current) => {
       const next = { ...current };
       if (dismissed) next[recommendation.id] = recommendation.version;
@@ -149,7 +192,8 @@ const writeDismissal = async (recommendation: SetupRecommendation, dismissed: bo
       return next;
     },
     commit: (next) => {
-      dismissals = next;
+      dismissalRevision += 1;
+      dismissalRead = { state: 'resolved', dismissals: next };
       refreshRecommendationSurfaces();
     },
     rollback: refreshRecommendationSurfaces,
@@ -158,26 +202,28 @@ const writeDismissal = async (recommendation: SetupRecommendation, dismissed: bo
 
 export const refreshRecommendationSurfaces = (): void => {
   const { banner, page } = getSurfaces();
-  const loaded = dismissals !== null
-    && cars !== null
-    && state.devicesLoaded
-    && state.evCarAssociationsLoaded;
-  const groups = groupSetupRecommendations(resolveCurrentRecommendations(), dismissals ?? {});
+  const hasDismissals = hasLoadedDismissals(dismissalRead);
+  const coreLoaded = hasDismissals && state.devicesLoaded;
+  const readiness = resolveRecommendationReadiness(dismissalRead);
+  const dismissals = hasLoadedDismissals(dismissalRead) ? dismissalRead.dismissals : {};
+  const groups = groupSetupRecommendations(resolveCurrentRecommendations(), dismissals);
   if (banner) {
     renderSetupRecommendationsBanner(banner, {
-      count: loaded ? groups.active.length : 0,
-      onOpen: () => navigation?.openPanel('recommendations'),
+      count: coreLoaded ? groups.active.length : 0,
+      onOpen: () => {
+        if (navigationRead.state === 'resolved') navigationRead.navigation.openPanel('recommendations');
+      },
     });
   }
   const chip = document.getElementById('settings-nav-chip-recommendations');
   if (chip) {
-    chip.hidden = !loaded || groups.active.length === 0;
-    if (loaded && groups.active.length > 0) chip.textContent = String(groups.active.length);
+    chip.hidden = !coreLoaded || groups.active.length === 0;
+    if (coreLoaded && groups.active.length > 0) chip.textContent = String(groups.active.length);
   }
   if (page) {
     renderSetupRecommendationsView(page, {
       ...groups,
-      loaded,
+      readiness,
       onAction: openRecommendationTarget,
       onDismiss: (recommendation) => {
         void runSerializedDismissalWrite(() => writeDismissal(recommendation, true));
@@ -185,6 +231,7 @@ export const refreshRecommendationSurfaces = (): void => {
       onRestore: (recommendation) => {
         void runSerializedDismissalWrite(() => writeDismissal(recommendation, false));
       },
+      onRetry: retryRecommendationData,
     });
   }
 };
@@ -192,34 +239,52 @@ export const refreshRecommendationSurfaces = (): void => {
 export const loadRecommendationData = async (): Promise<void> => {
   loadGeneration += 1;
   const generation = loadGeneration;
+  const dismissalRevisionAtStart = dismissalRevision;
   const [dismissalResult, carsResult] = await Promise.allSettled([
     loadDismissalSetting(),
     loadRecommendationCars(),
   ]);
   if (generation !== loadGeneration) return;
-  await applyDismissalRead(dismissalResult);
+  if (dismissalRevisionAtStart === dismissalRevision) {
+    await applyDismissalRead(dismissalResult);
+  }
   if (generation !== loadGeneration) return;
   await applyCarInventoryRead(carsResult);
   if (generation !== loadGeneration) return;
   refreshRecommendationSurfaces();
 };
 
+const retryRecommendationData = (): void => {
+  if (dismissalRead.state !== 'unavailable') return;
+  dismissalRead = { state: 'loading' };
+  refreshRecommendationSurfaces();
+  void loadRecommendationData();
+};
+
 export const clearRecommendationDismissals = (): void => {
   loadGeneration += 1;
-  dismissals = {};
+  dismissalRevision += 1;
+  dismissalRead = { state: 'resolved', dismissals: {} };
   refreshRecommendationSurfaces();
 };
 
+const readTabId = (event: Event): string => {
+  if (!(event instanceof CustomEvent) || typeof event.detail !== 'object' || event.detail === null) return '';
+  const detail = event.detail as Record<string, unknown>;
+  return typeof detail.tabId === 'string' ? detail.tabId : '';
+};
+
 export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigation): void => {
-  navigation = nextNavigation;
+  navigationRead = { state: 'resolved', navigation: nextNavigation };
   document.addEventListener('devices-updated', refreshRecommendationSurfaces);
   document.addEventListener('ev-car-associations-updated', refreshRecommendationSurfaces);
   document.addEventListener('pels:tab-shown', (event) => {
-    const panelId = (event as CustomEvent<{ tabId?: string }>).detail?.tabId;
+    const panelId = readTabId(event);
     if (panelId === 'recommendations' && (
-      dismissals === null
-      || cars === null
-      || carInventoryUnavailable
+      dismissalRead.state !== 'resolved'
+      || carInventory.state === 'loading'
+      || carInventory.state === 'unavailable'
+      || carInventory.state === 'stale'
       || !state.evCarAssociationsLoaded
     )) {
       const associationLoad = state.evCarAssociationsLoaded

@@ -131,6 +131,18 @@ describe('detectNativeWiringConflicts', () => {
     expect(events[0]).toMatchObject({ event: 'flow_conflict_detection', outcome: 'unknown' });
   });
 
+  it('returns no Easee decision when an object-shaped Flow response is malformed', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: { partial: { cards: null } },
+      }),
+      getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
+    });
+
+    expect(result).toEqual({ status: 'unknown' });
+  });
+
   it('returns no decisions when the snapshot has no candidates', async () => {
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),

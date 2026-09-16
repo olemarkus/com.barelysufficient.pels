@@ -219,7 +219,7 @@ Recommended charger setup:
 
 - **Managed by PELS** on
 - **Power-limit control** off by default if charging should only happen during planned task hours
-- EV current-control Flow wired as described in [Configure an EV Charger](/ev-charger)
+- Current control configured as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
 - Battery reporting Flow configured when your car or charger app can provide it
 
 ### Heat before a known time
@@ -240,7 +240,7 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | Problem | What to check |
 | --- | --- |
 | The task stays pending | Check that price optimization is enabled and that prices are available through the ready-by time. |
-| The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase and the Flow uses **EV charger current (A)**. |
+| The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, check the Flow using **EV charger current (A)**. |
 | The task starts too early | Check whether **Power-limit control** is on; with it on, normal PELS behavior can still run the device outside planned task hours. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
 | A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |

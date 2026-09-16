@@ -1,5 +1,6 @@
 import type {
   DeviceTargetPowerConfigs,
+  TargetPowerSteppedLoadPreset,
   TargetPowerSteppedLoadConfig,
 } from '../../../../contracts/src/types.ts';
 import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
@@ -128,8 +129,11 @@ export type ManagedOptInControlMode =
 
 const LEAVE_CONTROL_MODE: ManagedOptInControlMode = { kind: 'leave' };
 
-export const resolveManagedOptInControlMode = (device: SettingsUiDeviceView): ManagedOptInControlMode => {
-  const reportedPreset = state.chargerPhasePresets[device.id];
+export const resolveManagedOptInControlMode = (
+  device: SettingsUiDeviceView,
+  chargerPhasePresets: Readonly<Record<string, TargetPowerSteppedLoadPreset>>,
+): ManagedOptInControlMode => {
+  const reportedPreset = chargerPhasePresets[device.id];
   if (reportedPreset === undefined) return LEAVE_CONTROL_MODE;
   if (Object.hasOwn(state.deviceTargetPowerConfigs, device.id)) return LEAVE_CONTROL_MODE;
   if (getStoredDeviceControlProfile(device.id) || device.controlModel) return LEAVE_CONTROL_MODE;
@@ -151,10 +155,14 @@ const readFreshTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs |
  * (the Flow card, a second settings window) wins, and the map is written back
  * unchanged.
  */
-export async function applyManagedOptInControlMode(deviceId: string, refresh: () => void): Promise<void> {
+export async function applyManagedOptInControlMode(
+  deviceId: string,
+  chargerPhasePresets: Readonly<Record<string, TargetPowerSteppedLoadPreset>>,
+  refresh: () => void,
+): Promise<void> {
   const device = state.latestDevices.find((entry) => entry.id === deviceId);
   if (!device) return;
-  const decision = resolveManagedOptInControlMode(device);
+  const decision = resolveManagedOptInControlMode(device, chargerPhasePresets);
   if (decision.kind === 'leave') return;
   await runSerializedTargetPowerWrite(async () => {
     await writeFreshSetting<DeviceTargetPowerConfigs>({

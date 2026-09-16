@@ -8,6 +8,7 @@ import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
+import type { SettingsUiDeviceReads } from '../lib/device/settingsUiDeviceReads';
 import {
   createRootLogger,
   setRootLogger,
@@ -131,6 +132,7 @@ export type AppServiceWiringDeps = {
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
   nativeWiring: AppNativeWiring;
+  settingsUiDeviceReads: SettingsUiDeviceReads;
   planRebuildScheduler: PlanRebuildScheduler;
   getStructuredLogger: () => PinoLogger | undefined;
   setStructuredLogger: (logger: PinoLogger) => void;
@@ -718,6 +720,7 @@ export class AppServiceWiring {
     persistDeferredObjectiveObservationWatermark(ctx, ctx.deferredObjectivePlanHistoryRecorder);
     ctx.priceCoordinator?.stop();
     ctx.deviceManager?.destroy();
+    this.deps.settingsUiDeviceReads.disconnect();
     this.deps.closeUserdataDatabase();
   }
 

@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
-import { NATIVE_WIRING_FLOW_CONFLICT_TITLE } from '../../shared-domain/src/nativeWiringCopy';
+import { NATIVE_WIRING_FLOW_CONFLICT_TITLE } from '../src/ui/deviceDetail/nativeWiringCopy';
 
 const buildDom = () => {
   document.body.innerHTML = `
@@ -34,7 +34,7 @@ describe('device detail flow-conflict banner', () => {
   const title = () => document.getElementById('device-detail-flow-conflict-title');
   const body = () => document.getElementById('device-detail-flow-conflict-body');
 
-  it('shows the banner with shared-domain copy when the device has a flow conflict', async () => {
+  it('shows the banner with settings-UI-owned copy when the device has a flow conflict', async () => {
     buildDom();
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
 
@@ -61,6 +61,9 @@ describe('device detail flow-conflict banner', () => {
     expect(title()?.textContent).toContain('Charge at night');
     expect(title()?.textContent).not.toBe(NATIVE_WIRING_FLOW_CONFLICT_TITLE);
     expect(body()?.textContent).toContain('Charge at night');
+    expect(body()?.textContent).toContain('Your Flow keeps working as it does now');
+    expect(body()?.textContent).toContain('turn off only the action that controls this device');
+    expect(body()?.textContent).not.toContain('Remove it');
     // Still no raw capability id in the user-facing copy.
     expect(body()?.textContent).not.toContain('max_power_3000');
   });

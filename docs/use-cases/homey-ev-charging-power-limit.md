@@ -25,7 +25,7 @@ PELS plays the brain role and lets your charger app keep doing what it does best
 
 ## How it works
 
-A typical Homey EV charging setup looks like this:
+A Flow-controlled Homey EV charging setup, such as Zaptec, looks like this. New Easee setups can use the direct path described in the [Easee guide](../easee-ev-charger.md); existing Easee current-control Flows remain supported.
 
 1. Homey receives whole-home power from Homey Energy, Tibber Pulse, AMS/HAN/P1, or Flow data.
 2. PELS reads the current house load and configured hard cap.
@@ -40,7 +40,7 @@ The important split is:
 
 <figure class="docs-figure">
   <img class="docs-diagram" src="/diagrams/ev-charging-handoff.svg" alt="Diagram showing power data flowing into PELS, PELS sending desired charging current to a Homey Flow, and the charger app applying it to the EV charger." />
-  <figcaption>PELS calculates the desired charging current. The charger app still sends the actual command to the charger.</figcaption>
+  <figcaption>For Flow-controlled chargers, PELS calculates the desired current and the charger app sends the command. New Easee setups can use built-in control instead.</figcaption>
 </figure>
 
 ## Example: EV charging has lower priority than heating and hot water

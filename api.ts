@@ -2,10 +2,10 @@ import type Homey from 'homey';
 import type { DailyBudgetModelPreviewResponse, DailyBudgetUiRead } from './lib/dailyBudget/dailyBudgetTypes';
 import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
-import type { DeviceTransportPort } from './lib/device/deviceTransport';
 import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
-import { EV_CAR_REQUIRED_CAPABILITY_IDS } from './lib/device/evCarLinkObservation';
+import { supportsCarAssociation } from './lib/device/evCarLinkObservation';
+import { readCarAssociationCandidatesFromHomey } from './lib/device/settingsUiDeviceReads';
 import {
   getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
@@ -56,22 +56,16 @@ type ApiContext = {
 
 type ApiHostApp = Homey.App & {
   getApiStructuredLogger?: () => PinoLogger | undefined;
-  deviceManager?: DeviceTransportPort;
 };
 
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
   typeof device.id === 'string'
 );
 
-const supportsCarAssociation = (device: HomeyDeviceLike): boolean => (
-  device.class === 'car'
-  && Array.isArray(device.capabilities)
-  && EV_CAR_REQUIRED_CAPABILITY_IDS.every((capability) => device.capabilities?.includes(capability))
-);
-
 const getApp = (homey: Homey.App['homey']): ApiHostApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app;
+  const app = homey.app;
+  return app && typeof app === 'object' ? app : null;
 };
 
 // Wrap an async API handler so any thrown error is logged through the runtime's
@@ -197,24 +191,9 @@ export = {
         };
       });
   }),
-  ui_recommendation_cars: withApiLogging('ui_recommendation_cars', async (
+  ui_recommendation_cars: withApiLogging('ui_recommendation_cars', (
     { homey }: ApiContext,
-  ): Promise<SettingsUiRecommendationCarsRead> => {
-    const deviceManager = getApp(homey)?.deviceManager;
-    if (!deviceManager) return { state: 'unavailable' };
-    try {
-      const devices = await deviceManager.getDevicesForDebug();
-      return {
-        state: 'resolved',
-        cars: devices
-          .filter(hasDeviceId)
-          .filter(supportsCarAssociation)
-          .map((device) => ({ id: device.id, name: device.name })),
-      };
-    } catch {
-      return { state: 'unavailable' };
-    }
-  }),
+  ): SettingsUiRecommendationCarsRead => readCarAssociationCandidatesFromHomey(homey)),
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick
   // is guaranteed readable — unlike a capability/class filter over the device list.

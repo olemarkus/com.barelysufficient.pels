@@ -1,13 +1,11 @@
-import type { SettingsUiRecommendationCarsRead } from '../../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiRecommendationCar,
+  SettingsUiRecommendationCarsRead,
+} from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import type { SettingsUiDeviceDetailItem } from './deviceUtils.ts';
 
 export type RecommendationDismissals = Record<string, number>;
-
-export type SupportedCar = {
-  id: string;
-  name: string;
-};
 
 export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
@@ -41,21 +39,21 @@ export const normalizeRecommendationDismissals = (value: unknown): Recommendatio
   )));
 };
 
-export const parseRecommendationCarsRead = (value: unknown): SettingsUiRecommendationCarsRead | null => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+export const parseRecommendationCarsRead = (value: unknown): SettingsUiRecommendationCarsRead => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { state: 'unavailable' };
   const read = value as { state?: unknown; cars?: unknown };
   if (read.state === 'unavailable') return { state: 'unavailable' };
-  if (read.state !== 'resolved' || !Array.isArray(read.cars)) return null;
+  if (read.state !== 'resolved' || !Array.isArray(read.cars)) return { state: 'unavailable' };
   if (!read.cars.every((car) => (
     typeof car === 'object'
     && car !== null
     && typeof (car as { id?: unknown }).id === 'string'
     && typeof (car as { name?: unknown }).name === 'string'
-  ))) return null;
-  return { state: 'resolved', cars: read.cars as SupportedCar[] };
+  ))) return { state: 'unavailable' };
+  return { state: 'resolved', cars: read.cars as SettingsUiRecommendationCar[] };
 };
 
-const nativeControlRecommendations = (
+export const resolveNativeControlRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>>,
 ): SetupRecommendation[] => (
@@ -65,26 +63,29 @@ const nativeControlRecommendations = (
       || device.controlAdapter?.activationEnabled === true;
     if (!conflict || conflict.conflictingCapabilities.length === 0 || nativeControlEnabled) return [];
     const flowReference = conflict.flowName
-      ? `Remove the Homey Flow “${conflict.flowName}”, then turn on Built-in device control on the device page.`
-      : 'Remove the Homey Flow that controls it, then turn on Built-in device control on the device page.';
+      ? `To switch, disable or remove only the device-control action in “${conflict.flowName}”, `
+        + 'then turn on Built-in device control on the device page.'
+      : 'To switch, disable or remove only the Flow action that controls this device, '
+        + 'then turn on Built-in device control on the device page.';
     return [{
       id: recommendationId('built-in-control', device.id),
       version: RECOMMENDATION_VERSION,
       category: 'recommendation',
-      title: `Use built-in control for ${device.name}`,
-      body: `PELS can control this device directly. ${flowReference}`,
+      title: `Use built-in device control for ${device.name}`,
+      body: `Your current Flow keeps working. PELS can also control this device directly. ${flowReference}`,
       actionLabel: 'Review device',
       target: { kind: 'device', deviceId: device.id },
     }];
   })
 );
 
-const carAssociationRecommendations = (
+export const resolveCarAssociationRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
-  cars: readonly SupportedCar[],
+  cars: readonly SettingsUiRecommendationCar[],
   associations: EvCarAssociations,
 ): SetupRecommendation[] => {
   const chargers = devices.filter((device) => device.deviceClass === 'evcharger');
+  if (chargers.length === 0) return [];
   const chargerIds = new Set(chargers.map((charger) => charger.id));
   const associatedCarIds = new Set(
     Object.entries(associations).flatMap(([chargerId, association]) => (
@@ -99,11 +100,9 @@ const carAssociationRecommendations = (
       id: recommendationId('charger-car', car.id),
       version: RECOMMENDATION_VERSION,
       category: 'recommendation' as const,
-      title: `Connect ${car.name} to a charger`,
-      body: chargers.length === 0
-        ? 'Add a compatible charger to PELS, then choose this car on the charger page.'
-        : 'Choose which charger this car may use so PELS can read its battery level and match charging sessions.',
-      actionLabel: chargers.length === 0 ? 'Review devices' : 'Choose charger',
+      title: `Choose a charger for ${car.name}`,
+      body: 'Choose the charger this car uses so PELS can read its battery level while it charges.',
+      actionLabel: 'Choose charger',
       target,
     }]
   ));
@@ -111,13 +110,13 @@ const carAssociationRecommendations = (
 
 export const resolveSetupRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
-  cars: readonly SupportedCar[],
+  cars: readonly SettingsUiRecommendationCar[],
   associations: EvCarAssociations,
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>>,
 ): SetupRecommendation[] => (
   [
-    ...nativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
-    ...carAssociationRecommendations(devices, cars, associations),
+    ...resolveNativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
+    ...resolveCarAssociationRecommendations(devices, cars, associations),
   ]
     .sort((left, right) => left.title.localeCompare(right.title))
 );

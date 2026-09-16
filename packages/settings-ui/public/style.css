@@ -4878,11 +4878,9 @@ md-filled-button.is-busy {
 
 .setup-recommendations-banner {
   margin-bottom: var(--spacing-3);
-}
-
-.setup-recommendations-banner__icon {
-  color: var(--color-role-warn);
-  font-size: var(--font-size-md);
+  background: var(--color-state-info-bg);
+  border: 1px solid var(--color-state-info-border);
+  color: var(--color-state-info-text);
 }
 
 .setup-recommendations-list {

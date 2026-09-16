@@ -464,12 +464,12 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   });
-  initDeviceDetailManagedControlHandlers({
+  initDeviceDetailManagedControlHandlers(
     getCurrentDetailDeviceId,
     refreshCurrentDeviceControlStates,
     refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
-  });
+  );
   initDeviceDetailControlModelHandler();
   // Charging-card "Change": the readout keeps top visibility while the edit
   // keeps Setup-grade friction — expand Setup and hand focus to the select.

@@ -51,7 +51,7 @@ Once the behavior matches your expectations, expand the managed device set.
 | PELS is not controlling devices | Verify **Managed by PELS** is on, **Power-limit control** is enabled, and **Simulation mode** is off. |
 | Expected power looks wrong | Check the device Energy settings in Homey or set a more accurate load in the device settings. |
 | No price data | Confirm the configured source is correct and external Flow payloads contain full-day JSON. |
-| EV charger current does not change | Check the EV control mode, the **EV charger current (A)** Flow tag, and the charger app action that sets available current. |
+| EV charger current does not change | Check the EV control mode. For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, check the **EV charger current (A)** Flow tag and charger-app action. |
 
 For a symptom-by-symptom guide across all of PELS, see the full [Troubleshooting guide](/troubleshooting).
 

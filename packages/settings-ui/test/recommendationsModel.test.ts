@@ -4,9 +4,9 @@ import {
   normalizeRecommendationDismissals,
   parseRecommendationCarsRead,
   resolveSetupRecommendations,
-  type SupportedCar,
 } from '../src/ui/recommendationsModel.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
+import type { SettingsUiRecommendationCar } from '../../contracts/src/settingsUiApi.ts';
 
 const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
   id: 'device-1',
@@ -20,7 +20,7 @@ const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnap
 
 const resolve = (
   devices: readonly TargetDeviceSnapshot[] = [],
-  cars: readonly SupportedCar[] = [],
+  cars: readonly SettingsUiRecommendationCar[] = [],
   associations: EvCarAssociations = {},
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>> = {},
 ) => resolveSetupRecommendations(devices, cars, associations, nativeWiringEnabledByDeviceId);
@@ -38,11 +38,13 @@ describe('setup recommendations', () => {
 
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
-      title: 'Use built-in control for Connected 300',
+      title: 'Use built-in device control for Connected 300',
       actionLabel: 'Review device',
       target: { kind: 'device', deviceId: 'device-1' },
     });
     expect(recommendations[0]?.body).toContain('Limit water heater');
+    expect(recommendations[0]?.body).toContain('Your current Flow keeps working');
+    expect(recommendations[0]?.body).toContain('only the device-control action');
     expect(recommendations[0]?.body).not.toContain('max_power_3000');
   });
 
@@ -66,7 +68,7 @@ describe('setup recommendations', () => {
 
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
-      title: 'Connect Polestar 3 to a charger',
+      title: 'Choose a charger for Polestar 3',
       actionLabel: 'Choose charger',
       target: { kind: 'device', deviceId: 'charger-1' },
     });
@@ -84,15 +86,10 @@ describe('setup recommendations', () => {
     expect(recommendations[0]?.target).toEqual({ kind: 'devices' });
   });
 
-  it('recommends adding a charger when a supported car has none to connect to', () => {
+  it('does not recommend a car association without an actionable charger destination', () => {
     const recommendations = resolve([], [{ id: 'car-1', name: 'Polestar 3' }]);
 
-    expect(recommendations[0]).toMatchObject({
-      title: 'Connect Polestar 3 to a charger',
-      body: 'Add a compatible charger to PELS, then choose this car on the charger page.',
-      actionLabel: 'Review devices',
-      target: { kind: 'devices' },
-    });
+    expect(recommendations).toEqual([]);
   });
 
   it('keeps matching-version acknowledgements dismissed and resurfaces newer versions', () => {
@@ -122,8 +119,9 @@ describe('setup recommendations', () => {
       cars: [{ id: 'car-1', name: 'Polestar 3' }],
     })).toEqual({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3' }] });
     expect(parseRecommendationCarsRead({ state: 'unavailable' })).toEqual({ state: 'unavailable' });
-    expect(parseRecommendationCarsRead({ state: 'resolved', cars: [{ id: 'car-1' }] })).toBeNull();
-    expect(parseRecommendationCarsRead({})).toBeNull();
+    expect(parseRecommendationCarsRead({ state: 'resolved', cars: [{ id: 'car-1' }] }))
+      .toEqual({ state: 'unavailable' });
+    expect(parseRecommendationCarsRead({})).toEqual({ state: 'unavailable' });
   });
 
   it('ignores associations belonging to chargers that are no longer present', () => {
@@ -133,6 +131,6 @@ describe('setup recommendations', () => {
       { 'removed-charger': { carIds: ['car-1'] } },
     );
 
-    expect(recommendations[0]?.title).toBe('Connect Polestar 3 to a charger');
+    expect(recommendations[0]?.title).toBe('Choose a charger for Polestar 3');
   });
 });

@@ -11,7 +11,7 @@ import {
   deviceDetailNativeWiringRow,
   deviceDetailSetupDisclosure,
 } from '../dom.ts';
-import { nativeWiringFlowConflictNotice } from '../../../../shared-domain/src/nativeWiringCopy.ts';
+import { nativeWiringFlowConflictNotice } from './nativeWiringCopy.ts';
 import {
   requiresNativeWiringForActivation,
   supportsNativeWiringActivation,

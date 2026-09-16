@@ -27,6 +27,7 @@ import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createPersistedEvCarLinkAccess } from './evCarLinkAccess';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
+import type { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
 // `appServiceWiring.ts` (30 s — well inside the shortest 90 s probe deadline).
@@ -65,6 +66,7 @@ export type DeviceTransportWiringDeps = {
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
   /** Owns the `evCarLinkTick` heartbeat registered after transport init. */
   timers: TimerRegistry;
+  settingsUiDeviceReads: SettingsUiDeviceReads;
   /** Lazy over `AppServiceWiring`'s private field — the registry is built later. */
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
   /** Lazy for the same reason: the membership service is built after the transport. */
@@ -169,6 +171,7 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   subscribeObservedStateProjection(deps);
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.deviceManager = deviceManager;
+  deps.settingsUiDeviceReads.connect(deviceManager);
   await deviceManager.init();
   // The probe's decisions are time-based — edge settlement, away verdicts, and
   // the self-stop dwell all need 90-180 s to elapse. Without a heartbeat they

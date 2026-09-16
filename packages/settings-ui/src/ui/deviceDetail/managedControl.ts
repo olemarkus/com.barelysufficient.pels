@@ -4,17 +4,29 @@ import {
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import { state } from '../state.ts';
-import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
+import { showToast } from '../toast.ts';
+import { ensureChargerPhasePresetsRead } from '../chargerPhasePresets.ts';
+import {
+  beginManagedControlIntent,
+  isCurrentManagedControlIntent,
+} from '../managedControlIntent.ts';
+import {
+  createSerializedAsyncRunner,
+  readRecordSettingStrict,
+  writeFreshSetting,
+} from './settingsWrite.ts';
 import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
 
-export function initDeviceDetailManagedControlHandlers(params: {
-  getCurrentDetailDeviceId: () => string | null;
-  refreshCurrentDeviceControlStates: () => void;
-  refreshOpenDeviceDetail: () => void;
-  refreshSharedDeviceViews: () => void;
-}) {
+const runSerializedManagedWrite = createSerializedAsyncRunner();
+
+export function initDeviceDetailManagedControlHandlers(
+  getCurrentDetailDeviceId: () => string | null,
+  refreshCurrentDeviceControlStates: () => void,
+  refreshOpenDeviceDetail: () => void,
+  refreshSharedDeviceViews: () => void,
+) {
   deviceDetailControllable?.addEventListener('change', async () => {
-    const deviceId = params.getCurrentDetailDeviceId();
+    const deviceId = getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailControllable) return;
 
     const nextChecked = deviceDetailControllable.selected;
@@ -41,40 +53,56 @@ export function initDeviceDetailManagedControlHandlers(params: {
         // so without this the user follows the hint, turns Power-limit control
         // on, and the switch they were sent to stays disabled until they
         // reopen the panel.
-        params.refreshCurrentDeviceControlStates();
+        refreshCurrentDeviceControlStates();
       },
-      rollback: params.refreshCurrentDeviceControlStates,
+      rollback: refreshCurrentDeviceControlStates,
     });
   });
 
   deviceDetailManaged?.addEventListener('change', async () => {
-    const deviceId = params.getCurrentDetailDeviceId();
+    const deviceId = getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailManaged) return;
 
     const nextChecked = deviceDetailManaged.selected;
-    const saved = await writeFreshSetting<Record<string, boolean>>({
-      key: 'managed_devices',
-      context: 'device detail',
-      logMessage: 'Failed to update managed device',
-      toastMessage: 'Failed to update managed device.',
-      // Use the live managed-map snapshot as the fallback so a transient
-      // null or non-object SDK read does not erase entries for other
-      // devices.
-      fallbackValue: state.managedMap,
-      readFresh: readRecordSettingStrict<boolean>,
-      mutate: (currentMap) => ({
-        ...currentMap,
-        [deviceId]: nextChecked,
-      }),
-      commit: (nextMap) => {
-        state.managedMap = nextMap;
-        params.refreshSharedDeviceViews();
-        params.refreshCurrentDeviceControlStates();
-      },
-      rollback: params.refreshCurrentDeviceControlStates,
+    const intentGeneration = beginManagedControlIntent(deviceId);
+    const device = state.latestDevices.find((entry) => entry.id === deviceId);
+    const phaseRead = nextChecked && device?.deviceClass === 'evcharger'
+      ? await ensureChargerPhasePresetsRead()
+      : { state: 'resolved' as const, presets: state.chargerPhasePresets };
+    if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;
+    if (phaseRead.state === 'unavailable') {
+      deviceDetailManaged.selected = false;
+      await showToast('Could not read the charger wiring. Refresh devices and try again.', 'warn');
+      refreshCurrentDeviceControlStates();
+      return;
+    }
+    const saved = await runSerializedManagedWrite(async () => {
+      if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return false;
+      const nextMap = await writeFreshSetting<Record<string, boolean>>({
+        key: 'managed_devices',
+        context: 'device detail',
+        logMessage: 'Failed to update managed device',
+        toastMessage: 'Failed to update managed device.',
+        // Use the live managed-map snapshot as the fallback so a transient
+        // null or non-object SDK read does not erase entries for other
+        // devices.
+        fallbackValue: state.managedMap,
+        readFresh: readRecordSettingStrict<boolean>,
+        mutate: (currentMap) => ({
+          ...currentMap,
+          [deviceId]: nextChecked,
+        }),
+        commit: (committedMap) => {
+          state.managedMap = committedMap;
+          refreshSharedDeviceViews();
+          refreshCurrentDeviceControlStates();
+        },
+        rollback: refreshCurrentDeviceControlStates,
+      });
+      return nextMap !== null;
     });
-    if (saved && nextChecked) {
-      await applyManagedOptInControlMode(deviceId, params.refreshOpenDeviceDetail);
+    if (saved && nextChecked && isCurrentManagedControlIntent(deviceId, intentGeneration)) {
+      await applyManagedOptInControlMode(deviceId, phaseRead.presets, refreshOpenDeviceDetail);
     }
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readCarDevice } from '../../lib/device/evCarLinkObservation';
+import { readCarDevice, resolveCarAssociationCandidates } from '../../lib/device/evCarLinkObservation';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 const car = (available?: boolean): HomeyDeviceLike => ({
@@ -34,5 +34,15 @@ describe('readCarDevice availability boundary', () => {
       kind: 'observed',
       reading: { deviceId: 'car-1', state: 'plugged_in_charging', socPct: 64 },
     });
+  });
+});
+
+describe('resolveCarAssociationCandidates', () => {
+  it('returns only id-bearing cars with both capabilities needed by the probe', () => {
+    expect(resolveCarAssociationCandidates([
+      { ...car(true), capabilities: ['ev_charging_state', 'measure_battery'] },
+      { ...car(true), id: 'incomplete', capabilities: ['ev_charging_state'] },
+      { id: 'heater', name: 'Tank', class: 'heater', capabilities: ['ev_charging_state', 'measure_battery'] },
+    ])).toEqual([{ id: 'car-1', name: 'Polestar' }]);
   });
 });

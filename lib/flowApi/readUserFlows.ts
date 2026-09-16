@@ -36,6 +36,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isTrustedFlatFlowMap(value: Record<string, unknown>): boolean {
+  return Object.values(value).every((flow) => {
+    if (!isRecord(flow)) return false;
+    if (flow.enabled === false) return true;
+    return Array.isArray(flow.actions)
+      && flow.actions.every((action) => isRecord(action) && typeof action.id === 'string');
+  });
+}
+
+function isTrustedAdvancedFlowMap(value: Record<string, unknown>): boolean {
+  return Object.values(value).every((flow) => {
+    if (!isRecord(flow)) return false;
+    if (flow.enabled === false) return true;
+    if (!isRecord(flow.cards)) return false;
+    return Object.values(flow.cards).every((card) => (
+      isRecord(card)
+      && (card.type === 'trigger' || card.type === 'condition' || card.type === 'action')
+      && (card.type !== 'action' || typeof card.id === 'string')
+    ));
+  });
+}
+
+function isTrustedFlowMap(path: string, value: Record<string, unknown>): boolean {
+  return path === FLOW_API_PATH ? isTrustedFlatFlowMap(value) : isTrustedAdvancedFlowMap(value);
+}
+
 async function readEndpoint(
   get: FlowApiGet,
   path: string,
@@ -48,6 +74,9 @@ async function readEndpoint(
   }
   if (!isRecord(raw)) {
     return { ok: false, reason: `read ${path} returned a non-object response` };
+  }
+  if (!isTrustedFlowMap(path, raw)) {
+    return { ok: false, reason: `read ${path} returned an untrustworthy flow map` };
   }
   return { ok: true, value: raw };
 }

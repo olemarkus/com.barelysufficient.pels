@@ -1702,7 +1702,7 @@
   const scopedDevicesHandler = (query, wholeHomePayload) => {
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
-    if (scope.homeId === null) return { devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' } };
+    if (scope.homeId === null) return { devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' } };
     const members = devicesForHome(scope.homeId);
     return {
       // The real producer (`devicesPayloadForHome`, setup/settingsUiApi.ts)
@@ -1710,7 +1710,7 @@
       // computing the solar flag from the UNFILTERED member set — mirror both,
       // or scoped specs would render management controls production never offers.
       devices: members.filter((device) => !OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass)),
-      chargerPhasePresets: settings.ui_devices_charger_phase_presets ?? {},
+      chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       hasManagedSolarDevice: members.some((device) => device.deviceClass === 'solarpanel'),
       // A sub-meter has its own export accounting; default false, per-area
       // override when a spec seeds it.
@@ -1764,7 +1764,7 @@
     'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
       devices: settings.target_devices_snapshot,
       // No fixture charger reports its wiring unless a spec seeds one.
-      chargerPhasePresets: settings.ui_devices_charger_phase_presets ?? {},
+      chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       // This fixture home has a tracked solar/PV device by default, so the per-device
       // "Use solar surplus" control is offered (see device-detail.spec surplus test).
       // Both solar signals are overridable via settings so a spec can seed the
@@ -1806,7 +1806,7 @@
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({
       devices: settings.target_devices_snapshot,
-      chargerPhasePresets: settings.ui_devices_charger_phase_presets ?? {},
+      chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
       hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
       surplusPoolReachable: settings.ui_devices_surplus_pool_reachable ?? true,

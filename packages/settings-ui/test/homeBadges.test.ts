@@ -422,6 +422,60 @@ describe('devices list home badges', () => {
     }
   });
 
+  it('keeps the last reported charger phase when the next API read is unavailable', async () => {
+    let refreshes = 0;
+    const homey = createHomeyMock({
+      apiHandlers: {
+        'GET /ui_devices': () => ({
+          devices: THREE_DEVICES,
+          chargerPhasePresets: {
+            state: 'resolved', presets: { 'easee-1': 'ev_charger_3_phase' },
+          },
+        }),
+        'POST /ui_refresh_devices': () => {
+          refreshes += 1;
+          return {
+            devices: THREE_DEVICES,
+            chargerPhasePresets: refreshes === 1
+              ? { state: 'unavailable' }
+              : { state: 'resolved', presets: { 'easee-1': 'invalid-preset' } },
+          };
+        },
+      },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { getTargetDevices, refreshDevices } = await import('../src/ui/devices.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    await getTargetDevices();
+    await refreshDevices({ render: false });
+    await refreshDevices({ render: false });
+
+    expect(state.chargerPhasePresets).toEqual({ 'easee-1': 'ev_charger_3_phase' });
+  });
+
+  it('keeps a cold unavailable charger-phase read out of control-mode state', async () => {
+    const homey = createHomeyMock({
+      apiHandlers: {
+        'GET /ui_devices': () => ({
+          devices: THREE_DEVICES,
+          chargerPhasePresets: { state: 'unavailable' },
+        }),
+      },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { getTargetDevices } = await import('../src/ui/devices.ts');
+    const { ensureChargerPhasePresetsRead } = await import('../src/ui/chargerPhasePresets.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    await getTargetDevices();
+
+    await expect(ensureChargerPhasePresetsRead()).resolves.toEqual({ state: 'unavailable' });
+    expect(state.chargerPhasePresets).toEqual({});
+  });
+
   it.each([
     ['missing', undefined],
     ['non-boolean', 'yes'],

@@ -43,7 +43,7 @@ A Flow that only reports the car's battery level to PELS is not a conflict. Keep
 
 ## Charging Session Starts
 
-An Easee charger goes back to its maximum current whenever a charging session starts. PELS sees that on the charger and sets the planned current again within a few seconds. For that short moment the car can draw more than PELS planned.
+An Easee charger goes back to its maximum current whenever a charging session starts. PELS sees that on the charger and sets the planned current again after the next whole-home power reading. With a Homey Energy power source that reading normally arrives within 10 seconds. With a Flow power source, the timing follows your **Report power usage** Flow. Until that reading arrives, the car can draw more than PELS planned.
 
 ## Battery Reporting
 

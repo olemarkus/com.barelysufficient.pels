@@ -67,7 +67,12 @@ const IMMEDIATE_GET_RESPONSES: Record<string, unknown> = {
   '/ui_homes': ROSTER_PAYLOAD,
   [SCOPED_POWER_URI]: areaPowerPayload(),
   '/ui_plan': { plan: null },
-  '/ui_devices': { devices: [], hasManagedSolarDevice: false, hasExhibitedExport: false },
+  '/ui_devices': {
+    devices: [],
+    chargerPhasePresets: { state: 'resolved', presets: {} },
+    hasManagedSolarDevice: false,
+    hasExhibitedExport: false,
+  },
   '/ui_device_log': { version: 1, entriesByDeviceId: {} },
   '/ui_deferred_objective_settings': { version: 1, objectivesByDeviceId: {} },
   '/starvation_rescue_devices': { rescuableDeviceIds: [] },

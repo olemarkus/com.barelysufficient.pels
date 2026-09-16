@@ -45,6 +45,7 @@ import type {
 import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
+import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
@@ -58,7 +59,6 @@ import {
   getPlanSnapshotForUiFromHomey,
   getCurtailmentCanContributeForUiFromApp,
   getPowerTrackerForUiFromApp,
-  getChargerPhasePresetsFromApp,
   getUiPickerDevicesFromApp,
   refreshSettingsUiDevicesForApp,
   refreshSettingsUiGridTariffForApp,
@@ -510,7 +510,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
-  devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
+  devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
 };
 
 const planPayloadForHome = (
@@ -585,7 +585,7 @@ const devicesPayloadForHome = (
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
-    chargerPhasePresets: getChargerPhasePresetsFromApp(homey),
+    chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     hasManagedSolarDevice: hasSolarProductionCandidate(members),
     // Source-blind: export is whatever this home's accrued export families say
     // it is. Both sources report signed net, so a flow home exports on exactly
@@ -622,7 +622,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // the user-facing device list. The BACKEND snapshot + telemetry stay untouched; they earn
     // a proper tracked / EMS view later.
     devices: candidates.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
-    chargerPhasePresets: getChargerPhasePresetsFromApp(homey),
+    chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).

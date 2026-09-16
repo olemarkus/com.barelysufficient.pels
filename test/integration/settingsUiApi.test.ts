@@ -20,6 +20,7 @@ import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/setting
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 
 describe('settingsUiApi', () => {
   const createHomey = (
@@ -200,6 +201,11 @@ describe('settingsUiApi', () => {
         ],
       },
     });
+    const settingsUiDeviceReads = new SettingsUiDeviceReads();
+    settingsUiDeviceReads.connect({
+      readChargerPhasePresets: () => ({ state: 'resolved', presets: {} }),
+      readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
+    });
     const app = {
       ...(typeof options.capacityDryRun === 'boolean'
         ? { capacityDryRun: options.capacityDryRun }
@@ -219,6 +225,7 @@ describe('settingsUiApi', () => {
       applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
       getDeviceLogUiPayload,
+      settingsUiDeviceReads,
       get latestTargetSnapshot() {
         return latestDevices;
       },
@@ -486,8 +493,8 @@ describe('settingsUiApi', () => {
           reportedStepId: 'low',
         },
       ],
-      // No app on this fixture homey, so no transport to report charger wiring.
-      chargerPhasePresets: {},
+      // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
+      chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
       // No export history and no curtailment seam wired: the surplus engine has

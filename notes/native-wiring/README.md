@@ -140,7 +140,8 @@ type FlowReadResult =
 ```
 
 - `ok` with an empty map = read succeeded, genuinely no writes.
-- `unknown` = a read threw, returned a non-object, or otherwise can't be
+- `unknown` = a read threw, returned a non-object, contained an active Flow
+  whose action/card topology could not be trusted, or otherwise can't be
   trusted. If **either** endpoint is unreadable the whole result is
   `unknown` — we cannot prove the absence of a conflicting Flow in an
   endpoint we never saw.
@@ -149,6 +150,10 @@ This distinction is load-bearing: a later auto-enable step must treat
 `unknown` as "do not auto-flip", so a transient Web API failure can never
 silently enable native wiring over a real conflict. Mirrors the
 "never delete persisted state on one bad SDK read" rule used elsewhere.
+
+The topology check lives at the Homey API boundary. `unknown` never becomes a
+business-logic input: the conflict probe emits no auto-enable decision, so the
+previous control choice carries forward unchanged.
 
 The HTTP capability is **injected** (`get`) so `lib/flowApi/` stays pure and
 free of any cross-peer dependency on the device transport. Wiring supplies a
@@ -177,8 +182,9 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    **Telemetry only — no default flip.** Validates the full detection pipeline
    on real Homeys before any behaviour changes. The candidate enumeration +
    owned-cap resolution it adds is reused by PR4.
-4. **PR4 (shipped):** native stepped wiring defaults ON for Hoiax
-   (`max_power_*`) devices unless a flow conflict is found.
+4. **PR4 (shipped):** native stepped wiring defaults ON for supported Hoiax
+   (`max_power_*`) and Easee (`target_charger_current`) devices unless a Flow
+   conflict is found.
    - **Runtime default, not a settings write.** `getNativeEvWiringEnabled`
      resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
      false) always wins; an untouched device falls back to an in-memory,
@@ -186,7 +192,7 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      persisted, so there is no migration and no risk of corrupting user state,
      and an explicit opt-out is never auto-reverted.
    - **Gating:** `detectNativeWiringConflicts` (`setup/flowConflictProbe.ts`)
-     auto-enables Hoiax candidates with no conflicting Flow; an `unknown` read
+     auto-enables supported candidates with no conflicting Flow; an `unknown` read
      yields no decisions (fail-closed). It runs once after the snapshot
      warm-up gate, then re-parses the snapshot + rebuilds the plan so the
      decision takes effect.
@@ -206,12 +212,13 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    stores `flowConflictsByDevice`, exposed via the `getFlowConflict` parse
    provider, attached in `resolveParsedDeviceSettings`); the settings-UI
    `syncFlowConflictNotice` shows a non-interactive banner when it is set.
-   Copy lives in `packages/shared-domain/src/nativeWiringCopy.ts`. **Copy is
-   intentionally generic** — it names neither the Flow nor the raw capability
-   id (`max_power_3000` would be jargon); the conflict data decides *when* the
-   banner shows, not its text. The banner ties itself to the visible built-in
-   device-control switch and names both remedies (remove the Flow, or flip the
-   switch to override). `flowConflict` is display-only and does not affect the
+   Browser-only copy lives beside its consumer in
+   `packages/settings-ui/src/ui/deviceDetail/nativeWiringCopy.ts`. It names a
+   single conflicting Flow when the producer can resolve one, but never exposes
+   raw capability ids (`max_power_3000` would be jargon). The banner ties itself
+   to the visible built-in-control switch and describes the safe handoff: keep
+   the Flow, turn off only its conflicting device-control action, then enable
+   built-in control. `flowConflict` is display-only and does not affect the
    control gate.
 
    *Follow-ups:*
@@ -220,10 +227,10 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      recovers automatically.~~ **Shipped** (`0dd6dafe`): periodic conflict
      re-query every 30 min, closing the accepted limitation noted in PR4.
    - ~~Plumb the conflicting Flow's name through the conflict reader so the
-     banner can name which Flow to remove.~~ **Shipped** (`d9513dd7`):
+     banner can name which Flow to edit.~~ **Shipped** (`d9513dd7`):
      `resolveConflictFlowName` in `lib/flowApi/flowConflict.ts` sets `flowName`
      when a single named Flow is responsible, and the banner copy
-     (`packages/shared-domain/src/nativeWiringCopy.ts`) names it.
+     (`packages/settings-ui/src/ui/deviceDetail/nativeWiringCopy.ts`) names it.
 
 ## Validation reference
 

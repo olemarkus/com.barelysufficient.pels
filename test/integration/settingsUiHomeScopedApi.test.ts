@@ -24,6 +24,7 @@ import type { HomeMembershipPort } from '../../lib/home/membership';
 import { buildSettingsUiPlanMeta } from '../utils/planTestUtils';
 import { createPlanStatusRegistry, type PlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 
 const AREA_ID = 'h_area1';
 
@@ -86,6 +87,7 @@ const createMembershipPort = (options: {
 
 // The app surfaces the three endpoints consume, typed against the real ports.
 type ScopedApiApp = {
+  settingsUiDeviceReads: SettingsUiDeviceReads;
   latestTargetSnapshot: Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
   getLatestPlanSnapshotForUi: () => Record<string, unknown> | null;
@@ -131,7 +133,13 @@ const installBoundary = (options: {
     ownershipReady: options.ownershipReady,
     pendingGeneration: options.pendingGeneration,
   });
+  const settingsUiDeviceReads = new SettingsUiDeviceReads();
+  settingsUiDeviceReads.connect({
+    readChargerPhasePresets: () => ({ state: 'resolved', presets: {} }),
+    readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
+  });
   const app: ScopedApiApp = {
+    settingsUiDeviceReads,
     latestTargetSnapshot: [
       { id: 'dev-main', name: 'Main heater', deviceClass: 'heater' },
       { id: 'dev-area', name: 'Area heater', deviceClass: 'heater' },
@@ -214,7 +222,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
         expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-          devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
+          devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
         });
 
         // No settings read at all — so in particular no `<base>:<homeId>` key
@@ -288,7 +296,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // absence meaning.
       const { homey } = installBoundary({ hasMembership: false });
       expect(getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
+        devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
         tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
@@ -305,7 +313,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary(provisional);
       const query = { homeId: AREA_ID };
       expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-        devices: [], chargerPhasePresets: {}, homeScope: { state: 'unavailable' },
+        devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
         tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },

@@ -12,6 +12,7 @@
  * Official Homey capabilities only: `ev_charging_state` and `measure_battery`.
  */
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { SettingsUiRecommendationCar } from '../../packages/contracts/src/settingsUiApi';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import { toCapabilityTimestampMs } from './managerControl';
@@ -67,6 +68,26 @@ export const readCarIdentity = (device: HomeyDeviceLike): { deviceId: string; na
     if (typeof deviceId !== 'string' || deviceId.length === 0) return null;
     return { deviceId, name: typeof device.name === 'string' ? device.name : deviceId };
 };
+
+export const supportsCarAssociation = (device: HomeyDeviceLike): boolean => {
+    const capabilities = device.capabilities;
+    return readCarIdentity(device) !== null
+        && Array.isArray(capabilities)
+        && EV_CAR_REQUIRED_CAPABILITY_IDS.every((capability) => capabilities.includes(capability));
+};
+
+/**
+ * Resolve picker candidates at the Homey-device boundary. Consumers receive
+ * only cars with both capabilities the association probe requires.
+ */
+export const resolveCarAssociationCandidates = (
+    devices: readonly HomeyDeviceLike[],
+): SettingsUiRecommendationCar[] => devices.flatMap((device) => {
+    const identity = readCarIdentity(device);
+    return identity && supportsCarAssociation(device)
+        ? [{ id: identity.deviceId, name: identity.name }]
+        : [];
+});
 
 /**
  * Tolerance for a capability timestamp that legitimately runs slightly ahead of

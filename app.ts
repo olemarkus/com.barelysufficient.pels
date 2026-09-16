@@ -3,6 +3,7 @@ import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '.
 import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
+import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
 import { createDeviceReads, type DeviceReads } from './lib/device/deviceReads';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
@@ -178,6 +179,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   public priceCoordinator!: PriceCoordinator;
   public priceFlowTagPublisher?: PriceFlowTagPublisher;
   public deviceManager!: DeviceTransport;
+  public readonly settingsUiDeviceReads = new SettingsUiDeviceReads();
 
   /**
    * Every device read, built here because this is where the concrete transport
@@ -509,6 +511,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,
     nativeWiring: this.nativeWiring,
+    settingsUiDeviceReads: this.settingsUiDeviceReads,
     planRebuildScheduler: this.planRebuildScheduler,
     getStructuredLogger: () => this.structuredLogger,
     setStructuredLogger: (logger) => { this.structuredLogger = logger; },

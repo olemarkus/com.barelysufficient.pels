@@ -2,15 +2,15 @@ import { render } from 'preact';
 import type { SetupRecommendation } from '../recommendationsModel.ts';
 import { AppBar } from './AppBar.tsx';
 import { MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
-import { WarningIcon } from './icons.tsx';
 
 export type SetupRecommendationsViewProps = {
   active: readonly SetupRecommendation[];
   dismissed: readonly SetupRecommendation[];
-  loaded: boolean;
+  readiness: 'loading' | 'unavailable' | 'partial' | 'resolved';
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
   onRestore: (recommendation: SetupRecommendation) => void;
+  onRetry: () => void;
 };
 
 type RecommendationCardProps = {
@@ -49,13 +49,20 @@ const RecommendationCard = (props: RecommendationCardProps) => {
   );
 };
 
-const RecommendationsList = (props: Omit<SetupRecommendationsViewProps, 'loaded'>) => (
+const RecommendationsList = (props: SetupRecommendationsViewProps) => (
   <>
+    {props.readiness === 'partial' && (
+      <p class="muted setup-recommendations-loading">Some recommendation checks couldn’t be refreshed right now.</p>
+    )}
     {props.active.length === 0
       ? (
         <section class="pels-surface-card setup-recommendations-empty">
-          <strong>You’re all set</strong>
-          <p class="pels-card-supporting">No recommended configuration changes right now.</p>
+          <strong>{props.readiness === 'partial' ? 'No suggestions from the checks that finished' : 'No setup suggestions right now'}</strong>
+          <p class="pels-card-supporting">
+            {props.readiness === 'partial'
+              ? 'Try again later to check the remaining optional suggestions.'
+              : 'PELS has no device setup changes to suggest.'}
+          </p>
         </section>
       )
       : (
@@ -105,9 +112,19 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
       title="Setup & recommendations"
       lede="Suggested changes that can make PELS work better with your devices."
     />
-    {!props.loaded
-      ? <p class="muted setup-recommendations-loading">Checking your configuration…</p>
-      : <RecommendationsList {...props} />}
+    {props.readiness === 'loading' && (
+      <p class="muted setup-recommendations-loading">Checking your configuration…</p>
+    )}
+    {props.readiness === 'unavailable' && (
+      <section class="pels-surface-card setup-recommendations-empty">
+        <strong>Recommendations couldn’t be loaded</strong>
+        <p class="pels-card-supporting">Try again to check your device setup.</p>
+        <MdFilledTonalButton type="button" onClick={props.onRetry}>Try again</MdFilledTonalButton>
+      </section>
+    )}
+    {(props.readiness === 'partial' || props.readiness === 'resolved') && (
+      <RecommendationsList {...props} />
+    )}
   </>
 );
 
@@ -115,8 +132,7 @@ export const SetupRecommendationsBanner = (props: { count: number; onOpen: () =>
   if (props.count === 0) return null;
   const title = props.count === 1 ? '1 recommendation' : `${props.count} recommendations`;
   return (
-    <div class="banner banner--warning setup-recommendations-banner">
-      <span class="banner__icon setup-recommendations-banner__icon" aria-hidden="true"><WarningIcon /></span>
+    <div class="banner setup-recommendations-banner">
       <strong class="banner__text">{title}</strong>
       <MdTextButton type="button" class="banner__action" onClick={props.onOpen}>Review</MdTextButton>
     </div>

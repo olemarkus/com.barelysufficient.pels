@@ -29,18 +29,41 @@ vi.mock('../../setup/appDebugHelpers', () => ({
 
 import api from '../../api';
 import * as stubs from '../../setup/settingsUiApi';
+import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
+import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUiApi';
 
 type LoggerMock = { error: ReturnType<typeof vi.fn> };
 type AppMock = {
   getApiStructuredLogger: ReturnType<typeof vi.fn>;
-  deviceManager?: { getDevicesForDebug: ReturnType<typeof vi.fn> };
+  settingsUiDeviceReads: SettingsUiDeviceReads;
 };
 type HomeyMock = { app: AppMock };
 type Handler = (ctx: { homey: HomeyMock }) => Promise<unknown>;
 
-const buildHomey = (): { homey: HomeyMock; logger: LoggerMock } => {
+const buildHomey = (): {
+  homey: HomeyMock;
+  logger: LoggerMock;
+  readRecommendationCars: ReturnType<typeof vi.fn>;
+} => {
   const logger: LoggerMock = { error: vi.fn() };
-  return { homey: { app: { getApiStructuredLogger: vi.fn(() => logger) } }, logger };
+  const readRecommendationCars = vi.fn<() => SettingsUiRecommendationCarsRead>(
+    () => ({ state: 'unavailable' }),
+  );
+  const settingsUiDeviceReads = new SettingsUiDeviceReads();
+  settingsUiDeviceReads.connect({
+    readChargerPhasePresets: () => ({ state: 'unavailable' }),
+    readCarAssociationCandidates: readRecommendationCars,
+  });
+  return {
+    homey: {
+      app: {
+        getApiStructuredLogger: vi.fn(() => logger),
+        settingsUiDeviceReads,
+      },
+    },
+    logger,
+    readRecommendationCars,
+  };
 };
 
 const cases: Array<{
@@ -66,35 +89,25 @@ beforeEach(() => {
 
 describe('api handler error logging', () => {
   it('distinguishes a resolved empty recommendation car list from an unavailable manager', async () => {
-    const { homey } = buildHomey();
+    const { homey, readRecommendationCars } = buildHomey();
     const handler = (api as unknown as Record<string, Handler>).ui_recommendation_cars;
 
     await expect(handler({ homey })).resolves.toEqual({ state: 'unavailable' });
 
-    homey.app.deviceManager = {
-      getDevicesForDebug: vi.fn().mockResolvedValue([
-        {
-          id: 'car-1', name: 'Polestar 3', class: 'car',
-          capabilities: ['ev_charging_state', 'measure_battery'],
-        },
-        { id: 'heater-1', name: 'Tank', class: 'heater', capabilities: ['measure_temperature'] },
-      ]),
-    };
+    readRecommendationCars.mockReturnValue({
+      state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3' }],
+    });
     await expect(handler({ homey })).resolves.toEqual({
       state: 'resolved',
       cars: [{ id: 'car-1', name: 'Polestar 3' }],
     });
 
-    homey.app.deviceManager.getDevicesForDebug.mockResolvedValue([]);
+    readRecommendationCars.mockReturnValue({ state: 'resolved', cars: [] });
     await expect(handler({ homey })).resolves.toEqual({ state: 'resolved', cars: [] });
   });
 
-  it('reports recommendation cars as unavailable when the device read fails', async () => {
+  it('keeps the domain unavailable result at the API boundary', async () => {
     const { homey } = buildHomey();
-    homey.app.deviceManager = {
-      getDevicesForDebug: vi.fn().mockRejectedValue(new Error('device API unavailable')),
-    };
-
     await expect(
       (api as unknown as Record<string, Handler>).ui_recommendation_cars({ homey }),
     ).resolves.toEqual({ state: 'unavailable' });

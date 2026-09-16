@@ -178,7 +178,7 @@ describe('normalizeFlowCapabilityWrites', () => {
     expect(writtenCapabilities(writes, easeeId)).toEqual(new Set(['onoff']));
   });
 
-  it('skips malformed flow / card entries without throwing', () => {
+  it('keeps the pure normalizer tolerant of malformed entries', () => {
     const writes = normalizeFlowCapabilityWrites(
       { bad: null, worse: { actions: 'nope' } } as unknown as Record<string, unknown>,
       { bad: { cards: null }, worse: 7 } as unknown as Record<string, unknown>,
@@ -238,5 +238,51 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
       get: okGet({ [FLOW_API_PATH]: 'not json', [ADVANCED_FLOW_API_PATH]: {} }),
     });
     expect(result.status).toBe('unknown');
+  });
+
+  it('returns unknown when an active standard Flow has an untrustworthy action container', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: { broken: { actions: 'not-an-array' } },
+        [ADVANCED_FLOW_API_PATH]: {},
+      }),
+    });
+
+    expect(result.status).toBe('unknown');
+  });
+
+  it('returns unknown when an active Advanced Flow has an untrustworthy card', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: { broken: { cards: { action: null } } },
+      }),
+    });
+
+    expect(result.status).toBe('unknown');
+  });
+
+  it('returns unknown when an active Advanced Flow uses an unknown card type', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: {
+          broken: { cards: { action: { type: 'ACTION', id: easeeId } } },
+        },
+      }),
+    });
+
+    expect(result.status).toBe('unknown');
+  });
+
+  it('accepts disabled malformed Flows because they cannot write', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: { disabled: { enabled: false, actions: 'not-an-array' } },
+        [ADVANCED_FLOW_API_PATH]: { disabled: { enabled: false, cards: null } },
+      }),
+    });
+
+    expect(result.status).toBe('ok');
   });
 });
