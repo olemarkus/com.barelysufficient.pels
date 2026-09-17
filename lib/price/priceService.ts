@@ -1,8 +1,5 @@
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
-import {
-  getDateKeyInTimeZone,
-  getHourStartInTimeZone,
-} from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../utils/dateUtils';
 import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
@@ -18,7 +15,7 @@ import {
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
-import { getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
+import { DEFAULT_PERIOD_MINUTES, getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { shouldUseGridTariffCache } from './gridTariffUtils';
 import { resolveGridTariffFallback } from './staticGridTariffFallback';
 import { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
@@ -59,13 +56,14 @@ import { applyExportPrices, readExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import {
-  getCurrentHourPrice,
-  isCurrentHourAtLevel,
-  resolveCurrentHourPriceLevel,
+  describeCurrentPrice,
+  isCurrentPeriodAtLevel,
+  resolveCurrentPricePeriodLevel,
+  resolveCurrentPriceStartMs,
+  type PriceLevelBand,
 } from './priceLevelUtils';
-import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import { PriceLevel } from './priceLevels';
-import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
+import type { CombinedHourlyPrice, CombinedPricePeriod, PriceScheme } from './priceTypes';
 import type { PriceDataStore } from './priceDataStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
@@ -349,14 +347,59 @@ export default class PriceService {
     return applyBudgetPrices(applyExportPrices(this.buildImportHourlyPrices(), readExportPriceConfig({
       getRaw: (key) => this.getSettingValue(key),
       getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
-    })), this.budgetPriceInputs);
+    })), this.budgetPriceInputs, this.getTimeZone());
   }
 
+  /**
+   * The same prices as {@link buildImportPricePeriods}, as whole hours.
+   *
+   * Everything but the price level reasons in hours — the capacity tariff is an
+   * hourly peak, the daily budget fills hourly buckets, a smart task claims
+   * hours — so sub-hourly periods are projected here, in the producer, rather
+   * than each consumer guessing how long a period lasts. The Norwegian series
+   * is hourly at the source and carries the whole cost stack (spot price, grid
+   * tariff, taxes, VAT) that the money surfaces read, so it is served as it is
+   * built rather than round-tripped through a projection that would keep only
+   * the price.
+   */
   private buildImportHourlyPrices(): CombinedHourlyPrice[] {
     const scheme = this.getPriceScheme();
-    if (scheme === 'flow') return this.getCombinedHourlyPricesFromFlow();
-    if (scheme === 'homey') return this.getCombinedHourlyPricesFromHomey();
-    return this.getCombinedHourlyPricesNorway();
+    if (scheme === 'norway') return this.getCombinedHourlyPricesNorway();
+    return toHourlyPrices(this.buildImportPricePeriods(), this.getTimeZone());
+  }
+
+  /**
+   * The price series at the periods the source published, for the one consumer
+   * that asks what the price is *right now* rather than this hour: the price
+   * level (and the temperature shift, the `price_level` trigger and the
+   * insights capability that follow it).
+   *
+   * Export and planning prices are layered on exactly as they are for the hourly
+   * series, so a prosumer's level still classifies the planning price.
+   */
+  getCombinedPricePeriods(): CombinedPricePeriod[] {
+    return applyBudgetPrices(
+      applyExportPrices(this.buildImportPricePeriods(), readExportPriceConfig({
+        getRaw: (key) => this.getSettingValue(key),
+        getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
+      })),
+      this.budgetPriceInputs,
+      this.getTimeZone(),
+    );
+  }
+
+  private buildImportPricePeriods(): CombinedPricePeriod[] {
+    const scheme = this.getPriceScheme();
+    if (scheme === 'flow') {
+      return this.getPricePeriodsFromPayloads(FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, 'Flow prices');
+    }
+    if (scheme === 'homey') {
+      return this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
+    }
+    // Norwegian spot prices are hourly, and each entry carries the whole cost
+    // stack, so the hour IS the period here.
+    return this.getCombinedHourlyPricesNorway()
+      .map((entry) => ({ ...entry, durationMinutes: DEFAULT_PERIOD_MINUTES }));
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
@@ -411,12 +454,17 @@ export default class PriceService {
     return { todayPayload: purge.todayPayload, tomorrowPayload: purge.tomorrowPayload };
   }
 
-  private buildCombinedHourlyPricesWithRotation(params: {
-    todaySettingKey: string;
-    tomorrowSettingKey: string;
-    label: 'Flow prices' | 'Homey prices';
-  }): CombinedHourlyPrice[] {
-    const { todaySettingKey, tomorrowSettingKey, label } = params;
+  /**
+   * The stored day payloads as the periods their source published, rotated for
+   * the local date first. `buildImportPricePeriods` serves the price level from
+   * these; `buildCombinedHourlyPricesWithRotation` projects them onto hours for
+   * everything else.
+   */
+  private getPricePeriodsFromPayloads(
+    todaySettingKey: string,
+    tomorrowSettingKey: string,
+    label: 'Flow prices' | 'Homey prices',
+  ): CombinedPricePeriod[] {
     const now = new Date();
     const timeZone = this.getTimeZone();
     const { todayPayload, tomorrowPayload } = this.rotateFlowPriceSlots({
@@ -426,34 +474,13 @@ export default class PriceService {
       tomorrowSettingKey,
       label,
     });
-    // A stored payload carries periods at the source's own length (a Homey
-    // Energy zone on the 15-minute market stores four per hour). Everything
-    // reading this method reasons in whole hours, so the periods are projected
-    // onto hours here, in the producer, rather than each consumer guessing a
-    // period's span.
-    return toHourlyPrices(buildCombinedPricePeriodsFromPayloads({
+    return buildCombinedPricePeriodsFromPayloads({
       now,
       timeZone,
       todayPayload,
       tomorrowPayload,
       debugStructured: this.sinks.debugStructured,
       label,
-    }), timeZone);
-  }
-
-  private getCombinedHourlyPricesFromFlow(): CombinedHourlyPrice[] {
-    return this.buildCombinedHourlyPricesWithRotation({
-      todaySettingKey: FLOW_PRICES_TODAY,
-      tomorrowSettingKey: FLOW_PRICES_TOMORROW,
-      label: 'Flow prices',
-    });
-  }
-
-  private getCombinedHourlyPricesFromHomey(): CombinedHourlyPrice[] {
-    return this.buildCombinedHourlyPricesWithRotation({
-      todaySettingKey: HOMEY_PRICES_TODAY,
-      tomorrowSettingKey: HOMEY_PRICES_TOMORROW,
-      label: 'Homey prices',
     });
   }
 
@@ -477,65 +504,44 @@ export default class PriceService {
   }
 
   isCurrentHourCheap(): boolean {
-    return this.isCurrentHourAtLevel('cheap');
+    return isCurrentPeriodAtLevel(this.getCombinedPricePeriods(), this.priceLevelBand, 'cheap');
   }
 
   isCurrentHourExpensive(): boolean {
-    return this.isCurrentHourAtLevel('expensive');
+    return isCurrentPeriodAtLevel(this.getCombinedPricePeriods(), this.priceLevelBand, 'expensive');
+  }
+
+  private get priceLevelBand(): PriceLevelBand {
+    return {
+      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
+      minDiff: this.getNumberSetting('price_min_diff_ore', 0),
+    };
   }
 
   /**
-   * The current hour's RESOLVED price level, from a SINGLE combined-series build.
-   *
-   * `getCombinedHourlyPrices()` is uncached — every call re-reads ~12 settings,
-   * runs one `Intl.DateTimeFormat.formatToParts` per spot hour, and walks the
-   * whole grid-tariff table (~25 ms on a Homey Pro). Callers that need the level
-   * — the plan builder's per-cycle price delta and the status writer — were
-   * paying that twice for one question. Use this instead of calling
-   * `isCurrentHourCheap()` and `isCurrentHourExpensive()` back to back.
-   *
-   * It answers `UNKNOWN` when the series has no entry for the current hour, so
-   * no caller has to sniff a price blob to decide whether a level exists.
-   *
-   * A cache inside `getCombinedHourlyPrices` would be the bigger win, but it is
-   * not currently safe: `price_area` and the `nettleie_*` keys are written by
-   * the settings UI and are NOT on any `updateCombinedPrices()` invalidation
-   * path (see `lib/utils/settingsHandlers.ts`), so the live rebuild is what
-   * keeps a price-area or grid-operator change visible.
+   * The RESOLVED price level in force, from a SINGLE series build — use this
+   * rather than calling `isCurrentHourCheap()` and `isCurrentHourExpensive()`
+   * back to back, which builds the series twice for one question. See
+   * `resolveCurrentPriceLevel` for what that build costs and why it has no cache.
    */
   getCurrentHourPriceLevel(): PriceLevel {
-    return resolveCurrentHourPriceLevel({
-      prices: this.getCombinedHourlyPrices(),
-      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
-      minDiff: this.getNumberSetting('price_min_diff_ore', 0),
-    });
+    return resolveCurrentPricePeriodLevel(this.getCombinedPricePeriods(), this.priceLevelBand);
   }
 
   getCurrentHourPriceInfo(): string {
-    const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
-    if (!current) return 'price unknown';
-    return this.getPriceScheme() === 'norway'
-      ? formatNorwayPriceInfo(current)
-      : formatFlowPriceInfo(current, this.getPriceUnitLabel());
+    return describeCurrentPrice(
+      this.getCombinedPricePeriods(),
+      this.getPriceScheme(),
+      this.getPriceUnitLabel(),
+    );
   }
 
   private get norwaySchemeSettings(): NorwaySchemeSettings {
     return readNorwaySchemeSettings({ getRaw: (key) => this.getSettingValue(key) });
   }
 
-  private isCurrentHourAtLevel(level: 'cheap' | 'expensive'): boolean {
-    return isCurrentHourAtLevel({
-      prices: this.getCombinedHourlyPrices(),
-      level,
-      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
-      minDiff: this.getNumberSetting('price_min_diff_ore', 0),
-    });
-  }
-
   getCurrentHourStartMs(): number {
-    const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
-    if (current) return new Date(current.startsAt).getTime();
-    return getHourStartInTimeZone(new Date(), this.getTimeZone());
+    return resolveCurrentPriceStartMs(this.getCombinedPricePeriods(), this.getTimeZone());
   }
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {

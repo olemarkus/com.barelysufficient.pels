@@ -25,7 +25,7 @@ describe('PriceAwareDevicesView', () => {
     expect(values).toEqual(['↑3 °C', '↓2 °C']);
 
     // Stepping from the shown magnitude stores the normalized sign.
-    const increaseReduction = mount.querySelector<HTMLElement>('[aria-label="Increase expensive-hour reduction for Heat pump"]');
+    const increaseReduction = mount.querySelector<HTMLElement>('[aria-label="Increase expensive-price reduction for Heat pump"]');
     increaseReduction?.click();
     expect(onDeviceExpensiveDeltaChange).toHaveBeenCalledWith('hp', -2.5);
   });

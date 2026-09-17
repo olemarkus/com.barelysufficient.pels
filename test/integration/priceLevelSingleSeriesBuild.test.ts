@@ -7,8 +7,8 @@ import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 /**
- * `getCombinedHourlyPrices()` has no cache: every call re-reads ~12 settings,
- * runs one `Intl.DateTimeFormat.formatToParts` per spot hour, and walks the
+ * `getCombinedPricePeriods()` has no cache: every call re-reads ~12 settings,
+ * runs one `Intl.DateTimeFormat.formatToParts` per spot period, and walks the
  * whole grid-tariff table — ~25 ms on a Homey Pro. Asking `isCurrentHourCheap()`
  * and `isCurrentHourExpensive()` back to back therefore rebuilt the entire
  * series twice to answer one question, on both hot paths (the plan builder's
@@ -74,7 +74,7 @@ describe('current-hour price level resolves from a single series build', () => {
 
   it('builds the combined series once for both flags', () => {
     const service = createService();
-    const buildSpy = vi.spyOn(service, 'getCombinedHourlyPrices');
+    const buildSpy = vi.spyOn(service, 'getCombinedPricePeriods');
 
     const level = service.getCurrentHourPriceLevel();
 
@@ -98,7 +98,7 @@ describe('current-hour price level resolves from a single series build', () => {
 
   it('costs two builds when the single-flag predicates are used back to back', () => {
     const service = createService();
-    const buildSpy = vi.spyOn(service, 'getCombinedHourlyPrices');
+    const buildSpy = vi.spyOn(service, 'getCombinedPricePeriods');
 
     // Pins the cost this change removes: without the combined resolver, the two
     // hot callers paid this. If a future refactor makes the predicates share a

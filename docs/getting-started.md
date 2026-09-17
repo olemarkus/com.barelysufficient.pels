@@ -123,8 +123,8 @@ If you want PELS to shift heating to cheaper hours, go to **Settings > Electrici
 Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are the highest-impact picks — they carry the thermal mass that makes shifting pay off.
 
 After at least one device has price response enabled, use **Settings > Price-aware devices** to turn **Respond to prices** on or off globally and set per-device temperature adjustments:
-- **Cheap-hour boost (°C)** — temperature boost during cheap hours, for example +2 °C.
-- **Expensive-hour reduction (°C)** — temperature reduction during expensive hours, for example -2 °C.
+- **Cheap-price boost (°C)** — temperature boost while power is cheap, for example +2 °C.
+- **Expensive-price reduction (°C)** — temperature reduction while power is expensive, for example -2 °C.
 
 ## Step 6: Add Smart tasks (optional)
 

@@ -642,7 +642,7 @@ const ThresholdForm = ({
   onMinDiffChange: (val: number) => void;
 }) => (
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
-    <h3 class="section-title">Cheap and expensive hours</h3>
+    <h3 class="section-title">Cheap and expensive prices</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
     <label class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold</span>

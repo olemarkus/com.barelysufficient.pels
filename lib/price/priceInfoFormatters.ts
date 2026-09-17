@@ -1,11 +1,11 @@
-import type { CombinedHourlyPrice } from './priceTypes';
+import type { CombinedPriceFields } from './priceTypes';
 
 export const formatFlowPriceInfo = (
-  current: CombinedHourlyPrice,
+  current: CombinedPriceFields,
   priceUnitLabel: string,
 ): string => `${current.totalPrice.toFixed(4)} ${priceUnitLabel} (as provided)`;
 
-export const formatNorwayPriceInfo = (current: CombinedHourlyPrice): string => {
+export const formatNorwayPriceInfo = (current: CombinedPriceFields): string => {
   const format = (value: number | undefined): string => (value ?? 0).toFixed(1);
   const hasNorgesprisAdjustment = typeof current.norgesprisAdjustment === 'number'
     && Number.isFinite(current.norgesprisAdjustment);

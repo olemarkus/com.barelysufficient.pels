@@ -13,6 +13,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
+import { PriceLevel } from '../../lib/price/priceLevels';
 import { captureLogger } from '../utils/loggerCapture';
 import type Homey from 'homey';
 
@@ -474,6 +475,56 @@ describe('Homey price service', () => {
       { startsAt: new Date(todayStartMs).toISOString(), totalPrice: 4 },
       { startsAt: new Date(todayStartMs + 3_600_000).toISOString(), totalPrice: 16 },
     ]);
+  });
+
+  // What the owner actually feels: the level follows the quarter in force, so a
+  // cheap quarter inside an ordinary hour reaches the thermostats while it lasts.
+  it('follows the current quarter when classifying the price level', async () => {
+    const noon = new Date(Date.UTC(2026, 0, 19, 12, 0, 0));
+    vi.useFakeTimers().setSystemTime(noon);
+    const todayKey = getDateKeyInTimeZone(noon, timeZone);
+    const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
+
+    // A flat day at 10, except one quarter of hour 12 priced at 1.
+    const quarterValues = Array.from({ length: 96 }, (_, index) => (index === 4 * 13 + 2 ? 1 : 10));
+    const intervals = buildIntervals(todayStartMs, quarterValues, 15);
+    const cheapQuarterStartMs = todayStartMs + (4 * 13 + 2) * 15 * 60_000;
+
+    const energyApi: HomeyEnergyApi = {
+      fetchDynamicElectricityPrices: vi.fn().mockImplementation(async ({ date }) => (
+        date === todayKey
+          ? { interval: 15, pricesPerInterval: intervals, priceUnit: 'NOK' }
+          : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
+      )),
+      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
+    };
+
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+    mockHomeyInstance.settings.set('price_threshold_percent', 25);
+
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(),
+      () => timeZone,
+      () => energyApi,
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+    );
+
+    await service.refreshSpotPrices(true);
+
+    vi.setSystemTime(new Date(cheapQuarterStartMs + 60_000));
+    expect(service.getCurrentHourPriceLevel()).toBe(PriceLevel.CHEAP);
+    expect(service.getCurrentHourStartMs()).toBe(cheapQuarterStartMs);
+
+    // The next quarter is back to the flat price, and the level says so at once.
+    vi.setSystemTime(new Date(cheapQuarterStartMs + 15 * 60_000 + 60_000));
+    expect(service.getCurrentHourPriceLevel()).toBe(PriceLevel.NORMAL);
+
+    // The hourly series the rest of PELS reads still averages that hour.
+    const hourOfTheCheapQuarter = service.getCombinedHourlyPrices()
+      .find((entry) => Date.parse(entry.startsAt) === todayStartMs + 13 * 3_600_000);
+    expect(hourOfTheCheapQuarter?.totalPrice).toBeCloseTo(7.75);
   });
 
   // The whole day, on the day the clock goes back: 25 hours, 100 quarters, and

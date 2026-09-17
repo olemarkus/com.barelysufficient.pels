@@ -18,7 +18,7 @@ import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import type { BudgetPriceInputs } from './budgetPrice';
-import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
+import { type CombinedHourlyPrice, type CombinedPricePeriod, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import type { PriceOptimizationSettingsStore } from './priceOptimizationSettingsStore';
 import type { PriceDataStore } from './priceDataStore';
@@ -119,14 +119,9 @@ export class PriceCoordinator {
 
   initOptimizer(): void {
     this.priceOptimizer = new PriceOptimizer({
-      priceStatus: {
-        getCurrentLevel: () => this.deps.getCurrentPriceLevel(),
-        isCurrentHourCheap: () => this.isCurrentHourCheap(),
-        isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
-        getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
-        getCurrentHourPriceInfo: () => this.getCurrentHourPriceInfo(),
-        getCurrentHourStartMs: () => this.getCurrentHourStartMs(),
-      },
+      // One series, and the optimizer answers every question of its own tick
+      // from it — the level, the price in force, and when the next one starts.
+      priceStatus: { getCombinedPricePeriods: () => this.getCombinedPricePeriods() },
       getSettings: () => this.priceOptimizationSettings,
       isEnabled: () => this.priceOptimizationEnabled,
       getThresholdPercent: () => this.deps.priceOptimizationSettingsStore.getThresholdPercent(),
@@ -295,6 +290,16 @@ export class PriceCoordinator {
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
+  }
+
+  /**
+   * The price series at the source's own periods. Private on purpose: only the
+   * price level and its own cadence may read it, and everything that reasons in
+   * hours takes {@link getCombinedHourlyPrices}. Handing a 15-minute series to
+   * an hour-shaped consumer would have it counting 96 hours in a day.
+   */
+  private getCombinedPricePeriods(): CombinedPricePeriod[] {
+    return this.priceService.getCombinedPricePeriods();
   }
 
   /** Inject (or clear) the forecast-surplus inputs that derive the planning price. */

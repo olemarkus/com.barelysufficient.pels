@@ -1,4 +1,7 @@
-import type { CombinedHourlyPrice } from './priceTypes';
+import type { CombinedPricePeriod } from './priceTypes';
+import { getCurrentPricePeriod, resolveCurrentPricePeriodLevel } from './priceLevelUtils';
+import { calculateDurationWeightedAveragePrice } from './priceMath';
+import { resolvePlanningPrice } from './budgetPrice';
 import { PriceLevel } from './priceLevels';
 import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
@@ -52,12 +55,7 @@ export function resolvePriceOptimizationConfig(
 
 export type PriceOptimizerDeps = {
   priceStatus: {
-    getCurrentLevel: () => PriceLevel;
-    isCurrentHourCheap: () => boolean;
-    isCurrentHourExpensive: () => boolean;
-    getCombinedHourlyPrices: () => CombinedHourlyPrice[];
-    getCurrentHourPriceInfo: () => string;
-    getCurrentHourStartMs: () => number;
+    getCombinedPricePeriods: () => CombinedPricePeriod[];
   };
   getSettings: () => Record<string, PriceOptimizationSettings>;
   isEnabled: () => boolean;
@@ -70,9 +68,15 @@ export type PriceOptimizerDeps = {
 };
 
 export class PriceOptimizer {
-  private interval?: ReturnType<typeof setInterval>;
   private startTimeout?: ReturnType<typeof setTimeout>;
   private lastMode: string | null = null;
+  /**
+   * Teardown can land before `start()` ever gets to arm a timer: starting the
+   * optimizer waits on two network refreshes first, and `stop()` in that window
+   * has no handle to clear. Without this the chain would arm itself afterwards
+   * and keep re-arming — rebuilding plans on a torn-down app forever.
+   */
+  private stopped = false;
 
   constructor(private deps: PriceOptimizerDeps) {}
 
@@ -103,24 +107,36 @@ export class PriceOptimizer {
       return;
     }
 
-    const resolvedLevel = this.deps.priceStatus.getCurrentLevel();
-    const isCheap = resolvedLevel === PriceLevel.CHEAP || this.deps.priceStatus.isCurrentHourCheap();
-    const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE || this.deps.priceStatus.isCurrentHourExpensive();
-
-    const prices = this.deps.priceStatus.getCombinedHourlyPrices();
-    const currentHourStartMs = this.deps.priceStatus.getCurrentHourStartMs();
-    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStartMs);
-    const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
+    // One series for the whole tick. Building it is uncached and costs ~25 ms
+    // (see `resolveCurrentPricePeriodLevel`), and on a 15-minute zone this runs
+    // four times an hour — so the level, the current price and the next boundary
+    // are all answered from this one build rather than six.
+    const prices = this.deps.priceStatus.getCombinedPricePeriods();
     const thresholdPercent = this.deps.getThresholdPercent();
     const minDiffOre = this.deps.getMinDiffOre();
-    const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
+    const band = { thresholdPercent, minDiff: minDiffOre };
+
+    const resolvedLevel = resolveCurrentPricePeriodLevel(prices, band);
+    const isCheap = resolvedLevel === PriceLevel.CHEAP;
+    const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE;
+
+    const currentPrice = getCurrentPricePeriod(prices);
+    // The same average the classification used: the planning price, weighted by
+    // how long each period lasts. A plain per-entry mean over a day that mixes
+    // quarters and hours would report a number the verdict was not taken against.
+    const avgPrice = calculateDurationWeightedAveragePrice(
+      prices,
+      (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
+      (entry) => entry.durationMinutes,
+    );
+    const resultingMode = PriceOptimizer.resolvePriceModeLabel(isCheap, isExpensive);
     const previousMode = this.lastMode;
     (this.deps.structuredLog ?? moduleLogger).info({
       event: 'price_optimization_completed',
       previousMode,
       resultingMode,
       mode: resultingMode,
-      transition: previousMode === resultingMode ? 'steady' : 'hour_boundary_transition',
+      transition: previousMode === resultingMode ? 'steady' : 'price_period_transition',
       devicesCount: Object.keys(settings).length,
       currentPriceAvailable: currentPrice != null,
       currentPriceOre: currentPrice?.totalPrice ?? null,
@@ -141,35 +157,40 @@ export class PriceOptimizer {
 
   async start(applyImmediately = true): Promise<void> {
     this.stop();
+    this.stopped = false;
     if (applyImmediately) {
       await this.applyOnce();
     }
-    this.scheduleHourly();
+    this.scheduleNextPeriod();
   }
 
-  private static resolveHourLabel(isCheap: boolean, isExpensive: boolean): string {
+  private static resolvePriceModeLabel(isCheap: boolean, isExpensive: boolean): string {
     if (isCheap) return 'cheap';
     if (isExpensive) return 'expensive';
     return 'normal';
   }
 
   stop(): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = undefined;
-    }
+    this.stopped = true;
     if (this.startTimeout) {
       clearTimeout(this.startTimeout);
       this.startTimeout = undefined;
     }
   }
 
-  private scheduleHourly(): void {
-    const now = new Date();
-    const nextHour = new Date(now);
-    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-    const msUntilNextHour = nextHour.getTime() - now.getTime();
-
+  /**
+   * Wake when the price itself changes — at the end of the period now in force,
+   * which is the next quarter on a 15-minute zone and the next hour on an hourly
+   * one. Each firing schedules the one after it rather than running on a fixed
+   * interval, so a zone that changes period length (or a DST hour) is followed
+   * rather than drifted past.
+   */
+  private scheduleNextPeriod(): void {
+    if (this.stopped) return;
+    const nowMs = Date.now();
+    // A whole second short of the boundary would re-read the period that is
+    // ending; a second past it is unambiguous and imperceptible to the owner.
+    const delayMs = Math.max(1_000, this.resolveNextBoundaryMs(nowMs) + 1_000 - nowMs);
     this.startTimeout = setTimeout(() => {
       this.applyOnce().catch((error: Error) => {
         (this.deps.structuredLog ?? moduleLogger).error({
@@ -177,15 +198,18 @@ export class PriceOptimizer {
           err: normalizeError(error),
         });
       });
+      this.scheduleNextPeriod();
+    }, delayMs);
+  }
 
-      this.interval = setInterval(() => {
-        this.applyOnce().catch((error: Error) => {
-          (this.deps.structuredLog ?? moduleLogger).error({
-            event: 'price_optimization_failed',
-            err: normalizeError(error),
-          });
-        });
-      }, 60 * 60 * 1000);
-    }, msUntilNextHour);
+  private resolveNextBoundaryMs(nowMs: number): number {
+    const current = getCurrentPricePeriod(this.deps.priceStatus.getCombinedPricePeriods(), nowMs);
+    if (current) {
+      return new Date(current.startsAt).getTime() + current.durationMinutes * 60 * 1000;
+    }
+    // No priced period covers now, so the only boundary that exists is the hour.
+    const nextHour = new Date(nowMs);
+    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+    return nextHour.getTime();
   }
 }

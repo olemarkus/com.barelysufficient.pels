@@ -23,6 +23,33 @@ export const calculateAveragePrice = <T>(
   return count > 0 ? sum / count : 0;
 };
 
+/**
+ * Average price over a series whose entries cover different lengths of time,
+ * each weighted by the time it covers.
+ *
+ * The price level compares now against the day, and a day published as
+ * quarter-hours weighs the same as one published as hours — so a series that
+ * mixes the two (a zone whose finer prices cover only part of the day) must not
+ * let a 15-minute price pull on the average as hard as a 60-minute one.
+ */
+export const calculateDurationWeightedAveragePrice = <T>(
+  prices: T[],
+  getValue: (entry: T) => number,
+  getMinutes: (entry: T) => number,
+): number => {
+  if (!Array.isArray(prices) || prices.length === 0) return 0;
+  let weighted = 0;
+  let minutes = 0;
+  for (const entry of prices) {
+    const value = getValue(entry);
+    const entryMinutes = getMinutes(entry);
+    if (!Number.isFinite(value) || !Number.isFinite(entryMinutes) || entryMinutes <= 0) continue;
+    weighted += value * entryMinutes;
+    minutes += entryMinutes;
+  }
+  return minutes > 0 ? weighted / minutes : 0;
+};
+
 export const calculateThresholds = (avgPrice: number, thresholdPercent: number): PriceThresholds => {
   const safeAvg = toNumber(avgPrice, 0);
   const safePercent = toNumber(thresholdPercent, 0);

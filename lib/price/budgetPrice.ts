@@ -10,7 +10,8 @@
 // `total`). When no surplus is forecast it is left unset (≡ total), so non-prosumer
 // behaviour is byte-identical.
 
-import type { CombinedHourlyPrice } from './priceTypes';
+import { getHourStartInTimeZone } from '../utils/dateUtils';
+import type { CombinedPriceFields } from './priceTypes';
 
 const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -54,26 +55,37 @@ export const resolvePlanningPrice = (budgetPrice: number | undefined, totalPrice
 
 /** Per-hour inputs the blend needs beyond the price entry itself. */
 export type BudgetPriceInputs = {
-  /** Forecast self-consumable solar surplus for the hour starting at `startsAtMs` (kWh). */
-  getSurplusKwh: (startsAtMs: number) => number | undefined;
+  /** Forecast self-consumable solar surplus for the hour CONTAINING `instantMs` (kWh). */
+  getSurplusKwh: (instantMs: number) => number | undefined;
   /** Stable estimate of the hour's flexible (managed) appetite (kWh). */
   expectedManagedDrawKwh: number;
 };
 
 /**
- * Layer the planning price onto a combined hourly-price series, scheme-independently
+ * Layer the planning price onto a combined price series, scheme-independently
  * (it reads only `total` + `exportPrice` off each entry). No-op (returns the input
  * untouched) when there is no flexible appetite — keeping non-prosumer behaviour
  * byte-identical.
+ *
+ * The forecast surplus is an hourly figure, so each entry asks for the hour it
+ * starts in — identity for an hourly entry, and the containing hour for a
+ * quarter. Nothing is scaled down to the quarter, and nothing should be: the
+ * blend weighs surplus against the flexible appetite, and over a quarter of an
+ * hour both are a quarter of their hourly selves, so the coverage — and
+ * therefore the planning price — is the same number either way. Scaling one
+ * without the other is what would be wrong.
  */
-export const applyBudgetPrices = (
-  prices: CombinedHourlyPrice[],
+export const applyBudgetPrices = <T extends CombinedPriceFields>(
+  prices: T[],
   inputs: BudgetPriceInputs | undefined,
-): CombinedHourlyPrice[] => {
+  timeZone: string,
+): T[] => {
   if (!inputs || !isPositiveFinite(inputs.expectedManagedDrawKwh)) return prices;
   return prices.map((entry) => {
     const startsAtMs = Date.parse(entry.startsAt);
-    const surplusKwh = Number.isFinite(startsAtMs) ? inputs.getSurplusKwh(startsAtMs) : undefined;
+    const surplusKwh = Number.isFinite(startsAtMs)
+      ? inputs.getSurplusKwh(getHourStartInTimeZone(new Date(startsAtMs), timeZone))
+      : undefined;
     const budgetPrice = resolveBudgetPrice({
       totalPrice: entry.totalPrice,
       exportPrice: entry.exportPrice,

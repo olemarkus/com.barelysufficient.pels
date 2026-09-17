@@ -83,4 +83,5 @@ describe('toHourlyPrices', () => {
   it('has no hour to report for an empty series', () => {
     expect(toHourlyPrices([], timeZone)).toEqual([]);
   });
+
 });

@@ -37,7 +37,7 @@ describe('applyBudgetPrices', () => {
 
   it('is a no-op without flexible appetite', () => {
     const prices = [entry('2026-06-27T10:00:00.000Z', 100, 20)];
-    const out = applyBudgetPrices(prices, { getSurplusKwh: () => 5, expectedManagedDrawKwh: 0 });
+    const out = applyBudgetPrices(prices, { getSurplusKwh: () => 5, expectedManagedDrawKwh: 0 }, 'UTC');
     expect(out).toBe(prices);
   });
 
@@ -51,7 +51,7 @@ describe('applyBudgetPrices', () => {
     const out = applyBudgetPrices(prices, {
       getSurplusKwh: (ms) => surplus[ms],
       expectedManagedDrawKwh: 4,
-    });
+    }, 'UTC');
 
     expect(out[0].budgetPrice).toBeCloseTo(20, 9); // full coverage at noon
     expect(out[1].budgetPrice).toBeUndefined(); // no surplus in the evening

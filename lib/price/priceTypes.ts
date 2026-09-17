@@ -1,4 +1,9 @@
-export type CombinedHourlyPrice = {
+/**
+ * What one priced stretch of time says, whatever its length. Neither a period
+ * nor an hour on its own — {@link CombinedHourlyPrice} and
+ * {@link CombinedPricePeriod} are the two things a producer actually hands out.
+ */
+export type CombinedPriceFields = {
   startsAt: string;
   totalPrice: number;
   /**
@@ -27,6 +32,33 @@ export type CombinedHourlyPrice = {
   norgesprisAdjustmentExVat?: number;
   norgesprisAdjustment?: number;
   totalExVat?: number;
+};
+
+/**
+ * One whole hour's price. The shape every hour-shaped consumer takes — the
+ * daily budget's buckets, a smart task's claims, the owner's lowest-price Flow
+ * cards, the price charts.
+ *
+ * `durationMinutes?: never` is load-bearing: without it a period series would
+ * satisfy this type, and handing 96 quarters to something counting hours
+ * compiles clean and miscounts silently. A series only becomes hours by going
+ * through `toHourlyPrices`, which is where the duration is dropped.
+ */
+export type CombinedHourlyPrice = CombinedPriceFields & {
+  durationMinutes?: never;
+};
+
+/**
+ * A combined price for one period as its source published it: an hour on the
+ * Norwegian spot feed and on owner-fed Flow prices, a quarter-hour on a Homey
+ * Energy zone that has moved to the 15-minute market.
+ *
+ * Only the price level reads this series — the level answers "what is the price
+ * right now", and now is a period. Everything that reasons in whole hours takes
+ * {@link CombinedHourlyPrice} from `getCombinedHourlyPrices()` instead.
+ */
+export type CombinedPricePeriod = CombinedPriceFields & {
+  durationMinutes: number;
 };
 
 export type PriceScheme = 'norway' | 'flow' | 'homey';

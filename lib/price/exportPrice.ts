@@ -1,5 +1,5 @@
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR } from '../utils/settingsKeys';
-import type { CombinedHourlyPrice } from './priceTypes';
+import type { CombinedPriceFields } from './priceTypes';
 
 /**
  * Export (feed-in) price model.
@@ -100,10 +100,10 @@ export const resolveExportPriceInclVat = (params: {
  * feed-in tariff for a fixed-tariff config (`spotFactorPercent = 0`) and no
  * export price for a spot-linked one — exactly as documented above.
  */
-export const applyExportPrices = (
-  prices: CombinedHourlyPrice[],
+export const applyExportPrices = <T extends CombinedPriceFields>(
+  prices: T[],
   config: ExportPriceConfig,
-): CombinedHourlyPrice[] => {
+): T[] => {
   if (!config.enabled) return prices;
   return prices.map((entry) => {
     const exportPrice = resolveExportPriceInclVat({

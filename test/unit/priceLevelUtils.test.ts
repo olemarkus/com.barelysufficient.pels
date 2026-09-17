@@ -1,11 +1,11 @@
 // Unit coverage for the live cheap/expensive level classification
-// (`isCurrentHourAtLevel`) over the PLANNING price (`budgetPrice ?? totalPrice`).
+// (`isCurrentPeriodAtLevel`) over the PLANNING price (`budgetPrice ?? totalPrice`).
 // This feeds thermostat price-opt deltas, the `price_level` flow trigger, and the
 // pels_insights level capability — all deliberately scheduling-consistent with the
 // planner. Includes the non-prosumer invariance pins: absent or total-equal
 // budgetPrice must classify byte-identically to the historical total-only path.
 import { describe, expect, it } from 'vitest';
-import { isCurrentHourAtLevel } from '../../lib/price/priceLevelUtils';
+import { isCurrentPeriodAtLevel } from '../../lib/price/priceLevelUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const BASE_MS = Date.parse('2026-06-01T00:00:00Z');
@@ -13,24 +13,25 @@ const BASE_MS = Date.parse('2026-06-01T00:00:00Z');
 const entry = (hour: number, totalPrice: number, budgetPrice?: number): {
   startsAt: string;
   totalPrice: number;
+  durationMinutes: number;
   budgetPrice?: number;
 } => ({
   startsAt: new Date(BASE_MS + hour * HOUR_MS).toISOString(),
   totalPrice,
+  durationMinutes: 60,
   ...(budgetPrice === undefined ? {} : { budgetPrice }),
 });
 
 const classify = (prices: Array<ReturnType<typeof entry>>, level: 'cheap' | 'expensive'): boolean => (
-  isCurrentHourAtLevel({
+  isCurrentPeriodAtLevel(
     prices,
+    { thresholdPercent: 25, minDiff: 0 },
     level,
-    thresholdPercent: 25,
-    minDiff: 0,
-    nowMs: BASE_MS + 30 * 60 * 1000, // mid hour 0
-  })
+    BASE_MS + 30 * 60 * 1000, // mid hour 0
+  )
 );
 
-describe('isCurrentHourAtLevel — planning price', () => {
+describe('isCurrentPeriodAtLevel — planning price', () => {
   it('classifies over budgetPrice when present: a flat-total hour with surplus becomes cheap', () => {
     // Totals are flat (no hour is cheap on total), but hour 0 carries a low
     // planning price. Average over planning prices = (10+100+100+100)/4 = 77.5;

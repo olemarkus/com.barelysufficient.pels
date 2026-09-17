@@ -139,7 +139,7 @@ A mode target, a boost setting, and a Smart task target do not have to be the sa
 | **Boost setting** | A temporary extra push, such as cheap-hour temperature boost or charge boost when a battery is low. |
 | **Smart task target** | A one-off readiness goal by a specific time. |
 
-That separation is often useful. For example, a room can normally sit at 18 °C in Night mode, use cheap-hour boost when prices are low, and still have a task to reach 21 °C by 06:30. An EV charger can have a low charge-boost threshold for basic readiness while a charging task aims for a higher target before a trip.
+That separation is often useful. For example, a room can normally sit at 18 °C in Night mode, use cheap-price boost when prices are low, and still have a task to reach 21 °C by 06:30. An EV charger can have a low charge-boost threshold for basic readiness while a charging task aims for a higher target before a trip.
 
 For many homes, this is the useful combination:
 

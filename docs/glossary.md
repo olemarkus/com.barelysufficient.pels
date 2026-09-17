@@ -104,9 +104,11 @@ for capacity — useful for an EV charger you only want running during booked ho
 ## Prices
 
 ### Spot price / price source
-The hourly electricity price. The **Norway** source combines
-spot price, grid tariff, surcharges and your chosen support scheme into one hourly
-price; **Homey Energy** and **Flow tag** sources work anywhere with hourly prices.
+The electricity price for the period it covers — an hour on most sources, or
+15 minutes where your Homey Energy zone publishes quarter-hour prices. The
+**Norway** source combines spot price, grid tariff, surcharges and your chosen
+support scheme into one hourly price; **Homey Energy** and **Flow tag** sources
+work anywhere those prices are published.
 For most homes this is the price PELS plans around; homes with an export price plan
 against the derived **planning price** (below). See [Using Homey Energy](/homey-energy).
 
@@ -126,9 +128,11 @@ and export that reflects what your energy is actually worth to you. It is always
 estimate — your bills and receipts stay on the import price. Surfaces that act on it
 show a *using your solar* reason line.
 
-### Cheap-hour boost / expensive-hour reduction
-Temperature nudges (in °C) PELS applies to a price-aware device when electricity
+### Cheap-price boost / expensive-price reduction
+Temperature nudges (in °C) PELS applies to a price-aware device while electricity
 is cheap or expensive — for example +2 °C overnight, −2 °C during the evening peak.
+They follow the price for as long as it lasts, which is a quarter of an hour where
+your source publishes 15-minute prices.
 
 ## Solar
 

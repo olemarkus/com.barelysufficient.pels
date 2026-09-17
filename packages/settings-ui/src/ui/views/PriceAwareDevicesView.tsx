@@ -112,7 +112,7 @@ const Header = () => (
   <AppBar
     back={{ target: 'settings', label: 'Back to Settings' }}
     title="Price-aware devices"
-    lede="Cheap-hour boost and expensive-hour reduction for eligible temperature devices."
+    lede="Boost when power is cheap, ease off when it is expensive, for eligible temperature devices."
   />
 );
 
@@ -132,7 +132,7 @@ const RespondTogglesCard = ({
     <span class="md-switch-row__content">
       <span class="md-switch-row__label pels-text-settings-label">Respond to prices</span>
       <small class="field__hint">
-        When on, eligible devices boost during cheap hours and reduce during expensive hours.
+        When on, eligible devices boost while power is cheap and reduce while it is expensive.
       </small>
     </span>
   </label>
@@ -169,8 +169,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase cheap-hour boost for ${displayName}`}
-          decreaseLabel={`Decrease cheap-hour boost for ${displayName}`}
+          increaseLabel={`Increase cheap-price boost for ${displayName}`}
+          decreaseLabel={`Decrease cheap-price boost for ${displayName}`}
           onChange={(val) => onCheapChange(val)}
         />
       </div>
@@ -186,8 +186,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase expensive-hour reduction for ${displayName}`}
-          decreaseLabel={`Decrease expensive-hour reduction for ${displayName}`}
+          increaseLabel={`Increase expensive-price reduction for ${displayName}`}
+          decreaseLabel={`Decrease expensive-price reduction for ${displayName}`}
           onChange={(val) => onExpensiveChange(-val)}
         />
       </div>
@@ -224,7 +224,7 @@ const DevicesSection = ({
     <div class="settings-form-card">
       <h3 class="section-title">Devices</h3>
       <p class="muted">
-        Adjusts the current mode&apos;s target temperature: higher in cheap hours, lower in expensive hours.
+        Adjusts the current mode&apos;s target temperature: higher while power is cheap, lower while it is expensive.
       </p>
       <div class="price-aware-grid" role="grid" aria-label="Device temperature adjustments">
         <header class="price-aware-grid__head eyebrow" role="row">

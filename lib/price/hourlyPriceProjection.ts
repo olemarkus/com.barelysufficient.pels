@@ -68,4 +68,3 @@ export const toHourlyPrices = (
 ): CombinedHourlyPrice[] => (
   toHourlyPeriods(periods, timeZone).map(({ startsAt, totalPrice }) => ({ startsAt, totalPrice }))
 );
-

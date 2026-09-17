@@ -107,7 +107,7 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Charging** | EV chargers | The charging control readout (with a **Change** button that opens Setup), charge boost, and a statement of what limiting does (PELS pauses charging and resumes it when power allows). |
 | **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
 | **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes). |
-| **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
+| **Price response** | Temperature devices | Cheap-price boost and expensive-price reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
 | **Solar surplus** (prosumer) | Homes with solar | **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. See [Solar and Self-Consumption](/solar). |
 | **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset — the preset owns the steps. |
 | **Power limiting** | All devices PELS can limit | How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
@@ -235,8 +235,8 @@ This page adjusts devices that already have price response enabled. To add a dev
 | Setting | What it does |
 | --- | --- |
 | **Respond to prices** | Enables or disables price response globally. |
-| **Cheap-hour boost (°C)** | Temperature boost during cheap hours. |
-| **Expensive-hour reduction (°C)** | Temperature reduction during expensive hours. |
+| **Cheap-price boost (°C)** | Temperature boost while power is cheap. |
+| **Expensive-price reduction (°C)** | Temperature reduction while power is expensive. |
 
 Water heaters and similar thermal loads are usually the best first candidates.
 
