@@ -213,6 +213,7 @@ describe('Easee native charger current', () => {
       expect(parsed).toEqual(expect.objectContaining({
         controlModel: 'stepped_load',
         controlAdapter: undefined,
+        nativeWriteCapabilities: undefined,
       }));
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: EASEE_ID,

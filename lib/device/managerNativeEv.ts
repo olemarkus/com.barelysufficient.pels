@@ -149,11 +149,9 @@ export function resolveFlowCapabilityOverlay(params: {
   });
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
   const steppedLoadProfile = targetPowerOverlay.steppedLoadProfile ?? activeNativeSteppedProfile;
-  const nativeWriteCapabilities = resolveCandidateNativeWriteCapabilities({
-    device,
-    rawCapabilities,
-    rawCapabilityObj,
-  });
+  const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
+    ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
+    : undefined;
   return {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
     capabilityObj,
