@@ -457,8 +457,8 @@ export default class PriceService {
   /**
    * The stored day payloads as the periods their source published, rotated for
    * the local date first. `buildImportPricePeriods` serves the price level from
-   * these; `buildCombinedHourlyPricesWithRotation` projects them onto hours for
-   * everything else.
+   * these; `buildImportHourlyPrices` projects them onto hours for everything
+   * else.
    */
   private getPricePeriodsFromPayloads(
     todaySettingKey: string,
@@ -522,7 +522,8 @@ export default class PriceService {
    * The RESOLVED price level in force, from a SINGLE series build — use this
    * rather than calling `isCurrentHourCheap()` and `isCurrentHourExpensive()`
    * back to back, which builds the series twice for one question. See
-   * `resolveCurrentPriceLevel` for what that build costs and why it has no cache.
+   * `resolveCurrentPricePeriodLevel` for what that build costs and why it has
+   * no cache.
    */
   getCurrentHourPriceLevel(): PriceLevel {
     return resolveCurrentPricePeriodLevel(this.getCombinedPricePeriods(), this.priceLevelBand);

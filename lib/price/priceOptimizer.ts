@@ -77,6 +77,13 @@ export class PriceOptimizer {
    * and keep re-arming — rebuilding plans on a torn-down app forever.
    */
   private stopped = false;
+  /**
+   * Which `start()` the live chain belongs to. Two starts can overlap while the
+   * first is still awaiting its `applyOnce()`, and both would then arm a timer —
+   * the second overwrites the handle while the first keeps re-arming itself,
+   * unstoppable. A firing chain that is not the current generation retires.
+   */
+  private generation = 0;
 
   constructor(private deps: PriceOptimizerDeps) {}
 
@@ -158,10 +165,16 @@ export class PriceOptimizer {
   async start(applyImmediately = true): Promise<void> {
     this.stop();
     this.stopped = false;
+    const generation = this.nextGeneration();
     if (applyImmediately) {
       await this.applyOnce();
     }
-    this.scheduleNextPeriod();
+    this.scheduleNextPeriod(generation);
+  }
+
+  private nextGeneration(): number {
+    this.generation += 1;
+    return this.generation;
   }
 
   private static resolvePriceModeLabel(isCheap: boolean, isExpensive: boolean): string {
@@ -172,6 +185,7 @@ export class PriceOptimizer {
 
   stop(): void {
     this.stopped = true;
+    this.nextGeneration();
     if (this.startTimeout) {
       clearTimeout(this.startTimeout);
       this.startTimeout = undefined;
@@ -185,8 +199,8 @@ export class PriceOptimizer {
    * interval, so a zone that changes period length (or a DST hour) is followed
    * rather than drifted past.
    */
-  private scheduleNextPeriod(): void {
-    if (this.stopped) return;
+  private scheduleNextPeriod(generation: number): void {
+    if (this.stopped || generation !== this.generation) return;
     const nowMs = Date.now();
     // A whole second short of the boundary would re-read the period that is
     // ending; a second past it is unambiguous and imperceptible to the owner.
@@ -198,18 +212,48 @@ export class PriceOptimizer {
           err: normalizeError(error),
         });
       });
-      this.scheduleNextPeriod();
+      this.scheduleNextPeriod(generation);
     }, delayMs);
   }
 
+  /**
+   * When the price in force stops being the price in force.
+   *
+   * Reading the series is a settings read, and a settings read can fail
+   * transiently. It must not take the chain with it: an unhandled throw here
+   * happens between `applyOnce()` and the next `setTimeout`, so nothing would
+   * ever arm again and the app would stop following prices until it restarted.
+   * A failed read falls back to the next hour, which is a boundary that exists
+   * whether or not prices do.
+   */
   private resolveNextBoundaryMs(nowMs: number): number {
-    const current = getCurrentPricePeriod(this.deps.priceStatus.getCombinedPricePeriods(), nowMs);
+    const periods = this.readPeriodsForScheduling();
+    const current = getCurrentPricePeriod(periods, nowMs);
     if (current) {
       return new Date(current.startsAt).getTime() + current.durationMinutes * 60 * 1000;
     }
-    // No priced period covers now, so the only boundary that exists is the hour.
+    // Nothing covers now — a gap where one period was dropped, or a series that
+    // has not reached this far. The next period that does start is still a real
+    // boundary and closer than the hour, so wake there rather than sleeping
+    // through it.
+    const nextStartMs = periods
+      .map((period) => new Date(period.startsAt).getTime())
+      .filter((startMs) => Number.isFinite(startMs) && startMs > nowMs)
+      .sort((left, right) => left - right)[0];
     const nextHour = new Date(nowMs);
     nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-    return nextHour.getTime();
+    return nextStartMs !== undefined ? Math.min(nextStartMs, nextHour.getTime()) : nextHour.getTime();
+  }
+
+  private readPeriodsForScheduling(): CombinedPricePeriod[] {
+    try {
+      return this.deps.priceStatus.getCombinedPricePeriods();
+    } catch (error: unknown) {
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'price_period_schedule_read_failed',
+        err: normalizeError(error),
+      });
+      return [];
+    }
   }
 }

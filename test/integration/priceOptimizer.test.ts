@@ -196,6 +196,78 @@ describe('PriceOptimizer cadence', () => {
     expect(structuredLog.info.mock.calls.length).toBe(afterStop);
   });
 
+  // A settings read can fail transiently. If that took the chain with it, the
+  // app would stop following prices until it restarted.
+  it('keeps scheduling when the price read throws at a boundary', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    const { deps, structuredLog } = makeDeps();
+    let failing = false;
+    deps.priceStatus.getCombinedPricePeriods = () => {
+      if (failing) throw new Error('settings read failed');
+      return [
+        quarterAt('2026-01-01T12:00:00.000Z', 10),
+        quarterAt('2026-01-01T12:15:00.000Z', 20),
+        quarterAt('2026-01-01T13:15:00.000Z', 30),
+      ];
+    };
+    const optimizer = new PriceOptimizer(deps);
+
+    await optimizer.start(false);
+    failing = true;
+    await vi.advanceTimersByTimeAsync(15 * 60_000 + 2_000);
+    const afterFailedBoundary = structuredLog.info.mock.calls.length;
+
+    // The read recovers, and the chain is still alive to use it.
+    failing = false;
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+
+    optimizer.stop();
+    expect(structuredLog.info.mock.calls.length).toBeGreaterThan(afterFailedBoundary);
+  });
+
+  it('wakes at the next priced period when one is missing from the current hour', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-01T12:20:00.000Z'));
+    const { deps, structuredLog } = makeDeps();
+    // The :15 quarter is gone; :30 is still priced and is 10 minutes away.
+    deps.priceStatus.getCombinedPricePeriods = () => [
+      quarterAt('2026-01-01T12:00:00.000Z', 10),
+      quarterAt('2026-01-01T12:30:00.000Z', 20),
+    ];
+    const optimizer = new PriceOptimizer(deps);
+
+    await optimizer.start(false);
+    const afterStart = structuredLog.info.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000 + 2_000);
+
+    optimizer.stop();
+    // Sleeping to the top of the hour would have skipped the :30 transition.
+    expect(structuredLog.info.mock.calls.length).toBe(afterStart + 1);
+  });
+
+  it('retires an overlapping start rather than running two chains', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    const { deps, structuredLog } = makeDeps();
+    deps.priceStatus.getCombinedPricePeriods = () => [
+      quarterAt('2026-01-01T12:00:00.000Z', 10),
+      quarterAt('2026-01-01T12:15:00.000Z', 20),
+      quarterAt('2026-01-01T12:30:00.000Z', 30),
+    ];
+    const optimizer = new PriceOptimizer(deps);
+
+    // Two starts overlap: both get past their own `stop()` before either arms.
+    const first = optimizer.start();
+    const second = optimizer.start();
+    await Promise.all([first, second]);
+    const afterStarts = structuredLog.info.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(15 * 60_000 + 2_000);
+
+    optimizer.stop();
+    // One boundary, one firing — not one per abandoned chain.
+    expect(structuredLog.info.mock.calls.length).toBe(afterStarts + 1);
+  });
+
   it('falls back to the next hour when no period covers now', async () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-01-01T12:20:00.000Z'));
     const { deps, structuredLog } = makeDeps();
