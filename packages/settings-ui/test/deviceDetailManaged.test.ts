@@ -1103,6 +1103,16 @@ describe('device detail managed state saves', () => {
     expect(shedActionInput?.value).toBe('turn_off');
     expect(shedActionInput?.disabled).toBe(false);
     expect(shedActionInput?.querySelector<HTMLOptionElement>('md-select-option[value="set_step"]')?.hidden).toBe(true);
+
+    controlModelInput!.value = 'default';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.device_target_power_configs).toEqual({
+      'zaptec-1': { enabled: false },
+    });
+    expect(controlModelInput?.value).toBe('default');
   });
 
   it('hides EV boost and generated steps in continuous EV mode', async () => {

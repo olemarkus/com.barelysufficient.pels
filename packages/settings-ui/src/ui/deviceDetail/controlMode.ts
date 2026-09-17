@@ -111,5 +111,9 @@ export function resolveTargetPowerConfigForControlMode(
     return createEvTargetPowerConfig(controlMode);
   }
   if (controlMode === 'continuous') return createContinuousTargetPowerConfig(device);
+  // Default is an authored choice, so retain the target-power record as an
+  // explicit off marker. Managed re-opt-in can then distinguish it from the
+  // backend's unconfigured binary fallback and will not restore an EV preset.
+  if (controlMode === 'default') return { enabled: false };
   return null;
 }
