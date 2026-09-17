@@ -24,8 +24,8 @@ import { resolveHomeAreaDisplayName } from './homeNames';
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 
 export const HOME_LIMITS_HARD_CAP_LABEL = 'Hard cap (kW)';
-export const HOME_LIMITS_HARD_CAP_HINT = 'This meter area’s grid tariff step (effekttrinn) — '
-  + 'PELS keeps each hour’s average power under this.';
+export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter area should protect — '
+  + 'PELS keeps each selected period’s average power under this.';
 
 // The Main-home form's own hard-cap hint, which the static markup ships and
 // this module re-owns once meter areas exist. "Your grid tariff step" is true
@@ -33,10 +33,10 @@ export const HOME_LIMITS_HARD_CAP_HINT = 'This meter area’s grid tariff step (
 // Main home is then one home among several, and a whole-house number typed into
 // a subpart's cap is exactly the mistake the scope bar exists to prevent. The
 // area branch names its scope three times; the Main branch must name it once.
-export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'Your grid tariff step (effekttrinn) — '
-  + 'PELS keeps each hour’s average power under this.';
-export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s grid tariff step '
-  + '(effekttrinn) — PELS keeps each hour’s average power under this.';
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'The peak or tariff step you want to protect — '
+  + 'PELS keeps each selected period’s average power under this.';
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s peak or tariff step — '
+  + 'PELS keeps each selected period’s average power under this.';
 
 /**
  * Shown in place of the Power source / Whole-home meter card while a meter area
@@ -65,8 +65,8 @@ export const HOME_LIMITS_HARD_CAP_MAX = 'Hard cap cannot exceed 1000 kW.';
 export const HOME_LIMITS_MARGIN_NEGATIVE = 'Safety margin must be non-negative.';
 
 /** Computed-ceiling readout row (mirrors the Main-home form's result row). */
-export const HOME_LIMITS_REACTION_LABEL = 'With these settings, safe pace starts each hour at';
-export const HOME_LIMITS_REACTION_NOTE = '(hard cap minus safety margin; it adapts as the hour is used)';
+export const HOME_LIMITS_REACTION_LABEL = 'With these settings, safe pace starts each period at';
+export const HOME_LIMITS_REACTION_NOTE = '(hard cap minus safety margin; it adapts as the period is used)';
 
 // ── Control (the activation affordance) ─────────────────────────────────────
 //
@@ -78,7 +78,7 @@ export const HOME_LIMITS_REACTION_NOTE = '(hard cap minus safety margin; it adap
 
 export const HOME_LIMITS_CONTROL_LABEL = 'Control devices in this area';
 export const HOME_LIMITS_CONTROL_HINT
-  = 'When on, PELS limits devices in this meter area to keep each hour under its cap.';
+  = 'When on, PELS limits devices in this meter area to keep each selected period under its cap.';
 export const HOME_LIMITS_INACTIVE_CHIP = 'Not active';
 export const HOME_LIMITS_INACTIVE_STATUS
   = 'Open Multiple meters and save this area to start using these settings.';

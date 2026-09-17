@@ -13,7 +13,7 @@ describe('shortfall threshold', () => {
 
     const bucketKey = getHourBucketKey(nowMs);
     const threshold = computeShortfallThreshold({
-      capacitySettings: { limitKw: 10, marginKw: 2 },
+      capacitySettings: { limitKw: 10, marginKw: 2, periodMinutes: 60 },
       powerTracker: { buckets: { [bucketKey]: 0 } },
     });
 
@@ -28,7 +28,7 @@ describe('shortfall threshold', () => {
 
     const bucketKey = getHourBucketKey(nowMs);
     const threshold = computeShortfallThreshold({
-      capacitySettings: { limitKw: 10, marginKw: 2 },
+      capacitySettings: { limitKw: 10, marginKw: 2, periodMinutes: 60 },
       powerTracker: { buckets: { [bucketKey]: 4 } },
     });
 

@@ -1,9 +1,10 @@
 import type CapacityGuard from '../power/capacityGuard';
+import type { CapacitySettings } from '../power/capacityModel';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { computeShortfallThreshold } from '../plan/planBudget';
 import type { PowerTrackerState } from '../power/tracker';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { getCurrentHourContext } from '../plan/planHourContext';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
@@ -52,7 +53,7 @@ export type PeriodicStatusLogFields = {
 export function buildPeriodicStatusLogFields(params: {
   capacityGuard: CapacityGuardView;
   powerTracker: PowerTrackerState;
-  capacitySettings: { limitKw: number; marginKw: number };
+  capacitySettings: CapacitySettings;
   operatingMode: string;
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
@@ -78,7 +79,9 @@ export function buildPeriodicStatusLogFields(params: {
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
 
   const inShortfall = capacityGuard.isInShortfall();
-  const usage = getCurrentHourUsage(powerTracker);
+  // These published field names are an existing hourly diagnostics contract,
+  // independent of the period selected for capacity control.
+  const usage = getCurrentHourContext(powerTracker);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   return {
     event: 'periodic_status',
@@ -100,7 +103,7 @@ export function buildPeriodicStatusLogFields(params: {
 }
 
 function resolveCapacityStatusMetrics(params: {
-  capacitySettings: { limitKw: number; marginKw: number };
+  capacitySettings: CapacitySettings;
   powerTracker: PowerTrackerState;
   capacityPaceKw: number;
 }): CapacityStatusMetrics {
@@ -118,11 +121,4 @@ function resolveCapacityStatusMetrics(params: {
     shortfallBudgetHeadroom,
     hardCapHeadroom,
   };
-}
-
-function getCurrentHourUsage(powerTracker: PowerTrackerState): { usedKWh: number } {
-  const bucketKey = getHourBucketKey();
-  // Floor at 0: a persisted solar-export hour can hold a negative kWh; billed usage can't be negative.
-  const usedKWh = Math.max(0, powerTracker.buckets?.[bucketKey] || 0);
-  return { usedKWh };
 }

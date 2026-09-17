@@ -47,13 +47,15 @@ import type {
   PowerTrackerState,
 } from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
+import type { CapacitySettings } from '../../lib/power/capacityModel';
+import { CapacityPeakReadout } from '../../lib/power/capacityPeak';
 import type { PlanService } from '../../lib/plan/planService';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
-import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
+import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
 // Direct file imports (not the `setup/appInit.ts` barrel) to mirror
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import type { createPlanEngine } from '../appInit/createPlanEngine';
@@ -92,7 +94,12 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 // main's configured hard cap would silently run a second controller against
 // main's contract limit. Dry-run defaults TRUE (the safe boot default): an
 // unconfigured sub-home plans but never actuates.
-const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, marginKw: 0.2, dryRun: true };
+const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
+  limitKw: 10,
+  marginKw: 0.2,
+  dryRun: true,
+  periodMinutes: 60,
+};
 
 // Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
 export type HomeCapacityBundleDeps = {
@@ -265,7 +272,11 @@ function buildSubHomeScope(params: {
     // Names THIS area on the global hard-cap Flow triggers, which every home
     // shares — without it an area's alert reads as the Main home's.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
-    getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
+    getCapacitySettings: () => ({
+      limitKw: getScalars().limitKw,
+      marginKw: getScalars().marginKw,
+      periodMinutes: getScalars().periodMinutes,
+    }),
     // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
     // the CONTROL path, so it passes the execution source predicate — the one
     // that also arms source recovery.
@@ -345,7 +356,7 @@ function createBundleSamplePipeline(params: {
   getPlanEngine: () => ReturnType<typeof createPlanEngine>;
   getPlanService: () => PlanService;
   getCapacityGuard: () => CapacityGuard;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
 }): {
@@ -511,6 +522,11 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
   });
+  const capacityPeakReadout = new CapacityPeakReadout({
+    getTracker: tracker.getState,
+    getTimeZone: ctx.getTimeZone,
+    nowMs: Date.now,
+  });
   const modeCatalog = createHomeModeCatalog(ctx, homeId);
   let scheduleSourceActuationRetry = (): void => undefined;
   const isMeterSourceAuthorizedForExecution = (): boolean => {
@@ -598,6 +614,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     getHome: () => home,
     setHome: (next) => { home = next; },
     getScalars: () => capacityScalars,
+    readCapacityPeak: () => capacityPeakReadout.read(),
     setScalars: (next) => { capacityScalars = next; },
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
     beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect, isTornDown,

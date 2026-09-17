@@ -1921,7 +1921,7 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     expect(steppedDevice?.plannedState).toBe('shed');
-    expect(reasonText(steppedDevice?.reason)).toBe('shed due to hourly budget');
+    expect(reasonText(steppedDevice?.reason)).toBe('shed due to capacity-period budget');
   });
 
   it('keeps the device that restored this cycle on its own reason while later peers get meter settling', () => {

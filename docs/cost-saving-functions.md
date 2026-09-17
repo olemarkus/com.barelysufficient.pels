@@ -13,8 +13,8 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 
 | Function | Best for | What PELS changes | Main constraint |
 | --- | --- | --- | --- |
-| **Power limiting** | Staying below a grid tariff step (effekttrinn) | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Hourly hard cap |
-| **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus hourly hard cap |
+| **Power limiting** | Staying below a grid tariff step or Belgian quarter-hour peak | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Selected-period hard cap |
+| **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus selected-period hard cap |
 | **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Works the device harder in cheap hours and lets it coast in expensive ones | Temperature comfort range |
 | **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |
 | **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic plus hard cap |
@@ -24,7 +24,7 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 
 ## Power Limiting
 
-Power limiting is the core safety feature. PELS watches whole-home power and limits lower-priority devices before the current hour is likely to exceed your configured hard cap.
+Power limiting is the core safety feature. PELS watches whole-home power and limits lower-priority devices before the selected capacity period is likely to exceed your configured hard cap.
 
 Use it when:
 
@@ -106,7 +106,7 @@ See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 
 ## Which One Should I Use?
 
-Start with power limiting. It protects the hourly limit and gives the rest of the setup a safe base.
+Start with power limiting. It protects the selected capacity period and gives the rest of the setup a safe base.
 
 Add daily budget if you want whole-home pacing across the day.
 

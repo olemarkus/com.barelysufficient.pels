@@ -66,7 +66,7 @@ const buildDeps = (
   buildPriceHorizon: () => [],
   getPriceOptimizationEnabled: () => false,
   getDeferredObjectiveActivePlans: () => null,
-  getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+  getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
   getBasePriorityForDevice: () => 100,
   ...overrides,
 });

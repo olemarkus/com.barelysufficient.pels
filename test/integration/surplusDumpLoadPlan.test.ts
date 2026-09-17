@@ -110,7 +110,7 @@ const makeHarness = (params: {
       getCapacityDryRun: () => false,
     capacityGuard: guard,
     setCapacityInShortfall: vi.fn(),
-    getCapacitySettings: () => ({ limitKw, marginKw: 0.2 }),
+    getCapacitySettings: () => ({ limitKw, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

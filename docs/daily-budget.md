@@ -9,7 +9,7 @@ The Daily Energy Budget is your daily kWh target. You set, for example, "I want 
 
 ## Why set a daily budget?
 
-The hourly hard cap is a limit you *have* to set: it keeps every hour's average under your grid tariff step (effekttrinn). The daily budget is a limit you *choose* to add on top, when you want one of these:
+The hard cap is a limit you *have* to set: it keeps each selected capacity period's average under the peak or tariff step you want to protect. The daily budget is a limit you *choose* to add on top, when you want one of these:
 
 - **Spend less by leaning on cheap hours.** With price optimization enabled, the budget gives cheaper hours more of the day's energy and expensive hours less, so flexible load — water heater, floor heating, EV charger — runs when power is cheapest. This is the main money lever.
 - **Use less, deliberately.** If you want the whole home to stay under a daily energy ceiling — to keep cost down, cut waste, or just stay disciplined — the budget paces every hour toward that total instead of letting the day run flat out.
@@ -21,7 +21,7 @@ The hourly hard cap is a limit you *have* to set: it keeps every hour's average 
 
 ## How it relates to the hard cap
 
-The daily budget is a **soft pacing target**, separate from the hourly hard cap. PELS keeps running across it, devices keep heating, and the only thing that ever raises an urgent alarm is the **hourly hard cap** (your grid tariff step). Daily budget shapes the day; the hard cap holds your tariff step.
+The daily budget is a **soft pacing target**, separate from the selected-period hard cap. PELS keeps running across it, devices keep heating, and the only thing that ever raises an urgent alarm is the **hard cap**. Daily budget shapes the day; the hard cap protects the selected capacity period.
 
 PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
@@ -59,7 +59,7 @@ Budget exemption is a control rule, not a meter rewrite:
 - Exempt devices are ignored by daily budget control.
 - Their real usage still counts in `used`, `remaining`, `deviation`, and budget overrun reporting.
 - They are treated as background usage when PELS builds and learns the daily budget plan.
-- They still count toward hourly capacity protection, including hard-cap and safety-margin limiting.
+- They still count toward selected-period capacity protection, including hard-cap and safety-margin limiting.
 
 This means a budget-exempt device can leave the household over the daily budget without causing other devices to be limited just to compensate for that exempt load.
 
@@ -83,15 +83,15 @@ Daily-budget-specific terms:
 - Computes how much is "allowed by now" based on the plan.
 - Computes a daily pace for the current hour from the plan.
 - Freezes the plan for the rest of the day if the budget is overspent. If the day is underspent, the plan can still rebalance.
-- Uses the tighter of the hourly pace and the daily pace.
+- Uses the tighter of the capacity-period pace and the daily pace.
 
 ## How the Daily Pace is Applied
 
-PELS is always watching two things at once: how close the current hour is to the hard cap, and how close the day is to the daily target. Whichever needs more care right now is the one driving decisions.
+PELS is always watching two things at once: how close the current capacity period is to the hard cap, and how close the day is to the daily target. Whichever needs more care right now is the one driving decisions.
 
 If you are well under the daily target, only the hard cap matters and the day just runs normally. If you are running ahead of the daily target, PELS becomes a bit more conservative: it may keep a heater paused a little longer, or hold off on resuming a water heater until the next hour.
 
-The daily pace can never raise the hourly hard cap. Your grid tariff step is sacred. The daily target only ever makes PELS more cautious, never less.
+The daily pace can never raise the selected-period hard cap. Your peak or tariff step is protected. The daily target only ever makes PELS more cautious, never less.
 
 End-of-hour rules that protect the hard cap from a last-minute burst do not apply to the daily target. Going slightly over a daily target at 23:55 is not a problem — there is no penalty.
 
@@ -99,11 +99,11 @@ End-of-hour rules that protect the hard cap from a last-minute burst do not appl
 
 ### 1) Over plan, daily pace becomes the tighter limit
 It's 15:00. The plan says you should have used 35 kWh by now, but you have used 40 kWh.
-The daily pace for this hour becomes lower than the hourly capacity pace. That reduces available power. As a result, some devices will not resume yet and low-priority devices can be limited earlier.
+The daily pace for this hour becomes lower than the capacity-period pace. That reduces available power. As a result, some devices will not resume yet and low-priority devices can be limited earlier.
 
-### 2) Behind plan, hourly capacity stays in charge
+### 2) Behind plan, capacity protection stays in charge
 It's 10:00. The plan says 18 kWh by now, but you have used 12 kWh.
-The daily pace becomes higher than the hourly capacity pace, so hourly capacity remains the tighter limit. Resumes and boosts are still allowed if there is available power.
+The daily pace becomes higher than the capacity-period pace, so the hard cap remains the tighter limit. Resumes and boosts are still allowed if there is available power.
 
 ### 3) Overspent early hour, plan freezes until you catch up
 At 08:00 the plan allowed 6 kWh, but you already used 7.5 kWh.
@@ -114,7 +114,7 @@ You enable price shaping and prices are cheap from 01:00–05:00 and expensive i
 The daily plan shifts more of the remaining allowance to cheap hours, which raises the daily pace overnight and lowers it during expensive hours.
 
 ### 5) Daily budget off
-Daily budget disabled means PELS uses only hourly capacity and price optimization, if enabled. There is no daily pacing.
+Daily budget disabled means PELS uses only selected-period capacity control and price optimization, if enabled. There is no daily pacing.
 
 ## Where To Configure It
 

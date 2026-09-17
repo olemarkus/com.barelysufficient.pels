@@ -14,13 +14,14 @@ const readingFor = (homeId: string): HomeRuntimeReading => ({
   plan: { generatedAtMs: 1_000, devices: [] },
   planUpdatedAtMs: 1_000,
   powerTracker: { lastPowerW: 2_400 },
+  currentMonthCapacityPeakKw: null,
   diagnostics: {
     homeId,
     meterDeviceId: 'm-a',
     operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 2.4,
-    capacityScalars: { limitKw: 7, marginKw: 0.2, dryRun: false },
+    capacityScalars: { limitKw: 7, marginKw: 0.2, dryRun: false, periodMinutes: 60 },
     lastDeviceControlledMs: {},
   },
 });

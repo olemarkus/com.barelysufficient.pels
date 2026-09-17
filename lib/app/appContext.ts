@@ -1,6 +1,8 @@
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
+import type { CapacityScalarSettings } from '../power/capacitySettingsStore';
+import type { CapacitySettings } from '../power/capacityModel';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,
@@ -125,6 +127,8 @@ export type AppContext = {
   getUserdataDatabase: () => UserdataDatabase;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
+  /** Read and classify the Main home's capacity scalar settings at their owner boundary. */
+  readCapacityScalarSettings: () => CapacityScalarSettings;
   loadCapacitySettings: () => void;
   /** Re-read only the validated live temperature-command authorization map. */
   loadTemperatureControlPolicySettings: () => void;
@@ -244,8 +248,9 @@ export type AppContext = {
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   get powerTracker(): PowerTrackerState;
   set powerTracker(value: PowerTrackerState);
-  get capacitySettings(): { limitKw: number; marginKw: number };
-  set capacitySettings(value: { limitKw: number; marginKw: number });
+  getCurrentMonthCapacityPeakKw(): number | null;
+  get capacitySettings(): CapacitySettings;
+  set capacitySettings(value: CapacitySettings);
   get capacityDryRun(): boolean;
   set capacityDryRun(value: boolean);
   get operatingMode(): string;

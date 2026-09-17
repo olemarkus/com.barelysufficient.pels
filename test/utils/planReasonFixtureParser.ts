@@ -132,7 +132,7 @@ const EXACT_REASON_PARSERS: Record<string, DeviceReason> = {
   'capacity control off': { code: PLAN_REASON_CODES.capacityControlOff },
   // The four ceiling/hold codes lost their `detail` slot, so their prose is now
   // exact rather than a prefix with an optional trailing clause.
-  'shed due to hourly budget': { code: PLAN_REASON_CODES.hourlyBudget },
+  'shed due to capacity-period budget': { code: PLAN_REASON_CODES.hourlyBudget },
   'shed due to daily budget': { code: PLAN_REASON_CODES.dailyBudget },
   'shed due to capacity': { code: PLAN_REASON_CODES.capacity },
   'waiting for cheaper hours': { code: PLAN_REASON_CODES.deferredObjectiveAvoid },

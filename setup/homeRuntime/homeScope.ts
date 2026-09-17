@@ -31,6 +31,7 @@
 import { requirePlanService } from '../appInit/contextGuards';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { CapacitySettings } from '../../lib/power/capacityModel';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -75,7 +76,7 @@ export type HomeScope = {
   // Capacity scalars: for the MAIN home these are live reads of the in-memory
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   /**

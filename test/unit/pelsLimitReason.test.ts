@@ -327,6 +327,20 @@ describe('pels status hard-cap trajectory (measured figures only)', () => {
     expect(statusFor(buildPlanMeta(overCapMeta)).projectedOverHardCap).toBe(true);
   });
 
+  it('uses quarter energy for the Belgian trajectory without changing the legacy hourly usage capability', () => {
+    const status = statusFor(buildPlanMeta({
+      capacityPeriodMinutes: 15,
+      hardCapLimitKw: 5,
+      usedKWh: 1.2,
+      hourUsedKWh: 3,
+      totalKw: 2,
+      minutesRemaining: 3,
+    }));
+
+    expect(status.projectedOverHardCap).toBe(true);
+    expect(status.hourlyUsageKwh).toBe(3);
+  });
+
   it('withholds it on an unmeasured plan, with the reading it was derived from', () => {
     const status = statusFor(buildUnmeasuredPlanMeta(overCapMeta));
     expect(status.projectedOverHardCap).toBeUndefined();

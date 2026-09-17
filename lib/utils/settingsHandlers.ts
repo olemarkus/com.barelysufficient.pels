@@ -7,6 +7,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
   COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
@@ -61,6 +62,7 @@ import {
 } from './settingsHandlerDebounce';
 import { createNoopWriteSkipper } from './settingsWriteDedupe';
 import { handleSettingsUiLog } from './settingsUiLogIngest';
+import type { CapacitySettings } from '../../packages/shared-domain/src/settings/capacityPeriod';
 
 const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {
@@ -80,7 +82,7 @@ export type SettingsHandlerDeps = {
    */
   rebuildPlanFromCache: (settingsSource: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
   loadPriceOptimizationSettings: () => void;
   loadDailyBudgetSettings: () => void;
@@ -457,6 +459,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     },
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
+    [CAPACITY_PERIOD_MINUTES]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_DRY_RUN]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_dry_run');

@@ -97,7 +97,7 @@ function formatStaticReason(reason: StaticReason): string {
     case PLAN_REASON_CODES.capacityControlOff:
       return 'capacity control off';
     case PLAN_REASON_CODES.hourlyBudget:
-      return 'shed due to hourly budget';
+      return 'shed due to capacity-period budget';
     case PLAN_REASON_CODES.dailyBudget:
       return 'shed due to daily budget';
     case PLAN_REASON_CODES.capacity:

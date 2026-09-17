@@ -74,7 +74,7 @@ describe('buildMainHomeScope', () => {
 
     // Mutations AFTER scope construction must be visible on the next read —
     // the closures are live over `ctx`, not captured copies or store re-reads.
-    const nextSettings = { limitKw: 7, marginKw: 0.3 };
+    const nextSettings = { limitKw: 7, marginKw: 0.3, periodMinutes: 15 as const };
     ctx.capacitySettings = nextSettings;
     ctx.capacityDryRun = true;
 

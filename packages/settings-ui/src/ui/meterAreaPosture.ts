@@ -200,7 +200,7 @@ export const readHomesConfigScope = async (
  * written boolean. `absent` is a genuinely unset key — trustworthy evidence,
  * but WHAT it means depends on history: the runtime adapter resolves every
  * non-boolean (absence included) to its last-good `dryRun`
- * (`setup/capacitySettingsStoreAdapter.ts`), and only a bundle with no history
+ * (`lib/power/capacitySettingsStore.ts`), and only a bundle with no history
  * boots into the dry-run-TRUE default. `unavailable` is a transient read
  * failure or a malformed persisted value — exactly what the runtime's own
  * store refuses to adopt — so the caller keeps the area's last resolved

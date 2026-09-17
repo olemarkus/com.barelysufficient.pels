@@ -4,7 +4,7 @@
     "en": "Current safe pace"
   },
   "desc": {
-    "en": "Current effective safe pace (minimum of hourly safe pace and daily budget pace when enabled)"
+    "en": "Current effective safe pace (minimum of the selected capacity-period pace and daily budget pace when enabled)"
   },
   "units": {
     "en": "kW"

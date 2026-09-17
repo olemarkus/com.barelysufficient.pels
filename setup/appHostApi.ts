@@ -14,7 +14,7 @@ import {
   getAllModes as getAllModesHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
-import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
 import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DecoratedDeviceSnapshot,
@@ -52,6 +52,11 @@ import { projectDeviceDescriptors } from '../lib/device/deviceDescriptorProjecti
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
+import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
+import {
+  createCapacitySettingsStore,
+  type CapacityScalarSettings,
+} from '../lib/power/capacitySettingsStore';
 
 /**
  * Stable Homey/widget/settings-API façade. Bodies either resolve a value from
@@ -66,6 +71,21 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
+
+  public readCapacityScalarSettings = (): CapacityScalarSettings => createCapacitySettingsStore(
+    this.homey.settings,
+    MAIN_HOME_ID,
+    () => ({
+      ...this.context.capacitySettings,
+      dryRun: this.context.capacityDryRun,
+    }),
+  ).read();
+
+  public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(
+    this.context.powerTracker,
+    this.getTimeZone(),
+    Date.now(),
+  );
 
   // The read answers `unavailable` when the service is not wired yet, because
   // that IS the boot window the member is for — `hasDailyBudgetSeam` can only

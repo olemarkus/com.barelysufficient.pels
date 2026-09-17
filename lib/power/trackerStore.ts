@@ -81,6 +81,8 @@ const SCALAR_KEYS = [
   'lastDevicePowerWById',
   'unreliablePeriods',
   'objectiveProfiles',
+  'capacityQuarter',
+  'capacityMonthlyPeak',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
 
 /** The one family with its own table: `Record<deviceId, Record<hourKey, number>>`. */

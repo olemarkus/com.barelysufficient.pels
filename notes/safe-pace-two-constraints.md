@@ -7,7 +7,7 @@ Contributor-facing note on the safe-pace model. The naming table and the
 Code: `lib/plan/planBudget.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planContext.ts`,
 `lib/power/capacityModel.ts`, `lib/power/lastTotalPower.ts`.
 Sibling note: `notes/end-of-hour-mode.md` (the capacity pace's drain ceiling).
-User-facing description: `docs/technical.md` ("Dynamic Hourly Safe Pace").
+User-facing description: `docs/technical.md` ("Dynamic Capacity Safe Pace").
 
 ## Canonical names
 
@@ -18,9 +18,9 @@ code, one owner of the data point.** Everything below is written in these terms.
 |---|---|---|---|---|
 | Configured grid-tariff ceiling | `hardCapKw` | fixed | capacity settings | per home |
 | Buffer below the ceiling | `safetyMarginKw` | fixed | capacity settings | per home |
-| `hardCapKw - safetyMarginKw`, as the hour's energy allowance | `hourlyAllowanceKWh` | import | capacity settings | per home |
+| `hardCapKw - safetyMarginKw`, scaled to the selected period's energy allowance | `capacityPeriodAllowanceKWh` | import | capacity settings | per home |
 | The same value as the steady rate that spends it | `sustainableRateKw` | import | capacity settings | per home |
-| Dynamic hourly threshold derived from the allowance and the time left | `capacityPaceKw` | import | `lib/plan/planBudget.ts` | per home |
+| Dynamic selected-period threshold derived from the allowance and the time left | `capacityPaceKw` | import | `lib/plan/planBudget.ts` | per home |
 | Exempt draw including projected power for observed-off devices | `projectedExemptKw` | import | `lib/plan/planUsage.ts` | per home |
 | Exempt draw from measured readings only | `measuredExemptKw` | import | `lib/power/usageAttribution.ts` | per home |
 | Daily-budget threshold on the load that counts toward the budget | `budgetPaceKw` | **non-exempt** | `lib/plan/planBudget.ts` | **main only** |
@@ -49,7 +49,9 @@ followable is keyed to something `grep` can still find after the next refactor.
 |---|---|---|
 | `hardCapKw` | `limitKw`, `capacitySettings.limitKw` | capacity settings |
 | `safetyMarginKw` | `marginKw` | capacity settings |
-| `hourlyAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKw` |
+| `capacityPeriodAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKWh` |
+| Capacity-period allowance exhausted | `hourlyBudgetExhausted` *(legacy local name)* | `computeDynamicSoftLimit` |
+| Capacity-period allowance remaining | `hourlyRemainingKWh` *(legacy local name)* | `computeDynamicSoftLimit` |
 | `sustainableRateKw` | *(landed in `lib/objectives/deferredObjectives/**` and its three wirings; elsewhere still a local inside `computeDynamicSoftLimit`)* | `resolveUsableCapacityKw` |
 | `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers, in the rebuild scheduler, and in every log field)* | `computeDynamicSoftLimit` |
 | `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
@@ -198,7 +200,7 @@ negative"). Keep the floor on the kWh axis and off the kW axis.
 
 The user-facing labels are unchanged and are governed by `notes/ui-terminology.md`:
 **Safe pace now** renders `bindingPaceKw`, **Hard cap** renders `hardCapKw`, and
-the Advanced page's "safe pace starts each hour at" renders `hourlyAllowanceKWh`
+the Limits page's "safe pace starts each period at" renders the capacity allowance
 read as a rate. Those three labels map to three different quantities, which is
 correct, but it is the reason the internal names have to be unambiguous.
 
@@ -268,7 +270,7 @@ That is not hypothetical: the first pass at this converted `homeLimits.ts` and
 helper.
 
 `BudgetOverview.tsx`'s local was renamed `hourStartPaceKw` to match the sentence it
-renders ("safe pace starts each hour at") rather than restating the helper's name.
+renders ("safe pace starts each period at") rather than restating the helper's name.
 
 **One concept, two names — resolved.** `resolveCapacitySoftLimitKw` was an alias of
 `resolveUsableCapacityKw` that returned `hourlyAllowanceKWh` while its name promised
@@ -290,18 +292,18 @@ belong — not the names it is written in.
 
 PELS paces against two independent things, and they do not measure the same load:
 
-| Constraint | Subject (what counts) | Window | End-of-hour drain | Computed by |
+| Constraint | Subject (what counts) | Window | End-of-period drain | Computed by |
 |---|---|---|---|---|
-| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the current clock hour | **yes** | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts`), off `powerTracker.buckets[key]` |
+| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the selected capacity period (clock hour or quarter-hour) | **yes** | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts`), off the period energy resolved by `planHourContext.ts` |
 | `budgetPaceKw` | `P_nonExempt`: everything *except* budget-exempt devices | the current bucket of the daily plan, not the whole day | **no**, deliberately | `computeDailyUsageSoftLimit` (`lib/plan/planBudget.ts`), off `resolveDailySoftLimitBucket` (`resolveDailySoftLimitBucket`) |
 
-### Only one of the two paces drains at the hour boundary
+### Only one of the two paces drains at the selected-period boundary
 
 `capacityPaceKw` is `min(burstRate, sustainableRateKw * e^(minutesRemaining / TAU))`
 (`computeDynamicSoftLimit`, TAU 4 min), so it collapses toward
-`sustainableRateKw` over the last minutes of the hour. `budgetPaceKw` applies no
+`sustainableRateKw` over the last minutes of the capacity period. `budgetPaceKw` applies no
 such ceiling, on purpose: "Daily budget is a soft constraint, never apply
-end-of-hour capping. Only the hourly hard cap needs EOH protection"
+end-of-period capping. Only the capacity hard cap needs boundary protection"
 (`computeDailyUsageSoftLimit`). See `notes/end-of-hour-mode.md` for why the drain exists.
 
 **"Safe pace now" does account for the drain**, because `bindingPaceKw` is a

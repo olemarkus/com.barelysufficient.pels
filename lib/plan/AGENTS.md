@@ -18,6 +18,12 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 
 ## Invariants (enforced — see `.dependency-cruiser.cjs` and `docs/technical.md`)
 
+- **Capacity control uses the home’s selected tariff period.** `CapacitySettings.periodMinutes`
+  is `60` for hourly tariffs or `15` for Belgian quarter-hour peaks. The planner reads the
+  matching period energy and scales both allowance and boundary drain; daily budgets, prices,
+  Usage history, and smart-task allocation remain hourly. A partial first/reset quarter is not
+  a complete period and must never be treated as favourable capacity evidence. Design of record:
+  `notes/capacity-periods.md`.
 - **No EV cluster on the plan device, and there is not going to be one** (owner ruling
   2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
   `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost threshold
@@ -172,8 +178,9 @@ each uses is the point:
 Before adding a fourth, be explicit about which exempt sum it needs and why.
 
 **Asking for the pace is a read; only the build stamps.** `PlanBuilder.stampCapacityPace`
-resolves `capacityPaceKw` *and* writes `PlanEngineState.hourlyBudgetExhausted` /
-`hourlyRemainingKWh` for the rest of that cycle to read; it is private and the build is
+resolves `capacityPaceKw` *and* writes the legacy-local
+`PlanEngineState.hourlyBudgetExhausted` / `hourlyRemainingKWh` fields (both describe
+the selected capacity period, as mapped in the canonical terminology note) for the rest of that cycle to read; it is private and the build is
 its only caller. Everyone else — the periodic status log, a `has_headroom` Flow condition,
 the rebuild scheduler's threshold input, the shortfall log line — goes through the public
 `computeDynamicSoftLimit`, which returns the same number and writes nothing. Keep it that

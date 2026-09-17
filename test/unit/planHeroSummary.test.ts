@@ -10,7 +10,7 @@ import {
   formatProjectedEnergySubline,
   type DecisionSentenceInput,
   type PlanHeroMetaInput,
-} from '../../packages/shared-domain/src/planHeroSummary';
+} from '../../packages/settings-ui/src/ui/planHeroSummary';
 
 
 const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => ({

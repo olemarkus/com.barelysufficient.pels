@@ -1,28 +1,28 @@
-# End-of-hour mode (hourly sustainable-rate drain)
+# Capacity-period boundary mode (sustainable-rate drain)
 
-Contributor-facing design-of-record for the end-of-hour behaviour of the hourly
-capacity safe pace. Code: `lib/plan/planBudget.ts` (`computeDynamicSoftLimit`).
-User-facing description: `docs/technical.md` (“Dynamic Hourly Safe Pace”).
+Contributor-facing design-of-record for the boundary behaviour of the capacity
+safe pace. The configured period is either a clock hour or an aligned Belgian
+15-minute quarter. Code: `lib/plan/planBudget.ts` (`computeDynamicSoftLimit`).
+User-facing description: `docs/technical.md` (“Capacity-period enforcement”).
 
 ## What problem it solves
 
-PELS enforces a Norwegian grid **capacity tariff**: the cost driver is the
-*average* power over each **clock hour** (kWh consumed in a clock hour = average
-kW). So the thing to protect is the hour boundary: if managed devices are still
-drawing hard at `HH:00`, that draw inflates the *new* hour’s average from its
-first instant.
+PELS protects an average-power tariff interval: an hour for traditional capacity
+tariffs, or an aligned quarter-hour for Belgium. The thing to protect is the
+selected period boundary: draw that carries across it inflates the new period’s
+average from its first instant.
 
-Within an hour the planner lets you **burst** — spend the remaining hourly
+Within a period the planner lets you **burst** — spend the remaining period
 budget at whatever instantaneous rate fits the time left
 (`burstRate = remainingKWh / remainingHours`). Left unchecked, that invites an
-“end-of-hour burst”: devices ramp up at `:55` to use leftover budget, then carry
-that high draw across `:00` into the next hour.
+boundary burst: devices ramp up near the end to use leftover budget, then carry
+that high draw into the next period.
 
 ## The mechanism: an exponential drain toward the sustainable rate
 
-The hourly safe pace (`allowedKw`, the capacity `softLimit`) caps the burst rate
+The capacity safe pace (`allowedKw`, the capacity `softLimit`) caps the burst rate
 by a **ceiling that decays exponentially toward the steady sustainable rate** as
-the hour ends:
+the period ends:
 
 ```text
 sustainable   = limitKw - marginKw                       // steady kW == kWh/h
@@ -33,7 +33,7 @@ allowedKw     = min(burstRate, drainCeiling)
 - **Far from the boundary** the ceiling sits far above any feasible burst
   (`e^(minutesRemaining/TAU)` is large), so the budget-driven `burstRate`
   governs — full freedom to use the budget.
-- **As the hour ends** the ceiling collapses toward `sustainable`, pulling the
+- **As the period ends** the ceiling collapses toward `sustainable`, pulling the
   allowed pace down **gradually**. At `minutesRemaining → 0` the ceiling **is**
   `sustainable`, so the planner target reaches the steady rate at the boundary.
   Physical draw can still lag this target when a slow device app takes time to
@@ -59,8 +59,9 @@ first.
 
 `TAU` is the only tuning knob (a hardcoded constant — deliberately not a user
 setting; consistent with “the hard cap is the tariff step, don’t add capacity dials”).
-It sets how late the drain bites. The ceiling multiplier over the sustainable
-rate is `e^(minutesRemaining / TAU)`:
+The hourly base is scaled by `periodMinutes / 60`, so a quarter uses `TAU = 1`
+minute and the taper occupies the same relative portion of either period. The
+ceiling multiplier over the sustainable rate is `e^(minutesRemaining / TAU)`:
 
 | min left | TAU=2 | TAU=3 | **TAU=4** | TAU=5 |
 |---------:|------:|------:|---------:|------:|
@@ -70,10 +71,10 @@ rate is `e^(minutesRemaining / TAU)`:
 | 1        | 1.65× | 1.40× | **1.28×** | 1.22×|
 | 0        | 1.0×  | 1.0×  | **1.0×**  | 1.0× |
 
-Current value: **`TAU = 4`** — the drain is negligible until ~8 minutes left,
-meaningful through the last ~5 minutes, and pinches to the sustainable rate at
-`:00`. Larger `TAU` → tighter/earlier wind-down (closer to the old cliff);
-smaller `TAU` → devices run later, more headroom near the boundary. (`TAU` must
+Current hourly base value: **`TAU = 4`**. In both modes the drain pinches to the
+sustainable rate at the boundary. Larger `TAU` → tighter/earlier wind-down
+(closer to the old cliff); smaller `TAU` → devices run later, more headroom near
+the boundary. (`TAU` must
 stay well above ~0.085 min: `Math.exp` overflows to `Infinity` once
 `minutesRemaining / TAU` exceeds ~709. Even then the `min(burstRate, …)` keeps
 `allowedKw` finite, but don’t rely on that — keep `TAU` in single-digit minutes.)
@@ -99,23 +100,23 @@ restoring the step.
 ## Invariants
 
 - **`min(burstRate, …)` is load-bearing.** `burstRate` is the most you can draw
-  and still land within *this* hour’s budget; the drain may only pull the
+  and still land within *this* period’s budget; the drain may only pull the
   allowance *below* burst, never above. This also handles a nearly-spent budget:
   when `burstRate < sustainable`, the `min` collapses to `burstRate` and the
   drain ceiling is irrelevant.
 - **Planner ceiling reaches the sustainable rate at the boundary.** `e^0 = 1`,
   so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
   device draw can lag if command/effect latency spans the boundary.
-- **`burstRate` floor.** `remainingHours` is floored at
-  `BURST_RATE_MIN_REMAINING_MIN` (10 min) so the burst rate stays finite as the
-  hour ends; this is a divisor floor only, unrelated to the drain.
+- **`burstRate` floor.** `remainingHours` is floored at 10 minutes for an hour
+  and one minute for a quarter so the burst rate stays finite as the period
+  ends; this is a divisor floor only, unrelated to the drain.
 
 ## Daily budget is exempt by design
 
 `computeDailyUsageSoftLimit` does **not** apply the drain (`allowedKw = burstRate`).
 The daily budget is a soft pacing target with no per-hour grid penalty, so the
-planner stays free to make the right call at `23:55`. Only the hourly hard-cap
-side needs boundary protection. See `docs/daily-budget.md`.
+planner stays free to make the right call at `23:55`. Only the selected-period
+hard-cap side needs boundary protection. See `docs/daily-budget.md`.
 
 ## Tests
 

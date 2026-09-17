@@ -74,7 +74,7 @@ Below that, a chart plots every day of the last year so you can see the pattern 
 
 ## When tomorrow needs more than your hard cap
 
-If tomorrow's expected usage is more than your [hourly hard cap](getting-started.md#terminology-and-units) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
+If tomorrow's expected usage is more than your [hard cap](getting-started.md#terminology-and-units) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
 
 ![PELS Tomorrow card with a warning banner: "Tomorrow may need more than your hard cap allows — Tomorrow's expected usage is higher than your hard cap can deliver in a day. PELS will hold the cap, so some managed usage may be limited on the coldest hours."](screenshots/weather-insight/over-cap-warning.png)
 *Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage on the coldest hours.*
@@ -103,7 +103,7 @@ Weather insight is deliberately scoped. It does **not**:
 
 ## How it fits with the daily budget
 
-Weather insight is an **input to the daily budget**, not a separate controller. The suggestion and verdict are about the daily budget's number; the daily budget is what actually paces your home. And the daily budget, in turn, never overrides the hourly hard cap.
+Weather insight is an **input to the daily budget**, not a separate controller. The suggestion and verdict are about the daily budget's number; the daily budget is what actually paces your home. And the daily budget, in turn, never overrides the selected-period hard cap.
 
 So the chain is: weather insight suggests a number → the [daily budget](daily-budget.md) paces the day toward it → the [hard cap](technical.md) protects your grid connection no matter what. For how PELS makes decisions across all three, see [How PELS decides](how-pels-decides.md).
 

@@ -165,7 +165,7 @@ describe('meter-area simulation posture refresh', () => {
 
   it('keeps the last resolved value when an area flag is unset', async () => {
     // Unsetting the suffixed flag leaves the RUNTIME on its last-good dryRun
-    // (`setup/capacitySettingsStoreAdapter.ts` resolves every non-boolean to
+    // (`lib/power/capacitySettingsStore.ts` resolves every non-boolean to
     // the fallback bundle) — the UI must not repaint an already-live area
     // with the boot default and announce a simulation the runtime isn't
     // doing.

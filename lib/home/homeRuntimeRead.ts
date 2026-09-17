@@ -56,6 +56,7 @@ export type HomeRuntimeCapacityScalars = Readonly<{
   limitKw: number;
   marginKw: number;
   dryRun: boolean;
+  periodMinutes: 15 | 60;
 }>;
 
 /**
@@ -87,6 +88,7 @@ export type HomeRuntimeReading = Readonly<{
   planUpdatedAtMs: number | null;
   /** This home's own power tracker state (its meter only, never the whole home). */
   powerTracker: PowerTrackerState;
+  currentMonthCapacityPeakKw: number | null;
   diagnostics: HomeRuntimeDiagnostics;
 }>;
 

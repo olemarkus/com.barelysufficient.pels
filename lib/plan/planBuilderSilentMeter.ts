@@ -103,7 +103,7 @@ export class SilentMeterPlanBuilder {
   ): DevicePlan {
     const capacitySettings = this.deps.getCapacitySettings();
     const powerTracker = this.deps.getPowerTracker();
-    const shortfallBudgetThresholdKw = computeShortfallThreshold({ capacitySettings, powerTracker });
+    const shortfallBudgetThresholdKw = computeShortfallThreshold({ capacitySettings, powerTracker }, nowTs);
     const sheddingPlan = this.shedEverything(context, shortfallBudgetThresholdKw, nowTs);
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.

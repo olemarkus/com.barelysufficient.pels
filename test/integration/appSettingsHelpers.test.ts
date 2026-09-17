@@ -17,7 +17,6 @@ import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/d
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import {
-  CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEVICE_DRIVER_OVERRIDES,
@@ -31,7 +30,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},
 ): CapacitySettingsSnapshot => ({
-  capacitySettings: { limitKw: 12, marginKw: 0.5 },
+  capacitySettings: { limitKw: 12, marginKw: 0.5, periodMinutes: 60 },
   modeAliases: {},
   operatingMode: 'Home',
   capacityPriorities: {},
@@ -87,6 +86,12 @@ const buildContext = (): AppContext => {
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
     emitPowerTrackerPersisted: vi.fn(),
+    readCapacityScalarSettings: vi.fn(() => ({
+      limitKw: 12,
+      marginKw: 0.5,
+      dryRun: false,
+      periodMinutes: 60,
+    })),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),
@@ -120,7 +125,7 @@ const buildContext = (): AppContext => {
     getLatestPlanSnapshotForUi: vi.fn(() => null),
     get powerTracker() { return {}; },
     set powerTracker(_value) {},
-    get capacitySettings() { return { limitKw: 12, marginKw: 0.5 }; },
+    get capacitySettings() { return { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const }; },
     set capacitySettings(_value) {},
     get capacityDryRun() { return false; },
     set capacityDryRun(_value) {},
@@ -457,24 +462,21 @@ describe('buildCapacitySettingsSnapshot', () => {
     expect(next.temperatureControlPolicyState).toBe('resolved');
   });
 
-  it('resolves capacity scalars per field through the home-scoped store', () => {
+  it('keeps the capacity domain’s resolved scalar block', () => {
     const settings = {
-      get: vi.fn((key: string) => {
-        if (key === CAPACITY_LIMIT_KW) return 8; // valid → wins
-        if (key === CAPACITY_MARGIN_KW) return 'oops'; // junk → last-good
-        if (key === CAPACITY_DRY_RUN) return 'yes'; // junk → last-good
-        if (key === `${CAPACITY_LIMIT_KW}:cabin`) return 99; // suffixed decoy → invisible
-        return undefined;
-      }),
+      get: vi.fn(() => undefined),
     };
 
     const next = buildCapacitySettingsSnapshot({
       settings: settings as never,
-      current: buildCapacitySnapshot(),
+      current: buildCapacitySnapshot({
+        capacitySettings: { limitKw: 8, marginKw: 0.5, periodMinutes: 15 },
+        capacityDryRun: true,
+      }),
     });
 
-    expect(next.capacitySettings).toEqual({ limitKw: 8, marginKw: 0.5 });
-    expect(next.capacityDryRun).toBe(false);
+    expect(next.capacitySettings).toEqual({ limitKw: 8, marginKw: 0.5, periodMinutes: 15 });
+    expect(next.capacityDryRun).toBe(true);
   });
 
   it('resolves a loaded set of devices to unique, deterministic priority per mode', () => {

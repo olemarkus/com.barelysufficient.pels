@@ -27,8 +27,9 @@ export async function buildSheddingPlan(
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
+  nowTs: number = Date.now(),
 ): Promise<SheddingPlan> {
-  const selection = planShedding(context, power, state, deps, overshoot.shedActionable);
+  const selection = planShedding(context, power, state, deps, overshoot.shedActionable, nowTs);
   const {
     shedSet,
     shedReasons,
@@ -41,7 +42,7 @@ export async function buildSheddingPlan(
   // awaits a settings write, and the latch must read the hour this build
   // decided on (`PlanBuilder.computeDynamicSoftLimit`).
   const sheddingActive = resolveSheddingLatch(power, state, overshoot, shedSet);
-  await reportShortfallToGuard(context, power, state, selection, deps);
+  await reportShortfallToGuard(context, power, state, selection, deps, nowTs);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
   const guardInShortfall = deps.capacityGuard.isInShortfall();
@@ -53,7 +54,7 @@ export async function buildSheddingPlan(
     sheddingActive,
     guardInShortfall,
     outcome,
-    recoveredAtMs: recoveredFromShedding ? Date.now() : null,
+    recoveredAtMs: recoveredFromShedding ? nowTs : null,
     overshootStats,
   };
 }
@@ -81,13 +82,13 @@ function planShedding(
   state: PlanEngineState,
   deps: SheddingDeps,
   overshootActionable: boolean,
+  nowTs: number,
 ): PlanSheddingResult {
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
   if (!shouldAttemptShedding(hourlyBudgetExhausted, overshootActionable, power.headroomKw)) {
     return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
   }
 
-  const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
   const needed = Math.max(0, -power.headroomKw);

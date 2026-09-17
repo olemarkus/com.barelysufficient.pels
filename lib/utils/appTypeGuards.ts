@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from '../power/tracker';
+import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import type {
   DeviceControlProfiles,
   EvBoostSettings,
@@ -276,6 +277,46 @@ const NUMBER_MAP_FIELDS = [
   'exportDailyTotals',
 ] as const;
 
+const isCapacityQuarter = (value: unknown): value is NonNullable<PowerTrackerState['capacityQuarter']> => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.startMs)
+  && value.startMs >= 0
+  && value.startMs % CAPACITY_QUARTER_MS === 0
+  && isFiniteNumber(value.energyKWh)
+  && value.energyKWh >= 0
+  && isFiniteNumber(value.trackedMs)
+  && value.trackedMs >= 0
+  && value.trackedMs <= CAPACITY_QUARTER_MS
+);
+
+const isCapacityQuarterOnSamplingTimeline = (
+  value: unknown,
+  lastTimestamp: unknown,
+): boolean => (
+  isCapacityQuarter(value)
+  && isFiniteNumber(lastTimestamp)
+  && lastTimestamp >= value.startMs
+  && lastTimestamp < value.startMs + CAPACITY_QUARTER_MS
+  && value.trackedMs <= lastTimestamp - value.startMs
+);
+
+const isOptionalCapacityQuarterOnSamplingTimeline = (
+  value: unknown,
+  lastTimestamp: unknown,
+): boolean => value === undefined || isCapacityQuarterOnSamplingTimeline(value, lastTimestamp);
+
+const isCapacityMonthlyPeak = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && typeof value.monthKey === 'string'
+  && /^\d{4}-\d{2}$/.test(value.monthKey)
+  && isFiniteNumber(value.peakKw)
+  && value.peakKw >= 0
+);
+
+const isOptionalCapacityMonthlyPeak = (value: unknown): boolean => (
+  value === undefined || isCapacityMonthlyPeak(value)
+);
+
 const HOURLY_AVERAGE_MAP_FIELDS = [
   'hourlyAverages',
   'controlledHourlyAverages',
@@ -304,6 +345,8 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
     && NUMBER_MAP_FIELDS.every((field) => isOptionalNumberMap(value[field]))
     && HOURLY_AVERAGE_MAP_FIELDS.every((field) => isOptionalHourlyAverageMap(value[field]))
     && FINITE_NUMBER_FIELDS.every((field) => isOptionalFiniteNumber(value[field]))
+    && isOptionalCapacityQuarterOnSamplingTimeline(value.capacityQuarter, value.lastTimestamp)
+    && isOptionalCapacityMonthlyPeak(value.capacityMonthlyPeak)
     && (value.deviceBuckets === undefined || isDeviceBucketMap(value.deviceBuckets))
     && (
       value.unreliablePeriods === undefined
@@ -376,6 +419,16 @@ const salvageDeviceBuckets: SalvageStep = (salvage) => {
   };
 };
 
+const salvageCapacityQuarter: SalvageStep = (salvage) => (
+  salvage.blob.capacityQuarter === undefined
+  || isCapacityQuarterOnSamplingTimeline(salvage.blob.capacityQuarter, salvage.blob.lastTimestamp)
+    ? salvage
+    : {
+      blob: withoutField(salvage.blob, 'capacityQuarter'),
+      dropped: [...salvage.dropped, 'capacityQuarter'],
+    }
+);
+
 const isUnreliablePeriodList = (value: unknown): boolean => (
   Array.isArray(value) && value.every(isUnreliablePeriod)
 );
@@ -394,6 +447,8 @@ const SALVAGE_STEPS: readonly SalvageStep[] = [
   ...FINITE_NUMBER_FIELDS.map((field) => (
     salvageScalar(field, field === 'lastGenerationW' ? isValidSolarKWh : isFiniteNumber)
   )),
+  salvageCapacityQuarter,
+  salvageScalar('capacityMonthlyPeak', isCapacityMonthlyPeak),
   salvageDeviceBuckets,
   salvageScalar('meterIdentity', isPowerTrackerMeterIdentity),
   salvageScalar('unreliablePeriods', isUnreliablePeriodList),

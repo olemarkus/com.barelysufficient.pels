@@ -183,6 +183,18 @@ describe('appTypeGuards plain-object handling', () => {
     ])('rejects %s', (_label, state) => {
       expect(isPlausiblePowerTrackerState(state)).toBe(false);
     });
+
+    it('rejects quarter coverage that runs ahead of the persisted sampling timeline', () => {
+      const quarterStartMs = 1_749_999_600_000;
+      expect(isPlausiblePowerTrackerState({
+        lastTimestamp: quarterStartMs + 5 * 60 * 1000,
+        capacityQuarter: {
+          startMs: quarterStartMs,
+          energyKWh: 0.1,
+          trackedMs: 15 * 60 * 1000,
+        },
+      })).toBe(false);
+    });
   });
 
   describe('sanitizePowerTrackerSolarFields', () => {
@@ -291,6 +303,25 @@ describe('salvagePowerTrackerState', () => {
       'buckets[1]', 'dailyTotals', 'generationBuckets[1]', 'hourlyAverages[1]', 'lastGenerationW', 'lastPowerW',
       'deviceBuckets[3]', 'meterIdentity', 'objectiveProfiles',
     ]);
+  });
+
+  it('drops a quarter whose coverage extends beyond the last sample', () => {
+    const quarterStartMs = 1_749_999_600_000;
+    expect(salvagePowerTrackerState({
+      lastTimestamp: quarterStartMs + 5 * 60 * 1000,
+      buckets: { retained: 1 },
+      capacityQuarter: {
+        startMs: quarterStartMs,
+        energyKWh: 0.1,
+        trackedMs: 15 * 60 * 1000,
+      },
+    })).toEqual({
+      state: {
+        lastTimestamp: quarterStartMs + 5 * 60 * 1000,
+        buckets: { retained: 1 },
+      },
+      dropped: ['capacityQuarter'],
+    });
   });
 
   it('answers null when nothing plausible is left', () => {

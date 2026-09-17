@@ -29,7 +29,7 @@ house's available power (and the other way around). With a meter area, each
 part stays under its own cap on its own terms.
 
 **If your whole home is on a single meter, you don't need this.** One meter is
-the Main home, and the [hourly hard cap](configuration.md) already covers it.
+the Main home, and the [selected-period hard cap](configuration.md) already covers it.
 
 ::: tip A meter area can be somewhere else entirely
 The parts don't have to share a building. A cabin at another address works too,
@@ -115,16 +115,19 @@ Pick the **Main home** or any meter area there, and the cap and margin below
 apply to whichever you've selected. The bar stays put as you scroll, so the
 part of the home you're editing is always named on screen:
 
-- **Hard cap (kW):** that area's grid tariff step. PELS keeps each hour's
-  average power under this, the same way it does for the whole home.
+- **Capacity period:** hourly, or 15-minute for a Belgian quarter-hour peak.
+- **Hard cap (kW):** that area's grid tariff step or peak target. PELS keeps
+  the selected period's average power under this, the same way it does for the
+  whole home.
 - **Safety margin (kW):** the buffer below the cap where PELS starts easing
   off, so you approach the cap gently rather than bumping into it.
 
-Below those, a readout shows where the safe pace starts each hour (the hard cap
-minus the safety margin), so you can see the effect of your numbers before you
-leave the page.
+Below those, a readout shows where the safe pace starts each period (the hard
+cap minus the safety margin), so you can see the effect of your numbers before
+you leave the page. A 15-minute area also shows its highest completed quarter
+this month.
 
-![PELS Limits & safety with "Rental unit" as the shown home: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each hour at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
+![PELS Limits & safety with "Rental unit" as the shown home: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each selected period at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
 
 ### Turn on control when you're ready
 
@@ -135,7 +138,7 @@ area"**, is what makes it live:
 - **Off:** PELS only *simulates* this area. Nothing in it is limited. This is
   how every area starts, so you can set the cap and watch how PELS *would*
   behave before it touches a device.
-- **On:** PELS limits devices in this area to keep each hour under its cap, for
+- **On:** PELS limits devices in this area to keep each selected period under its cap, for
   real.
 
 While an area is simulating, the page says so plainly and points you at the

@@ -11,15 +11,16 @@ export const calculateEnergyAcrossBoundaries = (params: {
   budgetKWh: number | null;
 }) => {
   const { startTs, endTs, powerW, buckets, budgets, budgetKWh } = params;
+  const periodMs = 60 * 60 * 1000;
   let currentTs = startTs;
   let remainingMs = endTs - startTs;
 
   while (remainingMs > 0) {
-    const hourStart = truncateToUtcHour(currentTs);
-    const hourEnd = hourStart + 60 * 60 * 1000;
-    const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
+    const periodStart = truncateToUtcHour(currentTs);
+    const periodEnd = periodStart + periodMs;
+    const segmentMs = Math.min(remainingMs, periodEnd - currentTs);
     const energyKWh = (powerW / 1000) * (segmentMs / 3600000);
-    const bucketKey = new Date(hourStart).toISOString();
+    const bucketKey = new Date(periodStart).toISOString();
 
     buckets.set(bucketKey, (buckets.get(bucketKey) || 0) + energyKWh);
     if (budgetKWh !== null) {

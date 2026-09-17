@@ -126,7 +126,7 @@ const buildBuilder = (params: {
       getCapacityDryRun: () => false,
   capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
-  getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0 }),
+  getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

@@ -1,7 +1,8 @@
-import { resolveUsableCapacityKw } from '../power/capacityModel';
+import type { CapacitySettings } from '../power/capacityModel';
+import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
-import { getCurrentHourContext } from './planHourContext';
+import { getCurrentCapacityPeriodContext, getCurrentHourContext } from './planHourContext';
 import { sumBudgetExemptMeasuredUsageKw } from '../power/usageAttribution';
 import { toUsageDevice } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
@@ -52,6 +53,8 @@ export type PlanContext = PlanLimits & {
    */
   temperatureSetpoints: TemperatureSetpointsByDevice;
   hourBucketKey: string;
+  hourUsedKWh: number;
+  capacityPeriodMinutes: 15 | 60;
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
@@ -101,24 +104,31 @@ export type MeasuredPower = {
 
 export function buildPlanContext(params: {
   devices: PlanInputDevice[];
-  capacitySettings: { limitKw: number; marginKw: number };
+  capacitySettings: CapacitySettings;
   /** Hourly usage/bucket math only. Not a freshness input — that is the reading's. */
   powerTracker: PowerTrackerState;
   limits: PlanLimits;
   temperatureSetpoints: TemperatureSetpointsByDevice;
-}): PlanContext {
+}, nowMs: number = Date.now()): PlanContext {
   const {
     devices, capacitySettings, powerTracker, limits, temperatureSetpoints,
   } = params;
-  const hourContext = getCurrentHourContext(powerTracker, Date.now());
+  const hourContext = getCurrentHourContext(powerTracker, nowMs);
+  const capacityContext = getCurrentCapacityPeriodContext(
+    powerTracker,
+    capacitySettings.periodMinutes,
+    nowMs,
+  );
   return {
     ...limits,
     devices,
     temperatureSetpoints,
     hourBucketKey: hourContext.bucketKey,
-    budgetKWh: resolveUsableCapacityKw(capacitySettings),
-    usedKWh: hourContext.usedKWh,
-    minutesRemaining: hourContext.minutesRemaining,
+    hourUsedKWh: hourContext.usedKWh,
+    capacityPeriodMinutes: capacitySettings.periodMinutes,
+    budgetKWh: resolveUsableCapacityKWh(capacitySettings),
+    usedKWh: capacityContext.usedKWh,
+    minutesRemaining: capacityContext.minutesRemaining,
   };
 }
 

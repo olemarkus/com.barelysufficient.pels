@@ -1,4 +1,4 @@
-import { formatCheapestUpcomingHour } from '../../packages/shared-domain/src/planHeroSummary';
+import { formatCheapestUpcomingHour } from '../../packages/settings-ui/src/ui/planHeroSummary';
 
 // End-to-end timezone regression suite for `formatCheapestUpcomingHour`. The
 // production caller (`PlanHero.tsx`) renders the cheapest-upcoming-hour

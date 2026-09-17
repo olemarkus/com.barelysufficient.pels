@@ -1,6 +1,6 @@
 # PELS
 
-PELS (Pris- og Effektstyrt Energilagringssystem) is a Homey Pro app for capacity-aware energy control. It keeps large electrical loads inside your hourly power limit, resumes them automatically when there is available power again, and can shift flexible heating toward cheaper hours.
+PELS (Pris- og Effektstyrt Energilagringssystem) is a Homey Pro app for capacity-aware energy control. It keeps large electrical loads inside your hourly or Belgian 15-minute capacity limit, resumes them automatically when there is available power again, and can shift flexible heating toward cheaper hours.
 
 The public documentation lives at [pels.barelysufficient.org](https://pels.barelysufficient.org/).
 

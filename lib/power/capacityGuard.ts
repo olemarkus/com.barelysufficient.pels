@@ -83,6 +83,9 @@ export default class CapacityGuard {
   /** The last plan verdict over the threshold found nothing left it could shed. */
   private planLeftNothingToShed = false;
 
+  /** Whether the selected capacity period has enough coverage to judge a shortfall. */
+  private shortfallReportingAvailable = false;
+
   constructor(options: CapacityGuardOptions) {
     this.homeId = options.homeId;
     this.structuredLog = options.structuredLog;
@@ -125,6 +128,7 @@ export default class CapacityGuard {
     shortfallThresholdKw: number,
     capacityStateSummary: PlanInputCapacityStateSummary,
   ): Promise<void> {
+    this.shortfallReportingAvailable = true;
     this.planLeftNothingToShed = !capacityStateSummary.remainingActionableControlledLoad
       && !capacityStateSummary.shedReliefInFlight;
     const alertConditionActive = this.isShortfallAlertConditionActive(totalKw, shortfallThresholdKw);
@@ -137,25 +141,42 @@ export default class CapacityGuard {
   }
 
   /**
-   * A reading that came with no plan verdict: one at or under the threshold, or
-   * one the rebuild throttle declined to rebuild for while an incident is
-   * latched. It moves the recovery clock and re-evaluates the alert condition
-   * against the last verdict, and it can never open an incident — a reading on
-   * its own does not say whether anything is left to shed.
+   * The current period is deliberately fail-closed for control but has too
+   * little coverage to support an incident verdict. Suppress alert delivery
+   * without fabricating recovery evidence or resetting an in-flight recovery
+   * timer; the next complete-period plan verdict makes reporting available.
+   */
+  recordShortfallUnavailable(): void {
+    this.shortfallReportingAvailable = false;
+    this.publishShortfallAlertCondition(false, 0);
+  }
+
+  /**
+   * A reading that came with no plan verdict. While the selected period is
+   * complete, it moves the recovery clock against the last verdict but can
+   * never open an incident. While reporting is unavailable it is a no-op: the
+   * throttle's synthetic threshold must neither reset nor advance recovery.
    *
    * `totalKw` is the caller's resolved whole-home total. Both callers hold a
    * plain number — `MeasuredPower.drawKw` in `lib/plan/shedding/shortfallVerdict`,
    * the finiteness-gated tracker latch in `lib/plan/rebuildScheduler` — so there
    * is no absence to model here.
    */
-  async recordReading(totalKw: number, shortfallThresholdKw: number): Promise<void> {
+  async recordReading(
+    totalKw: number,
+    shortfallThresholdKw: number,
+    thresholdAuthority: 'last_verdict' | 'complete_period' = 'last_verdict',
+  ): Promise<void> {
+    if (thresholdAuthority === 'complete_period') this.shortfallReportingAvailable = true;
+    if (!this.shortfallReportingAvailable) return;
     const alertConditionActive = this.isShortfallAlertConditionActive(totalKw, shortfallThresholdKw);
     this.publishShortfallAlertCondition(alertConditionActive, totalKw - shortfallThresholdKw);
     await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
   }
 
   public isShortfallAlertConditionActive(totalKw: number | null, shortfallThresholdKw: number): boolean {
-    return this.planLeftNothingToShed
+    return this.shortfallReportingAvailable
+      && this.planLeftNothingToShed
       && isOverShortfallThreshold(totalKw, shortfallThresholdKw);
   }
 

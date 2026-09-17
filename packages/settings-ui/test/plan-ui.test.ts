@@ -90,6 +90,26 @@ describe('Redesign plan UI', () => {
   });
   
   describe('Overview plan UI', () => {
+    it('renders Belgian quarter-hour energy and trajectory wording', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          capacityPeriodMinutes: 15,
+          totalKw: 6,
+          hardCapLimitKw: 5,
+          usedKWh: 1,
+          hourBudgetKWh: 1.2,
+          minutesRemaining: 5,
+        }),
+        devices: [
+          { id: 'dev-1', name: 'Heater', priority: 1, currentState: 'on', plannedState: 'shed' },
+        ],
+      });
+
+      expect(document.body.textContent).toContain('Energy used this quarter');
+      expect(document.body.textContent).toContain('Hard cap this quarter 1.3 kWh');
+      expect(document.body.textContent).toContain('On pace to exceed the hard cap this quarter.');
+    });
+
     it('renders no hero at all for an unmeasured cycle — the cards stay, nothing computed is drawn', async () => {
       // The silent-meter fail-closed plan: the wire meta carries the bare
       // `powerIsMeasured: false` and no headroom or managed/background split.

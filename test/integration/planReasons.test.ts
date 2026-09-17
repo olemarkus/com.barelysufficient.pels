@@ -35,7 +35,7 @@ describe('normalizeShedReasons', () => {
         plannedState: 'shed',
         reason: fixtureDeviceReason('restore low -> high (need 1.20kW)')!,
       })], reasonContext({
-      shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to hourly budget')!]]),
+      shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to capacity-period budget')!]]),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: false,
@@ -43,7 +43,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     }));
 
-    expect(reasonText(device?.reason)).toBe('shed due to hourly budget');
+    expect(reasonText(device?.reason)).toBe('shed due to capacity-period budget');
   });
 
   it('preserves swap reasons instead of replacing them with cooldown text', () => {

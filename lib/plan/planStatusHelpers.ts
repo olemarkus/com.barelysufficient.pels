@@ -97,6 +97,7 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
     ...dailyPaceComposition,
     shortfallBudgetThresholdKw: roundTo(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
     hardCapLimitKw: roundTo(meta.hardCapLimitKw, PLAN_META_KW_STEP),
+    hourUsedKWh: roundTo(meta.hourUsedKWh, PLAN_META_KWH_STEP),
     usedKWh: roundTo(meta.usedKWh, PLAN_META_KWH_STEP),
     budgetKWh: roundTo(meta.budgetKWh, PLAN_META_KWH_STEP),
     capacityLimitKw: roundTo(meta.capacityLimitKw, PLAN_META_KW_STEP),

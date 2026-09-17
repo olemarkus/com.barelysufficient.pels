@@ -113,7 +113,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const structuredDebugEmitter: StructuredDebugEmitter = vi.fn();
 
   let powerTracker: PowerTrackerState = {};
-  let capacitySettings = { limitKw: 12, marginKw: 0.5 };
+  let capacitySettings = { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
   let operatingMode = 'Home';
   let modeAliases: Record<string, string> = {};
@@ -229,6 +229,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getStructuredDebugEmitter: getStructuredDebugEmitterOverride ?? vi.fn(() => structuredDebugEmitter),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
+    readCapacityScalarSettings: () => ({ ...capacitySettings, dryRun: capacityDryRun }),
+    getCurrentMonthCapacityPeakKw: () => null,
     notifyOperatingModeChanged: vi.fn(),
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,

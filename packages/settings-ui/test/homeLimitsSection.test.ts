@@ -19,11 +19,14 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   areaName: 'Utleie',
   hardCapValue: '7',
   marginValue: '0.3',
+  periodMinutes: 60,
+  periodBusy: false,
   dryRun: true,
   runtimeActive: true,
   controlBusy: false,
   marginError: null,
   reactionKw: '6.7 kW',
+  currentMonthQuarterPeakKw: null,
   status: resolveHomeLimitsStatus(
     { controlledKw: 2, uncontrolledKw: 1, powerNowKw: 3, hasLivePowerSample: true, devicesOff: 1, limitReason: 'hourly' },
     { dryRun: true, hardCapKw: 7 },
@@ -32,6 +35,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   onHardCapChange: noop,
   onMarginInput: noop,
   onMarginChange: noop,
+  onPeriodChange: noop,
   onControlToggle: noop,
   ...overrides,
 });
@@ -70,6 +74,39 @@ describe('meter-area editor', () => {
     expect(surface.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('7');
     expect(surface.querySelector<HTMLInputElement>('#home-limits-margin')?.value).toBe('0.3');
     expect(surface.querySelector('#home-limits-reaction')?.textContent).toBe('6.7 kW');
+  });
+
+  it('shows the tracked monthly peak only for the Belgian quarter-hour period', () => {
+    const quarter = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: 6.24 }),
+    }));
+    expect(quarter.querySelector('#home-limits-monthly-peak')?.textContent).toBe('6.24 kW');
+
+    document.body.innerHTML = '';
+    const hourly = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 60 }) }));
+    expect(hourly.querySelector('#home-limits-monthly-peak')).toBeNull();
+  });
+
+  it('distinguishes an unavailable peak from a month with no completed quarter', () => {
+    const unavailable = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: undefined }),
+    }));
+    expect(unavailable.textContent).toContain('Peak unavailable');
+
+    document.body.innerHTML = '';
+    const empty = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: null }),
+    }));
+    expect(empty.textContent).toContain('No completed quarter yet');
+  });
+
+  it('passes the selected capacity period to the controller', () => {
+    const onPeriodChange = vi.fn();
+    const surface = mountWith(baseProps({ editor: baseEditor({ onPeriodChange }) }));
+    const select = surface.querySelector('#home-limits-period') as HTMLElement & { value: string };
+    select.value = '15';
+    select.dispatchEvent(new Event('change'));
+    expect(onPeriodChange).toHaveBeenCalledWith(15);
   });
 
   it('shows the activation notice ONLY while the area is OFF (simulating)', () => {

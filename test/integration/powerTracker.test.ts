@@ -193,6 +193,35 @@ describe('power tracker integration', () => {
     expect(snapshot.buckets?.[bucket1]).toBeCloseTo(0.6, 3);
   });
 
+  it('splits net-import energy across quarter-hour boundaries', async () => {
+    const state: PowerTrackerState = {};
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 10);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 3_600,
+      nowMs: start,
+      rebuildPlanFromCache,
+      saveState,
+    });
+    await recordPowerSample({
+      state,
+      currentPowerW: 3_600,
+      nowMs: start + 20 * 60 * 1000,
+      rebuildPlanFromCache,
+      saveState,
+    });
+
+    expect(state.capacityMonthlyPeak).toEqual({ monthKey: '2025-01', peakKw: 3.6 });
+    expect(state.capacityQuarter).toEqual({
+      startMs: Date.UTC(2025, 0, 1, 0, 30),
+      energyKWh: 0,
+      trackedMs: 0,
+    });
+  });
+
   it('tracks controlled and uncontrolled buckets when provided', async () => {
     const state = {};
     const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);

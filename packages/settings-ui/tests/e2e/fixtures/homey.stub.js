@@ -197,6 +197,7 @@
         budgetPaceKw: null,
         projectedExemptKw: null,
         softLimitSource: 'capacity',
+        capacityPeriodMinutes: 60,
         powerIsMeasured: true,
         usedKWh: 0.26,
         hourBudgetKWh: 4.5,
@@ -981,6 +982,19 @@
         ? { state: 'received', lastPowerUpdateMs: tracker.lastTimestamp }
         : { state: 'never' },
       status: classifyPowerStatus(settings.power_tracker_state, settings.pels_status),
+      mainDryRunEffective: typeof settings.capacity_dry_run === 'boolean'
+        ? settings.capacity_dry_run
+        : true,
+      mainCapacityScalars: {
+        limitKw: Number.isFinite(settings.capacity_limit_kw) ? settings.capacity_limit_kw : 10,
+        marginKw: Number.isFinite(settings.capacity_margin_kw) ? settings.capacity_margin_kw : 0.2,
+        periodMinutes: settings.capacity_period_minutes === 15 ? 15 : 60,
+      },
+      capacityPeak: {
+        currentMonthQuarterPeakKw: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
+          ? settings.ui_current_month_quarter_peak_kw
+          : null,
+      },
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source
       // (unset normalizes to flow, which has no solar signal — see
@@ -1683,6 +1697,23 @@
         settings[`power_tracker_state:${scope.homeId}`],
         settings[`pels_status:${scope.homeId}`],
       ),
+      scopedCapacityScalars: {
+        limitKw: Number.isFinite(settings[`capacity_limit_kw:${scope.homeId}`])
+          ? settings[`capacity_limit_kw:${scope.homeId}`]
+          : 10,
+        marginKw: Number.isFinite(settings[`capacity_margin_kw:${scope.homeId}`])
+          ? settings[`capacity_margin_kw:${scope.homeId}`]
+          : 0.2,
+        dryRun: typeof settings[`capacity_dry_run:${scope.homeId}`] === 'boolean'
+          ? settings[`capacity_dry_run:${scope.homeId}`]
+          : true,
+        periodMinutes: settings[`capacity_period_minutes:${scope.homeId}`] === 15 ? 15 : 60,
+      },
+      capacityPeak: {
+        currentMonthQuarterPeakKw: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
+          ? settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`]
+          : null,
+      },
       // Same source gate as `buildPowerPayload` above, because the scoped
       // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`
       // reads the GLOBAL `power_source` key, and only `homey_energy` yields
@@ -1978,6 +2009,7 @@
       budgetPaceKw: null,
       projectedExemptKw: null,
       softLimitSource: 'capacity',
+      capacityPeriodMinutes: 60,
       powerIsMeasured: true,
       hardCapLimitKw: 8.0,
       usedKWh: 3.8,
@@ -2070,6 +2102,7 @@
         budgetPaceKw: null,
         projectedExemptKw: null,
         softLimitSource: 'capacity',
+        capacityPeriodMinutes: 60,
         hardCapLimitKw: 8.0,
         powerIsMeasured: true,
         usedKWh: 1.2,
@@ -2104,6 +2137,7 @@
           budgetPaceKw: 5,
           projectedExemptKw: 7,
           softLimitSource: 'daily',
+          capacityPeriodMinutes: 60,
           powerIsMeasured: true,
           hardCapLimitKw: 14,
           usedKWh: 6.2,

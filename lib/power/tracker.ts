@@ -9,6 +9,7 @@ import {
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
 } from './trackerEnergy';
+import { accrueCapacityQuarter, startCapacityQuarterTracking } from './capacityQuarterTracking';
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
 import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges';
 export const HOURLY_RETENTION_DAYS = 30;
@@ -50,6 +51,8 @@ function buildNextPowerState(params: {
   currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
+  capacityQuarter: PowerTrackerState['capacityQuarter'];
+  capacityMonthlyPeak: PowerTrackerState['capacityMonthlyPeak'];
 }): PowerTrackerState {
   const {
     state,
@@ -70,6 +73,8 @@ function buildNextPowerState(params: {
     currentGenerationW,
     currentDevicePowerWById,
     unreliablePeriods,
+    capacityQuarter,
+    capacityMonthlyPeak,
   } = params;
   // The generation latch is absence-as-absence: a sample without a generation
   // reading must DROP any carried lastGenerationW rather than hold it stale, so
@@ -79,6 +84,8 @@ function buildNextPowerState(params: {
   return {
     ...carriedState,
     buckets: addToHourlyBuckets(state.buckets, nextBuckets),
+    capacityQuarter,
+    capacityMonthlyPeak,
     hourlySampleCounts: addToHourlyBuckets(state.hourlySampleCounts, nextHourlySampleCounts),
     hourlyBudgets: updateHourlyBuckets(state.hourlyBudgets, nextBudgets),
     controlledBuckets: nextControlledBuckets
@@ -416,11 +423,9 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(),
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
-  // Authoritative whole-home actual consumption (net import + generation). Used
-  // only to bound the managed/unmanaged split below so a partly-solar-fed managed
-  // device is not clamped down to the smaller net total. Defaults to the net
-  // value, so non-solar callers are unchanged. The total energy bucket and the
-  // capacity guard deliberately keep `currentPowerW` (net import).
+  // Whole-home actual consumption (net import + generation) bounds the managed/unmanaged
+  // split so solar-fed managed load is not clamped to the smaller net total. It defaults
+  // to net for non-solar callers; energy accounting and the guard retain net import.
   const grossConsumptionW = Math.max(0, params.grossConsumptionW ?? currentPowerW);
   // Producer-resolved gross generation for THIS sample; `undefined` = no
   // generation signal (boundary/absence rules live in trackerSolar.ts).
@@ -460,7 +465,10 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   // Billing stays correct: every budget consumer re-clamps exempt against the net total.
   const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
-
+  let capacityQuarter = shouldResetSamplingState(state, nowMs)
+    ? startCapacityQuarterTracking(nowMs)
+    : state.capacityQuarter ?? startCapacityQuarterTracking(state.lastTimestamp as number);
+  let capacityMonthlyPeak = state.capacityMonthlyPeak;
   // Shared next-state args for both the reset path (no accrual — the current
   // readings, including the generation latch, are recorded as-is) and the
   // normal accrual path below.
@@ -482,14 +490,14 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentExemptPowerW: boundedExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById: normalizedDevicePowerWById,
+    capacityQuarter,
+    capacityMonthlyPeak,
   };
 
   if (shouldResetSamplingState(state, nowMs)) {
     const nextState = buildNextPowerState(nextStateArgs);
     addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
-    await persistPowerSample({
-      nextState, saveState, rebuildPlanFromCache,
-    });
+    await persistPowerSample({ nextState, saveState, rebuildPlanFromCache });
     return;
   }
 
@@ -509,6 +517,9 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     budgets: nextBudgets,
     budgetKWh,
   });
+  ({ quarter: capacityQuarter, monthlyPeak: capacityMonthlyPeak } = accrueCapacityQuarter(
+    capacityQuarter, capacityMonthlyPeak, previousTs, nowMs, previousPower, params.timeZone ?? 'UTC',
+  ));
 
   // Solar accounting (sparse export/generation families) — sparseness and
   // absence-as-absence rules live in trackerSolar.ts.
@@ -543,7 +554,12 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     deviceBuckets: nextDeviceBuckets,
   });
 
-  const nextState = buildNextPowerState({ ...nextStateArgs, unreliablePeriods });
+  const nextState = buildNextPowerState({
+    ...nextStateArgs,
+    capacityQuarter,
+    capacityMonthlyPeak,
+    unreliablePeriods,
+  });
   addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
   await persistPowerSample({
     nextState, saveState, rebuildPlanFromCache,

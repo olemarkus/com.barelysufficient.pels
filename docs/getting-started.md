@@ -42,12 +42,15 @@ Once power data is flowing, the **Overview** page starts showing real data.
 
 Go to **Settings > Limits & safety** and configure:
 
-- **Hard cap (kW)** — your hourly limit. This is the average power level you do not want to exceed within any given hour. Set this to match your grid tariff step (effekttrinn), for example 5 kW or 8 kW.
+- **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average (Belgium)** when your Belgian grid tariff measures quarter-hour peaks.
+- **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW.
 - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point.
+
+With the Belgian period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
 
 <figure class="docs-figure">
   <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing hard cap, safety margin and power source controls." />
-  <figcaption>Limits & safety is where you choose the power source, hard cap and safety margin.</figcaption>
+  <figcaption>Limits & safety is where you choose the capacity period, power source, hard cap and safety margin.</figcaption>
 </figure>
 
 ::: tip
@@ -154,10 +157,10 @@ Once you have worked through the steps above, verify:
 
 - **Power** is instantaneous load, measured in **W** or **kW**.
 - **Energy** is usage over time, measured in **kWh**.
-- **Hard cap** — your maximum average power for any hour, in **kW**.
+- **Hard cap** — your maximum average power for the selected capacity period, in **kW**.
 - **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
 - **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
-- **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. Used to spend less by shifting load into cheap hours or to hold the home under a daily energy ceiling; it never overrides the hourly hard cap. See [Daily Energy Budget](/daily-budget#why-set-a-daily-budget).
+- **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. Used to spend less by shifting load into cheap hours or to hold the home under a daily energy ceiling; it never overrides the selected-period hard cap. See [Daily Energy Budget](/daily-budget#why-set-a-daily-budget).
 
 For the full vocabulary, see the [Glossary](/glossary).
 

@@ -795,7 +795,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       getPowerTracker: () => ({ lastTimestamp: NOW_MS }),
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       resolveDeviceExclusion,
     });
     const bundle = controller.decorate({

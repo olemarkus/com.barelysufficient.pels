@@ -84,7 +84,7 @@ const buildBuilder = (
   setCapacityInShortfall: vi.fn(),
   // Deliberately roomy: no capacity pressure anywhere, so the only thing that can
   // put a device in the shed set is the posture under test.
-  getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2 }),
+  getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

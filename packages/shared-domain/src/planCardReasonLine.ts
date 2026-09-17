@@ -199,7 +199,7 @@ const formatShortfallNeed = (shortfallKw: number): string => (
   `${shortfallKw.toFixed(1)} kW more needed`
 );
 
-const HOURLY_EXHAUSTED_NEED = "this hour's budget is spent";
+const HOURLY_EXHAUSTED_NEED = "this capacity period's budget is spent";
 
 // The starved form of a ceiling hold: "Held 2 h — 0.7 kW more needed". Same need
 // clause, but the stem states how long PELS has been holding the device below

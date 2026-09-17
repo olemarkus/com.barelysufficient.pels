@@ -1,6 +1,7 @@
 export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_limit_kw',
   'capacity_margin_kw',
+  'capacity_period_minutes',
   'capacity_dry_run',
   'homey_energy_meter_device_id',
   'capacity_priorities',

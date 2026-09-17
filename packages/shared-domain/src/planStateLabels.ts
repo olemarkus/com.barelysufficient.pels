@@ -93,7 +93,7 @@ export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 // Replaces the retired `Limited — this hour is near the hard cap`, which named a
 // ceiling on the card and misdescribed the trigger (the hour's kWh being spent,
 // not cap proximity).
-export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — this hour's budget is spent";
+export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — this capacity period's budget is spent";
 
 // Status line for devices held because the smart task is between planned hours
 // (the current hour was relatively expensive so the load was booked into cheaper

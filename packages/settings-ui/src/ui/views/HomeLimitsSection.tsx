@@ -23,7 +23,8 @@ import {
   type HomeLimitsStatus,
 } from '../../../../shared-domain/src/homeLimitsStatus.ts';
 import { composeHomeScopedTitle } from '../../../../shared-domain/src/homeScopeCopy.ts';
-import { MdSwitch } from './materialWebJSX.tsx';
+import { MdFilledSelect, MdSelectOption, MdSwitch } from './materialWebJSX.tsx';
+import type { CapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 
 // Per-home "Limits & safety" surface (multi-home U3). Progressive disclosure:
 // this surface renders nothing at all unless a meter area is the selected home
@@ -44,6 +45,8 @@ export type HomeLimitsEditorView = {
   areaName: string;
   hardCapValue: string;
   marginValue: string;
+  periodMinutes: CapacityPeriodMinutes;
+  periodBusy: boolean;
   /** True = the area is only simulating (control OFF); the positive toggle is ON when false. */
   dryRun: boolean;
   /** False while a saved pre-GA config is deliberately held in Main home. */
@@ -52,14 +55,17 @@ export type HomeLimitsEditorView = {
   controlBusy: boolean;
   /** Live margin-vs-cap alert (margin ≥ cap); null keeps the row quiet. */
   marginError: string | null;
-  /** Computed "safe pace starts each hour at" figure ("6.0 kW" / placeholder). */
+  /** Computed "safe pace starts each period at" figure ("6.0 kW" / placeholder). */
   reactionKw: string;
+  /** Highest completed 15-minute average in the current local month. */
+  currentMonthQuarterPeakKw: number | null | undefined;
   /** Resolved status blob for the card; null while the first read is in flight. */
   status: HomeLimitsStatus | null;
   onHardCapInput: (value: string) => void;
   onHardCapChange: () => void;
   onMarginInput: (value: string) => void;
   onMarginChange: () => void;
+  onPeriodChange: (periodMinutes: CapacityPeriodMinutes) => void;
   /** Positive toggle: `controlEnabled` true = PELS controls this area (dry-run off). */
   onControlToggle: (controlEnabled: boolean) => void;
 };
@@ -75,6 +81,23 @@ export type HomeLimitsSectionProps = {
 
 const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
   <section class="settings-form-card home-limits__fields">
+    <div class="field">
+      <span class="field__label pels-text-settings-label" id="home-limits-period-label">Capacity period</span>
+      <MdFilledSelect
+        id="home-limits-period"
+        aria-labelledby="home-limits-period-label"
+        value={String(editor.periodMinutes)}
+        disabled={editor.periodBusy}
+        onChange={(event: Event) => {
+          const value = Number((event.currentTarget as HTMLElement & { value: string }).value);
+          editor.onPeriodChange(value === 15 ? 15 : 60);
+        }}
+      >
+        <MdSelectOption value="60"><div slot="headline">Hourly average</div></MdSelectOption>
+        <MdSelectOption value="15"><div slot="headline">15-minute average (Belgium)</div></MdSelectOption>
+      </MdFilledSelect>
+      <small class="field__hint">Choose the period this meter area’s grid tariff uses.</small>
+    </div>
     <label class="field">
       <span class="field__label pels-text-settings-label">{HOME_LIMITS_HARD_CAP_LABEL}</span>
       <input
@@ -114,6 +137,23 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
       <strong class="settings-result__value" id="home-limits-reaction">{editor.reactionKw}</strong>
       <span class="settings-result__note">{HOME_LIMITS_REACTION_NOTE}</span>
     </div>
+    {editor.periodMinutes === 15 && (
+      <div class="settings-result" role="group" aria-labelledby="home-limits-monthly-peak-label">
+        <span class="settings-result__label" id="home-limits-monthly-peak-label">
+          Highest completed quarter this month
+        </span>
+        <strong class="settings-result__value" id="home-limits-monthly-peak">
+          {editor.currentMonthQuarterPeakKw === undefined
+            ? 'Peak unavailable'
+            : editor.currentMonthQuarterPeakKw === null
+              ? 'No completed quarter yet'
+              : `${editor.currentMonthQuarterPeakKw.toFixed(2)} kW`}
+        </strong>
+        <span class="settings-result__note">
+          Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.
+        </span>
+      </div>
+    )}
   </section>
 );
 

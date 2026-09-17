@@ -71,7 +71,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
-    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
+    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),
     getCapacityDryRun: vi.fn().mockReturnValue(false),
     loadPriceOptimizationSettings: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
@@ -230,7 +230,7 @@ describe('createSettingsHandler', () => {
     // Nothing mirrors the capacity scalars any more: reloading the store IS the
     // propagation, so the handler's job is the reload plus its side effects.
     const deps = buildDeps({
-      getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 12, marginKw: 0.5 }),
+      getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
     });
     const handler = createSettingsHandler(deps);
 

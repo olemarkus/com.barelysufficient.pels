@@ -36,6 +36,7 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     budgetPaceKw: null,
     projectedExemptKw: null,
     softLimitSource: 'capacity',
+    capacityPeriodMinutes: 60,
     powerIsMeasured: true,
     hardCapLimitKw: 10,
     controlledKw: 0.5,

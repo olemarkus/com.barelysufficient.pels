@@ -1,7 +1,7 @@
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
-import { resolveUsableCapacityKw } from './capacityModel';
+import { resolveUsableCapacityKw, type CapacitySettings } from './capacityModel';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   hasObservedMeasuredPower,
@@ -188,7 +188,8 @@ export async function recordPowerSampleForApp(params: {
    */
   generationW?: number;
   nowMs?: number;
-  capacitySettings: { limitKw: number; marginKw: number };
+  timeZone: string;
+  capacitySettings: CapacitySettings;
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
@@ -201,6 +202,7 @@ export async function recordPowerSampleForApp(params: {
     currentPowerW,
     generationW,
     nowMs = Date.now(),
+    timeZone,
     capacitySettings,
     getLatestTargetSnapshot,
     powerTracker,
@@ -264,6 +266,7 @@ export async function recordPowerSampleForApp(params: {
     currentDevicePowerWById,
     nowMs,
     hourBudgetKWh,
+    timeZone,
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,
   });

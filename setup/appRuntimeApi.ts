@@ -342,15 +342,20 @@ abstract class AppRuntimeApi extends Base {
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {
+    const capacityScalars = this.context.readCapacityScalarSettings();
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
       current: {
-        capacitySettings: this.context.capacitySettings,
+        capacitySettings: {
+          limitKw: capacityScalars.limitKw,
+          marginKw: capacityScalars.marginKw,
+          periodMinutes: capacityScalars.periodMinutes,
+        },
         modeAliases: this.context.modeAliases,
         operatingMode: this.context.operatingMode,
         capacityPriorities: this.context.capacityPriorities,
         modeDeviceTargets: this.context.modeDeviceTargets,
-        capacityDryRun: this.context.capacityDryRun,
+        capacityDryRun: capacityScalars.dryRun,
         controllableDevices: this.context.controllableDevices,
         managedDevices: this.context.managedDevices,
         budgetExemptDevices: this.context.budgetExemptDevices,

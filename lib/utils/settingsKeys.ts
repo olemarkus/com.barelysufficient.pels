@@ -1,6 +1,7 @@
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
+export const CAPACITY_PERIOD_MINUTES = 'capacity_period_minutes';
 /**
  * The LEGACY tracker key: the settings blob the tracker persisted as before it
  * moved to the userdata store. Read once, at boot, by the import that carries
@@ -55,6 +56,7 @@ const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
+  CAPACITY_PERIOD_MINUTES,
   // Main keeps the historical unsuffixed mode catalog. Meter areas use these
   // suffixed keys and commit MODE_CATALOG_INITIALIZED last.
   OPERATING_MODE_SETTING,

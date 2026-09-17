@@ -84,7 +84,7 @@ The marker tooltip below keeps the longer explanation for pointer devices.
 
 | Source (`meta.softLimitSource`) | Tooltip (appended after the `Safe pace now N kW —` stem plus a space, so the body separates with a semicolon, not a second em-dash) |
 |---|---|
-| `capacity` | the hourly pace sets this marker; PELS starts reacting here |
+| `capacity` | the current capacity period's pace sets this marker; PELS starts reacting here |
 | `daily` | today's budget sets this marker, which may include power allowed beyond today's budget; PELS starts reacting here |
 
 When `daily` is active and the plan supplies a non-zero allowance for devices
@@ -96,7 +96,7 @@ corresponding detailed form:
 7.0 kW reserved for devices allowed beyond it; PELS starts reacting here.`
 Do not call those devices "exempt" in user-facing copy.
 
-The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body: `your grid tariff step; PELS keeps each hour's average power under this`. Never "breaker trips": an hourly-average ceiling cannot prevent them (see § "Hard cap is an hourly ceiling"). When the hour's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
+The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body naming the configured hour or quarter-hour average. Never "breaker trips": an average-power tariff ceiling cannot prevent them (see § "Hard cap is a capacity-period ceiling"). When the period's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` or `Hard cap this quarter N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
 
 ### Safe pace, hard cap, and safety margin
 
@@ -104,8 +104,8 @@ Keep these three concepts distinct:
 
 | Term | Meaning |
 |---|---|
-| **Safe pace** | Dynamic planning pace to stay on track. Legitimately rises above the hard cap late in an under-used hour. |
-| **Hard cap** | Configured hourly-average ceiling (grid tariff step) no hour's energy should exceed. |
+| **Safe pace** | Dynamic planning pace to stay on track. Legitimately rises above the hard cap late in an under-used capacity period. |
+| **Hard cap** | Configured average-power ceiling for the selected hour or quarter-hour period. |
 | **Safety margin** | Buffer below the configured capacity/tariff limit. |
 
 Do not use `power limit` as a casual threshold label where it could blur Safe pace vs Hard cap.
@@ -146,12 +146,12 @@ Overview status chips are hidden when everything is normal. Show short exception
 | Condition | Chip |
 |---|---|
 | Current power is above the dynamic threshold | `Above safe pace` |
-| Projected hourly energy is above budget | `Above budget` |
-| Projected hourly energy is above the hard cap | `Above hard cap` |
+| Projected capacity-period energy is above budget | `Above budget` |
+| Projected capacity-period energy is above the hard cap | `Above hard cap` |
 
-`Above hard cap` is a **trajectory** chip: it fires when the hour is on pace to
-land past the cap's hourly kWh, never on instantaneous kW above the cap (see
-§ "Hard cap is an hourly ceiling").
+`Above hard cap` is a **trajectory** chip: it fires when the selected capacity
+period is on pace to land past its cap energy, never on instantaneous kW above
+the cap (see § "Hard cap is a capacity-period ceiling").
 
 The hero's decision sentence (the named-subject conclusion at the bottom of the
 card — ladder in [`notes/overview-hero-spec.md`](overview-hero-spec.md)
@@ -295,7 +295,7 @@ shared by all three card variants):
 |---|---|
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
-| Held because this hour's energy budget is spent | `Waiting to resume — this hour's budget is spent` (held back: `Held 2 h — this hour's budget is spent`) |
+| Held because the selected capacity period's energy budget is spent | `Waiting to resume — this capacity period's budget is spent` (held back: `Held 2 h — this capacity period's budget is spent`) |
 | Held because power is reserved for a named device about to start | `Waiting so Water heater can start` (no elapsed-hold stem — it is a cause, not a need) |
 | First to resume once the global resume cooldown ends | `Waiting to resume — 55s` (active stepped step-up: `Waiting to increase — 55s`) |
 | Held by the same cooldown, behind that device | `Waiting to resume — other devices are ahead` (active stepped step-up: `Waiting to increase — other devices are ahead`) |
@@ -384,7 +384,7 @@ cause. Do not "fix" it by substituting device-scoped wording; there is no
 device-scoped fact to substitute.
 
 **Never promise the next hour will be roomier.** The spent-hour line states the
-condition (`this hour's budget is spent`) and names no recourse. The retired
+condition (`this capacity period's budget is spent`) and names no recourse. The retired
 `— more budget next hour` promised an event PELS cannot underwrite: the hour can
 un-exhaust itself mid-flight, because the hour's usage bucket is NET and floored
 at zero, so a solar export burst pulls it back under the budget with no rollover
@@ -407,7 +407,7 @@ Where they survive, precisely: the ceiling/swap strings stay in
 inside device detail) — except `Limited — this hour is near the hard cap`,
 which is retired EVERYWHERE: it misdescribed the trigger (the hour's kWh being
 spent, not cap proximity), and the `hourlyBudget` reason now renders
-`Waiting to resume — this hour's budget is spent` on the card and in the log alike.
+`Waiting to resume — this capacity period's budget is spent` on the card and in the log alike.
 
 Since the 2026-08-08 device-page redesign the device-detail live-status row is
 a HERO: it renders the full card grammar — state word, power fact, one modality
@@ -1582,21 +1582,22 @@ The Overview hero does not chip the mode — see
 5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap` belong in advanced diagnostics only.
 6. **Don't rename established user-facing terms unless the change is clearly better.** Confusion from renaming has a cost too. `Budget`, `Managed`/`Unmanaged`, `Capacity`, `Priority`, `Mode` stay.
 
-## Hard cap is an hourly ceiling
+## Hard cap is a capacity-period ceiling
 
-The hard cap is the user's grid tariff step (effekttrinn): an **hourly-average**
-energy ceiling (the Norwegian kapasitetsledd step is the mean of the top-3
-whole-clock-hour kWh on three different days). Two rules follow:
+The hard cap is the user's grid tariff step or peak target: an average-power
+ceiling over the configured capacity period. The default whole hour matches
+Nordic hourly tariffs; the 15-minute option matches Belgian quarter-hour peak
+measurement. Two rules follow:
 
 1. **Instantaneous kW above the cap is never presented as a breach.** A
    momentary draw above the cap has zero tariff consequence and no control
    path treats it as a breach to correct directly (it only escalates
    plan-rebuild urgency and shortfall-detection timing — see
    `lib/plan/rebuildScheduler`); the dynamic safe pace legitimately exceeds
-   the cap late in an under-used hour. Every over-cap alarm (`Above hard cap` chip,
-   widget danger state, flow trigger) keys off the hour's **trajectory** —
-   projected hourly energy past the cap's kWh. Never pair the cap with
-   "breaker trips" in copy: an hourly-average ceiling cannot prevent them (the
+   the cap late in an under-used period. Every over-cap alarm (`Above hard cap` chip,
+   widget danger state, flow trigger) keys off the period's **trajectory** —
+   projected energy past the period's allowance. Never pair the cap with
+   "breaker trips" in copy: an average-power ceiling cannot prevent them (the
    main fuse is a separate, much higher physical limit PELS does not manage).
 2. **Not a tuning knob.** UI copy must not suggest users raise the hard cap to
    relieve pressure. The recommended remedy when the daily budget runs out

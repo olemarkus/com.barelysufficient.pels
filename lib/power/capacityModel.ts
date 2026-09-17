@@ -1,4 +1,8 @@
 import { usableCapacityKw } from '../../packages/shared-domain/src/capacityAllowance';
+import {
+  capacityPeriodHours,
+  type CapacitySettings as SharedCapacitySettings,
+} from '../../packages/shared-domain/src/settings/capacityPeriod';
 
 /**
  * The two capacity settings the safe-pace family is derived from. In the canonical
@@ -7,13 +11,15 @@ import { usableCapacityKw } from '../../packages/shared-domain/src/capacityAllow
  * onto the canonical ones — `limitKw` is `hardCapKw` and `marginKw` is
  * `safetyMarginKw`.
  */
-export type CapacitySettings = {
+export type CapacityLimitSettings = {
   limitKw: number;
   marginKw: number;
 };
 
+export type CapacitySettings = SharedCapacitySettings;
+
 /**
- * Owner of the hourly capacity allowance: `hourlyAllowanceKWh` read as energy, or
+ * Owner of the capacity allowance: the selected period's kWh read as energy, or
  * `sustainableRateKw` read as the steady rate that spends it — one owner, two
  * named readings (`notes/safe-pace-two-constraints.md`).
  *
@@ -23,6 +29,16 @@ export type CapacitySettings = {
  * because the settings UI must also apply it to unsaved form input, which no
  * resolved scalar on the contract can answer — see that file for why.
  */
-export function resolveUsableCapacityKw(capacitySettings: CapacitySettings): number {
+export function resolveUsableCapacityKw(capacitySettings: CapacityLimitSettings): number {
   return usableCapacityKw(capacitySettings.limitKw, capacitySettings.marginKw);
+}
+
+/** Energy allowance for the configured billing window. */
+export function resolveUsableCapacityKWh(capacitySettings: CapacitySettings): number {
+  return resolveUsableCapacityKw(capacitySettings) * capacityPeriodHours(capacitySettings.periodMinutes);
+}
+
+/** Hard-cap energy boundary for the configured billing window. */
+export function resolveHardCapacityKWh(capacitySettings: CapacitySettings): number {
+  return Math.max(0, capacitySettings.limitKw) * capacityPeriodHours(capacitySettings.periodMinutes);
 }

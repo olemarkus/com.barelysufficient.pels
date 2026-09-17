@@ -741,7 +741,10 @@ export type PlanMetaBase = {
   // From `capacitySettings.limitKw`, a plain required `number` passed straight
   // through — so neither `?` nor `| null` was ever right here.
   hardCapLimitKw: number;
+  capacityPeriodMinutes: 15 | 60;
   hourlyBudgetExhausted: boolean;
+  /** Whole-clock-hour usage retained for the legacy Insights capability. */
+  hourUsedKWh: number;
   usedKWh: number;
   budgetKWh: number;
   capacityLimitKw: number;

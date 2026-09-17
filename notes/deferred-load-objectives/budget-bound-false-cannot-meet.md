@@ -119,7 +119,7 @@ still returns a snapshot with `budget.enabled: false` but an all-zero
 `resolveMaxUsefulEnergyKWh = max(0, 0 − 0) = 0` — capping **every** bucket to
 zero useful energy. A non-exempt (plain) smart task therefore booked nothing and
 reported `cannot_meet` whenever daily budget was off — the opposite of the
-"no daily budget ⇒ the hourly hard cap is the only constraint" contract. Boost /
+"no daily budget ⇒ the selected-period hard cap is the only constraint" contract. Boost /
 exempt tasks dodged it (`exemptFromBudget` lifts the cap via
 `resolveMaxUsefulEnergyKWh`), so it only bit ordinary tasks.
 

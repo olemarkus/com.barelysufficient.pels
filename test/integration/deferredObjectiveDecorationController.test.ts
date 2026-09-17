@@ -34,7 +34,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     });
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
@@ -47,7 +47,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     });
     const devices = [buildDevice()];
 

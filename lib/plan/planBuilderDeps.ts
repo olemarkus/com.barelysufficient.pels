@@ -17,6 +17,7 @@ import type {
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { CapacitySettings } from '../power/capacityModel';
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
@@ -24,7 +25,7 @@ export type PlanBuilderDeps = {
    * before actuating. */
   getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
   // The surplus allocator's opt-in (`surplusWilling`, a lift configured at all).
   // The lift's VALUE is not read here: it is a setpoint, resolved before the
   // planner with every other one (`resolveTemperatureSetpoints`).

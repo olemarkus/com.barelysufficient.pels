@@ -32,7 +32,7 @@ describe('periodic status used kWh', () => {
       sheddingActive: false,
       capacityPaceKw: 6.5,
       powerTracker: state,
-      capacitySettings: { limitKw: 7, marginKw: 0.5 },
+      capacitySettings: { limitKw: 7, marginKw: 0.5, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -65,7 +65,7 @@ describe('periodic status used kWh', () => {
           [getHourBucketKey(nowMs)]: 2.52,
         },
       },
-      capacitySettings: { limitKw: 5, marginKw: 1 },
+      capacitySettings: { limitKw: 5, marginKw: 1, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -93,7 +93,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },
-      capacitySettings: { limitKw: 6, marginKw: 1 },
+      capacitySettings: { limitKw: 6, marginKw: 1, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -111,7 +111,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 7400 },
-      capacitySettings: { limitKw: 6, marginKw: 1.2 },
+      capacitySettings: { limitKw: 6, marginKw: 1.2, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -136,7 +136,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 5200 },
-      capacitySettings: { limitKw: 6, marginKw: 1.2 },
+      capacitySettings: { limitKw: 6, marginKw: 1.2, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -159,7 +159,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },
-      capacitySettings: { limitKw: 6, marginKw: 1 },
+      capacitySettings: { limitKw: 6, marginKw: 1, periodMinutes: 60 },
       operatingMode: 'Home',
       capacityDryRun: false,
       starvedDeviceCount: 2,

@@ -22,7 +22,7 @@ import type CapacityGuard from '../../lib/power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { createPlanEngine } from '../appInit/createPlanEngine';
-import type { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
+import type { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
 import type { createHomePowerPipeline } from './createHomePowerPipeline';
 import type { HomeScope } from './homeScope';
 import type {
@@ -271,9 +271,11 @@ const buildHomeCapacityBundleReads = (params: {
   tracker: HomeTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
+  readCapacityPeak: () => number | null;
 }): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
   const {
     homeId, planEngine, planService, readEffectiveDryRun, getOperatingMode, tracker, getHome, getScalars,
+    readCapacityPeak,
   } = params;
   const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
     homeId,
@@ -292,6 +294,7 @@ const buildHomeCapacityBundleReads = (params: {
       plan: planService.getLatestPlanSnapshotForUi(),
       planUpdatedAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
       powerTracker: tracker.getState(),
+      currentMonthCapacityPeakKw: readCapacityPeak(),
       diagnostics: readDiagnostics(),
     }),
   };
@@ -312,6 +315,7 @@ const buildScopedBundleReads = (params: {
   tracker: HomeTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
+  readCapacityPeak: () => number | null;
   getOperatingMode: () => string;
   isTornDown: () => boolean;
   readDryRunGates: { isMembershipReady: () => boolean; isMeterSourceAuthorized: () => boolean };
@@ -325,6 +329,7 @@ const buildScopedBundleReads = (params: {
     tracker: params.tracker,
     getHome: params.getHome,
     getScalars,
+    readCapacityPeak: params.readCapacityPeak,
     readEffectiveDryRun: () => resolveEffectiveDryRun({
       isTornDown,
       isMembershipReady: readDryRunGates.isMembershipReady,
@@ -358,6 +363,7 @@ type HomeCapacityBundleApiParams = {
   getHome: () => SubHomeConfig;
   setHome: (home: SubHomeConfig) => void;
   getScalars: () => CapacityScalarSettings;
+  readCapacityPeak: () => number | null;
   setScalars: (scalars: CapacityScalarSettings) => void;
   getStableSampleRevision: () => StableSampleRevision;
   beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
@@ -376,7 +382,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     readDryRunGates,
     pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
     markPreparedOwnershipGenerationReconciled,
-    getHome, setHome, getScalars, setScalars,
+    getHome, setHome, getScalars, setScalars, readCapacityPeak,
     getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect, isTornDown, markTornDown,
     reloadModeCatalog, isModeCatalogInitialized,
@@ -392,7 +398,8 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     flushDeferredShortfallSideEffect,
   });
   const readOperations = buildScopedBundleReads({
-    homeId, guard, planEngine, planService, tracker, getHome, getScalars, isTornDown, readDryRunGates,
+    homeId, guard, planEngine, planService, tracker, getHome, getScalars, readCapacityPeak,
+    isTornDown, readDryRunGates,
     // The scope's mode accessor: pure resolution + edge-triggered transition
     // log, no recovery arming — safe on the read surface (unlike its dry-run).
     getOperatingMode: scope.getOperatingMode,

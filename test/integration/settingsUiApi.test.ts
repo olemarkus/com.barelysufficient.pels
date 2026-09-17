@@ -26,7 +26,7 @@ describe('settingsUiApi', () => {
   const createHomey = (
     options: {
       capacityDryRun?: boolean;
-      capacitySettings?: { limitKw: number; marginKw: number };
+      capacitySettings?: { limitKw: number; marginKw: number; periodMinutes: 15 | 60 };
       cloudHomeyId?: string;
       latestPlanSnapshot?: Record<string, unknown> | null;
       /** The main home's published status; `null` for a home that has published none this run. */
@@ -301,13 +301,30 @@ describe('settingsUiApi', () => {
   it('serves the running Main simulation posture even when its setting is absent', () => {
     const homey = createHomey({
       capacityDryRun: false,
-      capacitySettings: { limitKw: 12, marginKw: 0.4 },
+      capacitySettings: { limitKw: 12, marginKw: 0.4, periodMinutes: 15 },
       settings: { capacity_dry_run: undefined },
     });
 
     expect(getSettingsUiPowerPayload({ homey: homey as never }).mainDryRunEffective).toBe(false);
     expect(getSettingsUiPowerPayload({ homey: homey as never }).mainCapacityScalars)
-      .toEqual({ limitKw: 12, marginKw: 0.4 });
+      .toEqual({ limitKw: 12, marginKw: 0.4, periodMinutes: 15 });
+  });
+
+  it('projects the monthly peak without exposing internal quarter state', () => {
+    const homey = createHomey();
+    (homey.app as { powerTracker: unknown }).powerTracker = {
+      lastPowerW: 5200,
+      lastTimestamp: 123,
+      capacityQuarter: { startMs: 0, energyKWh: 0.5, trackedMs: 900_000 },
+      capacityMonthlyPeak: { monthKey: '2026-03', peakKw: 6.25 },
+    };
+    (homey.app as unknown as { getCurrentMonthCapacityPeakKw: () => number }).getCurrentMonthCapacityPeakKw = () => 6.25;
+
+    const payload = getSettingsUiPowerPayload({ homey: homey as never });
+
+    expect(payload.capacityPeak).toEqual({ currentMonthQuarterPeakKw: 6.25 });
+    expect((payload.tracker as Record<string, unknown>).capacityQuarter).toBeUndefined();
+    expect((payload.tracker as Record<string, unknown>).capacityMonthlyPeak).toBeUndefined();
   });
 
   // The read boundary classifies the published status against the same

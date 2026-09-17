@@ -76,6 +76,7 @@ import {
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
+import type { CapacitySettings } from './lib/power/capacityModel';
 import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';
@@ -136,7 +137,7 @@ class PelsApp extends PelsAppBase implements AppContext {
         }
       },
     });
-  public capacitySettings = { limitKw: 10, marginKw: 0.2 };
+  public capacitySettings: CapacitySettings = { limitKw: 10, marginKw: 0.2, periodMinutes: 60 };
   public capacityDryRun = true;
   public operatingMode = 'Home';
   public modeAliases: Record<string, string> = {};

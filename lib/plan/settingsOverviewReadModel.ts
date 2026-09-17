@@ -68,11 +68,14 @@ function resolveFiniteKWh(value: number | undefined): number | undefined {
  * it forced the wire type to declare the field optional, which pushed a
  * `typeof budgetKWh !== 'number'` guard into the hero.
  */
-function resolveHourBudgetKWh(params: {
-  capacityHourBudgetKWh: number;
-  dailyBudgetHourKWh: number | undefined;
-}): number {
-  const { capacityHourBudgetKWh, dailyBudgetHourKWh } = params;
+function resolveHourBudgetKWh(
+  capacityHourBudgetKWh: number,
+  dailyBudgetHourKWh: number | undefined,
+  capacityPeriodMinutes: 15 | 60,
+): number {
+  // Daily-budget allocations remain hourly. Dividing one into four equal
+  // quarters would invent a constraint the daily planner never decided.
+  if (capacityPeriodMinutes === 15) return capacityHourBudgetKWh;
   return dailyBudgetHourKWh === undefined
     ? capacityHourBudgetKWh
     : Math.min(capacityHourBudgetKWh, dailyBudgetHourKWh);
@@ -124,8 +127,13 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
     projectedExemptKw: normalizedMeta.projectedExemptKw,
     softLimitSource: normalizedMeta.softLimitSource,
     hardCapLimitKw: normalizedMeta.hardCapLimitKw,
+    capacityPeriodMinutes: normalizedMeta.capacityPeriodMinutes,
     usedKWh: normalizedMeta.usedKWh,
-    hourBudgetKWh: resolveHourBudgetKWh({ capacityHourBudgetKWh, dailyBudgetHourKWh }),
+    hourBudgetKWh: resolveHourBudgetKWh(
+      capacityHourBudgetKWh,
+      dailyBudgetHourKWh,
+      normalizedMeta.capacityPeriodMinutes,
+    ),
     minutesRemaining: normalizedMeta.minutesRemaining,
     hourControlledKWh: normalizedMeta.hourControlledKWh,
     hourUncontrolledKWh: normalizedMeta.hourUncontrolledKWh,

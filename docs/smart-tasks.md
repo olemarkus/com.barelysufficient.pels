@@ -114,7 +114,7 @@ Changing only the permissions re-plans the task and keeps the current run going.
 
 Two things stay true no matter what you grant:
 
-- All three permissions stay inside the **hard cap**. PELS never pushes an hour's average over your capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
+- All three permissions stay inside the **hard cap**. PELS never pushes the selected capacity period's average over your limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
 - Permissions persist once you grant them, but they have no effect until the planned hours or the rescue gate apply — so a task already on track stays on its normal plan.
 
 ### Example: a water heater that must be ready

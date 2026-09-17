@@ -53,8 +53,7 @@ const homesPayload = (runtimeActive = true) => ({
   configDegraded: false,
 });
 
-const MAIN_HINT_AT_INSTALL = 'Your grid tariff step (effekttrinn) — '
-  + 'PELS keeps each hour’s average power under this.';
+const MAIN_HINT_AT_INSTALL = 'The peak or tariff step you want to protect — PELS keeps each selected period’s average power under this.';
 
 const setupDom = () => {
   document.body.innerHTML = '<div id="home-scope-bar" hidden></div>'
@@ -204,7 +203,7 @@ describe('scope bar + static-form visibility', () => {
     // over the whole house from one home among several).
     expect(panelTitle().textContent).toBe('Limits & safety');
     expect(globalCard().hidden).toBe(false);
-    expect(mainCapHint().textContent).toContain('The Main home’s grid tariff step');
+    expect(mainCapHint().textContent).toContain('The Main home’s peak or tariff step');
 
     await selectArea(AREA_ID);
     // Area scope: the title carries the area (survives scrolling, a persisted
@@ -623,6 +622,64 @@ describe('per-home writes hit the suffixed keys', () => {
     await flushAsync();
     expect(homey.__settingsStore[capKey]).toBe(5);
     expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('5');
+  });
+
+  it('keeps period writes ordered across a realtime editor replacement', async () => {
+    const periodKey = `capacity_period_minutes:${AREA_ID}`;
+    install({
+      [`capacity_limit_kw:${AREA_ID}`]: 7,
+      [`capacity_margin_kw:${AREA_ID}`]: 0.3,
+      [`capacity_dry_run:${AREA_ID}`]: true,
+      [periodKey]: 60,
+    });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    const pendingPeriodWrites: Array<{
+      value: unknown;
+      complete: (error?: Error) => void;
+    }> = [];
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === periodKey) {
+        pendingPeriodWrites.push({
+          value,
+          complete: (error) => {
+            if (error === undefined) homey.__settingsStore[key] = value;
+            cb?.(error ?? null);
+          },
+        });
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+
+    const firstSelect = document.querySelector<HTMLElement & { value: string }>('#home-limits-period')!;
+    firstSelect.value = '15';
+    firstSelect.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingPeriodWrites.map((write) => write.value)).toEqual([15]);
+
+    notifyHomeLimitsSettingChanged(periodKey);
+    await flushAsync();
+    const replacement = document.querySelector<HTMLElement & { value: string }>('#home-limits-period')!;
+    expect(replacement.value).toBe('15');
+    expect(replacement.hasAttribute('disabled')).toBe(true);
+
+    replacement.value = '60';
+    replacement.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingPeriodWrites.map((write) => write.value)).toEqual([15]);
+
+    pendingPeriodWrites[0]!.complete(new Error('older write failed'));
+    await flushAsync();
+    expect(pendingPeriodWrites.map((write) => write.value)).toEqual([15, 60]);
+    expect(document.querySelector<HTMLElement & { value: string }>('#home-limits-period')?.value).toBe('60');
+
+    pendingPeriodWrites[1]!.complete();
+    await flushAsync();
+    expect(homey.__settingsStore[periodKey]).toBe(60);
+    expect(document.querySelector('#home-limits-period')?.hasAttribute('disabled')).toBe(false);
   });
 
   it('writes capacity_dry_run:<homeId> = false when control is turned ON (activation)', async () => {

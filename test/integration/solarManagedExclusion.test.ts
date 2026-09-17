@@ -243,7 +243,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       await recordPowerSampleForApp({
         currentPowerW: 1500,
         nowMs,
-        capacitySettings: { limitKw: 10, marginKw: 0 },
+        timeZone: 'UTC',
+        capacitySettings: { limitKw: 10, marginKw: 0, periodMinutes: 60 },
         // The harness type expects a no-arg getter; close over the per-call nowMs.
         getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
         powerTracker: tracker,

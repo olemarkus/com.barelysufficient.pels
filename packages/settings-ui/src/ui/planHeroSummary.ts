@@ -6,7 +6,7 @@
  * and only its measured variant satisfies this shape. Resolving that is the
  * view's job (unmeasured ⇒ it renders no hero at all); inward of that decision
  * there is no "maybe there is no power" case for a formatter to carry, and
- * shared-domain sits inward of it.
+ * this view helper sits inward of it.
  *
  * No `headroomKw`: the hero's above-safe-pace state and its overshoot come
  * from the two numbers it prints, `totalKw` against `softLimitKw`, so the
@@ -145,11 +145,13 @@ export const formatPowerMeterMarkerLabels = (
 export const formatEnergyMeterMarkerLabels = (
   kind: 'target' | 'projected' | 'cap',
   valueKWh: number,
+  periodMinutes: 15 | 60 = 60,
 ): HeroMeterMarkerLabels => {
+  const period = periodMinutes === 15 ? 'quarter' : 'hour';
   if (kind === 'projected') {
     return {
-      short: 'Projected this hour',
-      aria: `Projected this hour ${formatKWh(valueKWh)}`,
+      short: `Projected this ${period}`,
+      aria: `Projected this ${period} ${formatKWh(valueKWh)}`,
     };
   }
   // The cap marker carries its value visibly (unlike budget/projected, whose
@@ -157,10 +159,10 @@ export const formatEnergyMeterMarkerLabels = (
   // is the threshold that turns the projection red, and it is printed nowhere
   // else in kWh.
   if (kind === 'cap') {
-    const label = `Hard cap this hour ${formatKWh(valueKWh)}`;
+    const label = `Hard cap this ${period} ${formatKWh(valueKWh)}`;
     return { short: label, aria: label };
   }
-  return { short: 'Budget this hour', aria: `Budget this hour ${formatKWh(valueKWh)}` };
+  return { short: `Budget this ${period}`, aria: `Budget this ${period} ${formatKWh(valueKWh)}` };
 };
 
 // ─── Above-safe-pace subline ─────────────────────────────────────────────────
@@ -250,6 +252,7 @@ export type DecisionSentenceInput = {
   projectedOverHardCap: boolean;
   projectedOverBudget: boolean;
   safePaceKw: number | null;
+  capacityPeriodMinutes?: 15 | 60;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
   // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
   // limited set falls into this bucket, the decision sentence frames the
@@ -332,12 +335,13 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
 const resolveOverHardCapDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
+  const period = input.capacityPeriodMinutes === 15 ? 'quarter' : 'hour';
   // Simulation mode: PELS is not acting, so neither "Easing devices off" nor
   // the recourse variant may render — state the trajectory alone (the banner
   // and status chip already name simulation; hypothetical-voice rule in
   // `notes/overview-hero-spec.md` § "Decision sentence").
   if (input.dryRun) {
-    return { text: 'On pace to exceed the hard cap this hour.', positive: false };
+    return { text: `On pace to exceed the hard cap this ${period}.`, positive: false };
   }
   const capacityControlOffCount = input.capacityControlOffCount ?? 0;
   const sheddableManagedRunningCount = input.sheddableManagedRunningCount ?? 0;
@@ -346,12 +350,12 @@ const resolveOverHardCapDecisionSentence = (
   // left to act on (the hour may have banked the energy already, with every
   // managed device settled off and draw near zero).
   if (sheddableManagedRunningCount > 0) {
-    return { text: 'On pace to exceed the hard cap this hour. Easing devices off.', positive: false };
+    return { text: `On pace to exceed the hard cap this ${period}. Easing devices off.`, positive: false };
   }
   if (capacityControlOffCount === 0) {
     // Nothing left to ease off and no control-off culprit: state the
     // trajectory without claiming action PELS cannot take.
-    return { text: 'On pace to exceed the hard cap this hour.', positive: false };
+    return { text: `On pace to exceed the hard cap this ${period}.`, positive: false };
   }
   const offDevices = capacityControlOffCount === 1
     ? 'a device that has Power-limit control turned off'
@@ -399,8 +403,9 @@ export const buildDecisionSentence = (
 
   // 6. Projected over budget.
   if (input.projectedOverBudget) {
+    const period = input.capacityPeriodMinutes === 15 ? 'quarter’s' : 'hour’s';
     return {
-      text: 'On pace to overshoot this hour’s energy budget.',
+      text: `On pace to overshoot this ${period} energy budget.`,
       positive: false,
     };
   }

@@ -1,7 +1,7 @@
 import { PriceLevel } from '../price/priceLevels';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
-  computeProjectedHourEnergyKWh,
+  computeProjectedPeriodEnergyKWh,
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
 import type { DevicePlan, DevicePlanDevice, PlanMeta } from './planTypes';
@@ -92,7 +92,7 @@ export function buildPelsStatus(params: {
   return {
     ...resolveMeasuredStatusFields(plan.meta),
     hourlyLimitKw: plan.meta.softLimitKw,
-    hourlyUsageKwh: plan.meta.usedKWh ?? 0,
+    hourlyUsageKwh: plan.meta.hourUsedKWh,
     dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
     dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
     limitReason,
@@ -158,28 +158,38 @@ function resolveMeasuredStatusFields(
   };
 }
 
-// "Above hard cap" is a trajectory judgement: the hour is on pace to land past
-// the cap's hourly kWh. Never derived from instantaneous kW vs the cap — the
-// cap is an hourly-average tariff-step ceiling, and no control path treats a
+// "Above hard cap" is a trajectory judgement: the configured capacity period
+// is on pace to land past the cap's energy allowance. Never derived from
+// instantaneous kW vs the cap — the cap is an average tariff-step ceiling, and
+// no control path treats a
 // momentary excursion as a breach to correct directly (instantaneous over-cap
 // only escalates plan-rebuild urgency and shortfall-detection timing — see
 // `lib/plan/rebuildScheduler`, `lib/power/capacityGuard.ts`;
-// `notes/ui-terminology.md` § "Hard cap is an hourly ceiling"). Consumed by
+// `notes/ui-terminology.md` § "Hard cap is a capacity-period ceiling"). Consumed by
 // the headroom widget's danger state so it reconciles with the Overview
 // hero's chip, which computes the same projection and predicate live via the
 // shared helpers.
 function resolveProjectedOverHardCap(meta: PlanMeta): boolean {
-  const { totalKw, usedKWh, minutesRemaining, hardCapLimitKw } = meta;
+  const {
+    totalKw,
+    usedKWh,
+    minutesRemaining,
+    hardCapLimitKw,
+    capacityPeriodMinutes,
+  } = meta;
   if (typeof totalKw !== 'number' || typeof usedKWh !== 'number'
     || typeof minutesRemaining !== 'number' || typeof hardCapLimitKw !== 'number') {
     return false;
   }
-  const projectedKWh = computeProjectedHourEnergyKWh({
+  const projectedKWh = computeProjectedPeriodEnergyKWh(
     usedKWh,
     totalKw,
-    minutesRemainingInHour: minutesRemaining,
+    minutesRemaining,
+  );
+  return isProjectedOverHardCap({
+    projectedKWh,
+    hardCapKWh: hardCapLimitKw * capacityPeriodMinutes / 60,
   });
-  return isProjectedOverHardCap({ projectedKWh, hardCapKWh: hardCapLimitKw });
 }
 
 type LimitSource = DevicePlan['meta']['softLimitSource'];

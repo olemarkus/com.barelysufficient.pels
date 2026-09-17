@@ -1,21 +1,22 @@
 // Integration tests for the capacity scalar settings boundary
-// (`setup/capacitySettingsStoreAdapter.ts`), one layer over the shared
+// (`lib/power/capacitySettingsStore.ts`), one layer over the shared
 // MockSettings seam: home-scoped key mapping (main = historical unsuffixed
 // keys, other homes = `<key>:<homeId>`) and the exact historical fallback
 // semantics — a non-finite scalar or non-boolean dry-run flag resolves to the
 // construction-bound last-good provider's value, never a fabricated default.
 import { describe, expect, it } from 'vitest';
-import { createCapacitySettingsStore } from '../../setup/capacitySettingsStoreAdapter';
+import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
 
-const fallback = (): CapacityScalarSettings => ({ limitKw: 12, marginKw: 0.5, dryRun: false });
+const fallback = (): CapacityScalarSettings => ({ limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
 
 describe('createCapacitySettingsStore', () => {
   it('reads the historical unsuffixed keys for the main home', () => {
@@ -29,7 +30,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(store.read()).toEqual({ limitKw: 7.5, marginKw: 0.4, dryRun: true });
+    expect(store.read()).toEqual({ limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60 });
   });
 
   it('reads home-suffixed keys for a non-main home', () => {
@@ -44,7 +45,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, 'cabin', fallback);
 
-    expect(store.read()).toEqual({ limitKw: 5, marginKw: 0.1, dryRun: false });
+    expect(store.read()).toEqual({ limitKw: 5, marginKw: 0.1, dryRun: false, periodMinutes: 60 });
   });
 
   it('does not bleed main-home values into a home whose keys are unset', () => {
@@ -72,7 +73,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(store.read()).toEqual({ limitKw: 12, marginKw: 0.5, dryRun: false });
+    expect(store.read()).toEqual({ limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
   });
 
   it.each([
@@ -98,6 +99,17 @@ describe('createCapacitySettingsStore', () => {
     expect(store.read().dryRun).toBe(false);
   });
 
+  it('reads the Belgian quarter-hour period and retains it across unsupported values', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_PERIOD_MINUTES, 15);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, () => ({ ...fallback(), periodMinutes: 15 }));
+
+    expect(store.read().periodMinutes).toBe(15);
+
+    settings.set(CAPACITY_PERIOD_MINUTES, 30);
+    expect(store.read().periodMinutes).toBe(15);
+  });
+
   it('passes any finite scalar through unbounded, exactly like the historical reads', () => {
     const settings = new MockSettings();
     settings.set(CAPACITY_LIMIT_KW, 0);
@@ -105,7 +117,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(store.read()).toEqual({ limitKw: 0, marginKw: -0.3, dryRun: false });
+    expect(store.read()).toEqual({ limitKw: 0, marginKw: -0.3, dryRun: false, periodMinutes: 60 });
   });
 
   it('resolves each field independently when only some persisted values are junk', () => {
@@ -116,6 +128,6 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(store.read()).toEqual({ limitKw: 8, marginKw: 0.5, dryRun: false });
+    expect(store.read()).toEqual({ limitKw: 8, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
   });
 });

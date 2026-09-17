@@ -113,6 +113,7 @@ export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
 export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_limit_kw',
   'capacity_margin_kw',
+  'capacity_period_minutes',
   'capacity_dry_run',
   'homey_energy_meter_device_id',
   'capacity_priorities',
@@ -240,6 +241,7 @@ export type SettingsUiPlanMetaSnapshotBase = {
   softLimitSource: 'capacity' | 'daily';
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
+  capacityPeriodMinutes: 15 | 60;
   usedKWh: number;
   hourBudgetKWh: number;
   minutesRemaining: number;
@@ -539,6 +541,11 @@ export type SettingsUiPowerReadings =
   | { readonly state: 'never' }
   | { readonly state: 'received'; readonly lastPowerUpdateMs: number };
 
+export type SettingsUiCapacityPeak = {
+  /** Highest completed 15-minute average in the current Homey-local month. */
+  readonly currentMonthQuarterPeakKw: number | null;
+};
+
 export type SettingsUiPowerPayload = {
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
@@ -561,7 +568,17 @@ export type SettingsUiPowerPayload = {
   mainCapacityScalars?: {
     limitKw: number;
     marginKw: number;
+    periodMinutes: 15 | 60;
   };
+  /** Runtime-authoritative scalars on a scoped meter-area read. */
+  scopedCapacityScalars?: {
+    limitKw: number;
+    marginKw: number;
+    dryRun: boolean;
+    periodMinutes: 15 | 60;
+  };
+  /** Measured tariff evidence for Belgium's monthly quarter-hour peak. */
+  capacityPeak?: SettingsUiCapacityPeak;
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
   // Solar card (which cannot read the lazy-loaded devices payload). True only
   // when a tracked solar/PV device exists (`hasSolarProductionCandidate`) —

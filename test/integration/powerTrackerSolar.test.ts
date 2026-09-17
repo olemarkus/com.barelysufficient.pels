@@ -55,7 +55,8 @@ const ingestForApp = async (
     currentPowerW: 500,
     generationW,
     nowMs,
-    capacitySettings: { limitKw: 10, marginKw: 0.5 },
+    timeZone: 'UTC',
+    capacitySettings: { limitKw: 10, marginKw: 0.5, periodMinutes: 60 },
     getLatestTargetSnapshot: () => [],
     powerTracker: tracker,
     sumBudgetExemptUsage: () => null,
@@ -211,8 +212,9 @@ describe('power tracker solar accounting', () => {
       for (const key of SOLAR_STATE_KEYS) {
         expect(`${key} in sampled state: ${key in state}`).toBe(`${key} in sampled state: false`);
       }
-      // The persisted artifact (what Homey settings JSON-serializes) must be
-      // deep-equal with the pre-solar output for the same sequence.
+      // The persisted artifact (what Homey settings JSON-serializes) must keep
+      // the exact non-solar shape. Capacity-quarter accounting is independent
+      // of solar and therefore remains present.
       const bucketKey = isoHour(start);
       expect(JSON.parse(JSON.stringify(state))).toStrictEqual({
         buckets: { [bucketKey]: 0.5 },
@@ -223,6 +225,12 @@ describe('power tracker solar accounting', () => {
         exemptBuckets: {},
         lastTimestamp: start + 30 * 60 * 1000,
         lastPowerW: 1000,
+        capacityQuarter: {
+          startMs: start + 30 * 60 * 1000,
+          energyKWh: 0,
+          trackedMs: 0,
+        },
+        capacityMonthlyPeak: { monthKey: '2025-01', peakKw: 1 },
       });
 
       vi.useFakeTimers();
@@ -251,6 +259,12 @@ describe('power tracker solar accounting', () => {
           lastTimestamp: start + 30 * 60 * 1000,
           lastPowerW: 1000,
           unreliablePeriods: [],
+          capacityQuarter: {
+            startMs: start + 30 * 60 * 1000,
+            energyKWh: 0,
+            trackedMs: 0,
+          },
+          capacityMonthlyPeak: { monthKey: '2025-01', peakKw: 1 },
         });
       } finally {
         vi.useRealTimers();

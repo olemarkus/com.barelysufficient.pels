@@ -84,7 +84,7 @@ describe('posture snapshot merge (last-good across bad reads)', () => {
 
   it('keeps the last resolved value when the flag is unset', () => {
     // The runtime adapter resolves absence to its last-good `dryRun`
-    // (`setup/capacitySettingsStoreAdapter.ts`) — an already-live area whose
+    // (`lib/power/capacitySettingsStore.ts`) — an already-live area whose
     // suffixed flag is unset stays live in the runtime, so the UI must not
     // repaint it with the boot default and announce a phantom simulation.
     expect(mergeMeterAreaSimulation([rental, cabin], [absent, absent], [

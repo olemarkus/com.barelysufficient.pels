@@ -205,7 +205,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -334,7 +334,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -406,7 +406,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
@@ -458,7 +458,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getModeDeviceTargets: () => ({ Home: { unit: modeTargetC } }),
         getThermalDirection: () => direction,
@@ -504,7 +504,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -551,7 +551,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),

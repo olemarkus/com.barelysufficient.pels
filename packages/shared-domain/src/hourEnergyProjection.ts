@@ -17,10 +17,20 @@ export const computeProjectedHourEnergyKWh = (params: {
   usedKWh: number;
   totalKw: number;
   minutesRemainingInHour: number;
-}): number => Math.max(0, params.usedKWh + (params.totalKw * params.minutesRemainingInHour) / 60);
+}): number => computeProjectedPeriodEnergyKWh(
+  params.usedKWh,
+  params.totalKw,
+  params.minutesRemainingInHour,
+);
 
-// THE "Above hard cap" judgement: is this hour on pace to land past the cap's
-// hourly kWh? Strict `>` (a projection exactly at the cap holds the step), and
+export const computeProjectedPeriodEnergyKWh = (
+  usedKWh: number,
+  totalKw: number,
+  minutesRemaining: number,
+): number => Math.max(0, usedKWh + (totalKw * minutesRemaining) / 60);
+
+// THE "Above hard cap" judgement: is this period on pace to land past the cap's
+// period kWh? Strict `>` (a projection exactly at the cap holds the step), and
 // `false` whenever no cap value is known — an absent cap must never escalate,
 // on any surface. Both the hero's projection tone and the `pels_status`
 // producer call this predicate so the verdict cannot fork.

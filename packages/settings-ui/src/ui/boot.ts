@@ -9,6 +9,7 @@ import {
   settingsLimitsForm,
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
+  settingsCapacityPeriodSelect,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   simulationDisableButton,
@@ -255,6 +256,7 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
+  settingsCapacityPeriodSelect?.addEventListener('change', () => autoSaveSettingsLimits());
   // The power-source select persists itself through the guarded ui_homes_save
   // seam (the runtime refuses Flow while meter areas run), so it never rides
   // the bulk limits save. The handler owns its own error/rollback path.

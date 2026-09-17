@@ -47,6 +47,11 @@ import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelper
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
+import {
+  projectCurrentMonthCapacityPeakForUi,
+  projectMainCapacityScalarsForUi,
+  projectPowerTrackerForUi,
+} from '../lib/power/trackerUiProjection';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   classifyPowerStatusRead,
@@ -70,6 +75,7 @@ import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolu
 type SettingsUiApiApp = Homey.App & {
   capacityDryRun?: unknown;
   capacitySettings?: unknown;
+  getCurrentMonthCapacityPeakKw?: () => number | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
@@ -340,16 +346,6 @@ const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null
   getPlanSnapshotForUiFromHomey(homey)
 );
 
-const resolveMainCapacityScalars = (
-  value: unknown,
-): SettingsUiPowerPayload['mainCapacityScalars'] => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const { limitKw, marginKw } = value as { limitKw?: unknown; marginKw?: unknown };
-  if (typeof limitKw !== 'number' || !Number.isFinite(limitKw)) return undefined;
-  if (typeof marginKw !== 'number' || !Number.isFinite(marginKw)) return undefined;
-  return { limitKw, marginKw };
-};
-
 /**
  * The pull composers' evidence, from the same predicate the home's plan-build
  * gate asks of the same live tracker (`PowerMeasurementGate.isOpen` ⇔
@@ -401,7 +397,8 @@ const resolvePowerReadings = (tracker: PowerTrackerState): SettingsUiPowerReadin
 
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
-  const mainCapacityScalars = resolveMainCapacityScalars(app?.capacitySettings);
+  const mainCapacityScalars = projectMainCapacityScalarsForUi(app?.capacitySettings);
+  const capacityPeak = projectCurrentMonthCapacityPeakForUi(app?.getCurrentMonthCapacityPeakKw);
   // The tracker keeps the persisted fallback: it carries usage HISTORY
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
@@ -411,13 +408,14 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     ? rawTracker
     : {};
   return {
-    tracker,
+    tracker: projectPowerTrackerForUi(tracker),
     readings: resolvePowerReadings(tracker),
     status: classifyMainPowerStatus(homey),
     ...(typeof app?.capacityDryRun === 'boolean'
       ? { mainDryRunEffective: app.capacityDryRun }
       : {}),
     ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
+    ...(capacityPeak ? { capacityPeak } : {}),
     // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). A role-detected PV device is now the whole condition:
@@ -553,9 +551,13 @@ const powerPayloadForHome = (
   // served nothing. The unavailable arm was refused above, so only
   // `resolved`/`absent` reach the classifier.
   return {
-    tracker: reading.powerTracker,
+    tracker: projectPowerTrackerForUi(reading.powerTracker),
     readings: resolvePowerReadings(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
+    capacityPeak: {
+      currentMonthQuarterPeakKw: reading.currentMonthCapacityPeakKw,
+    },
+    scopedCapacityScalars: reading.diagnostics.capacityScalars,
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,
     // and a sub-home's `generationBuckets` can never fill: its bundle is built

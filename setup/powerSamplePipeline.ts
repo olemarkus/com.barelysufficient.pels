@@ -25,6 +25,7 @@ import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
+import type { CapacitySettings } from '../lib/power/capacityModel';
 
 export type PowerSamplePipelineDeps = {
   /**
@@ -36,7 +37,8 @@ export type PowerSamplePipelineDeps = {
     deps: SampleIngestQueueDeps<PowerSampleRequest>,
   ) => SampleIngestQueue<PowerSampleRequest>;
   getPowerTracker: () => PowerTrackerState;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
+  getTimeZone: () => string;
   /**
    * Late-bound by necessity: main's pipeline is a `PelsApp` field
    * initializer, constructed before `initCapacityGuard` runs. The type is
@@ -297,6 +299,7 @@ export class PowerSamplePipeline {
         generationW,
         nowMs,
         capacitySettings,
+        timeZone: this.deps.getTimeZone(),
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
         sumBudgetExemptUsage: this.sumBudgetExemptUsage,

@@ -53,7 +53,7 @@ describe('Shed vs Restore Logic', () => {
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;
-        app.capacitySettings = { limitKw: 10, marginKw: 0.2 };
+        app.capacitySettings = { limitKw: 10, marginKw: 0.2, periodMinutes: 60 };
 
         // Run calculation
         const devices = targetDevices;

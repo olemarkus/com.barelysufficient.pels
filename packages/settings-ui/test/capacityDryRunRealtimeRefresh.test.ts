@@ -8,6 +8,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
   POWER_SOURCE,
 } from '../../contracts/src/settingsKeys.ts';
 import { loadCapacitySettings, saveSimulationModeSettings } from '../src/ui/capacity.ts';
@@ -51,13 +52,14 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
     dryRunSetting: boolean | undefined,
     priorState: boolean,
     mainDryRunEffective?: boolean,
-    mainCapacityScalars?: { limitKw: number; marginKw: number },
+    mainCapacityScalars?: { limitKw: number; marginKw: number; periodMinutes: 15 | 60 },
   ) => {
     homey = installHomeyMock({
       settings: {
         ...(dryRunSetting === undefined ? {} : { [CAPACITY_DRY_RUN]: dryRunSetting }),
         [CAPACITY_LIMIT_KW]: 10,
         [CAPACITY_MARGIN_KW]: 0.2,
+        [CAPACITY_PERIOD_MINUTES]: 60,
         [POWER_SOURCE]: 'flow',
       },
       ...(typeof mainDryRunEffective === 'boolean'
@@ -101,7 +103,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('preserves retained Main limit and margin when their persisted keys are absent', async () => {
-    setup(undefined, true, false, { limitKw: 12, marginKw: 0.4 });
+    setup(undefined, true, false, { limitKw: 12, marginKw: 0.4, periodMinutes: 60 });
     delete homey.__settingsStore[CAPACITY_LIMIT_KW];
     delete homey.__settingsStore[CAPACITY_MARGIN_KW];
 
@@ -110,6 +112,16 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
 
     expect(homey.set).toHaveBeenCalledWith(CAPACITY_LIMIT_KW, 12, expect.any(Function));
     expect(homey.set).toHaveBeenCalledWith(CAPACITY_MARGIN_KW, 0.4, expect.any(Function));
+  });
+
+  it('preserves the runtime Belgian period when its persisted key is transiently absent', async () => {
+    setup(undefined, true, false, { limitKw: 12, marginKw: 0.4, periodMinutes: 15 });
+    delete homey.__settingsStore[CAPACITY_PERIOD_MINUTES];
+
+    await loadCapacitySettings();
+    await saveSimulationModeSettings(false);
+
+    expect(homey.set).toHaveBeenCalledWith(CAPACITY_PERIOD_MINUTES, 15, expect.any(Function));
   });
 
   it('re-renders when simulation flips off in another WebView', async () => {

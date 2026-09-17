@@ -33,16 +33,14 @@ import type { HomeRuntimeReadPort, HomeRuntimeReadResult } from '../../lib/home/
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import {
-  CAPACITY_DRY_RUN,
   CAPACITY_PRIORITIES,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
   MAIN_HOME_ID,
   MODE_ALIASES,
   MODE_CATALOG_INITIALIZED,
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
+import { isCapacityScalarSettingKey } from '../../lib/power/capacitySettingsStore';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { createHomesStore } from '../homeRegistryAdapter';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
@@ -65,11 +63,6 @@ import { prepareTrackerForMeter } from '../../lib/power/trackerMeterIdentity';
 import { resetPersistedHomeTrackerFreshness } from './resetPersistedHomeTrackerFreshness';
 import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 
-const CAPACITY_SCALAR_BASE_KEYS: ReadonlySet<string> = new Set([
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  CAPACITY_DRY_RUN,
-]);
 const MODE_CATALOG_BASE_KEYS: ReadonlySet<string> = new Set([
   OPERATING_MODE_SETTING,
   MODE_ALIASES,
@@ -511,7 +504,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       bundle.rebuildForModeSettingsChange();
       return;
     }
-    if (CAPACITY_SCALAR_BASE_KEYS.has(baseKey)) bundle.reloadCapacityScalars();
+    if (isCapacityScalarSettingKey(baseKey)) bundle.reloadCapacityScalars();
   }
 
   /** Uninit: tear down every bundle (persisted suffixed state stays). */

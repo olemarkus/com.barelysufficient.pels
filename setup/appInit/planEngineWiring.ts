@@ -11,6 +11,7 @@ import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/pla
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { CapacitySettings } from '../../lib/power/capacityModel';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 
 /**
@@ -35,7 +36,7 @@ export type PlanEngineWiring = {
   actuator: Actuator;
   binaryCommandLifecycle?: BinaryCommandLifecycleListener;
   capacityGuard: CapacityGuard;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;

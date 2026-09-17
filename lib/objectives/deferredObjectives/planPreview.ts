@@ -1,6 +1,6 @@
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
-import type { CapacitySettings } from '../../power/capacityModel';
+import type { CapacityLimitSettings } from '../../power/capacityModel';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
@@ -48,7 +48,7 @@ export type PreviewDeferredObjectivePlanParams = {
   // needs: the pace the probes run at (`limitKw - marginKw`) and the physical
   // ceiling `atCapNow` is measured against. Handed over unresolved so the
   // derivation happens here, in the domain, not in the wiring layer.
-  capacitySettings: CapacitySettings;
+  capacitySettings: CapacityLimitSettings;
   // Existing main-home planning inputs and objectives make the preview
   // priority-aware. Optional for backward-compatible isolated callers.
   devices?: ObjectiveDeviceInput[];

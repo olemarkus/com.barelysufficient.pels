@@ -12,6 +12,17 @@ export type PowerTrackerMeterIdentity = {
   meterDeviceId: string | null;
 };
 
+export type CapacityQuarter = {
+  startMs: number;
+  energyKWh: number;
+  trackedMs: number;
+};
+
+export type CapacityMonthlyPeak = {
+  monthKey: string;
+  peakKw: number;
+};
+
 export type PowerTrackerState = {
   /** Sub-home-only provenance for the freshness latch; absent on legacy/main trackers. */
   meterIdentity?: PowerTrackerMeterIdentity;
@@ -28,6 +39,8 @@ export type PowerTrackerState = {
   lastGenerationW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>;
+  capacityQuarter?: CapacityQuarter;
+  capacityMonthlyPeak?: CapacityMonthlyPeak;
   hourlySampleCounts?: Record<string, number>;
   hourlyBudgets?: Record<string, number>;
   dailyBudgetCaps?: Record<string, number>;
@@ -81,6 +94,8 @@ export type RecordPowerSampleParams = {
   currentDevicePowerWById?: Record<string, number>;
   nowMs?: number;
   hourBudgetKWh?: number;
+  /** IANA timezone used to assign completed quarters to their local billing month. */
+  timeZone?: string;
   rebuildPlanFromCache: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };

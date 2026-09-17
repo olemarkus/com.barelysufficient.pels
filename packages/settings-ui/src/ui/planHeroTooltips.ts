@@ -1,5 +1,5 @@
-// Canonical tooltip copy for the Overview hero. Lives in shared-domain so
-// the settings UI and any future runtime log line emit identical wording
+// Canonical tooltip copy for the Overview hero. Lives with its browser consumer;
+// any future runtime log line must first establish a genuine shared consumer
 // (Rule 7, `notes/ui-terminology.md`). Wording is sourced from
 // `notes/ui-terminology.md` § "Safe pace now — one label, two possible
 // sources" and § "Hero bar vocabulary".
@@ -25,6 +25,19 @@ export const HERO_INFO_TOOLTIP_TEXT = [
   + 'while the hour\'s energy stays under it.',
   'kW is speed. kWh is distance.',
 ].join(' ');
+
+export const formatHeroInfoTooltip = (periodMinutes: 15 | 60): string => {
+  if (periodMinutes === 60) return HERO_INFO_TOOLTIP_TEXT;
+  return [
+    'Power now is measured in kW — how fast electricity is being used right now.',
+    'Energy this quarter is measured in kWh — how much has been used so far this quarter.',
+    'Safe pace is the whole-home power rate where PELS starts reacting.',
+    'It can be set by this quarter\'s energy pace or today\'s budget pace.',
+    'The hard cap is your grid tariff step — a 15-minute average, so short bursts above it are fine '
+      + 'while the quarter\'s energy stays under it.',
+    'kW is speed. kWh is distance.',
+  ].join(' ');
+};
 
 // Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
 // lowercase and uses a semicolon (not a second em-dash) as its internal
@@ -56,21 +69,27 @@ export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
 // still holds; there is simply no longer an unknown source to apply it to,
 // because `softLimitSource` is required on the wire and its two members are
 // the only ones a producer can emit.
-export const resolveSafePaceSourceText = (source: HeroSoftLimitSource): string => (
-  SAFE_PACE_SOURCE_BY_SOURCE[source]
-);
+export const resolveSafePaceSourceText = (
+  source: HeroSoftLimitSource,
+  periodMinutes: 15 | 60 = 60,
+): string => source === 'capacity' && periodMinutes === 15
+  ? 'set by this quarter\'s pace'
+  : SAFE_PACE_SOURCE_BY_SOURCE[source];
 
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
 
 const resolveSafePaceTooltipBySource = (
   source: HeroSoftLimitSource,
+  periodMinutes: 15 | 60,
 ): string => {
   switch (source) {
     case 'daily':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
     case 'capacity':
-      return SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
+      return periodMinutes === 15
+        ? 'the quarter-hour pace sets this marker; PELS starts reacting here.'
+        : SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
     default: {
       // Exhaustiveness guard: a new HeroSoftLimitSource member must pick its
       // own tooltip above rather than silently borrowing the capacity copy.
@@ -85,6 +104,7 @@ export const formatSafePaceTooltip = (
   safePaceKw: number,
   source: HeroSoftLimitSource,
   composition?: SafePaceComposition,
+  periodMinutes: 15 | 60 = 60,
 ): string => {
   const detail = resolveSafePaceComposition(safePaceKw, composition);
   if (source === 'daily' && detail !== null) {
@@ -92,7 +112,7 @@ export const formatSafePaceTooltip = (
       + `plus ${formatKw(detail.projectedExemptKw)} reserved for devices allowed beyond it; `;
     return `Safe pace now ${formatKw(safePaceKw)} — ${compositionDetail}PELS starts reacting here.`;
   }
-  return `Safe pace now ${formatKw(safePaceKw)} — ${resolveSafePaceTooltipBySource(source)}`;
+  return `Safe pace now ${formatKw(safePaceKw)} — ${resolveSafePaceTooltipBySource(source, periodMinutes)}`;
 };
 
 export type SafePaceComposition = {
@@ -138,11 +158,20 @@ export const formatSafePaceComposition = (
     + `usage counted toward today's budget is paced at ${formatKw(detail.budgetPaceKw)}.`;
 };
 
-export const formatHardCapTooltip = (hardCapKw: number): string =>
-  `Hard cap ${formatKw(hardCapKw)} — ${HARD_CAP_TOOLTIP}`;
+export const formatHardCapTooltip = (
+  hardCapKw: number,
+  periodMinutes: 15 | 60 = 60,
+): string => `Hard cap ${formatKw(hardCapKw)} — ${periodMinutes === 15
+  ? 'your peak target; PELS keeps each quarter-hour average under this.'
+  : HARD_CAP_TOOLTIP}`;
 
 // Energy-bar variant: the cap expressed as this hour's kWh ceiling. Appears on
 // the bar that carries the "Above hard cap" judgement, so the tooltip names
 // the consequence of crossing it.
-export const formatHardCapEnergyTooltip = (hardCapKWh: number): string =>
-  `Hard cap this hour ${hardCapKWh.toFixed(1)} kWh — landing past this puts the hour on a higher tariff step.`;
+export const formatHardCapEnergyTooltip = (
+  hardCapKWh: number,
+  periodMinutes: 15 | 60 = 60,
+): string => {
+  const period = periodMinutes === 15 ? 'quarter' : 'hour';
+  return `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
+};

@@ -578,12 +578,20 @@
            Main-home form below. -->
       <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
+        <div class="field">
+          <span class="field__label pels-text-settings-label" id="settings-capacity-period-label">Capacity period</span>
+          <md-filled-select id="settings-capacity-period" name="settings_capacity_period" aria-labelledby="settings-capacity-period-label">
+            <md-select-option value="60" selected><div slot="headline">Hourly average</div></md-select-option>
+            <md-select-option value="15"><div slot="headline">15-minute average (Belgium)</div></md-select-option>
+          </md-filled-select>
+          <small class="field__hint">Choose the period your grid tariff uses to measure peak power.</small>
+        </div>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>
           <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <!-- Text owned by homeLimits once meter areas exist: "your" stops
                meaning the whole house the moment the home is split. -->
-          <small class="field__hint" id="settings-capacity-limit-hint">Your grid tariff step (effekttrinn) &mdash; PELS keeps each hour&rsquo;s average power under this.</small>
+          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect &mdash; PELS keeps each selected period&rsquo;s average power under this.</small>
         </label>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
@@ -591,9 +599,14 @@
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
         <div class="settings-result" role="group" aria-labelledby="settings-capacity-reaction-label">
-          <span class="settings-result__label" id="settings-capacity-reaction-label">With these settings, safe pace starts each hour at</span>
+          <span class="settings-result__label" id="settings-capacity-reaction-label">With these settings, safe pace starts each period at</span>
           <strong class="settings-result__value" id="settings-capacity-reaction">&mdash;</strong>
-          <span class="settings-result__note">(hard cap minus safety margin; it adapts as the hour is used)</span>
+          <span class="settings-result__note">(hard cap minus safety margin; it adapts as the period is used)</span>
+        </div>
+        <div class="settings-result" id="settings-capacity-monthly-peak" role="group" aria-labelledby="settings-capacity-monthly-peak-label" hidden>
+          <span class="settings-result__label" id="settings-capacity-monthly-peak-label">Highest completed quarter this month</span>
+          <strong class="settings-result__value" id="settings-capacity-monthly-peak-value">Peak unavailable</strong>
+          <span class="settings-result__note">Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.</span>
         </div>
       </form>
       <!-- App-GLOBAL settings, deliberately outside the Main-home cap form:

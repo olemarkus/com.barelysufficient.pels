@@ -265,7 +265,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getPowerTracker: () => powerTracker,
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (start, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), start, deadline),
-    getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
+    getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
   });
 
   const builder = new PlanBuilder({
@@ -273,7 +273,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
+    getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

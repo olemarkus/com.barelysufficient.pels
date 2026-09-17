@@ -122,7 +122,7 @@ type StarvationReason = DeviceDiagnosticsStarvationCountingCause | DeviceDiagnos
 const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   capacity: STARVATION_WAITING_FOR_POWER_COPY,
   daily_budget: 'Daily budget is limiting service',
-  hourly_budget: 'Hourly budget is limiting service',
+  hourly_budget: 'Capacity-period budget is limiting service',
   shortfall: 'Hard cap may be exceeded',
   swap_pending: 'Waiting for higher-priority device',
   swapped_out: 'Waiting for higher-priority device',

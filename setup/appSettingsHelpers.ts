@@ -15,7 +15,6 @@ import {
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
 import { createSettingsHandler } from '../lib/utils/settingsHandlers';
-import { createCapacitySettingsStore } from './capacitySettingsStoreAdapter';
 import {
   isDeviceControlProfiles,
   isBooleanMap,
@@ -66,9 +65,10 @@ import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
 import { requirePlanService } from './appInit/contextGuards';
 import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
+import type { CapacitySettings } from '../packages/shared-domain/src/settings/capacityPeriod';
 
 export type CapacitySettingsSnapshot = {
-  capacitySettings: { limitKw: number; marginKw: number };
+  capacitySettings: CapacitySettings;
   modeAliases: Record<string, string>;
   operatingMode: string;
   capacityPriorities: Record<string, Record<string, number>>;
@@ -124,11 +124,6 @@ export function buildCapacitySettingsSnapshot(params: {
   current: CapacitySettingsSnapshot;
 }): CapacitySettingsSnapshot {
   const { settings, current } = params;
-  const capacityScalars = createCapacitySettingsStore(settings, MAIN_HOME_ID, () => ({
-    limitKw: current.capacitySettings.limitKw,
-    marginKw: current.capacitySettings.marginKw,
-    dryRun: current.capacityDryRun,
-  })).read();
   const modeRaw = settings.get(OPERATING_MODE_SETTING) as unknown;
   const modeAliases = settings.get('mode_aliases') as unknown;
   const priorities = settings.get('capacity_priorities') as unknown;
@@ -142,10 +137,11 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
   const rawEvCarAssociations = settings.get(EV_CAR_ASSOCIATIONS) as unknown;
 
-  const nextCapacity = {
-    limitKw: capacityScalars.limitKw,
-    marginKw: capacityScalars.marginKw,
-  };
+  // The capacity domain resolves its SDK-backed scalars before this wiring
+  // snapshot is assembled. `current` therefore already carries the new,
+  // validated scalar block; this function only combines it with the remaining
+  // settings families it owns.
+  const nextCapacity = current.capacitySettings;
 
   const nextAliases = isStringMap(modeAliases)
     ? Object.fromEntries(
@@ -175,7 +171,7 @@ export function buildCapacitySettingsSnapshot(params: {
   // priorities, so normalize to a strict 1..N order here. Every runtime consumer
   // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
   // they all inherit the strict order without branching on stored shape.
-  const nextDryRun = capacityScalars.dryRun;
+  const nextDryRun = current.capacityDryRun;
   // A read that is not the map keeps the one already held: a transient miss is
   // not an owner who cleared every limit.
   const nextBehaviors = isShedBehaviorsSetting(rawShedBehaviors)

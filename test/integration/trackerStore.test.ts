@@ -34,6 +34,8 @@ const fullState = (): PowerTrackerState => ({
   lastGenerationW: 120.5,
   lastTimestamp: 1_788_723_806_557,
   buckets: { '2026-09-06T10:00:00.000Z': 1.25, '2026-09-06T11:00:00.000Z': 0.75 },
+  capacityQuarter: { startMs: 1_788_723_000_000, energyKWh: 0.42, trackedMs: 806_557 },
+  capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 6.4 },
   hourlySampleCounts: { '2026-09-06T10:00:00.000Z': 360, '2026-09-06T11:00:00.000Z': 12 },
   hourlyBudgets: { '2026-09-06T10:00:00.000Z': 2.5 },
   dailyBudgetCaps: { '2026-09-06T10:00:00.000Z': 3 },

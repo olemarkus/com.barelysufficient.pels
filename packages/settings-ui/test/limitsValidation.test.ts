@@ -7,7 +7,9 @@ const LIMITS_FORM_TEMPLATE = [
   '<form id="settings-limits-form">',
   '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',
   '<md-filled-text-field id="settings-capacity-margin"></md-filled-text-field>',
+  '<md-filled-select id="settings-capacity-period"></md-filled-select>',
   '<span id="settings-capacity-reaction"></span>',
+  '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span></div>',
   '<small id="settings-capacity-margin-alert" hidden></small>',
   '<md-filled-select id="settings-power-source"></md-filled-select>',
   '<md-switch id="settings-simulation-mode"></md-switch>',
@@ -23,18 +25,25 @@ const buildLimitsDom = () => {
   const limit = document.querySelector('#settings-capacity-limit') as HTMLElement & { value: string };
   const margin = document.querySelector('#settings-capacity-margin') as HTMLElement & { value: string };
   const powerSource = document.querySelector('#settings-power-source') as HTMLElement & { value: string };
+  const period = document.querySelector('#settings-capacity-period') as HTMLElement & { value: string };
   limit.value = '';
   margin.value = '';
   powerSource.value = 'flow';
+  period.value = '60';
   return {
     limit,
     margin,
     powerSource,
+    period,
     alert: document.querySelector('#settings-capacity-margin-alert') as HTMLElement,
   };
 };
 
-const loadCapacityModule = async (settings: Record<string, unknown> = {}) => {
+const loadCapacityModule = async (
+  settings: Record<string, unknown> = {},
+  powerReadError?: Error,
+  capacityPeakKw: unknown = 4.75,
+) => {
   vi.resetModules();
   const settingsStore: Record<string, unknown> = {
     capacity_limit_kw: 8,
@@ -53,6 +62,16 @@ const loadCapacityModule = async (settings: Record<string, unknown> = {}) => {
       getSetting,
     };
   });
+  vi.doMock('../src/ui/power.ts', () => ({
+    getPowerReadModel: powerReadError
+      ? vi.fn().mockRejectedValue(powerReadError)
+      : vi.fn().mockResolvedValue({
+        tracker: {},
+        readings: { state: 'never' },
+        status: { state: 'unavailable', reason: 'no_measurement' },
+        capacityPeak: { currentMonthQuarterPeakKw: capacityPeakKw },
+      }),
+  }));
   const showToast = vi.fn().mockResolvedValue(undefined);
   vi.doMock('../src/ui/toast.ts', () => ({
     showToast,
@@ -150,5 +169,48 @@ describe('Limits & safety inline validation', () => {
     expect(dom.alert.hidden).toBe(true);
     expect(dom.limit.value).toBe('8');
     expect(dom.margin.value).toBe('0.5');
+  });
+
+  it('loads and saves the Belgian capacity period', async () => {
+    const dom = buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule({ capacity_period_minutes: 15 });
+
+    await capacity.loadCapacitySettings();
+    expect(dom.period.value).toBe('15');
+    expect(document.querySelector('#settings-capacity-monthly-peak')?.hasAttribute('hidden')).toBe(false);
+    expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent).toBe('4.75 kW');
+
+    dom.period.value = '60';
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting).toHaveBeenCalledWith('capacity_period_minutes', 60);
+  });
+
+  it('keeps valid Belgian settings visible when the optional peak read fails', async () => {
+    const dom = buildLimitsDom();
+    const { capacity } = await loadCapacityModule(
+      { capacity_period_minutes: 15 },
+      new Error('peak read failed'),
+    );
+
+    await expect(capacity.loadCapacitySettings()).resolves.toBeUndefined();
+
+    expect(dom.period.value).toBe('15');
+    expect(dom.limit.value).toBe('8');
+    expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent)
+      .toBe('Peak unavailable');
+  });
+
+  it('does not render a negative peak from the untrusted power payload', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule(
+      { capacity_period_minutes: 15 },
+      undefined,
+      -1,
+    );
+
+    await capacity.loadCapacitySettings();
+
+    expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent)
+      .toBe('Peak unavailable');
   });
 });

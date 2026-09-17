@@ -2,6 +2,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
   homeScopedSettingsKey,
   MAIN_HOME_ID,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -22,6 +23,10 @@ import {
 } from '../../../shared-domain/src/homeLimitsCopy.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
+  resolveCapacityPeriodMinutes,
+  type CapacityPeriodMinutes,
+} from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import {
   formatHomeLimitsKw,
   resolveHomeLimitsStatus,
 } from '../../../shared-domain/src/homeLimitsStatus.ts';
@@ -33,6 +38,7 @@ import { liveStatusOrNull } from './powerStatusRead.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
+import { classifyCapacityPeakKw } from './capacityPeakRead.ts';
 import {
   renderHomeLimitsSection,
   type HomeLimitsEditorView,
@@ -71,17 +77,28 @@ type AreaCapsWriteQueue = {
   tail: Promise<void>;
 };
 
+type AreaPeriodWriteQueue = {
+  persistedPeriodMinutes: CapacityPeriodMinutes;
+  latestPeriodMinutes: CapacityPeriodMinutes;
+  pendingCount: number;
+  latestSequence: number;
+  tail: Promise<void>;
+};
+
 type AreaEditorState = {
   homeId: string;
   areaName: string;
   hardCapValue: string;
   marginValue: string;
   dryRun: boolean;
+  periodMinutes: CapacityPeriodMinutes;
+  periodWriteQueue: AreaPeriodWriteQueue;
   capsWriteQueue: AreaCapsWriteQueue;
   persistedDryRun: boolean;
   /** True while a control-toggle write is in flight — serialises toggles + gates rollback. */
   dryRunWriteInFlight: boolean;
   statusRaw: unknown;
+  currentMonthQuarterPeakKw: number | null | undefined;
   statusLoaded: boolean;
 };
 
@@ -90,6 +107,8 @@ let areaEditor: AreaEditorState | null = null;
 // realtime reload or quick area switch can replace the editor while callbacks
 // are pending; later captured intents must still run after earlier ones.
 const areaCapsWriteQueueByHomeId = new Map<string, AreaCapsWriteQueue>();
+const areaPeriodWriteQueueByHomeId = new Map<string, AreaPeriodWriteQueue>();
+const lastGoodPeriodByHomeId = new Map<string, CapacityPeriodMinutes>();
 
 const resolveAreaCapsWriteQueue = (params: {
   homeId: string;
@@ -114,6 +133,29 @@ const resolveAreaCapsWriteQueue = (params: {
     tail: Promise.resolve(),
   };
   areaCapsWriteQueueByHomeId.set(params.homeId, created);
+  return created;
+};
+
+const resolveAreaPeriodWriteQueue = (
+  homeId: string,
+  periodMinutes: CapacityPeriodMinutes,
+): AreaPeriodWriteQueue => {
+  const existing = areaPeriodWriteQueueByHomeId.get(homeId);
+  if (existing !== undefined) {
+    if (existing.pendingCount === 0) {
+      existing.persistedPeriodMinutes = periodMinutes;
+      existing.latestPeriodMinutes = periodMinutes;
+    }
+    return existing;
+  }
+  const created: AreaPeriodWriteQueue = {
+    persistedPeriodMinutes: periodMinutes,
+    latestPeriodMinutes: periodMinutes,
+    pendingCount: 0,
+    latestSequence: 0,
+    tail: Promise.resolve(),
+  };
+  areaPeriodWriteQueueByHomeId.set(homeId, created);
   return created;
 };
 
@@ -187,11 +229,14 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     areaName: editor.areaName,
     hardCapValue: editor.hardCapValue,
     marginValue: editor.marginValue,
+    periodMinutes: editor.periodMinutes,
+    periodBusy: editor.periodWriteQueue.pendingCount > 0,
     dryRun: editor.dryRun,
     runtimeActive,
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
+    currentMonthQuarterPeakKw: editor.currentMonthQuarterPeakKw,
     // Resolve the status against the LIVE edited cap + simulation state so the
     // card's Hard cap and posture track the inputs without a re-read. A held
     // config is forced non-active even if its pre-GA dry-run value was false.
@@ -205,6 +250,7 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     onHardCapChange: () => { void saveAreaCaps(); },
     onMarginInput: handleMarginInput,
     onMarginChange: () => { void saveAreaCaps(); },
+    onPeriodChange: (periodMinutes) => { void saveAreaPeriod(periodMinutes); },
     onControlToggle: (controlEnabled) => { void saveAreaControl(controlEnabled); },
   };
 };
@@ -236,21 +282,35 @@ const renderSection = (): void => {
  * pre-existing "no live status" vocabulary: nothing published yet, a gated
  * area, a scoped read the runtime refused, or a failed read.
  */
-const readAreaStatus = async (homeId: string): Promise<unknown> => {
+type AreaPowerRead = {
+  status: unknown;
+  currentMonthQuarterPeakKw: number | null | undefined;
+  runtimePeriodMinutes: CapacityPeriodMinutes | undefined;
+};
+
+const readAreaStatus = async (homeId: string): Promise<AreaPowerRead> => {
   const uri = homeScopedApiUri(SETTINGS_UI_POWER_PATH, homeId);
   invalidateApiCache(uri);
   try {
-    return liveStatusOrNull((await getApiReadModel<SettingsUiPowerPayload>(uri)).status);
+    const payload = await getApiReadModel<SettingsUiPowerPayload>(uri);
+    return {
+      status: liveStatusOrNull(payload.status),
+      currentMonthQuarterPeakKw: classifyCapacityPeakKw(
+        payload.capacityPeak?.currentMonthQuarterPeakKw,
+      ),
+      runtimePeriodMinutes: payload.scopedCapacityScalars?.periodMinutes,
+    };
   } catch {
-    return null;
+    return { status: null, currentMonthQuarterPeakKw: undefined, runtimePeriodMinutes: undefined };
   }
 };
 
 const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<void> => {
-  const [limitRaw, marginRaw, dryRunRaw, statusRaw] = await Promise.all([
+  const [limitRaw, marginRaw, dryRunRaw, periodRaw, powerRead] = await Promise.all([
     getSettingFresh(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId)),
+    getSettingFresh(homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, homeId)),
     readAreaStatus(homeId),
   ]);
   // A meter area that vanished mid-load (removed elsewhere) must not resurrect
@@ -264,27 +324,82 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
     : DEFAULT_MARGIN_KW;
   const dryRun = typeof dryRunRaw === 'boolean' ? dryRunRaw : DEFAULT_DRY_RUN;
   const capsWriteQueue = resolveAreaCapsWriteQueue({ homeId, limitKw, marginKw });
+  const loadedPeriodMinutes = resolveCapacityPeriodMinutes(
+    periodRaw,
+    powerRead.runtimePeriodMinutes ?? lastGoodPeriodByHomeId.get(homeId) ?? 60,
+  );
+  const periodWriteQueue = resolveAreaPeriodWriteQueue(homeId, loadedPeriodMinutes);
+  const periodMinutes = periodWriteQueue.pendingCount > 0
+    ? periodWriteQueue.latestPeriodMinutes
+    : loadedPeriodMinutes;
+  lastGoodPeriodByHomeId.set(homeId, periodMinutes);
   areaEditor = {
     homeId,
     areaName,
     hardCapValue: limitKw.toString(),
     marginValue: marginKw.toString(),
     dryRun,
+    periodMinutes,
+    periodWriteQueue,
     capsWriteQueue,
     persistedDryRun: dryRun,
     dryRunWriteInFlight: false,
-    statusRaw,
+    statusRaw: powerRead.status,
+    currentMonthQuarterPeakKw: powerRead.currentMonthQuarterPeakKw,
     statusLoaded: true,
   };
   renderSection();
 };
 
+const saveAreaPeriod = async (periodMinutes: CapacityPeriodMinutes): Promise<void> => {
+  if (areaEditor === null) return;
+  const editor = areaEditor;
+  const { periodWriteQueue: queue } = editor;
+  if (queue.pendingCount === 0 && queue.persistedPeriodMinutes === periodMinutes) return;
+  editor.periodMinutes = periodMinutes;
+  queue.latestPeriodMinutes = periodMinutes;
+  queue.latestSequence += 1;
+  const sequence = queue.latestSequence;
+  queue.pendingCount += 1;
+  renderSection();
+  const task = queue.tail
+    .catch(() => {})
+    .then(async () => {
+      try {
+        await setSetting(homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, editor.homeId), periodMinutes);
+        queue.persistedPeriodMinutes = periodMinutes;
+        lastGoodPeriodByHomeId.set(editor.homeId, periodMinutes);
+        if (sequence === queue.latestSequence) await showToast(HOME_LIMITS_SAVED_TOAST, 'ok');
+      } catch (caught) {
+        await logSettingsError('Failed to save meter-area capacity period', caught, 'homeLimits');
+        if (sequence === queue.latestSequence) {
+          queue.latestPeriodMinutes = queue.persistedPeriodMinutes;
+          lastGoodPeriodByHomeId.set(editor.homeId, queue.persistedPeriodMinutes);
+          if (areaEditor?.homeId === editor.homeId) {
+            areaEditor.periodMinutes = queue.persistedPeriodMinutes;
+          }
+          await showToastError(caught, HOME_LIMITS_SAVE_FAILED_TOAST);
+        }
+      }
+    })
+    .finally(() => {
+      queue.pendingCount -= 1;
+      if (areaEditor?.homeId === editor.homeId) {
+        areaEditor.periodMinutes = queue.latestPeriodMinutes;
+        renderSection();
+      }
+    });
+  queue.tail = task;
+  await task;
+};
+
 const reloadAreaStatus = async (): Promise<void> => {
   if (areaEditor === null) return;
   const { homeId } = areaEditor;
-  const statusRaw = await readAreaStatus(homeId);
+  const powerRead = await readAreaStatus(homeId);
   if (areaEditor === null || areaEditor.homeId !== homeId) return;
-  areaEditor.statusRaw = statusRaw;
+  areaEditor.statusRaw = powerRead.status;
+  areaEditor.currentMonthQuarterPeakKw = powerRead.currentMonthQuarterPeakKw;
   areaEditor.statusLoaded = true;
   renderSection();
 };
@@ -504,7 +619,7 @@ export const notifyHomeLimitsSettingChanged = (key: string): void => {
   if (state.activePanel !== 'limits') return;
   const { selectedHomeId } = getHomeScope();
   if (selectedHomeId === MAIN_HOME_ID || areaEditor === null) return;
-  const capKeys = [CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]
+  const capKeys = [CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN, CAPACITY_PERIOD_MINUTES]
     .map((base) => homeScopedSettingsKey(base, selectedHomeId));
   if (capKeys.includes(key)) {
     surfaceHomeLimitsLoadError(

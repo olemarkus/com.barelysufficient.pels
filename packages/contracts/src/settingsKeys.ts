@@ -1,6 +1,7 @@
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
+export const CAPACITY_PERIOD_MINUTES = 'capacity_period_minutes';
 export const POWER_SOURCE = 'power_source';
 // Explicit whole-home meter for the homey_energy power source. Device id
 // string; any non-string (never written, a legacy stored-null Automatic,

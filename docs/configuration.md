@@ -24,8 +24,8 @@ The Overview page shows the current plan: what PELS wants each managed device to
 | Field | What it shows |
 | --- | --- |
 | **Power now** | Current whole-home power draw. |
-| **Safe pace now** | The current pace PELS reacts around. It can come from the hourly hard cap, the daily budget, or both. |
-| **Hard cap** | The hourly average power you don't want any hour to exceed (your grid tariff step). |
+| **Safe pace now** | The current pace PELS reacts around. It can come from the selected-period hard cap, the daily budget, or both. |
+| **Hard cap** | The average power you don't want the configured capacity period to exceed. |
 | **Device cards** | Running, Idle, Off, Limited, Resuming, Manual, Unavailable, or Unknown. |
 | **Status line** | Short explanation of why PELS is waiting, limiting, or resuming. |
 
@@ -76,14 +76,17 @@ This is where the core capacity settings and whole-home power source live.
 
 | Setting | What it does |
 | --- | --- |
-| **Hard cap (kW)** | The hourly average power you don't want any hour to exceed. Set this from your grid tariff step (effekttrinn). |
+| **Capacity period** | **Hourly average** for hourly tariffs; **15-minute average (Belgium)** for Belgian quarter-hour peak tariffs. |
+| **Hard cap (kW)** | The average power you don't want the selected period to exceed. Set this from the peak or tariff step you want to protect. |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
 | **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. PELS always reads one named meter: when the only whole-home meter Homey lists is marked **Tracks total home energy consumption** and no Flow has ever sent PELS readings, PELS picks it on its own shortly after starting; otherwise choose it here. A selection does not need Homey's **Tracks total home energy consumption** marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
 
+For the Belgian period, **Highest completed quarter this month** reports PELS's largest fully tracked 15-minute average for the current month. It is an operational estimate from the readings sent to PELS, not a grid bill or a reproduction of operator rules such as a minimum monthly peak.
+
 Important:
 
-- The hourly hard cap is the only urgent safety boundary.
+- The selected-period hard cap is the only urgent safety boundary.
 - The **Hard cap breach imminent — manual action needed** trigger fires only when PELS projects an hourly hard-cap breach and cannot limit any more load.
 
 ## Settings > Devices

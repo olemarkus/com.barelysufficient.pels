@@ -19,9 +19,9 @@ This permission is what lets PELS act on Homey's full device graph the moment a 
 
 ---
 
-## Capacity Budget Model (Hourly)
+## Capacity Budget Model
 
-PELS uses an **hourly energy budget** model based on the Norwegian grid tariff system ("effektbasert nettleie"). Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour. This is the **hard cap** – exceeding it triggers grid penalties.
+PELS converts the configured hard cap into an energy allowance for each capacity period. The default is a whole hour, matching Nordic hourly capacity tariffs. A per-home 15-minute option matches Belgian quarter-hour peak measurement. A 10 kW cap therefore means 10 kWh per hour or 2.5 kWh per quarter.
 
 ### Terminology and Units
 
@@ -35,22 +35,22 @@ This technical document uses those same definitions.
 
 When Homey Energy reports solar production, PELS keeps two accounting figures separate. The net grid import drives hard-cap protection, daily-budget totals, and billed-usage buckets; negative export is floored at zero for kWh totals. Gross consumption (`net + generation`) is used only where the UI or smart-task reservation needs to understand real managed/background usage before solar production offsets it.
 
-### Hard Cap and Hourly Safe Pace
+### Hard Cap and Capacity Safe Pace
 
-- **Hard cap**: Your contracted grid capacity limit (`limitKw`). This corresponds to an hourly hard-cap energy budget of `limitKw` kWh for each hour. Exceeding this for a full hour triggers penalties.
-- **Hourly safe pace**: A dynamic run-rate limit derived from the hourly budget after the safety margin and the time remaining. PELS starts limiting managed devices when power exceeds this, giving time to react.
-- **Manual action needed**: Triggered when PELS projects an hourly hard-cap budget breach at the current run rate and cannot limit any more devices. The **Hard cap breach imminent for at least...** trigger fires the same condition only once it has lasted a chosen number of seconds. Diagnostics may still call this `shortfall`.
+- **Hard cap**: The configured average-power ceiling (`limitKw`) for the selected period.
+- **Capacity safe pace**: A dynamic run-rate limit derived from the period allowance after the safety margin and the time remaining. PELS starts limiting managed devices when power exceeds this, giving time to react.
+- **Manual action needed**: Triggered when PELS projects a hard-cap breach in the current capacity period and cannot limit any more devices. The **Hard cap breach imminent for at least...** trigger fires the same condition only once it has lasted a chosen number of seconds. Diagnostics may still call this `shortfall`.
 
-The Overview label **Safe pace now** can come from the hourly safe pace, daily budget pace, or both. This section describes the hourly capacity side.
+The Overview label **Safe pace now** can come from the capacity safe pace, daily budget pace, or both. This section describes the capacity side.
 
-### Dynamic Hourly Safe Pace
+### Dynamic Capacity Safe Pace
 
-Rather than simply comparing instantaneous power against your hard cap, PELS calculates an hourly safe pace that adapts throughout each hour. Internal code and diagnostics may call this the `softLimit`.
+Rather than simply comparing instantaneous power against your hard cap, PELS calculates a safe pace that adapts throughout the selected period. Internal code and diagnostics may call this the `softLimit`.
 
-1. **Hourly budget after safety margin**: Your hard cap minus margin (e.g., 10 kW - 0.2 kW = 9.8 kWh per hour)
-2. **Used**: Energy already consumed this hour (tracked via power samples)
+1. **Period allowance after safety margin**: `(hard cap − margin) × period hours` (for example, 9.8 kWh hourly or 2.45 kWh per quarter)
+2. **Used**: Energy already consumed in this period (tracked via power samples)
 3. **Remaining**: Budget minus used energy
-4. **Time left**: Minutes remaining until the hour ends
+4. **Time left**: Minutes remaining until the period ends
 5. **Burst rate**: Remaining kWh ÷ time left = maximum instantaneous power allowed
 
 **Example**: If you've used 5 kWh with 30 minutes left in the hour and have a 10 kWh hard-cap budget:
@@ -58,22 +58,22 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 - Time left: 0.5 hours
 - Burst rate: 5 ÷ 0.5 = 10 kW allowed
 
-### End-of-Hour Drain (Hourly Capacity Only)
+### End-of-Period Drain
 
-To prevent "end of hour bursting" — where devices ramp up to use remaining budget and then carry that high draw across the hour boundary into the next hour — PELS gradually tightens the hourly safe pace down to the sustainable rate as the hour ends. Rather than a hard cut-off, the ceiling decays smoothly over the final minutes: it stays generous until roughly the last 8 minutes, tapers through the last 5, and reaches the sustainable-rate target at the top of the hour. So managed devices keep running as long as the budget allows and are limited gradually; slow device apps may still carry some load briefly across the boundary, but the planner is no longer allowing a high burst that would be expected to keep running at noon.
+To prevent end-of-period bursting, PELS gradually tightens the capacity safe pace down to the sustainable rate as the boundary approaches. The drain curve scales with the selected period: the hourly curve keeps its established shape, while the Belgian curve tightens over the shorter quarter. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
 
-This drain is hourly-only by design — the daily budget is a pacing target and there is no grid penalty for landing slightly above it at any particular minute, so the planner stays free to make the right call at 23:55.
+This drain applies only to the capacity controller. The daily budget is a pacing target and has no equivalent period-boundary penalty.
 
 ---
 
-## Hour Transitions
+## Capacity-period Transitions
 
-When a new hour begins:
+When a new capacity period begins:
 
 1. Energy tracking resets (new bucket starts at 0 kWh)
-2. The hourly safe pace recalculates based on a full hour of remaining time
+2. The capacity safe pace recalculates with the full period remaining
 3. Devices that were limited may become eligible to resume
-4. Any "hourly budget exhausted" state is cleared
+4. Any exhausted-period state is cleared
 
 PELS handles this automatically—there's no manual intervention needed.
 
@@ -347,9 +347,9 @@ A home whose meter has never reported at all is a different case: PELS builds no
 
 Heaters and chargers on local protocols respond within seconds; cloud-mediated device apps can take longer to acknowledge. Either way, PELS waits a cooldown cycle for the meter reading to settle before the next move, so every decision is grounded in a measurement that already reflects the previous action.
 
-### Hourly Enforcement
+### Capacity-period enforcement
 
-PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The end-of-hour drain tightens the safe pace toward the sustainable rate as the hour ends, so the planner aims to cross the boundary near the steady rate. Slow device response can briefly carry some load into the next hour, and the next planning cycle corrects that if needed.
+PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for Belgian peak tariffs. As the boundary approaches, the period-end drain tightens the safe pace toward the sustainable rate, so the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
 
 ### Local Control
 

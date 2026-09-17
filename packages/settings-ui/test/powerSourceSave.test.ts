@@ -13,6 +13,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
   HOMEY_ENERGY_METER_DEVICE_ID,
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
@@ -69,12 +70,16 @@ const loadCapacityModule = async (params: {
     params.setSetting?.(key, value)
   ));
   const getSetting = vi.fn().mockImplementation(async (key: string) => (
-    params.getSetting
+    key === CAPACITY_PERIOD_MINUTES
+      ? 60
+      : params.getSetting
       ? params.getSetting(key)
       : key === POWER_SOURCE ? persistedSource : undefined
   ));
   const getSettingFresh = vi.fn().mockImplementation(async (key: string) => (
-    params.getSettingFresh
+    key === CAPACITY_PERIOD_MINUTES
+      ? 60
+      : params.getSettingFresh
       ? params.getSettingFresh(key)
       : key === POWER_SOURCE ? persistedSource : params.getSetting?.(key)
   ));

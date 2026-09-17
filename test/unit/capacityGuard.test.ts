@@ -267,6 +267,35 @@ describe('CapacityGuard', () => {
   });
 
   describe('Shortfall clearing with hysteresis', () => {
+    it('preserves recovery state while the selected period is incomplete', async () => {
+      const events: string[] = [];
+      const guard = createTestCapacityGuard({
+        homeId: 'main',
+        onShortfall: () => { events.push('shortfall'); },
+        onShortfallCleared: () => { events.push('cleared'); },
+      });
+
+      await guard.recordPlanVerdict(
+        5.5,
+        TEST_SHORTFALL_THRESHOLD_KW,
+        planVerdictSummaryFixture({ actionableLoadRemains: false }),
+      );
+      await guard.recordReading(4.5, TEST_SHORTFALL_THRESHOLD_KW);
+      advanceTime(61_000);
+      guard.recordShortfallUnavailable();
+
+      // The throttle's zero threshold must not let export clear the incident.
+      await guard.recordReading(-1, 0);
+      expect(guard.isInShortfall()).toBe(true);
+      expect(events).toEqual(['shortfall']);
+
+      // A complete-period reading restores threshold authority. The valid
+      // recovery evidence from before the gap was preserved, so it may clear.
+      await guard.recordReading(4.5, TEST_SHORTFALL_THRESHOLD_KW, 'complete_period');
+      expect(guard.isInShortfall()).toBe(false);
+      expect(events).toEqual(['shortfall', 'cleared']);
+    });
+
     it('requires 60s sustained positive headroom to clear shortfall', async () => {
       const events: string[] = [];
       const guard = createTestCapacityGuard({

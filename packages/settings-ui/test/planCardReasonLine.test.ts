@@ -108,7 +108,7 @@ describe('resolveHeldCardReasonLine', () => {
       const line = resolveHeldCardReasonLine({
         reason: { code: PLAN_REASON_CODES.hourlyBudget },
       });
-      expect(line).toBe("Waiting to resume — this hour's budget is spent");
+      expect(line).toBe("Waiting to resume — this capacity period's budget is spent");
       expect(line).not.toMatch(/kW more needed/);
     });
 
@@ -118,7 +118,7 @@ describe('resolveHeldCardReasonLine', () => {
       expect(resolveHeldCardReasonLine({
         reason: { code: PLAN_REASON_CODES.hourlyBudget },
         verb: 'increase',
-      })).toBe("Waiting to increase — this hour's budget is spent");
+      })).toBe("Waiting to increase — this capacity period's budget is spent");
     });
 
     // A ceiling hold whose ONLY blocker is a named startup reservation. The
@@ -301,7 +301,7 @@ describe('resolveHeldCardReasonLine', () => {
         reason: { code: PLAN_REASON_CODES.hourlyBudget },
         starvation: starvation(75 * 60 * 1000),
       });
-      expect(line).toBe(`Held 1${NBSP}h${NBSP}15${NBSP}min — this hour's budget is spent`);
+      expect(line).toBe(`Held 1${NBSP}h${NBSP}15${NBSP}min — this capacity period's budget is spent`);
       expect(line).not.toContain('kW');
     });
 
@@ -403,15 +403,15 @@ describe('every ladder output has a simulation form', () => {
     ['Waiting to resume — 0.8 kW more needed', 'Would be waiting to resume — 0.8 kW more needed (simulation)'],
     // The hourly-exhausted line is a PELS-performed hold like the shortfall
     // line, and shares its prefix, so it rides the same rewrite.
-    ["Waiting to resume — this hour's budget is spent", "Would be waiting to resume — this hour's budget is spent (simulation)"],
-    ["Waiting to increase — this hour's budget is spent", "Would be waiting to increase — this hour's budget is spent (simulation)"],
+    ["Waiting to resume — this capacity period's budget is spent", "Would be waiting to resume — this capacity period's budget is spent (simulation)"],
+    ["Waiting to increase — this capacity period's budget is spent", "Would be waiting to increase — this capacity period's budget is spent (simulation)"],
     ['Waiting to increase — 0.3 kW more needed', 'Would be waiting to increase — 0.3 kW more needed (simulation)'],
     [PLAN_STATE_HELD_FALLBACK_STATUS, 'Would be held back (simulation)'],
     // The starved forms. The elapsed duration cannot survive the transform: in
     // simulation PELS held nothing, so reporting "2 h" would assert a history
     // that never happened. Only the need clause carries over.
     [`Held 2${NBSP}h — 0.8 kW more needed`, 'Would be held back — 0.8 kW more needed (simulation)'],
-    [`Held 1${NBSP}h${NBSP}15${NBSP}min — this hour's budget is spent`, "Would be held back — this hour's budget is spent (simulation)"],
+    [`Held 1${NBSP}h${NBSP}15${NBSP}min — this capacity period's budget is spent`, "Would be held back — this capacity period's budget is spent (simulation)"],
     [
       'Holding at 6 A — cannot increase while 2 devices are limited',
       'Would be holding at 6 A — cannot increase while 2 devices are limited (simulation)',

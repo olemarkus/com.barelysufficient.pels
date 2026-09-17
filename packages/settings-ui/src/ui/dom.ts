@@ -97,8 +97,17 @@ export const settingsCapacityLimitInput = document.querySelector<MdFilledTextFie
 export const settingsCapacityMarginInput = document.querySelector<MdFilledTextFieldElement>(
   '#settings-capacity-margin',
 );
+export const settingsCapacityPeriodSelect = document.querySelector<MdFilledSelectElement>(
+  '#settings-capacity-period',
+);
 export const settingsCapacityReactionHint = document.querySelector<HTMLElement>(
   '#settings-capacity-reaction',
+);
+export const settingsCapacityMonthlyPeak = document.querySelector<HTMLElement>(
+  '#settings-capacity-monthly-peak',
+);
+export const settingsCapacityMonthlyPeakValue = document.querySelector<HTMLElement>(
+  '#settings-capacity-monthly-peak-value',
 );
 export const settingsCapacityMarginAlert = document.querySelector<HTMLElement>(
   '#settings-capacity-margin-alert',

@@ -537,7 +537,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe("Waiting to increase — this hour's budget is spent");
+      expect(result).toBe("Waiting to increase — this capacity period's budget is spent");
     });
 
     // Production-shaped reason: the gap is the negated margin, which is now
@@ -623,7 +623,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe("Waiting to resume — this hour's budget is spent");
+      )).toBe("Waiting to resume — this capacity period's budget is spent");
     });
 
     it('states the shortfall when a budget hold carries one', () => {

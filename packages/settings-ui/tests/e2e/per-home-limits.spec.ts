@@ -46,7 +46,7 @@ test('single-home user sees the unchanged static form, no scope bar', async ({ p
   // With no meter areas the Main-home copy is untouched: "your" still means the
   // whole house, and the app-global settings card is just part of the page.
   await expect(page.locator('#settings-capacity-limit-hint')).toHaveText(
-    'Your grid tariff step (effekttrinn) — PELS keeps each hour’s average power under this.',
+    'The peak or tariff step you want to protect — PELS keeps each selected period’s average power under this.',
   );
   await expect(page.locator('#settings-limits-global')).toBeVisible();
   // Layout identity: the scope bar's mount stays display:none, so it claims no
@@ -84,7 +84,7 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   // hard-cap hint names its home once the house is split.
   await expect(page.locator('#settings-limits-global')).toBeVisible();
   await expect(page.locator('#settings-capacity-limit-hint'))
-    .toContainText('The Main home’s grid tariff step');
+    .toContainText('The Main home’s peak or tariff step');
   await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
 
   // Pick the meter area: the static form hides, the per-home editor appears, and

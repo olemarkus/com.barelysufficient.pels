@@ -1,5 +1,5 @@
 import type { ComponentChild } from 'preact';
-import { computeProjectedHourEnergyKWh, isProjectedOverHardCap } from '../../../../shared-domain/src/hourEnergyProjection.ts';
+import { computeProjectedPeriodEnergyKWh, isProjectedOverHardCap } from '../../../../shared-domain/src/hourEnergyProjection.ts';
 import {
   buildDecisionSentence as buildSharedDecisionSentence,
   computeEnergyBarScaleKWh,
@@ -13,15 +13,15 @@ import {
   formatSafePaceSubline,
   type HeroHeadline,
   type HeroMeterMarkerLabels,
-} from '../../../../shared-domain/src/planHeroSummary.ts';
+} from '../planHeroSummary.ts';
 import {
-  HERO_INFO_TOOLTIP_TEXT,
+  formatHeroInfoTooltip,
   formatHardCapEnergyTooltip,
   formatHardCapTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
   resolveSafePaceSourceText,
-} from '../../../../shared-domain/src/planHeroTooltips.ts';
+} from '../planHeroTooltips.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemantics.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
@@ -155,12 +155,14 @@ const buildDecisionSentence = ({
   projectedOverHardCap,
   projectionTone,
   safePaceKw,
+  capacityPeriodMinutes,
 }: {
   devices: PlanDeviceSnapshot[];
   dryRun: boolean;
   projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
   safePaceKw: number | null;
+  capacityPeriodMinutes: 15 | 60;
 }): { text: string; positive: boolean } => {
   const limited = devices.filter(isLimitedDevice);
   return buildSharedDecisionSentence({
@@ -171,6 +173,7 @@ const buildDecisionSentence = ({
     projectedOverBudget: projectedOverHardCap
       || projectionTone === 'warning' || projectionTone === 'critical',
     safePaceKw,
+    capacityPeriodMinutes,
     deferredObjectiveAvoidCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.deferredObjectiveAvoid).length,
     dailyBudgetLimitedCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.dailyBudget).length,
     // Counted over ALL devices, not just `limited`: the breaching device has
@@ -196,6 +199,7 @@ type BarScale = {
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
+  periodMinutes: 15 | 60;
 };
 
 type MeterMarker = {
@@ -246,6 +250,7 @@ const computePowerBarScale = (
     softLimitSource: meta.softLimitSource,
     budgetPaceKw: meta.budgetPaceKw,
     projectedExemptKw: meta.projectedExemptKw,
+    periodMinutes: meta.capacityPeriodMinutes,
   };
 };
 
@@ -260,6 +265,7 @@ type EnergyBarScale = {
   controlledKWh: number;
   uncontrolledKWh: number;
   projectedKWh: number | null;
+  periodMinutes: 15 | 60;
 };
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
@@ -275,15 +281,16 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
   // Keep `null` (no power/time signal) distinct from a clamped 0.
   const projectedKWh = totalKw !== null && minutesRemaining !== null
-    ? computeProjectedHourEnergyKWh({ usedKWh, totalKw, minutesRemainingInHour: minutesRemaining })
+    ? computeProjectedPeriodEnergyKWh(usedKWh, totalKw, minutesRemaining)
     : null;
   return {
     usedKWh,
     budgetKWh,
-    hardCapKWh: meta.hardCapLimitKw,
+    hardCapKWh: meta.hardCapLimitKw * meta.capacityPeriodMinutes / 60,
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
+    periodMinutes: meta.capacityPeriodMinutes,
   };
 };
 
@@ -340,8 +347,10 @@ const InfoIcon = () => (
 // See notes/overview-hero-spec.md § "Chip row".
 const HeroChipRow = ({
   heroStatus,
+  capacityPeriodMinutes,
 }: {
   heroStatus: HeroStatus;
+  capacityPeriodMinutes: 15 | 60;
 }) => {
   // The old freshness chip ('Delayed'/'No data') is retired: staleness is the
   // global no-readings banner's fact, rendered above the hero (owner ruling
@@ -356,7 +365,7 @@ const HeroChipRow = ({
         class="plan-hero__info-button"
         type="button"
         aria-label="About this card"
-        data-tooltip={HERO_INFO_TOOLTIP_TEXT}
+        data-tooltip={formatHeroInfoTooltip(capacityPeriodMinutes)}
       >
         <InfoIcon />
       </MdIconButton>
@@ -470,7 +479,7 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
   const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, {
     budgetPaceKw: scale.budgetPaceKw,
     projectedExemptKw: scale.projectedExemptKw,
-  });
+  }, scale.periodMinutes);
   const markers: MeterMarker[] = [
     {
       kind: 'target',
@@ -488,7 +497,7 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
   markers.push({
     kind: 'cap',
     positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
-    tooltip: formatHardCapTooltip(scale.hardCapKw),
+    tooltip: formatHardCapTooltip(scale.hardCapKw, scale.periodMinutes),
     labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
   });
   return (
@@ -515,8 +524,9 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 const resolvePowerSubline = (
   headline: HeroHeadline,
   softLimitSource: PlanMetaSnapshot['softLimitSource'],
+  capacityPeriodMinutes: 15 | 60,
 ): string => {
-  const sourceText = resolveSafePaceSourceText(softLimitSource);
+  const sourceText = resolveSafePaceSourceText(softLimitSource, capacityPeriodMinutes);
   return headline.overSoftLimit
     ? formatAboveSafePaceSubline(headline.totalKw, headline.softLimitKw, sourceText)
     : formatSafePaceSubline(headline.softLimitKw, sourceText);
@@ -554,7 +564,9 @@ const PowerSection = ({
         {' '}
         <span class="plan-hero__metric-qualifier">kW</span>
       </div>
-      <div class="plan-hero__subline">{resolvePowerSubline(headline, meta.softLimitSource)}</div>
+      <div class="plan-hero__subline">
+        {resolvePowerSubline(headline, meta.softLimitSource, meta.capacityPeriodMinutes)}
+      </div>
       {solarNowText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
           {solarNowText}
@@ -615,8 +627,8 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
     {
       kind: 'target',
       positionPct: pctOf(scale.budgetKWh, scaleKWh),
-      tooltip: `Budget this hour ${scale.budgetKWh.toFixed(1)} kWh`,
-      labels: formatEnergyMeterMarkerLabels('target', scale.budgetKWh),
+      tooltip: `Budget this ${scale.periodMinutes === 15 ? 'quarter' : 'hour'} ${scale.budgetKWh.toFixed(1)} kWh`,
+      labels: formatEnergyMeterMarkerLabels('target', scale.budgetKWh, scale.periodMinutes),
     },
   ];
   if (scale.projectedKWh !== null) {
@@ -624,8 +636,8 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       kind: 'projected',
       positionPct: pctOf(scale.projectedKWh, scaleKWh),
       tone: projectionTone,
-      tooltip: `Projected this hour ${scale.projectedKWh.toFixed(2)} kWh`,
-      labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh),
+      tooltip: `Projected this ${scale.periodMinutes === 15 ? 'quarter' : 'hour'} ${scale.projectedKWh.toFixed(2)} kWh`,
+      labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh, scale.periodMinutes),
     });
   }
   // The cap's hourly kWh — the line that turns the projection red — renders in
@@ -637,8 +649,8 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
     markers.push({
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKWh, scaleKWh),
-      tooltip: formatHardCapEnergyTooltip(scale.hardCapKWh),
-      labels: formatEnergyMeterMarkerLabels('cap', scale.hardCapKWh),
+      tooltip: formatHardCapEnergyTooltip(scale.hardCapKWh, scale.periodMinutes),
+      labels: formatEnergyMeterMarkerLabels('cap', scale.hardCapKWh, scale.periodMinutes),
     });
   }
   return (
@@ -679,7 +691,9 @@ const EnergySection = ({
   const projectedTone = projectionTone === 'warning' ? 'warn' : undefined;
   return (
     <div class="plan-hero__section">
-      <p class="plan-hero__section-label eyebrow">Energy used this hour</p>
+      <p class="plan-hero__section-label eyebrow">
+        Energy used this {scale.periodMinutes === 15 ? 'quarter' : 'hour'}
+      </p>
       <div class="plan-hero__headline plan-hero__metric">
         <span class="plan-hero__metric-value">{usedParts.lead}</span>
         {' '}
@@ -803,12 +817,12 @@ export const PlanHero = ({
   // are required. The three `typeof` guards this replaces were the last place
   // the hero re-asked whether the planner had produced its own required fields.
   const projectedOverHardCap = isProjectedOverHardCap({
-    projectedKWh: computeProjectedHourEnergyKWh({
-      usedKWh: meta.usedKWh,
-      totalKw: meta.totalKw,
-      minutesRemainingInHour: meta.minutesRemaining,
-    }),
-    hardCapKWh: headline.hardLimitKw,
+    projectedKWh: computeProjectedPeriodEnergyKWh(
+      meta.usedKWh,
+      meta.totalKw,
+      meta.minutesRemaining,
+    ),
+    hardCapKWh: headline.hardLimitKw * meta.capacityPeriodMinutes / 60,
   });
   const heroStatus = resolveHeroStatus(
     headline,
@@ -824,6 +838,7 @@ export const PlanHero = ({
     projectedOverHardCap,
     projectionTone,
     safePaceKw,
+    capacityPeriodMinutes: meta.capacityPeriodMinutes,
   });
   // The breathing animation runs only while the hero is actually limiting —
   // gated by an active limiting status (`above-safe-pace` or `over-hard-cap`)
@@ -839,7 +854,7 @@ export const PlanHero = ({
 
   return (
     <div class="plan-hero pels-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
-      <HeroChipRow heroStatus={heroStatus} />
+      <HeroChipRow heroStatus={heroStatus} capacityPeriodMinutes={meta.capacityPeriodMinutes} />
       <PowerSection
         headline={headline}
         meta={meta}

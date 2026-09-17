@@ -38,7 +38,7 @@ Two things vary per mode, per managed device:
 | **Desired temperature** | The target temperature PELS aims for in this mode, for temperature-capable devices. |
 | **Priority** | Lower number means higher priority. Higher-priority devices keep running longer and resume first when capacity opens up. |
 
-That is the entire per-mode surface. Everything else — the hourly hard cap, the daily energy budget, price control, resume cooldowns, Smart task deadlines — stays global and keeps running across all modes.
+That is the entire per-mode surface. Everything else — the selected-period hard cap, the daily energy budget, price control, resume cooldowns, Smart task deadlines — stays global and keeps running across all modes.
 
 This is usually enough. Lowering heating targets in `Away` and dropping living-room priority during `Night` is what causes the behavior people want; PELS does the rest the same way it always does.
 

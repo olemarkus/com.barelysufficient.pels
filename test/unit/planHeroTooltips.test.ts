@@ -5,7 +5,7 @@ import {
   formatHardCapTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
-} from '../../packages/shared-domain/src/planHeroTooltips';
+} from '../../packages/settings-ui/src/ui/planHeroTooltips';
 
 describe('planHeroTooltips', () => {
   describe('HERO_INFO_TOOLTIP_TEXT', () => {
