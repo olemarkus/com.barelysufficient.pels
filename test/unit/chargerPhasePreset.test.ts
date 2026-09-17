@@ -30,13 +30,25 @@ describe('resolveChargerPhaseReport', () => {
   it('plans an auto-phase charger by its wiring', () => {
     expect(resolveChargerPhaseReport(easee({ phaseMode: 'Auto', detectedPowerGridType: 'TN_3_PHASE' })))
       .toEqual({ kind: 'reported', preset: 'ev_charger_3_phase' });
-    expect(resolveChargerPhaseReport(easee({ phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE' })))
-      .toEqual({ kind: 'reported', preset: 'ev_charger_3_phase' });
     expect(resolveChargerPhaseReport(easee({ phaseMode: 'Auto', detectedPowerGridType: 'TN_1_PHASE' })))
       .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
     expect(resolveChargerPhaseReport(easee({
       phaseMode: 'Auto',
       detectedPowerGridType: 'WARNING_TN_1_PHASE_NEUTRAL_ON_PIN_3',
+    }))).toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
+  });
+
+  it.each(['Auto', 'Locked to three phase', undefined])(
+    'does not assign a TN power model to an IT three-phase grid with mode %s',
+    (phaseMode) => {
+      expect(resolveChargerPhaseReport(easee({ phaseMode, detectedPowerGridType: 'IT_3_PHASE' })))
+        .toEqual({ kind: 'not_reported' });
+    },
+  );
+
+  it('still recognises locked single-phase charging on an IT three-phase grid', () => {
+    expect(resolveChargerPhaseReport(easee({
+      phaseMode: 'Locked to single phase', detectedPowerGridType: 'IT_3_PHASE',
     }))).toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
   });
 

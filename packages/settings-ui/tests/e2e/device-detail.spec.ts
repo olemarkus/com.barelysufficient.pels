@@ -19,7 +19,8 @@ const clickDeviceDetailButton = async (page: Page, deviceId: string) => {
   await expect(row).toBeVisible();
   const detailButton = row.locator('.pels-device-card__detail-button');
   await expect(detailButton).toBeVisible();
-  await detailButton.scrollIntoViewIfNeeded();
+  // Click scrolls and re-resolves the locator if a device refresh replaces the row.
+  // A separate scroll holds an element handle that can detach during that refresh.
   await detailButton.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible({ timeout: 10000 });
 };

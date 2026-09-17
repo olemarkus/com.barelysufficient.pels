@@ -89,17 +89,23 @@ If you also want normal "charge when there is room" behavior outside Smart tasks
 
 ## Step 2: Give PELS The Battery Percentage
 
-PELS needs battery percentage for the charger it is planning. There are two common paths.
+PELS needs battery percentage for the charger it is planning. Choose one of the following paths.
 
-### Path A: The Charger Reports Battery Percentage
+### Path A: Select A Supported Car
 
-Some charger integrations expose battery level on the charger device itself. If Homey exposes that as a supported battery percentage capability, PELS can read it directly.
+Open the charger's **Car** section in **Apps -> PELS -> Settings -> Devices** and select the cars that charge there. PELS reads the battery level from the car it matches to the charger. If the car is not listed, use its battery-percentage tag through Path C instead.
+
+Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
+
+### Path B: The Charger Reports Battery Percentage
+
+Leave the charger's car selection empty. Some charger integrations expose battery level on the charger device itself. If Homey exposes that as a supported battery percentage capability, PELS can read it directly.
 
 Check the charger in **Apps -> PELS -> Settings -> Devices**. The device detail should show battery level once PELS has seen a reading.
 
-### Path B: The Car Reports Battery Percentage
+### Path C: Report Battery Percentage Through A Flow
 
-Often the battery percentage lives on the car device, not the charger. In that case, create Flows that report the car value to the PELS charger entry:
+With no car selected in the charger's **Car** section, you can use Flows to report the car's battery percentage to the PELS charger entry:
 
 | Flow part | Card |
 | --- | --- |
@@ -113,7 +119,7 @@ In the PELS action card:
 
 Also report the current battery level when the car is plugged in. If your car app does not emit a new battery event until charging starts, add a periodic Flow while the car is plugged in, for example every 30 minutes. PELS needs a fresh SoC reading even when the percentage has not changed yet.
 
-This links the car's SoC to the charger PELS controls. It is also the path to use when Homey shows battery percentage for the car, but not for the charger.
+This reports the battery level to the charger PELS controls; it does not create an automatic car association. Use this path when you prefer Flow reporting or the car is not supported by the car picker. Do not configure it as a fallback for a selected car: PELS ignores it while any car is selected.
 
 ## Step 3: Add The Dashboard Widgets
 

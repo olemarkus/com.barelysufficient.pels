@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, onObservedState, onObservedControlState } from '../helpers/deviceTransportHarness';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   resolveNativeSteppedLoadCommand,
@@ -314,4 +314,35 @@ describe('Easee native charger current', () => {
       restoreMockRestClient();
     }
   });
+
+  it.each([null, undefined, '16', Number.NaN, Infinity, -Infinity, -1])(
+    'keeps the last-good current observation on an invalid report: %s',
+    (invalidCurrent) => {
+      const deviceManager = createEaseeTransport(true);
+      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
+      deviceManager.setSnapshotForTests([parsed]);
+      const observed = vi.fn();
+      const controlChanged = vi.fn();
+      onObservedState(deviceManager, observed);
+      onObservedControlState(deviceManager, controlChanged);
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 16);
+      const lastGood = structuredClone(parsed);
+      observed.mockClear();
+      controlChanged.mockClear();
+
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', invalidCurrent);
+
+      expect(parsed).toEqual(lastGood);
+      expect(observed).not.toHaveBeenCalled();
+      expect(controlChanged).not.toHaveBeenCalled();
+      // A binary observation re-reads the adapter's retained current. Invalid
+      // current reports must not poison it even if the snapshot is unchanged.
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', false);
+      expect(parsed.reportedStepId).toBe('16a');
+
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
+      expect(parsed.reportedStepId).toBe('8a');
+      expect(parsed.reportedStepPowerW).toBe(1_840);
+    },
+  );
 });

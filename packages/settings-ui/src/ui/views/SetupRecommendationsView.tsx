@@ -6,7 +6,8 @@ import { MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
 export type SetupRecommendationsViewProps = {
   active: readonly SetupRecommendation[];
   dismissed: readonly SetupRecommendation[];
-  readiness: 'loading' | 'unavailable' | 'partial' | 'resolved';
+  readiness: 'loading' | 'partial' | 'resolved';
+  dismissalStatus: 'loading' | 'unavailable' | 'available';
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
   onRestore: (recommendation: SetupRecommendation) => void;
@@ -16,6 +17,7 @@ export type SetupRecommendationsViewProps = {
 type RecommendationCardProps = {
   recommendation: SetupRecommendation;
   dismissed: boolean;
+  dismissalStatus: SetupRecommendationsViewProps['dismissalStatus'];
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
   onRestore: (recommendation: SetupRecommendation) => void;
@@ -38,12 +40,12 @@ const RecommendationCard = (props: RecommendationCardProps) => {
             {recommendation.actionLabel}
           </MdFilledTonalButton>
         )}
-        <MdTextButton
+        {props.dismissalStatus === 'available' && <MdTextButton
           type="button"
           onClick={() => dismissed ? onRestore(recommendation) : onDismiss(recommendation)}
         >
           {dismissed ? 'Show again' : 'Dismiss'}
-        </MdTextButton>
+        </MdTextButton>}
       </div>
     </article>
   );
@@ -72,6 +74,7 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
               key={recommendation.id}
               recommendation={recommendation}
               dismissed={false}
+              dismissalStatus={props.dismissalStatus}
               onAction={props.onAction}
               onDismiss={props.onDismiss}
               onRestore={props.onRestore}
@@ -94,6 +97,7 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
               key={recommendation.id}
               recommendation={recommendation}
               dismissed
+              dismissalStatus={props.dismissalStatus}
               onAction={props.onAction}
               onDismiss={props.onDismiss}
               onRestore={props.onRestore}
@@ -115,11 +119,16 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>
     )}
-    {props.readiness === 'unavailable' && (
+    {props.dismissalStatus !== 'available' && (
       <section class="pels-surface-card setup-recommendations-empty">
-        <strong>Recommendations couldn’t be loaded</strong>
-        <p class="pels-card-supporting">Try again to check your device setup.</p>
-        <MdFilledTonalButton type="button" onClick={props.onRetry}>Try again</MdFilledTonalButton>
+        <p class="pels-card-supporting">
+          {props.dismissalStatus === 'loading'
+            ? 'Checking which suggestions you dismissed…'
+            : 'Dismissed recommendations couldn’t be read. Some suggestions below may already be dismissed.'}
+        </p>
+        {props.dismissalStatus === 'unavailable' && (
+          <MdTextButton type="button" onClick={props.onRetry}>Try again</MdTextButton>
+        )}
       </section>
     )}
     {(props.readiness === 'partial' || props.readiness === 'resolved') && (

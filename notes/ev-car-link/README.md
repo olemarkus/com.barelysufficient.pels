@@ -20,10 +20,11 @@ and keeps resuming. A smart task whose target sits above the car's own limit pin
 `remainingUnits` forever and lands `missed` with nothing the user can act on
 (`lib/objectives/deferredObjectives/diagnosticProgress.ts`).
 
-The only existing path from car to PELS is the `report_evcharger_battery_level` flow card,
-which the user must wire by hand and which hard-rejects any non-`evcharger` device. Class
-`car` devices are dropped outright at `SUPPORTED_DEVICE_CLASSES`
-(`lib/device/transport/managerHelpers.ts`).
+Before adoption, the path from car to PELS was the `report_evcharger_battery_level` flow
+card, wired by hand to an `evcharger` device. That remains supported when the charger has
+no eligible cars selected. The car-link producer now observes class `car` devices separately
+and supplies matched battery readings for opted-in chargers; cars still do not become
+managed loads. See "Adoption" for source exclusivity and session handling.
 
 ## Capability contract
 

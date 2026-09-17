@@ -17,7 +17,9 @@ PELS sets the charging current of an Easee charger itself, through the Easee app
 
 Open **Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger. If the charger has no control model yet, PELS picks **EV 1-phase** or **EV 3-phase** from how the Easee app reports the charger is wired: its phase mode, or the grid type it detected.
 
-Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is. If the Easee app cannot tell, for example before the charger has detected its grid, choose it yourself.
+Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is. **EV 1-phase** assumes 230 V single-phase charging; **EV 3-phase** assumes a 400 V TN supply. If the Easee app cannot tell, for example before the charger has detected its grid, confirm the supply and charging mode before choosing.
+
+**230 V IT three-phase charging is not supported by these presets.** PELS leaves a new charger's control model unchanged when Easee reports an IT three-phase grid, unless Easee is locked to single-phase charging. This also applies when Easee is locked to three-phase charging. Do not select **EV 3-phase** as a workaround: it overestimates power on an IT grid. Existing saved models are kept, so check yours if you already use IT three-phase charging. If Easee is already configured for single-phase charging, **EV 1-phase** remains supported.
 
 PELS picks the control model only once. If your car charges on one phase from a three-phase charger, choose **EV 1-phase** yourself, or switch between the two with the **Set EV charging phase** Flow card when you charge different cars. PELS never changes it back.
 
@@ -39,7 +41,7 @@ If one of your Flows already sets the charger's current with the Easee card **Se
 
 To switch to built-in control, disable or delete the part of that Flow that sets the current. PELS picks that up within 30 minutes and turns built-in control on. You can also turn **Use built-in device control** on yourself right away.
 
-A Flow that only reports the car's battery level to PELS is not a conflict. Keep it.
+A Flow that only reports the car's battery level to PELS is not a current-control conflict. Keep it if you use Flow battery reporting and have no car selected in the charger's **Car** section. If you select a car there, PELS ignores the battery-reporting Flow.
 
 ## Charging Session Starts
 
@@ -47,7 +49,7 @@ An Easee charger goes back to its maximum current whenever a charging session st
 
 ## Battery Reporting
 
-The generic EV charger guide covers battery reporting for boost mode and smart tasks. Choose the Easee charger in **Report battery level for charger**.
+Choose a supported car in the charger's **Car** section to use its battery level when PELS matches it to the charger. Alternatively, leave the car selection empty and use **Report battery level for charger**, selecting the Easee charger in that Flow card. These are separate battery sources: while any car is selected, PELS ignores both Flow reports and the charger's own battery reading, including while waiting to match a car. See [EV charger battery reporting](/ev-charger#step-5-configure-boost-mode-battery-reporting).
 
 ## Troubleshooting
 

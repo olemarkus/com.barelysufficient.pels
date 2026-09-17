@@ -34,8 +34,10 @@ Open the charger in the **Devices** tab and choose the EV control mode that matc
 
 | Control mode | Use when |
 | --- | --- |
-| **EV 1-phase** | PELS should plan charging as single-phase current. |
-| **EV 3-phase** | PELS should plan charging as three-phase current. |
+| **EV 1-phase** | 230 V single-phase charging. |
+| **EV 3-phase** | Three-phase charging on a 400 V TN supply. |
+
+The presets do not support 230 V IT three-phase charging. Neither preset is an accurate substitute for that supply and charging mode.
 
 This is more convenient than a manual stepped-load setup because PELS can expose **EV charger current (A)** directly in the Flow. Manual stepped-load setup can still work, but then you must convert watts to amps yourself.
 
@@ -94,7 +96,13 @@ Your hard cap and daily budget still come first, and a smart task with a deadlin
 
 This step is optional. Basic capacity control does not need battery reporting.
 
-If you want EV boost mode to react to the car battery level, the car or charger app must expose a battery percentage trigger or tag in Homey. Then create a Flow that reports the battery percentage to PELS whenever Homey receives a new battery level.
+Choose one of these battery-reporting paths for boost mode and Smart tasks:
+
+- **Selected car:** open the charger's **Car** section and select the supported cars that charge there. PELS uses the battery level of the car it matches to the charger. Selecting a car alone does not establish a match; while the page says **Waiting to match a car**, the charger has no battery level.
+- **Charger reading:** leave the car selection empty. If the charger exposes a supported battery-percentage capability, PELS reads it directly.
+- **Flow reporting:** leave the car selection empty and report a battery-percentage tag from the car or charger app using the Flow below.
+
+While any car is selected, PELS ignores both the battery-reporting Flow and the charger's own reading, even before a match is available. They do not provide fallback readings. Clear the car selection to return to those sources.
 
 Use this Flow shape for boost mode:
 
@@ -105,7 +113,7 @@ Use this Flow shape for boost mode:
 
 Choose the same charger in the PELS action card, and map the battery percentage tag from the car or charger app to **battery level**.
 
-After this Flow is running, PELS has battery reporting for the charger. EV boost mode can use that battery level to give the charger extra priority while the car is below the configured boost threshold.
+With no car selected, this Flow supplies battery reports for the charger. EV boost mode can use the resulting battery level to give the charger extra priority while the car is below the configured boost threshold.
 
 ## Step 6: Check the Setup
 
@@ -115,7 +123,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
 3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. Other chargers receive **EV charger current (A)** in their current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
-5. If you configured boost mode battery reporting, battery percentage appears in PELS after the battery reporting Flow runs.
+5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
 
 ## Troubleshooting
 
@@ -124,7 +132,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and refresh the Devices tab. |
 | The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup can use built-in device control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
-| Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |
+| Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check the charger's own reading or that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, hard cap, safety margin, and whether Simulation mode is still enabled. |
 
 For problems beyond the charger — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).

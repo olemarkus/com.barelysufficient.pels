@@ -225,6 +225,11 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
     if (!updateKind) return false;
     const { isNativePowerStepUpdate } = updateKind;
 
+    // A malformed current is not an observation. Consume it before it can
+    // replace the adapter's last-good step or advance device freshness.
+    if (capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
+        && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return true;
+
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
     if (hasMatchingRecentLocalWrite(ctx, deviceId, capabilityId, normalizedValue)) {
         return isNativePowerStepUpdate;

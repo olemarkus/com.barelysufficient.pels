@@ -38,6 +38,16 @@ capabilities instead of round-tripping through user-authored Flow cards.
   session-start reset to the charger maximum arrives as an observed step and
   is corrected by the ordinary stepped mismatch path, as it was with the Flow.
 
+  **Phase auto-selection excludes IT three-phase.** `resolveChargerPhaseReport`
+  never assigns the TN three-phase preset to a reported `IT_3_PHASE` grid, including
+  a locked-three-phase report. Locked single-phase remains supported. The existing
+  presets assume 230 W/A or 690 W/A; IT three-phase needs about 398 W/A. Calibration
+  cannot repair the higher rungs because their actual draw falls below the previous
+  rung's nominal calibration band. An unconfigured charger keeps its existing
+  binary control path; authored configurations are not migrated or erased. Proper
+  IT three-phase stepping requires a topology-aware profile and consistent readback
+  conversion before auto-selection can support it.
+
 ## The conflict rule
 
 > A device has a flow conflict when some user Flow **action** writes a

@@ -115,6 +115,11 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
+Selecting a car chooses its matched battery reading as the charger's battery source.
+While any car is selected, PELS ignores both the charger's own battery reading and
+the **Report battery level for charger** Flow card. Until a car is matched, the charger
+has no battery level. Clear the car selection to use native or Flow battery reporting again.
+
 When a selected car is unavailable in Homey, PELS temporarily removes its association and
 battery level because the retained car data cannot be trusted. The charger remains managed
 normally. If the car becomes available again while both it and the charger still report a

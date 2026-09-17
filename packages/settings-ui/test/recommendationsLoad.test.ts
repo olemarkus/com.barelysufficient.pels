@@ -117,28 +117,108 @@ describe('recommendation loading', () => {
     expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
   });
 
-  it('settles an unavailable dismissal read and lets the user retry it', async () => {
+  it.each(['thrown', 'malformed'])('keeps known guidance on a cold %s dismissal read and allows retry', async (failure) => {
     const recommendations = await loadSubject([device({
       flowConflict: { conflictingCapabilities: ['max_power_3000'] },
     })]);
-    getSetting.mockRejectedValueOnce(new Error('settings unavailable'));
+    if (failure === 'thrown') {
+      getSetting.mockRejectedValueOnce(new Error('settings unavailable'));
+      getSettingFresh.mockRejectedValue(new Error('settings unavailable'));
+    } else {
+      getSetting.mockResolvedValueOnce('malformed');
+      getSettingFresh.mockResolvedValue('malformed');
+    }
     callApi.mockResolvedValue(resolvedCars());
 
     await recommendations.loadRecommendationData();
 
     const surface = document.getElementById('setup-recommendations-root');
-    expect(surface?.textContent).toContain('Recommendations couldn’t be loaded');
+    expect(surface?.textContent).toContain('Use built-in device control for Connected 300');
+    expect(surface?.textContent).toContain('Dismissed recommendations couldn’t be read');
     expect(surface?.textContent).toContain('Try again');
     expect(surface?.textContent).not.toContain('Checking your configuration');
+    expect(surface?.textContent).not.toContain('Some recommendation checks couldn’t be refreshed');
+    expect([...surface!.querySelectorAll('md-text-button')].some((button) => button.textContent === 'Dismiss'))
+      .toBe(false);
+    expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
+    expect(document.getElementById('settings-nav-chip-recommendations')?.hidden).toBe(true);
+    expect(setSetting).not.toHaveBeenCalled();
 
     getSetting.mockResolvedValueOnce({});
-    const retry = surface?.querySelector('md-filled-tonal-button');
+    const retry = [...surface!.querySelectorAll('md-text-button')]
+      .find((button) => button.textContent === 'Try again');
     retry?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     retry?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await vi.waitFor(() => {
-      expect(surface?.textContent).toContain('Use built-in device control for Connected 300');
+      expect(surface?.textContent).not.toContain('Dismissed recommendations couldn’t be read');
     });
     expect(getSetting).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes added, renamed and removed cars without reloading dismissal settings', async () => {
+    const recommendations = await loadSubject([device({ deviceClass: 'evcharger' })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    await recommendations.loadRecommendationData();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    const surface = document.getElementById('setup-recommendations-root');
+    try {
+      callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar' }]));
+      document.dispatchEvent(new Event('devices-updated'));
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Polestar'); });
+
+      let resolveOldCars!: (value: ReturnType<typeof resolvedCars>) => void;
+      callApi.mockReturnValueOnce(new Promise((resolve) => { resolveOldCars = resolve; }));
+      const callsBeforeRefresh = callApi.mock.calls.length;
+      document.dispatchEvent(new Event('devices-updated'));
+      // Two more device changes during the read share one follow-up fetch.
+      expect(surface?.textContent).not.toContain('Some recommendation checks couldn’t be refreshed');
+      document.dispatchEvent(new Event('devices-updated'));
+      document.dispatchEvent(new Event('devices-updated'));
+      callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Current car' }]));
+      resolveOldCars(resolvedCars([{ id: 'car-1', name: 'Obsolete car' }]));
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Current car'); });
+      expect(surface?.textContent).not.toContain('Obsolete car');
+      expect(callApi).toHaveBeenCalledTimes(callsBeforeRefresh + 2);
+
+      callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Renamed car' }]));
+      document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Renamed car'); });
+      expect(surface?.textContent).not.toContain('Polestar');
+
+      callApi.mockResolvedValue(resolvedCars());
+      document.dispatchEvent(new Event('devices-updated'));
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('No setup suggestions right now'); });
+      expect(surface?.textContent).not.toContain('Renamed car');
+      expect(getSetting).toHaveBeenCalledOnce();
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
+  it('shows available car guidance while the independent dismissal read is still pending', async () => {
+    const recommendations = await loadSubject([device({ deviceClass: 'evcharger' })]);
+    let resolveDismissals!: (value: Record<string, number>) => void;
+    getSetting.mockReturnValueOnce(new Promise((resolve) => { resolveDismissals = resolve; }));
+    callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar' }]));
+
+    const loading = recommendations.loadRecommendationData();
+    try {
+      await vi.waitFor(() => {
+        expect(document.getElementById('setup-recommendations-root')?.textContent)
+          .toContain('Choose a charger for Polestar');
+      });
+      expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
+    } finally {
+      resolveDismissals({ 'charger-car:car-1': 1 });
+      await loading;
+    }
+    expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
+    expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
   });
 
   it('preserves last-good dismissals on an unavailable read and clears them on explicit unset', async () => {
@@ -156,11 +236,30 @@ describe('recommendation loading', () => {
     await recommendations.loadRecommendationData();
     expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
-      .toContain('Some recommendation checks couldn’t be refreshed right now');
+      .toContain('Dismissed');
 
     recommendations.clearRecommendationDismissals();
     expect(document.getElementById('setup-recommendations-banner-root')?.textContent)
       .toContain('1 recommendation');
+  });
+
+  it('reloads only dismissals when their setting changes', async () => {
+    const recommendations = await loadSubject([device({
+      flowConflict: { conflictingCapabilities: ['max_power_3000'] },
+    })]);
+    getSetting.mockResolvedValueOnce({});
+    callApi.mockResolvedValue(resolvedCars());
+    await recommendations.loadRecommendationData();
+    const { createSettingsSetHandler } = await import('../src/ui/settingsChangeRouter.ts');
+    getSetting.mockResolvedValueOnce({ 'built-in-control:device-1': 1 });
+
+    createSettingsSetHandler()('setup_recommendation_dismissals');
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
+    });
+    expect(getSetting).toHaveBeenCalledTimes(2);
+    expect(callApi).toHaveBeenCalledOnce();
   });
 
   it('does not let an older dismissal read undo an explicit unset', async () => {

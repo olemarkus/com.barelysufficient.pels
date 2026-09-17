@@ -69,7 +69,7 @@ import {
 } from './deviceDetail/index.ts';
 import {
   clearRecommendationDismissals,
-  loadRecommendationData,
+  loadRecommendationDismissals,
   refreshRecommendationSurfaces,
   SETUP_RECOMMENDATION_DISMISSALS,
 } from './recommendations.ts';
@@ -364,7 +364,7 @@ const reloadRecommendationsIfKey = (key: string, context: string): void => {
       clearRecommendationDismissals();
       return;
     }
-    runLoggedTask(loadRecommendationData(), 'Failed to reload setup recommendations', context);
+    runLoggedTask(loadRecommendationDismissals(), 'Failed to reload recommendation acknowledgements', context);
     return;
   }
   if (key === EV_CAR_ASSOCIATIONS) {

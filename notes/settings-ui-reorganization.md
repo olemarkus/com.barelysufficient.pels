@@ -114,6 +114,13 @@ claim that the whole installation is complete. Each suggestion must be
 independently resolvable: an unavailable optional source cannot hide unrelated
 guidance or block the settings UI.
 
+Car inventory refreshes independently on device updates and whenever Recommendations
+opens, retaining the last-good list on an unavailable read. A cold acknowledgement-read
+failure does not hide known suggestions on that page: show that dismissed status could
+not be read and withhold Dismiss/Show again actions until it is available. Keep the global
+banner and count hidden in that state so previously dismissed advice is not asserted as
+active. A warm failure retains the last-good dismissal map.
+
 Keep the configuration owners as the place where the user acts:
 
 - the global missing/stale-power banner routes to the power source;
