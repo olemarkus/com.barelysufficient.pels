@@ -84,8 +84,8 @@ describe('device detail flow-conflict banner', () => {
     expect(title()?.textContent).not.toBe(NATIVE_WIRING_FLOW_CONFLICT_TITLE);
     expect(body()?.textContent).toContain('Charge at night');
     expect(body()?.textContent).toContain('Your Flow keeps working as it does now');
-    expect(body()?.textContent).toContain('turn off only the action that controls this device');
-    expect(body()?.textContent).not.toContain('Remove it');
+    expect(body()?.textContent).toContain('disable the Flow “Charge at night”');
+    expect(body()?.textContent).toContain('delete its device-control action');
     // Still no raw capability id in the user-facing copy.
     expect(body()?.textContent).not.toContain('max_power_3000');
   });
@@ -114,7 +114,9 @@ describe('device detail flow-conflict banner', () => {
     }));
 
     expect(notice()?.hidden).toBe(false);
-    expect(body()?.textContent).toContain('may override each other');
+    expect(body()?.textContent).toContain('Disable the Flow');
+    expect(body()?.textContent).toContain('delete its device-control action');
+    expect(body()?.textContent).toContain('cannot override PELS');
     expect(body()?.textContent).not.toContain('left built-in device control');
     expect(document.getElementById('device-detail-native-wiring-notice')?.hidden).toBe(true);
   });

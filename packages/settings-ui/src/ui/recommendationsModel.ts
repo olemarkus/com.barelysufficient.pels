@@ -62,11 +62,27 @@ export const resolveNativeControlRecommendations = (
     const nativeControlEnabled = nativeWiringEnabledByDeviceId[device.id] === true
       || device.controlAdapter?.activationEnabled === true;
     const hasConflict = conflict !== undefined && conflict.conflictingCapabilities.length > 0;
-    if (nativeControlEnabled || (!hasConflict && !supportsNativeWiringActivation(device))) return [];
+    if (nativeControlEnabled && !hasConflict) return [];
+    if (!hasConflict && !supportsNativeWiringActivation(device)) return [];
+    if (nativeControlEnabled) {
+      const flowReference = conflict?.flowName
+        ? `the Flow “${conflict.flowName}”`
+        : 'the conflicting Flow';
+      return [{
+        id: recommendationId('flow-conflict', device.id),
+        version: RECOMMENDATION_VERSION,
+        category: 'recommendation',
+        title: `Remove conflicting Flow control for ${device.name}`,
+        body: `Built-in device control is on, but ${flowReference} can still change the same setting. `
+          + 'Disable the Flow, or delete its device-control action, so it cannot override PELS.',
+        actionLabel: 'Review conflict',
+        target: { kind: 'device', deviceId: device.id },
+      }];
+    }
     const flowReference = hasConflict && conflict.flowName
-      ? `To switch, disable or remove only the device-control action in “${conflict.flowName}”, `
+      ? `To switch, disable the Flow “${conflict.flowName}” or delete its device-control action, `
         + 'then turn on Built-in device control on the device page.'
-      : 'To switch, disable or remove only the Flow action that controls this device, '
+      : 'To switch, disable each conflicting Flow or delete its device-control action, '
         + 'then turn on Built-in device control on the device page.';
     const body = hasConflict
       ? `Your current Flow keeps working. PELS can also control this device directly. ${flowReference}`

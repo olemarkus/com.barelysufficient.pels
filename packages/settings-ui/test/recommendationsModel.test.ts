@@ -79,19 +79,35 @@ describe('setup recommendations', () => {
     });
     expect(recommendations[0]?.body).toContain('Limit water heater');
     expect(recommendations[0]?.body).toContain('Your current Flow keeps working');
-    expect(recommendations[0]?.body).toContain('only the device-control action');
+    expect(recommendations[0]?.body).toContain('disable the Flow');
+    expect(recommendations[0]?.body).toContain('delete its device-control action');
     expect(recommendations[0]?.body).not.toContain('max_power_3000');
   });
 
-  it('does not recommend changing a Flow once built-in control is enabled', () => {
+  it('keeps recommending Flow cleanup while built-in control and a Flow conflict are both enabled', () => {
     const recommendations = resolve(
-      [device({ flowConflict: { conflictingCapabilities: ['target_charger_current'] } })],
+      [device({
+        flowConflict: {
+          conflictingCapabilities: ['target_charger_current'],
+          flowName: 'Charge at night',
+        },
+      })],
       [],
       {},
       { 'device-1': true },
     );
 
-    expect(recommendations).toEqual([]);
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0]).toMatchObject({
+      id: 'flow-conflict:device-1',
+      title: 'Remove conflicting Flow control for Connected 300',
+      actionLabel: 'Review conflict',
+      target: { kind: 'device', deviceId: 'device-1' },
+    });
+    expect(recommendations[0]?.body).toContain('Charge at night');
+    expect(recommendations[0]?.body).toContain('Disable the Flow');
+    expect(recommendations[0]?.body).toContain('delete its device-control action');
+    expect(recommendations[0]?.body).toContain('cannot override PELS');
   });
 
   it('recommends connecting each supported, unconfigured car to an available charger', () => {

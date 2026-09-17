@@ -3,8 +3,8 @@
 export const NATIVE_WIRING_FLOW_CONFLICT_TITLE = 'A Homey Flow already controls this device';
 
 export const NATIVE_WIRING_FLOW_CONFLICT_BODY = 'PELS left built-in device control (the switch below) off so it '
-  + 'does not fight your Flow. Your Flow keeps working as it does now. To switch, turn off only the action that '
-  + 'controls this device, then turn on built-in device control below.';
+  + 'does not fight your Flow. Your Flow keeps working as it does now. To switch, disable each conflicting Flow '
+  + 'or delete its device-control action, then turn on built-in device control below.';
 
 export type NativeWiringFlowConflictNotice = {
   title: string;
@@ -20,16 +20,16 @@ export function nativeWiringFlowConflictNotice(
     return {
       title: 'Built-in device control and a Flow control the same setting',
       body: `Built-in device control is on, and ${flowReference} can still write the same setting. `
-        + 'They may override each other. Turn off only the conflicting Flow action to use built-in control, '
-        + 'or turn off built-in control to keep using your Flow.',
+        + 'Disable the Flow, or delete its device-control action, so it cannot override PELS. '
+        + 'You can also turn off built-in control to keep using your Flow.',
     };
   }
   if (flowName !== undefined && flowName.length > 0) {
     return {
       title: `The Flow “${flowName}” already controls this device`,
       body: 'PELS left built-in device control (the switch below) off so it does not fight '
-        + `your Flow “${flowName}”. Your Flow keeps working as it does now. To switch, turn off `
-        + 'only the action that controls this device, then turn on built-in device control below.',
+        + `your Flow “${flowName}”. Your Flow keeps working as it does now. To switch, disable `
+        + `the Flow “${flowName}” or delete its device-control action, then turn on built-in device control below.`,
     };
   }
   return {
