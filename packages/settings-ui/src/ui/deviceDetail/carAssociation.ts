@@ -30,6 +30,7 @@ type CarOption = { id: string; name: string };
 
 const runSerializedCarWrite = createSerializedAsyncRunner();
 const ASSOCIATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
+let associationLoadGeneration = 0;
 
 // Cars are fetched lazily on the first charger page. `null` means never loaded.
 let carOptions: CarOption[] | null = null;
@@ -44,6 +45,7 @@ export const supportsCarAssociation = (
 ): boolean => isEvChargerDevice(device);
 
 export const loadEvCarAssociations = async (): Promise<void> => {
+  const generation = ++associationLoadGeneration;
   try {
     let value = await getSetting(EV_CAR_ASSOCIATIONS);
     for (const delayMs of ASSOCIATION_READ_RETRY_DELAYS_MS) {
@@ -51,6 +53,9 @@ export const loadEvCarAssociations = async (): Promise<void> => {
       await sleep(delayMs);
       value = await getSettingFresh(EV_CAR_ASSOCIATIONS);
     }
+    // A newer reload or an authoritative unset owns the state now. An older SDK
+    // read may still resolve, but it must not restore the map that event replaced.
+    if (generation !== associationLoadGeneration) return;
     if (value !== null && value !== undefined
       && (typeof value !== 'object' || Array.isArray(value))) {
       await logSettingsError(
@@ -83,6 +88,7 @@ export const loadEvCarAssociations = async (): Promise<void> => {
 };
 
 export const clearEvCarAssociations = (): void => {
+  associationLoadGeneration += 1;
   state.evCarAssociations = {};
   state.evCarAssociationsLoaded = true;
 };

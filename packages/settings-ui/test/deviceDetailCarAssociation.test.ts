@@ -214,6 +214,23 @@ describe('charger car picker', () => {
     expect(state.evCarAssociationsLoaded).toBe(true);
   });
 
+  it('does not let a pending reload restore associations after an authoritative unset', async () => {
+    const { clearEvCarAssociations, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    const { state } = await import('../src/ui/state.ts');
+    let resolveRead: (value: unknown) => void = () => {};
+    getSetting.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+
+    const pendingLoad = loadEvCarAssociations();
+    clearEvCarAssociations();
+    resolveRead({ 'charger-1': { carIds: ['car-1'] } });
+    await pendingLoad;
+
+    expect(state.evCarAssociations).toEqual({});
+    expect(state.evCarAssociationsLoaded).toBe(true);
+  });
+
   it('keeps associations unresolved after a failed first read and resolves absence after retries', async () => {
     const { loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
     const { state } = await import('../src/ui/state.ts');
