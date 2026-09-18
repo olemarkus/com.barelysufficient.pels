@@ -82,6 +82,33 @@ describe('planBudget', () => {
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
+    it('carries a sparse Flow sample across the Belgian quarter boundary', () => {
+      const previousQuarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
+      const lastTimestamp = previousQuarterStartMs + 14 * 60 * 1000;
+      const nowMs = previousQuarterStartMs + 17 * 60 * 1000;
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
+
+      const result = computeDynamicSoftLimit({
+        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        powerTracker: {
+          lastTimestamp,
+          lastPowerW: 3_000,
+          capacityQuarter: {
+            startMs: previousQuarterStartMs,
+            energyKWh: 0.7,
+            trackedMs: lastTimestamp - previousQuarterStartMs,
+          },
+        },
+      });
+
+      // The held 3 kW sample covers :15–:17 in the new quarter: 0.1 kWh used,
+      // 1.15 kWh remains across 13 minutes, so the safe pace is about 5.31 kW.
+      expect(result.allowedKw).toBeCloseTo(1.15 / (13 / 60), 6);
+      expect(result.remainingKWh).toBeCloseTo(1.15, 6);
+      expect(result.hourlyBudgetExhausted).toBe(false);
+    });
+
     it('keeps an explicit build timestamp after the wall clock crosses a quarter boundary', () => {
       const quarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
       const buildNowMs = quarterStartMs + 14 * 60 * 1000;
