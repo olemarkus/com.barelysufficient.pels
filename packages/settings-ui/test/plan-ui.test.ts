@@ -110,6 +110,24 @@ describe('Redesign plan UI', () => {
       expect(document.body.textContent).toContain('On pace to exceed the hard cap this quarter.');
     });
 
+    it('withholds the Belgian trajectory while the quarter has partial coverage', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          capacityPeriodMinutes: 15,
+          capacityPeriodCoverageComplete: false,
+          totalKw: 6,
+          hardCapLimitKw: 5,
+          usedKWh: 1,
+          hourBudgetKWh: 1.2,
+          minutesRemaining: 5,
+        }),
+        devices: [],
+      });
+
+      expect(document.body.textContent).not.toContain('On pace to exceed the hard cap this quarter.');
+      expect(document.body.textContent).not.toContain('projected');
+    });
+
     it('renders no hero at all for an unmeasured cycle — the cards stay, nothing computed is drawn', async () => {
       // The silent-meter fail-closed plan: the wire meta carries the bare
       // `powerIsMeasured: false` and no headroom or managed/background split.

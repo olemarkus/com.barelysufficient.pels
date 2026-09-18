@@ -255,6 +255,7 @@ describe('parsePlanSnapshot meta guard', () => {
     softLimitSource: 'capacity',
     hardCapLimitKw: 12,
     capacityPeriodMinutes: 60,
+    capacityPeriodCoverageComplete: true,
     usedKWh: 1.2,
     hourBudgetKWh: 9.5,
     minutesRemaining: 30,
@@ -296,6 +297,7 @@ describe('parsePlanSnapshot meta guard', () => {
     ['a non-member softLimitSource', { softLimitSource: 'both' }],
     ['a missing capacity period', { capacityPeriodMinutes: undefined }],
     ['an unsupported capacity period', { capacityPeriodMinutes: 30 }],
+    ['a missing capacity-period coverage verdict', { capacityPeriodCoverageComplete: undefined }],
   ])('rejects the whole payload for %s', (_label, patch) => {
     // Rejecting rather than repairing: there is no useful hero to draw from a
     // partial meta, and the hero reads these numbers without hedging — before

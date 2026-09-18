@@ -87,6 +87,7 @@ test.describe('Onboarding links', () => {
           projectedExemptKw: null,
           softLimitSource: 'capacity',
           capacityPeriodMinutes: 60,
+          capacityPeriodCoverageComplete: true,
           powerIsMeasured: true,
           hardCapLimitKw: 10,
           usedKWh: 0,

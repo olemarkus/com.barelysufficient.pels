@@ -34,6 +34,8 @@ import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersiste
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 
+const CAPACITY_SETTINGS_LOAD_RETRY_MS = 1_000;
+
 export type PreparedBundleSampleFence = {
   bindReader: (reader: () => StableSampleRevision) => void;
   begin: (sampleRevision: number) => () => void;
@@ -404,6 +406,48 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     // log, no recovery arming — safe on the read surface (unlike its dry-run).
     getOperatingMode: scope.getOperatingMode,
   });
+  const capacitySettingsRetryTimer = timerKey('capacitySettingsLoadRetry');
+  const reloadCapacityScalars = (): void => {
+    if (isTornDown()) return;
+    const next = capacityStore.read();
+    if (next.state === 'unavailable') {
+      if (ctx.timers.has(capacitySettingsRetryTimer)) return;
+      const timer = setTimeout(() => {
+        ctx.timers.clear(capacitySettingsRetryTimer);
+        reloadCapacityScalars();
+      }, CAPACITY_SETTINGS_LOAD_RETRY_MS);
+      ctx.timers.registerTimeout(capacitySettingsRetryTimer, timer);
+      (timer as { unref?: () => void }).unref?.();
+      return;
+    }
+    ctx.timers.clear(capacitySettingsRetryTimer);
+    // The capacity scalars live in their own store; nothing mirrors them now.
+    setScalars(next.value);
+    // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
+    // ACTIVATION path (P2#2). The rebuild after that transition can produce the
+    // SAME action signature as the never-applied dry-run shed plan, which used
+    // to skip the apply entirely (stable actuation does not cover shed actions)
+    // and leave the home over cap with its command never issued — so this path
+    // chased the rebuild with a reconcile to force the write. It no longer needs
+    // to for a `turn_off` shed: the plan wants the device off, it is observed on,
+    // and that IS execution work outstanding, so the rebuild applies it itself.
+    //
+    // CAVEAT, because the coverage is not total: a `set_step` shed to a non-off
+    // step is NOT caught. `hasSteppedStepDrift` compares the observed step
+    // against `planDevice.selectedStepId`, which on a rebuild is the observed
+    // step (same read) — structurally equal, so step drift is always false
+    // there, and the binary axis reads `on` as expected. Such a plan still
+    // depends on `changes.actionChanged`. That hole predates this change (the
+    // deleted reconcile lane used the same predicate), and closing it means
+    // comparing against `desiredStepId` for an unexecuted shed.
+    //
+    // Direct rebuild, mirroring the main home's settings path
+    // (`handleCapacityLimitChange` also bypasses the sample scheduler).
+    void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
+      .catch((error: unknown) => {
+        logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
+      });
+  };
   return {
     homeId,
     isTornDown,
@@ -464,36 +508,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
           logger()?.error({ event: 'home_meter_sample_failed', homeId, err: normalizeError(error) });
         });
     },
-    reloadCapacityScalars: () => {
-      if (isTornDown()) return;
-      const next = capacityStore.read();
-      // The capacity scalars live in their own store; nothing mirrors them now.
-      setScalars(next);
-      // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
-      // ACTIVATION path (P2#2). The rebuild after that transition can produce the
-      // SAME action signature as the never-applied dry-run shed plan, which used
-      // to skip the apply entirely (stable actuation does not cover shed actions)
-      // and leave the home over cap with its command never issued — so this path
-      // chased the rebuild with a reconcile to force the write. It no longer needs
-      // to for a `turn_off` shed: the plan wants the device off, it is observed on,
-      // and that IS execution work outstanding, so the rebuild applies it itself.
-      //
-      // CAVEAT, because the coverage is not total: a `set_step` shed to a non-off
-      // step is NOT caught. `hasSteppedStepDrift` compares the observed step
-      // against `planDevice.selectedStepId`, which on a rebuild is the observed
-      // step (same read) — structurally equal, so step drift is always false
-      // there, and the binary axis reads `on` as expected. Such a plan still
-      // depends on `changes.actionChanged`. That hole predates this change (the
-      // deleted reconcile lane used the same predicate), and closing it means
-      // comparing against `desiredStepId` for an unexecuted shed.
-      //
-      // Direct rebuild, mirroring the main home's settings path
-      // (`handleCapacityLimitChange` also bypasses the sample scheduler).
-      void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
-        .catch((error: unknown) => {
-          logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
-        });
-    },
+    reloadCapacityScalars,
     teardown: (options) => {
       // A failed durable reset leaves this runtime fenced but retained by the
       // registry as a tombstone. Repeated teardown(reset) calls are therefore
@@ -525,6 +540,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       ctx.timers.clear(timerKey('shortfallAlertImmediate'));
       ctx.timers.clear(timerKey('shortfallAlertSustained'));
       ctx.timers.clear(timerKey('sourceActuationRetry'));
+      ctx.timers.clear(capacitySettingsRetryTimer);
       tracker.stopAndFlush();
       // Flush the final accepted old-identity sample first, then overwrite only
       // its freshness latch. A late old pipeline save is fenced by `markTornDown`.

@@ -129,6 +129,7 @@ function resolveMeasuredStatusFields(
   // backward-compatible twin; the driver and the widget were built against
   // both, so both keep their published spelling.
   if (!meta.powerIsMeasured) return { powerNowKw: null, powerKnown: false };
+  const projectedOverHardCap = resolveProjectedOverHardCap(meta);
   return {
     powerNowKw: meta.totalKw,
     powerKnown: true,
@@ -149,7 +150,7 @@ function resolveMeasuredStatusFields(
     // keeps out, wearing a boolean instead of a number. The silence block stops
     // rebuilding after that pass, so such a verdict would sit frozen in the blob
     // for the whole outage with nothing scheduled to correct it.
-    projectedOverHardCap: resolveProjectedOverHardCap(meta),
+    ...(projectedOverHardCap === undefined ? {} : { projectedOverHardCap }),
     headroomKw: meta.headroomKw,
     shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
     hardCapHeadroomKw: meta.hardCapHeadroomKw,
@@ -169,7 +170,7 @@ function resolveMeasuredStatusFields(
 // the headroom widget's danger state so it reconciles with the Overview
 // hero's chip, which computes the same projection and predicate live via the
 // shared helpers.
-function resolveProjectedOverHardCap(meta: PlanMeta): boolean {
+function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
   const {
     totalKw,
     usedKWh,
@@ -177,6 +178,7 @@ function resolveProjectedOverHardCap(meta: PlanMeta): boolean {
     hardCapLimitKw,
     capacityPeriodMinutes,
   } = meta;
+  if (!meta.capacityPeriodCoverageComplete) return undefined;
   if (typeof totalKw !== 'number' || typeof usedKWh !== 'number'
     || typeof minutesRemaining !== 'number' || typeof hardCapLimitKw !== 'number') {
     return false;

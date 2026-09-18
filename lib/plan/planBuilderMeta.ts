@@ -66,6 +66,7 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     shortfallBudgetThresholdKw,
     hardCapLimitKw: capacityLimitKw,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
+    capacityPeriodCoverageComplete: context.capacityPeriodCoverageComplete,
     hourlyBudgetExhausted,
     hourUsedKWh: context.hourUsedKWh,
     usedKWh: context.usedKWh,

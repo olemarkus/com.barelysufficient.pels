@@ -54,6 +54,7 @@ const buildPlanMetaBase = (
   softLimitSource: 'capacity',
   hardCapLimitKw: 12,
   capacityPeriodMinutes: 60,
+  capacityPeriodCoverageComplete: true,
   usedKWh: 1.2,
   hourBudgetKWh: 9.5,
   minutesRemaining: 30,

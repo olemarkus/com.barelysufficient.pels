@@ -1,7 +1,7 @@
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
-import type { CapacityScalarSettings } from '../power/capacitySettingsStore';
+import type { CapacityScalarSettingsRead } from '../power/capacitySettingsStore';
 import type { CapacitySettings } from '../power/capacityModel';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
@@ -128,7 +128,7 @@ export type AppContext = {
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   /** Read and classify the Main home's capacity scalar settings at their owner boundary. */
-  readCapacityScalarSettings: () => CapacityScalarSettings;
+  readCapacityScalarSettings: () => CapacityScalarSettingsRead;
   loadCapacitySettings: () => void;
   /** Re-read only the validated live temperature-command authorization map. */
   loadTemperatureControlPolicySettings: () => void;

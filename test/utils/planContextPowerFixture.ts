@@ -42,6 +42,7 @@ export const buildPlanContextFixture = ({ intent = {}, ...overrides }: PlanConte
   hourBucketKey: '2024-01-01T00',
   hourUsedKWh: 0,
   capacityPeriodMinutes: 60,
+  capacityPeriodCoverageComplete: true,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,

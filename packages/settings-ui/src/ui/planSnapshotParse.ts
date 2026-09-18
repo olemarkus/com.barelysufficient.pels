@@ -198,6 +198,7 @@ const isValidPlanMeta = (value: unknown): boolean => {
     )
     && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
     && (meta.capacityPeriodMinutes === 15 || meta.capacityPeriodMinutes === 60)
+    && typeof meta.capacityPeriodCoverageComplete === 'boolean'
     && typeof meta.powerIsMeasured === 'boolean'
     && (!meta.powerIsMeasured || MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key])));
 };

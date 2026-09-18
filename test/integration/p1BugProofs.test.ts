@@ -49,6 +49,7 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   hourBucketKey: '2025-01-01T00',
   hourUsedKWh: 0,
   capacityPeriodMinutes: 60 as const,
+  capacityPeriodCoverageComplete: true,
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,

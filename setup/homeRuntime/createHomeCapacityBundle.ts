@@ -504,7 +504,8 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   // constructed ONCE per bundle and is the ONLY capacity source for this scope.
   let capacityScalars: CapacityScalarSettings = SUB_HOME_CAPACITY_DEFAULTS;
   const capacityStore = createCapacitySettingsStore(ctx.homey.settings, homeId, () => capacityScalars);
-  capacityScalars = capacityStore.read();
+  const initialCapacityRead = capacityStore.read();
+  if (initialCapacityRead.state === 'resolved') capacityScalars = initialCapacityRead.value;
 
   const tracker = createHomeTrackerPersistence({
     deps: {
@@ -598,7 +599,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   // Initial signals build awaits the shared snapshot warmup gate; contained.
   startHomeCapacityBundle(planService, logger, home, capacityScalars);
 
-  return buildHomeCapacityBundleApi({
+  const bundle = buildHomeCapacityBundleApi({
     ctx, homeId, logger, timerKey,
     guard, planEngine, planService, scope,
     // The registry's RAW predicates: unlike the scope's execution predicate they
@@ -622,4 +623,8 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
   });
+  // The dry-run defaults above are the safe boot posture. Let the API's owned
+  // retry lane recover the real scalars before allowing them to drive plans.
+  if (initialCapacityRead.state === 'unavailable') bundle.reloadCapacityScalars();
+  return bundle;
 }

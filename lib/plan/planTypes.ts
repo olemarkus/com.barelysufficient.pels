@@ -742,6 +742,8 @@ export type PlanMetaBase = {
   // through — so neither `?` nor `| null` was ever right here.
   hardCapLimitKw: number;
   capacityPeriodMinutes: 15 | 60;
+  /** False while a 15-minute period's elapsed energy is only partially observed. */
+  capacityPeriodCoverageComplete: boolean;
   hourlyBudgetExhausted: boolean;
   /** Whole-clock-hour usage retained for the legacy Insights capability. */
   hourUsedKWh: number;

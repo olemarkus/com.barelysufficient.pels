@@ -55,6 +55,8 @@ export type PlanContext = PlanLimits & {
   hourBucketKey: string;
   hourUsedKWh: number;
   capacityPeriodMinutes: 15 | 60;
+  /** Whether usedKWh covers the whole elapsed part of this capacity period. */
+  capacityPeriodCoverageComplete: boolean;
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
@@ -126,6 +128,7 @@ export function buildPlanContext(params: {
     hourBucketKey: hourContext.bucketKey,
     hourUsedKWh: hourContext.usedKWh,
     capacityPeriodMinutes: capacitySettings.periodMinutes,
+    capacityPeriodCoverageComplete: capacityContext.coverageComplete,
     budgetKWh: resolveUsableCapacityKWh(capacitySettings),
     usedKWh: capacityContext.usedKWh,
     minutesRemaining: capacityContext.minutesRemaining,

@@ -55,7 +55,7 @@ import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
 import {
   createCapacitySettingsStore,
-  type CapacityScalarSettings,
+  type CapacityScalarSettingsRead,
 } from '../lib/power/capacitySettingsStore';
 
 /**
@@ -72,7 +72,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
 
-  public readCapacityScalarSettings = (): CapacityScalarSettings => createCapacitySettingsStore(
+  public readCapacityScalarSettings = (): CapacityScalarSettingsRead => createCapacitySettingsStore(
     this.homey.settings,
     MAIN_HOME_ID,
     () => ({

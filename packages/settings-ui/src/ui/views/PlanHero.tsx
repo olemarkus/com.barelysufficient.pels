@@ -280,7 +280,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   // The zero floor for net-export hours lives in the shared helper (also used
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
   // Keep `null` (no power/time signal) distinct from a clamped 0.
-  const projectedKWh = totalKw !== null && minutesRemaining !== null
+  const projectedKWh = meta.capacityPeriodCoverageComplete && totalKw !== null && minutesRemaining !== null
     ? computeProjectedPeriodEnergyKWh(usedKWh, totalKw, minutesRemaining)
     : null;
   return {
@@ -807,7 +807,8 @@ export const PlanHero = ({
   const headline = formatHeroHeadline(meta);
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
-  // The over-cap trajectory verdict is computed from the same four meta fields
+  // The over-cap trajectory verdict is computed from the same meta fields and
+  // elapsed-period coverage verdict
   // the `pels_status` producer uses — NOT via `projectionTone`, which is gated
   // on the energy bar existing (`hourBudgetKWh > 0`). A zero-allocation
   // daily-budget hour hides the energy section but can still be on pace past
@@ -816,7 +817,7 @@ export const PlanHero = ({
   // snapshot always carries its reading), and `usedKWh` / `minutesRemaining`
   // are required. The three `typeof` guards this replaces were the last place
   // the hero re-asked whether the planner had produced its own required fields.
-  const projectedOverHardCap = isProjectedOverHardCap({
+  const projectedOverHardCap = meta.capacityPeriodCoverageComplete && isProjectedOverHardCap({
     projectedKWh: computeProjectedPeriodEnergyKWh(
       meta.usedKWh,
       meta.totalKw,

@@ -242,6 +242,8 @@ export type SettingsUiPlanMetaSnapshotBase = {
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
   capacityPeriodMinutes: 15 | 60;
+  /** Whether usedKWh covers the whole elapsed part of this capacity period. */
+  capacityPeriodCoverageComplete: boolean;
   usedKWh: number;
   hourBudgetKWh: number;
   minutesRemaining: number;
