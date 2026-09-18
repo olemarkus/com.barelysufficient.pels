@@ -380,10 +380,8 @@ type HomeCapacityBundleApiParams = {
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
   const {
-    ctx, homeId, logger, timerKey, guard, planEngine, planService, scope, tracker,
-    readDryRunGates,
-    pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
-    markPreparedOwnershipGenerationReconciled,
+    ctx, homeId, logger, timerKey, guard, planEngine, planService, scope, tracker, readDryRunGates,
+    pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge, markPreparedOwnershipGenerationReconciled,
     getHome, setHome, getScalars, setScalars, readCapacityPeak,
     getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect, isTornDown, markTornDown,

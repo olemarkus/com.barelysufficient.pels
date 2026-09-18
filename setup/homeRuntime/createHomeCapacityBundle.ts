@@ -490,8 +490,7 @@ function createBundlePlanningRuntime(params: {
 }
 
 export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapacityBundle {
-  const { ctx } = deps;
-  const { homeId } = deps.home;
+  const { ctx, home: { homeId } } = deps;
   const logger = () => ctx.getStructuredLogger('homes');
   const timerKey = (suffix: string) => `home:${homeId}:${suffix}`;
 
