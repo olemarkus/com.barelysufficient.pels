@@ -269,6 +269,6 @@ describe('HomeTrackerPersistence writes', () => {
     await vi.advanceTimersByTimeAsync(61_000);
     expect(save).toHaveBeenCalledTimes(2);
     expect(timers.has('powerTrackerSave')).toBe(false);
-    expect(stored()).toEqual({});
+    expect(stored()).toBeNull();
   });
 });
