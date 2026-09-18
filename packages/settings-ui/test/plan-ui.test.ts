@@ -247,10 +247,9 @@ describe('Redesign plan UI', () => {
       expect(supportLines.some((line) => line?.includes('Managed'))).toBe(false);
     });
 
-    it('floors the projected-energy subline at zero during a net-export hour', async () => {
-      // Net export: totalKw < 0 drives `used + totalKw*minutesRemaining/60`
-      // negative (0.3 + (-2.0 * 46/60) ≈ -1.23). It must render as
-      // "projected 0.00 kWh", never "projected -1.23 kWh".
+    it('keeps billed usage unchanged in the projection during a net-export hour', async () => {
+      // Net export contributes zero to import-only billing. The 0.3 kWh already
+      // used therefore remains projected, rather than being subtracted away.
       await renderPlanSnapshot({
         meta: buildPlanMeta({
           totalKw: -2.0,
@@ -270,7 +269,7 @@ describe('Redesign plan UI', () => {
       const sublines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__subline'))
         .map((el) => el.textContent?.trim() ?? '');
       const projectedSubline = sublines.find((text) => text.startsWith('projected'));
-      expect(projectedSubline).toBe('projected 0.00 kWh');
+      expect(projectedSubline).toBe('projected 0.30 kWh');
       // No projected surface may ever print a negative kWh — guard the subline AND
       // the energy-bar projection marker's tooltip/aria ("Projected this hour …"),
       // which read the same clamped value, so the test protects both paths.
