@@ -24,6 +24,22 @@ export type CapacityPeriodUsageContext = {
   coverageComplete: boolean;
 };
 
+type HeldPowerSample = { atMs: number; powerW: number };
+
+const resolveHeldPowerSample = (
+  powerTracker: PowerTrackerState,
+  nowMs: number,
+): HeldPowerSample | undefined => {
+  const atMs = powerTracker.lastTimestamp;
+  const powerW = powerTracker.lastPowerW;
+  return typeof atMs === 'number'
+    && atMs <= nowMs
+    && nowMs - atMs <= MAX_POWER_SAMPLE_GAP_MS
+    && typeof powerW === 'number'
+    ? { atMs, powerW }
+    : undefined;
+};
+
 export function getCurrentCapacityPeriodContext(
   powerTracker: PowerTrackerState,
   periodMinutes: CapacityPeriodMinutes,
@@ -35,11 +51,7 @@ export function getCurrentCapacityPeriodContext(
   const periodEndMs = periodStartMs + periodMs;
   const quarter = powerTracker.capacityQuarter;
   const quarterMatches = quarter?.startMs === periodStartMs;
-  const lastTimestamp = powerTracker.lastTimestamp;
-  const heldSampleUsable = typeof lastTimestamp === 'number'
-    && lastTimestamp <= nowMs
-    && nowMs - lastTimestamp <= MAX_POWER_SAMPLE_GAP_MS
-    && typeof powerTracker.lastPowerW === 'number';
+  const heldSample = resolveHeldPowerSample(powerTracker, nowMs);
   // A missing Flow event is a no-op: the last admitted reading remains the
   // held sample until the next event (or the meter-silence gate closes plan
   // building). Include that interval in both usage and coverage so a
@@ -47,15 +59,15 @@ export function getCurrentCapacityPeriodContext(
   // At a period rollover the stored quarter still names the previous period
   // until another sample arrives. The held sample nevertheless covers the new
   // period from its boundary, so do not require `quarterMatches` here.
-  const heldMs = heldSampleUsable
-    ? Math.max(0, nowMs - Math.max(periodStartMs, lastTimestamp))
+  const heldMs = heldSample
+    ? Math.max(0, nowMs - Math.max(periodStartMs, heldSample.atMs))
     : 0;
   const usedKWh = periodMinutes === 15
     ? Math.max(0, (quarterMatches ? quarter.energyKWh : 0)
-      + (Math.max(0, powerTracker.lastPowerW ?? 0) / 1000) * (heldMs / 3_600_000))
+      + (Math.max(0, heldSample?.powerW ?? 0) / 1000) * (heldMs / 3_600_000))
     : Math.max(0, powerTracker.buckets?.[bucketKey] || 0);
   const coverageComplete = periodMinutes === 60 || (
-    (quarterMatches || heldSampleUsable)
+    (quarterMatches || heldSample !== undefined)
     && (quarterMatches ? quarter.trackedMs : 0) + heldMs >= nowMs - periodStartMs
   );
   const remainingMs = Math.max(0, periodEndMs - nowMs);
