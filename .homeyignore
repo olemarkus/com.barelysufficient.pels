@@ -92,6 +92,8 @@ localscripts/
 pr-*-feedback.*
 CLAUDE.md
 README.no.txt
+README.nl.txt
+README.fr.txt
 
 # Sourcemaps and .d.ts files are NOT excluded here, deliberately. Every one of
 # them lives under node_modules, and Homey installs production dependencies
