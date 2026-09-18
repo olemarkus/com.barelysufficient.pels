@@ -532,5 +532,8 @@
   },
   "3.4.0": {
     "en": "PELS now supports 15-minute capacity control for Belgian quarter-hour peak tariffs. Choose “15-minute average (Belgium)” under Limits & safety for your Main home or an individual meter area. PELS adjusts its safe pace to the selected period and shows the highest fully tracked quarter-hour average this month. Existing installations keep hourly control unless you change it.\n\nHomey Energy’s 15-minute electricity prices now drive the current price level and temperature adjustments, so price-aware devices can respond to cheap or expensive quarters within an hour. Daily budgets, Smart tasks, price charts and exported price lists continue to use hourly prices."
+  },
+  "3.4.1": {
+    "en": "Added Dutch and French App Store descriptions covering regional use cases, including Flemish capacity tariffs, solar self-consumption, EV charging and electric heating. Updated the English description to mention 15-minute capacity control."
   }
 }
