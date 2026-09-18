@@ -200,6 +200,18 @@ describe('Limits & safety inline validation', () => {
       .toBe('Peak unavailable');
   });
 
+  it('keeps legacy settings visible when runtime capacity state is unavailable', async () => {
+    const dom = buildLimitsDom();
+    const { capacity } = await loadCapacityModule({}, new Error('power read failed'));
+
+    await expect(capacity.loadCapacitySettings()).resolves.toBeUndefined();
+
+    expect(dom.limit.value).toBe('8');
+    expect(dom.margin.value).toBe('0.5');
+    expect(dom.period.value).toBe('60');
+    expect(document.querySelector('#settings-capacity-monthly-peak')?.hasAttribute('hidden')).toBe(true);
+  });
+
   it('does not render a negative peak from the untrusted power payload', async () => {
     buildLimitsDom();
     const { capacity } = await loadCapacityModule(

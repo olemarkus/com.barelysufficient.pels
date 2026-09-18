@@ -377,11 +377,11 @@ const resolveCapacitySettings = (
     ?? resolveCapacityPeriodMinutes(current.periodMinutes, paintedCapacityPeriodMinutes),
 });
 
-const readOptionalCapacityPeak = async (): Promise<SettingsUiPowerPayload | null> => {
+const readOptionalCapacityPowerModel = async (): Promise<SettingsUiPowerPayload | null> => {
   try {
     return await getPowerReadModel();
   } catch (caught) {
-    await logSettingsError('Failed to load the current-month capacity peak', caught, 'capacity');
+    await logSettingsError('Failed to load runtime capacity state', caught, 'capacity');
     return null;
   }
 };
@@ -390,8 +390,7 @@ const readCapacityPowerModel = async (
   needsRuntimeScalars: boolean,
   periodMinutes: unknown,
 ): Promise<SettingsUiPowerPayload | null> => {
-  if (needsRuntimeScalars) return getPowerReadModel();
-  if (periodMinutes === 15) return readOptionalCapacityPeak();
+  if (needsRuntimeScalars || periodMinutes === 15) return readOptionalCapacityPowerModel();
   return null;
 };
 
