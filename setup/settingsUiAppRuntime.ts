@@ -408,6 +408,10 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
     uncontrolledHourlyAverages: {},
     exemptHourlyAverages: {},
     unreliablePeriods: [],
+    // Completed-quarter history is part of the usage history the owner asked
+    // to erase. Keep the active capacityQuarter from `currentState`, matching
+    // the current-hour buckets above, so the running control window continues.
+    capacityMonthlyPeak: undefined,
   };
   app.replacePowerTrackerForUi(nextState);
   return app.powerTracker ?? nextState;

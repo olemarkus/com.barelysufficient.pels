@@ -108,6 +108,12 @@ describe('settings UI app runtime helpers', () => {
       },
       generationDailyTotals: { '2026-03-03': 3.1 },
       exportDailyTotals: { '2026-03-03': 1.9 },
+      capacityQuarter: {
+        startMs: Date.UTC(2026, 2, 3, 10, 15),
+        energyKWh: 0.42,
+        trackedMs: 5 * 60 * 1000,
+      },
+      capacityMonthlyPeak: { monthKey: '2026-03', peakKw: 6.8 },
       unreliablePeriods: [{ start: nowMs - 3_600_000, end: nowMs - 3_000_000 }],
     };
 
@@ -130,6 +136,12 @@ describe('settings UI app runtime helpers', () => {
     expect(result.exemptDailyTotals).toEqual({});
     expect(result.exemptHourlyAverages).toEqual({});
     expect(result.unreliablePeriods).toEqual([]);
+    expect(result.capacityMonthlyPeak).toBeUndefined();
+    expect(result.capacityQuarter).toEqual({
+      startMs: Date.UTC(2026, 2, 3, 10, 15),
+      energyKWh: 0.42,
+      trackedMs: 5 * 60 * 1000,
+    });
     expect(result.lastPowerW).toBe(4300);
     expect(result.lastTimestamp).toBe(nowMs - 5_000);
     expect(updateDailyBudgetAndRecordCap).toHaveBeenCalledWith({
