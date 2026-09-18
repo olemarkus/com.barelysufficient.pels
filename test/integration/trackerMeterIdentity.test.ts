@@ -13,11 +13,13 @@ const HISTORY: PowerTrackerState = {
   meterIdentity: METER_A,
   lastTimestamp: 1_700_000_000_000,
   lastPowerW: 2_400,
+  capacityQuarter: { startMs: 1_699_999_200_000, energyKWh: 0.3, trackedMs: 450_000 },
+  capacityMonthlyPeak: { monthKey: '2026-01', peakKw: 5.2 },
   buckets: { '2026-01-15T12': 2.5 },
   dailyTotals: { '2026-01-14': 7.25 },
 };
 const withoutFreshness = (state: PowerTrackerState, meterIdentity = state.meterIdentity): PowerTrackerState => ({
-  ...state, meterIdentity, lastTimestamp: undefined, lastPowerW: undefined,
+  ...state, meterIdentity, lastTimestamp: undefined, lastPowerW: undefined, capacityQuarter: undefined,
 });
 
 const open = () => createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));

@@ -235,11 +235,24 @@ describe('HomeTrackerPersistence writes', () => {
 
   it('resetFreshness drops the latch, keeps the accounting, and persists at once', () => {
     const { tracker, stored, timers } = build(UNBOUND, {
-      lastPowerW: 100, lastTimestamp: 1_000, dailyTotals: { d: 1 },
+      lastPowerW: 100,
+      lastTimestamp: 1_000,
+      capacityQuarter: { startMs: 0, energyKWh: 0.02, trackedMs: 600_000 },
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
+      dailyTotals: { d: 1 },
     });
-    tracker.save({ lastPowerW: 120, lastTimestamp: 1_500, dailyTotals: { d: 1 } });
+    tracker.save({
+      lastPowerW: 120,
+      lastTimestamp: 1_500,
+      capacityQuarter: { startMs: 0, energyKWh: 0.03, trackedMs: 700_000 },
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
+      dailyTotals: { d: 1 },
+    });
     expect(tracker.resetFreshness()).toBe(true);
     expect(timers.has('powerTrackerSave')).toBe(false);
-    expect(stored()).toEqual({ dailyTotals: { d: 1 } });
+    expect(stored()).toEqual({
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
+      dailyTotals: { d: 1 },
+    });
   });
 });

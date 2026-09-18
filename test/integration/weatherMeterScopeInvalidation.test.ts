@@ -156,6 +156,7 @@ const buildHarness = (
     updatePriceOptimizationEnabled: vi.fn(),
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
+    resetMainPowerTrackerFreshness: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
     // Approximates the production hook (`ctx.reloadWeatherCollector`), which
     // goes through `BackgroundTasksController.startWeatherCollector` — that

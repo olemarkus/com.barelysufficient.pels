@@ -521,6 +521,7 @@ describe('settings-change recompute triggers', () => {
     updatePriceOptimizationEnabled: vi.fn(),
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
+    resetMainPowerTrackerFreshness: vi.fn(),
   });
 
   it('homes_config and pin writes recompute through the serialized handler; suspect keeps the previous map', async () => {

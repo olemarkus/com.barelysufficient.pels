@@ -6,8 +6,8 @@ import type { HomeId } from '../../lib/utils/settingsKeys';
 
 /**
  * Clear a dormant sub-home meter's freshness identity before its runtime is
- * activated. Accounting buckets remain intact; only the last meter sample
- * latch is removed. A store failure is contained so the registry can retain
+ * activated. Completed accounting remains intact; the last meter sample and
+ * unfinished capacity quarter are removed. A store failure is contained so the registry can retain
  * the pending activation and retry it.
  */
 export function resetPersistedHomeTrackerFreshness(params: {

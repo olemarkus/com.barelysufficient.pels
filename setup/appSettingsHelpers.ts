@@ -447,6 +447,7 @@ export function initSettingsHandlerForApp(
     updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
+    resetMainPowerTrackerFreshness: () => { ctx.resetMainPowerTrackerFreshness(); },
     restartHomeyEnergyPoll: () => {
       ctx.homeyEnergyHelpers.restart();
       // The two are complementary: exactly one runs for any given source, so a

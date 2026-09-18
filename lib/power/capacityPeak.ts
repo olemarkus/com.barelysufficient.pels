@@ -1,16 +1,24 @@
 import type { PowerTrackerState } from './trackerTypes';
-import { currentCapacityMonthKey } from './capacityQuarterTracking';
+import { currentCapacityMonthKey, projectCapacityMonthlyPeak } from './capacityQuarterTracking';
 
 /**
  * Highest fully tracked 15-minute net-import average in the current local month.
- * The tracker compacts completed quarters at ingest, so this read is O(1).
+ * Completed quarters are compacted at ingest; a sparse held sample is projected
+ * across at most its partial quarter and one representative full quarter.
  */
 export function resolveCurrentMonthQuarterPeakKw(
   tracker: PowerTrackerState,
   timeZone: string,
   nowMs: number,
 ): number | null {
-  const peak = tracker.capacityMonthlyPeak;
+  const peak = projectCapacityMonthlyPeak(
+    tracker.capacityQuarter,
+    tracker.capacityMonthlyPeak,
+    tracker.lastTimestamp,
+    nowMs,
+    tracker.lastPowerW,
+    timeZone,
+  );
   return peak?.monthKey === currentCapacityMonthKey(nowMs, timeZone) ? peak.peakKw : null;
 }
 

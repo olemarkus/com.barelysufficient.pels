@@ -3,9 +3,9 @@ import type { PowerSource } from './powerSource';
 
 /**
  * Durable identity of the meter signal whose freshness latch is carried by a
- * sub-home tracker. Accounting history may span identity changes, but
- * `lastTimestamp` / `lastPowerW` may only be reused when this identity matches
- * the runtime being constructed.
+ * sub-home tracker. Completed accounting may span identity changes, but the
+ * held sample and unfinished capacity quarter may only be reused when this
+ * identity matches the runtime being constructed.
  */
 export type PowerTrackerMeterIdentity = {
   powerSource: PowerSource;

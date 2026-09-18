@@ -1,8 +1,8 @@
 /**
  * A meter area's tracker is BOUND to its configured meter: the identity is
  * stamped on every persisted state, and history recorded against another
- * meter keeps its accounting but loses its freshness latch when the area is
- * (re)bound. This module owns that policy over the tracker store — preparing
+ * meter keeps completed accounting but loses its held sample and unfinished
+ * capacity quarter when the area is (re)bound. This module owns that policy over the tracker store — preparing
  * a stored tracker for the meter a new runtime will consume, and the
  * freshness reset a homes-config commit performs first, with the rollback
  * that commit needs when its own write does not land.
@@ -30,6 +30,9 @@ const withoutFreshness = (
   ...(meterIdentity === undefined ? {} : { meterIdentity }),
   lastTimestamp: undefined,
   lastPowerW: undefined,
+  // An unfinished quarter is evidence from the old meter too. Keep compacted
+  // completed peaks, but never join the next meter's sample onto this period.
+  capacityQuarter: undefined,
 });
 
 export type PreparedTrackerState =
@@ -39,7 +42,7 @@ export type PreparedTrackerState =
 /**
  * Resolve one area's tracker against the meter identity a new runtime will
  * consume. A matching tracker retains its freshness; a mismatched one adopts
- * the expected identity while clearing only its freshness latch, persisted
+ * the expected identity while clearing its held sample and unfinished quarter, persisted
  * before the runtime is built so a restart cannot rehydrate the old latch.
  */
 export const prepareTrackerForMeter = (
@@ -78,7 +81,7 @@ export type TrackerFreshnessReset =
   | { state: 'unavailable' };
 
 /**
- * Clear one home's freshness latch ahead of a homes-config commit, keeping a
+ * Clear one home's held sample and unfinished quarter ahead of a homes-config commit, keeping a
  * typed rollback for the case where that commit provably did not land. A
  * store transaction that throws has rolled itself back, so a failed reset
  * needs no compensation of its own.

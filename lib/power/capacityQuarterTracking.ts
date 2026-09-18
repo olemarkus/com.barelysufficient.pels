@@ -69,4 +69,49 @@ export const accrueCapacityQuarter = (
   return { quarter, monthlyPeak };
 };
 
+/**
+ * Project completed quarters implied by a held sparse sample without changing
+ * tracker state. The active partial quarter and, when the gap is longer, one
+ * representative full quarter are sufficient: every intervening full quarter
+ * has the same held power and therefore the same average.
+ */
+export const projectCapacityMonthlyPeak = (
+  quarter: CapacityQuarter | undefined,
+  monthlyPeak: CapacityMonthlyPeak | undefined,
+  lastTimestamp: number | undefined,
+  nowMs: number,
+  powerW: number | undefined,
+  timeZone: string,
+): CapacityMonthlyPeak | undefined => {
+  if (
+    quarter === undefined
+    || lastTimestamp === undefined
+    || powerW === undefined
+    || nowMs <= lastTimestamp
+  ) return monthlyPeak;
+
+  const activeQuarterEndMs = quarter.startMs + CAPACITY_QUARTER_MS;
+  let projectedPeak = monthlyPeak;
+  if (activeQuarterEndMs <= nowMs && lastTimestamp < activeQuarterEndMs) {
+    projectedPeak = accrueCapacityQuarter(
+      quarter,
+      projectedPeak,
+      lastTimestamp,
+      activeQuarterEndMs,
+      powerW,
+      timeZone,
+    ).monthlyPeak;
+  }
+
+  const latestCompletedQuarterStartMs = quarterStart(nowMs) - CAPACITY_QUARTER_MS;
+  if (activeQuarterEndMs <= latestCompletedQuarterStartMs) {
+    projectedPeak = includeCompletedQuarter(projectedPeak, {
+      startMs: latestCompletedQuarterStartMs,
+      energyKWh: Math.max(0, powerW) / 4_000,
+      trackedMs: CAPACITY_QUARTER_MS,
+    }, timeZone);
+  }
+  return projectedPeak;
+};
+
 export const currentCapacityMonthKey = (nowMs: number, timeZone: string): string => monthKeyAt(nowMs, timeZone);

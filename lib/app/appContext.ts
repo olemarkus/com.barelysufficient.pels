@@ -248,6 +248,8 @@ export type AppContext = {
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   get powerTracker(): PowerTrackerState;
   set powerTracker(value: PowerTrackerState);
+  /** Persistently re-prime Main after its meter identity or source changes. */
+  resetMainPowerTrackerFreshness(): boolean;
   getCurrentMonthCapacityPeakKw(): number | null;
   get capacitySettings(): CapacitySettings;
   set capacitySettings(value: CapacitySettings);

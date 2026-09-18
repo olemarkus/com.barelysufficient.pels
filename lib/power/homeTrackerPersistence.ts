@@ -120,7 +120,7 @@ export type HomeTrackerPersistence = {
   replace: (next: PowerTrackerState) => boolean;
   /** Boot hydration of the Main home: adopt the stored tracker, if any. */
   hydrate: () => void;
-  /** Meter swap: drop freshness so the next new-meter sample re-primes it. */
+  /** Meter swap: drop the held sample and unfinished quarter so the next meter re-primes them. */
   resetFreshness: () => boolean;
   /** Aggregate and prune history, then persist. */
   prune: () => void;
@@ -234,7 +234,12 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   };
 
   resetFreshness = (): boolean => {
-    this.state = { ...this.state, lastTimestamp: undefined, lastPowerW: undefined };
+    this.state = {
+      ...this.state,
+      lastTimestamp: undefined,
+      lastPowerW: undefined,
+      capacityQuarter: undefined,
+    };
     return this.persist('write');
   };
 
