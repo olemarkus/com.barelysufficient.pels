@@ -55,6 +55,50 @@ export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTracke
   return merged;
 };
 
+const mergeLateCapacityQuarter = (
+  current: PowerTrackerState['capacityQuarter'],
+  stored: PowerTrackerState['capacityQuarter'],
+): PowerTrackerState['capacityQuarter'] => {
+  if (current === undefined) return stored;
+  if (stored === undefined || current.startMs !== stored.startMs) {
+    return current.startMs >= (stored?.startMs ?? -1) ? current : stored;
+  }
+  return {
+    startMs: current.startMs,
+    energyKWh: stored.energyKWh + current.energyKWh,
+    trackedMs: stored.trackedMs + current.trackedMs,
+  };
+};
+
+const mergeLateCapacityPeak = (
+  current: PowerTrackerState['capacityMonthlyPeak'],
+  stored: PowerTrackerState['capacityMonthlyPeak'],
+): PowerTrackerState['capacityMonthlyPeak'] => {
+  if (current === undefined) return stored;
+  if (stored === undefined || current.monthKey !== stored.monthKey) {
+    return current.monthKey >= (stored?.monthKey ?? '') ? current : stored;
+  }
+  return { monthKey: current.monthKey, peakKw: Math.max(stored.peakKw, current.peakKw) };
+};
+
+const withLateHydratedEvidence = (
+  current: PowerTrackerState,
+  stored: PowerTrackerState,
+): PowerTrackerState => {
+  const {
+    capacityQuarter: _unmergedQuarter,
+    capacityMonthlyPeak: _unmergedPeak,
+    ...history
+  } = withHistoryUnder(current, stored);
+  const capacityQuarter = mergeLateCapacityQuarter(current.capacityQuarter, stored.capacityQuarter);
+  const capacityMonthlyPeak = mergeLateCapacityPeak(current.capacityMonthlyPeak, stored.capacityMonthlyPeak);
+  return {
+    ...history,
+    ...(capacityQuarter === undefined ? {} : { capacityQuarter }),
+    ...(capacityMonthlyPeak === undefined ? {} : { capacityMonthlyPeak }),
+  };
+};
+
 type DeviceBuckets = Record<string, Record<string, number>>;
 
 const isKeyedFamily = (value: unknown): value is Record<string, unknown> => (
@@ -312,7 +356,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
     if (!this.hydrationOwed) return true;
     const stored = deps.getStore().load(homeId);
     this.hydrationOwed = false;
-    if (stored !== null) this.state = this.stamp(withHistoryUnder(this.state, stored));
+    if (stored !== null) this.state = this.stamp(withLateHydratedEvidence(this.state, stored));
     deps.getLogger()?.info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
     return true;
   }

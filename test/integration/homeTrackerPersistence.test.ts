@@ -113,6 +113,34 @@ describe('HomeTrackerPersistence boot hydration', () => {
     expect(tracker.getState()).toEqual(stored());
   });
 
+  it('keeps stored capacity evidence when a failed boot read settles after new samples', async () => {
+    vi.useFakeTimers();
+    const { tracker, store, stored } = build(UNBOUND);
+    store.save('main', {
+      lastPowerW: 400,
+      lastTimestamp: 300_000,
+      capacityQuarter: { startMs: 0, energyKWh: 0.125, trackedMs: 300_000 },
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
+    });
+    vi.spyOn(store, 'load').mockImplementationOnce(() => { throw new Error('disk busy'); });
+    tracker.hydrate();
+
+    tracker.save({
+      lastPowerW: 800,
+      lastTimestamp: 600_000,
+      capacityQuarter: { startMs: 0, energyKWh: 0.25, trackedMs: 300_000 },
+      capacityMonthlyPeak: undefined,
+    });
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    expect(stored()).toEqual({
+      lastPowerW: 800,
+      lastTimestamp: 600_000,
+      capacityQuarter: { startMs: 0, energyKWh: 0.375, trackedMs: 600_000 },
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
+    });
+  });
+
   it('the owner\'s reset after a failed boot read discards the stored history by intent', () => {
     const { tracker, store, stored } = build(UNBOUND);
     store.save('main', { lastPowerW: 400, lastTimestamp: 1_000, buckets: { old: 2 } });

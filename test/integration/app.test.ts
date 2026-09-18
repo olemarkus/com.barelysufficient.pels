@@ -461,6 +461,22 @@ describe('MyApp initialization', () => {
     expect(entry?.controllable).toBe(false);
   });
 
+  it('adopts device profiles while capacity scalar recovery is pending', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    const app = createApp();
+    await initApp(app);
+    vi.spyOn(app, 'readCapacityScalarSettings').mockReturnValue({ state: 'unavailable' });
+
+    const profiles = buildSteppedLoadProfiles('dev-1');
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, profiles);
+    await waitFor(() => app.deviceControlProfiles['dev-1'] !== undefined);
+
+    expect(app.deviceControlProfiles).toEqual(profiles);
+    expect(app.capacitySettings).toEqual({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 });
+    expect(app.timers.has('capacitySettingsLoadRetry')).toBe(true);
+  });
+
   it('emits stepped_feedback_reported event for the first reported step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
     heater.setCapabilityValue('measure_power', 1000);

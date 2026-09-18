@@ -349,17 +349,20 @@ abstract class AppRuntimeApi extends Base {
   private loadCapacitySettingsFromStore(rebuildAfterRecovery: boolean): void {
     const capacityRead = this.context.readCapacityScalarSettings();
     if (capacityRead.state === 'unavailable') {
-      if (this.timers.has(CAPACITY_SETTINGS_LOAD_RETRY_TIMER)) return;
-      const timer = setTimeout(() => {
-        this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
-        this.loadCapacitySettingsFromStore(true);
-      }, CAPACITY_SETTINGS_LOAD_RETRY_MS);
-      this.timers.registerTimeout(CAPACITY_SETTINGS_LOAD_RETRY_TIMER, timer);
-      (timer as { unref?: () => void }).unref?.();
-      return;
+      if (!this.timers.has(CAPACITY_SETTINGS_LOAD_RETRY_TIMER)) {
+        const timer = setTimeout(() => {
+          this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
+          this.loadCapacitySettingsFromStore(true);
+        }, CAPACITY_SETTINGS_LOAD_RETRY_MS);
+        this.timers.registerTimeout(CAPACITY_SETTINGS_LOAD_RETRY_TIMER, timer);
+        (timer as { unref?: () => void }).unref?.();
+      }
+    } else {
+      this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
     }
-    this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
-    const capacityScalars = capacityRead.value;
+    const capacityScalars = capacityRead.state === 'resolved'
+      ? capacityRead.value
+      : { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun };
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
       current: {
@@ -394,7 +397,7 @@ abstract class AppRuntimeApi extends Base {
     });
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
-    if (rebuildAfterRecovery && this.context.planService) {
+    if (rebuildAfterRecovery && capacityRead.state === 'resolved' && this.context.planService) {
       void this.context.planService.rebuildPlanFromCache('settings', {
         detail: 'capacity_settings_read_recovered',
       });
