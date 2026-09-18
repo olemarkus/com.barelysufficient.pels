@@ -255,4 +255,20 @@ describe('HomeTrackerPersistence writes', () => {
       dailyTotals: { d: 1 },
     });
   });
+
+  it('retries a failed freshness reset without waiting for another sample', async () => {
+    vi.useFakeTimers();
+    const { tracker, store, stored, timers } = build(UNBOUND);
+    store.save('main', { lastPowerW: 800, lastTimestamp: 1_000 });
+    const save = vi.spyOn(store, 'save').mockImplementationOnce(() => { throw new Error('disk busy'); });
+
+    expect(tracker.resetFreshness()).toBe(false);
+    expect(timers.has('powerTrackerSave')).toBe(true);
+    expect(stored()).toEqual({ lastPowerW: 800, lastTimestamp: 1_000 });
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(timers.has('powerTrackerSave')).toBe(false);
+    expect(stored()).toEqual({});
+  });
 });

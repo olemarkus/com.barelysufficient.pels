@@ -19,11 +19,14 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
+import type CapacityGuard from '../../lib/power/capacityGuard';
 
 const buildPipeline = (
   noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void,
   savedStates: PowerTrackerState[] = [],
   onRebuildRequest?: () => void,
+  capacityGuard: CapacityGuard = createTestCapacityGuard({ homeId: 'main' }),
+  periodMinutes: 15 | 60 = 60,
 ) => {
   // Mirrors production: `savePowerTracker` calls `setPowerTracker`, so the very
   // next `getPowerTracker()` sees the sample that was just latched
@@ -46,7 +49,7 @@ const buildPipeline = (
   const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(
     {
       getScheduler: () => scheduler,
-      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
+      getCapacityGuard: () => capacityGuard,
       getNowMs: Date.now,
       rebuildPlanFromCache: async () => ({ actionChanged: false, appliedActions: false, failed: false }),
     },
@@ -54,8 +57,8 @@ const buildPipeline = (
   return new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: () => powerTracker,
-    getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
+    getCapacityGuard: () => capacityGuard,
+    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5, periodMinutes }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
       state: {
@@ -157,5 +160,15 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
       pipeline.recordPowerSample(4_200, T0 + 20_000, { meterDeviceId: 'm-area' }),
     ).resolves.toEqual({ state: 'admitted', revision: 1 });
     expect(pipeline.getStableSampleRevision()).toEqual({ state: 'stable', revision: 1 });
+  });
+
+  it('marks a partial tariff quarter unavailable before throttling its first sample', async () => {
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+    const unavailable = vi.spyOn(capacityGuard, 'recordShortfallUnavailable');
+    const pipeline = buildPipeline(vi.fn(), [], undefined, capacityGuard, 15);
+
+    await pipeline.recordPowerSample(4_200, T0 + 5 * 60_000);
+
+    expect(unavailable).toHaveBeenCalledOnce();
   });
 });

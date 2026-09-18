@@ -291,7 +291,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
     get powerTracker() { return powerTracker; },
     set powerTracker(value) { powerTracker = value; },
-    resetMainPowerTrackerFreshness: vi.fn(() => true),
+    resetMainPowerTrackerFreshness: vi.fn(),
     meterSilenceMonitor: new MeterSilenceMonitor({
       getLastSampleAtMs: () => powerTracker.lastTimestamp,
       nowMs: () => Date.now(),

@@ -1,4 +1,8 @@
-import type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
+import {
+  MAX_POWER_SAMPLE_GAP_MS,
+  type PowerTrackerState,
+  type RecordPowerSampleParams,
+} from './trackerTypes';
 import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
@@ -15,7 +19,7 @@ import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges'
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
-const MIN_VALID_TIMESTAMP_MS = 100000000000, MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
+const MIN_VALID_TIMESTAMP_MS = 100000000000;
 
 type ControlledSample = {
   controlledPowerW?: number;
@@ -23,7 +27,7 @@ type ControlledSample = {
 };
 function shouldResetSampling(previousTs: number, nowMs: number): boolean {
   const elapsedMs = nowMs - previousTs;
-  return previousTs < MIN_VALID_TIMESTAMP_MS || elapsedMs < 0 || elapsedMs > MAX_SAMPLE_GAP_MS;
+  return previousTs < MIN_VALID_TIMESTAMP_MS || elapsedMs < 0 || elapsedMs > MAX_POWER_SAMPLE_GAP_MS;
 }
 
 function shouldResetSamplingState(state: PowerTrackerState, nowMs: number): boolean {

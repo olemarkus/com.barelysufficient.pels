@@ -26,6 +26,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { CapacitySettings } from '../lib/power/capacityModel';
+import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
 export type PowerSamplePipelineDeps = {
   /**
@@ -319,16 +320,24 @@ export class PowerSamplePipeline {
           // finiteness-gated by `lib/power`, and no nullable crosses the seam.
           // This runs inside the tracker's post-`saveState` callback, so the
           // latch is this sample by construction.
+          const admittedTracker = this.deps.getPowerTracker();
+          const capacityGuard = this.deps.getCapacityGuard();
+          recordShortfallPeriodAvailability(
+            capacityGuard,
+            admittedTracker,
+            capacitySettings.periodMinutes,
+            nowMs,
+          );
           await this.deps.planRebuildThrottle.onSample(
             {
               currentPowerW,
-              totalKw: requireLastTotalPowerKw(this.deps.getPowerTracker()),
+              totalKw: requireLastTotalPowerKw(admittedTracker),
               limitKw: capacitySettings.limitKw,
               capacityPaceKw: planService.computeDynamicSoftLimit(),
               shortfallThresholdKw: computeShortfallThreshold({
                 capacitySettings,
-                powerTracker: this.deps.getPowerTracker(),
-              }),
+                powerTracker: admittedTracker,
+              }, nowMs),
             },
             posture,
           );

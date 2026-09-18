@@ -1,4 +1,5 @@
 import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
+import { MAX_POWER_SAMPLE_GAP_MS } from '../../lib/power/trackerTypes';
 
 describe('resolveCurrentMonthQuarterPeakKw', () => {
   it('reports the highest completed quarter in the current local month', () => {
@@ -51,5 +52,21 @@ describe('resolveCurrentMonthQuarterPeakKw', () => {
     }, 'Europe/Brussels', quarterStartMs + 31 * 60 * 1000);
 
     expect(result).toBeCloseTo(6, 6);
+  });
+
+  it('does not project a held sample beyond the accepted tracker gap', () => {
+    const lastTimestamp = Date.parse('2026-09-01T10:10:00.000Z');
+    const result = resolveCurrentMonthQuarterPeakKw({
+      lastTimestamp,
+      lastPowerW: 9_000,
+      capacityQuarter: {
+        startMs: Date.parse('2026-09-01T10:00:00.000Z'),
+        energyKWh: 0.2,
+        trackedMs: 10 * 60 * 1000,
+      },
+      capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4 },
+    }, 'Europe/Brussels', lastTimestamp + MAX_POWER_SAMPLE_GAP_MS + 1);
+
+    expect(result).toBeCloseTo(4, 6);
   });
 });

@@ -109,7 +109,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   );
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
-  public resetMainPowerTrackerFreshness(): boolean { return this.mainTracker.resetFreshness(); }
+  public resetMainPowerTrackerFreshness(): void { this.mainTracker.resetFreshness(); }
   protected powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   public capacityGuard!: CapacityGuard;
   public readonly planStatuses: PlanStatusRegistry = createPlanStatusRegistry();

@@ -126,7 +126,7 @@ const buildContext = (): AppContext => {
     getLatestPlanSnapshotForUi: vi.fn(() => null),
     get powerTracker() { return {}; },
     set powerTracker(_value) {},
-    resetMainPowerTrackerFreshness: vi.fn(() => true),
+    resetMainPowerTrackerFreshness: vi.fn(),
     get capacitySettings() { return { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const }; },
     set capacitySettings(_value) {},
     get capacityDryRun() { return false; },

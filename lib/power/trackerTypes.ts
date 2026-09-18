@@ -1,6 +1,9 @@
 import type { DeviceObjectiveProfile } from '../objectives/types';
 import type { PowerSource } from './powerSource';
 
+/** Longest interval for which one held whole-home sample remains accounting evidence. */
+export const MAX_POWER_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
+
 /**
  * Durable identity of the meter signal whose freshness latch is carried by a
  * sub-home tracker. Completed accounting may span identity changes, but the

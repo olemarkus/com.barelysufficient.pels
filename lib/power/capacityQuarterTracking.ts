@@ -1,5 +1,9 @@
 import { getZonedParts } from '../utils/dateUtils';
-import type { CapacityMonthlyPeak, CapacityQuarter } from './trackerTypes';
+import {
+  MAX_POWER_SAMPLE_GAP_MS,
+  type CapacityMonthlyPeak,
+  type CapacityQuarter,
+} from './trackerTypes';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 
 export type CapacityQuarterTracking = {
@@ -88,6 +92,7 @@ export const projectCapacityMonthlyPeak = (
     || lastTimestamp === undefined
     || powerW === undefined
     || nowMs <= lastTimestamp
+    || nowMs - lastTimestamp > MAX_POWER_SAMPLE_GAP_MS
   ) return monthlyPeak;
 
   const activeQuarterEndMs = quarter.startMs + CAPACITY_QUARTER_MS;

@@ -120,7 +120,11 @@ export type HomeTrackerPersistence = {
   replace: (next: PowerTrackerState) => boolean;
   /** Boot hydration of the Main home: adopt the stored tracker, if any. */
   hydrate: () => void;
-  /** Meter swap: drop the held sample and unfinished quarter so the next meter re-primes them. */
+  /**
+   * Meter swap: drop the held sample and unfinished quarter so the next meter
+   * re-primes them. A failed live-runtime write schedules its own retry; false
+   * lets torn-down bundle owners retain their stronger external retry fence.
+   */
   resetFreshness: () => boolean;
   /** Aggregate and prune history, then persist. */
   prune: () => void;
@@ -240,8 +244,21 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       lastPowerW: undefined,
       capacityQuarter: undefined,
     };
-    return this.persist('write');
+    const persisted = this.persist('write');
+    if (!persisted) this.scheduleFreshnessResetRetry();
+    return persisted;
   };
+
+  private scheduleFreshnessResetRetry(): void {
+    const { deps } = this.params;
+    if (deps.isTornDown() || deps.timers.has(this.params.timerKey('powerTrackerSave'))) return;
+    deps.timers.registerTimeout(
+      this.params.timerKey('powerTrackerSave'),
+      setTimeout(() => {
+        if (!this.persist('write')) this.scheduleFreshnessResetRetry();
+      }, VOLATILE_WRITE_THROTTLE_MS),
+    );
+  }
 
   prune = (): void => {
     const { deps } = this.params;

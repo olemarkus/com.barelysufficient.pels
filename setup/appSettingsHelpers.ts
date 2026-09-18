@@ -418,12 +418,15 @@ export function initSettingsHandlerForApp(
     rebuildAllHomeRuntimePlansForDeviceControlChange:
       options.rebuildAllHomeRuntimePlansForDeviceControlChange,
     onHomeRuntimePowerSourceObserved: () => {
+      // The tracker owns retry when this immediate safety write fails.
       ctx.resetMainPowerTrackerFreshness();
       options.onHomeRuntimePowerSourceObserved?.();
     },
     onHomeRuntimePowerSourceChanged: options.onHomeRuntimePowerSourceChanged,
     onTemperatureControlPolicyObserved: ctx.loadTemperatureControlPolicySettings,
     onHomeyEnergyMeterObserved: () => {
+      // Reset before the old poll is invalidated; either way no old sample can
+      // be joined to the new meter, and a failed safety write retries in-place.
       ctx.resetMainPowerTrackerFreshness();
       options.onHomeyEnergyMeterObserved?.();
     },
