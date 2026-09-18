@@ -85,7 +85,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updatePriceOptimizationEnabled: vi.fn(),
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
-    resetMainPowerTrackerFreshness: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
     ...overrides,
   };
@@ -678,8 +677,8 @@ describe('createSettingsHandler', () => {
     const order: string[] = [];
     const reloadWeatherAdvisor = vi.fn();
     const deps = buildDeps({
+      onHomeRuntimePowerSourceObserved: vi.fn(() => { order.push('reset'); }),
       onHomeRuntimePowerSourceChanged: vi.fn(() => { order.push('home-runtime'); }),
-      resetMainPowerTrackerFreshness: vi.fn(() => { order.push('reset'); }),
       restartHomeyEnergyPoll: vi.fn(() => { order.push('poll'); }),
       reloadWeatherAdvisor,
     });
@@ -689,9 +688,8 @@ describe('createSettingsHandler', () => {
 
     expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'power_source_changed' }));
     expect(deps.onHomeRuntimePowerSourceChanged).toHaveBeenCalled();
-    expect(deps.resetMainPowerTrackerFreshness).toHaveBeenCalledOnce();
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
-    expect(order).toEqual(['home-runtime', 'reset', 'poll']);
+    expect(order).toEqual(['reset', 'home-runtime', 'poll']);
     // The source is part of the weather meter-scope fingerprint: the switch
     // must hit the collector's restart edge so its reconcile can invalidate.
     expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
@@ -702,7 +700,7 @@ describe('createSettingsHandler', () => {
   it('restarts the poll and rebuilds the plan when the whole-home meter changes', async () => {
     const order: string[] = [];
     const deps = buildDeps({
-      resetMainPowerTrackerFreshness: vi.fn(() => { order.push('reset'); }),
+      onHomeyEnergyMeterObserved: vi.fn(() => { order.push('reset'); }),
       restartHomeyEnergyPoll: vi.fn(() => { order.push('poll'); }),
     });
     const handler = createSettingsHandler(deps);
@@ -710,7 +708,6 @@ describe('createSettingsHandler', () => {
     await handler('homey_energy_meter_device_id');
 
     expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'homey_energy_meter_changed' }));
-    expect(deps.resetMainPowerTrackerFreshness).toHaveBeenCalledOnce();
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
     expect(order).toEqual(['reset', 'poll']);
     // Unlike a power-source change, the snapshot is untouched — the source

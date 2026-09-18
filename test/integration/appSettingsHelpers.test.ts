@@ -22,6 +22,7 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
+  HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
@@ -125,6 +126,7 @@ const buildContext = (): AppContext => {
     getLatestPlanSnapshotForUi: vi.fn(() => null),
     get powerTracker() { return {}; },
     set powerTracker(_value) {},
+    resetMainPowerTrackerFreshness: vi.fn(() => true),
     get capacitySettings() { return { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const }; },
     set capacitySettings(_value) {},
     get capacityDryRun() { return false; },
@@ -253,9 +255,22 @@ describe('initSettingsHandlerForApp', () => {
       onHomeRuntimePowerSourceChanged,
     });
 
-    await handle(POWER_SOURCE);
+    const handling = handle(POWER_SOURCE);
 
+    expect(ctx.resetMainPowerTrackerFreshness).toHaveBeenCalledTimes(1);
+    await handling;
     expect(onHomeRuntimePowerSourceChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets Main synchronously before handling a whole-home meter change', async () => {
+    const ctx = buildContext();
+    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
+
+    const handling = handle(HOMEY_ENERGY_METER_DEVICE_ID);
+
+    expect(ctx.resetMainPowerTrackerFreshness).toHaveBeenCalledTimes(1);
+    await handling;
+    expect(ctx.homeyEnergyHelpers.restart).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches unsuffixed keys to the main handlers without touching the hook', async () => {

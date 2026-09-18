@@ -92,10 +92,8 @@ export type SettingsHandlerDeps = {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
-  /** Drop Main's held meter sample and unfinished tariff quarter before a source restart. */
-  resetMainPowerTrackerFreshness: () => void;
   restartHomeyEnergyPoll?: () => void;
-  /** Synchronous meter-event edge: invalidate any old-selection poll now. */
+  /** Synchronous meter-event edge: invalidate the old poll and meter sample now. */
   onHomeyEnergyMeterObserved?: () => void;
   /** A `pv_forecast_source` write was observed — kick the Homey solar-forecast
    *  probe so a flip to `homey_energy`/`auto` does not wait out the 3 h tick.
@@ -622,7 +620,6 @@ async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<
 
 async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'homey_energy_meter_changed' });
-  deps.resetMainPowerTrackerFreshness();
   // The meter id is read fresh per poll, so no restart is strictly required —
   // but restart's immediate pollNow() surfaces the new meter's reading within
   // seconds instead of up to 10s. No-ops unless the source is homey_energy.
@@ -637,7 +634,6 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'power_source_changed' });
   deps.onHomeRuntimePowerSourceChanged?.();
-  deps.resetMainPowerTrackerFreshness();
   deps.restartHomeyEnergyPoll?.();
   // Flow and Homey Energy are different producers of the power-tracker
   // history the weather insight's kWh layer consumes, so the source is part

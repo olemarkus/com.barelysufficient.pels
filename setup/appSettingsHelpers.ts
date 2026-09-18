@@ -417,10 +417,16 @@ export function initSettingsHandlerForApp(
     rebuildHomeRuntimePlansForModeChange: options.rebuildHomeRuntimePlansForModeChange,
     rebuildAllHomeRuntimePlansForDeviceControlChange:
       options.rebuildAllHomeRuntimePlansForDeviceControlChange,
-    onHomeRuntimePowerSourceObserved: options.onHomeRuntimePowerSourceObserved,
+    onHomeRuntimePowerSourceObserved: () => {
+      ctx.resetMainPowerTrackerFreshness();
+      options.onHomeRuntimePowerSourceObserved?.();
+    },
     onHomeRuntimePowerSourceChanged: options.onHomeRuntimePowerSourceChanged,
     onTemperatureControlPolicyObserved: ctx.loadTemperatureControlPolicySettings,
-    onHomeyEnergyMeterObserved: options.onHomeyEnergyMeterObserved,
+    onHomeyEnergyMeterObserved: () => {
+      ctx.resetMainPowerTrackerFreshness();
+      options.onHomeyEnergyMeterObserved?.();
+    },
     onPvForecastSourceObserved: options.onPvForecastSourceObserved,
     onMainMeterSelectionObserved: options.onMainMeterSelectionObserved,
     onHomeOwnershipConfigurationObserved: options.onHomeOwnershipConfigurationObserved,
@@ -447,7 +453,6 @@ export function initSettingsHandlerForApp(
     updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
-    resetMainPowerTrackerFreshness: () => { ctx.resetMainPowerTrackerFreshness(); },
     restartHomeyEnergyPoll: () => {
       ctx.homeyEnergyHelpers.restart();
       // The two are complementary: exactly one runs for any given source, so a
