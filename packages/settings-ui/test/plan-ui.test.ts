@@ -124,6 +124,7 @@ describe('Redesign plan UI', () => {
         devices: [],
       });
 
+      expect(document.body.textContent).not.toContain('Energy used this quarter');
       expect(document.body.textContent).not.toContain('On pace to exceed the hard cap this quarter.');
       expect(document.body.textContent).not.toContain('projected');
     });

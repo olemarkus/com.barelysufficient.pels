@@ -275,12 +275,12 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   // bar to draw. `usedKWh` and `budgetKWh` are both required on the wire, so
   // the two `typeof` checks that used to sit here asked whether the planner had
   // done its job.
-  if (budgetKWh <= 0) return null;
+  if (!meta.capacityPeriodCoverageComplete || budgetKWh <= 0) return null;
   const { totalKw, minutesRemaining } = meta;
   // The zero floor for net-export hours lives in the shared helper (also used
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
   // Keep `null` (no power/time signal) distinct from a clamped 0.
-  const projectedKWh = meta.capacityPeriodCoverageComplete && totalKw !== null && minutesRemaining !== null
+  const projectedKWh = totalKw !== null && minutesRemaining !== null
     ? computeProjectedPeriodEnergyKWh(usedKWh, totalKw, minutesRemaining)
     : null;
   return {

@@ -1,8 +1,9 @@
-// Projected end-of-hour energy from the live draw: what this hour lands at if
-// the current power holds. Floored at zero — in a net-export hour the raw
-// projection can go negative, and every consumer treats "projected" as a
-// used-energy figure (see `planHeroSummary.formatProjectedEnergySubline` and
-// the plan_budget widget clamp). Shared between the Overview hero
+// Projected end-of-hour billed import from the live draw: what this hour lands
+// at if the current power holds. Export contributes zero, matching the
+// import-only tracker; it cannot subtract energy already billed. The result is
+// also floored at zero because every consumer treats "projected" as a used-
+// energy figure (see `planHeroSummary.formatProjectedEnergySubline`). Shared
+// between the Overview hero
 // (`PlanHero.tsx` energy bar) and the `pels_status` producer
 // (`lib/plan/pelsStatus.ts`) so the "Above hard cap" trajectory judgement
 // shares one formula AND one predicate across surfaces. (The two sides still
@@ -27,7 +28,7 @@ export const computeProjectedPeriodEnergyKWh = (
   usedKWh: number,
   totalKw: number,
   minutesRemaining: number,
-): number => Math.max(0, usedKWh + (totalKw * minutesRemaining) / 60);
+): number => Math.max(0, usedKWh + (Math.max(0, totalKw) * minutesRemaining) / 60);
 
 // THE "Above hard cap" judgement: is this period on pace to land past the cap's
 // period kWh? Strict `>` (a projection exactly at the cap holds the step), and
