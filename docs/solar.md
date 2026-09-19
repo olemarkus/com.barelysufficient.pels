@@ -105,10 +105,11 @@ The Usage hero's headline still counts what you drew **from the grid**, so on a 
 
 While the sun is up, the **Overview** hero adds a live line under Power now — for example *"Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported"* — so you can see at a glance where your production is going right now. While you export, "Power now" (your net grid power) can legitimately read negative; this line is what makes that reading make sense.
 
-Two honest edges to know about:
+Three honest edges to know about:
 
 - **Battery homes:** Exported can be *higher* than Produced in some hours — a battery discharging to the grid exports stored energy on top of (or instead of) live production. The card notes this rather than hiding it.
 - **A meter without a production reading** (your export is visible but no solar device reports production): the card falls back to an export-only view and never pretends to know your production. This applies on either power source — what decides it is whether a solar device reports production, not how your meter reading reaches PELS.
+- **A Flow that reports on a timer:** on the Flow power source, PELS counts your export from the readings your Flow sends, and between two readings it assumes the last one still holds, exactly as it does for the power you import. If your Flow reports only every few minutes, export in the Solar card is only as precise as that: a cloud that stops your export right after a reading is not seen until the next one. Your production is not affected, because PELS reads it from Homey every 10 seconds. For accurate export, send your meter reading whenever it changes rather than on a fixed interval.
 
 ### Battery and inverter are read-only
 
@@ -126,10 +127,17 @@ If you also have a battery: because PELS only sees net power and cannot command 
 
 In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it can cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly charge for exported power (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
 
-PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export) and enter what your power company pays you:
+PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export).
+
+If your electricity prices come from **Homey Energy**, you can then set **Where the price comes from**:
+
+- **Homey Energy**: PELS uses the feed-in price you already set up in Homey under **Energy > Electricity**. That can be a fixed amount, or a formula that follows the hourly price, which is how most dynamic contracts pay for exported power. Nothing to retype. See [Getting paid for solar you export](/homey-energy#getting-paid-for-solar-you-export).
+- **Amounts I enter here**: the two amounts below. This is the default.
+
+On the other price sources, or with **Amounts I enter here**, enter what your power company pays you:
 
 - **Share of spot price (%)** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
-- **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there.
+- **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there. On Homey Energy, choose **Homey Energy** above instead if your feed-in price follows the hour.
 
 Once it is on:
 
