@@ -78,8 +78,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Smart tasks** — 2: editor revokes a standing limit-only grant; `on_track` while the planned
   bucket goes undelivered
 - **Multi-home and meter areas** — 1: the "no electricity meters" empty state never renders
-- **Solar and surplus** — 2: surplus reachability from resettable accounting; sparse Flow reports
-  mint solar export
+- **Solar and surplus** — 2: turning "Use solar surplus" off releases a dump load to the grid;
+  sparse Flow reports mint solar export
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
@@ -865,29 +865,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar and surplus
 
-- [ ] **Solar-surplus reachability is derived from RESETTABLE accounting, so "Reset usage history"
-      can drop a dump load's surplus posture.** `resolveSurplusPoolReachable`
-      (`packages/shared-domain/src/solar/surplusPoolReachable.ts`) reads its export half from the
-      tracker's export families, and `resetSettingsUiPowerStatsForApp`
-      (`setup/settingsUiAppRuntime.ts:312 (the reset fn), clearing exportBuckets/exportDailyTotals at :338-340`) clears `exportDailyTotals` outright and prunes
-      `exportBuckets` to the current hour. A signed-net Flow home whose owner resets usage history
-      outside an exporting hour therefore loses both disjuncts (the curtailment estimator is dormant
-      on flow), the opted-in dump load loses its `surplusOnly` stamp, and the generic managed-binary
-      restore lane starts running it from the grid. It re-arms on the next negative sample, so this
-      is not the permanent trap the posture gate exists to prevent — but on a home whose dump-load
-      draw exceeds its PV surplus, the load itself can keep net non-negative and hold the evidence
-      shut. The same shape makes the predicate lapse on 30-day/365-day retention pruning after a long
-      export-free stretch. Fix: persist the feed's proven signed-export CAPABILITY separately from
-      the accounting history, exactly as the curtailment half now persists its armed latch
-      (`CurtailmentPersistedHoldState.armed`) — a monotone bit that a history reset and a retention
-      prune both leave alone. Source: Codex P1 on PR #2012, verified against the reset path.
-      *Persona:* prosumer on the flow source who has opted a dump load into solar surplus.
-      **Absorbed from the merged restore-lane item, which has a DIFFERENT trigger.** Turning the
-      toggle off calls `releaseAbandonedSurplusPosture`, clearing the device-level
-      `shedDecisions.surplusOnlyByDevice` marker with no reset involved, so persisting the feed-level
-      capability cannot preserve the off baseline after de-opt. Both are needed: the marker must
-      survive de-opt and clear on observed-on or re-engagement, and it must also suppress generic
-      managed-binary restore candidacy. [P1]
+- [ ] **Turning "Use solar surplus" off releases an opted-in dump load to the grid-restore lane.**
+      Switching the toggle off calls `releaseAbandonedSurplusPosture`
+      (`lib/plan/planBuilderSurplus.ts`), which clears the device's
+      `shedDecisions.surplusOnlyByDevice` stamp (`lib/plan/shedDecisions.ts`). The device then
+      rejoins the generic managed-binary restore lane, which turns it ON from grid headroom, so a
+      load the owner only ever ran on surplus starts running on import the moment they stop
+      offering it surplus. Change: on de-opt, keep an off-baseline marker in place of the stamp,
+      clear it when the device is observed on or the owner opts back in, and have it keep the
+      device in the standing hold while it stands (`resolveSurplusHold`,
+      `lib/plan/shedding/surplusHold.ts`, which today keys only on the `surplusOnly` posture), so
+      generic managed-binary restore never selects it. Done when a spec in
+      `test/integration/surplusDumpLoadPlan.test.ts` shows an off dump load staying off across
+      restore cycles after de-opt, and turning on once it is observed on. *Persona:* prosumer who
+      opted a dump load into solar surplus and later turns the toggle off. [P1]
 
 - [ ] **Sparse Flow reports mint solar export across the gap between them.** Production on the
       `flow` source now accrues on the generation poll's own clock (`resolveGenerationSegments`,

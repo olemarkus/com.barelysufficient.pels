@@ -230,11 +230,28 @@ describe('toPlanDevice — R7b per-home options', () => {
     const ctx = buildSurplusCtx();
     (ctx.homey.settings.get as Mock).mockReturnValue(undefined);
     vi.spyOn(ctx.homey.settings, 'getKeys').mockReturnValue([POWER_SOURCE]);
+    // Only what the plan path itself writes: building the context let the
+    // helper's tracker arm the export latch, which is not this path's doing.
+    (ctx.homey.settings.set as Mock).mockClear();
 
     // `priceOptimizationSettings` lives on the context, not the settings store,
     // so the willing opt-in survives a settings read that answers nothing.
     expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
+    // The plan path writes nothing: it neither repairs the suspect key nor arms
+    // the export latch, which the tracker component does when it adopts state.
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();
+  });
+
+  it('keeps the surplus posture after the usage history is reset', () => {
+    // "Reset usage history" empties the tracker's export families. Reading
+    // reachability off them dropped the dump load's stamp, and the generic
+    // restore lane then ran it from the grid. The feed's capability is latched.
+    const ctx = buildSurplusCtx();
+    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
+
+    ctx.powerTracker = {};
+
+    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
   });
 
   it('carries no in-flight binary command state at all', () => {

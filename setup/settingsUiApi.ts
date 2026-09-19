@@ -9,7 +9,6 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
-import { resolveSurplusPoolReachable } from '../packages/shared-domain/src/solar/surplusPoolReachable';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
@@ -62,7 +61,7 @@ import {
   getModeCatalogForUiFromApp,
   getObservedStateForUiFromApp,
   getPlanSnapshotForUiFromHomey,
-  getCurtailmentCanContributeForUiFromApp,
+  getSurplusPoolReachableForUiFromApp,
   getPowerTrackerForUiFromApp,
   getUiPickerDevicesFromApp,
   refreshSettingsUiDevicesForApp,
@@ -644,10 +643,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // surplus pool. Same predicate the runtime producer gates the `surplusOnly`
     // stamp on (`setup/appInit/toPlanDevice.ts`), so the toggle is offered
     // exactly where enabling it does something.
-    surplusPoolReachable: resolveSurplusPoolReachable({
-      tracker: tracker && typeof tracker === 'object' ? tracker : null,
-      curtailmentCanContribute: getCurtailmentCanContributeForUiFromApp(homey),
-    }),
+    surplusPoolReachable: getSurplusPoolReachableForUiFromApp(homey),
   };
 };
 

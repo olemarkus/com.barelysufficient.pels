@@ -231,6 +231,16 @@ class PelsApp extends PelsAppBase implements AppContext {
   public getCurtailedSurplusKw?: () => number;
   public recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   public canContributeCurtailmentSurplus?: () => boolean;
+  // Whether the solar-surplus pool can ever open. The Main tracker observes
+  // into its persisted export latch, so resetting or pruning usage history
+  // cannot unmake the answer. The curtailment half is absent only until the
+  // post-startup wiring assigns it — false until then, and the estimator
+  // persists its own latch, so this is a boot window.
+  private readonly surplusPoolReachability = AppPowerTracker.createSurplusPoolReachability(
+    this.homey.settings,
+    () => this.canContributeCurtailmentSurplus?.() === true,
+  );
+  public isSurplusPoolReachable = (): boolean => this.surplusPoolReachability.isReachable();
   public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   public expectedPowerKwOverrides: ExpectedPowerOverridesByDeviceId = {};
@@ -377,6 +387,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     getTimeZone: () => this.getTimeZone(),
     isTornDown: () => this.mainActuationStopped,
     onPersisted: () => this.emitPowerTrackerPersisted(MAIN_HOME_ID),
+    // Main's feed is the whole-home feed the surplus pool is measured on.
+    observeExportEvidence: (state) => this.surplusPoolReachability.observeExportEvidence(state),
   });
 
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);

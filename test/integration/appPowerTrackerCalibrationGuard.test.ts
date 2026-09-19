@@ -54,6 +54,7 @@ describe('AppPowerTracker calibration persist guard', () => {
         getTimeZone: () => 'Europe/Oslo',
         isTornDown: () => false,
         onPersisted: () => {},
+        observeExportEvidence: () => {},
       },
       homeId: 'main',
       initialState: {},

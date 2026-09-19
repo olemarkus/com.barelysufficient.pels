@@ -4,27 +4,24 @@
 //
 // Both disjuncts are load-bearing, and the table below is the argument for
 // keeping them: neither alone admits every home that genuinely has surplus.
+// What counts as "the feed has expressed export" is the latch's question
+// (`test/unit/signedExportLatch.test.ts`).
 import { describe, expect, it } from 'vitest';
-import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
-import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-
-const trackerWithExport = (kWh: number): PowerTrackerState => ({
-  exportDailyTotals: { '2026-08-05': kWh },
-} as PowerTrackerState);
+import { resolveSurplusPoolReachable } from '../../lib/power/surplusPoolReachable';
 
 describe('resolveSurplusPoolReachable', () => {
-  it('is false with neither export history nor a contributing estimator', () => {
+  it('is false with neither expressed export nor a contributing estimator', () => {
     // The flow home whose Flow predates signed watts: solar on the roof, net
     // never negative, estimator dormant. Nothing can ever open the pool.
     expect(resolveSurplusPoolReachable({
-      tracker: trackerWithExport(0),
+      feedExport: 'none',
       curtailmentCanContribute: false,
     })).toBe(false);
   });
 
-  it('is true on recorded export alone, with no estimator contribution', () => {
+  it('is true on expressed export alone, with no estimator contribution', () => {
     expect(resolveSurplusPoolReachable({
-      tracker: trackerWithExport(4),
+      feedExport: 'expressed',
       curtailmentCanContribute: false,
     })).toBe(true);
   });
@@ -34,28 +31,19 @@ describe('resolveSurplusPoolReachable', () => {
     // appears. Gating on export alone would hold this home's dump load off
     // forever, which is the exact population the estimator exists to serve.
     expect(resolveSurplusPoolReachable({
-      tracker: trackerWithExport(0),
+      feedExport: 'none',
       curtailmentCanContribute: true,
     })).toBe(true);
   });
 
-  it('is true on ANY recorded export, well below the export-price materiality floor', () => {
-    // The bar is "can the feed express export at all", which one negative sample
-    // settles. Using the 1 kWh floor here would blank the posture for the first
-    // ~20 minutes of a home's first sunny afternoon — exactly when the owner is
-    // watching to see whether the toggle they just flipped does anything.
+  it('fails closed on an unreadable export bit rather than reading it as "never exported"', () => {
+    // After a history reset the stored bit may be the only evidence left. A
+    // false would strip the posture and let the restore lane run the dump load
+    // from the grid; a true only holds it off until the next read, which the
+    // latch retries.
     expect(resolveSurplusPoolReachable({
-      tracker: trackerWithExport(0.02),
+      feedExport: 'unreadable',
       curtailmentCanContribute: false,
     })).toBe(true);
-  });
-
-  it('is false on an absent tracker rather than throwing', () => {
-    // Absence resolves to the SAFE answer: an unstamped device runs, a wrongly
-    // stamped one is trapped.
-    expect(resolveSurplusPoolReachable({
-      tracker: null,
-      curtailmentCanContribute: false,
-    })).toBe(false);
   });
 });

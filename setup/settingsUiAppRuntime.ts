@@ -52,7 +52,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
   getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   powerTracker?: PowerTrackerState;
-  canContributeCurtailmentSurplus?: () => boolean;
+  isSurplusPoolReachable?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
   priceCoordinator?: {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -256,21 +256,17 @@ export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTra
 };
 
 /**
- * Whether the curtailment-surplus estimator can structurally contribute for this
- * home — one half of `resolveSurplusPoolReachable`, which decides whether the
- * "Use solar surplus" toggle is offered at all.
- *
- * The seam is TOTAL: it reads two in-memory bits (a dormancy latch and
- * `hasBatteryDevices()`, itself an in-memory observation producer) and cannot
- * throw. So this is a plain read, matching the producer on the plan path
- * (`setup/appInit/toPlanDevice.ts`) — the two must resolve identically, or the
- * toggle and the posture disagree about the same home. Only ABSENCE is handled,
- * via the optional call: before the post-startup wiring runs there is no answer
- * yet, and false is the safe one.
+ * Whether the home's solar-surplus pool can ever open, which decides whether the
+ * "Use solar surplus" toggle is offered at all. The app's one answer
+ * (`AppContext.isSurplusPoolReachable`), the same one the plan path stamps the
+ * posture from (`setup/appInit/toPlanDevice.ts`), so the toggle and the posture
+ * cannot disagree. Optional only because this type describes `homey.app` as it
+ * crosses the bridge, where every member is unproven; the app itself always
+ * has it. With no answer there is no pool.
  */
-export const getCurtailmentCanContributeForUiFromApp = (
+export const getSurplusPoolReachableForUiFromApp = (
   homey: Homey.App['homey'],
-): boolean => getRuntimeApp(homey)?.canContributeCurtailmentSurplus?.() === true;
+): boolean => getRuntimeApp(homey)?.isSurplusPoolReachable?.() === true;
 
 export const emitSettingsUiDevicesUpdatedForApp = (
   homey: Homey.App['homey'],

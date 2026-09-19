@@ -81,6 +81,7 @@ import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
 import {
   createHomeTrackerPersistence,
+  type HomeTrackerPersistenceDeps,
 } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
@@ -489,6 +490,27 @@ function createBundlePlanningRuntime(params: {
   };
 }
 
+/** A meter area's tracker collaborators, on the app context and this home's id. */
+function createAreaTrackerDeps(
+  ctx: AppContext,
+  homeId: HomeId,
+  isTornDown: () => boolean,
+): HomeTrackerPersistenceDeps {
+  return {
+    getStore: () => ctx.getTrackerStore(),
+    timers: ctx.timers,
+    getLogger: () => ctx.getStructuredLogger('homes'),
+    getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
+    reportError: (message, error) => ctx.error(message, error),
+    getTimeZone: () => ctx.getTimeZone(),
+    isTornDown,
+    onPersisted: () => ctx.emitPowerTrackerPersisted(homeId),
+    // A meter area's meter is not the whole-home feed: its export must not
+    // arm the Main feed's latch.
+    observeExportEvidence: () => {},
+  };
+}
+
 export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapacityBundle {
   const { ctx, home: { homeId } } = deps;
   const logger = () => ctx.getStructuredLogger('homes');
@@ -507,16 +529,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   if (initialCapacityRead.state === 'resolved') capacityScalars = initialCapacityRead.value;
 
   const tracker = createHomeTrackerPersistence({
-    deps: {
-      getStore: () => ctx.getTrackerStore(),
-      timers: ctx.timers,
-      getLogger: () => ctx.getStructuredLogger('homes'),
-      getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
-      reportError: (message, error) => ctx.error(message, error),
-      getTimeZone: () => ctx.getTimeZone(),
-      isTornDown,
-      onPersisted: () => ctx.emitPowerTrackerPersisted(homeId),
-    },
+    deps: createAreaTrackerDeps(ctx, homeId, isTornDown),
     homeId,
     initialState: deps.initialPowerTrackerState,
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },

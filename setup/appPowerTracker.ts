@@ -6,6 +6,8 @@ import {
   type HomeTrackerPersistenceDeps,
 } from '../lib/power/homeTrackerPersistence';
 import { createTrackerStore, type TrackerStore } from '../lib/power/trackerStore';
+import { SurplusPoolReachability } from '../lib/power/surplusPoolReachable';
+import type { SettingsPort } from '../lib/ports/homeyRuntime';
 import { importLegacyPowerTrackers } from '../lib/power/trackerLegacySettings';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
@@ -83,6 +85,18 @@ export class AppPowerTracker {
       meterBinding: { kind: 'unbound' },
       timerKey: (suffix) => suffix,
     });
+  }
+
+  /**
+   * The home's solar-surplus reachability, whose export latch the Main tracker
+   * observes into. Built beside the Main tracker because the two are wired
+   * together.
+   */
+  static createSurplusPoolReachability(
+    settings: SettingsPort,
+    canContributeCurtailment: () => boolean,
+  ): SurplusPoolReachability {
+    return new SurplusPoolReachability(settings, canContributeCurtailment);
   }
 
   constructor(private readonly deps: AppPowerTrackerDeps) {}

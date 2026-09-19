@@ -23,6 +23,7 @@ const build = (
     debug: () => {},
   });
   const onPersisted = vi.fn();
+  const observeExportEvidence = vi.fn<(state: PowerTrackerState) => void>();
   const trackerStore = store ?? createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const tracker = createHomeTrackerPersistence({
     deps: {
@@ -34,6 +35,7 @@ const build = (
       getTimeZone: () => 'Europe/Oslo',
       isTornDown: () => false,
       onPersisted,
+      observeExportEvidence,
     },
     homeId: 'main',
     initialState,
@@ -43,7 +45,7 @@ const build = (
   const has = (event: string): boolean => events.some((e) => e.event === event);
   const stored = (): PowerTrackerState | null => trackerStore.load('main');
   return {
-    timers, tracker, store: trackerStore, stored, has, onPersisted,
+    timers, tracker, store: trackerStore, stored, has, onPersisted, observeExportEvidence,
   };
 };
 
@@ -60,6 +62,24 @@ describe('HomeTrackerPersistence boot hydration', () => {
     expect(tracker.getState()).toEqual({ lastPowerW: 900, lastTimestamp: 1_000 });
     tracker.replace({ lastPowerW: 1_200, lastTimestamp: 2_000 });
     expect(stored()).toEqual({ lastPowerW: 1_200, lastTimestamp: 2_000 });
+  });
+
+  it('hands the export latch the hydrated history, so a later reset cannot take its evidence', () => {
+    // An upgrading home's export already sits in the stored tracker. The
+    // latch must see it at boot, before the owner can reset it away.
+    const exported: PowerTrackerState = { exportDailyTotals: { '2026-08-05': 3 } };
+    const { store } = build(UNBOUND);
+    store.save('main', exported);
+    const { tracker, observeExportEvidence } = build(UNBOUND, {}, store);
+    tracker.hydrate();
+    expect(observeExportEvidence).toHaveBeenLastCalledWith(exported);
+  });
+
+  it('hands the export latch every state it adopts', () => {
+    const { tracker, observeExportEvidence } = build(UNBOUND);
+    const next: PowerTrackerState = { lastPowerW: -800, lastTimestamp: 2_000, exportBuckets: { h: 0.1 } };
+    tracker.save(next);
+    expect(observeExportEvidence).toHaveBeenLastCalledWith(next);
   });
 
   it('keeps the in-memory state when nothing is persisted', () => {

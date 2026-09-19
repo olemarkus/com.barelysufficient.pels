@@ -1,4 +1,5 @@
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
+import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { snapshotById } from './snapshotById';
@@ -212,8 +213,16 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   });
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
+  // The real component over the mock settings, observing this helper's tracker
+  // the way the Main tracker component observes every state it adopts.
+  const surplusPoolReachability = new SurplusPoolReachability(
+    homey.settings,
+    () => context.canContributeCurtailmentSurplus?.() === true,
+  );
+  surplusPoolReachability.observeExportEvidence(powerTracker);
   const context: AppContext = {
     deviceReads,
+    isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
       () => false,
@@ -294,7 +303,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
     get powerTracker() { return powerTracker; },
-    set powerTracker(value) { powerTracker = value; },
+    set powerTracker(value) { powerTracker = value; surplusPoolReachability.observeExportEvidence(value); },
     resetMainPowerTrackerFreshness: vi.fn(),
     meterSilenceMonitor: new MeterSilenceMonitor({
       getLastSampleAtMs: () => powerTracker.lastTimestamp,

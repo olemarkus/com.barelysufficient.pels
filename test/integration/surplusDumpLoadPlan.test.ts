@@ -616,6 +616,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     vi.mocked(ctx.homey.settings.get).mockImplementation(
       (key: string) => (key === POWER_SOURCE ? source : undefined),
     );
+    // The key list agrees with what `get` answers, as a real store's does. An
+    // empty list is a flake, which leaves the export latch unreadable.
+    vi.mocked(ctx.homey.settings.getKeys).mockReturnValue([POWER_SOURCE]);
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
     return ctx;

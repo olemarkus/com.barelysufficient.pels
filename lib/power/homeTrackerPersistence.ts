@@ -202,6 +202,14 @@ export type HomeTrackerPersistenceDeps = {
    * wiring turns this into the realtime push the UI refreshes on.
    */
   onPersisted: () => void;
+  /**
+   * Every state this home's tracker adopts or hydrates, handed over so the
+   * feed's persisted export latch (`SignedExportLatch.observe`) arms where the
+   * evidence appears — before a reset or a prune can take it away. Main binds
+   * the latch; a meter area binds nothing, because its meter is not the
+   * whole-home feed the surplus pool is measured on.
+   */
+  observeExportEvidence: (state: PowerTrackerState) => void;
 };
 
 type HomeTrackerPersistenceParams = {
@@ -225,6 +233,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
 
   adopt = (next: PowerTrackerState): void => {
     this.state = this.stamp(next);
+    this.params.deps.observeExportEvidence(this.state);
   };
 
   save = (next: PowerTrackerState): void => {
@@ -279,6 +288,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       return;
     }
     if (stored !== null) this.state = this.stamp(stored);
+    deps.observeExportEvidence(this.state);
   };
 
   resetFreshness = (): boolean => {
@@ -357,6 +367,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
     const stored = deps.getStore().load(homeId);
     this.hydrationOwed = false;
     if (stored !== null) this.state = this.stamp(withLateHydratedEvidence(this.state, stored));
+    deps.observeExportEvidence(this.state);
     deps.getLogger()?.info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
     return true;
   }

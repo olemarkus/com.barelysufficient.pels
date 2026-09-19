@@ -412,6 +412,12 @@ export type AppContext = {
   // persists the underlying latch, so this is a brief boot window rather than a
   // nightly one.
   canContributeCurtailmentSurplus?: () => boolean;
+  // Whether the home's solar-surplus pool can ever open
+  // (`lib/power/surplusPoolReachable.ts`): the one answer both the `surplusOnly`
+  // posture and the "Use solar surplus" toggle read, so they cannot disagree.
+  // Composed once, from the feed's persisted export latch and the curtailment
+  // estimator above; resetting or pruning usage history cannot unmake it.
+  isSurplusPoolReachable: () => boolean;
   // PV-forecast source provenance for the settings UI, REPLACED by
   // `startPostStartupBackgroundTasks` (the wiring-assigns-ctx-members house
   // pattern) with a read of the live selector — never recomputed elsewhere.

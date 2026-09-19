@@ -8,7 +8,8 @@
 // `surplusWilling` opt-in routes an EV-preset charger to the tracking modality
 // and a plain socket to the dump-load modality, and that the two are never both
 // stamped on one device.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -99,6 +100,9 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
         [CHARGER]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
       },
     });
+    // A store that answers: another key is listed, the export bit is not. An
+    // empty key list is a flake, which leaves the export latch unreadable.
+    vi.mocked(ctx.homey.settings.getKeys).mockReturnValue([POWER_SOURCE]);
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
     expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);

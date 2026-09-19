@@ -55,7 +55,6 @@ import {
   resolveSurplusOnlyPosture,
   resolveSurplusTrackingPosture,
 } from '../../lib/plan/planSurplusAbsorb';
-import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import {
   resolveEvTargetPowerPlannerProfile,
@@ -175,9 +174,11 @@ export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): b
  * Every flow install whose Flow predates signed watts is in exactly that state,
  * through no fault of its own.
  *
- * The evidence is read fresh each cycle from the whole-home tracker and the
- * curtailment estimator, so a home that starts sending signed net earns the
- * posture on its own once export accrues — no restart, no settings change.
+ * The answer is read each cycle from the two persisted latches behind it (the
+ * feed's recorded export, `lib/power/signedExportLatch.ts`, and the curtailment
+ * estimator's armed bit), so a home that starts sending signed net earns the
+ * posture on its own once export accrues — no restart, no settings change —
+ * and resetting or pruning usage history cannot take it away.
  *
  * The removed source gate also aborted this producer cycle on a suspect settings
  * read (`requireConfiguredPowerSource` throws). That abort existed to stop a
@@ -211,15 +212,7 @@ function resolveSurplusPostureForDevice(params: {
   if (device.temperatureControlDisabled === true) return none;
   if (opts?.surplusPostureEnabled === false) return none;
   const surplusWilling = ctx.priceOptimizationSettings[device.id]?.surplusWilling;
-  const surplusPoolReachable = resolveSurplusPoolReachable({
-    tracker: ctx.powerTracker,
-    // Absent only until the post-startup wiring runs. False is the better
-    // default (a wrongly-stamped device is held off indefinitely, while an
-    // unstamped one is merely turned on from grid headroom by the generic
-    // restore lane) — but it is not free, so the underlying evidence is
-    // persisted rather than re-earned each boot.
-    curtailmentCanContribute: ctx.canContributeCurtailmentSurplus?.() === true,
-  });
+  const surplusPoolReachable = ctx.isSurplusPoolReachable();
   // The two postures are mutually exclusive by construction — the binary one
   // requires `plainBinaryControlModel` and a non-stepped snapshot, the tracking
   // one requires a step ladder — so this is a modality split, not a precedence.

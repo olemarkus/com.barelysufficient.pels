@@ -259,6 +259,10 @@ export const PV_FORECAST_SOURCE = 'pv_forecast_source';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
+// Monotone `true` once the whole-home feed has ever recorded grid export — the
+// export half of solar-surplus reachability, kept apart from the resettable
+// accounting history. Owned by `lib/power/signedExportLatch.ts`.
+export const SIGNED_EXPORT_OBSERVED = 'signed_export_observed';
 // EV car-to-charger link probe: coincidence-vote affinity map plus the
 // per-car self-stop state-of-charge samples. Observation-only — no consumer
 // reads it for planning. The `_INITIALIZED` companion distinguishes a fresh
