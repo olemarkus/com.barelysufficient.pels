@@ -6,7 +6,11 @@ import {
   homeScopedSettingsKey,
   MAIN_HOME_ID,
 } from '../../../contracts/src/settingsKeys.ts';
-import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_POWER_PATH,
+  type SettingsUiCapacityPeak,
+  type SettingsUiPowerPayload,
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   HOME_LIMITS_CONTROL_FAILED_TOAST,
   HOME_LIMITS_CONTROL_SAVED_TOAST,
@@ -23,9 +27,10 @@ import {
 } from '../../../shared-domain/src/homeLimitsCopy.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
+  DEFAULT_CAPACITY_PERIOD_MINUTES,
   resolveCapacityPeriodMinutes,
-  type CapacityPeriodMinutes,
 } from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import {
   formatHomeLimitsKw,
   resolveHomeLimitsStatus,
@@ -38,7 +43,7 @@ import { liveStatusOrNull } from './powerStatusRead.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
-import { classifyCapacityPeakKw } from './capacityPeakRead.ts';
+import { classifyCapacityPeak } from './capacityPeakRead.ts';
 import {
   renderHomeLimitsSection,
   type HomeLimitsEditorView,
@@ -98,7 +103,7 @@ type AreaEditorState = {
   /** True while a control-toggle write is in flight — serialises toggles + gates rollback. */
   dryRunWriteInFlight: boolean;
   statusRaw: unknown;
-  currentMonthQuarterPeakKw: number | null | undefined;
+  capacityPeak: SettingsUiCapacityPeak;
   statusLoaded: boolean;
 };
 
@@ -236,7 +241,7 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
-    currentMonthQuarterPeakKw: editor.currentMonthQuarterPeakKw,
+    capacityPeak: editor.capacityPeak,
     // Resolve the status against the LIVE edited cap + simulation state so the
     // card's Hard cap and posture track the inputs without a re-read. A held
     // config is forced non-active even if its pre-GA dry-run value was false.
@@ -284,8 +289,9 @@ const renderSection = (): void => {
  */
 type AreaPowerRead = {
   status: unknown;
-  currentMonthQuarterPeakKw: number | null | undefined;
-  runtimePeriodMinutes: CapacityPeriodMinutes | undefined;
+  capacityPeak: SettingsUiCapacityPeak;
+  /** Untrusted transport value; resolved where the editor's period is. */
+  runtimePeriodMinutes: unknown;
 };
 
 const readAreaStatus = async (homeId: string): Promise<AreaPowerRead> => {
@@ -295,13 +301,11 @@ const readAreaStatus = async (homeId: string): Promise<AreaPowerRead> => {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(uri);
     return {
       status: liveStatusOrNull(payload.status),
-      currentMonthQuarterPeakKw: classifyCapacityPeakKw(
-        payload.capacityPeak?.currentMonthQuarterPeakKw,
-      ),
+      capacityPeak: classifyCapacityPeak(payload.capacityPeak),
       runtimePeriodMinutes: payload.scopedCapacityScalars?.periodMinutes,
     };
   } catch {
-    return { status: null, currentMonthQuarterPeakKw: undefined, runtimePeriodMinutes: undefined };
+    return { status: null, capacityPeak: { state: 'unavailable' }, runtimePeriodMinutes: null };
   }
 };
 
@@ -326,7 +330,10 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
   const capsWriteQueue = resolveAreaCapsWriteQueue({ homeId, limitKw, marginKw });
   const loadedPeriodMinutes = resolveCapacityPeriodMinutes(
     periodRaw,
-    powerRead.runtimePeriodMinutes ?? lastGoodPeriodByHomeId.get(homeId) ?? 60,
+    resolveCapacityPeriodMinutes(
+      powerRead.runtimePeriodMinutes,
+      lastGoodPeriodByHomeId.get(homeId) ?? DEFAULT_CAPACITY_PERIOD_MINUTES,
+    ),
   );
   const periodWriteQueue = resolveAreaPeriodWriteQueue(homeId, loadedPeriodMinutes);
   const periodMinutes = periodWriteQueue.pendingCount > 0
@@ -345,7 +352,7 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
     persistedDryRun: dryRun,
     dryRunWriteInFlight: false,
     statusRaw: powerRead.status,
-    currentMonthQuarterPeakKw: powerRead.currentMonthQuarterPeakKw,
+    capacityPeak: powerRead.capacityPeak,
     statusLoaded: true,
   };
   renderSection();
@@ -399,7 +406,7 @@ const reloadAreaStatus = async (): Promise<void> => {
   const powerRead = await readAreaStatus(homeId);
   if (areaEditor === null || areaEditor.homeId !== homeId) return;
   areaEditor.statusRaw = powerRead.status;
-  areaEditor.currentMonthQuarterPeakKw = powerRead.currentMonthQuarterPeakKw;
+  areaEditor.capacityPeak = powerRead.capacityPeak;
   areaEditor.statusLoaded = true;
   renderSection();
 };

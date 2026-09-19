@@ -1,4 +1,4 @@
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacityPeriodMinutes, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
@@ -54,7 +54,7 @@ export type PlanContext = PlanLimits & {
   temperatureSetpoints: TemperatureSetpointsByDevice;
   hourBucketKey: string;
   hourUsedKWh: number;
-  capacityPeriodMinutes: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
   /** Whether usedKWh covers the whole elapsed part of this capacity period. */
   capacityPeriodCoverageComplete: boolean;
   budgetKWh: number;
@@ -104,17 +104,18 @@ export type MeasuredPower = {
   budgetReleasableHeadroomHold: boolean;
 };
 
-export function buildPlanContext(params: {
-  devices: PlanInputDevice[];
-  capacitySettings: CapacitySettings;
-  /** Hourly usage/bucket math only. Not a freshness input — that is the reading's. */
-  powerTracker: PowerTrackerState;
-  limits: PlanLimits;
-  temperatureSetpoints: TemperatureSetpointsByDevice;
-}, nowMs: number = Date.now()): PlanContext {
-  const {
-    devices, capacitySettings, powerTracker, limits, temperatureSetpoints,
-  } = params;
+/**
+ * `powerTracker` feeds the usage/bucket math only. It is not a freshness
+ * input — that is the reading's.
+ */
+export function buildPlanContext(
+  devices: PlanInputDevice[],
+  capacitySettings: CapacitySettings,
+  powerTracker: PowerTrackerState,
+  limits: PlanLimits,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  nowMs: number,
+): PlanContext {
   const hourContext = getCurrentHourContext(powerTracker, nowMs);
   const capacityContext = getCurrentCapacityPeriodContext(
     powerTracker,

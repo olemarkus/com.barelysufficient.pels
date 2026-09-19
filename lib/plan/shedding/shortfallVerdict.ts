@@ -2,7 +2,6 @@ import { isOverShortfallThreshold } from '../../power/capacityGuard';
 import type { PlanInputCapacityStateSummary } from '../../power/capacityStateSummary';
 import { splitControlledUsageKw } from '../../power/usageAttribution';
 import type { MeasuredPower, PlanContext } from '../planContext';
-import { getCurrentCapacityPeriodContext } from '../planHourContext';
 import { countPlanInputDevices } from '../planLogging';
 import {
   sumRemainingSheddableLoadKw,
@@ -34,19 +33,13 @@ export async function reportShortfallToGuard(
   state: PlanEngineState,
   selection: PlanSheddingResult,
   deps: SheddingDeps,
-  nowTs: number = Date.now(),
 ): Promise<void> {
-  const period = getCurrentCapacityPeriodContext(
-    deps.powerTracker,
-    context.capacityPeriodMinutes,
-    nowTs,
-  );
-  if (!period.coverageComplete) {
+  if (!context.capacityPeriodCoverageComplete) {
     deps.capacityGuard.recordShortfallUnavailable();
     return;
   }
   if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
-    await deps.capacityGuard.recordReading(power.drawKw, deps.shortfallThresholdKw, 'complete_period');
+    await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, deps.shortfallThresholdKw);
     return;
   }
   await deps.capacityGuard.recordPlanVerdict(

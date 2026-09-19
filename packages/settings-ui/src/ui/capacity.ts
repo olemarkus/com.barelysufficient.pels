@@ -56,10 +56,13 @@ import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   DEFAULT_CAPACITY_PERIOD_MINUTES,
+  isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,
-  type CapacitySettings,
-  type CapacityPeriodMinutes,
 } from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import type {
+  CapacityPeriodMinutes,
+  CapacityScalarSettings,
+} from '../../../contracts/src/capacitySettings.ts';
 import {
   resolveSimulationBannerContent,
   type SimulationBannerScope,
@@ -76,7 +79,7 @@ import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
-import { classifyCapacityPeakKw } from './capacityPeakRead.ts';
+import { classifyCapacityPeak, formatCapacityPeak } from './capacityPeakRead.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -94,39 +97,28 @@ type CurrentCapacitySettings = {
   periodMinutes: unknown;
 };
 
-type ResolvedCapacitySettings = CapacitySettings & { dryRun: boolean };
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
-// then only a resolved boolean read or successful save replaces it.
-let lastGoodCapacityDryRun = true;
-let lastGoodCapacityLimit = 10;
-let lastGoodCapacityMargin = 0.2;
-let paintedCapacityPeriodMinutes: CapacityPeriodMinutes = DEFAULT_CAPACITY_PERIOD_MINUTES;
+// then only a resolved read or successful save replaces it.
+let lastGoodCapacityScalars: CapacityScalarSettings = {
+  limitKw: 10,
+  marginKw: 0.2,
+  dryRun: true,
+  periodMinutes: DEFAULT_CAPACITY_PERIOD_MINUTES,
+};
 
-const syncMonthlyQuarterPeak = (
-  periodMinutes: CapacityPeriodMinutes,
-  rawPeakKw: unknown,
-): void => {
-  const peakKw = classifyCapacityPeakKw(rawPeakKw);
-  if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
-  if (settingsCapacityMonthlyPeakValue && peakKw !== undefined) {
-    settingsCapacityMonthlyPeakValue.textContent = peakKw !== null
-      ? `${peakKw.toFixed(2)} kW`
-      : 'No completed quarter yet';
+// An unavailable read is a no-op: the last shown peak (or the template's
+// "Peak unavailable") stays until a read that knows the answer.
+const renderMonthlyQuarterPeak = (rawPeak: unknown): void => {
+  const peak = classifyCapacityPeak(rawPeak);
+  if (settingsCapacityMonthlyPeakValue && peak.state !== 'unavailable') {
+    settingsCapacityMonthlyPeakValue.textContent = formatCapacityPeak(peak);
   }
 };
 
-const commitCapacityScalars = (
-  limit: number,
-  margin: number,
-  dryRun: boolean,
-  periodMinutes: CapacityPeriodMinutes,
-): void => {
-  lastGoodCapacityLimit = limit;
-  lastGoodCapacityMargin = margin;
-  lastGoodCapacityDryRun = dryRun;
-  paintedCapacityPeriodMinutes = periodMinutes;
-  state.dryRun = dryRun;
+const commitCapacityScalars = (scalars: CapacityScalarSettings): void => {
+  lastGoodCapacityScalars = scalars;
+  state.dryRun = scalars.dryRun;
 };
 
 const resolveMainCapacityNumber = (
@@ -150,7 +142,7 @@ const needsRuntimeCapacityScalars = (
   || typeof margin !== 'number'
   || !Number.isFinite(margin)
   || typeof dryRun !== 'boolean'
-  || (periodMinutes !== 15 && periodMinutes !== 60)
+  || !isCapacityPeriodMinutes(periodMinutes)
 );
 
 const resolveMainDryRun = (
@@ -325,24 +317,23 @@ export const refreshLimitsValidationHints = () => {
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
 
-const syncCapacityOwnedControls = (
-  limit: number,
-  margin: number,
-  isDryRun: boolean,
-  periodMinutes: CapacityPeriodMinutes,
-) => {
+const syncCapacityOwnedControls = (scalars: CapacityScalarSettings) => {
+  const {
+    limitKw, marginKw, dryRun, periodMinutes,
+  } = scalars;
   if (settingsCapacityLimitInput) {
-    settingsCapacityLimitInput.value = limit.toString();
+    settingsCapacityLimitInput.value = limitKw.toString();
   }
   if (settingsCapacityMarginInput) {
-    settingsCapacityMarginInput.value = margin.toString();
+    settingsCapacityMarginInput.value = marginKw.toString();
   }
   if (settingsSimulationModeInput) {
-    settingsSimulationModeInput.selected = isDryRun;
+    settingsSimulationModeInput.selected = dryRun;
   }
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
-  updateCapacityReactionHint(limit, margin);
-  renderMarginAlert(getMarginVsLimitError(limit, margin));
+  if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
+  updateCapacityReactionHint(limitKw, marginKw);
+  renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
 };
 
 const readNumberInput = (input: MdFilledTextFieldElement | null, label: string): number => {
@@ -364,20 +355,25 @@ const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> =
 const resolveCapacitySettings = (
   current: CurrentCapacitySettings,
   patch: CapacitySettingsPatch,
-): ResolvedCapacitySettings => ({
-  limitKw: patch.limit ?? resolveMainCapacityNumber(current.limit, undefined, lastGoodCapacityLimit),
-  marginKw: patch.margin ?? resolveMainCapacityNumber(current.margin, undefined, lastGoodCapacityMargin),
+): CapacityScalarSettings => ({
+  limitKw: patch.limit ?? resolveMainCapacityNumber(current.limit, undefined, lastGoodCapacityScalars.limitKw),
+  marginKw: patch.margin ?? resolveMainCapacityNumber(current.margin, undefined, lastGoodCapacityScalars.marginKw),
   // The runtime retains its validated in-memory posture when the persisted
   // key is absent or malformed. Mirror that last-good value so an unset never
   // makes the WebView claim simulation while the current runtime remains live.
   dryRun: patch.dryRun ?? (
-    typeof current.dryRun === 'boolean' ? current.dryRun : lastGoodCapacityDryRun
+    typeof current.dryRun === 'boolean' ? current.dryRun : lastGoodCapacityScalars.dryRun
   ),
   periodMinutes: patch.periodMinutes
-    ?? resolveCapacityPeriodMinutes(current.periodMinutes, paintedCapacityPeriodMinutes),
+    ?? resolveCapacityPeriodMinutes(current.periodMinutes, lastGoodCapacityScalars.periodMinutes),
 });
 
-const readOptionalCapacityPowerModel = async (): Promise<SettingsUiPowerPayload | null> => {
+/** `null` when no runtime read is needed, or when it failed (logged here). */
+const readCapacityPowerModel = async (
+  needsRuntimeScalars: boolean,
+  periodMinutes: unknown,
+): Promise<SettingsUiPowerPayload | null> => {
+  if (!needsRuntimeScalars && periodMinutes !== 15) return null;
   try {
     return await getPowerReadModel();
   } catch (caught) {
@@ -386,15 +382,7 @@ const readOptionalCapacityPowerModel = async (): Promise<SettingsUiPowerPayload 
   }
 };
 
-const readCapacityPowerModel = async (
-  needsRuntimeScalars: boolean,
-  periodMinutes: unknown,
-): Promise<SettingsUiPowerPayload | null> => {
-  if (needsRuntimeScalars || periodMinutes === 15) return readOptionalCapacityPowerModel();
-  return null;
-};
-
-const validateCapacitySettings = ({ limitKw: limit, marginKw: margin }: ResolvedCapacitySettings) => {
+const validateCapacitySettings = ({ limitKw: limit, marginKw: margin }: CapacityScalarSettings) => {
   // Validate limit: must be a finite positive number within reasonable bounds.
   if (!Number.isFinite(limit) || limit <= 0) throw new Error('Hard cap must be positive.');
   if (limit > 1000) throw new Error('Hard cap cannot exceed 1000 kW.');
@@ -461,10 +449,7 @@ onPlanMeasurementChange(refreshStaleDataBanner);
 
 export const loadStaleDataStatus = async () => {
   const power = await getPowerReadModel();
-  syncMonthlyQuarterPeak(
-    paintedCapacityPeriodMinutes,
-    power.capacityPeak?.currentMonthQuarterPeakKw,
-  );
+  renderMonthlyQuarterPeak(power.capacityPeak);
   // Producer-resolved fact, classified ONCE at this transport seam (the GET
   // response is untrusted): a junk payload keeps the last-known fact rather
   // than fabricating `never` — and before any render, resolves to `never`.
@@ -523,43 +508,34 @@ export const loadCapacitySettings = async () => {
   const powerRead = await readCapacityPowerModel(needsRuntimeScalars, periodMinutes);
   const powerSource = await getSetting(POWER_SOURCE);
   const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
-  const normalizedLimit = resolveMainCapacityNumber(
-    limit,
-    powerRead?.mainCapacityScalars?.limitKw,
-    lastGoodCapacityLimit,
-  );
-  const normalizedMargin = resolveMainCapacityNumber(
-    margin,
-    powerRead?.mainCapacityScalars?.marginKw,
-    lastGoodCapacityMargin,
-  );
-  const isDryRun = resolveMainDryRun(
-    dryRun,
-    powerRead?.mainDryRunEffective,
-    lastGoodCapacityDryRun,
-  );
-  const normalizedPeriodMinutes = resolveCapacityPeriodMinutes(
-    periodMinutes,
-    powerRead?.mainCapacityScalars?.periodMinutes ?? paintedCapacityPeriodMinutes,
-  );
+  const runtimeScalars = powerRead?.mainCapacityScalars;
+  const resolved: CapacityScalarSettings = {
+    limitKw: resolveMainCapacityNumber(limit, runtimeScalars?.limitKw, lastGoodCapacityScalars.limitKw),
+    marginKw: resolveMainCapacityNumber(margin, runtimeScalars?.marginKw, lastGoodCapacityScalars.marginKw),
+    dryRun: resolveMainDryRun(dryRun, powerRead?.mainDryRunEffective, lastGoodCapacityScalars.dryRun),
+    // Persisted, then the runtime's, then the last good: each checked, since
+    // the runtime's arrives over the untrusted transport.
+    periodMinutes: resolveCapacityPeriodMinutes(
+      periodMinutes,
+      resolveCapacityPeriodMinutes(runtimeScalars?.periodMinutes, lastGoodCapacityScalars.periodMinutes),
+    ),
+  };
   // Only a successfully completed newer load supersedes this snapshot. A load
   // that merely STARTED later but failed must not discard valid settings with
   // no remaining refresh guaranteed.
   if (generation < capacitySettingsAppliedGeneration) return;
   capacitySettingsAppliedGeneration = generation;
-  syncCapacityOwnedControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPeriodMinutes);
+  syncCapacityOwnedControls(resolved);
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
   // concurrent Whole-home meter refresh that this snapshot already read.
   const trimmedMeterId = typeof meterDeviceId === 'string' ? meterDeviceId.trim() : '';
   syncHomeyEnergyMeterSelection(trimmedMeterId === '' ? null : trimmedMeterId);
   syncLoadedPowerSourceForGeneration(sourceGeneration, powerSource);
-  const dryRunChanged = state.dryRun !== isDryRun;
-  commitCapacityScalars(normalizedLimit, normalizedMargin, isDryRun, normalizedPeriodMinutes);
-  syncMonthlyQuarterPeak(
-    normalizedPeriodMinutes,
-    powerRead?.capacityPeak?.currentMonthQuarterPeakKw,
-  );
+  const dryRunChanged = state.dryRun !== resolved.dryRun;
+  commitCapacityScalars(resolved);
+  // No power read (an hourly home, or a failed read) leaves the last value.
+  if (powerRead !== null) renderMonthlyQuarterPeak(powerRead.capacityPeak);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // The banner may already have rendered from the template's defaults while
@@ -581,29 +557,25 @@ const saveCapacitySettingsPatch = async (
 ) => {
   const current = await readCurrentCapacitySettings();
   const resolved = resolveCapacitySettings(current, patch);
-  const {
-    limitKw: limit, marginKw: margin, dryRun, periodMinutes,
-  } = resolved;
   validateCapacitySettings(resolved);
 
   const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, limit);
-  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, margin);
-  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, dryRun);
-  pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, periodMinutes);
+  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, resolved.limitKw);
+  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, resolved.marginKw);
+  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, resolved.dryRun);
+  pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, resolved.periodMinutes);
   // Never power_source: a hard-cap/margin/simulation save must not materialize
   // the 'flow' default for a user who never chose a source, and the select's
   // own change goes through the guarded seam (`savePowerSourceSetting`).
   if (writes.length > 0) {
     await Promise.all(writes);
   }
-  const dryRunChanged = current.dryRun !== dryRun;
-  commitCapacityScalars(limit, margin, dryRun, periodMinutes);
+  const dryRunChanged = current.dryRun !== resolved.dryRun;
+  commitCapacityScalars(resolved);
   // This save owns only cap, margin and simulation. In particular it must not
   // repaint the Power source from its pre-write read: a source save can overlap
   // this awaited settings write and owns that control's final value.
-  syncCapacityOwnedControls(limit, margin, dryRun, periodMinutes);
-  syncMonthlyQuarterPeak(periodMinutes, undefined);
+  syncCapacityOwnedControls(resolved);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // Toggling simulation flips the hero decision sentence and the device-card
@@ -618,7 +590,10 @@ export const saveSettingsLimitsSettings = async () => {
   await saveCapacitySettingsPatch({
     limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
     margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
-    periodMinutes: resolveCapacityPeriodMinutes(Number(settingsCapacityPeriodSelect?.value)),
+    periodMinutes: resolveCapacityPeriodMinutes(
+      Number(settingsCapacityPeriodSelect?.value),
+      lastGoodCapacityScalars.periodMinutes,
+    ),
   }, 'Limits & safety saved.');
 };
 

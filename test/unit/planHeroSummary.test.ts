@@ -118,18 +118,18 @@ describe('hero meter marker labels', () => {
   });
 
   it('formats energy markers with short legend + screen-reader labels', () => {
-    expect(formatEnergyMeterMarkerLabels('target', 5)).toEqual({
+    expect(formatEnergyMeterMarkerLabels('target', 5, 60)).toEqual({
       short: 'Budget this hour',
       aria: 'Budget this hour 5.0 kWh',
     });
-    expect(formatEnergyMeterMarkerLabels('projected', 4.4)).toEqual({
+    expect(formatEnergyMeterMarkerLabels('projected', 4.4, 60)).toEqual({
       short: 'Projected this hour',
       aria: 'Projected this hour 4.4 kWh',
     });
   });
 
   it('carries the value in the energy cap label — the kWh threshold appears nowhere else', () => {
-    expect(formatEnergyMeterMarkerLabels('cap', 8)).toEqual({
+    expect(formatEnergyMeterMarkerLabels('cap', 8, 60)).toEqual({
       short: 'Hard cap this hour 8.0 kWh',
       aria: 'Hard cap this hour 8.0 kWh',
     });
@@ -143,6 +143,7 @@ describe('buildDecisionSentence', () => {
     dryRun: false,
     projectedOverHardCap: false,
     projectedOverBudget: false,
+    capacityPeriodMinutes: 60,
     safePaceKw: 12,
     ...overrides,
   });

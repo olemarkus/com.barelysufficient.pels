@@ -92,6 +92,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const getShedBehavior = () => ({ action: 'turn_off' as const });

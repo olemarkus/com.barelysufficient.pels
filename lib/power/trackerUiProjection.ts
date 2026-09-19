@@ -1,5 +1,10 @@
 import type { PowerTrackerState as SettingsUiPowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { SettingsUiPowerPayload } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiCapacityPeak,
+  SettingsUiPowerPayload,
+} from '../../packages/contracts/src/settingsUiApi';
+import { isCapacityPeriodMinutes } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { PowerTrackerState } from './trackerTypes';
 
 export const projectMainCapacityScalarsForUi = (
@@ -11,21 +16,15 @@ export const projectMainCapacityScalarsForUi = (
     marginKw?: unknown;
     periodMinutes?: unknown;
   };
-  if (typeof limitKw !== 'number' || !Number.isFinite(limitKw)) return undefined;
-  if (typeof marginKw !== 'number' || !Number.isFinite(marginKw)) return undefined;
-  if (periodMinutes !== 15 && periodMinutes !== 60) return undefined;
+  if (!isFiniteNumber(limitKw) || !isFiniteNumber(marginKw) || !isCapacityPeriodMinutes(periodMinutes)) {
+    return undefined;
+  }
   return { limitKw, marginKw, periodMinutes };
 };
 
-export const projectCurrentMonthCapacityPeakForUi = (
-  readPeak: (() => number | null) | undefined,
-): SettingsUiPowerPayload['capacityPeak'] => {
-  if (readPeak === undefined) return undefined;
-  const peakKw = readPeak();
-  if (peakKw === null) return { currentMonthQuarterPeakKw: null };
-  if (!Number.isFinite(peakKw) || peakKw < 0) return undefined;
-  return { currentMonthQuarterPeakKw: peakKw };
-};
+export const projectCapacityPeakForUi = (peakKw: number | null): SettingsUiCapacityPeak => (
+  peakKw === null ? { state: 'no_completed_quarter' } : { state: 'recorded', peakKw }
+);
 
 /** Omit capacity-control internals from the general settings-UI usage history payload. */
 export const projectPowerTrackerForUi = (tracker: PowerTrackerState): SettingsUiPowerTrackerState => {

@@ -122,10 +122,7 @@ export const createHomeCapacityGuard = (
     // real alert after a decrease, holding an obsolete one after an increase.
     isConditionActive: () => guard.isShortfallAlertConditionActive(
       resolveLastTotalPowerKw(scope.getPowerTracker()),
-      computeShortfallThreshold({
-        capacitySettings: scope.getCapacitySettings(),
-        powerTracker: scope.getPowerTracker(),
-      }),
+      computeShortfallThreshold(scope.getCapacitySettings(), scope.getPowerTracker(), Date.now()),
     ),
     getHomeDisplayName: scope.getHomeDisplayName,
     flow: ctx.homey.flow,

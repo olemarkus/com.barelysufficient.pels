@@ -119,7 +119,7 @@ export type RecordPowerSampleParams = {
   nowMs?: number;
   hourBudgetKWh?: number;
   /** IANA timezone used to assign completed quarters to their local billing month. */
-  timeZone?: string;
+  timeZone: string;
   rebuildPlanFromCache: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };

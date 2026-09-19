@@ -1,8 +1,6 @@
 import { usableCapacityKw } from '../../packages/shared-domain/src/capacityAllowance';
-import {
-  capacityPeriodHours,
-  type CapacitySettings as SharedCapacitySettings,
-} from '../../packages/shared-domain/src/settings/capacityPeriod';
+import { capacityPeriodEnergyKWh } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 /**
  * The two capacity settings the safe-pace family is derived from. In the canonical
@@ -15,8 +13,6 @@ export type CapacityLimitSettings = {
   limitKw: number;
   marginKw: number;
 };
-
-export type CapacitySettings = SharedCapacitySettings;
 
 /**
  * Owner of the capacity allowance: the selected period's kWh read as energy, or
@@ -35,10 +31,10 @@ export function resolveUsableCapacityKw(capacitySettings: CapacityLimitSettings)
 
 /** Energy allowance for the configured billing window. */
 export function resolveUsableCapacityKWh(capacitySettings: CapacitySettings): number {
-  return resolveUsableCapacityKw(capacitySettings) * capacityPeriodHours(capacitySettings.periodMinutes);
+  return capacityPeriodEnergyKWh(resolveUsableCapacityKw(capacitySettings), capacitySettings.periodMinutes);
 }
 
 /** Hard-cap energy boundary for the configured billing window. */
 export function resolveHardCapacityKWh(capacitySettings: CapacitySettings): number {
-  return Math.max(0, capacitySettings.limitKw) * capacityPeriodHours(capacitySettings.periodMinutes);
+  return capacityPeriodEnergyKWh(Math.max(0, capacitySettings.limitKw), capacitySettings.periodMinutes);
 }

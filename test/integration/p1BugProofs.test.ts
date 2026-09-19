@@ -155,6 +155,7 @@ describe('P1 bug proofs', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
     } as unknown as CapacityGuard;
     const state = createPlanEngineState();
     const context = buildPlanContextFixture({

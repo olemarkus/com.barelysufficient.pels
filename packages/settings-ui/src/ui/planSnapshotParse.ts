@@ -1,5 +1,6 @@
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 import { isEvChargingState } from '../../../shared-domain/src/evPlugState.ts';
+import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 
 /**
  * The plan payload's shape guard, in a leaf module of its own so BOTH the
@@ -197,7 +198,7 @@ const isValidPlanMeta = (value: unknown): boolean => {
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
     && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
-    && (meta.capacityPeriodMinutes === 15 || meta.capacityPeriodMinutes === 60)
+    && isCapacityPeriodMinutes(meta.capacityPeriodMinutes)
     && typeof meta.capacityPeriodCoverageComplete === 'boolean'
     && typeof meta.powerIsMeasured === 'boolean'
     && (!meta.powerIsMeasured || MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key])));

@@ -32,32 +32,13 @@
  *
  * {@link HomeRuntimeDiagnostics} is the single declaration of that block; the
  * setup-layer bundle aliases it, since `setup → lib` is the legal direction.
- * {@link HomeRuntimeCapacityScalars} is the one genuine duplicate: its peer
- * declaration `CapacityScalarSettings` lives in `lib/power`, which this module
- * may not reach. The drift is asymmetric. REMOVING or retyping a field there
- * fails the build. ADDING one does not: the producer spreads the concrete
- * block, and a spread is exempt from excess-property checking, so the new field
- * ships in the payload while staying invisible in this contract — a silent
- * widening, not a silent omission. Widening the block therefore stays a
- * deliberate act on both sides. The consolidation that would end the duplicate
- * is to move the scalar block to `lib/utils`, the precedent `HomeId` already
- * set.
+ * The capacity scalar block is `CapacityScalarSettings` from contracts, the
+ * same declaration `lib/power` reads and writes.
  */
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { HomeId } from './homeConfig';
-
-/**
- * A home's capacity scalar block: hard cap, safety margin, dry-run flag.
- * Structural duplicate of `CapacityScalarSettings`
- * (`lib/power/capacitySettingsStore`) — see the module doc.
- */
-export type HomeRuntimeCapacityScalars = Readonly<{
-  limitKw: number;
-  marginKw: number;
-  dryRun: boolean;
-  periodMinutes: 15 | 60;
-}>;
 
 /**
  * A home runtime's diagnostics block — the single declaration, aliased by
@@ -75,7 +56,7 @@ export type HomeRuntimeDiagnostics = Readonly<{
   dryRunEffective: boolean;
   /** Last meter reading this home's guard saw (kW), or null before its first sample. */
   lastMeterPowerKw: number | null;
-  capacityScalars: HomeRuntimeCapacityScalars;
+  capacityScalars: Readonly<CapacityScalarSettings>;
   lastDeviceControlledMs: Readonly<Record<string, number>>;
 }>;
 

@@ -218,7 +218,11 @@ describe('settings-UI `?homeId=` endpoints', () => {
           plan: null, homeScope: { state: 'unavailable' },
         });
         expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
-          tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
+          tracker: {},
+          readings: { state: 'never' },
+          status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+          capacityPeak: { state: 'unavailable' },
+          homeScope: { state: 'unavailable' },
         });
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
@@ -300,7 +304,11 @@ describe('settings-UI `?homeId=` endpoints', () => {
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
+        tracker: {},
+        readings: { state: 'never' },
+        status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+        capacityPeak: { state: 'unavailable' },
+        homeScope: { state: 'unavailable' },
       });
     });
 
@@ -317,7 +325,11 @@ describe('settings-UI `?homeId=` endpoints', () => {
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
-        tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
+        tracker: {},
+        readings: { state: 'never' },
+        status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+        capacityPeak: { state: 'unavailable' },
+        homeScope: { state: 'unavailable' },
       });
       // The plan composer consumes no membership, so it stays served: the
       // committed plan is the runtime's own truth, not an attribution claim.
@@ -348,7 +360,11 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary({ hasRegistry: false });
 
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
+        tracker: {},
+        readings: { state: 'never' },
+        status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+        capacityPeak: { state: 'unavailable' },
+        homeScope: { state: 'unavailable' },
       });
     });
 

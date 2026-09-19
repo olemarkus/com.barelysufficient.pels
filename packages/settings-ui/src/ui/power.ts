@@ -125,7 +125,10 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
   return payload ?? {
-    tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'read_failed' },
+    tracker: {},
+    readings: { state: 'never' },
+    status: { state: 'unavailable', reason: 'read_failed' },
+    capacityPeak: { state: 'unavailable' },
   };
 };
 

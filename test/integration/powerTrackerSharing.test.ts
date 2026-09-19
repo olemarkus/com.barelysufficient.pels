@@ -10,6 +10,7 @@ const sample = async (state: PowerTrackerState, nowMs = START + 10000): Promise<
   let saved = state;
   await recordPowerSample({
     generationSegments: [],
+    timeZone: 'UTC',
     state, nowMs, currentPowerW: 1000, controlledPowerW: 1000, exemptPowerW: 0, hourBudgetKWh: 5,
     currentDevicePowerWById: { active: 1000, idle: 0 },
     saveState: (next) => { saved = next; },

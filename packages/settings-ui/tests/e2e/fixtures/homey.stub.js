@@ -991,11 +991,9 @@
         marginKw: Number.isFinite(settings.capacity_margin_kw) ? settings.capacity_margin_kw : 0.2,
         periodMinutes: settings.capacity_period_minutes === 15 ? 15 : 60,
       },
-      capacityPeak: {
-        currentMonthQuarterPeakKw: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
-          ? settings.ui_current_month_quarter_peak_kw
-          : null,
-      },
+      capacityPeak: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
+        ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw }
+        : { state: 'no_completed_quarter' },
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source
       // (unset normalizes to flow, which has no solar signal — see
@@ -1710,11 +1708,9 @@
           : true,
         periodMinutes: settings[`capacity_period_minutes:${scope.homeId}`] === 15 ? 15 : 60,
       },
-      capacityPeak: {
-        currentMonthQuarterPeakKw: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
-          ? settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`]
-          : null,
-      },
+      capacityPeak: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
+        ? { state: 'recorded', peakKw: settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`] }
+        : { state: 'no_completed_quarter' },
       // Same source gate as `buildPowerPayload` above, because the scoped
       // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`
       // reads the GLOBAL `power_source` key, and only `homey_energy` yields

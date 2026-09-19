@@ -55,7 +55,7 @@ import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta } from './planBuilderMeta';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
 const SOFT_LIMIT_EPSILON = 1e-3;
@@ -84,9 +84,7 @@ export class PlanBuilder {
   }
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
-  private get capacitySettings(): CapacitySettings {
-    return this.deps.getCapacitySettings();
-  }
+  private get capacitySettings(): CapacitySettings { return this.deps.getCapacitySettings(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
@@ -145,10 +143,7 @@ export class PlanBuilder {
     // about that period, not about which pace is in force, so an override replaces the pace
     // and leaves the budget untouched. Resolving it on both paths keeps
     // `hourlyRemainingKWh` a plain number for every consumer.
-    const result = computeDynamicSoftLimit({
-      capacitySettings: this.capacitySettings,
-      powerTracker: this.powerTracker,
-    }, nowTs);
+    const result = computeDynamicSoftLimit(this.capacitySettings, this.powerTracker, nowTs);
     const override = this.deps.getDynamicSoftLimitOverride();
     if (typeof override === 'number' && Number.isFinite(override)) {
       return { paceKw: override, remainingKWh: result.remainingKWh, hourlyBudgetExhausted: false };
@@ -165,11 +160,8 @@ export class PlanBuilder {
    * Shortfall should only trigger when projected selected-period usage would breach the hard cap
    * and no devices are left to shed.
    */
-  public computeShortfallThreshold(nowTs: number = Date.now()): number {
-    return computeShortfallThreshold({
-      capacitySettings: this.capacitySettings,
-      powerTracker: this.powerTracker,
-    }, nowTs);
+  public computeShortfallThreshold(): number {
+    return computeShortfallThreshold(this.capacitySettings, this.powerTracker, Date.now());
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -205,14 +197,15 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       nowMs: nowTs,
     });
-    const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
-      devices: admittedDevices,
-      capacitySettings: this.capacitySettings,
-      powerTracker: this.powerTracker,
-      limits: this.resolvePlanLimits(admittedDevices, dailyBudgetSnapshot, nowTs),
+    const context = trackPlanStage('plan_context_ms', () => buildPlanContext(
+      admittedDevices,
+      this.capacitySettings,
+      this.powerTracker,
+      this.resolvePlanLimits(admittedDevices, dailyBudgetSnapshot, nowTs),
       // After the decoration, which is what stamps a smart task's deadline floor.
-      temperatureSetpoints: this.deps.resolveTemperatureSetpoints(admittedDevices),
-    }, nowTs));
+      this.deps.resolveTemperatureSetpoints(admittedDevices),
+      nowTs,
+    ));
     // THE seam. The ordinary pipeline below is entered only with a measurement,
     // so nothing inside it asks whether power was measured; the one unmeasured
     // build — the silent-meter fail-closed pass — takes its directive here and
@@ -221,7 +214,9 @@ export class PlanBuilder {
       return this.silentMeter.build(context, reading, decoration, nowTs);
     }
     const power = resolveMeasuredPower(reading, context, admittedDevices);
-    const shortfallBudgetThresholdKw = this.computeShortfallThreshold(nowTs);
+    const shortfallBudgetThresholdKw = computeShortfallThreshold(
+      this.capacitySettings, this.powerTracker, nowTs,
+    );
     const { sheddingPlan, overshootDecision } = await this.decideShedding(
       context, power, shortfallBudgetThresholdKw, nowTs,
     );

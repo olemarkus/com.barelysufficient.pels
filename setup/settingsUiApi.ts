@@ -48,7 +48,7 @@ import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import {
-  projectCurrentMonthCapacityPeakForUi,
+  projectCapacityPeakForUi,
   projectMainCapacityScalarsForUi,
   projectPowerTrackerForUi,
 } from '../lib/power/trackerUiProjection';
@@ -75,7 +75,6 @@ import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolu
 type SettingsUiApiApp = Homey.App & {
   capacityDryRun?: unknown;
   capacitySettings?: unknown;
-  getCurrentMonthCapacityPeakKw?: () => number | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
@@ -96,6 +95,20 @@ const hasPvForecastSourceSeam = (app: unknown): app is PvForecastSourceSeam => (
   && app !== null
   && 'getPvForecastSourceUiStatus' in app
   && typeof app.getPvForecastSourceUiStatus === 'function'
+);
+
+/**
+ * The Main home's capacity-peak seam (`AppContext` declares it required). Same
+ * boundary role as `PvForecastSourceSeam` above: presence is a runtime question
+ * only because `homey.app` is typed as the SDK's base `App`.
+ */
+type CapacityPeakSeam = { getCurrentMonthCapacityPeakKw: () => number | null };
+
+const hasCapacityPeakSeam = (app: unknown): app is CapacityPeakSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getCurrentMonthCapacityPeakKw' in app
+  && typeof app.getCurrentMonthCapacityPeakKw === 'function'
 );
 
 /**
@@ -398,7 +411,6 @@ const resolvePowerReadings = (tracker: PowerTrackerState): SettingsUiPowerReadin
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
   const mainCapacityScalars = projectMainCapacityScalarsForUi(app?.capacitySettings);
-  const capacityPeak = projectCurrentMonthCapacityPeakForUi(app?.getCurrentMonthCapacityPeakKw);
   // The tracker keeps the persisted fallback: it carries usage HISTORY
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
@@ -415,7 +427,9 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
       ? { mainDryRunEffective: app.capacityDryRun }
       : {}),
     ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
-    ...(capacityPeak ? { capacityPeak } : {}),
+    capacityPeak: hasCapacityPeakSeam(app)
+      ? projectCapacityPeakForUi(app.getCurrentMonthCapacityPeakKw())
+      : { state: 'unavailable' },
     // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). A role-detected PV device is now the whole condition:
@@ -505,6 +519,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   tracker: {},
   readings: { state: 'never' },
   status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+  capacityPeak: { state: 'unavailable' },
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
@@ -554,9 +569,7 @@ const powerPayloadForHome = (
     tracker: projectPowerTrackerForUi(reading.powerTracker),
     readings: resolvePowerReadings(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
-    capacityPeak: {
-      currentMonthQuarterPeakKw: reading.currentMonthCapacityPeakKw,
-    },
+    capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
     scopedCapacityScalars: reading.diagnostics.capacityScalars,
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,

@@ -63,7 +63,7 @@ import {
 } from './settingsHandlerDebounce';
 import { createNoopWriteSkipper } from './settingsWriteDedupe';
 import { handleSettingsUiLog } from './settingsUiLogIngest';
-import type { CapacitySettings } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {

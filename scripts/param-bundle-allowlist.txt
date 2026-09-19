@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-17: 373 files, 948 bundles.
+# Seeded 2026-09-19: 371 files, 945 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -108,7 +108,7 @@ lib/device/transport/temperatureObservation.ts 1
 lib/diagnostics/deviceDiagnosticsModel.ts 2
 lib/diagnostics/deviceDiagnosticsUiPayload.ts 1
 lib/diagnostics/perfLogging.ts 1
-lib/diagnostics/periodicStatus.ts 2
+lib/diagnostics/periodicStatus.ts 1
 lib/executor/binaryControlDispatch.ts 2
 lib/executor/binaryControlShared.ts 1
 lib/executor/binaryExecutor.ts 2
@@ -186,7 +186,6 @@ lib/plan/planBuilderMaterialization.ts 3
 lib/plan/planBuilderOvershoot.ts 4
 lib/plan/planBuilderSurplus.ts 3
 lib/plan/planChangeTracker.ts 1
-lib/plan/planContext.ts 1
 lib/plan/planCurrentState.ts 1
 lib/plan/planDailyBudgetWindow.ts 1
 lib/plan/planDebugDedupe.ts 1
@@ -328,7 +327,6 @@ packages/shared-domain/src/energySignature/budgetPressure.ts 1
 packages/shared-domain/src/energySignature/energySignature.ts 1
 packages/shared-domain/src/homesManagement.ts 3
 packages/shared-domain/src/homesManagementCopy.ts 1
-packages/shared-domain/src/hourEnergyProjection.ts 1
 packages/shared-domain/src/overviewSmartTaskRow.ts 1
 packages/shared-domain/src/planCardReasonLine.ts 4
 packages/shared-domain/src/planReasonFormatting.ts 1

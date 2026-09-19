@@ -31,7 +31,7 @@
 import { requirePlanService } from '../appInit/contextGuards';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { CapacitySettings } from '../../lib/power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';

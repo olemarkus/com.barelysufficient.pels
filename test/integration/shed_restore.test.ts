@@ -50,6 +50,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = partialDouble<CapacityGuard>({
             recordPlanVerdict: vi.fn(),
             recordReading: vi.fn(),
+            recordCompletePeriodReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;
@@ -92,6 +93,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = partialDouble<CapacityGuard>({
             recordPlanVerdict: vi.fn(),
             recordReading: vi.fn(),
+            recordCompletePeriodReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;
@@ -129,6 +131,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = partialDouble<CapacityGuard>({
             recordPlanVerdict: vi.fn(),
             recordReading: vi.fn(),
+            recordCompletePeriodReading: vi.fn(),
             isInShortfall: () => false,
         });
         app.capacityGuard = mockGuard;

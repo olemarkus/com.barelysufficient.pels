@@ -42,7 +42,7 @@ const buildLimitsDom = () => {
 const loadCapacityModule = async (
   settings: Record<string, unknown> = {},
   powerReadError?: Error,
-  capacityPeakKw: unknown = 4.75,
+  capacityPeak: unknown = { state: 'recorded', peakKw: 4.75 },
 ) => {
   vi.resetModules();
   const settingsStore: Record<string, unknown> = {
@@ -69,7 +69,7 @@ const loadCapacityModule = async (
         tracker: {},
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'no_measurement' },
-        capacityPeak: { currentMonthQuarterPeakKw: capacityPeakKw },
+        capacityPeak,
       }),
   }));
   const showToast = vi.fn().mockResolvedValue(undefined);
@@ -217,7 +217,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity } = await loadCapacityModule(
       { capacity_period_minutes: 15 },
       undefined,
-      -1,
+      { state: 'recorded', peakKw: -1 },
     );
 
     await capacity.loadCapacitySettings();

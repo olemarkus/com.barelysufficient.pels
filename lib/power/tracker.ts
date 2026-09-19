@@ -469,10 +469,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   // Billing stays correct: every budget consumer re-clamps exempt against the net total.
   const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
-  let capacityQuarter = shouldResetSamplingState(state, nowMs)
-    ? startCapacityQuarterTracking(nowMs)
-    : state.capacityQuarter ?? startCapacityQuarterTracking(state.lastTimestamp as number);
-  let capacityMonthlyPeak = state.capacityMonthlyPeak;
+  const resetSampling = shouldResetSamplingState(state, nowMs);
   // Shared next-state args for both the reset path (no accrual — the current
   // readings, including the generation latch, are recorded as-is) and the
   // normal accrual path below.
@@ -494,12 +491,14 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentExemptPowerW: boundedExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById: normalizedDevicePowerWById,
-    capacityQuarter,
-    capacityMonthlyPeak,
   };
 
-  if (shouldResetSamplingState(state, nowMs)) {
-    const nextState = buildNextPowerState(nextStateArgs);
+  if (resetSampling) {
+    const nextState = buildNextPowerState({
+      ...nextStateArgs,
+      capacityQuarter: startCapacityQuarterTracking(nowMs),
+      capacityMonthlyPeak: state.capacityMonthlyPeak,
+    });
     addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
     await persistPowerSample({ nextState, saveState, rebuildPlanFromCache });
     return;
@@ -521,9 +520,9 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     budgets: nextBudgets,
     budgetKWh,
   });
-  ({ quarter: capacityQuarter, monthlyPeak: capacityMonthlyPeak } = accrueCapacityQuarter(
-    capacityQuarter, capacityMonthlyPeak, previousTs, nowMs, previousPower, params.timeZone ?? 'UTC',
-  ));
+  const { quarter: capacityQuarter, monthlyPeak: capacityMonthlyPeak } = accrueCapacityQuarter(
+    state.capacityQuarter, state.capacityMonthlyPeak, previousTs, nowMs, previousPower, params.timeZone,
+  );
 
   // Solar accounting (sparse export/generation families) — sparseness and
   // absence-as-absence rules live in trackerSolar.ts.

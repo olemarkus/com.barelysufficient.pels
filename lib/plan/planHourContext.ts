@@ -1,30 +1,30 @@
 import type { PowerTrackerState } from '../power/tracker';
 import { MAX_POWER_SAMPLE_GAP_MS } from '../power/trackerTypes';
 import { getHourBucketKey } from '../utils/dateUtils';
-import type { CapacityPeriodMinutes } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 
-export type HourUsageContext = {
-  bucketKey: string;
-  hourStartMs: number;
-  hourEndMs: number;
-  usedKWh: number;
-  remainingMs: number;
-  remainingHours: number;
-  minutesRemaining: number;
-};
+const HOUR_MS = 60 * 60 * 1000;
 
 export type CapacityPeriodUsageContext = {
-  bucketKey: string;
-  periodStartMs: number;
-  periodEndMs: number;
   usedKWh: number;
-  remainingMs: number;
   remainingHours: number;
   minutesRemaining: number;
+  /** Whether usedKWh covers the whole elapsed part of this capacity period. */
   coverageComplete: boolean;
 };
 
+export type HourUsageContext = CapacityPeriodUsageContext & { bucketKey: string };
+
 type HeldPowerSample = { atMs: number; powerW: number };
+
+const resolveRemaining = (
+  periodEndMs: number,
+  nowMs: number,
+): Pick<CapacityPeriodUsageContext, 'remainingHours' | 'minutesRemaining'> => {
+  const remainingMs = Math.max(0, periodEndMs - nowMs);
+  return { remainingHours: remainingMs / HOUR_MS, minutesRemaining: remainingMs / 60_000 };
+};
 
 const resolveHeldPowerSample = (
   powerTracker: PowerTrackerState,
@@ -40,62 +40,65 @@ const resolveHeldPowerSample = (
     : undefined;
 };
 
-export function getCurrentCapacityPeriodContext(
+/**
+ * The clock hour, read from the hourly energy buckets. Hourly accounting is
+ * continuous by construction, so its coverage is always complete.
+ */
+export function getCurrentHourContext(
   powerTracker: PowerTrackerState,
-  periodMinutes: CapacityPeriodMinutes,
-  nowMs: number = Date.now(),
+  nowMs: number,
+): HourUsageContext {
+  const bucketKey = getHourBucketKey(nowMs);
+  const hourStartMs = new Date(bucketKey).getTime();
+  return {
+    bucketKey,
+    // Floor at 0: a persisted solar-export hour can hold a negative kWh, which would
+    // otherwise inflate remaining-budget / burst-rate pacing. Billed usage can't be negative.
+    usedKWh: Math.max(0, powerTracker.buckets?.[bucketKey] || 0),
+    ...resolveRemaining(hourStartMs + HOUR_MS, nowMs),
+    coverageComplete: true,
+  };
+}
+
+/**
+ * The aligned tariff quarter, read from the tracker's active quarter plus the
+ * held sample since it was last accrued.
+ */
+function getCurrentQuarterContext(
+  powerTracker: PowerTrackerState,
+  nowMs: number,
 ): CapacityPeriodUsageContext {
-  const periodMs = periodMinutes * 60 * 1000;
-  const periodStartMs = Math.floor(nowMs / periodMs) * periodMs;
-  const bucketKey = new Date(periodStartMs).toISOString();
-  const periodEndMs = periodStartMs + periodMs;
-  const quarter = powerTracker.capacityQuarter;
-  const quarterMatches = quarter?.startMs === periodStartMs;
+  const quarterStartMs = Math.floor(nowMs / CAPACITY_QUARTER_MS) * CAPACITY_QUARTER_MS;
+  const stored = powerTracker.capacityQuarter;
+  const quarter = stored?.startMs === quarterStartMs ? stored : undefined;
   const heldSample = resolveHeldPowerSample(powerTracker, nowMs);
   // A missing Flow event is a no-op: the last admitted reading remains the
   // held sample until the next event (or the meter-silence gate closes plan
   // building). Include that interval in both usage and coverage so a
   // settings-triggered rebuild cannot make the gap look like free capacity.
-  // At a period rollover the stored quarter still names the previous period
+  // At a quarter rollover the stored quarter still names the previous quarter
   // until another sample arrives. The held sample nevertheless covers the new
-  // period from its boundary, so do not require `quarterMatches` here.
-  const heldMs = heldSample
-    ? Math.max(0, nowMs - Math.max(periodStartMs, heldSample.atMs))
-    : 0;
-  const usedKWh = periodMinutes === 15
-    ? Math.max(0, (quarterMatches ? quarter.energyKWh : 0)
-      + (Math.max(0, heldSample?.powerW ?? 0) / 1000) * (heldMs / 3_600_000))
-    : Math.max(0, powerTracker.buckets?.[bucketKey] || 0);
-  const coverageComplete = periodMinutes === 60 || (
-    (quarterMatches || heldSample !== undefined)
-    && (quarterMatches ? quarter.trackedMs : 0) + heldMs >= nowMs - periodStartMs
-  );
-  const remainingMs = Math.max(0, periodEndMs - nowMs);
+  // quarter from its boundary, so it counts without a matching stored quarter.
+  const heldMs = heldSample === undefined
+    ? 0
+    : Math.max(0, nowMs - Math.max(quarterStartMs, heldSample.atMs));
+  const heldKWh = heldSample === undefined
+    ? 0
+    : (Math.max(0, heldSample.powerW) / 1000) * (heldMs / HOUR_MS);
+  const hasEvidence = quarter !== undefined || heldSample !== undefined;
   return {
-    bucketKey,
-    periodStartMs,
-    periodEndMs,
-    usedKWh,
-    remainingMs,
-    remainingHours: remainingMs / 3600000,
-    minutesRemaining: remainingMs / 60000,
-    coverageComplete,
+    usedKWh: (quarter?.energyKWh ?? 0) + heldKWh,
+    ...resolveRemaining(quarterStartMs + CAPACITY_QUARTER_MS, nowMs),
+    coverageComplete: hasEvidence && (quarter?.trackedMs ?? 0) + heldMs >= nowMs - quarterStartMs,
   };
 }
 
-export function getCurrentHourContext(
+export function getCurrentCapacityPeriodContext(
   powerTracker: PowerTrackerState,
-  nowMs: number = Date.now(),
-): HourUsageContext {
-  const period = getCurrentCapacityPeriodContext(powerTracker, 60, nowMs);
-  const bucketKey = getHourBucketKey(nowMs);
-  return {
-    bucketKey,
-    hourStartMs: period.periodStartMs,
-    hourEndMs: period.periodEndMs,
-    usedKWh: period.usedKWh,
-    remainingMs: period.remainingMs,
-    remainingHours: period.remainingHours,
-    minutesRemaining: period.minutesRemaining,
-  };
+  periodMinutes: CapacityPeriodMinutes,
+  nowMs: number,
+): CapacityPeriodUsageContext {
+  return periodMinutes === 15
+    ? getCurrentQuarterContext(powerTracker, nowMs)
+    : getCurrentHourContext(powerTracker, nowMs);
 }

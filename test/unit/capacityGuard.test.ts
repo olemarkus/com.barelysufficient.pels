@@ -291,7 +291,7 @@ describe('CapacityGuard', () => {
 
       // A complete-period reading restores threshold authority. The valid
       // recovery evidence from before the gap was preserved, so it may clear.
-      await guard.recordReading(4.5, TEST_SHORTFALL_THRESHOLD_KW, 'complete_period');
+      await guard.recordCompletePeriodReading(4.5, TEST_SHORTFALL_THRESHOLD_KW);
       expect(guard.isInShortfall()).toBe(false);
       expect(events).toEqual(['shortfall', 'cleared']);
     });

@@ -2224,11 +2224,12 @@ describe('Plan sorting', () => {
     await flushPromises();
 
     // The cache entry keeps the /ui_power SHAPE: the slim push's status and
-    // readings land on the empty-tracker seed.
+    // readings land on the empty-tracker seed, which carries no peak yet.
     await expect(getApiReadModel('/ui_power')).resolves.toEqual({
       tracker: {},
       readings: freshPower.readings,
       status: freshPower.status,
+      capacityPeak: { state: 'unavailable' },
     });
     const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');

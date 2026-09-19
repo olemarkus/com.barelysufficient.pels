@@ -33,6 +33,7 @@ describe('PowerTracker Outage Tracking', () => {
 
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1200,
             nowMs: time2,
@@ -51,6 +52,7 @@ describe('PowerTracker Outage Tracking', () => {
 
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1200,
             nowMs: nextTime,
@@ -72,6 +74,7 @@ describe('PowerTracker Outage Tracking', () => {
         const time1 = now + 2 * 3600 * 1000;
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1200,
             nowMs: time1,
@@ -86,6 +89,7 @@ describe('PowerTracker Outage Tracking', () => {
         const time2 = time1 + 10 * 60 * 1000;
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state: savedState,
             currentPowerW: 1300,
             nowMs: time2,
@@ -100,6 +104,7 @@ describe('PowerTracker Outage Tracking', () => {
         const time3 = time2 + 3 * 3600 * 1000;
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state: savedState,
             currentPowerW: 1400,
             nowMs: time3,
@@ -125,6 +130,7 @@ describe('PowerTracker Outage Tracking', () => {
 
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1000,
             nowMs: time2,
@@ -148,6 +154,7 @@ describe('PowerTracker Outage Tracking', () => {
 
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1000,
             nowMs: time2,
@@ -170,6 +177,7 @@ describe('PowerTracker Outage Tracking', () => {
 
         await recordPowerSample({
             generationSegments: [],
+            timeZone: 'UTC',
             state,
             currentPowerW: 1000,
             nowMs: time2,

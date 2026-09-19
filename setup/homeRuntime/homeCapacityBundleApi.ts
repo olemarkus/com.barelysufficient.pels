@@ -16,13 +16,16 @@ export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/hom
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeId } from '../../lib/utils/settingsKeys';
-import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PlanService } from '../../lib/plan/planService';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { createPlanEngine } from '../appInit/createPlanEngine';
-import type { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
+import {
+  scheduleCapacitySettingsReadRetry,
+  type createCapacitySettingsStore,
+} from '../../lib/power/capacitySettingsStore';
 import type { createHomePowerPipeline } from './createHomePowerPipeline';
 import type { HomeScope } from './homeScope';
 import type {
@@ -33,8 +36,6 @@ import type {
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-
-const CAPACITY_SETTINGS_LOAD_RETRY_MS = 1_000;
 
 export type PreparedBundleSampleFence = {
   bindReader: (reader: () => StableSampleRevision) => void;
@@ -408,17 +409,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
   const reloadCapacityScalars = (): void => {
     if (isTornDown()) return;
     const next = capacityStore.read();
-    if (next.state === 'unavailable') {
-      if (ctx.timers.has(capacitySettingsRetryTimer)) return;
-      const timer = setTimeout(() => {
-        ctx.timers.clear(capacitySettingsRetryTimer);
-        reloadCapacityScalars();
-      }, CAPACITY_SETTINGS_LOAD_RETRY_MS);
-      ctx.timers.registerTimeout(capacitySettingsRetryTimer, timer);
-      (timer as { unref?: () => void }).unref?.();
-      return;
-    }
-    ctx.timers.clear(capacitySettingsRetryTimer);
+    scheduleCapacitySettingsReadRetry(next, ctx.timers, capacitySettingsRetryTimer, reloadCapacityScalars);
+    // Unavailable keeps the scalars this home already runs on.
+    if (next.state === 'unavailable') return;
     // The capacity scalars live in their own store; nothing mirrors them now.
     setScalars(next.value);
     // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal

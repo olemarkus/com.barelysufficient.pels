@@ -18,4 +18,4 @@ export const buildSheddingPlanForSpec = (
     actionable: power.headroomKw < 0,
     shedActionable: power.headroomKw < 0,
   },
-): Promise<SheddingPlan> => buildSheddingPlan(context, power, state, deps, overshoot);
+): Promise<SheddingPlan> => buildSheddingPlan(context, power, state, deps, overshoot, Date.now());

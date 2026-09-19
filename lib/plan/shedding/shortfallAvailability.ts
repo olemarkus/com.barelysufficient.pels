@@ -1,6 +1,6 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/trackerTypes';
-import type { CapacityPeriodMinutes } from '../../../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacityPeriodMinutes } from '../../../packages/contracts/src/capacitySettings';
 import { getCurrentCapacityPeriodContext } from '../planHourContext';
 
 /**

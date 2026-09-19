@@ -76,7 +76,7 @@ import {
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
-import type { CapacitySettings } from './lib/power/capacityModel';
+import type { CapacitySettings } from './packages/contracts/src/capacitySettings';
 import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';

@@ -11,6 +11,7 @@ describe('periodic status used kWh', () => {
     const sampleStart = Date.UTC(2025, 0, 1, 0, 30, 0);
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3000,
       nowMs: sampleStart,
@@ -20,6 +21,7 @@ describe('periodic status used kWh', () => {
     });
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3000,
       nowMs: sampleStart + 15 * 60 * 1000,

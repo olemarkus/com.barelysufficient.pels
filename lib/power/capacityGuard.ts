@@ -152,22 +152,27 @@ export default class CapacityGuard {
   }
 
   /**
+   * A plan build's reading at or under the threshold, from a period whose
+   * coverage is complete. That completeness is what makes reporting available
+   * again; otherwise it is an ordinary {@link recordReading}.
+   */
+  async recordCompletePeriodReading(totalKw: number, shortfallThresholdKw: number): Promise<void> {
+    this.shortfallReportingAvailable = true;
+    await this.recordReading(totalKw, shortfallThresholdKw);
+  }
+
+  /**
    * A reading that came with no plan verdict. While the selected period is
    * complete, it moves the recovery clock against the last verdict but can
    * never open an incident. While reporting is unavailable it is a no-op: the
    * throttle's synthetic threshold must neither reset nor advance recovery.
    *
    * `totalKw` is the caller's resolved whole-home total. Both callers hold a
-   * plain number — `MeasuredPower.drawKw` in `lib/plan/shedding/shortfallVerdict`,
-   * the finiteness-gated tracker latch in `lib/plan/rebuildScheduler` — so there
-   * is no absence to model here.
+   * plain number — `MeasuredPower.drawKw` in `lib/plan/shedding/shortfallVerdict`
+   * (through {@link recordCompletePeriodReading}), the finiteness-gated tracker
+   * latch in `lib/plan/rebuildScheduler` — so there is no absence to model here.
    */
-  async recordReading(
-    totalKw: number,
-    shortfallThresholdKw: number,
-    thresholdAuthority: 'last_verdict' | 'complete_period' = 'last_verdict',
-  ): Promise<void> {
-    if (thresholdAuthority === 'complete_period') this.shortfallReportingAvailable = true;
+  async recordReading(totalKw: number, shortfallThresholdKw: number): Promise<void> {
     if (!this.shortfallReportingAvailable) return;
     const alertConditionActive = this.isShortfallAlertConditionActive(totalKw, shortfallThresholdKw);
     this.publishShortfallAlertCondition(alertConditionActive, totalKw - shortfallThresholdKw);

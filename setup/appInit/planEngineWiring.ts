@@ -11,7 +11,7 @@ import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/pla
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { CapacitySettings } from '../../lib/power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 
 /**

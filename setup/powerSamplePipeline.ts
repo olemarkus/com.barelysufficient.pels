@@ -25,7 +25,7 @@ import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
-import type { CapacitySettings } from '../lib/power/capacityModel';
+import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
@@ -353,10 +353,7 @@ export class PowerSamplePipeline {
               totalKw: requireLastTotalPowerKw(admittedTracker),
               limitKw: capacitySettings.limitKw,
               capacityPaceKw: planService.computeDynamicSoftLimit(),
-              shortfallThresholdKw: computeShortfallThreshold({
-                capacitySettings,
-                powerTracker: admittedTracker,
-              }, nowMs),
+              shortfallThresholdKw: computeShortfallThreshold(capacitySettings, admittedTracker, nowMs),
             },
             posture,
           );

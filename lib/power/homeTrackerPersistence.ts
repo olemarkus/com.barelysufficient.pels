@@ -60,9 +60,9 @@ const mergeLateCapacityQuarter = (
   stored: PowerTrackerState['capacityQuarter'],
 ): PowerTrackerState['capacityQuarter'] => {
   if (current === undefined) return stored;
-  if (stored === undefined || current.startMs !== stored.startMs) {
-    return current.startMs >= (stored?.startMs ?? -1) ? current : stored;
-  }
+  if (stored === undefined) return current;
+  // Different quarters: the later one is the active quarter.
+  if (current.startMs !== stored.startMs) return current.startMs > stored.startMs ? current : stored;
   return {
     startMs: current.startMs,
     energyKWh: stored.energyKWh + current.energyKWh,
@@ -75,9 +75,9 @@ const mergeLateCapacityPeak = (
   stored: PowerTrackerState['capacityMonthlyPeak'],
 ): PowerTrackerState['capacityMonthlyPeak'] => {
   if (current === undefined) return stored;
-  if (stored === undefined || current.monthKey !== stored.monthKey) {
-    return current.monthKey >= (stored?.monthKey ?? '') ? current : stored;
-  }
+  if (stored === undefined) return current;
+  // Different months: only the later month's peak is still current.
+  if (current.monthKey !== stored.monthKey) return current.monthKey > stored.monthKey ? current : stored;
   return { monthKey: current.monthKey, peakKw: Math.max(stored.peakKw, current.peakKw) };
 };
 

@@ -26,9 +26,13 @@
  * one identity type, no peer import; the main home is `MAIN_HOME_ID` there).
  */
 import type { HomeId } from '../utils/settingsKeys';
-import type { CapacityPeriodMinutes } from '../../packages/shared-domain/src/settings/capacityPeriod';
-import { resolveCapacityPeriodMinutes } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import {
+  isCapacityPeriodMinutes,
+  resolveCapacityPeriodMinutes,
+} from '../../packages/shared-domain/src/settings/capacityPeriod';
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import {
   CAPACITY_DRY_RUN,
@@ -39,14 +43,6 @@ import {
 } from '../utils/settingsKeys';
 
 export type { HomeId } from '../utils/settingsKeys';
-
-/** The capacity scalar block: hard cap, safety margin, dry-run, and billing period. */
-export type CapacityScalarSettings = {
-  limitKw: number;
-  marginKw: number;
-  dryRun: boolean;
-  periodMinutes: CapacityPeriodMinutes;
-};
 
 export type CapacityScalarSettingsRead =
   | { state: 'resolved'; value: CapacityScalarSettings }
@@ -94,7 +90,7 @@ export function createCapacitySettingsStore(
         const dryRun = settings.get(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId));
         const periodKey = homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, homeId);
         const periodMinutes = settings.get(periodKey);
-        if (keys.includes(periodKey) && periodMinutes !== 15 && periodMinutes !== 60) {
+        if (keys.includes(periodKey) && !isCapacityPeriodMinutes(periodMinutes)) {
           return { state: 'unavailable' };
         }
         const fallback = lastGood();
@@ -112,4 +108,31 @@ export function createCapacitySettingsStore(
       }
     },
   };
+}
+
+const CAPACITY_SETTINGS_READ_RETRY_MS = 1_000;
+
+/**
+ * The retry policy for an unavailable read: one pending retry per `timerKey`,
+ * a second later, cleared as soon as a read resolves. What an unavailable read
+ * means in the meantime (keep the last-good scalars, or the safe boot defaults)
+ * stays with the caller; this owns only when to ask again.
+ */
+export function scheduleCapacitySettingsReadRetry(
+  read: CapacityScalarSettingsRead,
+  timers: TimerRegistry,
+  timerKey: string,
+  retry: () => void,
+): void {
+  if (read.state === 'resolved') {
+    timers.clear(timerKey);
+    return;
+  }
+  if (timers.has(timerKey)) return;
+  const timer = setTimeout(() => {
+    timers.clear(timerKey);
+    retry();
+  }, CAPACITY_SETTINGS_READ_RETRY_MS);
+  timers.registerTimeout(timerKey, timer);
+  (timer as { unref?: () => void }).unref?.();
 }

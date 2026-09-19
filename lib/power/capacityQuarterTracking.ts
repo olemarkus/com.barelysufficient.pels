@@ -3,6 +3,7 @@ import {
   MAX_POWER_SAMPLE_GAP_MS,
   type CapacityMonthlyPeak,
   type CapacityQuarter,
+  type PowerTrackerState,
 } from './trackerTypes';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 
@@ -80,13 +81,16 @@ export const accrueCapacityQuarter = (
  * has the same held power and therefore the same average.
  */
 export const projectCapacityMonthlyPeak = (
-  quarter: CapacityQuarter | undefined,
-  monthlyPeak: CapacityMonthlyPeak | undefined,
-  lastTimestamp: number | undefined,
+  tracker: PowerTrackerState,
   nowMs: number,
-  powerW: number | undefined,
   timeZone: string,
 ): CapacityMonthlyPeak | undefined => {
+  const {
+    capacityQuarter: quarter,
+    capacityMonthlyPeak: monthlyPeak,
+    lastTimestamp,
+    lastPowerW: powerW,
+  } = tracker;
   if (
     quarter === undefined
     || lastTimestamp === undefined

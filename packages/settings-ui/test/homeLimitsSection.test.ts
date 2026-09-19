@@ -26,7 +26,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   controlBusy: false,
   marginError: null,
   reactionKw: '6.7 kW',
-  currentMonthQuarterPeakKw: null,
+  capacityPeak: { state: 'no_completed_quarter' },
   status: resolveHomeLimitsStatus(
     { controlledKw: 2, uncontrolledKw: 1, powerNowKw: 3, hasLivePowerSample: true, devicesOff: 1, limitReason: 'hourly' },
     { dryRun: true, hardCapKw: 7 },
@@ -78,7 +78,7 @@ describe('meter-area editor', () => {
 
   it('shows the tracked monthly peak only for the Belgian quarter-hour period', () => {
     const quarter = mountWith(baseProps({
-      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: 6.24 }),
+      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'recorded', peakKw: 6.24 } }),
     }));
     expect(quarter.querySelector('#home-limits-monthly-peak')?.textContent).toBe('6.24 kW');
 
@@ -89,13 +89,13 @@ describe('meter-area editor', () => {
 
   it('distinguishes an unavailable peak from a month with no completed quarter', () => {
     const unavailable = mountWith(baseProps({
-      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: undefined }),
+      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'unavailable' } }),
     }));
     expect(unavailable.textContent).toContain('Peak unavailable');
 
     document.body.innerHTML = '';
     const empty = mountWith(baseProps({
-      editor: baseEditor({ periodMinutes: 15, currentMonthQuarterPeakKw: null }),
+      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'no_completed_quarter' } }),
     }));
     expect(empty.textContent).toContain('No completed quarter yet');
   });

@@ -147,6 +147,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 1000,
       nowMs,
@@ -171,6 +172,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3600,
       nowMs: start,
@@ -181,6 +183,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3600,
       nowMs: start + 20 * 60 * 1000,
@@ -204,6 +207,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3_600,
       nowMs: start,
@@ -212,6 +216,7 @@ describe('power tracker integration', () => {
     });
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 3_600,
       nowMs: start + 20 * 60 * 1000,
@@ -235,6 +240,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 1000,
       controlledPowerW: 600,
@@ -246,6 +252,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 1000,
       controlledPowerW: 600,
@@ -269,6 +276,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 1000,
       exemptPowerW: 400,
@@ -280,6 +288,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 1000,
       exemptPowerW: 400,
@@ -302,6 +311,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200, ev: 0 },
@@ -313,6 +323,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200, ev: 0 },
@@ -337,6 +348,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1800 },
@@ -348,6 +360,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1800 },
@@ -372,6 +385,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200 },
@@ -383,6 +397,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: {},
@@ -405,6 +420,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       nowMs: start,
@@ -415,6 +431,7 @@ describe('power tracker integration', () => {
 
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state,
       currentPowerW: 2000,
       nowMs: start + 30 * 60 * 1000,

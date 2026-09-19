@@ -291,6 +291,8 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
+      // The fixture app exposes no capacity-peak seam.
+      capacityPeak: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -322,7 +324,7 @@ describe('settingsUiApi', () => {
 
     const payload = getSettingsUiPowerPayload({ homey: homey as never });
 
-    expect(payload.capacityPeak).toEqual({ currentMonthQuarterPeakKw: 6.25 });
+    expect(payload.capacityPeak).toEqual({ state: 'recorded', peakKw: 6.25 });
     expect((payload.tracker as Record<string, unknown>).capacityQuarter).toBeUndefined();
     expect((payload.tracker as Record<string, unknown>).capacityMonthlyPeak).toBeUndefined();
   });
@@ -527,6 +529,8 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
+      // The fixture app exposes no capacity-peak seam.
+      capacityPeak: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });

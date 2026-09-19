@@ -17,7 +17,7 @@ import type {
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;

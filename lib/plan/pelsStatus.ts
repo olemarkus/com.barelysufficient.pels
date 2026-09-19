@@ -1,4 +1,5 @@
 import { PriceLevel } from '../price/priceLevels';
+import { capacityPeriodEnergyKWh } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   computeProjectedPeriodEnergyKWh,
@@ -190,7 +191,7 @@ function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
   );
   return isProjectedOverHardCap({
     projectedKWh,
-    hardCapKWh: hardCapLimitKw * capacityPeriodMinutes / 60,
+    hardCapKWh: capacityPeriodEnergyKWh(hardCapLimitKw, capacityPeriodMinutes),
   });
 }
 

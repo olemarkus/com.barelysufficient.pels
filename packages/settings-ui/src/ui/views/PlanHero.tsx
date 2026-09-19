@@ -1,3 +1,6 @@
+import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
+import { capacityPeriodEnergyKWh } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
+import { capacityPeriodNoun } from '../capacityPeriodCopy.ts';
 import type { ComponentChild } from 'preact';
 import { computeProjectedPeriodEnergyKWh, isProjectedOverHardCap } from '../../../../shared-domain/src/hourEnergyProjection.ts';
 import {
@@ -162,7 +165,7 @@ const buildDecisionSentence = ({
   projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
   safePaceKw: number | null;
-  capacityPeriodMinutes: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
 }): { text: string; positive: boolean } => {
   const limited = devices.filter(isLimitedDevice);
   return buildSharedDecisionSentence({
@@ -199,7 +202,7 @@ type BarScale = {
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
-  periodMinutes: 15 | 60;
+  periodMinutes: CapacityPeriodMinutes;
 };
 
 type MeterMarker = {
@@ -265,7 +268,7 @@ type EnergyBarScale = {
   controlledKWh: number;
   uncontrolledKWh: number;
   projectedKWh: number | null;
-  periodMinutes: 15 | 60;
+  periodMinutes: CapacityPeriodMinutes;
 };
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
@@ -286,7 +289,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   return {
     usedKWh,
     budgetKWh,
-    hardCapKWh: meta.hardCapLimitKw * meta.capacityPeriodMinutes / 60,
+    hardCapKWh: capacityPeriodEnergyKWh(meta.hardCapLimitKw, meta.capacityPeriodMinutes),
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
@@ -350,7 +353,7 @@ const HeroChipRow = ({
   capacityPeriodMinutes,
 }: {
   heroStatus: HeroStatus;
-  capacityPeriodMinutes: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
 }) => {
   // The old freshness chip ('Delayed'/'No data') is retired: staleness is the
   // global no-readings banner's fact, rendered above the hero (owner ruling
@@ -476,10 +479,10 @@ const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
 };
 
 const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolean }) => {
-  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, {
+  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, scale.periodMinutes, {
     budgetPaceKw: scale.budgetPaceKw,
     projectedExemptKw: scale.projectedExemptKw,
-  }, scale.periodMinutes);
+  });
   const markers: MeterMarker[] = [
     {
       kind: 'target',
@@ -524,7 +527,7 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 const resolvePowerSubline = (
   headline: HeroHeadline,
   softLimitSource: PlanMetaSnapshot['softLimitSource'],
-  capacityPeriodMinutes: 15 | 60,
+  capacityPeriodMinutes: CapacityPeriodMinutes,
 ): string => {
   const sourceText = resolveSafePaceSourceText(softLimitSource, capacityPeriodMinutes);
   return headline.overSoftLimit
@@ -627,7 +630,7 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
     {
       kind: 'target',
       positionPct: pctOf(scale.budgetKWh, scaleKWh),
-      tooltip: `Budget this ${scale.periodMinutes === 15 ? 'quarter' : 'hour'} ${scale.budgetKWh.toFixed(1)} kWh`,
+      tooltip: `Budget this ${capacityPeriodNoun(scale.periodMinutes)} ${scale.budgetKWh.toFixed(1)} kWh`,
       labels: formatEnergyMeterMarkerLabels('target', scale.budgetKWh, scale.periodMinutes),
     },
   ];
@@ -636,7 +639,7 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       kind: 'projected',
       positionPct: pctOf(scale.projectedKWh, scaleKWh),
       tone: projectionTone,
-      tooltip: `Projected this ${scale.periodMinutes === 15 ? 'quarter' : 'hour'} ${scale.projectedKWh.toFixed(2)} kWh`,
+      tooltip: `Projected this ${capacityPeriodNoun(scale.periodMinutes)} ${scale.projectedKWh.toFixed(2)} kWh`,
       labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh, scale.periodMinutes),
     });
   }
@@ -692,7 +695,7 @@ const EnergySection = ({
   return (
     <div class="plan-hero__section">
       <p class="plan-hero__section-label eyebrow">
-        Energy used this {scale.periodMinutes === 15 ? 'quarter' : 'hour'}
+        Energy used this {capacityPeriodNoun(scale.periodMinutes)}
       </p>
       <div class="plan-hero__headline plan-hero__metric">
         <span class="plan-hero__metric-value">{usedParts.lead}</span>
@@ -823,7 +826,7 @@ export const PlanHero = ({
       meta.totalKw,
       meta.minutesRemaining,
     ),
-    hardCapKWh: headline.hardLimitKw * meta.capacityPeriodMinutes / 60,
+    hardCapKWh: capacityPeriodEnergyKWh(headline.hardLimitKw, meta.capacityPeriodMinutes),
   });
   const heroStatus = resolveHeroStatus(
     headline,

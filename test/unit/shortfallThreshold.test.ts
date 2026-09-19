@@ -12,10 +12,11 @@ describe('shortfall threshold', () => {
     vi.setSystemTime(nowMs);
 
     const bucketKey = getHourBucketKey(nowMs);
-    const threshold = computeShortfallThreshold({
-      capacitySettings: { limitKw: 10, marginKw: 2, periodMinutes: 60 },
-      powerTracker: { buckets: { [bucketKey]: 0 } },
-    });
+    const threshold = computeShortfallThreshold(
+      { limitKw: 10, marginKw: 2, periodMinutes: 60 },
+      { buckets: { [bucketKey]: 0 } },
+      nowMs,
+    );
 
     // At the start of the hour with no usage, threshold should match hard cap.
     expect(threshold).toBeCloseTo(10, 6);
@@ -27,10 +28,11 @@ describe('shortfall threshold', () => {
     vi.setSystemTime(nowMs);
 
     const bucketKey = getHourBucketKey(nowMs);
-    const threshold = computeShortfallThreshold({
-      capacitySettings: { limitKw: 10, marginKw: 2, periodMinutes: 60 },
-      powerTracker: { buckets: { [bucketKey]: 4 } },
-    });
+    const threshold = computeShortfallThreshold(
+      { limitKw: 10, marginKw: 2, periodMinutes: 60 },
+      { buckets: { [bucketKey]: 4 } },
+      nowMs,
+    );
 
     // With 4 kWh already used and 30 minutes left:
     // remaining = 10 - 4 = 6 kWh, threshold = 6 / 0.5h = 12 kW.

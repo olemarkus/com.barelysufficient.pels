@@ -2,7 +2,8 @@ import type { PowerTrackerState } from './tracker';
 import type { GenerationSegment } from './trackerTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
-import { resolveUsableCapacityKw, type CapacitySettings } from './capacityModel';
+import { resolveUsableCapacityKw } from './capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   hasObservedMeasuredPower,

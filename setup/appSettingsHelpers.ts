@@ -65,7 +65,7 @@ import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
 import { requirePlanService } from './appInit/contextGuards';
 import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
-import type { CapacitySettings } from '../packages/shared-domain/src/settings/capacityPeriod';
+import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: CapacitySettings;
@@ -137,18 +137,16 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
   const rawEvCarAssociations = settings.get(EV_CAR_ASSOCIATIONS) as unknown;
 
-  // The capacity domain resolves its SDK-backed scalars before this wiring
-  // snapshot is assembled. `current` therefore already carries the new,
-  // validated scalar block; this function only combines it with the remaining
-  // settings families it owns.
-  const nextCapacity = current.capacitySettings;
-
   const nextAliases = isStringMap(modeAliases)
     ? Object.fromEntries(
       Object.entries(modeAliases).map(([k, v]) => [k.toLowerCase(), v]),
     )
     : current.modeAliases;
 
+  // Resolution-in-producer: the persisted payload may carry duplicate or gapped
+  // priorities, so normalize to a strict 1..N order here. Every runtime consumer
+  // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
+  // they all inherit the strict order without branching on stored shape.
   // Resolve aliases against the mode records that actually survived a rename.
   // Do this before the active-mode read so a retained chain can skip a removed
   // intermediate name, while a name swap stops at its still-configured target.
@@ -167,24 +165,22 @@ export function buildCapacitySettingsSnapshot(params: {
     )
     : current.operatingMode;
 
-  // Resolution-in-producer: the persisted payload may carry duplicate or gapped
-  // priorities, so normalize to a strict 1..N order here. Every runtime consumer
-  // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
-  // they all inherit the strict order without branching on stored shape.
-  const nextDryRun = current.capacityDryRun;
   // A read that is not the map keeps the one already held: a transient miss is
   // not an owner who cleared every limit.
   const nextBehaviors = isShedBehaviorsSetting(rawShedBehaviors)
     ? readShedBehaviors(rawShedBehaviors)
     : current.shedBehaviors;
 
+  // The capacity domain resolves its SDK-backed scalars before this snapshot is
+  // assembled (`lib/power/capacitySettingsStore.ts`), so `current` already
+  // carries the new capacity block and dry-run flag; they pass straight through.
   return {
-    capacitySettings: nextCapacity,
+    capacitySettings: current.capacitySettings,
     modeAliases: nextAliases,
     operatingMode: nextMode,
     capacityPriorities: nextPriorities,
     modeDeviceTargets: nextTargets,
-    capacityDryRun: nextDryRun,
+    capacityDryRun: current.capacityDryRun,
     controllableDevices: deviceFlags.controllableDevices,
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,

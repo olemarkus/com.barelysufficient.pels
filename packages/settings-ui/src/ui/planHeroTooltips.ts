@@ -4,6 +4,9 @@
 // `notes/ui-terminology.md` § "Safe pace now — one label, two possible
 // sources" and § "Hero bar vocabulary".
 
+import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
+import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
+
 // Mirrors `softLimitSource` in `packages/contracts/src/settingsUiApi.ts` and
 // `lib/plan/planTypes.ts`. Declared locally so shared-domain stays free of
 // cross-package type pulls — the union is short and stable.
@@ -26,7 +29,7 @@ export const HERO_INFO_TOOLTIP_TEXT = [
   'kW is speed. kWh is distance.',
 ].join(' ');
 
-export const formatHeroInfoTooltip = (periodMinutes: 15 | 60): string => {
+export const formatHeroInfoTooltip = (periodMinutes: CapacityPeriodMinutes): string => {
   if (periodMinutes === 60) return HERO_INFO_TOOLTIP_TEXT;
   return [
     'Power now is measured in kW — how fast electricity is being used right now.',
@@ -71,7 +74,7 @@ export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
 // the only ones a producer can emit.
 export const resolveSafePaceSourceText = (
   source: HeroSoftLimitSource,
-  periodMinutes: 15 | 60 = 60,
+  periodMinutes: CapacityPeriodMinutes,
 ): string => source === 'capacity' && periodMinutes === 15
   ? 'set by this quarter\'s pace'
   : SAFE_PACE_SOURCE_BY_SOURCE[source];
@@ -81,7 +84,7 @@ const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
 
 const resolveSafePaceTooltipBySource = (
   source: HeroSoftLimitSource,
-  periodMinutes: 15 | 60,
+  periodMinutes: CapacityPeriodMinutes,
 ): string => {
   switch (source) {
     case 'daily':
@@ -103,8 +106,8 @@ const resolveSafePaceTooltipBySource = (
 export const formatSafePaceTooltip = (
   safePaceKw: number,
   source: HeroSoftLimitSource,
+  periodMinutes: CapacityPeriodMinutes,
   composition?: SafePaceComposition,
-  periodMinutes: 15 | 60 = 60,
 ): string => {
   const detail = resolveSafePaceComposition(safePaceKw, composition);
   if (source === 'daily' && detail !== null) {
@@ -160,7 +163,7 @@ export const formatSafePaceComposition = (
 
 export const formatHardCapTooltip = (
   hardCapKw: number,
-  periodMinutes: 15 | 60 = 60,
+  periodMinutes: CapacityPeriodMinutes,
 ): string => `Hard cap ${formatKw(hardCapKw)} — ${periodMinutes === 15
   ? 'your peak target; PELS keeps each quarter-hour average under this.'
   : HARD_CAP_TOOLTIP}`;
@@ -170,8 +173,8 @@ export const formatHardCapTooltip = (
 // the consequence of crossing it.
 export const formatHardCapEnergyTooltip = (
   hardCapKWh: number,
-  periodMinutes: 15 | 60 = 60,
+  periodMinutes: CapacityPeriodMinutes,
 ): string => {
-  const period = periodMinutes === 15 ? 'quarter' : 'hour';
+  const period = capacityPeriodNoun(periodMinutes);
   return `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
 };

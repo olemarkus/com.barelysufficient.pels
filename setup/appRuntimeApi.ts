@@ -30,6 +30,7 @@ import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudg
 import {
   updateDailyBudgetAndRecordCapForApp,
 } from '../lib/power/sampleIngest';
+import { scheduleCapacitySettingsReadRetry } from '../lib/power/capacitySettingsStore';
 import type {
   FlowReportedCapabilityId,
   FlowReportedCapabilitiesByDevice,
@@ -63,7 +64,6 @@ import type { ObservedDeviceStateProjection } from '../lib/observer/observedDevi
 import type { PowerSamplePipeline } from './powerSamplePipeline';
 import { withAppHostApi } from './appHostApi';
 
-const CAPACITY_SETTINGS_LOAD_RETRY_MS = 1_000;
 const CAPACITY_SETTINGS_LOAD_RETRY_TIMER = 'capacitySettingsLoadRetry';
 
 /** Lifecycle and runtime adapter façade above the stable host/UI surface. */
@@ -348,34 +348,25 @@ abstract class AppRuntimeApi extends Base {
 
   private loadCapacitySettingsFromStore(rebuildAfterRecovery: boolean): void {
     const capacityRead = this.context.readCapacityScalarSettings();
-    if (capacityRead.state === 'unavailable') {
-      if (!this.timers.has(CAPACITY_SETTINGS_LOAD_RETRY_TIMER)) {
-        const timer = setTimeout(() => {
-          this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
-          this.loadCapacitySettingsFromStore(true);
-        }, CAPACITY_SETTINGS_LOAD_RETRY_MS);
-        this.timers.registerTimeout(CAPACITY_SETTINGS_LOAD_RETRY_TIMER, timer);
-        (timer as { unref?: () => void }).unref?.();
-      }
-    } else {
-      this.timers.clear(CAPACITY_SETTINGS_LOAD_RETRY_TIMER);
-    }
-    const capacityScalars = capacityRead.state === 'resolved'
+    scheduleCapacitySettingsReadRetry(
+      capacityRead,
+      this.timers,
+      CAPACITY_SETTINGS_LOAD_RETRY_TIMER,
+      () => this.loadCapacitySettingsFromStore(true),
+    );
+    // An unavailable read is a no-op: the running scalars carry forward.
+    const { dryRun: capacityDryRun, ...capacitySettings } = capacityRead.state === 'resolved'
       ? capacityRead.value
       : { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun };
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
       current: {
-        capacitySettings: {
-          limitKw: capacityScalars.limitKw,
-          marginKw: capacityScalars.marginKw,
-          periodMinutes: capacityScalars.periodMinutes,
-        },
+        capacitySettings,
         modeAliases: this.context.modeAliases,
         operatingMode: this.context.operatingMode,
         capacityPriorities: this.context.capacityPriorities,
         modeDeviceTargets: this.context.modeDeviceTargets,
-        capacityDryRun: capacityScalars.dryRun,
+        capacityDryRun,
         controllableDevices: this.context.controllableDevices,
         managedDevices: this.context.managedDevices,
         budgetExemptDevices: this.context.budgetExemptDevices,

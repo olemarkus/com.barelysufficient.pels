@@ -1,3 +1,4 @@
+import type { CapacityPeriodMinutes, CapacityScalarSettings, CapacitySettings } from './capacitySettings.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
@@ -241,7 +242,7 @@ export type SettingsUiPlanMetaSnapshotBase = {
   softLimitSource: 'capacity' | 'daily';
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
-  capacityPeriodMinutes: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
   /** Whether usedKWh covers the whole elapsed part of this capacity period. */
   capacityPeriodCoverageComplete: boolean;
   usedKWh: number;
@@ -543,10 +544,15 @@ export type SettingsUiPowerReadings =
   | { readonly state: 'never' }
   | { readonly state: 'received'; readonly lastPowerUpdateMs: number };
 
-export type SettingsUiCapacityPeak = {
-  /** Highest completed 15-minute average in the current Homey-local month. */
-  readonly currentMonthQuarterPeakKw: number | null;
-};
+/**
+ * The highest completed 15-minute average in the current Homey-local month.
+ * `no_completed_quarter` is the genuine domain state of a month that has not
+ * finished one yet; `unavailable` is a runtime that could not answer.
+ */
+export type SettingsUiCapacityPeak =
+  | { readonly state: 'recorded'; readonly peakKw: number }
+  | { readonly state: 'no_completed_quarter' }
+  | { readonly state: 'unavailable' };
 
 export type SettingsUiPowerPayload = {
   /**
@@ -567,20 +573,11 @@ export type SettingsUiPowerPayload = {
   // Runtime-authoritative Main-home capacity scalars. Like dry-run above, the
   // running adapter retains these values when a persisted key is absent or
   // malformed; a WebView reload must render and preserve the same values.
-  mainCapacityScalars?: {
-    limitKw: number;
-    marginKw: number;
-    periodMinutes: 15 | 60;
-  };
+  mainCapacityScalars?: CapacitySettings;
   /** Runtime-authoritative scalars on a scoped meter-area read. */
-  scopedCapacityScalars?: {
-    limitKw: number;
-    marginKw: number;
-    dryRun: boolean;
-    periodMinutes: 15 | 60;
-  };
+  scopedCapacityScalars?: CapacityScalarSettings;
   /** Measured tariff evidence for Belgium's monthly quarter-hour peak. */
-  capacityPeak?: SettingsUiCapacityPeak;
+  capacityPeak: SettingsUiCapacityPeak;
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
   // Solar card (which cannot read the lazy-loaded devices payload). True only
   // when a tracked solar/PV device exists (`hasSolarProductionCandidate`) —

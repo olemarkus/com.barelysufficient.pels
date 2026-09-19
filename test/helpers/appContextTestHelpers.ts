@@ -381,6 +381,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
       getCurrentIncidentId: vi.fn(() => null),
       recordPlanVerdict: vi.fn(async () => undefined),
       recordReading: vi.fn(async () => undefined),
+      recordCompletePeriodReading: vi.fn(async () => undefined),
       isShortfallAlertConditionActive: vi.fn(() => false),
     } as never,
     dailyBudgetService: {

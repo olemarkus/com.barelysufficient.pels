@@ -25,7 +25,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { CapacitySettings } from '../../lib/power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
 import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';

@@ -108,6 +108,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -162,6 +163,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -213,6 +215,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -262,6 +265,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(true),
     } as unknown as CapacityGuard;
 
@@ -313,6 +317,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const { context, power } = buildContext({ total: 0, softLimit: 0, capacitySoftLimit: 5, headroom: 0 });
@@ -367,6 +372,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -435,6 +441,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -488,6 +495,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -528,6 +536,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -602,6 +611,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -676,6 +686,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -762,6 +773,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -829,6 +841,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -892,6 +905,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -958,6 +972,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1021,6 +1036,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1086,6 +1102,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1153,6 +1170,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1215,6 +1233,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1287,6 +1306,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1354,6 +1374,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1421,6 +1442,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1486,6 +1508,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1544,6 +1567,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1604,6 +1628,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1669,6 +1694,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1739,6 +1765,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1810,6 +1837,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1881,6 +1909,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -1946,6 +1975,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2021,6 +2051,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2080,6 +2111,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2173,6 +2205,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2305,6 +2338,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2371,6 +2405,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2439,6 +2474,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2479,6 +2515,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2524,6 +2561,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2564,6 +2602,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2611,6 +2650,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2668,6 +2708,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
     const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
@@ -2723,6 +2764,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2796,6 +2838,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2861,6 +2904,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2914,6 +2958,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -2966,6 +3011,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3017,6 +3063,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3090,6 +3137,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3147,6 +3195,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3186,6 +3235,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3264,6 +3314,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3306,6 +3357,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3340,6 +3392,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3412,6 +3465,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3525,6 +3579,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
     } as unknown as CapacityGuard;
@@ -3570,6 +3625,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3708,6 +3764,7 @@ describe('buildSheddingPlan', () => {
       capacityGuard: {
         recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
         recordReading: vi.fn().mockResolvedValue(undefined),
+        recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
         isInShortfall: vi.fn().mockReturnValue(false),
         getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
       } as unknown as CapacityGuard,
@@ -3902,6 +3959,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -3957,6 +4015,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4015,6 +4074,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4078,6 +4138,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4136,6 +4197,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4212,6 +4274,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4279,6 +4342,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4345,6 +4409,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4423,6 +4488,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4496,6 +4562,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4554,6 +4621,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-77'),
     } as unknown as CapacityGuard;
@@ -4617,6 +4685,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getCurrentIncidentId: vi.fn().mockReturnValue('inc-88'),
     } as unknown as CapacityGuard;
@@ -4666,6 +4735,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4713,6 +4783,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4788,6 +4859,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
@@ -4890,6 +4962,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
       recordReading: vi.fn().mockResolvedValue(undefined),
+      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 

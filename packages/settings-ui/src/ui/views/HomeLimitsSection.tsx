@@ -24,7 +24,10 @@ import {
 } from '../../../../shared-domain/src/homeLimitsStatus.ts';
 import { composeHomeScopedTitle } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import { MdFilledSelect, MdSelectOption, MdSwitch } from './materialWebJSX.tsx';
-import type { CapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
+import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
+import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUiApi.ts';
+import { formatCapacityPeak } from '../capacityPeakRead.ts';
+import { resolveCapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 
 // Per-home "Limits & safety" surface (multi-home U3). Progressive disclosure:
 // this surface renders nothing at all unless a meter area is the selected home
@@ -58,7 +61,7 @@ export type HomeLimitsEditorView = {
   /** Computed "safe pace starts each period at" figure ("6.0 kW" / placeholder). */
   reactionKw: string;
   /** Highest completed 15-minute average in the current local month. */
-  currentMonthQuarterPeakKw: number | null | undefined;
+  capacityPeak: SettingsUiCapacityPeak;
   /** Resolved status blob for the card; null while the first read is in flight. */
   status: HomeLimitsStatus | null;
   onHardCapInput: (value: string) => void;
@@ -90,7 +93,7 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
         disabled={editor.periodBusy}
         onChange={(event: Event) => {
           const value = Number((event.currentTarget as HTMLElement & { value: string }).value);
-          editor.onPeriodChange(value === 15 ? 15 : 60);
+          editor.onPeriodChange(resolveCapacityPeriodMinutes(value, editor.periodMinutes));
         }}
       >
         <MdSelectOption value="60"><div slot="headline">Hourly average</div></MdSelectOption>
@@ -143,11 +146,7 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
           Highest completed quarter this month
         </span>
         <strong class="settings-result__value" id="home-limits-monthly-peak">
-          {editor.currentMonthQuarterPeakKw === undefined
-            ? 'Peak unavailable'
-            : editor.currentMonthQuarterPeakKw === null
-              ? 'No completed quarter yet'
-              : `${editor.currentMonthQuarterPeakKw.toFixed(2)} kW`}
+          {formatCapacityPeak(editor.capacityPeak)}
         </strong>
         <span class="settings-result__note">
           Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.

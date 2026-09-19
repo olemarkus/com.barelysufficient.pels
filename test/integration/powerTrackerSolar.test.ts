@@ -20,7 +20,7 @@ const SOLAR_STATE_KEYS = [
 
 const isoHour = (utcMs: number): string => new Date(utcMs).toISOString();
 
-type SampleOverrides = Partial<Parameters<typeof recordPowerSample>[0]>;
+type SampleOverrides = Partial<Omit<Parameters<typeof recordPowerSample>[0], 'timeZone'>>;
 
 const makeRecorder = () => {
   const state: PowerTrackerState = {};
@@ -35,6 +35,7 @@ const makeRecorder = () => {
       state,
       currentPowerW,
       nowMs,
+      timeZone: 'UTC',
       rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
       saveState,
       generationSegments: [],

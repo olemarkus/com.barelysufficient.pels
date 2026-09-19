@@ -56,6 +56,7 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
 const buildCapacityGuard = (): CapacityGuard => ({
   recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
   recordReading: vi.fn().mockResolvedValue(undefined),
+  recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
   isInShortfall: vi.fn().mockReturnValue(false),
   getRestoreMargin: vi.fn().mockReturnValue(0.2),
 } as unknown as CapacityGuard);

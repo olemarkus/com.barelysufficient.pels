@@ -6,10 +6,8 @@
 // bound last-good provider, while an unreadable listed period is unavailable.
 import { describe, expect, it } from 'vitest';
 import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
-import type {
-  CapacityScalarSettings,
-  CapacityScalarSettingsRead,
-} from '../../lib/power/capacitySettingsStore';
+import type { CapacityScalarSettingsRead } from '../../lib/power/capacitySettingsStore';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,

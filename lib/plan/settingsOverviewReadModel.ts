@@ -1,3 +1,4 @@
+import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import {
   resolvePlanStateKind,
   resolvePlanStateTone,
@@ -71,7 +72,7 @@ function resolveFiniteKWh(value: number | undefined): number | undefined {
 function resolveHourBudgetKWh(
   capacityHourBudgetKWh: number,
   dailyBudgetHourKWh: number | undefined,
-  capacityPeriodMinutes: 15 | 60,
+  capacityPeriodMinutes: CapacityPeriodMinutes,
 ): number {
   // Daily-budget allocations remain hourly. Dividing one into four equal
   // quarters would invent a constraint the daily planner never decided.

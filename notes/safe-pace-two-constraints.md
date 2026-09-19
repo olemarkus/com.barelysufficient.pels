@@ -195,7 +195,7 @@ The *energy* axis performs the same subtraction but does floor it.
 to `max(0, meteredUsedKWh - exemptUsedKWh)`. That asymmetry is deliberate rather
 than drift: instantaneous power is a signed rate and can legitimately point
 backwards, while cumulative billed usage cannot, which is the same reason
-`planHourContext.ts:21-22` floors the hourly bucket ("Billed usage can't be
+`getCurrentHourContext` (`lib/plan/planHourContext.ts`) floors the hourly bucket ("Billed usage can't be
 negative"). Keep the floor on the kWh axis and off the kW axis.
 
 The user-facing labels are unchanged and are governed by `notes/ui-terminology.md`:

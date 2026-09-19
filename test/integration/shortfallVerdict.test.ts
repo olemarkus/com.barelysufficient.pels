@@ -10,7 +10,7 @@ import { buildPlanInputDevice } from '../utils/planTestUtils';
 
 const guardDouble = () => ({
   recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
-  recordReading: vi.fn().mockResolvedValue(undefined),
+  recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
   recordShortfallUnavailable: vi.fn(),
 }) as unknown as CapacityGuard;
 
@@ -28,38 +28,31 @@ const heldSelection = (deviceId: string): PlanSheddingResult => ({
 // turns on whether that limit has landed.
 describe('reportShortfallToGuard', () => {
   it('suppresses incidents while the first Belgian quarter is incomplete', async () => {
-    const nowMs = Date.UTC(2026, 8, 18, 10, 7, 0);
-    vi.useFakeTimers();
-    vi.setSystemTime(nowMs);
-    try {
-      const state = createPlanEngineState();
-      const capacityGuard = guardDouble();
-      const quarterStartMs = Date.UTC(2026, 8, 18, 10, 0, 0);
+    const state = createPlanEngineState();
+    const capacityGuard = guardDouble();
 
-      await reportShortfallToGuard(
-        buildPlanContextFixture({ capacityPeriodMinutes: 15, devices: [] }),
-        buildMeasuredPower({ drawKw: 1, headroomKw: -1, capacityBreached: true }),
-        state,
-        heldSelection('missing'),
-        {
-          capacityGuard,
-          shortfallThresholdKw: 0,
-          powerTracker: {
-            lastTimestamp: nowMs,
-            capacityQuarter: { startMs: quarterStartMs, energyKWh: 0, trackedMs: 0 },
-          },
-          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-          log: vi.fn(),
-        },
-      );
+    await reportShortfallToGuard(
+      buildPlanContextFixture({
+        capacityPeriodMinutes: 15,
+        capacityPeriodCoverageComplete: false,
+        devices: [],
+      }),
+      buildMeasuredPower({ drawKw: 1, headroomKw: -1, capacityBreached: true }),
+      state,
+      heldSelection('missing'),
+      {
+        capacityGuard,
+        shortfallThresholdKw: 0,
+        powerTracker: {},
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        log: vi.fn(),
+      },
+    );
 
-      expect(capacityGuard.recordShortfallUnavailable).toHaveBeenCalledOnce();
-      expect(capacityGuard.recordPlanVerdict).not.toHaveBeenCalled();
-      expect(capacityGuard.recordReading).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(capacityGuard.recordShortfallUnavailable).toHaveBeenCalledOnce();
+    expect(capacityGuard.recordPlanVerdict).not.toHaveBeenCalled();
+    expect(capacityGuard.recordCompletePeriodReading).not.toHaveBeenCalled();
   });
 
   it('restores threshold authority from a complete-period reading', async () => {
@@ -81,7 +74,7 @@ describe('reportShortfallToGuard', () => {
       },
     );
 
-    expect(capacityGuard.recordReading).toHaveBeenCalledWith(4, 5, 'complete_period');
+    expect(capacityGuard.recordCompletePeriodReading).toHaveBeenCalledWith(4, 5);
     expect(capacityGuard.recordPlanVerdict).not.toHaveBeenCalled();
   });
 

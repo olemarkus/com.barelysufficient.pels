@@ -1,6 +1,6 @@
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
-import type { CapacitySettings } from '../../power/capacityModel';
+import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';

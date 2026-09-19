@@ -1,3 +1,5 @@
+import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
+import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 
 /**
  * The hero's input, resolved. Every power figure is a plain number: the caller
@@ -145,9 +147,9 @@ export const formatPowerMeterMarkerLabels = (
 export const formatEnergyMeterMarkerLabels = (
   kind: 'target' | 'projected' | 'cap',
   valueKWh: number,
-  periodMinutes: 15 | 60 = 60,
+  periodMinutes: CapacityPeriodMinutes,
 ): HeroMeterMarkerLabels => {
-  const period = periodMinutes === 15 ? 'quarter' : 'hour';
+  const period = capacityPeriodNoun(periodMinutes);
   if (kind === 'projected') {
     return {
       short: `Projected this ${period}`,
@@ -252,7 +254,7 @@ export type DecisionSentenceInput = {
   projectedOverHardCap: boolean;
   projectedOverBudget: boolean;
   safePaceKw: number | null;
-  capacityPeriodMinutes?: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
   // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
   // limited set falls into this bucket, the decision sentence frames the
@@ -335,7 +337,7 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
 const resolveOverHardCapDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
-  const period = input.capacityPeriodMinutes === 15 ? 'quarter' : 'hour';
+  const period = capacityPeriodNoun(input.capacityPeriodMinutes);
   // Simulation mode: PELS is not acting, so neither "Easing devices off" nor
   // the recourse variant may render — state the trajectory alone (the banner
   // and status chip already name simulation; hypothetical-voice rule in
@@ -403,7 +405,7 @@ export const buildDecisionSentence = (
 
   // 6. Projected over budget.
   if (input.projectedOverBudget) {
-    const period = input.capacityPeriodMinutes === 15 ? 'quarter’s' : 'hour’s';
+    const period = `${capacityPeriodNoun(input.capacityPeriodMinutes)}’s`;
     return {
       text: `On pace to overshoot this ${period} energy budget.`,
       positive: false,

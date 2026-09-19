@@ -2,7 +2,7 @@ import type { ObservedTemperatureModeUpdates } from '../home/observedTemperature
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
 import type { CapacityScalarSettingsRead } from '../power/capacitySettingsStore';
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,

@@ -46,9 +46,8 @@ import type {
   PowerTrackerMeterIdentity,
   PowerTrackerState,
 } from '../../lib/power/trackerTypes';
-import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
-import type { CapacitySettings } from '../../lib/power/capacityModel';
-import { CapacityPeakReadout } from '../../lib/power/capacityPeak';
+import type { CapacityScalarSettings, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
 import type { PlanService } from '../../lib/plan/planService';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
@@ -272,11 +271,10 @@ function buildSubHomeScope(params: {
     // Names THIS area on the global hard-cap Flow triggers, which every home
     // shares — without it an area's alert reads as the Main home's.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
-    getCapacitySettings: () => ({
-      limitKw: getScalars().limitKw,
-      marginKw: getScalars().marginKw,
-      periodMinutes: getScalars().periodMinutes,
-    }),
+    getCapacitySettings: () => {
+      const { dryRun: _dryRun, ...capacitySettings } = getScalars();
+      return capacitySettings;
+    },
     // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
     // the CONTROL path, so it passes the execution source predicate — the one
     // that also arms source recovery.
@@ -524,11 +522,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
   });
-  const capacityPeakReadout = new CapacityPeakReadout({
-    getTracker: tracker.getState,
-    getTimeZone: ctx.getTimeZone,
-    nowMs: Date.now,
-  });
   const modeCatalog = createHomeModeCatalog(ctx, homeId);
   let scheduleSourceActuationRetry = (): void => undefined;
   const isMeterSourceAuthorizedForExecution = (): boolean => {
@@ -616,7 +609,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     getHome: () => home,
     setHome: (next) => { home = next; },
     getScalars: () => capacityScalars,
-    readCapacityPeak: () => capacityPeakReadout.read(),
+    readCapacityPeak: () => resolveCurrentMonthQuarterPeakKw(tracker.getState(), ctx.getTimeZone(), Date.now()),
     setScalars: (next) => { capacityScalars = next; },
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
     beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect, isTornDown,

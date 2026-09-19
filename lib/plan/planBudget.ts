@@ -15,15 +15,19 @@
  * applies no such ceiling.
  */
 import type { PowerTrackerState } from '../power/tracker';
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveHardCapacityKWh, resolveUsableCapacityKWh, resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
+import { capacityPeriodHours } from '../../packages/shared-domain/src/settings/capacityPeriod';
 
 // Floor on the remaining-time divisor for the burst rate, so the rate stays
 // finite as the period ends (avoids remaining/→0 blow-up). Shared by capacity
 // and daily pacing calculations.
 const BURST_RATE_MIN_REMAINING_MIN = 10;
 const BURST_RATE_MIN_REMAINING_HOURS = BURST_RATE_MIN_REMAINING_MIN / 60;
+// A quarter has only 15 minutes to spread its allowance over, so the hourly
+// 10-minute floor would flatten most of it. One minute keeps the rate finite.
+const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 1 / 60;
 
 // Base period-end drain time-constant (minutes). The capacity safe pace is capped by
 // an exponential ceiling that decays toward the steady sustainable rate as the
@@ -42,15 +46,15 @@ const EOH_DRAIN_TAU_MIN = 4;
  * in the period, so it legitimately sits above the configured ceiling in an
  * under-used period, and crossing it is not crossing the tariff step.
  */
-export function computeDynamicSoftLimit(params: {
-  capacitySettings: CapacitySettings;
-  powerTracker: PowerTrackerState;
-}, nowMs: number = Date.now()): {
+export function computeDynamicSoftLimit(
+  capacitySettings: CapacitySettings,
+  powerTracker: PowerTrackerState,
+  nowMs: number,
+): {
   allowedKw: number;
   hourlyBudgetExhausted: boolean;
   remainingKWh: number;
 } {
-  const { capacitySettings, powerTracker } = params;
   const netBudgetKWh = resolveUsableCapacityKWh(capacitySettings);
   if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 };
 
@@ -59,7 +63,7 @@ export function computeDynamicSoftLimit(params: {
     return { allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 };
   }
   const minimumRemainingHours = capacitySettings.periodMinutes === 15
-    ? 1 / 60
+    ? QUARTER_BURST_RATE_MIN_REMAINING_HOURS
     : BURST_RATE_MIN_REMAINING_HOURS;
   const remainingHours = Math.max(periodContext.remainingHours, minimumRemainingHours);
   const usedKWh = periodContext.usedKWh;
@@ -76,7 +80,7 @@ export function computeDynamicSoftLimit(params: {
   // Earlier in the period the ceiling sits far above any feasible burst, so the
   // budget-driven burst rate governs and there is time to recover.
   const sustainableRateKw = resolveUsableCapacityKw(capacitySettings);
-  const drainTauMinutes = EOH_DRAIN_TAU_MIN * (capacitySettings.periodMinutes / 60);
+  const drainTauMinutes = EOH_DRAIN_TAU_MIN * capacityPeriodHours(capacitySettings.periodMinutes);
   const drainCeilingKw = sustainableRateKw * Math.exp(periodContext.minutesRemaining / drainTauMinutes);
   const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
@@ -128,11 +132,11 @@ export function computeDailyUsageSoftLimit(params: {
  * Shortfall should only trigger when projected selected-period usage would breach the hard cap
  * (limitKw) and no devices are left to shed.
  */
-export function computeShortfallThreshold(params: {
-  capacitySettings: CapacitySettings;
-  powerTracker: PowerTrackerState;
-}, nowMs: number = Date.now()): number {
-  const { capacitySettings, powerTracker } = params;
+export function computeShortfallThreshold(
+  capacitySettings: CapacitySettings,
+  powerTracker: PowerTrackerState,
+  nowMs: number,
+): number {
   const hardCapBudgetKWh = resolveHardCapacityKWh(capacitySettings);
   if (hardCapBudgetKWh <= 0) return 0;
 

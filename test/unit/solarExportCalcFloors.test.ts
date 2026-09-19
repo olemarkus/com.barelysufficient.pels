@@ -55,6 +55,7 @@ describe('solar-export calculation floors', () => {
     let saved: PowerTrackerState | undefined;
     await recordPowerSample({
       generationSegments: [],
+      timeZone: 'UTC',
       state: {} as PowerTrackerState,
       currentPowerW: 500, // net grid import (solar self-consuming)
       grossConsumptionW: 3000, // net + generation = actual consumption

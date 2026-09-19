@@ -39,12 +39,12 @@ describe('planHeroTooltips', () => {
 
   describe('formatSafePaceTooltip', () => {
     it('renders the canonical "Safe pace now {kW} kW — {source}" string', () => {
-      const text = formatSafePaceTooltip(6, 'capacity');
+      const text = formatSafePaceTooltip(6, 'capacity', 60);
       expect(text).toBe(`Safe pace now 6.0 kW — ${SAFE_PACE_TOOLTIP_BY_SOURCE.capacity}`);
     });
 
     it('explains the budget pace and added allowance when both are available', () => {
-      expect(formatSafePaceTooltip(12, 'daily', {
+      expect(formatSafePaceTooltip(12, 'daily', 60, {
         budgetPaceKw: 5,
         projectedExemptKw: 7,
       })).toBe(
@@ -58,8 +58,8 @@ describe('planHeroTooltips', () => {
     // when the two paces coincide — so those tests asserted copy for a state the
     // app cannot reach.
     it('uses honest generic wording for a daily source without composition', () => {
-      expect(formatSafePaceTooltip(5, 'daily')).toContain('may include power allowed beyond');
-      expect(formatSafePaceTooltip(5, 'daily')).not.toContain('constraining');
+      expect(formatSafePaceTooltip(5, 'daily', 60)).toContain('may include power allowed beyond');
+      expect(formatSafePaceTooltip(5, 'daily', 60)).not.toContain('constraining');
     });
   });
 
@@ -100,7 +100,7 @@ describe('planHeroTooltips', () => {
 
   describe('formatHardCapTooltip', () => {
     it('renders the canonical "Hard cap {kW} kW — {HARD_CAP_TOOLTIP}" string', () => {
-      expect(formatHardCapTooltip(8)).toBe(`Hard cap 8.0 kW — ${HARD_CAP_TOOLTIP}`);
+      expect(formatHardCapTooltip(8, 60)).toBe(`Hard cap 8.0 kW — ${HARD_CAP_TOOLTIP}`);
     });
 
     it('frames the cap as the hourly tariff step, never as breaker protection', () => {

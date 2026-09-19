@@ -27,7 +27,7 @@ export async function buildSheddingPlan(
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
-  nowTs: number = Date.now(),
+  nowTs: number,
 ): Promise<SheddingPlan> {
   const selection = planShedding(context, power, state, deps, overshoot.shedActionable, nowTs);
   const {
@@ -42,7 +42,7 @@ export async function buildSheddingPlan(
   // awaits a settings write, and the latch must read the hour this build
   // decided on (`PlanBuilder.computeDynamicSoftLimit`).
   const sheddingActive = resolveSheddingLatch(power, state, overshoot, shedSet);
-  await reportShortfallToGuard(context, power, state, selection, deps, nowTs);
+  await reportShortfallToGuard(context, power, state, selection, deps);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
   const guardInShortfall = deps.capacityGuard.isInShortfall();

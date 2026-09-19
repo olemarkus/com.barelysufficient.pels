@@ -1,5 +1,5 @@
-// Projected end-of-hour billed import from the live draw: what this hour lands
-// at if the current power holds. Export contributes zero, matching the
+// Projected end-of-period billed import from the live draw: what the capacity
+// period (hour or quarter) lands at if the current power holds. Export contributes zero, matching the
 // import-only tracker; it cannot subtract energy already billed. The result is
 // also floored at zero because every consumer treats "projected" as a used-
 // energy figure (see `planHeroSummary.formatProjectedEnergySubline`). Shared
@@ -14,16 +14,6 @@
 // hero-summary module uses settings-ui-style `.ts`-suffixed imports the root
 // tsconfig rejects — keeping the shared math dependency-free avoids coupling
 // the runtime to the UI formatting stack.
-export const computeProjectedHourEnergyKWh = (params: {
-  usedKWh: number;
-  totalKw: number;
-  minutesRemainingInHour: number;
-}): number => computeProjectedPeriodEnergyKWh(
-  params.usedKWh,
-  params.totalKw,
-  params.minutesRemainingInHour,
-);
-
 export const computeProjectedPeriodEnergyKWh = (
   usedKWh: number,
   totalKw: number,

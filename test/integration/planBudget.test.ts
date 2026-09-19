@@ -12,10 +12,11 @@ describe('planBudget', () => {
 
   describe('computeDynamicSoftLimit', () => {
     it('returns 0 when net soft budget is non-positive', () => {
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 5, periodMinutes: 60 },
-        powerTracker: {},
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 5, periodMinutes: 60 },
+        {},
+        Date.now(),
+      );
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 });
     });
 
@@ -25,10 +26,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 7, marginKw: 0.3, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 1.5 } },
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 7, marginKw: 0.3, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 1.5 } },
+        Date.now(),
+      );
 
       // Soft budget = 6.7 kWh. Remaining = 5.2 kWh over 0.5h => 10.4 kW burst.
       expect(result.allowedKw).toBeCloseTo(10.4, 6);
@@ -41,13 +43,14 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const quarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.5, trackedMs: nowMs - quarterStartMs },
         },
-      });
+        Date.now(),
+      );
 
       // Quarter allowance = 1.25 kWh. 0.75 kWh remains over 7.5 minutes => 6 kW.
       expect(result.allowedKw).toBeCloseTo(6, 6);
@@ -62,9 +65,9 @@ describe('planBudget', () => {
       vi.useFakeTimers();
       vi.setSystemTime(nowMs);
 
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp,
           lastPowerW: 3_000,
           capacityQuarter: {
@@ -73,7 +76,8 @@ describe('planBudget', () => {
             trackedMs: lastTimestamp - quarterStartMs,
           },
         },
-      });
+        Date.now(),
+      );
 
       // The held 3 kW sample contributes another 0.15 kWh from :07 to :10.
       // 0.75 kWh remains over five minutes, so the honest pace is 9 kW.
@@ -89,9 +93,9 @@ describe('planBudget', () => {
       vi.useFakeTimers();
       vi.setSystemTime(nowMs);
 
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp,
           lastPowerW: 3_000,
           capacityQuarter: {
@@ -100,7 +104,8 @@ describe('planBudget', () => {
             trackedMs: lastTimestamp - previousQuarterStartMs,
           },
         },
-      });
+        Date.now(),
+      );
 
       // The held 3 kW sample covers :15–:17 in the new quarter: 0.1 kWh used,
       // 1.15 kWh remains across 13 minutes, so the safe pace is about 5.31 kW.
@@ -125,9 +130,10 @@ describe('planBudget', () => {
       };
       const capacitySettings = { limitKw: 5, marginKw: 0, periodMinutes: 15 } as const;
 
-      const pace = computeDynamicSoftLimit({ capacitySettings, powerTracker }, buildNowMs);
+      const pace = computeDynamicSoftLimit(capacitySettings, powerTracker, buildNowMs);
       const shortfallThreshold = computeShortfallThreshold(
-        { capacitySettings, powerTracker },
+        capacitySettings,
+        powerTracker,
         buildNowMs,
       );
 
@@ -141,13 +147,14 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const quarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 1.25, trackedMs: nowMs - quarterStartMs },
         },
-      });
+        Date.now(),
+      );
 
       expect(result.allowedKw).toBe(0);
       expect(result.hourlyBudgetExhausted).toBe(true);
@@ -159,13 +166,14 @@ describe('planBudget', () => {
       vi.useFakeTimers();
       vi.setSystemTime(nowMs);
 
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.2, trackedMs: 5 * 60 * 1000 },
         },
-      });
+        Date.now(),
+      );
 
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 });
     });
@@ -176,10 +184,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 0.5 } },
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0.5 } },
+        Date.now(),
+      );
 
       // Remaining = 4.5 kWh, remaining time clamps to 10m => burst 27 kW.
       // Drain ceiling at 5 min = 5 * e^(5/4) = 17.4517 kW; allowed = min(27, 17.4517).
@@ -197,10 +206,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 0.5 } },
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0.5 } },
+        Date.now(),
+      );
 
       // Drain ceiling at 10 min = 5 * e^(10/4) ≈ 60.9 kW, far above the 27 kW burst,
       // so the burst rate governs. Regression guard: the legacy hard cliff would
@@ -214,10 +224,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 0.5 } }, // budget remaining, burst would be high
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0.5 } }, // budget remaining, burst would be high
+        Date.now(),
+      );
 
       // At the boundary the drain ceiling collapses to the sustainable rate (5 kW),
       // so even with budget left the pace is the steady rate — the next hour starts clean.
@@ -230,10 +241,11 @@ describe('planBudget', () => {
         const nowMs = Date.UTC(2025, 0, 15, 12, minute, 0);
         vi.setSystemTime(nowMs);
         const bucketKey = getHourBucketKey(nowMs);
-        return computeDynamicSoftLimit({
-          capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 }, // sustainable = 5 kW
-          powerTracker: { buckets: { [bucketKey]: 0.5 } }, // burst stays at 27 kW (floored)
-        }).allowedKw;
+        return computeDynamicSoftLimit(
+          { limitKw: 5, marginKw: 0, periodMinutes: 60 }, // sustainable = 5 kW
+          { buckets: { [bucketKey]: 0.5 } }, // burst stays at 27 kW (floored)
+          Date.now(),
+        ).allowedKw;
       };
 
       // minutesRemaining 6,5,4,3,2,1 — same usage, so the drain ceiling governs the
@@ -253,10 +265,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 4.8 } },
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 4.8 } },
+        Date.now(),
+      );
 
       // Remaining = 0.2 kWh; with 10-minute minimum => 0.2 / (10/60) = 1.2 kW.
       expect(result.allowedKw).toBeCloseTo(1.2, 6);
@@ -269,10 +282,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const result = computeDynamicSoftLimit({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 6 } },
-      });
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 6 } },
+        Date.now(),
+      );
 
       expect(result.allowedKw).toBe(0);
       expect(result.hourlyBudgetExhausted).toBe(true);
@@ -325,10 +339,11 @@ describe('planBudget', () => {
 
   describe('computeShortfallThreshold', () => {
     it('returns 0 when hard-cap budget is non-positive', () => {
-      const threshold = computeShortfallThreshold({
-        capacitySettings: { limitKw: 0, marginKw: 0.5, periodMinutes: 60 },
-        powerTracker: {},
-      });
+      const threshold = computeShortfallThreshold(
+        { limitKw: 0, marginKw: 0.5, periodMinutes: 60 },
+        {},
+        Date.now(),
+      );
       expect(threshold).toBe(0);
     });
 
@@ -338,10 +353,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const threshold = computeShortfallThreshold({
-        capacitySettings: { limitKw: 5, marginKw: 0.5, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 6 } },
-      });
+      const threshold = computeShortfallThreshold(
+        { limitKw: 5, marginKw: 0.5, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 6 } },
+        Date.now(),
+      );
       expect(threshold).toBe(0);
     });
 
@@ -351,10 +367,11 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
-      const threshold = computeShortfallThreshold({
-        capacitySettings: { limitKw: 5, marginKw: 2, periodMinutes: 60 },
-        powerTracker: { buckets: { [bucketKey]: 0 } },
-      });
+      const threshold = computeShortfallThreshold(
+        { limitKw: 5, marginKw: 2, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0 } },
+        Date.now(),
+      );
 
       // remaining = 5kWh, min remaining time = 0.01h => threshold = 500kW
       expect(threshold).toBeCloseTo(500, 6);
@@ -366,13 +383,14 @@ describe('planBudget', () => {
       vi.setSystemTime(nowMs);
 
       const quarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
-      const threshold = computeShortfallThreshold({
-        capacitySettings: { limitKw: 5, marginKw: 0, periodMinutes: 15 },
-        powerTracker: {
+      const threshold = computeShortfallThreshold(
+        { limitKw: 5, marginKw: 0, periodMinutes: 15 },
+        {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 1, trackedMs: nowMs - quarterStartMs },
         },
-      });
+        Date.now(),
+      );
 
       // 0.25 kWh remains over five minutes => 3 kW.
       expect(threshold).toBeCloseTo(3, 6);

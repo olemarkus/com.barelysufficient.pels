@@ -1,5 +1,5 @@
 import type CapacityGuard from '../power/capacityGuard';
-import type { CapacitySettings } from '../power/capacityModel';
+import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { computeShortfallThreshold } from '../plan/planBudget';
@@ -75,13 +75,14 @@ export function buildPeriodicStatusLogFields(params: {
     capacityPaceKw,
     sheddingActive,
   } = params;
-  const metrics = resolveCapacityStatusMetrics({ capacitySettings, powerTracker, capacityPaceKw });
+  const nowMs = Date.now();
+  const metrics = resolveCapacityStatusMetrics(capacitySettings, powerTracker, capacityPaceKw, nowMs);
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
 
   const inShortfall = capacityGuard.isInShortfall();
   // These published field names are an existing hourly diagnostics contract,
   // independent of the period selected for capacity control.
-  const usage = getCurrentHourContext(powerTracker);
+  const usage = getCurrentHourContext(powerTracker, nowMs);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   return {
     event: 'periodic_status',
@@ -102,15 +103,15 @@ export function buildPeriodicStatusLogFields(params: {
   };
 }
 
-function resolveCapacityStatusMetrics(params: {
-  capacitySettings: CapacitySettings;
-  powerTracker: PowerTrackerState;
-  capacityPaceKw: number;
-}): CapacityStatusMetrics {
-  const { capacitySettings, powerTracker, capacityPaceKw } = params;
+function resolveCapacityStatusMetrics(
+  capacitySettings: CapacitySettings,
+  powerTracker: PowerTrackerState,
+  capacityPaceKw: number,
+  nowMs: number,
+): CapacityStatusMetrics {
   const total = resolveLastTotalPowerKw(powerTracker);
   const capacityPaceHeadroom = total !== null ? capacityPaceKw - total : null;
-  const shortfallBudgetThreshold = computeShortfallThreshold({ capacitySettings, powerTracker });
+  const shortfallBudgetThreshold = computeShortfallThreshold(capacitySettings, powerTracker, nowMs);
   const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
   const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
   return {

@@ -24,6 +24,7 @@ type MockCapacityGuardInstance = {
   releaseShedding: ReturnType<typeof vi.fn>;
   recordPlanVerdict: ReturnType<typeof vi.fn>;
   recordReading: ReturnType<typeof vi.fn>;
+  recordCompletePeriodReading: ReturnType<typeof vi.fn>;
 };
 const capacityGuardInstances: MockCapacityGuardInstance[] = [];
 vi.mock('../../lib/power/capacityGuard', () => ({
@@ -41,6 +42,7 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     public releaseShedding = vi.fn();
     public recordPlanVerdict = vi.fn();
     public recordReading = vi.fn();
+    public recordCompletePeriodReading = vi.fn();
     constructor(opts: { limitKw?: number; softMarginKw?: number } = {}) {
       // Call setters once to mirror constructor usage.
       this.setLimit(opts.limitKw ?? 10);

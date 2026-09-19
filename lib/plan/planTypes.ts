@@ -1,3 +1,4 @@
+import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -741,7 +742,7 @@ export type PlanMetaBase = {
   // From `capacitySettings.limitKw`, a plain required `number` passed straight
   // through — so neither `?` nor `| null` was ever right here.
   hardCapLimitKw: number;
-  capacityPeriodMinutes: 15 | 60;
+  capacityPeriodMinutes: CapacityPeriodMinutes;
   /** False while a 15-minute period's elapsed energy is only partially observed. */
   capacityPeriodCoverageComplete: boolean;
   hourlyBudgetExhausted: boolean;
