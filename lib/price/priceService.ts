@@ -604,18 +604,10 @@ export default class PriceService {
       return;
     }
 
-    const results = await fetchHomeyEnergyResults({
-      energyApi: this.homeyEnergyApi,
-      info,
-      debugStructured: this.sinks.debugStructured,
-    });
+    const results = await fetchHomeyEnergyResults(this.homeyEnergyApi, info, this.sinks.debugStructured);
     if (!results) return;
 
-    logHomeyEnergyPayloadStatus({
-      info,
-      results,
-      debugStructured: this.sinks.debugStructured,
-    });
+    logHomeyEnergyPayloadStatus(info, results, this.sinks.debugStructured);
 
     updateHomeyEnergyCurrency(results, (unit) => this.priceDataStore.writeHomeyPricesCurrency(unit));
     const stored = storeHomeyEnergyPayloads({

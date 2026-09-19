@@ -56,12 +56,11 @@ export const shouldUseHomeyEnergyCache = (params: {
   return false;
 };
 
-export const fetchHomeyEnergyResults = async (params: {
-  energyApi: HomeyEnergyApi;
-  info: HomeyEnergyDateInfo;
-  debugStructured: StructuredDebugEmitter;
-}): Promise<HomeyEnergyResults | null> => {
-  const { energyApi, info, debugStructured } = params;
+export const fetchHomeyEnergyResults = async (
+  energyApi: HomeyEnergyApi,
+  info: HomeyEnergyDateInfo,
+  debugStructured: StructuredDebugEmitter,
+): Promise<HomeyEnergyResults | null> => {
   const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([
     fetchHomeyEnergyPricesForDate({
       api: energyApi,
@@ -99,12 +98,11 @@ export const fetchHomeyEnergyResults = async (params: {
   };
 };
 
-export const logHomeyEnergyPayloadStatus = (params: {
-  info: HomeyEnergyDateInfo;
-  results: HomeyEnergyResults;
-  debugStructured: StructuredDebugEmitter;
-}): void => {
-  const { info, results, debugStructured } = params;
+export const logHomeyEnergyPayloadStatus = (
+  info: HomeyEnergyDateInfo,
+  results: HomeyEnergyResults,
+  debugStructured: StructuredDebugEmitter,
+): void => {
   if (!results.todayResult.payload) {
     priceLogger.error({
       event: 'homey_prices_missing_today',
