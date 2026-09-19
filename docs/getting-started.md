@@ -26,6 +26,8 @@ If PELS is not installed yet, get it from the [Homey App Store](https://homey.ap
 
 Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happens.
 
+The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
+
 ## Step 1: Connect your power meter
 
 Live power input is what PELS plans on — connect it once and every other feature unlocks.

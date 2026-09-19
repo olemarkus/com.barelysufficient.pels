@@ -2,10 +2,15 @@ import { render } from 'preact';
 import type { SetupRecommendation } from '../recommendationsModel.ts';
 import { AppBar } from './AppBar.tsx';
 import { MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
+import { SetupPathCard } from './SetupPathCard.tsx';
+import type { SetupPath } from '../setupPathModel.ts';
 
 export type SetupRecommendationsViewProps = {
   active: readonly SetupRecommendation[];
   dismissed: readonly SetupRecommendation[];
+  // The first-run setup path while it is still open; null once setup is
+  // complete or while its facts are loading.
+  setupPath: SetupPath | null;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   onAction: (recommendation: SetupRecommendation) => void;
@@ -56,32 +61,33 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
     {props.readiness === 'partial' && (
       <p class="muted setup-recommendations-loading">Some recommendation checks couldn’t be refreshed right now.</p>
     )}
-    {props.active.length === 0
-      ? (
-        <section class="pels-surface-card setup-recommendations-empty">
-          <strong>{props.readiness === 'partial' ? 'No suggestions from the checks that finished' : 'No setup suggestions right now'}</strong>
-          <p class="pels-card-supporting">
-            {props.readiness === 'partial'
-              ? 'Try again later to check the remaining optional suggestions.'
-              : 'PELS has no device setup changes to suggest.'}
-          </p>
-        </section>
-      )
-      : (
-        <section class="setup-recommendations-list" aria-label="Recommendations to review">
-          {props.active.map((recommendation) => (
-            <RecommendationCard
-              key={recommendation.id}
-              recommendation={recommendation}
-              dismissed={false}
-              dismissalStatus={props.dismissalStatus}
-              onAction={props.onAction}
-              onDismiss={props.onDismiss}
-              onRestore={props.onRestore}
-            />
-          ))}
-        </section>
-      )}
+    {/* While the setup path is open it IS the page's content; "no suggestions"
+        beside an unfinished setup would read as "nothing to do". */}
+    {props.active.length === 0 && props.setupPath === null && (
+      <section class="pels-surface-card setup-recommendations-empty">
+        <strong>{props.readiness === 'partial' ? 'No suggestions from the checks that finished' : 'No setup suggestions right now'}</strong>
+        <p class="pels-card-supporting">
+          {props.readiness === 'partial'
+            ? 'Try again later to check the remaining optional suggestions.'
+            : 'PELS has no device setup changes to suggest.'}
+        </p>
+      </section>
+    )}
+    {props.active.length > 0 && (
+      <section class="setup-recommendations-list" aria-label="Recommendations to review">
+        {props.active.map((recommendation) => (
+          <RecommendationCard
+            key={recommendation.id}
+            recommendation={recommendation}
+            dismissed={false}
+            dismissalStatus={props.dismissalStatus}
+            onAction={props.onAction}
+            onDismiss={props.onDismiss}
+            onRestore={props.onRestore}
+          />
+        ))}
+      </section>
+    )}
     {props.dismissed.length > 0 && (
       <details class="settings-collapse setup-recommendations-dismissed">
         <summary>
@@ -114,8 +120,9 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
     <AppBar
       back={{ label: 'Back to Settings', target: 'settings' }}
       title="Setup & recommendations"
-      lede="Suggested changes that can make PELS work better with your devices."
+      lede="The steps to get PELS running, and changes that can make it work better with your devices."
     />
+    {props.setupPath !== null && <SetupPathCard path={props.setupPath} surface="setup" />}
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>
     )}

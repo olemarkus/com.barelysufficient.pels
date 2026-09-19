@@ -76,8 +76,8 @@ describe('resolvePowerReadingsBannerContent', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false, planUnmeasured: false,
     })).toEqual({
-      text: 'No power readings yet. Set up a Flow with the Report power usage action, or pick a '
-        + 'whole-home meter under Limits & safety.',
+      text: 'No power readings yet. Pick a whole-home meter under Limits & safety, or set up a Flow '
+        + 'with the Report power usage action.',
       actionLabel: 'Check power source',
     });
   });

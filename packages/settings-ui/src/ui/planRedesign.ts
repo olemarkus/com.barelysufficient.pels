@@ -23,6 +23,7 @@ import { buildOverviewDeviceRows } from './overviewDeviceRows.ts';
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
+import { onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
   resolveOverviewSmartTaskRow,
   type OverviewSmartTaskRow,
@@ -31,6 +32,7 @@ import {
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
+import type { SetupPath } from './setupPathModel.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
@@ -155,6 +157,15 @@ let surfaceSkeletonCleared = false;
 // surface shows the loading skeleton, not "No plan available yet…".
 let planPayloadReceived = false;
 
+// Setup configures the Main home; a meter area has no path of its own, so
+// there it is simply resolved-and-closed. `resolved: false` means the facts have
+// not all arrived, which the view must not mistake for "setup is complete".
+const resolveOverviewSetupPath = (): { path: SetupPath | null; resolved: boolean } => {
+  if (overviewScope.kind !== 'main') return { path: null, resolved: true };
+  const read = readSetupPath();
+  return read.state === 'resolved' ? { path: read.path, resolved: true } : { path: null, resolved: false };
+};
+
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
@@ -163,6 +174,7 @@ const doRender = () => {
     surfaceSkeletonCleared = true;
   }
   const now = Date.now();
+  const setup = resolveOverviewSetupPath();
   renderPlanOverview(surface, {
     // Membership and order come from the DEVICE list; the decision comes from
     // the plan. Resolved here so the view stays props-in.
@@ -178,6 +190,8 @@ const doRender = () => {
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
     smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
+    setupPath: setup.path,
+    setupResolved: setup.resolved,
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
     },
@@ -266,6 +280,9 @@ export const bumpPlanSurface = (): void => {
 // refresh after a write without importing this orchestrator (avoids a
 // view → controller → orchestrator cycle). See planSurfaceRefresh.ts.
 registerPlanSurfaceRenderer(doRender);
+// A setup fact landing (first reading, a saved hard cap, a managed device)
+// changes which step leads, and none of those arrive as a plan push.
+onSetupPathChange(doRender);
 
 // `tracker === undefined` means the realtime push carried no full tracker —
 // keep the cached solar triple (the resolver's staleness gate retires it on

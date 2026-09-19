@@ -14,6 +14,8 @@ import {
 } from './recommendationsModel.ts';
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
+import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
+import { formatSetupProgress } from './setupPathModel.ts';
 import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
   createSerializedAsyncRunner,
@@ -215,14 +217,21 @@ export const refreshRecommendationSurfaces = (): void => {
       },
     });
   }
+  const setupRead = readSetupPath();
+  const setupPath = setupRead.state === 'resolved' ? setupRead.path : null;
   const chip = document.getElementById('settings-nav-chip-recommendations');
   if (chip) {
-    chip.hidden = !coreLoaded || groups.active.length === 0;
-    if (coreLoaded && groups.active.length > 0) chip.textContent = String(groups.active.length);
+    // Open setup outranks the suggestion count: it is what the row is for until
+    // it is done, and one chip cannot carry both numbers.
+    const hasSuggestions = coreLoaded && groups.active.length > 0;
+    chip.hidden = setupPath === null && !hasSuggestions;
+    if (setupPath !== null) chip.textContent = formatSetupProgress(setupPath);
+    else if (hasSuggestions) chip.textContent = String(groups.active.length);
   }
   if (page) {
     renderSetupRecommendationsView(page, {
       ...groups,
+      setupPath,
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
       onAction: openRecommendationTarget,
@@ -298,6 +307,11 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   navigationRead = { state: 'resolved', navigation: nextNavigation };
   document.addEventListener('devices-updated', () => { void refreshCarInventory(); });
   document.addEventListener('ev-car-associations-updated', refreshRecommendationSurfaces);
+  onSetupPathChange(refreshRecommendationSurfaces);
+  // The device list is one of the path's facts, and it lands without any of the
+  // path's publishers being involved. Gated inside: a tick that leaves the path
+  // unchanged redraws nothing.
+  document.addEventListener('devices-updated', notifySetupPathChange);
   document.addEventListener('pels:tab-shown', (event) => {
     const panelId = readTabId(event);
     if (panelId === 'recommendations') {

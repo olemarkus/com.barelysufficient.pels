@@ -33,8 +33,9 @@ const STALE_LEAD = 'No power readings in the last minute.';
 const UNMEASURED_LEAD = 'No power readings for over 10 minutes. Managed devices stay limited until readings return.';
 const ACTION_LABEL = 'Check power source';
 
-const HINT_FLOW_NONE_YET = 'Set up a Flow with the Report power usage action, or pick a '
-  + 'whole-home meter under Limits & safety.';
+// Meter first: it is the path with nothing to build, and most homes have one.
+const HINT_FLOW_NONE_YET = 'Pick a whole-home meter under Limits & safety, or set up a Flow '
+  + 'with the Report power usage action.';
 const HINT_FLOW_STALE = 'Check the Flow that runs Report power usage.';
 const HINT_METER_CHOSEN = 'Check that the selected whole-home meter is available '
   + 'and reporting power in Homey Energy.';

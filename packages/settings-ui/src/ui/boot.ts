@@ -41,6 +41,7 @@ import {
   loadAdvancedSettings,
   loadStaleDataStatus,
   refreshLimitsValidationHints,
+  refreshStaleDataBanner,
   saveSettingsLimitsSettings,
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
@@ -108,6 +109,7 @@ import {
   refreshAdvancedDeviceLogger,
 } from './advanced.ts';
 import { state } from './state.ts';
+import { notifySetupPathChange } from './setupPathFacts.ts';
 import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging.ts';
 import {
   markSettingsUi,
@@ -240,6 +242,13 @@ const initTabHandlers = () => {
     // the banner hidden after navigating away.
     state.activePanel = typeof tabId === 'string' ? tabId : '';
     syncDryRunBannerVisibility();
+    // Same panel-dependence for the never-received no-readings banner, which
+    // stands down only where the setup path card is on screen.
+    refreshStaleDataBanner();
+    // Managed, Limit and Simulation are toggled on other panels and written to
+    // `state` by several controllers. A setup-path surface is only ever seen
+    // after navigating to it, so re-resolving here covers every one of them.
+    notifySetupPathChange();
   });
 };
 

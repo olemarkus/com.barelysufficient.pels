@@ -1486,24 +1486,34 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       first open; hypothesis: a reassuring verdict over an unconfigured state teaches the user
       to distrust the hero. Source: pels-m3-critic on the onboarding-links PR (2026-07-19). [P2]
 
-- [ ] **Power source select shows "Flow card" while unset and never explains the Flow — and the
-      simulation banner leads the fresh-install stack above it.** On the Limits & safety page the
-      unset select is indistinguishable from a made choice, and no copy on the journey says a Flow
-      with the report-power action card must exist. Worse: the preselected "Flow card" cannot be
-      *confirmed* — picking the already-displayed option fires no change event, so `power_source`
-      stays unset and the banner keeps asking (Codex P2 on PR #1856). Add a "Not set" placeholder
-      while `power_source` is unset (md-select `displayText` sentinel idiom) — which also makes
-      choosing Flow a real value change that persists — and a one-line per-source hint under the
-      select.
-      The same fresh install shows the other half: the first viewport is two stacked warning
-      banners, and the top one offers "Turn off simulation" — the one action a user with zero
-      configuration should not take first. Demote or suppress (not remove) the simulation banner
-      while the fresh-install condition holds — no persisted power source AND no managed devices —
-      so the setup call-to-action leads. Persona: brand-new owner on first open, following "Choose
-      power source"; hypothesis: naming the unset state and the Flow requirement closes the last gap
-      between the link and a working setup, and the most prominent CTA should match the most urgent
-      task. Source: pels-ux-fit + Codex review (2026-07-19); banner half from pels-ux-fit on the
-      onboarding-links PR (2026-07-19). [P2]
+- [ ] **Power source select shows "Flow card" while unset and never explains the Flow.** On the
+      Limits & safety page the unset select is indistinguishable from a made choice, and no copy on
+      the journey says a Flow with the report-power action card must exist. Worse: the preselected
+      "Flow card" cannot be *confirmed* — picking the already-displayed option fires no change
+      event, so `power_source` stays unset and the banner keeps asking (Codex P2 on PR #1856). Add
+      a "Not set" placeholder while `power_source` is unset (md-select `displayText` sentinel
+      idiom) — which also makes choosing Flow a real value change that persists — and a one-line
+      per-source hint under the select. Done when a fresh install's Power source reads "Not set"
+      and choosing Flow persists `power_source`. Persona: brand-new owner on first open, arriving
+      from the setup path's Power meter row; hypothesis: naming the unset state and the Flow
+      requirement closes the last gap between the link and a working setup. Source: pels-ux-fit +
+      Codex review (2026-07-19). [P2]
+
+- [ ] **The setup path is the same in every market; its emphasis should not be.** `resolveSetupPath`
+      (`packages/settings-ui/src/ui/setupPathModel.ts`) is deliberately market-neutral because the
+      settings UI knows nothing geographic. The hub does: `GET /api/manager/system/` carries an ISO
+      `country` (verified `NO` on a hub whose language is `en`, so it is not language-derived), and
+      `setup/homeyLocationAdapter.ts` already reads the hub coordinates. Resolve a `market` fact in
+      the runtime (country first; coordinates where country cannot answer — Belgium's 15-minute
+      tariff is Flanders only), ship it on `ui_bootstrap`, and use it for two things: a Hard cap
+      detail that says so when the hub is in Flanders and the period is still hourly, and the
+      order of what the card points to once its steps are done (solar and prices first in the
+      Netherlands). The path already shows a step only when what it configures is in force for
+      the home; market data may sharpen that rule, never loosen it. First confirm what `country` follows by moving a test hub's location.
+      Never infer a market from language. Done when a Flemish hub on the hourly default reads the
+      15-minute nudge and a Norwegian hub reads exactly today's copy. Persona: brand-new owner
+      outside Norway; hypothesis: a path that names their tariff and their reason for installing
+      stops PELS reading as a Norwegian capacity app. Source: owner, 2026-09-19. [P2]
 
 - [ ] **Duplicate `#plan-empty` ids (static first-paint + Preact render).** Both nodes coexist
       in the document; the onboarding e2e works around it with a visibility filter. Rename the

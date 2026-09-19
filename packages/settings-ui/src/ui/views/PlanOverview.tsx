@@ -18,6 +18,8 @@ import type {
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow.ts';
+import { SetupPathCard } from './SetupPathCard.tsx';
+import { isSetupStepOpen, type SetupPath } from '../setupPathModel.ts';
 
 type OverviewProps = {
   // One row per device PELS manages, from the DEVICE list joined to this
@@ -47,6 +49,13 @@ type OverviewProps = {
   // nothing — no active tasks and no recent misses). Resolved in the
   // orchestrator (`planRedesign.ts`) so this view stays props-in.
   smartTaskRow: OverviewSmartTaskRow | null;
+  // The first-run setup path while it is still open, for the Main home (null
+  // once setup is complete, while its facts are loading, and under a meter
+  // area). Resolved in the orchestrator so this view stays props-in.
+  setupPath: SetupPath | null;
+  // False while the setup path's facts are still arriving. A null `setupPath`
+  // then means "not known yet", not "setup is complete".
+  setupResolved: boolean;
   context: HeroContext;
   renderedAtMs: number;
   nowMs: number;
@@ -152,7 +161,8 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  rows, devicesResolved, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
+  rows, devicesResolved, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, setupPath, setupResolved,
+  context, renderedAtMs, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -166,22 +176,47 @@ const PlanOverviewRoot = ({
   //
   // `planResolved` still gates it. Before the first payload has been delivered
   // the surface is loading, and an empty-state verdict then would be a guess.
+  //
+  // The setup path's open Devices step outranks it: it says the same thing with
+  // the rest of the path around it, so the two never render together.
+  // With no plan it also waits for the setup facts: the skeleton above is still
+  // saying "loading" then, and the card that will replace this message cannot be
+  // drawn yet. With a plan it does not wait — the hero is drawn, the page is past
+  // loading, and facts that never arrive (a failed capacity read) must not cost
+  // an owner with nothing managed the one line telling them so.
   const emptyMessage = planResolved && devicesResolved && rows.length === 0
+    && (plan !== null || setupResolved)
+    && !isSetupStepOpen(setupPath, 'devices')
     // No "yet" — a returning user who unmanages their last device reaches
     // this state too (notes/ui-terminology.md, empty-state headline rule).
     ? 'No managed devices. Pick the devices PELS may manage.'
     : null;
 
+  // The hero skeleton means "the plan is on its way", which is only true until
+  // the first payload lands. A delivered `null` is the home having committed no
+  // plan — permanently so for a home whose meter has never reported, since no
+  // plan is built without a reading — and a shimmer there is a loading state
+  // that never resolves. It draws nothing instead, the same answer the hero
+  // already gives for a plan built without a measurement.
+  //
+  // It holds until the setup facts have arrived too. They load in parallel with
+  // the plan, and with no plan, no card yet and no empty state, dropping the
+  // skeleton first would leave a new install's Overview blank in between.
+  const showHero = plan !== null || !planResolved || !setupResolved;
+
   return (
     <div>
-      <PlanHero
-        plan={plan}
-        prices={prices}
-        solarNowInput={solarNowInput}
-        context={context}
-        renderedAtMs={renderedAtMs}
-        nowMs={nowMs}
-      />
+      {setupPath !== null && <SetupPathCard path={setupPath} surface="overview" />}
+      {showHero && (
+        <PlanHero
+          plan={plan}
+          prices={prices}
+          solarNowInput={solarNowInput}
+          context={context}
+          renderedAtMs={renderedAtMs}
+          nowMs={nowMs}
+        />
+      )}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
       {emptyMessage && (

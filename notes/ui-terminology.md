@@ -1537,19 +1537,81 @@ from tracker fields or persisted-blob fallbacks.
   the last minute.` (stopped). Say what happens — never "stale", "outdated",
   or an age readout.
 - Hints name the remedy and the real control: the Flow card by its
-  registered name (**Report power usage** — `Set up a Flow with the Report
-  power usage action, …` / `Check the Flow that runs Report power usage.`),
+  registered name (**Report power usage** — `… or set up a Flow with the
+  Report power usage action.` / `Check the Flow that runs Report power usage.`),
   the picker as `Pick a whole-home meter under Limits & safety.`, a chosen
   meter as `Check that the selected whole-home meter is available and
   reporting power in Homey Energy.`
-- The never-received Flow arm names BOTH remedies (Flow or meter) — the one
-  state where the install has nothing configured to point at.
+- The never-received Flow arm names BOTH remedies, **meter first** (`Pick a
+  whole-home meter under Limits & safety, or set up a Flow with the Report
+  power usage action.`) — the one state where the install has nothing
+  configured to point at. The meter leads because it is the path with nothing
+  to build.
+- **One stand-down (owner ruling 2026-09-20):** while no reading has EVER
+  arrived and the setup path card is on screen (Overview, Setup &
+  recommendations), the card's Power meter step says this banner's own sentence
+  and the banner hides. It still shows on every panel without the card, and
+  always once readings that had arrived stop: that is an alert about a working
+  setup, not a setup step. Single-home only. Source:
+  `isNoReadingsCarriedBySetupPath` (`packages/settings-ui/src/ui/setupPathFacts.ts`).
 - Action label: `Check power source` on every arm.
 - Retired: the onboarding arm ("PELS needs to know where to read your home's
   power use") — an install with no source chosen is the never-received Flow
   arm, which already names both remedies; and the hero's "Power
   readings have dropped. Devices stay limited until data returns." decision
   sentence — the banner is the one surface.
+
+## The setup path
+
+The `Set up PELS` card leads the Overview and the Setup & recommendations page
+while first-run setup is open, and the Settings hub row carries its progress as
+a chip (`1 of 2`). Source of truth: `resolveSetupPath`
+(`packages/settings-ui/src/ui/setupPathModel.ts`). It is state, not a tour: each
+step is judged from what the app already holds, and the card returns for a
+returning owner who unmanages their last device.
+
+- **A step appears only when what it configures is in force for this home**
+  (owner ruling 2026-09-20: never tell an owner to configure something that is
+  not relevant to them). `Power meter` and `Devices` apply to every home. `Hard
+  cap` does not: it is enforced only on devices PELS may limit, so an owner who
+  manages thermostats for their price response alone never sees it, and their
+  setup is complete without it. Once a managed device has Limit on, the cap IS
+  in force, tariff or no tariff, because every home runs one (10 kW until the
+  owner saves their own), and the step appears then. Hence the order: Devices
+  before Hard cap. Apply the same test before adding any step.
+- Each step is a **noun title that never changes** with a detail line that
+  does. The status icon carries done / next / later; there is no "Next" chip (it
+  wrapped the title at 320 px).
+- **Detail lines state facts and never instruct past the step itself.** Devices
+  reads `Choose the devices PELS manages` / `3 devices PELS may limit` / `2
+  devices managed`. It never says "Turn on Limit": devices that cannot be
+  limited, or that the owner chose not to limit, are a finished choice.
+- Power meter, before any reading: the no-readings banner's own sentence,
+  handed over verbatim (`No power readings yet. Pick a whole-home meter under
+  Limits & safety, or …`), because the step stands in for that banner where the
+  card is on screen. After: `Readings are arriving`.
+- **The copy sells no single market.** Norway and Flanders come for the capacity
+  tariff, the Netherlands for solar and dynamic prices. The lede says what
+  builds on the steps (`Prices, solar and Smart tasks build on them.`) and never
+  frames PELS as a hard-cap product.
+- **The Hard cap detail always names the capacity period**, in the words of the
+  Capacity period options: `8 kW hourly average, 0.4 kW safety margin` /
+  `2.5 kW 15-minute average, …`. A quarter-hour tariff left on the hourly
+  default is the one silent way to get setup wrong, and only the period beside
+  the number shows it. Unsaved: `10 kW hourly average until you set yours` —
+  the running default is named, never silent.
+- **Simulation is not a step.** The card says `Simulation is on, so devices stay
+  as-is until you turn it off.` while it is open; a configured home left
+  simulating is a finished setup and the simulation banner speaks for it.
+- The card stands in for both global banners where it is on screen, so a new
+  install's first viewport is the path rather than two alerts above it. The
+  never-received no-readings banner: see § "The no-readings banner".
+- While the path is open the simulation banner stands down where the card is on
+  screen, and everywhere while nothing is managed (there is no device for
+  "devices stay as-is" to be about, and "Turn off simulation" is the wrong first
+  action). Single-home only; with meter areas the banner is unchanged.
+- There is no "setup complete" state: once every step in force is done the card
+  is gone.
 
 ## Mode label
 

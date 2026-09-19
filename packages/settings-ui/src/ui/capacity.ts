@@ -79,6 +79,14 @@ import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
+import {
+  isNoReadingsCarriedBySetupPath,
+  isSimulationCarriedBySetupPath,
+  onSetupPathChange,
+  publishSetupHardCapRead,
+  publishSetupPower,
+} from './setupPathFacts.ts';
+import { reportSetupHardCapRead } from './setupHardCapRead.ts';
 import { classifyCapacityPeak, formatCapacityPeak } from './capacityPeakRead.ts';
 import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 import { isFiniteNumber } from './combinedPrices.ts';
@@ -215,7 +223,9 @@ export const syncDryRunBannerVisibility = (): void => {
   if (dryRunBanner) {
     if (content !== null) dryRunBanner.dataset.homeScope = content.scope;
     dryRunBanner.hidden = content === null
-      || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel);
+      || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel)
+      // An unread roster is not "no meter areas": only a known single home stands down.
+      || isSimulationCarriedBySetupPath(hasMeterAreas === false);
   }
   // Honest Simulation-page scope note (multi-home): synced here because every
   // input it depends on (the active-area roster) already drives this function.
@@ -394,6 +404,8 @@ const validateCapacitySettings = ({ limitKw: limit, marginKw: margin }: Capacity
 // AFTER the first power read can re-render the copy without refetching power.
 // undefined = the banner has never rendered.
 let lastBannerReadings: PowerReadingsFact | undefined;
+// A never-received fact always resolves banner content; this only keeps the type honest.
+const NO_READINGS_YET_FALLBACK = 'No power readings yet.';
 // Newer loads supersede the entire older snapshot. Power-source saves have a
 // narrower generation: they fence stale source-dependent paint without
 // discarding unrelated capacity values read from a realtime refresh.
@@ -419,7 +431,6 @@ const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
 
 const updateStaleDataBanner = (readings: PowerReadingsFact) => {
   lastBannerReadings = readings;
-  if (!staleDataBanner) return;
   const content = resolvePowerReadingsBannerContent({
     readings,
     nowMs: Date.now(),
@@ -429,7 +440,13 @@ const updateStaleDataBanner = (readings: PowerReadingsFact) => {
     source: normalizePowerSource(settingsPowerSourceSelect?.value),
     meterChosen: hasChosenWholeHomeMeter(),
   });
-  staleDataBanner.hidden = content === null;
+  // The setup path's Power meter step says this same sentence where it stands
+  // in for the banner, so it is handed the banner's words rather than its own.
+  publishSetupPower(readings.state === 'never'
+    ? { state: 'never', remedy: content?.text ?? NO_READINGS_YET_FALLBACK }
+    : { state: 'received' });
+  if (!staleDataBanner) return;
+  staleDataBanner.hidden = content === null || isNoReadingsCarriedBySetupPath(hasMeterAreas === false);
   if (content === null) return;
   if (staleDataBannerText) staleDataBannerText.textContent = content.text;
   if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
@@ -441,6 +458,13 @@ export const refreshStaleDataBanner = (): void => {
 // The plan render reports whether the current plan was measured; a flip
 // re-renders the banner at once rather than on the next refresh tick.
 onPlanMeasurementChange(refreshStaleDataBanner);
+// Both global banners stand down where the setup path card speaks for them, and
+// the facts that decide it (the device list above all) land after the first
+// banner sync, so re-judge whenever the path moves.
+onSetupPathChange(() => {
+  syncDryRunBannerVisibility();
+  refreshStaleDataBanner();
+});
 
 export const loadStaleDataStatus = async () => {
   const power = await getPowerReadModel();
@@ -523,6 +547,11 @@ export const loadCapacitySettings = async () => {
   syncLoadedPowerSourceForGeneration(sourceGeneration, powerSource);
   const dryRunChanged = state.dryRun !== resolved.dryRun;
   commitCapacityScalars(resolved);
+  // `limit` is the RAW persisted read: the setup path asks whether the owner has
+  // saved a hard cap, which the resolved value (runtime default included) cannot
+  // say. Not awaited: confirming an absent key re-reads for up to a second, and
+  // nothing on this page waits for the setup path.
+  void reportSetupHardCapRead(limit, resolved);
   // No power read (an hourly home, or a failed read) leaves the last value.
   if (powerRead !== null) renderMonthlyQuarterPeak(powerRead.capacityPeak);
   syncDryRunBannerVisibility();
@@ -561,6 +590,8 @@ const saveCapacitySettingsPatch = async (
   }
   const dryRunChanged = current.dryRun !== resolved.dryRun;
   commitCapacityScalars(resolved);
+  // The write above persisted the cap, whatever was there before.
+  publishSetupHardCapRead(resolved.limitKw, resolved);
   // This save owns only cap, margin and simulation. In particular it must not
   // repaint the Power source from its pre-write read: a source save can overlap
   // this awaited settings write and owns that control's final value.

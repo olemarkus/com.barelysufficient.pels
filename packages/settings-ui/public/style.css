@@ -972,7 +972,8 @@ md-primary-tab.tab[active] {
   overflow: hidden;
 }
 
-.settings-nav-card {
+.settings-nav-card,
+.setup-path__step {
   position: relative;
   display: flex;
   width: 100%;
@@ -996,21 +997,26 @@ md-primary-tab.tab[active] {
 }
 
 /* Internal dividers between rows; the first row has none. */
-.settings-nav-card + .settings-nav-card {
+.settings-nav-card + .settings-nav-card,
+.setup-path__step + .setup-path__step {
   border-top: 1px solid var(--panel-border);
 }
 
 .settings-nav-card:hover,
-.settings-nav-card:focus-visible {
+.settings-nav-card:focus-visible,
+.setup-path__step:hover,
+.setup-path__step:focus-visible {
   background: var(--pels-surface-container) !important;
 }
 
-.settings-nav-card:focus-visible {
+.settings-nav-card:focus-visible,
+.setup-path__step:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: calc(-1 * var(--spacing-1));
 }
 
-.settings-nav-card--quiet {
+.settings-nav-card--quiet,
+.setup-path__step[data-setup-status="later"] {
   opacity: 0.86;
 }
 
@@ -4905,6 +4911,25 @@ md-filled-button.is-busy {
 
 .setup-recommendations-empty {
   margin: 0;
+}
+
+/* First-run setup path. Its rows share the Settings-hub row rules (joined to
+   the `.settings-nav-card` selectors above) under their own class: they are not
+   hub rows, and `.settings-nav-card[data-settings-target]` must keep meaning
+   exactly one hub row. This block adds only what the hub does not have — a
+   status icon tone, and a flat list inside a card that already carries the
+   elevation. */
+.setup-path {
+  margin-block-end: var(--spacing-2);
+}
+
+.setup-path__steps {
+  box-shadow: none;
+}
+
+.setup-path__icon[data-status="done"],
+.setup-path__icon[data-status="next"] {
+  color: var(--accent);
 }
 
 .setup-recommendations-loading {

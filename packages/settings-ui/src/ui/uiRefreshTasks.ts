@@ -23,6 +23,7 @@ import {
 } from './power.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { state } from './state.ts';
+import { notifySetupPathChange } from './setupPathFacts.ts';
 import { logSettingsError } from './logging.ts';
 
 /**
@@ -217,6 +218,9 @@ export const loadDevicesOnce = () => {
     .then((devices) => {
       state.devicesLoaded = true;
       renderLatestDevices(devices);
+      // This load dispatches no `devices-updated`, which is what the setup path
+      // listens for; the device list it just committed is one of its facts.
+      notifySetupPathChange();
     })
     .catch((error) => {
       void logSettingsError('Failed to load devices', error, 'loadDevicesOnce');
