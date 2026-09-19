@@ -119,8 +119,10 @@ restoring the step.
   so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
   device draw can lag if command/effect latency spans the boundary.
 - **`burstRate` floor.** `remainingHours` is floored at 10 minutes for an hour
-  and one minute for a quarter so the burst rate stays finite as the period
-  ends; this is a divisor floor only, unrelated to the drain.
+  and 10 seconds (one meter poll) for a quarter so the burst rate stays finite
+  as the period ends; this is a divisor floor only, unrelated to the drain. A
+  quarter's floor stays short because its pace is capped at the sustainable
+  rate anyway, and a longer floor understates the pace in the final minute.
 
 ## Daily budget is exempt by design
 
