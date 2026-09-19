@@ -59,14 +59,11 @@ export type FlowPort = {
 };
 
 /**
- * Subset of `homey.api` (ManagerApi) the domain uses: emit a realtime UI event,
- * and reach the Homey Energy manager. Like `FlowPort`, a standalone port (only
- * the price/energy consumers need it) — not folded into `HomeyRuntime`. `energy`
- * stays `unknown`: its shape is validated at the read site by `isHomeyEnergyApi`
- * (lib/utils/homeyEnergy). Consumers keep their `typeof …` guards for partial
- * mocks / SDK variance; this port types the happy path.
+ * Subset of `homey.api` (ManagerApi) the domain uses: emit a realtime UI event.
+ * Like `FlowPort`, a standalone port — not folded into `HomeyRuntime`. It has no
+ * `energy` member: the SDK gives apps no Homey Energy manager, so its prices are
+ * read over the Web API (`lib/price/homeyEnergyPriceFetch.ts`).
  */
 export type ApiPort = {
   realtime(event: string, data: unknown): Promise<unknown>;
-  readonly energy?: unknown;
 };

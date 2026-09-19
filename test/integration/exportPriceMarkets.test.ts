@@ -30,7 +30,7 @@ import {
   PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
-import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const TZ = 'Europe/Oslo';
 
@@ -38,7 +38,7 @@ const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceSer
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
-  energyApi ? () => energyApi : undefined,
+  energyApi ?? noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
   noHomeyWebApi,
@@ -137,7 +137,6 @@ describe('Export (feed-in) pricing applied independently of the import scheme', 
             ? { interval: 60, pricesPerInterval: todayIntervals, priceUnit: 'EUR' }
             : { interval: 60, pricesPerInterval: [], priceUnit: 'EUR' }
         )),
-        getCurrency: vi.fn().mockResolvedValue({ currency: 'EUR' }),
       };
       mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
       const service = createService(energyApi);

@@ -1,8 +1,7 @@
 import { getDateKeyInTimeZone, getDateKeyStartMs, getZonedParts, shiftDateKey } from '../utils/dateUtils';
 import { HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys';
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
-import { normalizeError } from '../utils/errorUtils';
-import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
+import { fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
 import { getFlowPricePayload, type FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { getLogger, type StructuredDebugEmitter } from '../logging/logger';
 
@@ -60,8 +59,9 @@ export const shouldUseHomeyEnergyCache = (params: {
 export const fetchHomeyEnergyResults = async (params: {
   energyApi: HomeyEnergyApi;
   info: HomeyEnergyDateInfo;
+  debugStructured: StructuredDebugEmitter;
 }): Promise<HomeyEnergyResults | null> => {
-  const { energyApi, info } = params;
+  const { energyApi, info, debugStructured } = params;
   const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([
     fetchHomeyEnergyPricesForDate({
       api: energyApi,
@@ -74,12 +74,22 @@ export const fetchHomeyEnergyResults = async (params: {
       timeZone: info.timeZone,
     }),
   ]);
-  const logFailure = (dateKey: string, error: unknown) => {
-    const details = formatHomeyEnergyError(error);
-    priceLogger.error({ event: 'homey_prices_fetch_failed', date: dateKey, ...details });
-  };
-  if (todayOutcome.status === 'rejected') logFailure(info.todayKey, todayOutcome.reason);
-  if (tomorrowOutcome.status === 'rejected') logFailure(info.tomorrowKey, tomorrowOutcome.reason);
+  if (todayOutcome.status === 'rejected') {
+    priceLogger.error({
+      event: 'homey_prices_fetch_failed', date: info.todayKey, ...formatHomeyEnergyError(todayOutcome.reason),
+    });
+  }
+  // Homey answers a day it has no prices for yet with an error (HTTP 500
+  // `NotFoundError`), not an empty day, so a rejected tomorrow is the ordinary
+  // state until the day-ahead auction is published. It is judged with a missing
+  // payload in `logHomeyEnergyPayloadStatus`: pending before 13:00, an error after.
+  if (tomorrowOutcome.status === 'rejected') {
+    debugStructured({
+      event: 'homey_prices_tomorrow_fetch_rejected',
+      date: info.tomorrowKey,
+      ...formatHomeyEnergyError(tomorrowOutcome.reason),
+    });
+  }
   if (todayOutcome.status === 'rejected' && tomorrowOutcome.status === 'rejected') return null;
 
   const emptyResult: HomeyEnergyFetchResult = { payload: null, intervalMinutes: null, priceUnit: null };
@@ -118,19 +128,12 @@ export const logHomeyEnergyPayloadStatus = (params: {
   }
 };
 
-export const updateHomeyEnergyCurrency = async (params: {
-  energyApi: HomeyEnergyApi;
-  results: HomeyEnergyResults;
-  writeHomeyPricesCurrency: (unit: string) => void;
-}): Promise<void> => {
-  const { energyApi, results, writeHomeyPricesCurrency } = params;
-  let currency: string | null = null;
-  try {
-    currency = await fetchHomeyEnergyCurrency(energyApi);
-  } catch (error) {
-    priceLogger.error({ event: 'homey_energy_currency_fetch_failed', err: normalizeError(error) });
-  }
-  const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
+/** The currency is the one the price documents are published in. */
+export const updateHomeyEnergyCurrency = (
+  results: HomeyEnergyResults,
+  writeHomeyPricesCurrency: (unit: string) => void,
+): void => {
+  const priceUnit = results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
   if (priceUnit) {
     writeHomeyPricesCurrency(priceUnit);
   }

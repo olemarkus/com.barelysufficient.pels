@@ -46,9 +46,8 @@ const setEnergyPrices = (): void => {
         value: 1,
       })),
     }),
-    getCurrency: async () => ({ currency: 'NOK' }),
   };
-  Object.assign(mockHomeyInstance.api, { energy });
+  mockHomeyInstance.api._dynamicElectricityPrices = energy.fetchDynamicElectricityPrices;
 };
 
 // One recorded generation hour: enough for PvForecastController.isActive()

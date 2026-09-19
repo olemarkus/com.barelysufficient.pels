@@ -12,7 +12,7 @@ import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { mockHomeyInstance } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME } from '../../lib/utils/settingsKeys';
-import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const TZ = 'Europe/Oslo';
 
@@ -20,7 +20,7 @@ const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
-  undefined,
+  noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
   noHomeyWebApi,

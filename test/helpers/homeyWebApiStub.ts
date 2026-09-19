@@ -1,5 +1,7 @@
 import type { HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
 import { HOMEY_PRICE_FORMULA } from '../../lib/utils/settingsKeys';
+import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 
 /**
  * A Homey Web API read that answers everything with `null`.
@@ -22,4 +24,15 @@ export const noHomeyWebApi: HomeyWebApiGet = async () => null;
  */
 export const mirrorNoHomeyPriceFormula = (settings: { set(key: string, value: unknown): void }): void => {
   settings.set(HOMEY_PRICE_FORMULA, { mathExpression: null });
+};
+
+/**
+ * Homey Energy with no prices for any date, for price specs that do not drive
+ * the Homey scheme's day-ahead prices. Homey answers such a date with HTTP 500
+ * `NotFoundError`, so this rejects the same way.
+ */
+export const noHomeyEnergyPrices: HomeyEnergyApi = {
+  fetchDynamicElectricityPrices: async () => {
+    throw new HomeyHttpStatusError(500, '{"error":"NotFoundError","error_description":"NotFoundError"}');
+  },
 };

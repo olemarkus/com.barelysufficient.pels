@@ -31,7 +31,7 @@ describe('startup API calls', () => {
 
   it('does not fetch dynamic electricity prices during startup for non-Homey schemes', async () => {
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
-    fetchDynamicPricesSpy = vi.spyOn(mockHomeyInstance.api.energy, 'fetchDynamicElectricityPrices');
+    fetchDynamicPricesSpy = vi.spyOn(mockHomeyInstance.api, '_dynamicElectricityPrices');
 
     const app = createApp();
     await app.onInit();
@@ -41,7 +41,7 @@ describe('startup API calls', () => {
 
   it('fetches Homey dynamic prices only for today and tomorrow during startup', async () => {
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    fetchDynamicPricesSpy = vi.spyOn(mockHomeyInstance.api.energy, 'fetchDynamicElectricityPrices');
+    fetchDynamicPricesSpy = vi.spyOn(mockHomeyInstance.api, '_dynamicElectricityPrices');
 
     const app = createApp();
     await app.onInit();

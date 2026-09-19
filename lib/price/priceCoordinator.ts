@@ -17,6 +17,7 @@ import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
+import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
 import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUiApi';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -44,12 +45,12 @@ export type PriceCoordinatorDeps = {
   priceOptimizationSettingsStore: PriceOptimizationSettingsStore;
   priceDataStore: PriceDataStore;
   getTimeZone: () => string;
-  getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   /** The Main home's live power tracker, for the Norgespris usage estimates. */
   getPowerTracker: () => import('./priceServiceNorgespris').PowerTrackerReadout;
   /**
-   * Reads Homey's own Web API, for the owner's price formula (see
-   * `PriceService`); supplied by the wiring layer's `homeyWebApiGet`.
+   * Reads Homey's own Web API, for the owner's price formula and Homey
+   * Energy's day-ahead prices (see `PriceService`); supplied by the wiring
+   * layer's `homeyWebApiGet`.
    */
   homeyWebApiGet: import('./homeyPriceFormula').HomeyWebApiGet;
   getCurrentPriceLevel: () => PriceLevel;
@@ -90,7 +91,7 @@ export class PriceCoordinator {
         structuredLog: deps.structuredLog,
       },
       deps.getTimeZone,
-      deps.getHomeyEnergyApi,
+      createHomeyEnergyWebApi(deps.homeyWebApiGet),
       deps.priceDataStore,
       deps.getPowerTracker,
       deps.homeyWebApiGet,

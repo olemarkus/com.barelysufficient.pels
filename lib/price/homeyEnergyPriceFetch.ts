@@ -11,8 +11,24 @@ import {
   HomeyEnergyPriceDocument,
   HomeyEnergyPriceInterval,
   HomeyEnergyPricesResponse,
-  resolveCurrencyLabel,
 } from '../utils/homeyEnergy';
+import type { HomeyWebApiGet } from './homeyWebApiPort';
+
+export const DYNAMIC_PRICES_API_PATH = 'manager/energy/price/electricity/dynamic';
+
+/**
+ * Homey Energy's day-ahead prices, read over Homey's own Web API.
+ *
+ * The apps SDK has no Homey Energy manager: `homey.api.energy` does not exist
+ * on a Homey, only in PELS's old test mock. PELS used to reach the manager
+ * through the `homey-api` package, and when that package went (v1.20.6) the
+ * Homey scheme was left reading an SDK member that was never there, so it
+ * fetched nothing. The route is the one the owner-token reader already serves
+ * the price formula from.
+ */
+export const createHomeyEnergyWebApi = (get: HomeyWebApiGet): HomeyEnergyApi => ({
+  fetchDynamicElectricityPrices: ({ date }) => get(`${DYNAMIC_PRICES_API_PATH}?date=${encodeURIComponent(date)}`),
+});
 
 const normalizeNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -102,6 +118,9 @@ export const normalizeHomeyEnergyPrices = (params: {
   if (!doc || !Array.isArray(doc.pricesPerInterval)) {
     return { payload: null, intervalMinutes: null, priceUnit: null };
   }
+  // The currency the day is priced in; the document is the only place Homey
+  // states it, so an unusable value is no currency rather than a stored one.
+  const priceUnit = typeof doc.priceUnit === 'string' && doc.priceUnit.trim() ? doc.priceUnit.trim() : null;
   const dateKey = getDateKeyInTimeZone(date, timeZone);
   const intervalMinutes = resolveIntervalMinutes(doc);
   const periods = buildPricePeriods(doc.pricesPerInterval, timeZone, dateKey, intervalMinutes);
@@ -114,7 +133,7 @@ export const normalizeHomeyEnergyPrices = (params: {
   const pricesBySlot = toHourlyPeriods(periods, timeZone);
   const isSubHourly = periods.some((period) => period.durationMinutes < DEFAULT_PERIOD_MINUTES);
   if (pricesBySlot.length === 0 && Object.keys(pricesByHour).length === 0) {
-    return { payload: null, intervalMinutes, priceUnit: doc.priceUnit ?? null };
+    return { payload: null, intervalMinutes, priceUnit };
   }
   return {
     payload: {
@@ -125,7 +144,7 @@ export const normalizeHomeyEnergyPrices = (params: {
       updatedAt: new Date().toISOString(),
     },
     intervalMinutes,
-    priceUnit: doc.priceUnit ?? null,
+    priceUnit,
   };
 };
 
@@ -138,10 +157,4 @@ export const fetchHomeyEnergyPricesForDate = async (params: {
   const dateKey = getDateKeyInTimeZone(date, timeZone);
   const response = await api.fetchDynamicElectricityPrices({ date: dateKey });
   return normalizeHomeyEnergyPrices({ response, date, timeZone });
-};
-
-export const fetchHomeyEnergyCurrency = async (api: HomeyEnergyApi): Promise<string | null> => {
-  if (typeof api.getCurrency !== 'function') return null;
-  const raw = await api.getCurrency();
-  return resolveCurrencyLabel(raw);
 };

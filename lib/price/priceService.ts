@@ -83,7 +83,8 @@ export default class PriceService {
     private homey: { settings: SettingsPort; api: ApiPort },
     private readonly sinks: PriceServiceLoggingSinks,
     private getTimeZone: () => string,
-    private getHomeyEnergyApi: (() => HomeyEnergyApi | null) | undefined,
+    /** Homey Energy's day-ahead prices, for the Homey scheme. */
+    private readonly homeyEnergyApi: HomeyEnergyApi,
     private readonly priceDataStore: PriceDataStore,
     /** The Main home's live power tracker, for the Norgespris usage estimates. */
     private readonly getPowerTracker: () => PowerTrackerReadout,
@@ -586,11 +587,6 @@ export default class PriceService {
       this.sinks.debugStructured({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
       return;
     }
-    const energyApi = this.getHomeyEnergyApi?.();
-    if (!energyApi) {
-      this.sinks.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
-      return;
-    }
     // Before the cache check, because the cached path still rebuilds the
     // combined series: a formula the owner changed since the last refresh has
     // to be mirrored even on a day whose raw prices are already stored.
@@ -609,8 +605,9 @@ export default class PriceService {
     }
 
     const results = await fetchHomeyEnergyResults({
-      energyApi,
+      energyApi: this.homeyEnergyApi,
       info,
+      debugStructured: this.sinks.debugStructured,
     });
     if (!results) return;
 
@@ -620,11 +617,7 @@ export default class PriceService {
       debugStructured: this.sinks.debugStructured,
     });
 
-    await updateHomeyEnergyCurrency({
-      energyApi,
-      results,
-      writeHomeyPricesCurrency: (unit) => this.priceDataStore.writeHomeyPricesCurrency(unit),
-    });
+    updateHomeyEnergyCurrency(results, (unit) => this.priceDataStore.writeHomeyPricesCurrency(unit));
     const stored = storeHomeyEnergyPayloads({
       results,
       writeFlowPayload: (key, payload) => this.priceDataStore.writeFlowPayload(key, payload),

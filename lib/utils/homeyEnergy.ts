@@ -1,5 +1,3 @@
-import type { ApiPort } from '../ports/homeyRuntime';
-
 export type HomeyEnergyPriceInterval = {
   periodStart: string;
   periodEnd?: string;
@@ -27,17 +25,13 @@ export type HomeyEnergyPriceDocument = {
 
 export type HomeyEnergyPricesResponse = HomeyEnergyPriceDocument | HomeyEnergyPriceDocument[];
 
-export type HomeyEnergyCurrencyResponse = string | {
-  currency?: string;
-  code?: string;
-  unit?: string;
-  label?: string;
-  name?: string;
-};
-
+/**
+ * Homey Energy's day-ahead prices. The body is untrusted until
+ * `normalizeHomeyEnergyPrices` has read it, so the port promises nothing about
+ * its shape.
+ */
 export type HomeyEnergyApi = {
-  fetchDynamicElectricityPrices: (opts: { date: string }) => Promise<HomeyEnergyPricesResponse>;
-  getCurrency?: () => Promise<HomeyEnergyCurrencyResponse>;
+  fetchDynamicElectricityPrices: (opts: { date: string }) => Promise<unknown>;
 };
 
 type RecordLike = Record<string, unknown>;
@@ -46,60 +40,9 @@ const isRecord = (value: unknown): value is RecordLike => (
   typeof value === 'object' && value !== null
 );
 
-const hasFunction = (value: unknown, key: string): value is RecordLike => (
-  isRecord(value) && typeof value[key] === 'function'
-);
-
-export const isHomeyEnergyApi = (value: unknown): value is HomeyEnergyApi => (
-  hasFunction(value, 'fetchDynamicElectricityPrices')
-);
-
-export const resolveHomeyEnergyApiFromSdk = (homey: { api: ApiPort }): HomeyEnergyApi | null => {
-  const apiContainer = homey.api;
-  if (!isRecord(apiContainer)) return null;
-  const energyApi = apiContainer.energy;
-  return isHomeyEnergyApi(energyApi) ? energyApi : null;
-};
-
-export const resolveCurrencyLabel = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : null;
-  }
-  if (!isRecord(value)) return null;
-  const candidates = [
-    value.currency,
-    value.code,
-    value.unit,
-    value.label,
-    value.name,
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim();
-      if (trimmed) return trimmed;
-    }
-  }
-  return null;
-};
-
-export const formatHomeyEnergyError = (error: unknown): {
-  message: string;
-  statusCode?: number;
-  description?: string;
-  code?: string;
-} => {
-  const baseMessage = error instanceof Error ? error.message : String(error);
-  if (!isRecord(error)) {
-    return { message: baseMessage };
-  }
-  const statusCode = typeof error.statusCode === 'number' ? error.statusCode : undefined;
-  const description = typeof error.description === 'string' && error.description ? error.description : undefined;
-  const code = typeof error.code === 'string' && error.code ? error.code : undefined;
-  return {
-    message: baseMessage,
-    ...(typeof statusCode === 'number' ? { statusCode } : {}),
-    ...(description ? { description } : {}),
-    ...(code ? { code } : {}),
-  };
+/** A Web API rejection carries a status code and the body as its message. */
+export const formatHomeyEnergyError = (error: unknown): { message: string; statusCode?: number } => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!isRecord(error) || typeof error.statusCode !== 'number') return { message };
+  return { message, statusCode: error.statusCode };
 };

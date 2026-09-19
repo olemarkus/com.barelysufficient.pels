@@ -1,7 +1,6 @@
 import { requirePlanService } from './contextGuards';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../../lib/price/priceFlowTags';
-import { resolveHomeyEnergyApiFromSdk } from '../../lib/utils/homeyEnergy';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createHomeyWebApiGet } from '../homeyWebApi';
@@ -13,7 +12,6 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey.settings),
     priceDataStore: createPriceDataStore(ctx.homey.settings),
     getTimeZone: () => ctx.getTimeZone(),
-    getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
     getPowerTracker: () => ctx.powerTracker,
     homeyWebApiGet: createHomeyWebApiGet(),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),

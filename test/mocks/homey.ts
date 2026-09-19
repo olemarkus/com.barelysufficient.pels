@@ -503,10 +503,15 @@ export const mockHomeyInstance = {
   api: {
     getOwnerApiToken: async () => 'mock-token',
     getLocalUrl: async () => 'http://localhost',
-    energy: {
-      fetchDynamicElectricityPrices: async () => ([]),
-      getCurrency: async () => ({ currency: 'NOK' }),
-    },
+    // Homey Energy day-ahead prices served on
+    // `manager/energy/price/electricity/dynamic?date=`, per requested date. The
+    // apps SDK has no `homey.api.energy`; this is the Web API route PELS reads.
+    // A date Homey has no prices for is answered the way the real route answers
+    // it (verified on the SHS 2026-09-19): HTTP 500 `NotFoundError`, not an
+    // empty day. A spec that needs prices serves them.
+    _dynamicElectricityPrices: (async () => {
+      throw new HomeyHttpStatusError(500, '{"error":"NotFoundError","error_description":"NotFoundError"}');
+    }) as (opts: { date: string }) => Promise<unknown>,
     // Homey Energy solar forecast route (fw 13.4.0+): `null` = route missing
     // (pre-13.4.0 firmware — api.get keeps throwing its default not-implemented
     // error, faithful to the real HTML "Cannot GET" rejection); a populated map
@@ -572,6 +577,10 @@ export const mockHomeyInstance = {
       // `_priceUserCosts` to the option body Homey would return.
       if (path === 'manager/energy/price/electricity/dynamic/user-costs') {
         return mockHomeyInstance.api._priceUserCosts;
+      }
+      const dynamicPricesMatch = path.match(/^manager\/energy\/price\/electricity\/dynamic\?date=([0-9-]+)$/);
+      if (dynamicPricesMatch) {
+        return mockHomeyInstance.api._dynamicElectricityPrices({ date: dynamicPricesMatch[1] });
       }
       if (path === 'manager/geolocation/option/location') {
         return {

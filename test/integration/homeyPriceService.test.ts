@@ -25,7 +25,7 @@ import {
   EXPORT_USER_COSTS_API_PATH,
 } from '../../lib/price/homeyExportPrice';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
-import { mirrorNoHomeyPriceFormula, noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { mirrorNoHomeyPriceFormula, noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { captureLogger } from '../utils/loggerCapture';
@@ -79,7 +79,6 @@ describe('Homey price service', () => {
         }
         return { interval: 60, pricesPerInterval: [], priceUnit: 'NOK' };
       }),
-      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -88,7 +87,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -125,7 +124,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -136,26 +135,6 @@ describe('Homey price service', () => {
     expect(energyApi.fetchDynamicElectricityPrices).not.toHaveBeenCalled();
     expect(debugStructured).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_energy_cache_used' }),
-    );
-  });
-
-  it('logs when Homey energy API is unavailable', async () => {
-    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const structuredLog = { info: vi.fn() };
-    const service = new PriceService(
-      mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
-      () => timeZone,
-      () => null,
-      createPriceDataStore(mockHomeyInstance.settings),
-      () => ({}),
-      noHomeyWebApi,
-    );
-
-    await service.refreshSpotPrices(true);
-
-    expect(structuredLog.info).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'homey_energy_api_unavailable' }),
     );
   });
 
@@ -171,7 +150,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -183,7 +162,46 @@ describe('Homey price service', () => {
     capture.restore();
   });
 
-  it('stores only today and uses price unit when currency lookup fails', async () => {
+  // Homey answers a day it has no prices for with HTTP 500 `NotFoundError`
+  // (SHS, 2026-09-19), so an unpublished tomorrow is a rejection, not an empty
+  // day. Before the day-ahead auction it is ordinary; after 13:00 it is one error.
+  it.each([
+    { label: 'before 13:00 it is pending, not an error', utcHour: 8, missingTomorrowLogged: false },
+    { label: 'after 13:00 it is one missing-tomorrow error', utcHour: 14, missingTomorrowLogged: true },
+  ])('treats an unpublished tomorrow as unpublished: $label', async ({ utcHour, missingTomorrowLogged }) => {
+    const now = new Date(Date.UTC(2026, 0, 19, utcHour, 0, 0));
+    vi.useFakeTimers().setSystemTime(now);
+    const todayKey = getDateKeyInTimeZone(now, timeZone);
+    const todayIntervals = buildIntervals(getDateKeyStartMs(todayKey, timeZone), [1.1, 2.2], 60);
+    const energyApi: HomeyEnergyApi = {
+      fetchDynamicElectricityPrices: async ({ date }) => {
+        if (date === todayKey) return { interval: 60, pricesPerInterval: todayIntervals, priceUnit: 'EUR' };
+        throw new HomeyHttpStatusError(500, '{"error":"NotFoundError","error_description":"NotFoundError"}');
+      },
+    };
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+    const capture = captureLogger();
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(),
+      () => timeZone,
+      energyApi,
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+      noHomeyWebApi,
+    );
+
+    await service.refreshSpotPrices(true);
+
+    expect(capture.findEvent('homey_prices_fetch_failed')).toBeUndefined();
+    expect(capture.findEvent('homey_prices_missing_tomorrow') !== undefined).toBe(missingTomorrowLogged);
+    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_PRICES_TOMORROW);
+    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('EUR');
+    capture.restore();
+  });
+
+  it('stores only today and takes the currency from the price document', async () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
@@ -196,18 +214,16 @@ describe('Homey price service', () => {
         }
         return { interval: 60, pricesPerInterval: [] };
       }),
-      getCurrency: vi.fn().mockRejectedValue('nope'),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
     const debugStructured = vi.fn();
     const structuredLog = { info: vi.fn() };
-    const capture = captureLogger();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -215,19 +231,12 @@ describe('Homey price service', () => {
 
     await service.refreshSpotPrices(true);
 
-    const currencyFailure = capture.findEvent('homey_energy_currency_fetch_failed');
-    expect(currencyFailure).toBeDefined();
-    expect((currencyFailure?.err as { message?: string } | undefined)?.message).toBe('nope');
-    expect(debugStructured).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'homey_energy_currency_fetch_failed' }),
-    );
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_PRICES_TOMORROW);
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('NOK');
     expect(structuredLog.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_prices_stored', dayCount: 1 }),
     );
-    capture.restore();
   });
 
   it('logs when no Homey price data is available', async () => {
@@ -242,7 +251,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -272,7 +281,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
       () => timeZone,
-      undefined,
+      noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -309,7 +318,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
       () => timeZone,
-      undefined,
+      noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -360,7 +369,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
       () => timeZone,
-      undefined,
+      noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -393,7 +402,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      undefined,
+      noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -427,7 +436,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      undefined,
+      noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -470,7 +479,6 @@ describe('Homey price service', () => {
           ? { interval: 15, pricesPerInterval: doubled, priceUnit: 'NOK' }
           : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
       )),
-      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -479,7 +487,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -525,7 +533,6 @@ describe('Homey price service', () => {
           ? { interval: 15, pricesPerInterval: intervals, priceUnit: 'NOK' }
           : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
       )),
-      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -535,7 +542,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -575,7 +582,6 @@ describe('Homey price service', () => {
           ? { interval: 15, pricesPerInterval: quarterIntervals, priceUnit: 'NOK' }
           : { interval: 15, pricesPerInterval: [], priceUnit: 'NOK' }
       )),
-      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -584,7 +590,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => energyApi,
+      energyApi,
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       noHomeyWebApi,
@@ -649,7 +655,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(overrides),
       () => timeZone,
-      () => ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
+      ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       homeyWebApiGet,
@@ -877,7 +883,7 @@ describe('Homey price service', () => {
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
       () => timeZone,
-      () => ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
+      ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
       createPriceDataStore(mockHomeyInstance.settings),
       () => ({}),
       webApiGet,

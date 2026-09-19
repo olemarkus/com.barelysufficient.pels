@@ -1,18 +1,14 @@
 import {
-  fetchHomeyEnergyCurrency,
+  createHomeyEnergyWebApi,
   fetchHomeyEnergyPricesForDate,
   normalizeHomeyEnergyPrices,
 } from '../../lib/price/homeyEnergyPriceFetch';
 import { buildFlowDaySlots } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
-  isHomeyEnergyApi,
-  resolveCurrencyLabel,
-  resolveHomeyEnergyApiFromSdk,
   type HomeyEnergyApi,
   type HomeyEnergyPriceInterval,
 } from '../../lib/utils/homeyEnergy';
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
-import type Homey from 'homey';
 
 const buildIntervals = (startUtcMs: number, values: number[], intervalMinutes: number): HomeyEnergyPriceInterval[] => (
   values.map((value, index) => {
@@ -148,7 +144,7 @@ describe('Homey energy price fetch', () => {
     expect(result.priceUnit).toBe('EUR');
   });
 
-  it('calls Homey energy API with date key and resolves currency', async () => {
+  it('calls Homey energy API with the date key', async () => {
     const intervals = buildIntervals(localMidnightUtcMs, [2, 4], 60);
     const api: HomeyEnergyApi = {
       fetchDynamicElectricityPrices: vi.fn().mockResolvedValue({
@@ -156,34 +152,21 @@ describe('Homey energy price fetch', () => {
         pricesPerInterval: intervals,
         priceUnit: 'NOK',
       }),
-      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     const result = await fetchHomeyEnergyPricesForDate({ api, date, timeZone });
-    const currency = await fetchHomeyEnergyCurrency(api);
 
     expect(api.fetchDynamicElectricityPrices).toHaveBeenCalledWith({ date: dateKey });
     expect(result.payload?.pricesByHour['0']).toBeCloseTo(2);
-    expect(currency).toBe('NOK');
+    expect(result.priceUnit).toBe('NOK');
   });
 
-  it('detects Homey energy API implementations', () => {
-    const api: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: async () => ([]),
-    };
-    const homey = { api: { energy: api } } as unknown as Homey.App['homey'];
+  it('reads day-ahead prices from the Web API route for the requested date', async () => {
+    const get = vi.fn().mockResolvedValue({ priceInterval: '60', pricesPerInterval: [], priceUnit: 'EUR' });
 
-    expect(isHomeyEnergyApi(api)).toBe(true);
-    expect(isHomeyEnergyApi({})).toBe(false);
-    expect(resolveHomeyEnergyApiFromSdk(homey)).toBe(api);
-    expect(resolveHomeyEnergyApiFromSdk({} as Homey.App['homey'])).toBeNull();
-  });
-
-  it('normalizes currency labels', () => {
-    expect(resolveCurrencyLabel(' NOK ')).toBe('NOK');
-    expect(resolveCurrencyLabel({ code: 'EUR' })).toBe('EUR');
-    expect(resolveCurrencyLabel({ unit: '' })).toBeNull();
-    expect(resolveCurrencyLabel(null)).toBeNull();
+    await expect(createHomeyEnergyWebApi(get).fetchDynamicElectricityPrices({ date: dateKey }))
+      .resolves.toEqual({ priceInterval: '60', pricesPerInterval: [], priceUnit: 'EUR' });
+    expect(get).toHaveBeenCalledWith(`manager/energy/price/electricity/dynamic?date=${dateKey}`);
   });
 
   it('handles empty or mismatched price data', () => {
@@ -223,13 +206,6 @@ describe('Homey energy price fetch', () => {
     expect(result.priceUnit).toBe('NOK');
     expect(result.payload?.pricesByHour['0']).toBe(1);
     expect(result.payload?.pricesByHour['1']).toBeUndefined();
-  });
-
-  it('returns null currency when api does not expose it', async () => {
-    const api: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: async () => ([]),
-    };
-    await expect(fetchHomeyEnergyCurrency(api)).resolves.toBeNull();
   });
 
   it('preserves 23 exact slots on spring-forward days', () => {

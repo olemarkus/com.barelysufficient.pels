@@ -15,7 +15,7 @@ import {
   NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH,
   NORGESPRIS_TARGET_EX_VAT,
 } from '../../lib/price/norwayPriceDefaults';
-import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const SPOT_PRICE_EX_VAT = 160;
 const GRID_TARIFF_EX_VAT = 28;
@@ -34,7 +34,7 @@ const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => mockHomeyInstance.clock.getTimezone(),
-  undefined,
+  noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings),
   // The live tracker, as these specs seed it: through the mock settings key.
   () => (mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerReadout | null) ?? {},

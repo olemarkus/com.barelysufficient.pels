@@ -2,8 +2,8 @@
 // scheme, proven end-to-end through the full app. Nothing internal is mocked.
 //
 // Raw market prices enter through the REAL external seams — the Norwegian spot
-// fetch over `https` (hvakosterstrommen) and the Homey Energy API
-// (`homey.api.energy`) — drive the real PriceService producer + scheme dispatch +
+// fetch over `https` (hvakosterstrommen) and Homey Energy's day-ahead price
+// route on the Web API — drive the real PriceService producer + scheme dispatch +
 // scheme-independent export decoration, and the only thing asserted is what PELS
 // writes back through the SDK: the persisted `combined_prices` payload.
 //
@@ -64,10 +64,9 @@ const enableExport = (params: { spotFactorPercent: number; fixedInclVat: number 
   mockHomeyInstance.settings.set(EXPORT_FIXED, params.fixedInclVat);
 };
 
-// Install a typed Homey Energy API on the SDK mock so the app's
-// `resolveHomeyEnergyApiFromSdk(homey.api.energy)` resolves the homey-scheme seam.
+// Serve Homey Energy's day-ahead prices on the Web API route the homey scheme reads.
 const setEnergyApi = (energy: HomeyEnergyApi): void => {
-  Object.assign(mockHomeyInstance.api, { energy });
+  mockHomeyInstance.api._dynamicElectricityPrices = energy.fetchDynamicElectricityPrices;
 };
 
 // Boot the app, drive a deterministic forced refresh through the real fetch seam,
@@ -102,7 +101,6 @@ describe('Export (feed-in) pricing per market (SDK-boundary e2e)', () => {
     // Default Homey Energy seam (overridden in the NL cases); default https = no data.
     setEnergyApi({
       fetchDynamicElectricityPrices: async () => ({ interval: 60, pricesPerInterval: [], priceUnit: 'NOK' }),
-      getCurrency: async () => ({ currency: 'NOK' }),
     });
     mockHttpsGet = https.get as unknown as Mock;
     mockHttpsGet.mockReset();
@@ -183,7 +181,6 @@ describe('Export (feed-in) pricing per market (SDK-boundary e2e)', () => {
             ? { interval: 60, pricesPerInterval: intervals, priceUnit: 'EUR' }
             : { interval: 60, pricesPerInterval: [], priceUnit: 'EUR' }
         ),
-        getCurrency: async () => ({ currency: 'EUR' }),
       });
     };
 
