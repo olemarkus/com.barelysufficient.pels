@@ -146,6 +146,7 @@ describe('power tracker integration', () => {
     const nowMs = 1700000000000;
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 1000,
       nowMs,
@@ -169,6 +170,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 3600,
       nowMs: start,
@@ -178,6 +180,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 3600,
       nowMs: start + 20 * 60 * 1000,
@@ -200,6 +203,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 10);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 3_600,
       nowMs: start,
@@ -207,6 +211,7 @@ describe('power tracker integration', () => {
       saveState,
     });
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 3_600,
       nowMs: start + 20 * 60 * 1000,
@@ -229,6 +234,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 1000,
       controlledPowerW: 600,
@@ -239,6 +245,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 1000,
       controlledPowerW: 600,
@@ -261,6 +268,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 1000,
       exemptPowerW: 400,
@@ -271,6 +279,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 1000,
       exemptPowerW: 400,
@@ -292,6 +301,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200, ev: 0 },
@@ -302,6 +312,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200, ev: 0 },
@@ -325,6 +336,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1800 },
@@ -335,6 +347,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1800 },
@@ -358,6 +371,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: { heater: 1200 },
@@ -368,6 +382,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       currentDevicePowerWById: {},
@@ -389,6 +404,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       nowMs: start,
@@ -398,6 +414,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      generationSegments: [],
       state,
       currentPowerW: 2000,
       nowMs: start + 30 * 60 * 1000,

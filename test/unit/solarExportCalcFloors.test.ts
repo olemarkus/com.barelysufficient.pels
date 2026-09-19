@@ -54,6 +54,7 @@ describe('solar-export calculation floors', () => {
   it('recordPowerSample bounds exempt usage by GROSS consumption, not net (no managed leak under solar)', async () => {
     let saved: PowerTrackerState | undefined;
     await recordPowerSample({
+      generationSegments: [],
       state: {} as PowerTrackerState,
       currentPowerW: 500, // net grid import (solar self-consuming)
       grossConsumptionW: 3000, // net + generation = actual consumption

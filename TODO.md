@@ -79,7 +79,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
   bucket goes undelivered
 - **Multi-home and meter areas** — 1: the "no electricity meters" empty state never renders
 - **Solar and surplus** — 2: surplus reachability from resettable accounting; sparse Flow reports
-  mint solar production
+  mint solar export
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
@@ -889,21 +889,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       survive de-opt and clear on observed-on or re-engagement, and it must also suppress generic
       managed-binary restore candidacy. [P1]
 
-- [ ] **Sparse Flow reports mint solar production and export across the gap between them.**
-      `accrueSolarSample` (`lib/power/trackerSolar.ts`) integrates the PREVIOUS held generation
-      across the whole interval to the next sample, and `MAX_SOLAR_ACCRUAL_GAP_MS` is 60 min — so
-      it never trips on a realistic Flow cadence. On the `homey_energy` source the 10 s poll keeps
-      the interval short and the error negligible; on `flow` the sample interval is whatever the
-      user's Flow emits. A home reporting on change with a dead band can go 30 minutes between
-      reports: 7 kW at 12:00, production collapses at 12:01, next report 12:30 → ~3.5 kWh of
-      production accrued that never happened, with the matching error in exported kWh. Both
-      numbers are user-visible on the Usage tab's Solar card and priced by the money lines.
-      Surfaced by Codex (P1) and `pels-runtime-reality` independently on PR #1997, which gives the
-      flow source production parity; the same accrual already backs EXPORT for shipped flow users,
-      so the two candidate fixes are not free: accrue on the generation clock (the companion poll's
-      own 10 s cadence, `lib/power/sources/generationPoll.ts`) rather than the net-sample clock, or
-      tighten the gap ceiling — which changes export accounting for homes already running on flow.
-      Persona: the prosumer on the flow source reading the Solar card (`notes/personas.md`). [P1]
+- [ ] **Sparse Flow reports mint solar export across the gap between them.** Production on the
+      `flow` source now accrues on the generation poll's own clock (`resolveGenerationSegments`,
+      `lib/observer/generationFreshness.ts`), but export still integrates the previous held net
+      across the whole net interval in `accrueSolarSample` (`lib/power/trackerSolar.ts`), as the
+      billed import bucket does. A Flow reporting every 30 min at −5 kW, production collapsing a
+      minute later, shows ~0.1 kWh produced and ~2.5 kWh exported for that hour on the Solar card,
+      and prices the ghost export in the money lines. Change: on a home with no battery (the only
+      thing that can export more than was produced), cap each interval's export accrual at the
+      production the segments observed in it. Done when that scenario accrues exported ≤ produced
+      for the hour, pinned in `test/integration/powerTrackerSolar.test.ts`, with a battery home
+      unchanged. Persona: the prosumer on the flow source reading the Solar card
+      (`notes/personas.md`). [P2]
 
 - [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
       target-power preset, and stays hidden until the next device refetch.** The settings-UI gate

@@ -26,6 +26,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { CapacitySettings } from '../lib/power/capacityModel';
+import type { GenerationSegment } from '../lib/power/trackerTypes';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
 export type PowerSamplePipelineDeps = {
@@ -62,10 +63,18 @@ export type PowerSamplePipelineDeps = {
    * a Flow-reported sample — where the companion generation poll
    * (`GenerationPollSource`) left it in observer state. The FRESHNESS bound is
    * the caller's (`resolveFreshGenerationW`); absent means "not known", never a
-   * stale value inherited into the accrual. Omitted by sub-home pipelines, which
-   * are capacity-only and must not adopt the main home's production.
+   * stale value inherited into the latch. A sub-home reads from a holder
+   * nothing writes, so it never adopts the main home's production.
    */
-  getCoSampledGenerationW?: (nowMs: number) => number | undefined;
+  getCoSampledGenerationW: (nowMs: number) => number | undefined;
+  /**
+   * The production stretches the readings observed up to `nowMs`
+   * (`resolveGenerationSegments`), from the same holder. Generation kWh accrue
+   * from these on every source: the interval being accrued is the one BEFORE
+   * the sample, and after a switch from `flow` it is a sparse Flow interval even
+   * when the sample closing it carries co-temporal generation.
+   */
+  getObservedGenerationSegments: (nowMs: number) => readonly GenerationSegment[];
   /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
    *  power (W, import positive) to the learned PV forecast; no-op when absent. */
   recordPvGenerationSample?: (generationW: number | undefined, nowMs: number, netPowerW?: number) => void;
@@ -115,6 +124,8 @@ type PowerSampleRequest = {
    * observer's held value. Consumers read the flat field and branch on nothing.
    */
   coTemporalGenerationW?: number;
+  /** Production the readings observed up to `nowMs`; accrual's only generation input. */
+  generationSegments: readonly GenerationSegment[];
   meterDeviceId?: string;
 };
 
@@ -123,7 +134,8 @@ const buildPowerSampleRequest = (
   nowMs: number,
   options: PowerSampleOptions,
   revision: number,
-  coSampledGenerationW?: number,
+  coSampledGenerationW: number | undefined,
+  generationSegments: readonly GenerationSegment[],
 ): PowerSampleRequest => {
   // The sample's OWN generation wins: it was read from the same report as this
   // net, so it is co-temporal by construction. The fallback exists for sources
@@ -144,6 +156,7 @@ const buildPowerSampleRequest = (
     currentPowerW,
     nowMs,
     revision,
+    generationSegments,
     ...(generationW !== undefined ? { generationW } : {}),
     ...(ownGenerationW !== undefined ? { coTemporalGenerationW: ownGenerationW } : {}),
     ...(options.meterDeviceId !== undefined
@@ -233,7 +246,12 @@ export class PowerSamplePipeline {
     options: PowerSampleOptions = {},
   ): Promise<PowerSampleAdmission> {
     return this.queue.submit((revision) => buildPowerSampleRequest(
-      currentPowerW, nowMs, options, revision, this.deps.getCoSampledGenerationW?.(nowMs),
+      currentPowerW,
+      nowMs,
+      options,
+      revision,
+      this.deps.getCoSampledGenerationW(nowMs),
+      this.deps.getObservedGenerationSegments(nowMs),
     ));
   }
 
@@ -260,7 +278,7 @@ export class PowerSamplePipeline {
   }
 
   private async runPowerSample(request: PowerSampleRequest): Promise<void> {
-    const { currentPowerW, nowMs, generationW } = request;
+    const { currentPowerW, nowMs, generationW, generationSegments } = request;
     const sampleStart = Date.now();
     // Record gross generation for the learned PV forecast, independent of the
     // capacity/plan path below. `currentPowerW` is the SIGNED net home power
@@ -298,6 +316,7 @@ export class PowerSamplePipeline {
       await recordPowerSampleForApp({
         currentPowerW,
         generationW,
+        generationSegments,
         nowMs,
         capacitySettings,
         timeZone: this.deps.getTimeZone(),

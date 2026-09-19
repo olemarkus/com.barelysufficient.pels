@@ -73,6 +73,20 @@ export type PowerTrackerState = {
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
 };
 
+/**
+ * A stretch of constant gross production (W) that a production reading vouches
+ * for. Structural twin of the observer's `GenerationSegment`
+ * (`lib/observer/generationFreshness.ts`), which produces it: `lib/power` and
+ * `lib/observer` may not import each other (`no-power-to-peer-except-objectives`,
+ * `no-observer-to-peer`), so the shape is declared on both sides and the wiring
+ * layer passes one into the other.
+ */
+export type GenerationSegment = {
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly watts: number;
+};
+
 export type RecordPowerSampleParams = {
   state: PowerTrackerState;
   currentPowerW: number;
@@ -86,12 +100,19 @@ export type RecordPowerSampleParams = {
   grossConsumptionW?: number;
   /**
    * Gross PV generation (W) co-sampled with `currentPowerW`. Producer-resolved:
-   * finite and >= 0, absence = no generation signal for this sample (flow
-   * source, transient SDK failure). Feeds ONLY the sparse solar accounting
-   * families (`generationBuckets` accrual + the `lastGenerationW` latch);
-   * capacity/budget/billed buckets never read it.
+   * finite and >= 0, absence = no generation signal for this sample (no fresh
+   * reading, transient SDK failure). Feeds ONLY the `lastGenerationW` latch —
+   * the live "producing now" reading; kWh accrue from `generationSegments`.
    */
   generationW?: number;
+  /**
+   * Gross production the readings observed, up to this sample. Generation kWh
+   * accrue from these stretches, clipped to the sample interval, never from one
+   * reading held across it: net can arrive sparsely (a Flow card), and a held
+   * reading then mints production that never happened. Empty for a home that
+   * reads no production.
+   */
+  generationSegments: readonly GenerationSegment[];
   controlledPowerW?: number;
   exemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;

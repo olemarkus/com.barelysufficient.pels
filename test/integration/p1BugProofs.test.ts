@@ -308,6 +308,7 @@ describe('P1 bug proofs', () => {
 
     const plannerControlledKw = sumControlledUsageKw([toUsageDevice(planDevice)]);
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 1250,
       nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
       timeZone: 'UTC',

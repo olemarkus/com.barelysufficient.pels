@@ -25,6 +25,7 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
+import type { GenerationSegment } from '../../lib/power/trackerTypes';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 
@@ -33,7 +34,10 @@ type Taps = {
   pvForecast: ReturnType<typeof vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>>;
 };
 
-const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePipeline; taps: Taps } => {
+const buildPipeline = (
+  coSampledGenerationW: number | undefined,
+  observedSegments: readonly GenerationSegment[] = [],
+): { pipeline: PowerSamplePipeline; taps: Taps; getTracker: () => PowerTrackerState } => {
   let powerTracker: PowerTrackerState = {};
   const taps: Taps = {
     curtailment: vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>(),
@@ -87,16 +91,17 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
     getStructuredDebugEmitter: () => vi.fn(),
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,
-    ...(coSampledGenerationW === undefined ? {} : { getCoSampledGenerationW: () => coSampledGenerationW }),
+    getCoSampledGenerationW: () => coSampledGenerationW,
+    getObservedGenerationSegments: () => observedSegments,
   });
-  return { pipeline, taps };
+  return { pipeline, taps, getTracker: () => powerTracker };
 };
 
 describe('PowerSamplePipeline generation co-sampling', () => {
   it("passes a sample's OWN generation to the curtailment estimator", async () => {
     // Read from the same report as the net, so the estimator's net-clock
     // freshness stamp is sound.
-    const { pipeline, taps } = buildPipeline();
+    const { pipeline, taps } = buildPipeline(undefined);
     await pipeline.recordPowerSample(-1_500, T0, { generationW: 7_000 });
 
     expect(taps.curtailment).toHaveBeenCalledWith(-1_500, 7_000, T0);
@@ -117,7 +122,7 @@ describe('PowerSamplePipeline generation co-sampling', () => {
   });
 
   it('reports no generation at all when nothing fresh is held', async () => {
-    const { pipeline, taps } = buildPipeline();
+    const { pipeline, taps } = buildPipeline(undefined);
     await pipeline.recordPowerSample(-1_500, T0);
 
     expect(taps.curtailment).toHaveBeenCalledWith(-1_500, undefined, T0);
@@ -153,5 +158,26 @@ describe('PowerSamplePipeline generation co-sampling', () => {
 
     expect(taps.curtailment).toHaveBeenCalledWith(-1_500, undefined, T0);
     expect(taps.pvForecast).toHaveBeenCalledWith(7_000, T0, -1_500);
+  });
+
+  it('accrues a co-sampled sample from the production observed on the poll clock', async () => {
+    // Flow shape: the held reading says 7 kW, but the poll saw production stop
+    // one minute in. The tracker takes the segments, not the held value.
+    const { pipeline, getTracker } = buildPipeline(7_000, [{ startMs: T0, endMs: T0 + 60_000, watts: 7_000 }]);
+    await pipeline.recordPowerSample(-1_500, T0);
+    await pipeline.recordPowerSample(-1_500, T0 + 30 * 60_000);
+
+    expect(getTracker().generationBuckets?.[new Date(T0).toISOString()]).toBeCloseTo(7 / 60, 6);
+  });
+
+  it('accrues from the observed stretches even when the sample carries its own generation', async () => {
+    // A Flow home switching to homey_energy: the first Homey Energy sample is
+    // co-temporal, but the interval it closes is a sparse Flow one. Holding the
+    // previous 7 kW latch across it would mint ~3.5 kWh; the poll saw one minute.
+    const { pipeline, getTracker } = buildPipeline(7_000, [{ startMs: T0, endMs: T0 + 60_000, watts: 7_000 }]);
+    await pipeline.recordPowerSample(-1_500, T0);
+    await pipeline.recordPowerSample(-1_500, T0 + 30 * 60_000, { generationW: 0 });
+
+    expect(getTracker().generationBuckets?.[new Date(T0).toISOString()]).toBeCloseTo(7 / 60, 6);
   });
 });

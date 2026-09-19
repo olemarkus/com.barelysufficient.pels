@@ -78,6 +78,8 @@ const buildPipeline = (
     planRebuildThrottle: throttle,
     getLatestTargetSnapshot: () => [],
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
+    getCoSampledGenerationW: () => undefined,
+    getObservedGenerationSegments: () => [],
     getStructuredDebugEmitter: () => vi.fn(),
     noteResolvedHomeMeter,
   });

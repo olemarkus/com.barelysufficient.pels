@@ -24,7 +24,7 @@ import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildHomePlanDevices } from '../../setup/homeRuntime/planDevicePrePass';
-import { createHomePowerPipeline } from '../../setup/homeRuntime/createHomePowerPipeline';
+import { createHomePowerPipeline, createUnobservedHomeProduction } from '../../setup/homeRuntime/createHomePowerPipeline';
 import {
   filterDevicesForHome,
   HomeMembershipService,
@@ -363,6 +363,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       executeIntent: () => throttle.execute(),
     });
     const pipeline = createHomePowerPipeline({
+      observedHomePower: createUnobservedHomeProduction(),
       ctx,
       homeId: MAIN_HOME_ID,
       planRebuildThrottle: throttle,

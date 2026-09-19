@@ -241,6 +241,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
 
     const sample = async (nowMs: number): Promise<void> => {
       await recordPowerSampleForApp({
+        generationSegments: [],
         currentPowerW: 1500,
         nowMs,
         timeZone: 'UTC',

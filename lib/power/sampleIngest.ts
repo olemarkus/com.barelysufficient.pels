@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from './tracker';
+import type { GenerationSegment } from './trackerTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw, type CapacitySettings } from './capacityModel';
@@ -187,6 +188,8 @@ export async function recordPowerSampleForApp(params: {
    * which both stay on the net `currentPowerW` (the "split by purpose" rule).
    */
   generationW?: number;
+  /** Production the readings observed up to this sample; see `RecordPowerSampleParams`. */
+  generationSegments: readonly GenerationSegment[];
   nowMs?: number;
   timeZone: string;
   capacitySettings: CapacitySettings;
@@ -258,9 +261,10 @@ export async function recordPowerSampleForApp(params: {
     state: profilingState,
     currentPowerW,
     grossConsumptionW,
-    // Co-sampled gross generation: feeds the sparse solar accounting families
-    // (generationBuckets accrual + lastGenerationW latch) in the tracker.
+    // Co-sampled gross generation: the tracker's live `lastGenerationW` latch.
+    // Generation kWh accrue from the observed stretches beside it.
     generationW,
+    generationSegments: params.generationSegments,
     controlledPowerW,
     exemptPowerW,
     currentDevicePowerWById,

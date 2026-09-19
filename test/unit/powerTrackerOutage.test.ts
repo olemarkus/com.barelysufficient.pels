@@ -32,6 +32,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1200,
             nowMs: time2,
@@ -49,6 +50,7 @@ describe('PowerTracker Outage Tracking', () => {
         const nextTime = now + gapMs;
 
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1200,
             nowMs: nextTime,
@@ -69,6 +71,7 @@ describe('PowerTracker Outage Tracking', () => {
         // First outage
         const time1 = now + 2 * 3600 * 1000;
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1200,
             nowMs: time1,
@@ -82,6 +85,7 @@ describe('PowerTracker Outage Tracking', () => {
         // Normal update
         const time2 = time1 + 10 * 60 * 1000;
         await recordPowerSample({
+            generationSegments: [],
             state: savedState,
             currentPowerW: 1300,
             nowMs: time2,
@@ -95,6 +99,7 @@ describe('PowerTracker Outage Tracking', () => {
         // Second outage
         const time3 = time2 + 3 * 3600 * 1000;
         await recordPowerSample({
+            generationSegments: [],
             state: savedState,
             currentPowerW: 1400,
             nowMs: time3,
@@ -119,6 +124,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1000,
             nowMs: time2,
@@ -141,6 +147,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1000,
             nowMs: time2,
@@ -162,6 +169,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            generationSegments: [],
             state,
             currentPowerW: 1000,
             nowMs: time2,

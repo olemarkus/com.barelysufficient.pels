@@ -529,8 +529,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   // absence-as-absence rules live in trackerSolar.ts.
   accrueSolarSample({
     previousPowerW: previousPower,
-    previousGenerationW: state.lastGenerationW,
-    currentGenerationW,
+    generationSegments: params.generationSegments,
     startTs: previousTs,
     endTs: nowMs,
     exportBuckets: nextExportBuckets,

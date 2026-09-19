@@ -130,7 +130,7 @@ const rebuildAtFirstReading = async (
   rebuildSpy: { mock: { calls: unknown[][] }; mockClear: () => void },
   powerW: number,
 ): Promise<void> => {
-  await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: powerW, nowMs: Date.now(), revision: 0 });
+  await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: powerW, nowMs: Date.now(), revision: 0 });
   expect(rebuildSpy.mock.calls.map((call) => call[0])).toContain('initial');
   rebuildSpy.mockClear();
 };
@@ -1032,7 +1032,7 @@ describe('MyApp initialization', () => {
     app.planEngine.state.actuation.lastRestoreMs = nowMs - 1_000;
     app.planEngine.state.actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
-    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1080,7 +1080,7 @@ describe('MyApp initialization', () => {
     const nowMs = Date.now();
     app.planEngine.state.overshoot.enter(nowMs);
 
-    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
     rebuildSpy.mockRestore();
@@ -1110,8 +1110,8 @@ describe('MyApp initialization', () => {
     app.planEngine.state.overshoot.enter(nowMs);
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
-    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
-    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5150, nowMs: nowMs + 2, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: 5150, nowMs: nowMs + 2, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();

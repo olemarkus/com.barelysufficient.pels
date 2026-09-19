@@ -28,8 +28,8 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import type { CapacitySettings } from '../../lib/power/capacityModel';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
-import { resolveFreshGenerationW } from '../../lib/observer/generationFreshness';
-import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
+import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
+import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
 import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/power/meterSilence';
 
@@ -60,13 +60,12 @@ export type HomePowerPipelineDeps = {
    *  when absent (sub-home pipelines — see the module doc). */
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
-   * Observer's whole-home holder, supplied by the MAIN home only. Its held
-   * production is co-sampled onto samples that carry none of their own — i.e.
-   * Flow-reported ones, since the `homey_energy` poll always supplies its own
-   * from the report it read net from. A sub-home pipeline omits it: those are
-   * capacity-only and must never adopt the main home's production.
+   * Observer's whole-home production holder. The MAIN home passes the one the
+   * production readers write; a sub-home passes {@link createUnobservedHomeProduction},
+   * which no reader writes, so it co-samples and accrues no production.
+   * Sub-homes are capacity-only and must never adopt the main home's production.
    */
-  observedHomePower?: ObservedHomePower;
+  observedHomePower: ObservedHomePower;
   /**
    * Publish the identity of the meter an ingested sample came from, into
    * membership's sampled-meter ownership fence. Only the home whose meter IS
@@ -77,8 +76,18 @@ export type HomePowerPipelineDeps = {
   noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void;
 };
 
+/**
+ * The production holder for a home that has no production reader (a meter
+ * area): nothing writes it, so it answers "no reading" and "no stretches" by
+ * being empty. Constructed here because this factory is the wiring that owns
+ * the observer edge for a home's pipeline.
+ */
+export function createUnobservedHomeProduction(): ObservedHomePower {
+  return new ObservedHomePower();
+}
+
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
-  const { ctx } = deps;
+  const { ctx, observedHomePower } = deps;
   return new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: deps.getPowerTracker,
@@ -102,13 +111,14 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,
-    getCoSampledGenerationW: deps.observedHomePower
-      ? (nowMs) => resolveFreshGenerationW({
-        generationW: deps.observedHomePower?.getGenerationW() ?? null,
-        observedAtMs: deps.observedHomePower?.getGenerationObservedAtMs() ?? null,
-        nowMs,
-      })
-      : undefined,
+    getCoSampledGenerationW: (nowMs) => resolveFreshGenerationW({
+      generationW: observedHomePower.getGenerationW(),
+      observedAtMs: observedHomePower.getGenerationObservedAtMs(),
+      nowMs,
+    }),
+    getObservedGenerationSegments: (nowMs) => (
+      resolveGenerationSegments(observedHomePower.getGenerationReadings(), nowMs)
+    ),
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
     noteResolvedHomeMeter: deps.noteResolvedHomeMeter,

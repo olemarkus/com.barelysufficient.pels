@@ -100,6 +100,7 @@ describe('recordPowerSampleForApp', () => {
     ]);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 1000,
       nowMs: start,
       timeZone: 'UTC',
@@ -116,6 +117,7 @@ describe('recordPowerSampleForApp', () => {
     });
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 1000,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
@@ -157,6 +159,7 @@ describe('recordPowerSampleForApp', () => {
     ]);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 800,
       nowMs: start,
       timeZone: 'UTC',
@@ -173,6 +176,7 @@ describe('recordPowerSampleForApp', () => {
     });
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 800,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
@@ -210,6 +214,7 @@ describe('recordPowerSampleForApp', () => {
     ]);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 800,
       nowMs: start,
       timeZone: 'UTC',
@@ -226,6 +231,7 @@ describe('recordPowerSampleForApp', () => {
     });
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 800,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
@@ -298,6 +304,7 @@ describe('recordPowerSampleForApp', () => {
     ]);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 2500,
       nowMs: start,
       timeZone: 'UTC',
@@ -314,6 +321,7 @@ describe('recordPowerSampleForApp', () => {
 
     observedAtMs = start + 30 * 60 * 1000;
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 2500,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
@@ -353,6 +361,7 @@ describe('recordPowerSampleForApp', () => {
     ]);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 500,
       nowMs: start,
       timeZone: 'UTC',
@@ -369,6 +378,7 @@ describe('recordPowerSampleForApp', () => {
 
     observedAtMs = start + 30 * 60 * 1000;
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 500,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
@@ -392,6 +402,7 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 1000,
       nowMs: start,
       timeZone: 'UTC',
@@ -454,6 +465,7 @@ describe('recordPowerSampleForApp', () => {
     );
 
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 2000,
       nowMs: start,
       timeZone: 'UTC',
@@ -471,6 +483,7 @@ describe('recordPowerSampleForApp', () => {
     currentTemperature = 52;
     observedAtMs = start + 60 * 60 * 1000;
     await recordPowerSampleForApp({
+      generationSegments: [],
       currentPowerW: 2000,
       nowMs: observedAtMs,
       timeZone: 'UTC',
@@ -526,6 +539,7 @@ describe('recordPowerSampleForApp', () => {
     }): Promise<PowerTrackerState> => {
       let tracker: PowerTrackerState = {};
       await recordPowerSampleForApp({
+        generationSegments: [],
         currentPowerW: params.currentPowerW,
         ...(params.generationW !== undefined ? { generationW: params.generationW } : {}),
         nowMs: start,

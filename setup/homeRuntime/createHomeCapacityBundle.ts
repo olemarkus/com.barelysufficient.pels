@@ -60,7 +60,7 @@ import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsSto
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import type { createPlanEngine } from '../appInit/createPlanEngine';
 import { buildHomePlanDevices } from './planDevicePrePass';
-import { createHomePowerPipeline } from './createHomePowerPipeline';
+import { createHomePowerPipeline, createUnobservedHomeProduction } from './createHomePowerPipeline';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import {
   buildHomeCapacityBundleApi,
@@ -392,6 +392,8 @@ function createBundleSamplePipeline(params: {
     noteResolvedHomeMeter: () => {},
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
+    // Nor the main home's production: this home reads none of its own.
+    observedHomePower: createUnobservedHomeProduction(),
   });
   return { pipeline, scheduler, throttle };
 }

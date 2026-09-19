@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from './trackerTypes';
+import type { GenerationSegment, PowerTrackerState } from './trackerTypes';
 import { calculateEnergyAcrossBoundaries } from './trackerEnergy';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
@@ -11,27 +11,30 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
  * - Sparseness invariant: no zero entries are ever created, and a home with
  *   no generation signal / never-negative net never gains a solar key — the
  *   non-solar byte-identity merge gate depends on it.
- * - Generation absence-as-absence: a generation-less sample accrues nothing
- *   and drops the latch (`buildNextPowerState`), so accrual only ever
- *   integrates between two consecutive generation-carrying samples.
- * - Gap guard: even between two carrying samples, accrual is skipped when the
- *   interval exceeds {@link MAX_SOLAR_ACCRUAL_GAP_MS} — a silent multi-hour
- *   gap would otherwise mint the held reading across the whole gap (e.g. an
- *   8 h outage at 5 kW → 40 kWh of ghost generation, priced into the money
- *   lines). Together these keep produced/exported kWh an honest floor.
+ * - Generation from observed stretches only: production accrues from the
+ *   stretches the production readings vouch for (`GenerationSegment`), never
+ *   from one reading held across the sample interval. Net can arrive sparsely
+ *   (a Flow card firing every 30 min), and a held reading then mints
+ *   production that never happened. Each stretch is already bounded by the
+ *   reading after it or its freshness window, so production needs no gap guard.
+ * - Gap guard (export): export accrual is skipped when the interval exceeds
+ *   {@link MAX_SOLAR_ACCRUAL_GAP_MS} — a silent multi-hour gap would otherwise
+ *   mint the held net across the whole gap (e.g. an 8 h outage at −3 kW → 24 kWh
+ *   of ghost export, priced into the money lines). Together these keep
+ *   produced/exported kWh an honest floor.
  */
 
 /**
  * Producer-resolved gross generation for a sample; `undefined` = no signal.
  * Finiteness-gated at this persistence boundary so junk can never latch into
- * `lastGenerationW` or accrue kWh.
+ * `lastGenerationW`, the live "producing now" reading the settings UI shows.
  */
 export const resolveSampleGenerationW = (generationW: unknown): number | undefined => (
   isFiniteNumber(generationW) ? Math.max(0, generationW) : undefined
 );
 
 /**
- * Longest sample interval the solar families will integrate across — the same
+ * Longest sample interval export will integrate across — the same
  * 60-minute rule `resolveUnreliablePeriods` uses to flag a gap as unreliable.
  * The billed import bucket integrates such gaps anyway and FLAGS them via
  * `unreliablePeriods`; the solar families have no unreliable flag of their own
@@ -45,23 +48,23 @@ export const resolveSampleGenerationW = (generationW: unknown): number | undefin
 const MAX_SOLAR_ACCRUAL_GAP_MS = 60 * 60 * 1000;
 
 /**
- * Accrues the held sample's export and generation energy over
- * [startTs, endTs] into the solar bucket maps.
+ * Accrues the interval [startTs, endTs] into the solar bucket maps.
  *
  * EXPORT: the integral of max(0, −net). `lastPowerW` deliberately keeps the
  * SIGNED net value (the billed total bucket floors it at 0 — see the clamp in
  * `recordPowerSample`), so a negative held sample IS grid export. Within a
  * normally-sampled interval, importKWh − exportKWh ≡ net energy by
  * construction (see the gap trade-off on {@link MAX_SOLAR_ACCRUAL_GAP_MS}).
+ * Export stays on the net clock because it is the complement of the billed
+ * import bucket, which integrates the same held net.
  *
- * GENERATION: the held generation reading, only when BOTH the previous latch
- * and the incoming sample are finite; zero-generation intervals (night) are
- * skipped so the family stays sparse.
+ * GENERATION: the observed production stretches, clipped to the interval.
+ * Zero-generation intervals (night) produce no stretch, so the family stays
+ * sparse.
  */
 export const accrueSolarSample = (params: {
   previousPowerW: number;
-  previousGenerationW: PowerTrackerState['lastGenerationW'];
-  currentGenerationW: number | undefined;
+  generationSegments: readonly GenerationSegment[];
   startTs: number;
   endTs: number;
   exportBuckets: Map<string, number>;
@@ -69,13 +72,13 @@ export const accrueSolarSample = (params: {
 }): void => {
   const {
     previousPowerW,
-    previousGenerationW,
-    currentGenerationW,
+    generationSegments,
     startTs,
     endTs,
     exportBuckets,
     generationBuckets,
   } = params;
+  accrueGenerationSegments(generationSegments, startTs, endTs, generationBuckets);
   if (endTs - startTs > MAX_SOLAR_ACCRUAL_GAP_MS) return;
   const exportPowerW = Math.max(0, -previousPowerW);
   if (exportPowerW > 0) {
@@ -88,12 +91,28 @@ export const accrueSolarSample = (params: {
       budgetKWh: null,
     });
   }
-  const heldGenerationW = resolveSampleGenerationW(previousGenerationW);
-  if (heldGenerationW !== undefined && heldGenerationW > 0 && currentGenerationW !== undefined) {
+};
+
+/**
+ * Integrates each production stretch, clipped to the sample interval
+ * [startTs, endTs], into the generation buckets. Clipping is what keeps two
+ * consecutive samples from counting the same stretch twice: the history handed
+ * over can reach back past this interval's start.
+ */
+const accrueGenerationSegments = (
+  segments: readonly GenerationSegment[],
+  startTs: number,
+  endTs: number,
+  generationBuckets: Map<string, number>,
+): void => {
+  for (const segment of segments) {
+    const segmentStartTs = Math.max(segment.startMs, startTs);
+    const segmentEndTs = Math.min(segment.endMs, endTs);
+    if (segmentEndTs <= segmentStartTs) continue;
     calculateEnergyAcrossBoundaries({
-      startTs,
-      endTs,
-      powerW: heldGenerationW,
+      startTs: segmentStartTs,
+      endTs: segmentEndTs,
+      powerW: segment.watts,
       buckets: generationBuckets,
       budgets: new Map(),
       budgetKWh: null,

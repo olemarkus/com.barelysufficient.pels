@@ -2,6 +2,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import { aggregateAndPruneHistory, recordPowerSample } from '../../lib/power/tracker';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import type { GenerationSegment } from '../../lib/power/trackerTypes';
 
 // PR-5 solar visibility: tracker-side accounting for the sparse
 // generation/export bucket families. The non-solar byte-identity suite below
@@ -36,6 +37,7 @@ const makeRecorder = () => {
       nowMs,
       rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
       saveState,
+      generationSegments: [],
       ...overrides,
     });
   };
@@ -48,12 +50,14 @@ const makeRecorder = () => {
 const ingestForApp = async (
   tracker: PowerTrackerState,
   nowMs: number,
-  generationW?: number,
+  generationW: number | undefined,
+  generationSegments: readonly GenerationSegment[],
 ): Promise<PowerTrackerState> => {
   let saved: PowerTrackerState = tracker;
   await recordPowerSampleForApp({
     currentPowerW: 500,
     generationW,
+    generationSegments,
     nowMs,
     timeZone: 'UTC',
     capacitySettings: { limitKw: 10, marginKw: 0.5, periodMinutes: 60 },
@@ -122,64 +126,52 @@ describe('power tracker solar accounting', () => {
   });
 
   describe('gap guard (ghost-kWh probe)', () => {
-    it('mints nothing across a multi-hour silent gap between two generation-bearing samples', async () => {
-      // Adversarial probe: 5 kW production + 3 kW export held across an 8 h
-      // silent gap (below the 48 h reset) used to integrate the whole gap —
-      // 40 kWh ghost generation and 24 kWh ghost export, priced straight into
-      // the money lines. Solar accrual must skip any interval over 60 min
-      // (the same rule resolveUnreliablePeriods uses to flag the billed
-      // bucket as unreliable).
+    it('mints no export across a multi-hour silent gap', async () => {
+      // Adversarial probe: 3 kW export held across an 8 h silent gap (below
+      // the 48 h reset) used to integrate the whole gap — 24 kWh ghost export,
+      // priced straight into the money lines. Export accrual must skip any
+      // interval over 60 min (the same rule resolveUnreliablePeriods uses to
+      // flag the billed bucket as unreliable). Production needs no such guard:
+      // it accrues only what the readings observed.
       const { state, record } = makeRecorder();
       const start = Date.UTC(2025, 5, 1, 8, 0, 0);
       await record(-3000, start, { generationW: 5000 });
       await record(-3000, start + 8 * 60 * 60 * 1000, { generationW: 5000 });
       expect('generationBuckets' in state).toBe(false);
       expect('exportBuckets' in state).toBe(false);
-      // The latch still moves with the sample, so normal accrual resumes after.
-      expect(state.lastGenerationW).toBe(5000);
-      await record(-3000, start + 8 * 60 * 60 * 1000 + 30 * 60 * 1000, { generationW: 5000 });
-      expect(state.generationBuckets?.[isoHour(start + 8 * 60 * 60 * 1000)]).toBeCloseTo(2.5, 6);
+      // Normal accrual resumes after the gap.
+      await record(-3000, start + 8 * 60 * 60 * 1000 + 30 * 60 * 1000);
       expect(state.exportBuckets?.[isoHour(start + 8 * 60 * 60 * 1000)]).toBeCloseTo(1.5, 6);
     });
 
     it('still accrues a full-hour interval (the boundary of the gap rule)', async () => {
       const { state, record } = makeRecorder();
       const start = Date.UTC(2025, 5, 1, 8, 0, 0);
-      await record(-1000, start, { generationW: 1000 });
-      await record(-1000, start + 60 * 60 * 1000, { generationW: 1000 });
-      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(1, 6);
+      await record(-1000, start);
+      await record(-1000, start + 60 * 60 * 1000);
       expect(state.exportBuckets?.[isoHour(start)]).toBeCloseTo(1, 6);
     });
   });
 
-  describe('generation accrual', () => {
-    it('accrues the held generation between two finite-generation samples', async () => {
+  describe('generation latch', () => {
+    it('latches the sample reading without accruing kWh from it', async () => {
+      // The latch is the live "producing now" reading. Holding it across the
+      // interval is exactly what minted production on sparse Flow feeds, so
+      // kWh come only from observed stretches.
       const { state, record } = makeRecorder();
       const start = Date.UTC(2025, 5, 1, 10, 0, 0);
       await record(200, start, { generationW: 500 });
-      expect(state.lastGenerationW).toBe(500);
-      // Reset path (first sample): latch only, no accrual.
-      expect('generationBuckets' in state).toBe(false);
       await record(200, start + 30 * 60 * 1000, { generationW: 1000 });
-      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(0.25, 6);
       expect(state.lastGenerationW).toBe(1000);
+      expect('generationBuckets' in state).toBe(false);
     });
 
-    it('accrues nothing across a generation-less sample and clears the latch — no back-fill', async () => {
+    it('drops the latch on a generation-less sample', async () => {
       const { state, record } = makeRecorder();
       const start = Date.UTC(2025, 5, 1, 10, 0, 0);
       await record(200, start, { generationW: 1000 });
-      await record(200, start + 10 * 60 * 1000, { generationW: 1000 });
-      const accruedSoFar = state.generationBuckets?.[isoHour(start)];
-      expect(accruedSoFar).toBeCloseTo(1 / 6, 6);
-      // Generation-less middle sample: no accrual, latch dropped.
-      await record(200, start + 20 * 60 * 1000);
-      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(accruedSoFar ?? 0, 9);
+      await record(200, start + 10 * 60 * 1000);
       expect('lastGenerationW' in state).toBe(false);
-      // Generation returns: still no accrual for the gap (no back-fill), latch re-set.
-      await record(200, start + 30 * 60 * 1000, { generationW: 800 });
-      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(accruedSoFar ?? 0, 9);
-      expect(state.lastGenerationW).toBe(800);
     });
 
     it('ignores a non-finite generation reading (boundary gate)', async () => {
@@ -191,13 +183,77 @@ describe('power tracker solar accounting', () => {
       expect('lastGenerationW' in state).toBe(false);
       expect('generationBuckets' in state).toBe(false);
     });
+  });
 
-    it('skips zero-generation intervals so night hours stay sparse', async () => {
+  describe('generation accrual from observed stretches', () => {
+    const MINUTE = 60 * 1000;
+    const segment = (startMs: number, endMs: number, watts: number) => ({ startMs, endMs, watts });
+
+    it('accrues what the poll saw, not the held reading, across a sparse Flow interval', async () => {
+      // The ghost-production case: 7 kW at 12:00, production collapses at
+      // 12:01, the next Flow report lands at 12:30. Holding the 12:00 reading
+      // minted ~3.5 kWh; the poll's readings show one minute of it.
       const { state, record } = makeRecorder();
-      const start = Date.UTC(2025, 5, 1, 1, 0, 0);
-      await record(200, start, { generationW: 0 });
-      await record(200, start + 30 * 60 * 1000, { generationW: 0 });
-      expect(state.lastGenerationW).toBe(0);
+      const start = Date.UTC(2025, 5, 1, 12, 0, 0);
+      await record(-2000, start, { generationW: 7000 });
+      await record(500, start + 30 * MINUTE, {
+        generationW: 0,
+        generationSegments: [segment(start, start + MINUTE, 7000)],
+      });
+      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(7 / 60, 6);
+      // Export stays on the net clock, the complement of the billed import
+      // bucket that integrates the same held net.
+      expect(state.exportBuckets?.[isoHour(start)]).toBeCloseTo(1, 6);
+    });
+
+    it('clips the history to the interval so consecutive samples never count a stretch twice', async () => {
+      const { state, record } = makeRecorder();
+      const start = Date.UTC(2025, 5, 1, 12, 0, 0);
+      const steady = [segment(start - 10 * MINUTE, start + 20 * MINUTE, 6000)];
+      await record(200, start, { generationSegments: steady });
+      await record(200, start + 10 * MINUTE, { generationSegments: steady });
+      await record(200, start + 20 * MINUTE, { generationSegments: steady });
+      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(2, 6);
+    });
+
+    it('accrues across a sample that carries no fresh reading', async () => {
+      // With the latch, a generation-less sample dropped the interval before
+      // it. The segments already say what was produced in it.
+      const { state, record } = makeRecorder();
+      const start = Date.UTC(2025, 5, 1, 12, 0, 0);
+      await record(200, start);
+      await record(200, start + 30 * MINUTE, { generationSegments: [segment(start, start + 6 * MINUTE, 5000)] });
+      expect(state.generationBuckets?.[isoHour(start)]).toBeCloseTo(0.5, 6);
+      expect('lastGenerationW' in state).toBe(false);
+    });
+
+    it('splits a stretch across an hour boundary', async () => {
+      const { state, record } = makeRecorder();
+      const start = Date.UTC(2025, 5, 1, 12, 50, 0);
+      await record(200, start);
+      await record(200, start + 20 * MINUTE, { generationSegments: [segment(start, start + 20 * MINUTE, 3000)] });
+      expect(state.generationBuckets?.[isoHour(Date.UTC(2025, 5, 1, 12))]).toBeCloseTo(0.5, 6);
+      expect(state.generationBuckets?.[isoHour(Date.UTC(2025, 5, 1, 13))]).toBeCloseTo(0.5, 6);
+    });
+
+    it('accrues observed production across a net gap the export guard skips', async () => {
+      // Production was read throughout, so it needs no gap guard; export is
+      // still held net and stays under the 60-minute rule.
+      const { state, record } = makeRecorder();
+      const start = Date.UTC(2025, 5, 1, 11, 0, 0);
+      await record(-2000, start);
+      await record(-2000, start + 90 * MINUTE, {
+        generationSegments: [segment(start + 60 * MINUTE, start + 90 * MINUTE, 4000)],
+      });
+      expect(state.generationBuckets?.[isoHour(start + 60 * MINUTE)]).toBeCloseTo(2, 6);
+      expect('exportBuckets' in state).toBe(false);
+    });
+
+    it('creates no generation key when every stretch is outside the interval', async () => {
+      const { state, record } = makeRecorder();
+      const start = Date.UTC(2025, 5, 1, 12, 0, 0);
+      await record(200, start);
+      await record(200, start + 10 * MINUTE, { generationSegments: [segment(start - 5 * MINUTE, start, 4000)] });
       expect('generationBuckets' in state).toBe(false);
     });
   });
@@ -316,15 +372,16 @@ describe('power tracker solar accounting', () => {
   });
 
   describe('sample ingest passthrough', () => {
-    it('carries generationW through recordPowerSampleForApp into the tracker state', async () => {
+    it('carries generation and its stretches through recordPowerSampleForApp into the tracker state', async () => {
       const start = Date.UTC(2025, 5, 1, 12, 0, 0);
+      const observed = [{ startMs: start, endMs: start + 30 * 60 * 1000, watts: 2000 }];
       let tracker: PowerTrackerState = {};
-      tracker = await ingestForApp(tracker, start, 2000);
+      tracker = await ingestForApp(tracker, start, 2000, observed);
       expect(tracker.lastGenerationW).toBe(2000);
-      tracker = await ingestForApp(tracker, start + 30 * 60 * 1000, 2000);
+      tracker = await ingestForApp(tracker, start + 30 * 60 * 1000, 2000, observed);
       expect(tracker.generationBuckets?.[isoHour(start)]).toBeCloseTo(1, 6);
       // Generation-less ingest drops the latch.
-      tracker = await ingestForApp(tracker, start + 40 * 60 * 1000);
+      tracker = await ingestForApp(tracker, start + 40 * 60 * 1000, undefined, observed);
       expect('lastGenerationW' in tracker).toBe(false);
     });
   });
