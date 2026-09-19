@@ -112,6 +112,27 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
+  it('fetches prices when the owner changes price source', async () => {
+    // A new source has nothing mirrored yet — on Homey Energy the price
+    // formula and the feed-in terms both arrive by fetch. Rebuilding alone
+    // would leave the home unpriced until the next three-hourly refresh.
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_scheme');
+
+    expect(deps.priceService.refreshSpotPrices).toHaveBeenCalledWith(true);
+  });
+
+  it('fetches Homey terms when the owner changes export price source', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('export_price_source');
+
+    expect(deps.priceService.refreshSpotPrices).toHaveBeenCalledWith(true);
+  });
+
   it('handles mode target updates and rebuilds', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);

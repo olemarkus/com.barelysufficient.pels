@@ -10,7 +10,9 @@
  */
 
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, PRICE_SCHEME } from '../utils/settingsKeys';
+import {
+  EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, HOMEY_PRICE_FORMULA, PRICE_SCHEME,
+} from '../utils/settingsKeys';
 import {
   isExportPriceSourceSetting,
   readExportPriceSourceSetting,
@@ -19,10 +21,12 @@ import type { CombinedPricePeriod } from './priceTypes';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import type { HomeyWebApiGet } from './homeyWebApiPort';
 import {
+  readStoredPriceFormula,
   resolveHomeyPriceSeries,
   syncHomeyPriceFormula,
   type HomeyPriceResolution,
 } from './homeyPriceFormula';
+import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUiApi';
 import {
   hasMirroredExportTerms, readExportTerms, resolveHomeyExportPrice, syncHomeyExportTerms,
 } from './homeyExportPrice';
@@ -149,4 +153,50 @@ export const keepsPersistedPrices = (
   if (!rebuildLostEntries()) return false;
   sinks.debugStructured({ event: 'combined_prices_rebuild_kept_cache', reasonCode: 'lost_actionable_entries' });
   return true;
+};
+
+/**
+ * How the owner's Homey price setup looks from the settings UI.
+ *
+ * The UI cannot read the mirror itself — it holds runtime bytes with a runtime
+ * read policy — and a home with no prices otherwise shows an unexplained
+ * blank. This resolves the state here, in the module that owns it, and the UI
+ * only chooses words for it.
+ */
+export const resolveHomeyPriceFormulaUiStatus = (
+  settings: SettingsPort,
+  resolution: HomeyPriceResolution,
+): HomeyPriceFormulaUiStatus => {
+  const scheme = settings.get(PRICE_SCHEME);
+  // A listed scheme key that reads back unusable settles nothing — and saying
+  // "none" there would hide the very explanation this status exists to give,
+  // on a page the owner is looking at because prices are blank.
+  if (scheme !== 'homey') {
+    const unreadable = (scheme === undefined || scheme === null)
+      && settings.getKeys().includes(PRICE_SCHEME);
+    return unreadable ? { kind: 'unknown' } : { kind: 'none' };
+  }
+  const stored = readStoredPriceFormula(settings);
+  const expression = stored.kind === 'unsupported' ? stored.expression : '';
+  if (stored.kind === 'unsupported') return { kind: 'unsupported', expression };
+  // The live verdict, not merely whether the text parsed: a formula can compile
+  // and still price no hour at all, and the owner sees the same blank series.
+  if (resolution.verdict === 'unpriceable' && resolution.reasonCode === 'nothing_priced') {
+    return { kind: 'prices_nothing', expression: storedExpression(settings) };
+  }
+  if (resolution.verdict === 'undecided' || stored.kind === 'unknown' || stored.kind === 'unreadable') {
+    return { kind: 'unknown' };
+  }
+  return stored.kind === 'compiled' ? { kind: 'applied' } : { kind: 'none' };
+};
+
+/** The mirrored expression as written, for a message that quotes it back. */
+const storedExpression = (settings: SettingsPort): string => {
+  const stored = readStoredPriceFormula(settings);
+  if (stored.kind === 'unsupported') return stored.expression;
+  const raw = settings.get(HOMEY_PRICE_FORMULA);
+  const mathExpression = typeof raw === 'object' && raw !== null
+    ? (raw as { mathExpression?: unknown }).mathExpression
+    : null;
+  return typeof mathExpression === 'string' ? mathExpression : '';
 };

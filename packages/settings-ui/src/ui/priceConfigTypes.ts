@@ -20,6 +20,12 @@ export type HomeyStatus = {
   currencyTone: StatusTone;
   today: StatusValue;
   tomorrow: StatusValue;
+  /**
+   * Why prices are unavailable, when they are. `null` whenever PELS can work
+   * out this home's prices — including the ordinary case of a home whose owner
+   * has entered no costs in Homey at all.
+   */
+  priceSetupIssue: { value: StatusValue; detail: string } | null;
 };
 
 export type PriceOptDevice = {

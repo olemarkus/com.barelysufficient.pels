@@ -18,8 +18,8 @@ import {
 } from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
+import { hasHomeyPriceFormulaSeam, hasPvForecastSourceSeam } from './settingsUiStatusSeams';
 import type {
-  PvForecastSourceUiStatus,
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceDiagnosticsResponse,
@@ -80,22 +80,6 @@ type SettingsUiApiApp = Homey.App & {
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
 };
-
-/**
- * The PV-forecast provenance seam the running app exposes (`AppContext`
- * declares it required, so the real app always has it). `homey.app` is typed as
- * the SDK's base `App`, so its presence is still a runtime question here — this
- * is the boundary that shape-guards it once and answers a typed status, rather
- * than letting an optional method and a nullable return travel inward.
- */
-type PvForecastSourceSeam = { getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus };
-
-const hasPvForecastSourceSeam = (app: unknown): app is PvForecastSourceSeam => (
-  typeof app === 'object'
-  && app !== null
-  && 'getPvForecastSourceUiStatus' in app
-  && typeof app.getPvForecastSourceUiStatus === 'function'
-);
 
 /**
  * The Main home's capacity-peak seam (`AppContext` declares it required). Same
@@ -468,6 +452,9 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     homeyTomorrow: homey.settings.get('homey_prices_tomorrow') as unknown ?? null,
     pvForecastSource: hasPvForecastSourceSeam(app)
       ? app.getPvForecastSourceUiStatus()
+      : { kind: 'unknown' },
+    homeyPriceFormula: hasHomeyPriceFormulaSeam(app)
+      ? app.getHomeyPriceFormulaUiStatus()
       : { kind: 'unknown' },
   };
 };

@@ -46,11 +46,61 @@ describe('compilePriceFormula', () => {
     expect(evaluate('{{ (0.4 + [[price]]) * 1.25 }}', -0.6)).toBeCloseTo(-0.25, 10);
   });
 
+  describe('the functions a formula may call', () => {
+    // Every expectation here is the value mathjs 7.6.0 — the build Homey
+    // itself evaluates with — returned for the same expression. They are the
+    // contract: a function that merely looks right turns a rounding difference
+    // into a wrong price.
+    it('matches mathjs for min, max and abs', () => {
+      expect(evaluate('{{ min(3, 1, 2) }}', 0)).toBe(1);
+      expect(evaluate('{{ max(3, 1, 2) }}', 0)).toBe(3);
+      expect(evaluate('{{ abs(-2) }}', 0)).toBe(2);
+      expect(evaluate('{{ max([[price]], 0) }}', -0.4)).toBe(0);
+    });
+
+    it('matches mathjs for floor and ceil on negatives', () => {
+      expect(evaluate('{{ floor(-1.5) }}', 0)).toBe(-2);
+      expect(evaluate('{{ ceil(-1.5) }}', 0)).toBe(-1);
+    });
+
+    it('rounds half away from zero, as mathjs does and Math.round does not', () => {
+      // Math.round(-0.5) is -0 and Math.round(-2.5) is -2; Homey says -1 and -3.
+      expect(evaluate('{{ round(-0.5) }}', 0)).toBe(-1);
+      expect(evaluate('{{ round(-2.5) }}', 0)).toBe(-3);
+      expect(evaluate('{{ round(0.5) }}', 0)).toBe(1);
+      expect(evaluate('{{ round(2.5) }}', 0)).toBe(3);
+    });
+
+    it('refuses the precision form of round rather than approximate it', () => {
+      // The obvious implementation (shift, round, shift back) disagreed with
+      // mathjs on 90 of 18003 values. No price beats a subtly wrong one.
+      expect(compilePriceFormula('{{ round([[price]], 2) }}')).toBeNull();
+    });
+
+    it('refuses a function it has not verified', () => {
+      expect(compilePriceFormula('{{ sqrt([[price]]) }}')).toBeNull();
+      expect(compilePriceFormula('{{ log([[price]]) }}')).toBeNull();
+    });
+
+    it('refuses a call with no arguments or an unclosed one', () => {
+      expect(compilePriceFormula('{{ min() }}')).toBeNull();
+      expect(compilePriceFormula('{{ min(1, 2 }}')).toBeNull();
+    });
+
+    it('nests calls and arithmetic the way an owner would write them', () => {
+      // "never pay me less than nothing, and take 10% off the rest"
+      expect(evaluate('{{ max(0, [[price]] * 0.9) }}', 2)).toBeCloseTo(1.8, 10);
+      expect(evaluate('{{ max(0, [[price]] * 0.9) }}', -1)).toBe(0);
+      expect(evaluate('{{ min(max([[price]], 0.1), 5) }}', 0.05)).toBeCloseTo(0.1, 10);
+    });
+  });
+
   it('does not compile an expression naming something it cannot resolve', () => {
     // Homey's free Formula mode accepts any mathjs expression; anything this
-    // evaluator cannot reproduce must refuse rather than guess.
-    expect(compilePriceFormula('{{ max([[price]], 0) }}')).toBeNull();
+    // evaluator cannot reproduce must refuse rather than guess. `max` used to
+    // be such a case and is now verified — see the function specs below.
     expect(compilePriceFormula('{{ [[price]] * vat }}')).toBeNull();
+    expect(compilePriceFormula('{{ [[price]] * tomorrow }}')).toBeNull();
   });
 
   it('does not compile malformed or empty input', () => {

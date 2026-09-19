@@ -17,6 +17,8 @@ import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
+import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
+import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUiApi';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, type CombinedPricePeriod, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
@@ -292,6 +294,18 @@ export class PriceCoordinator {
     missingHours: number[];
   } {
     return this.priceService.storeFlowPriceData(kind, raw);
+  }
+
+  /**
+   * Why the settings UI may be showing no prices: the live verdict from the
+   * series the planner is actually using, not merely whether the owner's
+   * formula parsed.
+   */
+  getHomeyPriceFormulaUiStatus(): HomeyPriceFormulaUiStatus {
+    return resolveHomeyPriceFormulaUiStatus(
+      this.deps.homey.settings,
+      this.priceService.resolveHomeyPricePeriods(),
+    );
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {

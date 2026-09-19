@@ -433,7 +433,7 @@ export default class PriceService {
    * "what are the prices" and "can this home be priced at all", so the two can
    * never disagree.
    */
-  private resolveHomeyPricePeriods(): HomeyPriceResolution {
+  resolveHomeyPricePeriods(): HomeyPriceResolution {
     const raw = this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
     return resolveHomeySeries(raw, this.homey.settings);
   }

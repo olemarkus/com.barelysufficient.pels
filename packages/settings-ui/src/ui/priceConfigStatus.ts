@@ -51,6 +51,44 @@ export const buildFlowStatus = (pricesPayload: SettingsUiPricesPayload): FlowSta
   return { today: todayStatus, tomorrow: tomorrowStatus };
 };
 
+/**
+ * What to tell the owner about Homey's price setup.
+ *
+ * Only the two states that leave the home with NO prices say anything — the
+ * rest is working, and a status row for "everything is fine" is noise. The
+ * copy names what the owner can actually do about it, in Homey's own words
+ * ("Energy > Electricity"), because the fix is there and not in PELS.
+ */
+const buildPriceSetupIssue = (
+  status: SettingsUiPricesPayload['homeyPriceFormula'] | undefined,
+): HomeyStatus['priceSetupIssue'] => {
+  if (status?.kind === 'unsupported') {
+    return {
+      value: { text: 'Not usable', tone: 'warn' },
+      detail: 'Your price setup in Homey uses something PELS can’t work out '
+        + `(${status.expression}). Prices are paused until it’s simplified `
+        + 'under Energy > Electricity in Homey.',
+    };
+  }
+  if (status?.kind === 'prices_nothing') {
+    return {
+      value: { text: 'No usable prices', tone: 'warn' },
+      detail: `Your price setup in Homey (${status.expression}) doesn’t produce a `
+        + 'usable price for any hour right now, so prices are paused. Check it '
+        + 'under Energy > Electricity in Homey.',
+    };
+  }
+  if (status?.kind === 'unknown') {
+    return {
+      value: { text: 'Not read yet', tone: 'warn' },
+      detail: 'PELS hasn’t managed to read your price setup from Homey yet, '
+        + 'so prices are paused. It tries again every few hours — or press '
+        + 'Refresh prices.',
+    };
+  }
+  return null;
+};
+
 export const buildHomeyStatus = (pricesPayload: SettingsUiPricesPayload): HomeyStatus => {
   const timeZone = getHomeyTimezone();
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
@@ -63,5 +101,6 @@ export const buildHomeyStatus = (pricesPayload: SettingsUiPricesPayload): HomeyS
     currencyTone: currency === 'Unknown' ? 'warn' : 'ok',
     today: todayStatus,
     tomorrow: tomorrowStatus,
+    priceSetupIssue: buildPriceSetupIssue(pricesPayload.homeyPriceFormula),
   };
 };

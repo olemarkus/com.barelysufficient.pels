@@ -76,7 +76,9 @@ import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityId,
 } from '../device/transport/flowReportedCapabilities';
-import type { PvForecastSourceUiStatus, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  HomeyPriceFormulaUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot,
+} from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 import type { FlowBackedCapabilityReportOutcome } from '../device/flowBackedCapabilityReport';
@@ -416,6 +418,8 @@ export type AppContext = {
   // Always answerable: before the forecast controllers exist the seam answers
   // the status union's own `unknown` member, so no consumer holds a nullable.
   getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus;
+  /** Why a Homey-priced home has no prices, for the settings UI to explain. */
+  getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

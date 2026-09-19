@@ -8,7 +8,7 @@ import { createHomeyWebApiGet } from '../homeyWebApi';
 import type { AppContext } from '../../lib/app/appContext';
 
 export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
-  return new PriceCoordinator({
+  const coordinator = new PriceCoordinator({
     homey: ctx.homey,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey.settings),
     priceDataStore: createPriceDataStore(ctx.homey.settings),
@@ -30,6 +30,13 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
       publisher.publish(reason).catch((error) => ctx.error('PriceFlowTagPublisher.publish failed', error));
     },
   });
+  // The settings UI's account of why a Homey-priced home may show no prices,
+  // answered by the component that builds those prices. Same seam shape as
+  // `getPvForecastSourceUiStatus`: the context is how a wired component is
+  // reached, and the assignment is the wiring.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.getHomeyPriceFormulaUiStatus = () => coordinator.getHomeyPriceFormulaUiStatus();
+  return coordinator;
 }
 
 export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublisher {

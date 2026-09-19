@@ -625,6 +625,27 @@ export type PvForecastSourceUiStatus =
   | PvForecastSourceSelectedStatus
   | { kind: 'unknown' };
 
+/**
+ * Whether PELS can work out this home's prices from Homey's own price setup.
+ *
+ * Only the Homey Energy price source has one. `applied` and `none` are both
+ * working states — a home with no formula is priced by the raw value Homey
+ * publishes — while the other two mean the home has NO prices, which the owner
+ * otherwise sees as an unexplained blank.
+ */
+export type HomeyPriceFormulaUiStatus =
+  | { kind: 'applied' }
+  | { kind: 'none' }
+  | { kind: 'unknown' }
+  | { kind: 'unsupported'; expression: string }
+  /**
+   * The formula is arithmetic PELS can read, and it produced no usable price
+   * for any hour published — `(price - 1) ^ 0.5` while every price is below 1,
+   * say. Distinct from `unsupported`, because there is nothing wrong with the
+   * expression itself and the owner needs telling something different.
+   */
+  | { kind: 'prices_nothing'; expression: string };
+
 export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
   electricityPrices: unknown | null;
@@ -637,6 +658,8 @@ export type SettingsUiPricesPayload = {
   homeyTomorrow: unknown | null;
   /** `{ kind: 'unknown' }` during the boot window before the forecast selector is wired. */
   pvForecastSource: PvForecastSourceUiStatus;
+  /** `{ kind: 'unknown' }` before the price seam is wired, or off the Homey source. */
+  homeyPriceFormula: HomeyPriceFormulaUiStatus;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

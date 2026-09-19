@@ -29,11 +29,12 @@
  * cover that would be a large dependency, carried permanently, inside an app
  * whose resident memory Homey kills at ~160 MB — to evaluate arithmetic.
  *
- * This parser covers `+ - * / ^`, parentheses, unary signs, decimal literals
- * and the two price tokens — every formula the guided modes can produce and
- * every ordinary hand-written one. Anything else (a function call, an unknown
- * name) does not compile, and the caller gets `null`: an explicit "this price
- * is unavailable", never a silent partial evaluation. Same for an expression
+ * This parser covers `+ - * / ^`, parentheses, unary signs, decimal literals,
+ * the two price tokens, and the handful of functions in {@link FUNCTIONS} whose
+ * results were verified to match mathjs exactly — every formula the guided
+ * modes can produce and every ordinary hand-written one. Anything else does not
+ * compile, and the caller gets `null`: an explicit "this price is unavailable",
+ * never a silent partial evaluation. Same for an expression
  * that parses but evaluates non-finite at some spot value — division by zero
  * reaches `Infinity`, not a throw — which is the firmware's own rule
  * (`evaluatePriceMathExpression` rejects a non-finite result centrally).
@@ -62,10 +63,12 @@ export type CompiledPriceFormula = {
 
 type Node = (inputs: PriceFormulaInputs) => number;
 
+type OperatorSymbol = '+' | '-' | '*' | '/' | '^' | '(' | ')' | ',';
+
 type Token =
   | { kind: 'number'; value: number }
   | { kind: 'name'; value: string }
-  | { kind: 'operator'; value: '+' | '-' | '*' | '/' | '^' | '(' | ')' };
+  | { kind: 'operator'; value: OperatorSymbol };
 
 /**
  * The two ways a formula fails, as one type because they are raised from the
@@ -83,9 +86,70 @@ class FormulaError extends Error {
   }
 }
 
-type OperatorSymbol = '+' | '-' | '*' | '/' | '^' | '(' | ')';
+const OPERATORS: readonly string[] = ['+', '-', '*', '/', '^', '(', ')', ','];
 
-const OPERATORS: readonly string[] = ['+', '-', '*', '/', '^', '(', ')'];
+/**
+ * The functions a formula may call, and the reason the list is this short.
+ *
+ * Every entry here was checked against the mathjs build Homey itself evaluates
+ * with, over thousands of values, and reproduces it EXACTLY. That is the bar: a
+ * function whose result merely looks right turns a silent rounding difference
+ * into a wrong price, which is the failure this whole module exists to avoid.
+ *
+ * `round` is the instructive one. mathjs rounds half AWAY FROM ZERO —
+ * `round(-0.5)` is `-1`, where JavaScript's `Math.round` gives `-0` — so the
+ * single-argument form is spelled out that way here and matches on all 6001
+ * values tested. Its two-argument precision form is deliberately NOT supported:
+ * the obvious implementation (shift by a power of ten, round, shift back)
+ * disagreed with mathjs on 90 of 18003 values, because decimal shifting is not
+ * exact in binary floating point. A formula using it does not compile, and the
+ * owner is told so, which is the honest outcome — a price wrong in its last
+ * decimal is still a wrong price, and it would never be noticed.
+ *
+ * ## When to stop hand-rolling this, and what was measured
+ *
+ * The moment this list needs something whose semantics cannot be pinned by
+ * testing — precision rounding, units, conditionals, anything stateful — the
+ * answer is a real evaluator, not a bigger switch here. The options were
+ * measured rather than assumed, on the firmware's own Node, against a PELS
+ * process that sits near 135 MB in production and is killed around 160 MB:
+ *
+ * | Option | Cost | Faithful to Homey? |
+ * |---|---|---|
+ * | mathjs 7 (what the firmware runs) | 51 MB RSS | yes, by construction |
+ * | mathjs 15, number-only build | 39 MB RSS | yes |
+ * | mathjs 15, tree-shaken to `evaluate` | 311 KB bundle, 18 MB RSS | yes, but `min`/`max` need more of it |
+ * | expr-eval | 0.6 MB RSS | NO — `round(-0.5)` is `0`, Homey says `-1` |
+ * | this parser | none | verified case by case, refuses the rest |
+ *
+ * Two things that look like escapes and are not. The firmware already loads
+ * mathjs, but every Homey app runs in its own process (`ps` inside the
+ * container: core 142 MB, this app 44 MB), so nothing is shared and PELS would
+ * pay in full. And tree-shaking only applies to a bundled runtime — this one
+ * ships as compiled TypeScript beside its `node_modules`, so the 18 MB figure
+ * would additionally cost a bundling step for the whole backend.
+ *
+ * A dependency also would not remove the work below: expr-eval is cheap enough
+ * but rounds the wrong way, so it would need the same per-function
+ * verification and overrides this file already carries, plus a language of
+ * assignments and conditionals to keep switched off.
+ *
+ * If the memory ceiling lifts, or the runtime starts being bundled, the
+ * tree-shaken mathjs is the right answer and this parser should go.
+ */
+const FUNCTIONS: Readonly<Record<string, (args: number[]) => number>> = {
+  // Variadic, and identical to mathjs for one or more arguments.
+  min: (args) => Math.min(...args),
+  max: (args) => Math.max(...args),
+  abs: ([value]) => Math.abs(value as number),
+  floor: ([value]) => Math.floor(value as number),
+  ceil: ([value]) => Math.ceil(value as number),
+  // Half away from zero, as mathjs does it — NOT `Math.round`.
+  round: ([value]) => Math.sign(value as number) * Math.round(Math.abs(value as number)),
+};
+
+/** Functions that take exactly one argument; the rest are variadic. */
+const SINGLE_ARGUMENT_FUNCTIONS: readonly string[] = ['abs', 'floor', 'ceil', 'round'];
 
 /**
  * Whitespace, a decimal literal, a name, or one operator character.
@@ -96,7 +160,7 @@ const OPERATORS: readonly string[] = ['+', '-', '*', '/', '^', '(', ')'];
  * is left uncovered, which is how an unexpected character is detected below —
  * `matchAll` silently skips it.
  */
-const TOKEN_PATTERN = /\s+|\d+(?:\.\d+)?|\.\d+|[A-Za-z_][A-Za-z0-9_]*|[+\-*/^()]/g;
+const TOKEN_PATTERN = /\s+|\d+(?:\.\d+)?|\.\d+|[A-Za-z_][A-Za-z0-9_]*|[+\-*/^(),]/g;
 
 const toToken = (text: string): Token => {
   if (OPERATORS.includes(text)) return { kind: 'operator', value: text as OperatorSymbol };
@@ -175,6 +239,31 @@ const parse = (tokens: Token[]): Node => {
     return (inputs) => base(inputs) ** exponent(inputs);
   };
 
+  /**
+   * A call to one of {@link FUNCTIONS}, its opening parenthesis already taken.
+   * An unknown name, or an argument count the function does not take, does not
+   * compile — the caller then reports the price as unavailable rather than
+   * evaluating something it cannot reproduce faithfully.
+   */
+  const parseArguments = (): Node[] => {
+    const next = parseExpression();
+    return takeOperator(',') ? [next, ...parseArguments()] : [next];
+  };
+
+  const parseCall = (name: string): Node => {
+    const apply = FUNCTIONS[name];
+    if (!apply) throw new FormulaError('syntax', `Unknown function '${name}'`);
+    const args = takeOperator(')') ? [] : parseArguments();
+    if (args.length > 0 && !takeOperator(')')) {
+      throw new FormulaError('syntax', `Missing ')' after '${name}('`);
+    }
+    if (args.length === 0) throw new FormulaError('syntax', `'${name}' needs an argument`);
+    if (SINGLE_ARGUMENT_FUNCTIONS.includes(name) && args.length !== 1) {
+      throw new FormulaError('syntax', `'${name}' takes exactly one argument here`);
+    }
+    return (inputs) => apply(args.map((arg) => arg(inputs)));
+  };
+
   const parsePrimary = (): Node => {
     const token = peek();
     if (!token) throw new FormulaError('syntax', 'Unexpected end of expression');
@@ -185,6 +274,7 @@ const parse = (tokens: Token[]): Node => {
     }
     if (token.kind === 'name') {
       position += 1;
+      if (takeOperator('(')) return parseCall(token.value);
       if (token.value === 'price') return (inputs) => inputs.spot;
       if (token.value === 'importPrice') {
         return (inputs) => {

@@ -63,4 +63,34 @@ describe('price config status', () => {
     expect(status.text).toContain('(20 missing)');
     expect(status.tone).toBe('warn');
   });
+  describe('why prices are paused', () => {
+    const withFormula = (homeyPriceFormula: SettingsUiPricesPayload['homeyPriceFormula']) => (
+      buildHomeyStatus({ ...buildPayload(hourlyPayload()), homeyPriceFormula })
+    );
+
+    it('stays quiet while prices work', () => {
+      expect(withFormula({ kind: 'applied' }).priceSetupIssue).toBeNull();
+      // A home whose owner entered no costs in Homey is priced by the raw
+      // value Homey publishes — working, and nothing to report.
+      expect(withFormula({ kind: 'none' }).priceSetupIssue).toBeNull();
+    });
+
+    it('names an expression it cannot read', () => {
+      const issue = withFormula({ kind: 'unsupported', expression: '{{ sqrt([[price]]) }}' }).priceSetupIssue;
+      expect(issue?.value.text).toBe('Not usable');
+      expect(issue?.detail).toContain('sqrt');
+    });
+
+    it('separates a formula that reads fine but prices nothing', () => {
+      // Same blank series for the owner, different cause and different fix:
+      // there is nothing wrong with the expression itself.
+      const issue = withFormula({ kind: 'prices_nothing', expression: '{{ ([[price]] - 1) ^ 0.5 }}' }).priceSetupIssue;
+      expect(issue?.value.text).toBe('No usable prices');
+      expect(issue?.detail).toContain('doesn’t produce a usable price');
+    });
+
+    it('says so when the setup has not been read yet', () => {
+      expect(withFormula({ kind: 'unknown' }).priceSetupIssue?.value.text).toBe('Not read yet');
+    });
+  });
 });

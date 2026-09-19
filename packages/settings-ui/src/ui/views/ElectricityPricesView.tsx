@@ -206,6 +206,16 @@ const HomeyStatusBlock = ({ status }: { status: HomeyStatus }) => (
     <StatusRow label="Currency" value={status.currency} tone={status.currencyTone} />
     <StatusRow label="Today" value={status.today.text} tone={status.today.tone} />
     <StatusRow label="Tomorrow" value={status.tomorrow.text} tone={status.tomorrow.tone} />
+    {status.priceSetupIssue && (
+      <>
+        <StatusRow
+          label="Price setup"
+          value={status.priceSetupIssue.value.text}
+          tone={status.priceSetupIssue.value.tone}
+        />
+        <p class="muted" id="electricity-prices-setup-issue">{status.priceSetupIssue.detail}</p>
+      </>
+    )}
   </div>
 );
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderElectricityPricesView, type ElectricityPricesViewProps } from '../src/ui/views/ElectricityPricesView.tsx';
+import type { HomeyStatus } from '../src/ui/priceConfigTypes.ts';
 
 const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): ElectricityPricesViewProps => ({
   thresholdPercent: 20,
@@ -436,5 +437,49 @@ describe('ElectricityPricesView', () => {
     expect(summary?.textContent).toContain('Awaiting prices');
     expect(summary?.textContent).not.toContain('06:31');
     expect(summary?.textContent).not.toContain('Last fetched');
+  });
+  describe('Homey price setup status', () => {
+    const homeyStatusWith = (issue: NonNullable<HomeyStatus['priceSetupIssue']>) => ({
+      currency: 'NOK',
+      currencyTone: 'ok' as const,
+      today: { text: 'Loaded', tone: 'ok' as const },
+      tomorrow: { text: 'Loaded', tone: 'ok' as const },
+      priceSetupIssue: issue,
+    });
+
+    it('says why prices are paused when the formula cannot be used', () => {
+      // Without this the owner sees empty prices and no reason anywhere.
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+      renderElectricityPricesView(mount, buildProps({
+        priceScheme: 'homey',
+        homeyStatus: homeyStatusWith({
+          value: { text: 'Not usable', tone: 'warn' },
+          detail: 'Your price setup in Homey uses something PELS can’t work out (max(x, 0)).',
+        }),
+      }));
+
+      expect(mount.textContent).toContain('Not usable');
+      expect(mount.querySelector('#electricity-prices-setup-issue')?.textContent)
+        .toContain('can’t work out');
+    });
+
+    it('stays quiet when the prices are working', () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+      renderElectricityPricesView(mount, buildProps({
+        priceScheme: 'homey',
+        homeyStatus: {
+          currency: 'NOK',
+          currencyTone: 'ok',
+          today: { text: 'Loaded', tone: 'ok' },
+          tomorrow: { text: 'Loaded', tone: 'ok' },
+          priceSetupIssue: null,
+        },
+      }));
+
+      expect(mount.querySelector('#electricity-prices-setup-issue')).toBeNull();
+      expect(mount.textContent).not.toContain('Price setup');
+    });
   });
 });

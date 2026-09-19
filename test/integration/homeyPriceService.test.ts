@@ -681,7 +681,9 @@ describe('Homey price service', () => {
       storeTodayPrices({ '13': 1, '14': 2 });
       // Wholesale spot is always lower than what the owner pays, so presenting
       // it as their price would be a plausible-looking lie; no price is honest.
-      const service = createService(serveFormula({ expression: '{{ max([[price]], 0) }}' }));
+      // `sqrt` is not one of the functions whose results were verified against
+      // mathjs, so it does not compile.
+      const service = createService(serveFormula({ expression: '{{ sqrt([[price]]) }}' }));
 
       await service.refreshSpotPrices(true);
 
@@ -776,7 +778,7 @@ describe('Homey price service', () => {
       // The live service reports no prices; the persisted payload must not go
       // on serving prices built from a formula that no longer applies — the
       // daily budget, smart-task horizons, Flow tags and UI all read it.
-      const unevaluable = createService(serveFormula({ expression: '{{ max([[price]], 0) }}' }));
+      const unevaluable = createService(serveFormula({ expression: '{{ sqrt([[price]]) }}' }));
       await unevaluable.refreshSpotPrices(true);
 
       const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, unknown> };
