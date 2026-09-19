@@ -26,6 +26,7 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   pvForecastSource: 'auto',
   pvForecastStatus: { kind: 'unknown' },
   exportPriceEnabled: false,
+  exportPriceSource: 'manual',
   exportSpotFactor: 0,
   exportFixed: 0,
   onSchemeChange: vi.fn(),
@@ -40,6 +41,7 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   onRefreshPrices: vi.fn(),
   onRefreshGridTariff: vi.fn(),
   onExportEnabledChange: vi.fn(),
+  onExportSourceChange: vi.fn(),
   onExportSpotFactorChange: vi.fn(),
   onExportFixedChange: vi.fn(),
   onPvForecastSourceChange: vi.fn(),
@@ -197,6 +199,46 @@ describe('ElectricityPricesView', () => {
     it('renders no export section when the prosumer gate is off', () => {
       const mount = mountView({ showExportSection: false });
       expect(mount.querySelector('#electricity-prices-export-section')).toBeNull();
+    });
+
+    it('offers no export source choice where Homey holds no feed-in terms', () => {
+      // Only a home priced from Homey Energy has terms PELS can read, so
+      // anywhere else the owner's own amounts are the only source and a
+      // selector would be a choice with one answer.
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        priceScheme: 'norway',
+      });
+      expect(mount.querySelector('#electricity-prices-export-source')).toBeNull();
+      expect(mount.querySelector('#electricity-prices-export-fixed')).not.toBeNull();
+    });
+
+    it('lets a Homey Energy home choose where the export price comes from', () => {
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        priceScheme: 'homey',
+        exportPriceSource: 'manual',
+      });
+      const select = mount.querySelector('#electricity-prices-export-source');
+      expect(select).not.toBeNull();
+      // Still on the owner's own amounts, so the fields stay.
+      expect(mount.querySelector('#electricity-prices-export-fixed')).not.toBeNull();
+    });
+
+    it("replaces the amount fields once Homey's terms are the source", () => {
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        priceScheme: 'homey',
+        exportPriceSource: 'homey_energy',
+      });
+      // Nothing to type: the price comes from Homey, and leaving dead fields on
+      // screen would invite the owner to enter amounts PELS would not use.
+      expect(mount.querySelector('#electricity-prices-export-fixed')).toBeNull();
+      expect(mount.querySelector('#electricity-prices-export-spot-factor')).toBeNull();
+      expect(mount.textContent).toContain('feed-in price set up in Homey');
     });
 
     it('shows only the toggle while export pricing is off', () => {

@@ -83,6 +83,9 @@ export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 // Export (feed-in) price settings — mirror of the EXPORT_* keys in
 // lib/utils/settingsKeys.ts; keep both in sync (the settings UI can't import lib).
+// Mirror of lib/utils/settingsKeys.ts EXPORT_PRICE_SOURCE (the settings UI
+// cannot import lib) — which source the feed-in price comes from.
+export const EXPORT_PRICE_SOURCE = 'export_price_source';
 export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
 export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';

@@ -27,6 +27,7 @@ import {
   EV_CAR_ASSOCIATIONS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
+  EXPORT_PRICE_SOURCE,
   EXPORT_SPOT_FACTOR,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
@@ -537,6 +538,13 @@ function buildPriceSettingsHandlers(
     price_threshold_percent: async () => refreshPriceDerivedState(deps),
     price_min_diff_ore: async () => refreshPriceDerivedState(deps),
     [EXPORT_PRICE_ENABLED]: async () => refreshPriceDerivedState(deps),
+    // Pointing the export price at Homey means PELS has terms to FETCH, not
+    // just a value to re-read: without this the owner's choice would sit
+    // unpriced until the next three-hourly refresh.
+    [EXPORT_PRICE_SOURCE]: async () => {
+      await deps.priceService.refreshSpotPrices(true);
+      await refreshPriceDerivedState(deps);
+    },
     [EXPORT_SPOT_FACTOR]: async () => refreshPriceDerivedState(deps),
     [EXPORT_FIXED]: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {

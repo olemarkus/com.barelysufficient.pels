@@ -13,6 +13,7 @@
 
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { CombinedPricePeriod } from './priceTypes';
+import type { HomeyWebApiGet } from './homeyWebApiPort';
 import { HOMEY_PRICE_FORMULA } from '../utils/settingsKeys';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { compilePriceFormula, type CompiledPriceFormula } from './priceFormula';
@@ -40,17 +41,7 @@ export type HomeyPriceFormulaRead =
   | { kind: 'unavailable' }
   | { kind: 'failed'; reasonCode: 'read_threw' | 'unrecognised_body' };
 
-/**
- * The one capability this read needs: a GET against Homey's own Web API,
- * relative to `/api`.
- *
- * Supplied by the wiring layer, which hands over the owner-token REST reader
- * every other manager read in PELS already uses (`setup/homeyWebApi.ts`).
- * Deliberately NOT the SDK's `homey.api.get`: an app's call through that bridge
- * is authenticated with an app-session header that only the app-to-app routes
- * accept, so a manager route rejects it.
- */
-export type HomeyWebApiGet = (path: string) => Promise<unknown>;
+export type { HomeyWebApiGet } from './homeyWebApiPort';
 
 export const PRICE_USER_COSTS_API_PATH = 'manager/energy/price/electricity/dynamic/user-costs';
 
@@ -219,16 +210,42 @@ export type HomeyPriceResolution = {
    */
   verdict: 'priced' | 'unpriceable' | 'undecided';
   reasonCode: 'formula_applied' | 'no_formula' | 'never_read' | 'unreadable_mirror'
-    | 'cannot_evaluate' | 'nothing_priced';
+    | 'cannot_evaluate' | 'nothing_priced' | 'unreadable_export_terms';
+};
+
+/**
+ * Prices one period's export, given that period's raw spot and the all-in
+ * import price just resolved for it — the two numbers a feed-in tariff can
+ * depend on, and the only point in the pipeline where both exist. Supplied by
+ * the caller when the owner has pointed the export price at Homey; omitted
+ * otherwise, and then nothing here knows export pricing exists.
+ */
+export type PeriodExportPricer = (spot: number, importPrice: number) => number | null;
+
+const withExportPrice = (
+  period: CombinedPricePeriod,
+  spot: number,
+  importPrice: number,
+  priceExport?: PeriodExportPricer,
+): CombinedPricePeriod => {
+  const exportPrice = priceExport?.(spot, importPrice);
+  return typeof exportPrice === 'number' ? { ...period, exportPrice } : period;
 };
 
 export const resolveHomeyPriceSeries = (
   periods: CombinedPricePeriod[],
   settings: SettingsPort,
+  priceExport?: PeriodExportPricer,
 ): HomeyPriceResolution => {
   const stored = readStoredPriceFormula(settings);
   if (stored.kind === 'none') {
-    return { periods, verdict: 'priced', reasonCode: 'no_formula' };
+    // No formula: the raw value is already the owner's price, and it is also
+    // the spot an export tariff prices against.
+    return {
+      periods: periods.map((entry) => withExportPrice(entry, entry.totalPrice, entry.totalPrice, priceExport)),
+      verdict: 'priced',
+      reasonCode: 'no_formula',
+    };
   }
   if (stored.kind === 'unknown') {
     // Homey has never answered us, so we cannot price — but we also have no
@@ -246,8 +263,10 @@ export const resolveHomeyPriceSeries = (
     return { periods: [], verdict: 'unpriceable', reasonCode: 'cannot_evaluate' };
   }
   const priced = periods.flatMap((entry) => {
-    const totalPrice = stored.formula.evaluate({ spot: entry.totalPrice });
-    return totalPrice === null ? [] : [{ ...entry, totalPrice }];
+    const spot = entry.totalPrice;
+    const totalPrice = stored.formula.evaluate({ spot });
+    if (totalPrice === null) return [];
+    return [withExportPrice({ ...entry, totalPrice }, spot, totalPrice, priceExport)];
   });
   // A formula that compiles can still price nothing — every period non-finite
   // under it. That is a verdict about the formula, not a gap in the feed.

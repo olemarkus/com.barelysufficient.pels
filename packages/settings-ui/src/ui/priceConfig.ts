@@ -18,6 +18,8 @@ import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import {
   applyExportSchemeChangePlan,
   createExportPriceHandlers,
+  createExportSourceHandler,
+  type ExportPriceStatePatch,
   recoverFromSchemeChangeFailure,
   resolveExportSchemeChangePlan,
 } from './exportPriceSettings.ts';
@@ -54,6 +56,7 @@ import type {
 } from './priceConfigTypes.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
 import { resolvePvForecastSourceUiStatus } from '../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
+import { EXPORT_PRICE_SOURCE_DEFAULT } from '../../../shared-domain/src/settings/exportPriceSource.ts';
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -71,6 +74,7 @@ let configState: PriceConfigState = {
   currentPriceLevel: null,
   liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
   exportPriceEnabled: false,
+  exportPriceSource: EXPORT_PRICE_SOURCE_DEFAULT,
   exportSpotFactor: 0,
   exportFixed: 0,
   pvForecastSource: 'auto',
@@ -149,6 +153,7 @@ const renderElectricityPrices = () => {
     pvForecastSource: configState.pvForecastSource,
     pvForecastStatus: configState.pvForecastStatus,
     exportPriceEnabled: configState.exportPriceEnabled,
+    exportPriceSource: configState.exportPriceSource,
     exportSpotFactor: configState.exportSpotFactor,
     exportFixed: configState.exportFixed,
     onSchemeChange: handleSchemeChange,
@@ -164,6 +169,7 @@ const renderElectricityPrices = () => {
     onRefreshGridTariff: handleRefreshGridTariff,
     onPvForecastSourceChange: handlePvForecastSourceChange,
     onExportEnabledChange: exportPriceHandlers.onEnabledChange,
+    onExportSourceChange: exportSourceHandler,
     onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
     onExportFixedChange: exportPriceHandlers.onFixedChange,
   };
@@ -385,11 +391,14 @@ const handleTariffGroupChange = async (group: string) => {
 
 // Export-section handlers live in exportPriceSettings.ts; config state and the
 // surface repaint stay owned here via the context callbacks.
-const exportPriceHandlers = createExportPriceHandlers({
+const exportPriceHandlersContext = {
   getState: () => configState,
-  patchState: (patch) => { configState = { ...configState, ...patch }; },
+  patchState: (patch: ExportPriceStatePatch) => { configState = { ...configState, ...patch }; },
   rerender: () => renderElectricityPrices(),
-});
+};
+
+const exportPriceHandlers = createExportPriceHandlers(exportPriceHandlersContext);
+const exportSourceHandler = createExportSourceHandler(exportPriceHandlersContext);
 
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };

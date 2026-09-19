@@ -128,6 +128,17 @@ Each hour is classified as cheap, normal, or expensive based on a configurable t
 
 Read more: [Configuration — Settings > Electricity prices](/configuration#settings-electricity-prices)
 
+### Getting paid for solar you export
+
+If you have solar, Homey also models what your power company pays you for the power you send back — a fixed amount per kWh, or a formula that follows the hourly price. PELS can use those terms directly.
+
+Under **Settings > Electricity prices > Export price**, turn the section on and set **Where the price comes from**:
+
+- **Amounts I enter here** — the share-of-spot and fixed amount you type into PELS. This is the default, and what every existing setup keeps using.
+- **Homey Energy** — the feed-in price you already set up in Homey under **Energy > Electricity**. Nothing to retype, and a price that follows the hour when your contract does.
+
+Choosing Homey Energy replaces the amount fields, because the price then comes from Homey. If Homey says export pricing is off, PELS treats your exported power as earning nothing rather than inventing a number.
+
 ### When to keep using Norway pricing
 
 If you are in Norway and want PELS to calculate the full cost including grid tariffs (nettleie), provider surcharges, and electricity support (strømstøtte), use the built-in **Norway (spot + grid tariff)** source instead. It gives you more granular control over each cost component.

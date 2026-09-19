@@ -7,18 +7,24 @@
 // semantics: `spotFactorPercent = 0` is the pure fixed-tariff case and `fixed`
 // is signed (negative ⇒ the home pays to export).
 
+import {
+  readExportPriceSourceSetting,
+  type ExportPriceSourceSetting,
+} from '../../../shared-domain/src/settings/exportPriceSource.ts';
 import { getSetting, setSetting } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import {
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
+  EXPORT_PRICE_SOURCE,
   EXPORT_SPOT_FACTOR,
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
 
 export type ExportPriceSettings = {
   enabled: boolean;
+  source: ExportPriceSourceSetting;
   spotFactorPercent: number;
   fixed: number;
 };
@@ -34,13 +40,17 @@ const finiteNumberSetting = (value: unknown, fallback: number): number => (
 );
 
 export const readExportPriceSettings = async (): Promise<ExportPriceSettings> => {
-  const [enabledRaw, spotFactorRaw, fixedRaw] = await Promise.all([
+  const [enabledRaw, sourceRaw, spotFactorRaw, fixedRaw] = await Promise.all([
     getSetting(EXPORT_PRICE_ENABLED),
+    getSetting(EXPORT_PRICE_SOURCE),
     getSetting(EXPORT_SPOT_FACTOR),
     getSetting(EXPORT_FIXED),
   ]);
   return {
     enabled: enabledRaw === true,
+    // One reader for these bytes, shared with the runtime that prices from them
+    // (`packages/shared-domain/src/settings/exportPriceSource.ts`).
+    source: readExportPriceSourceSetting(sourceRaw),
     spotFactorPercent: finiteNumberSetting(spotFactorRaw, 0),
     fixed: finiteNumberSetting(fixedRaw, 0),
   };
@@ -70,6 +80,7 @@ export const validateExportFixed = (value: number): void => {
 
 export type ExportPriceStatePatch = Partial<{
   exportPriceEnabled: boolean;
+  exportPriceSource: ExportPriceSourceSetting;
   exportSpotFactor: number;
   exportFixed: number;
 }>;
@@ -178,6 +189,7 @@ export type ExportPriceHandlersContext = {
   getState: () => {
     priceScheme: string;
     exportPriceEnabled: boolean;
+    exportPriceSource: ExportPriceSourceSetting;
     exportSpotFactor: number;
     exportFixed: number;
   };
@@ -292,3 +304,27 @@ export const createExportPriceHandlers = (ctx: ExportPriceHandlersContext) => {
     ),
   };
 };
+
+/**
+ * Save the owner's choice of where the feed-in price comes from.
+ *
+ * Optimistic like its neighbours: the selector repaints at once and rolls back
+ * if the write fails, so the UI never shows a source PELS is not pricing from.
+ */
+export const createExportSourceHandler = (ctx: ExportPriceHandlersContext) => (
+  async (source: ExportPriceSourceSetting): Promise<void> => {
+    const previous = ctx.getState().exportPriceSource;
+    if (source === previous) return;
+    ctx.patchState({ exportPriceSource: source });
+    ctx.rerender();
+    try {
+      await setSetting(EXPORT_PRICE_SOURCE, source);
+      await showToast('Export price settings saved.', 'ok');
+    } catch (error) {
+      ctx.patchState({ exportPriceSource: previous });
+      ctx.rerender();
+      await logSettingsError(`Failed to save ${EXPORT_PRICE_SOURCE}`, error, 'exportPriceSettings');
+      await showToastError(error, 'Failed to save export price settings.');
+    }
+  }
+);

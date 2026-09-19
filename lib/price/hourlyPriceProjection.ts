@@ -5,6 +5,17 @@ import type { FlowPricePeriod } from '../../packages/shared-domain/src/price/flo
 const HOUR_MINUTES = 60;
 
 /**
+ * A published period, which may already carry a feed-in price.
+ *
+ * Only one producer attaches one this early: the Homey scheme, when the owner
+ * has pointed the export price at Homey's own terms, because that is where a
+ * period's raw spot and its resolved import price both exist
+ * (`lib/price/homeyExportPrice.ts`). PELS's own export model decorates the
+ * series later instead, and leaves this absent.
+ */
+export type ExportablePricePeriod = FlowPricePeriod & { exportPrice?: number };
+
+/**
  * One hour-long period per local hour the series covers.
  *
  * A price source publishes periods — an hour each on most zones, a quarter-hour
@@ -26,18 +37,28 @@ const HOUR_MINUTES = 60;
  * while this one keys by instant so the repeated clock hour stays two hours.
  */
 export const toHourlyPeriods = (
-  periods: FlowPricePeriod[],
+  periods: ExportablePricePeriod[],
   timeZone: string,
-): FlowPricePeriod[] => {
-  const buckets = new Map<number, { weighted: number; minutes: number }>();
+): ExportablePricePeriod[] => {
+  const buckets = new Map<number, {
+    weighted: number;
+    minutes: number;
+    exportWeighted: number;
+    exportMinutes: number;
+  }>();
   for (const period of periods) {
     const startMs = Date.parse(period.startsAt);
     if (!Number.isFinite(startMs)) continue;
     const hourStartMs = getHourStartInTimeZone(new Date(startMs), timeZone);
-    const current = buckets.get(hourStartMs) ?? { weighted: 0, minutes: 0 };
+    const current = buckets.get(hourStartMs)
+      ?? { weighted: 0, minutes: 0, exportWeighted: 0, exportMinutes: 0 };
+    const hasExport = typeof period.exportPrice === 'number';
     buckets.set(hourStartMs, {
       weighted: current.weighted + period.totalPrice * period.durationMinutes,
       minutes: current.minutes + period.durationMinutes,
+      exportWeighted: current.exportWeighted
+        + (hasExport ? (period.exportPrice as number) * period.durationMinutes : 0),
+      exportMinutes: current.exportMinutes + (hasExport ? period.durationMinutes : 0),
     });
   }
 
@@ -48,6 +69,14 @@ export const toHourlyPeriods = (
       startsAt: new Date(hourStartMs).toISOString(),
       totalPrice: bucket.weighted / bucket.minutes,
       durationMinutes: HOUR_MINUTES,
+      // An export price carried by the periods averages the same way the
+      // import price does — the hour is worth what its periods were worth.
+      // Only when EVERY period in the hour carried one: a half-priced hour has
+      // no honest export price, and averaging the priced half would overstate
+      // what the owner is paid for the whole hour.
+      ...(bucket.exportMinutes === bucket.minutes && bucket.exportMinutes > 0
+        ? { exportPrice: bucket.exportWeighted / bucket.minutes }
+        : {}),
     }));
 };
 
@@ -63,8 +92,12 @@ export const toHourlyPeriods = (
  * consumer, and no consumer is handed a span it might reason about.
  */
 export const toHourlyPrices = (
-  periods: FlowPricePeriod[],
+  periods: ExportablePricePeriod[],
   timeZone: string,
 ): CombinedHourlyPrice[] => (
-  toHourlyPeriods(periods, timeZone).map(({ startsAt, totalPrice }) => ({ startsAt, totalPrice }))
+  toHourlyPeriods(periods, timeZone).map(({ startsAt, totalPrice, exportPrice }) => ({
+    startsAt,
+    totalPrice,
+    ...(typeof exportPrice === 'number' ? { exportPrice } : {}),
+  }))
 );

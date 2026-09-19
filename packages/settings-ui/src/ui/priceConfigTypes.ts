@@ -4,6 +4,7 @@ import type {
   PvForecastSourceUiStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { LiveSummarySignals } from './livePriceSignals.ts';
+import type { ExportPriceSourceSetting } from '../../../shared-domain/src/settings/exportPriceSource.ts';
 
 export type StatusTone = 'ok' | 'warn';
 
@@ -66,6 +67,7 @@ export type PriceConfigState = {
   liveSummary: LiveSummarySignals;
   // Export (feed-in) price settings — normalized by `readExportPriceSettings`.
   exportPriceEnabled: boolean;
+  exportPriceSource: ExportPriceSourceSetting;
   exportSpotFactor: number;
   exportFixed: number;
   // Solar forecast source: the stored setting plus the runtime provenance
@@ -88,6 +90,7 @@ export type PriceConfigSettingsPatch = Pick<
   | 'organizationNumber'
   | 'tariffGroup'
   | 'exportPriceEnabled'
+  | 'exportPriceSource'
   | 'exportSpotFactor'
   | 'exportFixed'
   | 'pvForecastSource'

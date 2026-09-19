@@ -121,6 +121,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     organizationNumber: stringSettingOrEmpty(organizationNumber),
     tariffGroup: stringSetting(tariffGroup, 'Husholdning'),
     exportPriceEnabled: exportSettings.enabled,
+    exportPriceSource: exportSettings.source,
     exportSpotFactor: exportSettings.spotFactorPercent,
     exportFixed: exportSettings.fixed,
     pvForecastSource: normalizePvForecastSourceSetting(pvForecastSource),

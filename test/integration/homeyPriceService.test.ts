@@ -6,6 +6,10 @@ import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
+  EXPORT_FIXED,
+  EXPORT_PRICE_ENABLED,
+  EXPORT_PRICE_SOURCE,
+  EXPORT_SPOT_FACTOR,
   HOMEY_PRICE_FORMULA,
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
@@ -14,6 +18,12 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
 import { PRICE_USER_COSTS_API_PATH, type HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
+import { HOMEY_EXPORT_PRICE_TERMS } from '../../lib/utils/settingsKeys';
+import {
+  EXPORT_FIXED_OPTION_API_PATH,
+  EXPORT_TYPE_API_PATH,
+  EXPORT_USER_COSTS_API_PATH,
+} from '../../lib/price/homeyExportPrice';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 import { mirrorNoHomeyPriceFormula, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
@@ -845,6 +855,162 @@ describe('Homey price service', () => {
       // Every settings write ships the whole settings object to core; this key
       // is re-read every three hours and changes about never.
       expect(setSpy.mock.calls.filter(([key]) => key === HOMEY_PRICE_FORMULA)).toHaveLength(0);
+    });
+  });
+  describe("Homey's own export price", () => {
+    // The owner picks where the feed-in price comes from, the same way they
+    // pick the import price source. These specs pin what PELS does once they
+    // point it at Homey: terms Homey already holds, applied per period, with
+    // nothing retyped into PELS.
+    const serveExport = (type: string, body?: unknown): HomeyWebApiGet => (
+      async (path: string) => {
+        if (path === PRICE_USER_COSTS_API_PATH) return null;
+        if (path === EXPORT_TYPE_API_PATH) return type;
+        if (path === EXPORT_FIXED_OPTION_API_PATH || path === EXPORT_USER_COSTS_API_PATH) return body;
+        throw new Error(`unexpected path ${path}`);
+      }
+    );
+
+    const createService = (webApiGet: HomeyWebApiGet): PriceService => new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      sinks(),
+      () => timeZone,
+      () => ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
+      createPriceDataStore(mockHomeyInstance.settings),
+      () => ({}),
+      webApiGet,
+    );
+
+    const storeHomeyPrices = (values: Record<string, number>): void => {
+      mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+      mockHomeyInstance.settings.set(EXPORT_PRICE_SOURCE, 'homey_energy');
+      mockHomeyInstance.settings.set(EXPORT_PRICE_ENABLED, true);
+      mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
+        dateKey: getDateKeyInTimeZone(fixedNow, timeZone),
+        pricesByHour: values,
+        updatedAt: fixedNow.toISOString(),
+      });
+    };
+
+    it('pays a fixed feed-in tariff on every period', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1, '14': 2 });
+      const service = createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.exportPrice)).toEqual([0.3, 0.3]);
+    });
+
+    it('prices a dynamic export formula against the all-in import price', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1, '14': 2 });
+      // No import formula here, so the import price is the raw value — and
+      // `[[importPrice]]` must see that same number, not the bare spot by
+      // accident.
+      const service = createService(serveExport('dynamic', { mathExpression: '{{ [[importPrice]] - 0.1 }}' }));
+
+      await service.refreshSpotPrices(true);
+
+      const prices = service.getCombinedHourlyPrices();
+      expect(prices.map((price) => price.exportPrice)).toEqual([0.9, 1.9]);
+    });
+
+    it('keeps the owner paid nothing when Homey says export is disabled', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      const service = createService(serveExport('disabled'));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices()[0]?.exportPrice).toBeUndefined();
+    });
+
+    it("ignores Homey's terms while the owner's own amounts are the source", async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      // The default, and what every existing home has: PELS must not start
+      // paying Homey's number because it happens to be readable.
+      mockHomeyInstance.settings.set(EXPORT_PRICE_SOURCE, 'manual');
+      mockHomeyInstance.settings.set(EXPORT_SPOT_FACTOR, 0);
+      mockHomeyInstance.settings.set(EXPORT_FIXED, 0.07);
+      const webApiGet = vi.fn(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }));
+      const service = createService(webApiGet);
+
+      await service.refreshSpotPrices(true);
+
+      // Their own 0.07, not Homey's 0.30 — and Homey was never even asked.
+      expect(service.getCombinedHourlyPrices()[0]?.exportPrice).toBe(0.07);
+      expect(webApiGet.mock.calls.map(([path]) => path)).not.toContain(EXPORT_TYPE_API_PATH);
+    });
+
+    it('pays nothing once the owner turns export pricing off', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      const service = createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }));
+      await service.refreshSpotPrices(true);
+
+      // The selector says WHERE the price comes from; the master toggle says
+      // WHETHER the owner is paid at all, and it has to outrank the source.
+      mockHomeyInstance.settings.set(EXPORT_PRICE_ENABLED, false);
+
+      expect(service.getCombinedHourlyPrices()[0]?.exportPrice).toBeUndefined();
+    });
+
+    it("leaves the owner's own amounts in charge on another price source", async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      await createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }))
+        .refreshSpotPrices(true);
+
+      // Only the Homey series carries Homey's feed-in price. Switching import
+      // scheme must not leave the manual fields visible but powerless.
+      mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+      mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+        dateKey: getDateKeyInTimeZone(fixedNow, timeZone),
+        pricesByHour: { '13': 1 },
+        updatedAt: fixedNow.toISOString(),
+      });
+      mockHomeyInstance.settings.set(EXPORT_SPOT_FACTOR, 0);
+      mockHomeyInstance.settings.set(EXPORT_FIXED, 0.07);
+      const onFlow = createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }));
+
+      expect(onFlow.getCombinedHourlyPrices()[0]?.exportPrice).toBe(0.07);
+    });
+
+    it('persists nothing when the mirrored terms read back empty', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      await createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }))
+        .refreshSpotPrices(true);
+      const persistedBefore = mockHomeyInstance.settings.get(COMBINED_PRICES);
+
+      // A listed key the SDK does not hand back settles nothing; dropping the
+      // feed-in price out of the stored series would make a hiccup durable.
+      const get = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+      vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+        key === HOMEY_EXPORT_PRICE_TERMS ? undefined : get(key)
+      ));
+      createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }))
+        .updateCombinedPrices();
+      vi.mocked(mockHomeyInstance.settings.get).mockRestore();
+
+      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toEqual(persistedBefore);
+    });
+
+    it('keeps the last known terms when the export read fails', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeHomeyPrices({ '13': 1 });
+      await createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }))
+        .refreshSpotPrices(true);
+
+      const failing = createService(async (path: string) => {
+        if (path === PRICE_USER_COSTS_API_PATH) return null;
+        throw new HomeyHttpStatusError(500, 'boom');
+      });
+      await failing.refreshSpotPrices(true);
+
+      expect(failing.getCombinedHourlyPrices().map((price) => price.exportPrice)).toEqual([0.3]);
     });
   });
 });

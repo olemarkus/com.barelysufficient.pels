@@ -52,7 +52,7 @@ import {
   readNorwaySchemeSettings,
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
-import { applyExportPrices, readExportPriceConfig } from './exportPrice';
+import { applyExportPrices } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import {
@@ -63,9 +63,12 @@ import {
   type PriceLevelBand,
 } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
-import type { CombinedHourlyPrice, CombinedPricePeriod, PriceScheme } from './priceTypes';
-import { dropsPersistedPrices, resolveHomeyPriceSeries, syncHomeyPriceFormula } from './homeyPriceFormula';
-import type { HomeyPriceResolution, HomeyWebApiGet } from './homeyPriceFormula';
+import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
+import {
+  keepsPersistedPrices, resolveExportConfigForScheme, resolveHomeySeries, syncHomeyPricing,
+} from './homeyScheme';
+import type { HomeyPriceResolution } from './homeyScheme';
+import type { HomeyWebApiGet } from './homeyWebApiPort';
 import type { PriceDataStore } from './priceDataStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
@@ -321,9 +324,9 @@ export default class PriceService {
     // cache would leave every persisted consumer spending against prices built
     // from a formula that no longer applies.
     const homeyPrices = this.getPriceScheme() === 'homey' ? this.resolveHomeyPricePeriods() : null;
-    if (!(homeyPrices && dropsPersistedPrices(homeyPrices, this.sinks))
-      && combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
-      this.sinks.debugStructured({ event: 'combined_prices_rebuild_lost_entries_kept_cache' });
+    if (keepsPersistedPrices(homeyPrices, this.sinks, () => (
+      combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)
+    ))) {
       this.emitRealtime('prices_updated', existingPayload);
       return;
     }
@@ -359,10 +362,7 @@ export default class PriceService {
     // scheme-independently to the import series — see `applyExportPrices`. The
     // planning price (budgetPrice) is then derived on top from the injected forecast
     // surplus — see `applyBudgetPrices` (no-op for non-prosumers).
-    return applyBudgetPrices(applyExportPrices(this.buildImportHourlyPrices(), readExportPriceConfig({
-      getRaw: (key) => this.getSettingValue(key),
-      getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
-    })), this.budgetPriceInputs, this.getTimeZone());
+    return this.withExportAndPlanningPrices(this.buildImportHourlyPrices());
   }
 
   /**
@@ -393,14 +393,22 @@ export default class PriceService {
    * series, so a prosumer's level still classifies the planning price.
    */
   getCombinedPricePeriods(): CombinedPricePeriod[] {
-    return applyBudgetPrices(
-      applyExportPrices(this.buildImportPricePeriods(), readExportPriceConfig({
-        getRaw: (key) => this.getSettingValue(key),
-        getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
-      })),
-      this.budgetPriceInputs,
-      this.getTimeZone(),
+    return this.withExportAndPlanningPrices(this.buildImportPricePeriods());
+  }
+
+  /**
+   * The two decorations every import series carries, in order: the feed-in
+   * price, then the planning price derived on top of it. Shared by both shapes
+   * — periods and whole hours — so neither can drift from the other about what
+   * the owner is paid or what the planner optimises against.
+   */
+  private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
+    const exportConfig = resolveExportConfigForScheme(
+      this.homey.settings,
+      (key) => this.getSettingValue(key),
+      (key, fallback) => this.getNumberSetting(key, fallback),
     );
+    return applyBudgetPrices(applyExportPrices(series, exportConfig), this.budgetPriceInputs, this.getTimeZone());
   }
 
   private buildImportPricePeriods(): CombinedPricePeriod[] {
@@ -427,7 +435,7 @@ export default class PriceService {
    */
   private resolveHomeyPricePeriods(): HomeyPriceResolution {
     const raw = this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
-    return resolveHomeyPriceSeries(raw, this.homey.settings);
+    return resolveHomeySeries(raw, this.homey.settings);
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
@@ -586,8 +594,9 @@ export default class PriceService {
     // Before the cache check, because the cached path still rebuilds the
     // combined series: a formula the owner changed since the last refresh has
     // to be mirrored even on a day whose raw prices are already stored.
-    const formulaChanged = await syncHomeyPriceFormula(this.homeyWebApiGet, this.homey.settings, this.sinks);
-    if (formulaChanged) this.updateCombinedPrices();
+    if (await syncHomeyPricing(this.homeyWebApiGet, this.homey.settings, this.sinks)) {
+      this.updateCombinedPrices();
+    }
     const info = buildHomeyEnergyDateInfo(this.getTimeZone());
     if (shouldUseHomeyEnergyCache({
       info,

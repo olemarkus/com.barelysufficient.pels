@@ -25,6 +25,7 @@ import {
   EXPORT_SPOT_FACTOR_MAX,
   EXPORT_SPOT_FACTOR_MIN,
 } from '../exportPriceSettings.ts';
+import type { ExportPriceSourceSetting } from '../../../../shared-domain/src/settings/exportPriceSource.ts';
 
 type ValueElement = HTMLElement & { value: string };
 type SwitchElement = HTMLElement & { selected: boolean };
@@ -81,6 +82,10 @@ export type ElectricityPricesViewProps = {
   pvForecastSource: PvForecastSourceSetting;
   pvForecastStatus: PvForecastSourceUiStatus;
   exportPriceEnabled: boolean;
+  // Where the feed-in price comes from. Offered only where Homey holds export
+  // terms PELS can read (the Homey Energy price source); elsewhere the owner's
+  // own amounts are the only source and no selector is shown.
+  exportPriceSource: ExportPriceSourceSetting;
   exportSpotFactor: number;
   exportFixed: number;
   onSchemeChange: (scheme: PriceScheme) => void;
@@ -96,6 +101,7 @@ export type ElectricityPricesViewProps = {
   onRefreshGridTariff: () => void;
   onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
   onExportEnabledChange: (enabled: boolean) => void;
+  onExportSourceChange: (source: ExportPriceSourceSetting) => void;
   // Numeric export handlers also receive the field element so a rejected or
   // unsaved value can be snapped back to the stored one (see ExportPriceForm).
   onExportSpotFactorChange: (val: number, field: { value: string }) => void;
@@ -521,17 +527,21 @@ const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean): string =
 const ExportPriceForm = ({
   priceScheme,
   exportPriceEnabled,
+  exportPriceSource,
   exportSpotFactor,
   exportFixed,
   onExportEnabledChange,
+  onExportSourceChange,
   onExportSpotFactorChange,
   onExportFixedChange,
 }: {
   priceScheme: PriceScheme;
   exportPriceEnabled: boolean;
+  exportPriceSource: ExportPriceSourceSetting;
   exportSpotFactor: number;
   exportFixed: number;
   onExportEnabledChange: (enabled: boolean) => void;
+  onExportSourceChange: (source: ExportPriceSourceSetting) => void;
   onExportSpotFactorChange: (val: number, field: { value: string }) => void;
   onExportFixedChange: (val: number, field: { value: string }) => void;
 }) => {
@@ -545,6 +555,10 @@ const ExportPriceForm = ({
   const hasSpotPrice = priceScheme === 'norway';
   const staleSpotShare = !hasSpotPrice && exportSpotFactor !== 0;
   const shareEditable = hasSpotPrice || staleSpotShare;
+  // Homey holds export terms only for homes priced from Homey Energy, so that
+  // is the only source where there is a choice to offer.
+  const canReadFromHomey = priceScheme === 'homey';
+  const usesHomeyTerms = canReadFromHomey && exportPriceSource === 'homey_energy';
   return (
     <form
       id="electricity-prices-export-section"
@@ -567,7 +581,32 @@ const ExportPriceForm = ({
           <span class="md-switch-row__label pels-text-settings-label">Use an export price</span>
         </span>
       </label>
-      {exportPriceEnabled && (
+      {exportPriceEnabled && canReadFromHomey && (
+        <div class="field">
+          <span class="field__label pels-text-settings-label" id="electricity-prices-export-source-label">
+            Where the price comes from
+          </span>
+          <MdFilledSelect
+            id="electricity-prices-export-source"
+            aria-labelledby="electricity-prices-export-source-label"
+            value={exportPriceSource}
+            onChange={(e) => onExportSourceChange(readValue(e) as ExportPriceSourceSetting)}
+          >
+            <MdSelectOption value="manual">
+              <div slot="headline">Amounts I enter here</div>
+            </MdSelectOption>
+            <MdSelectOption value="homey_energy">
+              <div slot="headline">Homey Energy</div>
+            </MdSelectOption>
+          </MdFilledSelect>
+          <small class="field__hint">
+            {usesHomeyTerms
+              ? 'PELS uses the feed-in price set up in Homey under Energy > Electricity.'
+              : 'PELS uses the amounts below.'}
+          </small>
+        </div>
+      )}
+      {exportPriceEnabled && !usesHomeyTerms && (
         <>
           <label class="field">
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-spot-factor-label">
@@ -716,9 +755,11 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
         <ExportPriceForm
           priceScheme={props.priceScheme}
           exportPriceEnabled={props.exportPriceEnabled}
+          exportPriceSource={props.exportPriceSource}
           exportSpotFactor={props.exportSpotFactor}
           exportFixed={props.exportFixed}
           onExportEnabledChange={props.onExportEnabledChange}
+          onExportSourceChange={props.onExportSourceChange}
           onExportSpotFactorChange={props.onExportSpotFactorChange}
           onExportFixedChange={props.onExportFixedChange}
         />

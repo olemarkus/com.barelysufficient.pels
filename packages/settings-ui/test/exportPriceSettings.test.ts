@@ -31,12 +31,15 @@ import { getApiReadModel, getSetting, setSetting } from '../src/ui/homey.ts';
 import { showToast, showToastError } from '../src/ui/toast.ts';
 import {
   createExportPriceHandlers,
+  createExportSourceHandler,
   recoverFromSchemeChangeFailure,
   resolveExportSchemeChangePlan,
   EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST,
   EXPORT_SHARE_NORMALIZED_TOAST,
   type ExportPriceHandlersContext,
 } from '../src/ui/exportPriceSettings.ts';
+
+import { EXPORT_PRICE_SOURCE } from '../../contracts/src/settingsKeys.ts';
 
 const setSettingMock = setSetting as Mock;
 const getSettingMock = getSetting as Mock;
@@ -48,6 +51,7 @@ const buildContext = (overrides: Partial<HandlerState> = {}) => {
   let state: HandlerState = {
     priceScheme: 'norway',
     exportPriceEnabled: false,
+    exportPriceSource: 'manual',
     exportSpotFactor: 90,
     exportFixed: -5,
     ...overrides,
@@ -67,6 +71,36 @@ const buildContext = (overrides: Partial<HandlerState> = {}) => {
 beforeEach(() => {
   vi.clearAllMocks();
   setSettingMock.mockResolvedValue(undefined);
+});
+
+describe('createExportSourceHandler', () => {
+  it("saves the owner's choice and repaints on it", async () => {
+    const { ctx, getState } = buildContext({ priceScheme: 'homey' });
+    setSettingMock.mockResolvedValue(undefined);
+
+    await createExportSourceHandler(ctx)('homey_energy');
+
+    expect(setSettingMock).toHaveBeenCalledWith(EXPORT_PRICE_SOURCE, 'homey_energy');
+    expect(getState().exportPriceSource).toBe('homey_energy');
+  });
+
+  it('rolls back when the write fails, so the UI never claims a source PELS is not pricing from', async () => {
+    const { ctx, getState } = buildContext({ priceScheme: 'homey' });
+    setSettingMock.mockRejectedValue(new Error('offline'));
+
+    await createExportSourceHandler(ctx)('homey_energy');
+
+    expect(getState().exportPriceSource).toBe('manual');
+  });
+
+  it('writes nothing when the selection has not changed', async () => {
+    const { ctx } = buildContext({ priceScheme: 'homey', exportPriceSource: 'homey_energy' });
+    setSettingMock.mockClear();
+
+    await createExportSourceHandler(ctx)('homey_energy');
+
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('createExportPriceHandlers — onEnabledChange', () => {

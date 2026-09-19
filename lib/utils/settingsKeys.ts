@@ -200,6 +200,15 @@ export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 // Homey hands us can be resolved into the price they actually pay. Runtime-only
 // (the settings UI never reads it); owned by lib/price/homeyPriceFormula.ts.
 export const HOMEY_PRICE_FORMULA = 'homey_price_formula';
+// Homey's own feed-in terms, mirrored from its export-pricing routes so a
+// period can be priced without a live read. Runtime-only (the settings UI reads
+// the resolved price, never the terms); owned by lib/price/homeyExportPrice.ts.
+export const HOMEY_EXPORT_PRICE_TERMS = 'homey_export_price_terms';
+// Which source the feed-in price comes from: the owner's own amounts, or
+// Homey's export pricing. Read by both sides; owned by
+// packages/shared-domain/src/settings/exportPriceSource.ts. Mirrored in
+// packages/contracts/src/settingsKeys.ts — keep both in sync.
+export const EXPORT_PRICE_SOURCE = 'export_price_source';
 // Export (feed-in) price model — pure-math markups on the same wholesale spot the
 // import price uses. Off by default; written by the settings UI's "Export price"
 // section. Mirrored in packages/contracts/src/settingsKeys.ts — keep both in sync
