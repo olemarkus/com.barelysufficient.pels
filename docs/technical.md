@@ -60,7 +60,9 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 
 ### End-of-Period Drain
 
-To prevent end-of-period bursting, PELS gradually tightens the capacity safe pace down to the sustainable rate as the boundary approaches. The drain curve scales with the selected period: the hourly curve keeps its established shape, while the Belgian curve tightens over the shorter quarter. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
+To prevent end-of-hour bursting, PELS gradually tightens the capacity safe pace down to the sustainable rate as the hour ends. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
+
+A 15-minute quarter is too short to wind down gradually, so it never bursts in the first place: the safe pace never goes above the hard cap minus the safety margin. Energy you did not use early in a quarter is not spent later in it. The safety margin is your buffer, so size it for your slowest device. The pace still drops below that level after a heavy start, so the quarter's average stays under the hard cap.
 
 This drain applies only to the capacity controller. The daily budget is a pacing target and has no equivalent period-boundary penalty.
 
@@ -349,7 +351,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Capacity-period enforcement
 
-PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for Belgian peak tariffs. As the boundary approaches, the period-end drain tightens the safe pace toward the sustainable rate, so the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
+PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for Belgian peak tariffs. In hourly mode, the period-end drain tightens the safe pace toward the sustainable rate as the hour ends. In 15-minute mode the safe pace never rises above that rate. Either way the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
 
 ### Local Control
 

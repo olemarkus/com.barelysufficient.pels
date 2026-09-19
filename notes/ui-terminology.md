@@ -104,7 +104,7 @@ Keep these three concepts distinct:
 
 | Term | Meaning |
 |---|---|
-| **Safe pace** | Dynamic planning pace to stay on track. Legitimately rises above the hard cap late in an under-used capacity period. |
+| **Safe pace** | Dynamic planning pace to stay on track. In hourly mode it legitimately rises above the hard cap late in an under-used hour. In 15-minute mode it never rises above the hard cap minus the safety margin: unused energy is not saved for later in the quarter (`notes/capacity-periods.md` § "Control rule"). |
 | **Hard cap** | Configured average-power ceiling for the selected hour or quarter-hour period. |
 | **Safety margin** | Buffer below the configured capacity/tariff limit. |
 

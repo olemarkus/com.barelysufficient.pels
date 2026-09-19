@@ -20,7 +20,8 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 
 - **Capacity control uses the home’s selected tariff period.** `CapacitySettings.periodMinutes`
   is `60` for hourly tariffs or `15` for Belgian quarter-hour peaks. The planner reads the
-  matching period energy and scales both allowance and boundary drain; daily budgets, prices,
+  matching period energy and scales the allowance. An hour drains toward the sustainable rate
+  at its boundary; a quarter never paces above it and has no drain. Daily budgets, prices,
   Usage history, and smart-task allocation remain hourly. A partial first/reset quarter is not
   a complete period and must never be treated as favourable capacity evidence. Design of record:
   `notes/capacity-periods.md`.

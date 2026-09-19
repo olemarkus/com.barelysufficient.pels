@@ -37,8 +37,8 @@ describe('planBudget', () => {
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
-    it('paces a Belgian quarter against one quarter of the configured kW cap', () => {
-      const nowMs = Date.UTC(2025, 0, 15, 12, 7, 30);
+    it('paces a heavy Belgian quarter below the sustainable rate', () => {
+      const nowMs = Date.UTC(2025, 0, 15, 12, 5);
       vi.useFakeTimers();
       vi.setSystemTime(nowMs);
 
@@ -47,15 +47,35 @@ describe('planBudget', () => {
         { limitKw: 5, marginKw: 0, periodMinutes: 15 },
         {
           lastTimestamp: nowMs,
-          capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.5, trackedMs: nowMs - quarterStartMs },
+          capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.75, trackedMs: nowMs - quarterStartMs },
         },
         Date.now(),
       );
 
-      // Quarter allowance = 1.25 kWh. 0.75 kWh remains over 7.5 minutes => 6 kW.
-      expect(result.allowedKw).toBeCloseTo(6, 6);
-      expect(result.remainingKWh).toBeCloseTo(0.75, 6);
+      // Quarter allowance = 1.25 kWh. 0.5 kWh remains over 10 minutes => 3 kW.
+      expect(result.allowedKw).toBeCloseTo(3, 6);
+      expect(result.remainingKWh).toBeCloseTo(0.5, 6);
       expect(result.hourlyBudgetExhausted).toBe(false);
+    });
+
+    it('never lets an under-used Belgian quarter burst above the sustainable rate', () => {
+      const quarterStartMs = Date.UTC(2025, 0, 15, 12, 0);
+      const capacitySettings = { limitKw: 5, marginKw: 0.2, periodMinutes: 15 } as const;
+      // 0.2 kWh by :07:30 leaves 1.0 kWh; spending it would mean 8 kW mid-quarter
+      // and 60 kW in the final minute. The pace stays at 5 - 0.2 = 4.8 kW.
+      for (const [minute, energyKWh] of [[7.5, 0.2], [14, 0.2]] as const) {
+        const nowMs = quarterStartMs + minute * 60 * 1000;
+        const result = computeDynamicSoftLimit(
+          capacitySettings,
+          {
+            lastTimestamp: nowMs,
+            capacityQuarter: { startMs: quarterStartMs, energyKWh, trackedMs: nowMs - quarterStartMs },
+          },
+          nowMs,
+        );
+        expect(result.allowedKw).toBeCloseTo(4.8, 6);
+        expect(result.remainingKWh).toBeCloseTo(1.0, 6);
+      }
     });
 
     it('carries a sparse Flow meter sample through a settings-triggered quarter rebuild', () => {
@@ -72,7 +92,7 @@ describe('planBudget', () => {
           lastPowerW: 3_000,
           capacityQuarter: {
             startMs: quarterStartMs,
-            energyKWh: 0.35,
+            energyKWh: 0.75,
             trackedMs: lastTimestamp - quarterStartMs,
           },
         },
@@ -80,9 +100,10 @@ describe('planBudget', () => {
       );
 
       // The held 3 kW sample contributes another 0.15 kWh from :07 to :10.
-      // 0.75 kWh remains over five minutes, so the honest pace is 9 kW.
-      expect(result.allowedKw).toBeCloseTo(9, 6);
-      expect(result.remainingKWh).toBeCloseTo(0.75, 6);
+      // 0.35 kWh remains over five minutes, so the honest pace is 4.2 kW.
+      // Dropping the held interval would read 6 kW and cap at 5 kW.
+      expect(result.allowedKw).toBeCloseTo(4.2, 6);
+      expect(result.remainingKWh).toBeCloseTo(0.35, 6);
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
@@ -97,7 +118,7 @@ describe('planBudget', () => {
         { limitKw: 5, marginKw: 0, periodMinutes: 15 },
         {
           lastTimestamp,
-          lastPowerW: 3_000,
+          lastPowerW: 9_000,
           capacityQuarter: {
             startMs: previousQuarterStartMs,
             energyKWh: 0.7,
@@ -107,10 +128,11 @@ describe('planBudget', () => {
         Date.now(),
       );
 
-      // The held 3 kW sample covers :15–:17 in the new quarter: 0.1 kWh used,
-      // 1.15 kWh remains across 13 minutes, so the safe pace is about 5.31 kW.
-      expect(result.allowedKw).toBeCloseTo(1.15 / (13 / 60), 6);
-      expect(result.remainingKWh).toBeCloseTo(1.15, 6);
+      // The held 9 kW sample covers :15–:17 in the new quarter: 0.3 kWh used,
+      // 0.95 kWh remains across 13 minutes, so the safe pace is about 4.38 kW.
+      // Dropping the held interval would read the new quarter as unused (5 kW).
+      expect(result.allowedKw).toBeCloseTo(0.95 / (13 / 60), 6);
+      expect(result.remainingKWh).toBeCloseTo(0.95, 6);
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 

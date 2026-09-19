@@ -36,8 +36,9 @@ export const formatHeroInfoTooltip = (periodMinutes: CapacityPeriodMinutes): str
     'Energy this quarter is measured in kWh — how much has been used so far this quarter.',
     'Safe pace is the whole-home power rate where PELS starts reacting.',
     'It can be set by this quarter\'s energy pace or today\'s budget pace.',
-    'The hard cap is your grid tariff step — a 15-minute average, so short bursts above it are fine '
-      + 'while the quarter\'s energy stays under it.',
+    'The hard cap is your grid tariff step, measured as a 15-minute average.',
+    'PELS keeps each quarter at or below the hard cap minus your safety margin, '
+      + 'and does not save unused energy for later in the quarter.',
     'kW is speed. kWh is distance.',
   ].join(' ');
 };

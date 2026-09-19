@@ -12,13 +12,23 @@ tariffs, or an aligned quarter-hour for Belgium. The thing to protect is the
 selected period boundary: draw that carries across it inflates the new period’s
 average from its first instant.
 
-Within a period the planner lets you **burst** — spend the remaining period
+Within an hour the planner lets you **burst** — spend the remaining period
 budget at whatever instantaneous rate fits the time left
 (`burstRate = remainingKWh / remainingHours`). Left unchecked, that invites an
 boundary burst: devices ramp up near the end to use leftover budget, then carry
 that high draw into the next period.
 
-## The mechanism: an exponential drain toward the sustainable rate
+## A quarter does not burst
+
+In 15-minute mode the capacity safe pace is `min(burstRate, sustainable)`: it
+never rises above the sustainable rate, so there is no boundary burst to drain
+and the exponential below applies to hourly control only. A drain scaled to a
+quarter would last about a minute, shorter than the shed and restore cooldowns,
+and in a live run it ended every quarter in a batch shed in the final seconds.
+The safety margin is the quarter's buffer. See `notes/capacity-periods.md`
+§ "Control rule" (owner ruling 2026-09-19).
+
+## The mechanism: an exponential drain toward the sustainable rate (hourly)
 
 The capacity safe pace (`allowedKw`, the capacity `softLimit`) caps the burst rate
 by a **ceiling that decays exponentially toward the steady sustainable rate** as
@@ -59,8 +69,7 @@ first.
 
 `TAU` is the only tuning knob (a hardcoded constant — deliberately not a user
 setting; consistent with “the hard cap is the tariff step, don’t add capacity dials”).
-The hourly base is scaled by `periodMinutes / 60`, so a quarter uses `TAU = 1`
-minute and the taper occupies the same relative portion of either period. The
+It applies to hourly control only; a quarter has no drain. The
 ceiling multiplier over the sustainable rate is `e^(minutesRemaining / TAU)`:
 
 | min left | TAU=2 | TAU=3 | **TAU=4** | TAU=5 |
@@ -71,8 +80,8 @@ ceiling multiplier over the sustainable rate is `e^(minutesRemaining / TAU)`:
 | 1        | 1.65× | 1.40× | **1.28×** | 1.22×|
 | 0        | 1.0×  | 1.0×  | **1.0×**  | 1.0× |
 
-Current hourly base value: **`TAU = 4`**. In both modes the drain pinches to the
-sustainable rate at the boundary. Larger `TAU` → tighter/earlier wind-down
+Current value: **`TAU = 4`**. The drain pinches to the sustainable rate at the
+boundary. Larger `TAU` → tighter/earlier wind-down
 (closer to the old cliff); smaller `TAU` → devices run later, more headroom near
 the boundary. (`TAU` must
 stay well above ~0.085 min: `Math.exp` overflows to `Infinity` once
@@ -104,7 +113,9 @@ restoring the step.
   allowance *below* burst, never above. This also handles a nearly-spent budget:
   when `burstRate < sustainable`, the `min` collapses to `burstRate` and the
   drain ceiling is irrelevant.
-- **Planner ceiling reaches the sustainable rate at the boundary.** `e^0 = 1`,
+- **A quarter's pace never exceeds the sustainable rate.** `min(burstRate,
+  sustainable)` from the first minute; the burst rate can only pull it lower.
+- **Planner ceiling reaches the sustainable rate at the hour boundary.** `e^0 = 1`,
   so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
   device draw can lag if command/effect latency spans the boundary.
 - **`burstRate` floor.** `remainingHours` is floored at 10 minutes for an hour
@@ -122,7 +133,7 @@ hard-cap side needs boundary protection. See `docs/daily-budget.md`.
 
 `test/integration/planBudget.test.ts` (pure math: drain near hour end, no cliff
 at the 10-minute mark, planner ceiling reaches sustainable at the boundary,
-monotone taper over the final minutes) and `test/integration/app.test.ts`
+monotone taper over the final minutes, a quarter never above sustainable) and `test/integration/app.test.ts`
 (`computeDynamicSoftLimit` through the app).
 
 `test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
@@ -133,3 +144,8 @@ priority order. It starts late in an unused hour so the burst budget stays above
 the fleet draw — the drain ceiling is the binding constraint — and uses a feedback
 energy model (the reported home total reflects each device's commanded state) so
 the wind-down self-limits.
+
+`test/e2e/capacityQuarterPace.e2e.test.ts` is the quarter counterpart: an
+under-used quarter whose load jumps above hard cap minus margin at `:08` is
+limited within a minute, rather than left running on saved energy until the
+burst rate runs out.

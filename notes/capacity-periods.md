@@ -25,8 +25,15 @@ covered it from its boundary. Startup, reset, and meter gaps therefore never
 turn a partial quarter into a favourable complete reading: control begins
 conservatively, and monthly reporting waits for the next fully tracked quarter.
 
-The end-of-period drain uses the same shape as the hourly controller, scaled to
-the shorter window. A period boundary starts a new allowance. Prices are a
+A quarter does not burst. Its safe pace is the burst rate (energy left over
+time left) capped at the sustainable rate, hard cap minus safety margin. Energy
+saved early in a quarter is not spent later in it, so the margin is the buffer.
+The hourly exponential drain does not carry over: scaled to a quarter it would
+last about a minute, shorter than the shed and restore cooldowns, and in a live
+run it let the house step a heater up with 1.6 minutes left and then shed three
+devices in the final 30 seconds, every quarter (owner ruling 2026-09-19). The
+burst rate still binds below the cap, so a heavy start is recovered within the
+quarter. A period boundary starts a new allowance. Prices are a
 separate timeline: a Homey price may change every quarter regardless of which
 capacity period is selected.
 

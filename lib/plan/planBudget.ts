@@ -10,15 +10,14 @@
  * binding pace, and `planContext` with the measured sum for the per-axis restore
  * admission budget. See `lib/plan/AGENTS.md` § "Terminology" for the full set.
  *
- * The other asymmetry callers depend on is that only the capacity pace drains at
- * the selected capacity-period boundary (`notes/end-of-hour-mode.md`); the budget pace deliberately
- * applies no such ceiling.
+ * The other asymmetry callers depend on is that only the capacity pace is held
+ * back at the capacity-period boundary (`notes/end-of-hour-mode.md`); the budget
+ * pace deliberately applies no such ceiling.
  */
 import type { PowerTrackerState } from '../power/tracker';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveHardCapacityKWh, resolveUsableCapacityKWh, resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
-import { capacityPeriodHours } from '../../packages/shared-domain/src/settings/capacityPeriod';
 
 // Floor on the remaining-time divisor for the burst rate, so the rate stays
 // finite as the period ends (avoids remaining/→0 blow-up). Shared by capacity
@@ -35,16 +34,17 @@ const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 1 / 60;
 // are wound down gradually over the final minutes instead of cliff-shed at a
 // fixed threshold. The ceiling is ~sustainable at :00 and far above any feasible
 // burst earlier in the period (so the budget-driven burst rate governs then).
-// The effective TAU scales with the configured period, preserving the same
-// relative taper for hourly and quarter-hour control. See
-// notes/end-of-hour-mode.md for the rationale and the TAU trade-off.
+// Hourly control only: a quarter never bursts above the sustainable rate, so it
+// has nothing to drain. See notes/end-of-hour-mode.md for the rationale and the
+// TAU trade-off.
 const EOH_DRAIN_TAU_MIN = 4;
 
 /**
  * Returns `capacityPaceKw` as `allowedKw` — the dynamic selected-period threshold on the
  * import axis. It is not `hardCapKw`: it budgets the allowance over the time left
- * in the period, so it legitimately sits above the configured ceiling in an
- * under-used period, and crossing it is not crossing the tariff step.
+ * in the period. In an under-used hour it legitimately sits above the configured
+ * ceiling, and crossing it is not crossing the tariff step. A quarter never goes
+ * above the sustainable rate (`notes/capacity-periods.md` § "Control rule").
  */
 export function computeDynamicSoftLimit(
   capacitySettings: CapacitySettings,
@@ -73,15 +73,23 @@ export function computeDynamicSoftLimit(
   // Calculate instantaneous rate needed to use remaining budget
   const burstRateKw = remainingKWh / remainingHours;
 
+  const sustainableRateKw = resolveUsableCapacityKw(capacitySettings);
+  // A quarter is too short to spend saved allowance safely: a burst late in the
+  // quarter leaves no time to wind down (shed and restore cooldowns alone are a
+  // minute or more), so it ends in a batch shed in the last seconds. Cap the pace
+  // at the sustainable rate instead and let the safety margin be the buffer. The
+  // burst rate still binds below it, so a heavy start is recovered.
+  if (capacitySettings.periodMinutes === 15) {
+    return { allowedKw: Math.min(burstRateKw, sustainableRateKw), hourlyBudgetExhausted, remainingKWh };
+  }
+
   // Period-end drain: cap the burst rate by an exponential ceiling that decays
-  // toward the steady sustainable rate as the period ends. This prevents a
+  // toward the steady sustainable rate as the hour ends. This prevents a
   // boundary burst (devices ramping up to spend remaining budget then carrying
   // that draw into the next period) while winding devices down gradually.
-  // Earlier in the period the ceiling sits far above any feasible burst, so the
+  // Earlier in the hour the ceiling sits far above any feasible burst, so the
   // budget-driven burst rate governs and there is time to recover.
-  const sustainableRateKw = resolveUsableCapacityKw(capacitySettings);
-  const drainTauMinutes = EOH_DRAIN_TAU_MIN * capacityPeriodHours(capacitySettings.periodMinutes);
-  const drainCeilingKw = sustainableRateKw * Math.exp(periodContext.minutesRemaining / drainTauMinutes);
+  const drainCeilingKw = sustainableRateKw * Math.exp(periodContext.minutesRemaining / EOH_DRAIN_TAU_MIN);
   const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
   // `remainingKWh` travels out because it is the only honest price of waiting:

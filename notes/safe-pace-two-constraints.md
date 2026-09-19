@@ -294,14 +294,17 @@ PELS paces against two independent things, and they do not measure the same load
 
 | Constraint | Subject (what counts) | Window | End-of-period drain | Computed by |
 |---|---|---|---|---|
-| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the selected capacity period (clock hour or quarter-hour) | **yes** | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts`), off the period energy resolved by `planHourContext.ts` |
+| `capacityPaceKw` | All of `P_import`, with no per-device carve-out: managed devices, budget-exempt devices, and background usage all count, but only to the extent they are drawn from the grid | the selected capacity period (clock hour or quarter-hour) | **yes** for an hour; a quarter is capped at the sustainable rate instead | `computeDynamicSoftLimit` (`lib/plan/planBudget.ts`), off the period energy resolved by `planHourContext.ts` |
 | `budgetPaceKw` | `P_nonExempt`: everything *except* budget-exempt devices | the current bucket of the daily plan, not the whole day | **no**, deliberately | `computeDailyUsageSoftLimit` (`lib/plan/planBudget.ts`), off `resolveDailySoftLimitBucket` (`resolveDailySoftLimitBucket`) |
 
 ### Only one of the two paces drains at the selected-period boundary
 
-`capacityPaceKw` is `min(burstRate, sustainableRateKw * e^(minutesRemaining / TAU))`
+For an hour, `capacityPaceKw` is `min(burstRate, sustainableRateKw * e^(minutesRemaining / TAU))`
 (`computeDynamicSoftLimit`, TAU 4 min), so it collapses toward
-`sustainableRateKw` over the last minutes of the capacity period. `budgetPaceKw` applies no
+`sustainableRateKw` over the last minutes of the hour. For a quarter it is
+`min(burstRate, sustainableRateKw)` from the first minute, so it never decays at
+the boundary and the hand-over below applies to hourly control only
+(`notes/capacity-periods.md` § "Control rule"). `budgetPaceKw` applies no
 such ceiling, on purpose: "Daily budget is a soft constraint, never apply
 end-of-period capping. Only the capacity hard cap needs boundary protection"
 (`computeDailyUsageSoftLimit`). See `notes/end-of-hour-mode.md` for why the drain exists.
