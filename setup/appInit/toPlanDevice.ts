@@ -1,4 +1,5 @@
 import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
+import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
@@ -135,6 +136,15 @@ export function resolveExternalOffHoldActive(
   if (device.binaryControl === undefined) return false;
   if (ctx.externalOffHold?.isHeld(device.id) !== true) return false;
   return !resolveCurrentOn(device);
+}
+
+/**
+ * The hold's recording side for a released posture (`PlanBuilderDeps.leaveOffOnRelease`),
+ * beside the reads here so the two go through the same policy. Before the policy
+ * is wired the owner's wish cannot be read, which is `unavailable`, not a resume.
+ */
+export function holdExternalOffOnRelease(ctx: AppContext, deviceId: string): ReleaseHoldOutcome {
+  return ctx.externalOffHold?.holdOnRelease(deviceId) ?? 'unavailable';
 }
 
 /**

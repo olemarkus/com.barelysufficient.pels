@@ -483,6 +483,8 @@ describe('a solar stop that lands on a device capacity already priced', () => {
     const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
 
     applyPostSheddingHolds({
+      getConfig: () => undefined,
+      leaveOffOnRelease: () => 'released',
       shedSet,
       shedStepTargets,
       forceShedSet: [],
@@ -500,6 +502,8 @@ describe('a solar stop that lands on a device capacity already priced', () => {
     const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
 
     applyPostSheddingHolds({
+      getConfig: () => undefined,
+      leaveOffOnRelease: () => 'released',
       shedSet: new Set<string>([CHARGER_ID]),
       shedStepTargets,
       forceShedSet: [],

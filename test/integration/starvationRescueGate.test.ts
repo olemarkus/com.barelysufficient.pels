@@ -204,6 +204,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
   });
   return new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,

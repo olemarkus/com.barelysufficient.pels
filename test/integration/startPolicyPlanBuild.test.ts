@@ -78,6 +78,7 @@ const inactiveDecision: DeferredAdmissionDecision = { kind: 'inactive', budgetEx
 const buildBuilder = (
   overrides: Partial<ConstructorParameters<typeof PlanBuilder>[0]> = {},
 ): PlanBuilder => new PlanBuilder({
+  leaveOffOnRelease: () => 'released',
   getInferredSurplusKw: () => 0,
   getCapacityDryRun: () => false,
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

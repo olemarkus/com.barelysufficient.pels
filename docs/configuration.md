@@ -150,6 +150,12 @@ device on again hands it straight back to normal PELS control. Devices PELS
 turned off itself still resume on their own; this only applies to an off action
 that did not come from PELS.
 
+With this setting on, one off that PELS made also counts: a device PELS was
+keeping off for **Run on solar surplus**. If you turn **Run on solar surplus** off
+while the device is off, PELS leaves it off until it is turned on again, instead
+of starting it from the grid. Turning **Run on solar surplus** back on later does
+not start it either; turn the device on once, and PELS runs it on surplus again.
+
 On the Overview the device reads **Off** with *Turned off elsewhere — turn it
 on to resume*.
 

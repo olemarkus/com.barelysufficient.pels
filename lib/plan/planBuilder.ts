@@ -40,7 +40,7 @@ import {
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
-import { runStandingPostureHolds, type PriceOptDeviceConfig } from './planBuilderSurplus';
+import { runStandingPostureHolds, withHeldOffOnRelease, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
@@ -224,7 +224,7 @@ export class PlanBuilder {
     // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
     // exists as the shed set is assembled); returns the dump-load reason map for
     // reason normalization.
-    const postureHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runStandingPostureHolds({
+    const postureHolds = trackPlanStage('plan_surplus_eligibility_ms', () => runStandingPostureHolds({
       context,
       power,
       state: this.state,
@@ -235,17 +235,22 @@ export class PlanBuilder {
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
       getInferredSurplusKw: this.deps.getInferredSurplusKw,
       debugStructured: this.deps.debugStructured,
+      leaveOffOnRelease: this.deps.leaveOffOnRelease,
       nowTs,
     }));
+    // A hold the posture pass just recorded is part of this build's input from
+    // here on, exactly as the producer will report it next build: without it
+    // the restore lane below would resume the device the hold exists to keep off.
+    const heldContext = withHeldOffOnRelease(context, postureHolds.heldOffOnReleaseIds);
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
     let planDevices = this.stages.buildPlanDevices(
-      context,
+      heldContext,
       sheddingPlan,
       resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
     );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, context, power, sheddingPlan, deviceNameById,
+      planDevices, heldContext, power, sheddingPlan, deviceNameById,
     );
     planDevices = restoreResult.planDevices;
 
@@ -253,31 +258,31 @@ export class PlanBuilder {
       planDevices,
       restoreResult,
       sheddingPlan,
-      context.temperatureSetpoints,
+      heldContext.temperatureSetpoints,
     );
     planDevices = holdResult.planDevices;
 
     planDevices = this.stages.normalizeReasons({
       planDevices,
-      context,
+      context: heldContext,
       power,
       restoreResult,
       sheddingPlan,
       holds: {
         deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
-        postureHoldReasonById,
+        postureHoldReasonById: postureHolds.reasonById,
       },
       holdResult,
     });
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
     this.stages.syncHeadroomCardState(planDevices, nowTs);
-    const finalized = this.stages.finalizePlan(planDevices, context.temperatureSetpoints);
+    const finalized = this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `ShedDecisions.recordPlannedShed`.
     this.state.shedDecisions.recordPlannedShed(finalized.lastPlannedShedIds, admittedDevices, nowTs);
     const capacityLimitKw = this.capacitySettings.limitKw;
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
-      context,
+      context: heldContext,
       power,
       reading,
       capacityLimitKw,
@@ -290,7 +295,7 @@ export class PlanBuilder {
     }));
 
     const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta({
-      context,
+      context: heldContext,
       reading,
       planDevices: finalized.planDevices,
       dailyBudgetSnapshot,
@@ -301,7 +306,7 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }, power));
     this.stages.observeDiagnostics({
-      context,
+      context: heldContext,
       power,
       planDevices: finalized.planDevices,
       restoreResult,

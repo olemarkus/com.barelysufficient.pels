@@ -17,6 +17,9 @@ import type { PlanEngineState } from './planState';
 import type { ShedDecisions } from './shedDecisions';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
+import type { SheddingPlan } from './shedding/types';
+import type { ReleaseHoldOutcome } from '../observer/externalOffHold';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { resolveSurplusEligibility, withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
@@ -35,6 +38,35 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
   for (const hold of holds) {
     for (const id of hold) shedSet.add(id);
   }
+}
+
+/**
+ * Devices a decision that outranks the standing postures governs this build, so
+ * the surplus allocator must not reserve pool for them and the surplus hold must
+ * not claim them. Computed once and shared by both, so the two stages can never
+ * disagree.
+ *
+ * - The smart-task precedence set: a governed device is the task's to run.
+ * - "Leave off until turned on again": a held device runs for nobody until it is
+ *   turned on, surplus included (owner ruling 2026-09-19). Without it a held dump
+ *   load that is still opted into surplus would reserve pool it can never use
+ *   and read "Waiting for solar surplus"; excluded, it reads as held, and
+ *   turning it on releases the hold and hands it back to surplus control.
+ */
+function resolvePostureExcludeIds(
+  decoration: Pick<
+    DeferredDecorationBundle,
+    'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
+  >,
+  admittedDevices: readonly PlanInputDevice[],
+): Set<string> {
+  return new Set([
+    ...decoration.forceShedSet,
+    ...decoration.deferredAvoidDeviceIds,
+    ...Object.keys(decoration.deferredReleaseIntentByDeviceId),
+    ...decoration.admittedDeviceIds,
+    ...admittedDevices.filter((device) => device.externalOffHoldActive === true).map((device) => device.id),
+  ]);
 }
 
 /**
@@ -64,21 +96,19 @@ export function runStandingPostureHolds(params: {
   getInferredSurplusKw: () => number;
   // Structured emitter for the `surplus_pool` composition log (debug-gated).
   debugStructured?: StructuredDebugEmitter;
+  // "Leave off until turned on again" at the moment a standing posture is
+  // released (`PlanBuilderDeps.leaveOffOnRelease`).
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
   // One timestamp for the whole build, so the settle/dwell clocks and the
   // shed-decision stamps agree on the millisecond.
   nowTs: number;
-}): Map<string, DeviceReason> {
+}): StandingPostureHolds {
   const { context, power, state, admittedDevices, decoration } = params;
   // Smart-task precedence set, applied at BOTH the allocation stage
   // (`resolveSurplusEligibility` — so a governed device never reserves the pool)
   // AND the hold stage (`resolveSurplusHold`). Computed once so the two stages
   // can never disagree about which devices a deferred objective governs.
-  const excludeIds = new Set([
-    ...decoration.forceShedSet,
-    ...decoration.deferredAvoidDeviceIds,
-    ...Object.keys(decoration.deferredReleaseIntentByDeviceId),
-    ...decoration.admittedDeviceIds,
-  ]);
+  const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
   resolveSurplusEligibility({
     devices: context.devices,
     state,
@@ -97,13 +127,15 @@ export function runStandingPostureHolds(params: {
   // held, which is the difference between "only PELS starts it" and "any governing
   // task starts it". See `resolveStartPolicyHold`.
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
-  applyPostSheddingHolds({
+  const heldOffOnReleaseIds = applyPostSheddingHolds({
     shedSet: params.shedSet,
     shedStepTargets: params.shedStepTargets,
     forceShedSet: decoration.forceShedSet,
     surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
     admittedDevices,
     shedDecisions: state.shedDecisions,
+    getConfig: params.getConfig,
+    leaveOffOnRelease: params.leaveOffOnRelease,
   });
   // Merged into one map because reason normalization asks one question of it:
   // "did a standing posture hold this device this cycle?".
@@ -119,7 +151,43 @@ export function runStandingPostureHolds(params: {
   // surplus" on a device that would never start when surplus arrived, sending the
   // owner to tune an export threshold that could not release it. Locking the two
   // toggles against each other in the settings UI is the open follow-up.
-  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]);
+  return {
+    reasonById: new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]),
+    heldOffOnReleaseIds,
+  };
+}
+
+/** What the standing-posture pass decided for one build. */
+export type StandingPostureHolds = {
+  /** Why each device a standing posture held this cycle is held. */
+  reasonById: Map<string, DeviceReason>;
+  /**
+   * Devices whose released posture handed them to "Leave off until turned on
+   * again" this build (`releaseAbandonedSurplusPosture`). The hold is already
+   * recorded; the plan input was built before it existed, so the builder carries
+   * it into this build's input before materialization ({@link withHeldOffOnRelease}).
+   */
+  heldOffOnReleaseIds: ReadonlySet<string>;
+};
+
+/**
+ * Carry a hold recorded during this build into the build's input. The plan
+ * input was resolved before the hold existed, so without this the restore lane
+ * — which runs after the posture pass in the same build — would resume the
+ * device the hold was just recorded to keep off. Materialization then treats it
+ * exactly as every later build will, when the producer reads the stored hold.
+ */
+export function withHeldOffOnRelease(
+  context: PlanContext,
+  heldOffOnReleaseIds: ReadonlySet<string>,
+): PlanContext {
+  if (heldOffOnReleaseIds.size === 0) return context;
+  return {
+    ...context,
+    devices: context.devices.map((device) => (
+      heldOffOnReleaseIds.has(device.id) ? { ...device, externalOffHoldActive: true as const } : device
+    )),
+  };
 }
 
 /**
@@ -150,21 +218,14 @@ export function runStandingPostureHolds(params: {
 export function runSilentMeterSurplusHold(
   context: PlanContext,
   state: PlanEngineState,
-  admittedDevices: PlanInputDevice[],
-  shedSet: Set<string>,
-  shedStepTargets: Map<string, string>,
-  decoration: Pick<
-    DeferredDecorationBundle,
-    'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
-  >,
+  sheddingPlan: SheddingPlan,
+  decoration: DeferredDecorationBundle,
   cycle: { getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined; nowTs: number },
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
 ): Map<string, DeviceReason> {
-  const excludeIds = new Set([
-    ...decoration.forceShedSet,
-    ...decoration.deferredAvoidDeviceIds,
-    ...Object.keys(decoration.deferredReleaseIntentByDeviceId),
-    ...decoration.admittedDeviceIds,
-  ]);
+  const { admittedDevices } = decoration;
+  const { shedSet, shedStepTargets } = sheddingPlan;
+  const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
   withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   // BOTH standing postures, here as on the measured path. A standing posture is
@@ -181,9 +242,12 @@ export function runSilentMeterSurplusHold(
     surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
     admittedDevices,
     shedDecisions: state.shedDecisions,
+    getConfig: cycle.getConfig,
+    leaveOffOnRelease,
   });
   // Start policy written second, so it wins the card — the same precedence the
-  // measured pass applies.
+  // measured pass applies. A hold recorded on release needs no marking here:
+  // this pass restores nothing, and the next build reads the stored hold.
   return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]);
 }
 
@@ -213,11 +277,17 @@ export function applyPostSheddingHolds(params: {
   surplusHoldIds: Iterable<string>;
   admittedDevices: PlanInputDevice[];
   shedDecisions: ShedDecisions;
-}): void {
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
+}): ReadonlySet<string> {
   mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
   clearShedStepTargets(params.shedStepTargets, params.surplusHoldIds);
-  releaseAbandonedSurplusPosture({
-    shedDecisions: params.shedDecisions, admittedDevices: params.admittedDevices, shedSet: params.shedSet,
+  return releaseAbandonedSurplusPosture({
+    shedDecisions: params.shedDecisions,
+    admittedDevices: params.admittedDevices,
+    shedSet: params.shedSet,
+    getConfig: params.getConfig,
+    leaveOffOnRelease: params.leaveOffOnRelease,
   });
 }
 
@@ -236,12 +306,26 @@ export function applyPostSheddingHolds(params: {
  * neighbouring stepped restore would branch on stale surplus state. Clearing
  * them returns the device to a clean, plainly-managed record.
  *
- * NOTE (deliberate scope): this does NOT keep a released dump load OFF. Once the
- * posture is gone the device is a plain managed binary device, and PELS's
- * generic restore lane runs off managed binary devices under available power
- * (pre-existing behaviour, independent of this feature and of `shedDecisions.decidedMs`).
- * Persisting a released dump load's OFF baseline needs a managed-restore policy
- * change and is deliberately out of scope here.
+ * What happens to a released device that is still OFF is the owner's own
+ * switches' call, not a rule of this function (owner ruling 2026-09-19). Once the
+ * posture is gone the device is a plain managed binary device, which PELS's
+ * generic restore lane resumes under available power — unless the owner opted
+ * it into "Leave off until turned on again". For such a device the release asks
+ * `leaveOffOnRelease`, which records that hold, and the device stays off until
+ * it is turned on again.
+ *
+ * Asked only when the OWNER withdrew the posture: neither "Run on solar surplus"
+ * (`surplusWilling`) nor "Only PELS starts this device" stands any more. The
+ * posture also drops for reasons that are not a withdrawal — Power-limit control
+ * off, the device unmanaged, a control-model change, a move to a meter area —
+ * and minting a hold there would outlive the posture coming back and keep a
+ * surplus load off for good. Clearing "Only PELS starts this device" counts as a
+ * withdrawal too, where it reaches this function: for a device PELS was holding
+ * shed under the policy. An already-off `pels_only` device is inactive rather
+ * than shed, carries no stamp, and is never released here.
+ *
+ * Returns the devices the release handed to that hold, so the builder can carry
+ * it into this build's input before restore runs.
  *
  * `lastDeviceShedMs` is intentionally NOT cleared here: if PELS actually turned
  * the device off, that shed-cooldown clock is legitimate and clearing it would
@@ -262,10 +346,15 @@ export function releaseAbandonedSurplusPosture(params: {
   shedDecisions: ShedDecisions;
   admittedDevices: PlanInputDevice[];
   shedSet: ReadonlySet<string>;
-}): void {
-  const { shedDecisions, admittedDevices, shedSet } = params;
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
+}): ReadonlySet<string> {
+  const {
+    shedDecisions, admittedDevices, shedSet, getConfig, leaveOffOnRelease,
+  } = params;
   const stampedIds = Object.keys(shedDecisions.surplusOnlyByDevice);
-  if (stampedIds.length === 0) return;
+  const heldOffIds = new Set<string>();
+  if (stampedIds.length === 0) return heldOffIds;
   // EITHER baseline-off posture keeps the stamp alive, matching what stamps it
   // (`ShedDecisions.recordPlannedShed`). A `pels_only` device the owner has just
   // opted OUT of is in neither set and falls through to the clear, which is the
@@ -276,9 +365,29 @@ export function releaseAbandonedSurplusPosture(params: {
       .filter((dev) => dev.surplusOnly === true || dev.startPolicy === 'pels_only')
       .map((dev) => dev.id),
   );
+  // Only a binary device observed OFF can be left off: "Leave off until turned
+  // on again" has planning effect only while the device is still observed off
+  // (`resolveExternalOffHoldActive`), and a running device must never be marked
+  // held. A device that left the snapshot is in neither set and is simply released.
+  const withdrawnObservedOffIds = new Set(
+    admittedDevices
+      .filter((dev) => isBinaryPlanDevice(dev) && dev.currentOn === false)
+      .filter((dev) => dev.startPolicy !== 'pels_only' && getConfig(dev.id)?.surplusWilling !== true)
+      .map((dev) => dev.id),
+  );
   for (const id of stampedIds) {
     if (baselineOffNow.has(id)) continue; // still a baseline-off device — keep the stamp
+    // Asked on THIS build whatever else holds the device: the plan's finalization
+    // drops the posture stamp of a device capacity is still shedding, so this is
+    // the only build that sees the release.
+    const outcome = withdrawnObservedOffIds.has(id) ? leaveOffOnRelease(id) : 'released';
+    // `unavailable` decides nothing (a transient settings failure is a no-op):
+    // the device stays off this build, as the hold's own fail-closed read would
+    // keep it, and the stamp stays so the next build asks again.
+    if (outcome !== 'released') heldOffIds.add(id);
+    if (outcome === 'unavailable') continue;
     if (shedSet.has(id)) continue; // capacity still holds it off — keep its decision clock
     shedDecisions.clearFor(id); // clears the decision clock + the surplus stamp
   }
+  return heldOffIds;
 }

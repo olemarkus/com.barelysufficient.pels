@@ -100,6 +100,19 @@ export type ExternalOffHoldDeps = {
  * (`isHeld`) — behind one read surface, because every consumer needs both while
  * neither may ask *why* a hold exists.
  */
+/**
+ * What became of a posture PELS released (`holdOnRelease`):
+ *
+ * - `held` — the device is opted in and a stored hold now keeps it off.
+ * - `released` — the device is not opted in: the release resumes it, as every
+ *   device did before this existed.
+ * - `unavailable` — the opt-in could not be read, or the hold could not be
+ *   stored. Not an answer about the owner's wish, so the caller must decide
+ *   nothing and ask again, rather than read it as `released` and resume a
+ *   device the owner may have asked to leave off.
+ */
+export type ReleaseHoldOutcome = 'held' | 'released' | 'unavailable';
+
 export type ExternalOffHoldPolicy = {
   isEnabledForDevice: (deviceId: string) => boolean;
   isHeld: (deviceId: string) => boolean;
@@ -108,6 +121,16 @@ export type ExternalOffHoldPolicy = {
   /** Clears a hold. Returns `true` only when one was actually present. */
   clearHold: (deviceId: string) => boolean;
   heldDeviceIds: () => string[];
+  /**
+   * PELS is releasing a standing off-hold of its own on a device that is still
+   * observed off — today, the "Use solar surplus" posture the owner has just
+   * switched off. For a device opted into "Leave off until turned on again",
+   * that release is where the owner's wish applies: it records a hold, so the
+   * device stays off until it is turned on again instead of being resumed.
+   * See {@link ReleaseHoldOutcome}; only a hold the key list shows counts as
+   * `held`, never `isHeld`'s fail-closed guess.
+   */
+  holdOnRelease: (deviceId: string) => ReleaseHoldOutcome;
   /**
    * Drops any hold whose device is no longer opted in. Returns the released
    * device ids. Run at construction as well as on a settings change, so an
@@ -266,7 +289,7 @@ export const createExternalOffHoldPolicy = (
   // hold honoured forever — there is no other path that reconciles the two.
   dropDeOptedHolds();
 
-  return {
+  const policy: ExternalOffHoldPolicy = {
     isEnabledForDevice,
     isHeld: (deviceId) => {
       ensureMigrated();
@@ -312,8 +335,22 @@ export const createExternalOffHoldPolicy = (
       dropDeOptedHolds();
       return heldDeviceIds();
     },
+    holdOnRelease: (deviceId) => {
+      const optIn = deps.readOptIn();
+      if (optIn.status !== 'resolved') return 'unavailable';
+      if (optIn.optIn[deviceId] !== true) return 'released';
+      if (policy.startHold(deviceId)) return 'held';
+      // Not newly written: already held, or every write attempt failed. Only a
+      // hold the key list SHOWS counts. `isHeld`'s fail-closed guess would claim
+      // a hold that is not stored, and the device would resume once reads recover.
+      const keyList = readKeyList(store);
+      return keyList.status === 'resolved' && keyList.keys.includes(perDeviceKey(deviceId))
+        ? 'held'
+        : 'unavailable';
+    },
     releaseDeOptedHolds: dropDeOptedHolds,
   };
+  return policy;
 };
 
 /**

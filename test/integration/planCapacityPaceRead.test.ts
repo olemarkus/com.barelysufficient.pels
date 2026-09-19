@@ -29,6 +29,7 @@ const buildPaceBuilder = (params: {
   getPowerTracker: () => PowerTrackerState;
   getDynamicSoftLimitOverride?: () => number | null;
 }): PlanBuilder => new PlanBuilder({
+  leaveOffOnRelease: () => 'released',
   getInferredSurplusKw: () => 0,
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   setCapacityInShortfall: vi.fn(),

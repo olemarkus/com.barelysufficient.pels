@@ -139,6 +139,7 @@ const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
   tracker: { lastTimestamp: number; lastPowerW?: number };
 }): PlanBuilder => new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
   capacityGuard: params.capacityGuard,

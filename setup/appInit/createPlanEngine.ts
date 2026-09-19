@@ -1,6 +1,6 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
-import { isExternalOffHeldForDevice } from './toPlanDevice';
+import { holdExternalOffOnRelease, isExternalOffHeldForDevice } from './toPlanDevice';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
@@ -72,6 +72,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getCapacitySettings: deps.getCapacitySettings,
     getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
     getInferredSurplusKw: deps.getInferredSurplusKw,
+    leaveOffOnRelease: deps.leaveOffOnRelease,
     getPowerTracker: deps.getPowerTracker,
     getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
     getShedBehavior: deps.getShedBehavior,
@@ -188,6 +189,7 @@ export function createPlanEngineComposition(
     // resolution the producer applies, so plan and executor share one definition
     // of "held".
     isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
+    leaveOffOnRelease: (deviceId) => holdExternalOffOnRelease(ctx, deviceId),
     actuator,
     binaryCommandLifecycle: scope.binaryCommandLifecycle,
     capacityGuard: options.capacityGuard,

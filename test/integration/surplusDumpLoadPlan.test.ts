@@ -47,6 +47,7 @@ import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -99,6 +100,8 @@ const makeHarness = (params: {
     surplusWilling?: boolean; surplusDelta?: number; }>;
   powerSampleAgeMs?: number;
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
+  // The "Leave off until turned on again" port; defaults to a device no one opted in.
+  leaveOffOnRelease?: (deviceId: string) => ReleaseHoldOutcome;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
   const guard = createTestCapacityGuard({ homeId: 'main' });
@@ -106,6 +109,7 @@ const makeHarness = (params: {
   const state = createPlanEngineState();
   const decorate = params.decorate;
   const builder = new PlanBuilder({
+      leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: guard,
@@ -191,10 +195,153 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
     // And the device is no longer surplus-held (posture gone).
     expect(deviceOf(after, PUMP)?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);
-    // NOTE: the device then returns to PELS's generic managed-restore behaviour
-    // (off managed binary devices are run under available power) — keeping a
-    // released dump load's OFF baseline is a separate managed-restore policy
-    // change, not asserted here.
+    // What happens to the device next is its owner's switches' call — see the
+    // "Leave off until turned on again" specs below.
+  });
+
+  it('keeps a de-opted dump load off when its owner asked to leave it off until turned on again', async () => {
+    // Owner ruling 2026-09-19: the release honours the device's own opt-in. The
+    // hold is recorded at the release and carried onto the SAME build's plan, so
+    // the restore lane that runs after the posture pass cannot resume the pump
+    // before the next build reads the stored hold.
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Observed off, as the producer reports it (`currentState` is what the
+    // off-state reason keys on).
+    const releasedPump: PlanInputDevice = { ...buildPump({ on: false, surplusOnly: false }), currentState: 'off' };
+    const after = await h.builder.buildDevicePlanSnapshot([releasedPump]);
+
+    expect(leaveOffOnRelease).toHaveBeenCalledWith(PUMP);
+    // Exactly what every later build reports once the producer reads the stored
+    // hold: inactive, under its own reason, with no turn-on intent.
+    const pump = deviceOf(after, PUMP);
+    expect(pump?.externalOffHoldActive).toBe(true);
+    expect(pump?.plannedState).toBe('inactive');
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.externalOffHold });
+    expect(intentOf(after, PUMP)?.desiredOn).not.toBe(true);
+    // PELS's own record is released either way; the hold now owns "stay off".
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
+    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
+  });
+
+  it('resumes a de-opted dump load its owner did not ask to leave off', async () => {
+    // The managed default, unchanged: a released device is a plain managed
+    // binary device, which PELS runs under available power.
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease: () => 'released' });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const after = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false, surplusOnly: false })]);
+
+    expect(deviceOf(after, PUMP)?.externalOffHoldActive).toBeUndefined();
+    expect(intentOf(after, PUMP)?.desiredOn).toBe(true);
+  });
+
+  it('decides nothing when the hold cannot be read or stored, and asks again next build', async () => {
+    // A transient settings failure is a no-op, not a resume: the pump stays off
+    // this build and PELS keeps its record, so the release is retried.
+    const outcomes: ReleaseHoldOutcome[] = ['unavailable', 'held'];
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => outcomes.shift() ?? 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const released: PlanInputDevice = { ...buildPump({ on: false, surplusOnly: false }), currentState: 'off' };
+
+    const failed = await h.builder.buildDevicePlanSnapshot([released]);
+    expect(intentOf(failed, PUMP)?.desiredOn).not.toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.builder.buildDevicePlanSnapshot([released]);
+    expect(leaveOffOnRelease).toHaveBeenCalledTimes(2);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
+  });
+
+  it('asks once, and the next build reads the stored hold without asking again', async () => {
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const released: PlanInputDevice = { ...buildPump({ on: false, surplusOnly: false }), currentState: 'off' };
+    await h.builder.buildDevicePlanSnapshot([released]);
+
+    // From here the producer reports the stored hold on the input.
+    await vi.advanceTimersByTimeAsync(10_000);
+    const next = await h.builder.buildDevicePlanSnapshot([{ ...released, externalOffHoldActive: true }]);
+
+    expect(leaveOffOnRelease).toHaveBeenCalledTimes(1);
+    expect(deviceOf(next, PUMP)?.plannedState).toBe('inactive');
+    expect(intentOf(next, PUMP)?.desiredOn).not.toBe(true);
+  });
+
+  it('does not ask when the posture drops while the owner is still opted in', async () => {
+    // Power-limit control off, unmanaged, a control-model change or a move to a
+    // meter area also clears `surplusOnly`. None is the owner withdrawing the
+    // posture, and a hold minted there would outlive the posture coming back.
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({
+      totalKw: 0.5,
+      leaveOffOnRelease,
+      priceOptSettings: { [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true } },
+    });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.builder.buildDevicePlanSnapshot([{ ...buildPump({ on: false, surplusOnly: false }), currentState: 'off' }]);
+
+    expect(leaveOffOnRelease).not.toHaveBeenCalled();
+  });
+
+  it('counts clearing "Only PELS starts this device" on a device PELS turned off as a withdrawal', async () => {
+    // Reachable only for a device PELS was holding SHED under the policy (a
+    // start it turned back off). An already-off `pels_only` device is inactive,
+    // not shed, so it carries no stamp and is never released here.
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    const running: PlanInputDevice = { ...buildPump({ on: true, surplusOnly: false }), startPolicy: 'pels_only' };
+    await h.builder.buildDevicePlanSnapshot([running]);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const after = await h.builder.buildDevicePlanSnapshot([{
+      ...buildPump({ on: false, surplusOnly: false }), startPolicy: 'unrestricted', currentState: 'off',
+    }]);
+
+    expect(leaveOffOnRelease).toHaveBeenCalledWith(PUMP);
+    expect(deviceOf(after, PUMP)?.reason).toEqual({ code: PLAN_REASON_CODES.externalOffHold });
+  });
+
+  it('keeps a held dump load off after it is opted back into surplus, reading as held', async () => {
+    // Owner ruling 2026-09-19: "Leave off until turned on again" keeps its
+    // meaning. Re-opting does not start the device; turning it on does. Until
+    // then it claims no surplus pool and does not read "Waiting for solar surplus".
+    const h = makeHarness({ totalKw: -2 });
+    const heldPump: PlanInputDevice = {
+      ...buildPump({ on: false }), currentState: 'off', externalOffHoldActive: true,
+    };
+    const plan = await engagePump(h, () => [heldPump]);
+
+    const pump = deviceOf(plan, PUMP);
+    expect(pump?.plannedState).toBe('inactive');
+    expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.externalOffHold });
+    expect(intentOf(plan, PUMP)?.desiredOn).not.toBe(true);
+    expect(h.state.surplusEligibilityByDevice[PUMP]?.eligible).not.toBe(true);
+  });
+
+  it('never asks to leave off a de-opted dump load that is running', async () => {
+    // "Leave off" has planning effect only while the device is observed off; a
+    // running device marked held would never be resumed or stepped again.
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const after = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true, surplusOnly: false })]);
+
+    expect(leaveOffOnRelease).not.toHaveBeenCalled();
+    expect(deviceOf(after, PUMP)?.externalOffHoldActive).toBeUndefined();
   });
 
   it('keeps the surplus-hold reason through a plan-wide shed cooldown and stays exempt from the stepped-restore-block', async () => {

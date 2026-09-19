@@ -108,8 +108,9 @@ export class SilentMeterPlanBuilder {
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.
     const surplusHoldReasonById = runSilentMeterSurplusHold(
-      context, this.state, decoration.admittedDevices, sheddingPlan.shedSet, sheddingPlan.shedStepTargets, decoration,
+      context, this.state, sheddingPlan, decoration,
       { getConfig: (deviceId) => this.deps.getPriceOptimizationSettings()[deviceId], nowTs },
+      this.deps.leaveOffOnRelease,
     );
     for (const [id, reason] of surplusHoldReasonById) sheddingPlan.shedReasons.set(id, reason);
     // A smart task's forced shed rides in through the hold merge with no reason

@@ -129,6 +129,7 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
@@ -204,6 +205,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
@@ -258,6 +260,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,

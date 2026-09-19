@@ -210,6 +210,7 @@ const buildBuilder = (
     getCapacitySettings: () => capacitySettings,
   });
   return new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
@@ -354,6 +355,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     });
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -616,6 +618,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     });
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,

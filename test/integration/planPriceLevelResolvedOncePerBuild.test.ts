@@ -89,6 +89,7 @@ const buildBuilder = (params: {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   lastPowerW = (3) * 1000;
   return new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,

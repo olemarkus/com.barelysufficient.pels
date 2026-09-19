@@ -36,6 +36,7 @@ describe('PlanBuilder relative priority constraint', () => {
     lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,

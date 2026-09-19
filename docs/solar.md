@@ -64,6 +64,7 @@ On a managed **on/off** device you can turn on **"Run on solar surplus"** (the t
 Before you use it:
 
 - **If you switch the device on yourself while there is no surplus, PELS will switch it off again.** The toggle hands the on/off decision to PELS; turn the toggle off to take the device back.
+- **Turning the toggle off while the device is off:** PELS then treats it like any other managed device and starts it when there is room, from the grid if needed. To keep it off instead, also turn on **Leave off until turned on again** for the device ([Configuration](/configuration#leave-off-until-turned-on-again)); it then stays off until it is turned on, even if you turn the toggle back on.
 - **Use it for loads that can wait for the sun**: a pool pump, a towel dryer, a garage or cabin heater.
 
 ::: warning Not for your only water heater

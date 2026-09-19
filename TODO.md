@@ -78,8 +78,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Smart tasks** — 2: editor revokes a standing limit-only grant; `on_track` while the planned
   bucket goes undelivered
 - **Multi-home and meter areas** — 1: the "no electricity meters" empty state never renders
-- **Solar and surplus** — 2: turning "Use solar surplus" off releases a dump load to the grid;
-  sparse Flow reports mint solar export
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
@@ -865,33 +863,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar and surplus
 
-- [ ] **Turning "Use solar surplus" off releases an opted-in dump load to the grid-restore lane.**
-      Switching the toggle off calls `releaseAbandonedSurplusPosture`
-      (`lib/plan/planBuilderSurplus.ts`), which clears the device's
-      `shedDecisions.surplusOnlyByDevice` stamp (`lib/plan/shedDecisions.ts`). The device then
-      rejoins the generic managed-binary restore lane, which turns it ON from grid headroom, so a
-      load the owner only ever ran on surplus starts running on import the moment they stop
-      offering it surplus. Change: on de-opt, keep an off-baseline marker in place of the stamp,
-      clear it when the device is observed on or the owner opts back in, and have it keep the
-      device in the standing hold while it stands (`resolveSurplusHold`,
-      `lib/plan/shedding/surplusHold.ts`, which today keys only on the `surplusOnly` posture), so
-      generic managed-binary restore never selects it. Done when a spec in
-      `test/integration/surplusDumpLoadPlan.test.ts` shows an off dump load staying off across
-      restore cycles after de-opt, and turning on once it is observed on. *Persona:* prosumer who
-      opted a dump load into solar surplus and later turns the toggle off. [P1]
-
-- [ ] **Sparse Flow reports mint solar export across the gap between them.** Production on the
-      `flow` source now accrues on the generation poll's own clock (`resolveGenerationSegments`,
-      `lib/observer/generationFreshness.ts`), but export still integrates the previous held net
-      across the whole net interval in `accrueSolarSample` (`lib/power/trackerSolar.ts`), as the
-      billed import bucket does. A Flow reporting every 30 min at −5 kW, production collapsing a
-      minute later, shows ~0.1 kWh produced and ~2.5 kWh exported for that hour on the Solar card,
-      and prices the ghost export in the money lines. Change: on a home with no battery (the only
-      thing that can export more than was produced), cap each interval's export accrual at the
-      production the segments observed in it. Done when that scenario accrues exported ≤ produced
-      for the hour, pinned in `test/integration/powerTrackerSolar.test.ts`, with a battery home
-      unchanged. Persona: the prosumer on the flow source reading the Solar card
-      (`notes/personas.md`). [P2]
+- [ ] **A dump load de-opted while PELS's OFF command is still unconfirmed is resumed despite
+      "Leave off until turned on again".** `releaseAbandonedSurplusPosture`
+      (`lib/plan/planBuilderSurplus.ts`) asks `leaveOffOnRelease` only for a device observed OFF,
+      and clears the posture stamp either way. When surplus has just collapsed, PELS has commanded
+      the dump load OFF, and the owner switches "Run on solar surplus" off before a slow (cloud,
+      Zigbee, Flow-backed) device confirms, the device still reads ON: it is not asked, its stamp is
+      cleared, and once the OFF lands it is a plain managed device the restore lane starts from the
+      grid. Change: while a binary OFF command for the device is pending
+      (`PlanBuilderDeps.pendingBinaryCommandStore.peek`), keep the stamp instead of clearing it, so
+      the release is re-evaluated on the build that observes the device off. Done when a spec in
+      `test/integration/surplusDumpLoadPlan.test.ts` de-opts a pump with a pending OFF and shows it
+      held, not resumed, once the OFF is observed. *Persona:* prosumer with a cloud-connected dump
+      load and "Leave off until turned on again". [P2]
 
 - [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
       target-power preset, and stays hidden until the next device refetch.** The settings-UI gate

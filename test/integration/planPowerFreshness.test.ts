@@ -201,6 +201,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -330,6 +331,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -402,6 +404,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -454,6 +457,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
   }) => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -500,6 +504,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const structuredLog = { info: vi.fn(), warn: vi.fn() };
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
@@ -547,6 +552,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
+      leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),

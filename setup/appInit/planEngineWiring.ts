@@ -1,4 +1,5 @@
 import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -54,6 +55,12 @@ export type PlanEngineWiring = {
    * the executor's restore carve-out a no-op for that home's devices.
    */
   isExternalOffHeld: (deviceId: string) => boolean;
+  /**
+   * The same hold, recorded at the one moment PELS releases a standing posture
+   * of its own on an observed-off device (`PlanBuilderDeps.leaveOffOnRelease`).
+   * Resolved beside `isExternalOffHeld` for every home in `createPlanEngine`.
+   */
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
   /** Pre-shed setpoint anchor store — the persisted adapter, shared across
    * homes (device ids are globally unique). Required: a home wired without it
    * would silently lose anchors across restarts. */

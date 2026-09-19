@@ -480,3 +480,49 @@ describe('external-off hold settings adapter — a flaky store', () => {
     expect(backing.has(holdKey('a'))).toBe(true);
   });
 });
+
+describe('external-off hold policy — a posture PELS releases', () => {
+  // The owner switched "Use solar surplus" off on a dump load PELS was holding
+  // off. For a device opted into "Leave off until turned on again" that is where
+  // the owner's wish applies; for any other device the release resumes it, as
+  // every device did before (owner ruling 2026-09-19).
+  it('records a hold for an opted-in device and says it now keeps the device off', () => {
+    const store = fakeStore();
+    const policy = build(store, () => optedIn({ a: true }));
+    expect(policy.holdOnRelease('a')).toBe('held');
+    expect(store.backing.has(holdKey('a'))).toBe(true);
+  });
+
+  it('answers true for an opted-in device that is already held, without a second write', () => {
+    const store = fakeStore({ [holdKey('a')]: true });
+    const set = vi.spyOn(store, 'set');
+    expect(build(store, () => optedIn({ a: true })).holdOnRelease('a')).toBe('held');
+    expect(set).not.toHaveBeenCalledWith(holdKey('a'), expect.anything());
+  });
+
+  it('records nothing for a device that is not opted in', () => {
+    const store = fakeStore();
+    expect(build(store, () => optedIn({ b: true })).holdOnRelease('a')).toBe('released');
+    expect(store.backing.has(holdKey('a'))).toBe(false);
+  });
+
+  it('reports unavailable, not released, when the opt-in cannot be read', () => {
+    // Not an answer about the owner's wish: the caller must decide nothing.
+    const store = fakeStore();
+    expect(build(store, () => ({ status: 'unavailable' })).holdOnRelease('a')).toBe('unavailable');
+    expect(store.backing.has(holdKey('a'))).toBe(false);
+  });
+});
+
+describe('external-off hold policy — only a stored hold keeps a released device off', () => {
+  it('does not claim a hold whose write failed while the key list is unreadable', () => {
+    // `isHeld` answers a fail-closed guess while the list is unreadable; counting
+    // that guess would mark the device held, drop PELS's record, and resume the
+    // device once reads recover and show no hold.
+    const store = fakeStore();
+    const policy = build(store, () => optedIn({ a: true }));
+    store.failKeys.current = true;
+    store.set = () => { throw new Error('settings write failed'); };
+    expect(policy.holdOnRelease('a')).toBe('unavailable');
+  });
+});
