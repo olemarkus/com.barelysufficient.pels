@@ -5,6 +5,12 @@ import { callApi, getSetting, hasSettingCache } from './homey.ts';
 import { bumpPlanSurface } from './planRedesign.ts';
 import { state } from './state.ts';
 
+// `state.deferredObjectiveSettings` starts as an empty map, which reads exactly
+// like a home with no Smart tasks. A consumer that must not mistake "not loaded
+// yet" (or a failed load) for "none configured" asks this first.
+let loaded = false;
+export const hasLoadedDeferredObjectiveSettings = (): boolean => loaded;
+
 export const loadDeferredObjectiveSettings = async (): Promise<void> => {
   // Objectives live in per-device keys now; the raw `deferred_objectives` blob is
   // consumed by the boot migration. On the normal boot path the bootstrap injected
@@ -18,6 +24,7 @@ export const loadDeferredObjectiveSettings = async (): Promise<void> => {
     ? await getSetting(DEFERRED_OBJECTIVES_SETTINGS)
     : await callApi<unknown>('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
   state.deferredObjectiveSettings = normalizeDeferredObjectiveSettings(raw);
+  loaded = true;
   document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
   bumpPlanSurface();
 };

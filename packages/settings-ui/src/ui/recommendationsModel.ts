@@ -9,12 +9,17 @@ export type RecommendationDismissals = Record<string, number>;
 
 export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
-  | { kind: 'devices' };
+  | { kind: 'devices' }
+  // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
+  | { kind: 'panel'; panelId: string };
 
 export type SetupRecommendation = {
   id: string;
   version: number;
-  category: 'recommendation';
+  // `recommendation`: something about this home's setup PELS would change.
+  // `optional`: a feature that applies here and is not in use. Never urged —
+  // dismissing one is the owner saying it is not for them.
+  category: 'recommendation' | 'optional';
   title: string;
   body: string;
   actionLabel: string;

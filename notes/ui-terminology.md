@@ -1613,6 +1613,39 @@ returning owner who unmanages their last device.
 - There is no "setup complete" state: once every step in force is done the card
   is gone.
 
+### After setup: optional features
+
+Once the setup path closes, PELS suggests what else applies to the home, on the
+existing recommendation surfaces. Source of truth:
+`resolveAfterSetupRecommendations`
+(`packages/settings-ui/src/ui/afterSetupRecommendations.ts`). They are the three
+things the path's lede promises: prices, solar, Smart tasks.
+
+- **Only what is relevant to this home, never what it already uses, and never on
+  an unread fact.** Prices needs a managed device with a temperature target;
+  solar needs a home that exports AND a pool the runtime can act on AND a device
+  PELS may limit; Smart tasks needs a device that could take one. Each is
+  dropped once any device uses it. An unread setting looks exactly like a
+  feature nobody turned on, so an unknown fact yields no suggestion.
+- **The solar copy never says "export".** It must be true of a zero-export home
+  that curtails as well as one that exports: `while your solar produces more
+  than the home is using`.
+- **A feature the owner turned off is not suggested.** `Respond to prices` off is
+  a choice made, not a feature undiscovered; per-device Price entries still
+  count as "in use" under it.
+- **None shows while the setup path is open.** One thing at a time.
+- Chip: `Optional`, never `Recommended`. Nothing is wrong with a home that skips
+  them. `Recommended` stays for changes PELS would make to a home's setup.
+- Overview banner: `PELS can do more for this home` / `See what` when only
+  optional items are active. `N recommendations` / `Review` whenever a real
+  recommendation is among them.
+- Titles name the outcome, not the feature: `Heat more while power is cheap`,
+  `Use more of your own solar`, `Have something ready by a set
+  time`. Bodies name the real controls (`Price`, `Use solar surplus`, the `Add
+  charging task` Flow action) so the words are findable on the next page.
+- **Dismiss is the owner saying "not relevant to me"**, remembered like any
+  other recommendation. Do not add a suggestion that cannot be dismissed.
+
 ## Mode label
 
 With one home, the Settings page renders one selector labelled `Current mode`.

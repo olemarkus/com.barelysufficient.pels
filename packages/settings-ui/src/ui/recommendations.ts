@@ -15,6 +15,8 @@ import {
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
+import { loadAfterSetupFacts, readAfterSetupFacts } from './afterSetupFacts.ts';
+import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
 import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
@@ -89,8 +91,14 @@ const resolveCurrentRecommendations = (): SetupRecommendation[] => {
     && (carInventory.state === 'resolved' || carInventory.state === 'stale')
     ? resolveCarAssociationRecommendations(state.latestDevices, carInventory.cars, state.evCarAssociations)
     : [];
-  return [...nativeRecommendations, ...carRecommendations]
-    .sort((left, right) => left.title.localeCompare(right.title));
+  // Device fixes first, by name; then what PELS can do next, in the order the
+  // setup path's lede names them. The second group is not sorted into the
+  // first: a wiring fix for one device outranks an optional feature.
+  return [
+    ...[...nativeRecommendations, ...carRecommendations]
+      .sort((left, right) => left.title.localeCompare(right.title)),
+    ...resolveAfterSetupRecommendations(readAfterSetupFacts()),
+  ];
 };
 
 const isDismissalRecord = (value: unknown): value is Record<string, unknown> => (
@@ -172,10 +180,13 @@ const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Pro
 
 const openRecommendationTarget = (recommendation: SetupRecommendation): void => {
   if (navigationRead.state !== 'resolved') return;
-  navigationRead.navigation.openPanel('devices');
-  if (recommendation.target.kind === 'device') {
-    navigationRead.navigation.openDevice(recommendation.target.deviceId);
+  const { target } = recommendation;
+  if (target.kind === 'panel') {
+    navigationRead.navigation.openPanel(target.panelId);
+    return;
   }
+  navigationRead.navigation.openPanel('devices');
+  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId);
 };
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {
@@ -211,7 +222,7 @@ export const refreshRecommendationSurfaces = (): void => {
   const groups = groupSetupRecommendations(resolveCurrentRecommendations(), dismissals);
   if (banner) {
     renderSetupRecommendationsBanner(banner, {
-      count: coreLoaded ? groups.active.length : 0,
+      active: coreLoaded ? groups.active : [],
       onOpen: () => {
         if (navigationRead.state === 'resolved') navigationRead.navigation.openPanel('recommendations');
       },
@@ -280,7 +291,11 @@ const refreshCarInventory = (): Promise<void> => {
 };
 
 export const loadRecommendationData = async (): Promise<void> => {
-  await Promise.all([loadRecommendationDismissals(), refreshCarInventory()]);
+  await Promise.all([
+    loadRecommendationDismissals(),
+    refreshCarInventory(),
+    loadAfterSetupFacts().then(refreshRecommendationSurfaces),
+  ]);
 };
 
 const retryRecommendationData = (): void => {
@@ -312,6 +327,8 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   // path's publishers being involved. Gated inside: a tick that leaves the path
   // unchanged redraws nothing.
   document.addEventListener('devices-updated', notifySetupPathChange);
+  // A Smart task added or cleared elsewhere changes whether one is suggested.
+  document.addEventListener('deferred-objectives-updated', refreshRecommendationSurfaces);
   document.addEventListener('pels:tab-shown', (event) => {
     const panelId = readTabId(event);
     if (panelId === 'recommendations') {

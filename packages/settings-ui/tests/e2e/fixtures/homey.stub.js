@@ -816,7 +816,10 @@
     price_optimization_enabled: true,
     price_optimization_settings: {
       dev_heatpump: { enabled: true, cheapDelta: 4, expensiveDelta: -4 },
-      dev_floorheat: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      // The baseline is a CONFIGURED home, and it has solar (see the devices
+      // payload below), so it already uses it on one device. Otherwise every
+      // spec and screenshot would carry the "use your own solar" suggestion.
+      dev_floorheat: { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: true },
     },
 
     // Power tracking

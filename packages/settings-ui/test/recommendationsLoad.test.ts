@@ -1,5 +1,6 @@
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
+const OTHER_MODULES_SETTING = 'price_optimization_settings';
 const callApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
@@ -12,8 +13,16 @@ vi.mock('../src/ui/homey.ts', async () => {
   return {
     ...actual,
     callApi: (...args: unknown[]) => callApi(...args),
-    getSetting: (...args: unknown[]) => getSetting(...args),
-    getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
+    // Routed by key. This spec sequences and counts the ACKNOWLEDGEMENT reads;
+    // the after-setup suggestions read the price settings through the same
+    // seam, in parallel, and would otherwise consume a `...Once` value meant
+    // for the read under test. An empty map is a home using neither feature.
+    getSetting: (...args: unknown[]) => (
+      args[0] === OTHER_MODULES_SETTING ? Promise.resolve({}) : getSetting(...args)
+    ),
+    getSettingFresh: (...args: unknown[]) => (
+      args[0] === OTHER_MODULES_SETTING ? Promise.resolve({}) : getSettingFresh(...args)
+    ),
     setSetting: (...args: unknown[]) => setSetting(...args),
     sleep: (...args: unknown[]) => sleep(...args),
   };

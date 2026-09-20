@@ -1518,8 +1518,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the runtime (country first; coordinates where country cannot answer — Belgium's 15-minute
       tariff is Flanders only), ship it on `ui_bootstrap`, and use it for two things: a Hard cap
       detail that says so when the hub is in Flanders and the period is still hourly, and the
-      order of what the card points to once its steps are done (solar and prices first in the
-      Netherlands). The path already shows a step only when what it configures is in force for
+      order of the after-setup suggestions (`afterSetupRecommendations.ts`: solar and prices first
+      in the Netherlands). The path already shows a step only when what it configures is in force for
       the home; market data may sharpen that rule, never loosen it. First confirm what `country` follows by moving a test hub's location.
       Never infer a market from language. Done when a Flemish hub on the hourly default reads the
       15-minute nudge and a Norwegian hub reads exactly today's copy. Persona: brand-new owner

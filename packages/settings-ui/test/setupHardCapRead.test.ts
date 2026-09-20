@@ -61,6 +61,13 @@ describe('reporting the hard cap to the setup path', () => {
     expect(hardCapStatus()).toBe('next');
   });
 
+  it('judges nothing when the confirming re-read fails', async () => {
+    // Absence is a verdict only a read that succeeded can give.
+    const { reportSetupHardCapRead, hardCapStatus } = await load([undefined, new Error('bridge')]);
+    await reportSetupHardCapRead(undefined, running);
+    expect(hardCapStatus()).toBe('loading');
+  });
+
   it('counts a thrown re-read as unreadable, not as absence', async () => {
     const { reportSetupHardCapRead, getSettingFresh, hardCapStatus } = await load([new Error('bridge'), 8]);
     await reportSetupHardCapRead(undefined, { ...running, limitKw: 8 });

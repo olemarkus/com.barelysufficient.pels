@@ -28,6 +28,13 @@ type RecommendationCardProps = {
   onRestore: (recommendation: SetupRecommendation) => void;
 };
 
+// An optional feature is not "recommended": nothing is wrong with a home that
+// never uses it, and the chip must not say otherwise.
+const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
+  recommendation: 'Recommended',
+  optional: 'Optional',
+};
+
 const RecommendationCard = (props: RecommendationCardProps) => {
   const { recommendation, dismissed, onAction, onDismiss, onRestore } = props;
   return (
@@ -35,7 +42,7 @@ const RecommendationCard = (props: RecommendationCardProps) => {
       <div class="setup-recommendation-card__header">
         <h3 class="plan-card__title">{recommendation.title}</h3>
         <span class={`plan-chip ${dismissed ? 'plan-chip--muted' : 'plan-chip--info'}`}>
-          {dismissed ? 'Dismissed' : 'Recommended'}
+          {dismissed ? 'Dismissed' : CATEGORY_CHIP[recommendation.category]}
         </span>
       </div>
       <p class="pels-card-supporting">{recommendation.body}</p>
@@ -144,13 +151,28 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
   </>
 );
 
-export const SetupRecommendationsBanner = (props: { count: number; onOpen: () => void }) => {
-  if (props.count === 0) return null;
-  const title = props.count === 1 ? '1 recommendation' : `${props.count} recommendations`;
+// "N recommendations" means PELS would change something about this home's
+// setup. Optional features are not that: with only those active, the banner says
+// there is more on offer and lets the owner decide whether to look.
+const resolveBannerCopy = (active: readonly SetupRecommendation[]): { title: string; action: string } => {
+  if (active.every((recommendation) => recommendation.category === 'optional')) {
+    return { title: 'PELS can do more for this home', action: 'See what' };
+  }
+  return {
+    title: active.length === 1 ? '1 recommendation' : `${active.length} recommendations`,
+    action: 'Review',
+  };
+};
+
+export const SetupRecommendationsBanner = (
+  props: { active: readonly SetupRecommendation[]; onOpen: () => void },
+) => {
+  if (props.active.length === 0) return null;
+  const copy = resolveBannerCopy(props.active);
   return (
     <div class="banner setup-recommendations-banner">
-      <strong class="banner__text">{title}</strong>
-      <MdTextButton type="button" class="banner__action" onClick={props.onOpen}>Review</MdTextButton>
+      <strong class="banner__text">{copy.title}</strong>
+      <MdTextButton type="button" class="banner__action" onClick={props.onOpen}>{copy.action}</MdTextButton>
     </div>
   );
 };

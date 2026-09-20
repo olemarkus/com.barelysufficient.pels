@@ -201,6 +201,70 @@ test.describe('Onboarding links', () => {
     await expect.poll(async () => (await readControllable()).dev_heatpump).toBe(false);
   });
 
+  test('once setup is done, PELS suggests what applies to this home and is not in use', async ({ page }) => {
+    // Setup complete (the default fixture), a home that exports solar, managed
+    // thermostats and a charger, and none of the three features in use.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          price_optimization_settings: {},
+          deferred_objectives: { version: 1, objectivesByDeviceId: {} },
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // The Overview announces them at the moment the setup card is gone.
+    const banner = page.locator('#setup-recommendations-banner-root');
+    await expect(page.locator('#overview-setup-path')).toHaveCount(0);
+    // Not "3 recommendations": nothing about this home's setup needs changing.
+    await expect(banner).toContainText('PELS can do more for this home');
+    await banner.getByText('See what').click();
+
+    const list = page.locator('#setup-recommendations-root');
+    await expect(list).toContainText('Heat more while power is cheap');
+    await expect(list).toContainText('Use more of your own solar');
+    await expect(list).toContainText('Have something ready by a set time');
+    // Optional, never "Recommended": nothing is wrong with a home that skips them.
+    await expect(list.locator('.plan-chip', { hasText: 'Optional' })).toHaveCount(3);
+    await expect(list.locator('.plan-chip', { hasText: 'Recommended' })).toHaveCount(0);
+
+    // Dismiss is the owner saying "not for me", and it is remembered.
+    const solar = list.locator('.setup-recommendation-card', { hasText: 'Use more of your own solar' });
+    await solar.getByText('Dismiss').click();
+    await expect(page.locator('#settings-nav-chip-recommendations')).toHaveText('2');
+
+    // Each action opens the page that sets the feature up.
+    await list.locator('.setup-recommendation-card', { hasText: 'Heat more while power is cheap' })
+      .getByText('Set up prices').click();
+    await expect(page.locator('#electricity-prices-panel')).toBeVisible();
+  });
+
+  test('a home with no solar surplus PELS can use is never told to use its solar', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          price_optimization_settings: {},
+          deferred_objectives: { version: 1, objectivesByDeviceId: {} },
+          ui_devices_has_managed_solar: false,
+          ui_devices_has_exhibited_export: false,
+          ui_devices_surplus_pool_reachable: false,
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
+    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
+    await expect(page.locator('#setup-recommendations-root')).not.toContainText('solar');
+  });
+
+  test('nothing is suggested while setup is still open, or to a home already using it all', async ({ page }) => {
+    // The default fixture follows prices, uses its solar and has a Smart task.
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
+    await expect(page.locator('#setup-recommendations-banner-root .banner')).toHaveCount(0);
+  });
+
   test('overview empty state links to the Devices settings page', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
