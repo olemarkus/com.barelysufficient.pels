@@ -1586,8 +1586,11 @@ The Overview hero does not chip the mode — see
 
 The hard cap is the user's grid tariff step or peak target: an average-power
 ceiling over the configured capacity period. The default whole hour matches
-Nordic hourly tariffs; the 15-minute option matches Belgian quarter-hour peak
-measurement. Two rules follow:
+Nordic hourly tariffs; the 15-minute option matches quarter-hour peak
+measurement, which Belgium bills households on and other markets bill larger
+consumers on. The option label names the period alone (`15-minute average`) and
+never a country: the measurement is not Belgium-specific, and a country in the
+label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules follow:
 
 1. **Instantaneous kW above the cap is never presented as a breach.** A
    momentary draw above the cap has zero tariff consequence and no control

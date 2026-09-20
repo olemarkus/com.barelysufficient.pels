@@ -115,7 +115,7 @@ Pick the **Main home** or any meter area there, and the cap and margin below
 apply to whichever you've selected. The bar stays put as you scroll, so the
 part of the home you're editing is always named on screen:
 
-- **Capacity period:** hourly, or 15-minute for a Belgian quarter-hour peak.
+- **Capacity period:** hourly, or 15-minute for a quarter-hour peak tariff.
 - **Hard cap (kW):** that area's grid tariff step or peak target. PELS keeps
   the selected period's average power under this, the same way it does for the
   whole home.

@@ -16,7 +16,7 @@
  * The period's absence is different: an unlisted key is an install that never
  * wrote the setting and may use the compatibility default, while a listed key
  * whose value is absent/malformed is an unavailable SDK read. That distinction
- * keeps a transient startup miss from silently changing Belgian 15-minute
+ * keeps a transient startup miss from silently changing 15-minute
  * control into hourly control for the life of the process.
  */
 

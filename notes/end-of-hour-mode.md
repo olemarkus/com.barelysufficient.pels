@@ -1,14 +1,14 @@
 # Capacity-period boundary mode (sustainable-rate drain)
 
 Contributor-facing design-of-record for the boundary behaviour of the capacity
-safe pace. The configured period is either a clock hour or an aligned Belgian
+safe pace. The configured period is either a clock hour or an aligned
 15-minute quarter. Code: `lib/plan/planBudget.ts` (`computeDynamicSoftLimit`).
 User-facing description: `docs/technical.md` (“Capacity-period enforcement”).
 
 ## What problem it solves
 
 PELS protects an average-power tariff interval: an hour for traditional capacity
-tariffs, or an aligned quarter-hour for Belgium. The thing to protect is the
+tariffs, or an aligned quarter-hour for quarter-hour peak tariffs. The thing to protect is the
 selected period boundary: draw that carries across it inflates the new period’s
 average from its first instant.
 

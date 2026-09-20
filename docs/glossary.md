@@ -27,7 +27,7 @@ is about kW.
 
 ### Hard cap {#hard-cap}
 The maximum **average power** (in kW) you want the whole home to draw in one
-capacity period. PELS supports an hourly period and a 15-minute Belgian period,
+capacity period. PELS supports an hourly period and a 15-minute period,
 and treats the selected one as the boundary it protects above all else. Set it
 to match the peak or tariff step you want to protect. It is not a setting you
 raise to get more room. Your main fuse is a separate, much higher physical

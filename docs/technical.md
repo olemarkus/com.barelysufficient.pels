@@ -21,7 +21,7 @@ This permission is what lets PELS act on Homey's full device graph the moment a 
 
 ## Capacity Budget Model
 
-PELS converts the configured hard cap into an energy allowance for each capacity period. The default is a whole hour, matching Nordic hourly capacity tariffs. A per-home 15-minute option matches Belgian quarter-hour peak measurement. A 10 kW cap therefore means 10 kWh per hour or 2.5 kWh per quarter.
+PELS converts the configured hard cap into an energy allowance for each capacity period. The default is a whole hour, matching Nordic hourly capacity tariffs. A per-home 15-minute option matches quarter-hour peak measurement, used by Belgium's capacity tariff and 15-minute peak tariffs in other markets. A 10 kW cap therefore means 10 kWh per hour or 2.5 kWh per quarter.
 
 ### Terminology and Units
 
@@ -351,7 +351,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Capacity-period enforcement
 
-PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for Belgian peak tariffs. In hourly mode, the period-end drain tightens the safe pace toward the sustainable rate as the hour ends. In 15-minute mode the safe pace never rises above that rate. Either way the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
+PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for quarter-hour peak tariffs. In hourly mode, the period-end drain tightens the safe pace toward the sustainable rate as the hour ends. In 15-minute mode the safe pace never rises above that rate. Either way the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
 
 ### Local Control
 

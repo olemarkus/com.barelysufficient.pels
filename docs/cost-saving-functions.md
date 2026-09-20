@@ -13,7 +13,7 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 
 | Function | Best for | What PELS changes | Main constraint |
 | --- | --- | --- | --- |
-| **Power limiting** | Staying below a grid tariff step or Belgian quarter-hour peak | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Selected-period hard cap |
+| **Power limiting** | Staying below a grid tariff step or quarter-hour peak | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Selected-period hard cap |
 | **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus selected-period hard cap |
 | **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Works the device harder in cheap hours and lets it coast in expensive ones | Temperature comfort range |
 | **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |

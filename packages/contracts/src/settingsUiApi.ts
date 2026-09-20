@@ -600,7 +600,7 @@ export type SettingsUiPowerPayload = {
    * stays where it always was, in the scoped status blob.
    */
   capacityScalars: SettingsUiCapacityScalarsRead;
-  /** Measured tariff evidence for Belgium's monthly quarter-hour peak. */
+  /** Measured tariff evidence for a monthly quarter-hour peak. */
   capacityPeak: SettingsUiCapacityPeak;
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
   // Solar card (which cannot read the lazy-loaded devices payload). True only

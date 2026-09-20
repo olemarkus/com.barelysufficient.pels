@@ -97,9 +97,9 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
         }}
       >
         <MdSelectOption value="60"><div slot="headline">Hourly average</div></MdSelectOption>
-        <MdSelectOption value="15"><div slot="headline">15-minute average (Belgium)</div></MdSelectOption>
+        <MdSelectOption value="15"><div slot="headline">15-minute average</div></MdSelectOption>
       </MdFilledSelect>
-      <small class="field__hint">Choose the period this meter area’s grid tariff uses.</small>
+      <small class="field__hint">Choose the period this meter area’s grid tariff uses to measure peak power.</small>
     </div>
     <label class="field">
       <span class="field__label pels-text-settings-label">{HOME_LIMITS_HARD_CAP_LABEL}</span>

@@ -76,13 +76,13 @@ This is where the core capacity settings and whole-home power source live.
 
 | Setting | What it does |
 | --- | --- |
-| **Capacity period** | **Hourly average** for hourly tariffs; **15-minute average (Belgium)** for Belgian quarter-hour peak tariffs. |
+| **Capacity period** | **Hourly average** for hourly tariffs; **15-minute average** for quarter-hour peak tariffs, such as Belgium's capacity tariff. |
 | **Hard cap (kW)** | The average power you don't want the selected period to exceed. Set this from the peak or tariff step you want to protect. |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
 | **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. PELS always reads one named meter: when the only whole-home meter Homey lists is marked **Tracks total home energy consumption** and no Flow has ever sent PELS readings, PELS picks it on its own shortly after starting; otherwise choose it here. A selection does not need Homey's **Tracks total home energy consumption** marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
 
-For the Belgian period, **Highest completed quarter this month** reports PELS's largest fully tracked 15-minute average for the current month. It is an operational estimate from the readings sent to PELS, not a grid bill or a reproduction of operator rules such as a minimum monthly peak.
+On the 15-minute period, **Highest completed quarter this month** reports PELS's largest fully tracked 15-minute average for the current month. It is an operational estimate from the readings sent to PELS, not a grid bill or a reproduction of operator rules such as a minimum monthly peak.
 
 Important:
 

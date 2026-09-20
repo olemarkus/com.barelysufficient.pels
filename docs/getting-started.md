@@ -42,11 +42,11 @@ Once power data is flowing, the **Overview** page starts showing real data.
 
 Go to **Settings > Limits & safety** and configure:
 
-- **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average (Belgium)** when your Belgian grid tariff measures quarter-hour peaks.
+- **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average** when your grid tariff measures quarter-hour peaks (Belgium's capacity tariff, and 15-minute peak tariffs in several other markets).
 - **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW.
 - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point. On the 15-minute period this margin is the whole buffer, so size it for your slowest device. See [Tips > Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
 
-With the Belgian period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
+With the 15-minute period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
 
 <figure class="docs-figure">
   <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing hard cap, safety margin and power source controls." />

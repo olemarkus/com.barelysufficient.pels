@@ -1,4 +1,4 @@
-# Capacity periods — hourly and Belgian quarter-hour control
+# Capacity periods — hourly and quarter-hour control
 
 **Status:** design of record. Owner ruling 2026-09-17.
 
@@ -6,7 +6,8 @@ The hard cap is an average-power ceiling over a tariff measurement period. PELS
 supports two periods per home:
 
 - `60` minutes, the existing default for hourly capacity tariffs;
-- `15` minutes, for Belgian quarter-hour peak tariffs.
+- `15` minutes, for quarter-hour peak tariffs (Belgium's capacity tariff, and
+  15-minute peak tariffs in other markets).
 
 The setting is home-scoped. Existing installs and homes without a saved value
 resolve to 60 minutes, so the change is backward compatible.

@@ -499,7 +499,7 @@ export const loadCapacitySettings = async () => {
   const needsRuntimeScalars = needsRuntimeCapacityScalars(limit, margin, dryRun, periodMinutes);
   // Preserve the established settings-only load path for hourly homes. The
   // power read is needed only to recover runtime-authoritative missing scalars
-  // or to show Belgium's measured monthly quarter peak.
+  // or to show a quarter-hour home’s measured monthly peak.
   const powerRead = await readCapacityPowerModel(needsRuntimeScalars, periodMinutes);
   const powerSource = await getSetting(POWER_SOURCE);
   const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);

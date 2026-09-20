@@ -37,7 +37,7 @@ Everything that reasons in whole hours still gets whole hours, because the hour 
 shape of what it reasons about:
 
 - the capacity controller, whose independently configured period is hourly or
-  a Belgian 15-minute peak;
+  a 15-minute peak;
 - the daily budget, which fills hourly buckets;
 - smart tasks, which claim hours;
 - the owner's lowest-price Flow cards, whose arguments count hours;

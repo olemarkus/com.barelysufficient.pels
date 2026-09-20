@@ -44,7 +44,7 @@ The Insights device exposes these readings. The labels below match the capabilit
 
 The hard-cap breach alarm is intentionally strict.
 
-- It only applies to projected **hard-cap** breaches in the current capacity period (the hour, or the quarter on the Belgian 15-minute period).
+- It only applies to projected **hard-cap** breaches in the current capacity period (the hour, or the quarter on the 15-minute period).
 - It does **not** fire for daily budget misses.
 - It means PELS has already exhausted the available managed-device limiting options.
 
