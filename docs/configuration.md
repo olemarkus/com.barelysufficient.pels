@@ -216,7 +216,13 @@ Price support is optional, but it makes the app more useful for thermal loads, d
 
 | Setting | What it does |
 | --- | --- |
-| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy**, or **Flow tag**. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. |
+
+**Power by the Hour** reads prices straight from that app, with no Flow to build. Install
+[Power by the Hour](https://homey.app/a/com.gruijter.powerhour/) (version 8.10.0 or newer), add a price device
+for your bidding zone in it, and pick this source. If you have more than one price device, PELS asks which one
+prices your home. The prices are the ones that app publishes — the spot price plus the markups you set there —
+so the **grid tariff is not included** unless you added it there yourself as a fixed or time-of-day markup.
 
 If you use Norway pricing, you also set:
 
@@ -229,7 +235,7 @@ If you use Norway pricing, you also set:
 
 If you use external flow tags:
 
-1. Set **Price source** to **Flow tag**.
+1. Set **Price source** to **Flow (prices from a Flow card)**.
 2. Feed the full JSON payload for today's prices into **Set external prices (today)**.
 3. Feed tomorrow's payload into **Set external prices (tomorrow)** when available.
 

@@ -28,6 +28,7 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'price_optimization_settings',
   'price_optimization_enabled',
   'price_scheme',
+  'powerhour_device_id',
   'norway_price_model',
   'price_area',
   'provider_surcharge',

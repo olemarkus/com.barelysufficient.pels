@@ -31,6 +31,17 @@ describe('plan price widget copy', () => {
     expect(resolvePlanPriceCostDisplay({ priceScheme: 'norway' }).costDivisor).toBe(100);
   });
 
+  // Power by the Hour publishes in its own currency (a symbol, e.g. `€`), so
+  // the Norwegian øre/kr conversion would render those numbers a hundred times
+  // too small under the wrong label.
+  test('uses the supplied unit with divisor 1 for the Power by the Hour scheme', () => {
+    expect(resolvePlanPriceCostDisplay({ priceScheme: 'powerhour', priceUnit: '\u20ac' })).toEqual({
+      costUnit: '\u20ac',
+      costDivisor: 1,
+      priceAxisUnit: '\u20ac/kWh',
+    });
+  });
+
   test('uses the supplied unit with divisor 1 for flow/homey schemes', () => {
     expect(resolvePlanPriceCostDisplay({ priceScheme: 'homey', priceUnit: 'NOK' })).toEqual({
       costUnit: 'NOK',

@@ -148,7 +148,8 @@
     ]
   },
   "permissions": [
-    "homey:manager:api"
+    "homey:manager:api",
+    "homey:app:com.gruijter.powerhour"
   ],
   "api": {
     "ui_bootstrap": {

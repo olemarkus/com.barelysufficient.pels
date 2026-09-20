@@ -27,7 +27,9 @@ import {
   readPriceConfigSettings,
   validateAndSavePriceSettings as saveValidatedPriceSettings,
 } from './priceConfigSettingsIo.ts';
-import { PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE } from '../../../contracts/src/settingsKeys.ts';
+import {
+  POWERHOUR_DEVICE_ID, PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE,
+} from '../../../contracts/src/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -36,7 +38,7 @@ import {
   type SettingsUiPowerPayload,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { buildFlowStatus, buildHomeyStatus } from './priceConfigStatus.ts';
+import { buildFlowStatus, buildHomeyStatus, buildPowerhourStatus } from './priceConfigStatus.ts';
 import { resolveLiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
@@ -71,6 +73,8 @@ let configState: PriceConfigState = {
   tariffGroup: 'Husholdning',
   flowStatus: null,
   homeyStatus: null,
+  powerhourStatus: null,
+  powerhourDeviceId: null,
   currentPriceLevel: null,
   liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
   exportPriceEnabled: false,
@@ -118,6 +122,8 @@ const renderElectricityPrices = () => {
     tariffGroup: configState.tariffGroup,
     flowStatus: configState.flowStatus,
     homeyStatus: configState.homeyStatus,
+    powerhourStatus: configState.powerhourStatus,
+    powerhourDeviceId: configState.powerhourDeviceId,
     currentPriceLevel: configState.currentPriceLevel,
     lastFetchedShort: configState.liveSummary.lastFetchedShort,
     // Gate the live export/planning signals on the CURRENT enabled setting, not
@@ -157,6 +163,7 @@ const renderElectricityPrices = () => {
     exportSpotFactor: configState.exportSpotFactor,
     exportFixed: configState.exportFixed,
     onSchemeChange: handleSchemeChange,
+    onPowerhourDeviceChange: handlePowerhourDeviceChange,
     onNorwayModelChange: handleNorwayModelChange,
     onPriceAreaChange: handlePriceAreaChange,
     onProviderSurchargeChange: handleProviderSurchargeChange,
@@ -236,6 +243,36 @@ const handlePvForecastSourceChange = async (source: PvForecastSourceSetting) => 
     }
     await logSettingsError('Failed to save solar forecast source', error, 'priceConfig');
     await showToastError(error, 'Failed to save the solar forecast source.');
+  }
+};
+
+/**
+ * Which Power by the Hour device prices this home.
+ *
+ * Optimistic like the forecast-source selector, and rolled back the same way —
+ * only when this request's choice is still the one on screen, so two quick
+ * changes cannot leave the field showing a device neither the store nor the
+ * runtime holds. The runtime re-reads the app on the settings write, so the
+ * cached prices payload is dropped before re-reading the status.
+ */
+const handlePowerhourDeviceChange = async (deviceId: string) => {
+  const previous = configState.powerhourDeviceId;
+  const next = deviceId || null;
+  configState = { ...configState, powerhourDeviceId: next };
+  renderAll();
+  try {
+    await setSetting(POWERHOUR_DEVICE_ID, deviceId);
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+    await refreshStatusInfo();
+    renderAll();
+    await showToast('Price device saved.', 'ok');
+  } catch (error) {
+    if (configState.powerhourDeviceId === next) {
+      configState = { ...configState, powerhourDeviceId: previous };
+      renderAll();
+    }
+    await logSettingsError('Failed to save the Power by the Hour device', error, 'priceConfig');
+    await showToastError(error, 'Failed to save the price device.');
   }
 };
 
@@ -474,11 +511,15 @@ const refreshStatusInfo = async () => {
       combinedPrices: null, electricityPrices: null, priceArea: null, gridTariffData: null,
       flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
+      homeyPriceFormula: { kind: 'unknown' },
+      powerhourCurrency: null, powerhourToday: null, powerhourTomorrow: null,
+      powerhourSource: { kind: 'unknown' },
     };
     configState = {
       ...configState,
       flowStatus: configState.priceScheme === 'flow' ? buildFlowStatus(payload) : null,
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
+      powerhourStatus: configState.priceScheme === 'powerhour' ? buildPowerhourStatus(payload) : null,
       // Same `priceLevel` field the budget hero reads, so the tier chip never
       // disagrees across surfaces.
       currentPriceLevel: liveStatusOrNull(powerPayload?.status)?.priceLevel ?? null,

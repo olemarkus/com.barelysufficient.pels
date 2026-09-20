@@ -1,13 +1,14 @@
 # lib/price — Price Inputs
 
 Supplies the price signal that planning layers on top of capacity control: fetches Norwegian spot
-prices and grid tariffs (NVE), integrates Homey Energy and flow-fed prices, combines them into
-hourly totals, and classifies hours into price levels. A pure input producer — no shed decisions.
+prices and grid tariffs (NVE), integrates Homey Energy, flow-fed and Power by the Hour prices,
+combines them into hourly totals, and classifies hours into price levels. A pure input producer —
+no shed decisions.
 
 **A price source publishes periods; this module hands out hours, and the level asks for now.** A
 period is an hour on the Norwegian spot feed and on owner-fed Flow prices, and a quarter-hour on a
-Homey Energy zone that has moved to the 15-minute market (`FlowPricePeriod.durationMinutes`, stored
-with every period). Two series come out of that, and which one a consumer gets is decided here:
+Homey Energy zone that has moved to the 15-minute market or on Power by the Hour's `dap15` driver
+(`FlowPricePeriod.durationMinutes`, stored with every period). Two series come out of that, and which one a consumer gets is decided here:
 
 - `getCombinedHourlyPrices()` — whole hours, for everything that reasons in hours: the capacity
   tariff is an hourly peak, the daily budget fills hourly buckets, a smart task claims hours, the
@@ -38,6 +39,10 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
 ## Map
 
 - `priceCoordinator.ts` — orchestrates refresh/rotation of the combined-prices store and notifies consumers.
+- `powerhourPriceFetch.ts` / `powerhourScheme.ts` — the Power by the Hour source: the app-to-app
+  adapter and its classification, then the device choice, the day-payload mirror and the owner-facing
+  status. **That app publishes only FUTURE slots**, so today's stored day is merged into rather than
+  replaced, and a change of price device drops the days built from the previous one.
 - `priceService.ts` — fetching + caching: spot prices, grid tariff (with static fallback), flow/Homey price slots.
 - `priceOptimizer.ts` — price-level classification (cheap/normal/expensive), re-applied at each price-period boundary.
 - `priceLevelUtils.ts` — what the price is right now: the period in force, the level, the owner-facing line.
@@ -56,7 +61,20 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
   the module declares the typed interface AND owns the SDK read and migrations, reading through a
   `SettingsPort` that `setup/` hands it.
 - Consumers receive resolved flat values (prices, levels); they never branch on which source
-  (spot/flow/Homey Energy) produced them.
+  (spot/flow/Homey Energy/Power by the Hour) produced them.
+- **The Power by the Hour source is the one place a cache READ is load-bearing.** It merges into the
+  day it already holds, so two things that are free for every other source are not free here.
+  **Rotate before merging** — the merge base has to be the day as the local calendar has it, and
+  only `rotateFlowPriceSlots` moves a `tomorrow` payload that has become today into the today slot;
+  merging against the raw pair after a midnight rollover writes the app's future-only answer as the
+  whole day. And **a read that did not come back is not an empty day** — `readPowerhourCache` tells
+  the two apart with `getKeys()`, and an unreadable day is left exactly as it is
+  (`PowerhourCachedDay`). Both were live data-loss bugs during review; neither has a symptom before
+  the hours are already gone.
+- The `price_scheme` union and its read policy live once, outside this module: the union in
+  `packages/contracts/src/settingsUiApi.ts`, the policy in
+  `packages/shared-domain/src/settings/priceScheme.ts`. Both the runtime and the settings UI read
+  those bytes, and they used to parse them separately (`notes/settings-key-ownership.md`).
 
 ## Not in this module
 

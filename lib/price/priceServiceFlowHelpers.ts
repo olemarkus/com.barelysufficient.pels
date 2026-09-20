@@ -10,13 +10,19 @@ import {
   type FlowPricePeriod,
 } from '../../packages/shared-domain/src/price/flowPriceUtils';
 
+/**
+ * Which source the line is about, for the debug record only — the helpers
+ * themselves are source-agnostic and read every payload the same way.
+ */
+export type PriceSourceLabel = 'Flow prices' | 'Homey prices' | 'Power by the Hour prices';
+
 type CombinedPayloadParams = {
   now: Date;
   timeZone: string;
   todayPayload: FlowPricePayload | null;
   tomorrowPayload: FlowPricePayload | null;
   debugStructured: StructuredDebugEmitter;
-  label: 'Flow prices' | 'Homey prices';
+  label: PriceSourceLabel;
 };
 
 /**

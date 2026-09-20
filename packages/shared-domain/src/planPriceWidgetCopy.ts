@@ -106,7 +106,9 @@ export const resolvePlanPriceCostDisplay = (params: {
   priceUnit?: string;
 }): PlanPriceCostDisplay => {
   const { priceScheme, priceUnit } = params;
-  if (priceScheme === 'flow' || priceScheme === 'homey') {
+  // Every scheme but Norway hands over an opaque total in the source's own
+  // currency; only the Norwegian stack is øre/kWh with totals in kr.
+  if (priceScheme && priceScheme !== 'norway') {
     const hasUnit = typeof priceUnit === 'string'
       && priceUnit.trim() !== ''
       && priceUnit !== PLACEHOLDER_UNIT;

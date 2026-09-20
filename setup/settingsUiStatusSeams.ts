@@ -9,18 +9,22 @@
  * travel inward to the payload builders.
  *
  * They live together because they are the same boundary question asked about
- * different provenance: which forecast planning is using, and whether the
- * owner's Homey price setup can be read at all.
+ * different provenance: which forecast planning is using, whether the owner's
+ * Homey price setup can be read at all, and what the Power by the Hour app
+ * answered when PELS last asked it for prices.
  */
 
 import type {
   HomeyPriceFormulaUiStatus,
+  PowerhourSourceUiStatus,
   PvForecastSourceUiStatus,
 } from '../packages/contracts/src/settingsUiApi';
 
 type PvForecastSourceSeam = { getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus };
 
 type HomeyPriceFormulaSeam = { getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus };
+
+type PowerhourSourceSeam = { getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus };
 
 export const hasPvForecastSourceSeam = (app: unknown): app is PvForecastSourceSeam => (
   typeof app === 'object'
@@ -34,4 +38,11 @@ export const hasHomeyPriceFormulaSeam = (app: unknown): app is HomeyPriceFormula
   && app !== null
   && 'getHomeyPriceFormulaUiStatus' in app
   && typeof app.getHomeyPriceFormulaUiStatus === 'function'
+);
+
+export const hasPowerhourSourceSeam = (app: unknown): app is PowerhourSourceSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getPowerhourSourceUiStatus' in app
+  && typeof app.getPowerhourSourceUiStatus === 'function'
 );

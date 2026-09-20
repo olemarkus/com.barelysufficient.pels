@@ -412,6 +412,13 @@ Regional rules:
 - VAT is 25% by default, but price area NO4 is VAT-exempt.
 - Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
 
-### Homey and Flow Price Schemes
+### Homey, Flow and Power by the Hour price schemes
 
-Homey Energy pricing and Flow tag pricing (Power by the Hour or any other provider) store hourly prices exactly as supplied and feed them straight into the planner. PELS treats the source's numbers as authoritative, so adding a new region is a configuration choice in Homey, not a code change in PELS.
+Homey Energy pricing, Flow tag pricing (any provider) and Power by the Hour pricing store prices exactly as supplied and feed them straight into the planner. PELS treats the source's numbers as authoritative, so adding a new region is a configuration choice in Homey, not a code change in PELS.
+
+The Power by the Hour source reads that app directly over Homey's app-to-app API (`GET /dap-prices` on `com.gruijter.powerhour`, added in its v8.10.0), so no flow is needed. It offers every electricity price device the app has paired — hourly and quarter-hourly alike — and the owner picks the one that prices their home when there is more than one. The prices are that app's own: the spot price for its bidding zone with whatever markups the owner configured there, and **no grid tariff** unless they added it themselves as a fixed or time-of-day markup. Gas price devices are not offered; they price per m³ and would be meaningless to the planner.
+
+Two consequences of the app publishing only the current period onwards:
+
+- Today's stored day is **merged into**, never replaced, so hours already read are kept as the day goes on. A home that switches to this source mid-afternoon simply has no prices for that morning — PELS does not invent them.
+- Switching to a different price device **drops** the days built from the previous one, because two devices are two bidding zones and a day half-priced in each is not a series anything can read.

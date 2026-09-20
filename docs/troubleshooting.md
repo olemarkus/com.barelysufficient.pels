@@ -175,7 +175,14 @@ The banner above the Overview tells you which state you are in:
   **Energy > Electricity** in Homey. **Not read yet** means PELS has not reached
   Homey; press **Refresh prices**. PELS never falls back to the bare market
   price, because that would look plausible and be too low every hour.
-- For the **Flow tag** source, the external payload must contain full-day JSON.
+- For the **Flow** source, the external payload must contain full-day JSON.
+- On the **Power by the Hour** source, the status card names what is wrong. **No prices
+  from the app** means that app is missing, stopped, or older than 8.10.0 (the version
+  that started sharing prices) — check it in Homey, then press **Refresh prices**.
+  **No price devices** means it is running but has no electricity price device yet.
+  **No device chosen** / **Price device is gone** means PELS needs you to say which of
+  its price devices prices your home. Prices only start at the hour you pick the source;
+  earlier hours of that day stay blank, which is normal.
 - For price-based temperature shifts, the device needs **Price** (or **Setup → Price-based control**)
   enabled, and **Respond to prices** must be on globally.
 - A Smart task that stays at **Building plan…** is usually waiting for prices

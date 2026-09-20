@@ -81,6 +81,16 @@ export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
+// Power by the Hour's prices, mirrored per local day from the app's
+// `/dap-prices` app-to-app route. Same shape and same rotation as the flow and
+// Homey slot pairs; owned by lib/price/powerhourScheme.ts (the settings UI cannot import lib) — keep both in sync.
+export const POWERHOUR_PRICES_TODAY = 'powerhour_prices_today';
+export const POWERHOUR_PRICES_TOMORROW = 'powerhour_prices_tomorrow';
+export const POWERHOUR_PRICES_CURRENCY = 'powerhour_prices_currency';
+// Which of the app's price devices this home is priced from. The owner picks
+// it in the settings UI, so both sides read it — the shared read policy lives
+// in packages/shared-domain/src/settings/priceScheme.ts.
+export const POWERHOUR_DEVICE_ID = 'powerhour_device_id';
 // Export (feed-in) price settings — mirror of the EXPORT_* keys in
 // lib/utils/settingsKeys.ts; keep both in sync (the settings UI can't import lib).
 // Mirror of lib/utils/settingsKeys.ts EXPORT_PRICE_SOURCE (the settings UI

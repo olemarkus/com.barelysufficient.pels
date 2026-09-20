@@ -1,11 +1,16 @@
 import { calculateElectricitySupport, getRegionalPricingRules } from './priceComponents';
-import { getZonedParts } from '../utils/dateUtils';
+import { getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
 import { NORWAY_PRICE_MODEL } from '../utils/settingsKeys';
 import {
   DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,
   getNorgesprisMonthlyCapForTariffGroup,
   NORGESPRIS_TARGET_EX_VAT,
 } from './norwayPriceDefaults';
+import {
+  getCurrentMonthUsageKwh,
+  getHourlyUsageEstimateKwh,
+  type PowerTrackerReadout,
+} from './priceServiceNorgespris';
 import type { CombinedHourlyPrice } from './priceTypes';
 
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';
@@ -316,4 +321,43 @@ export const buildCombinedHourlyPricesNorway = (params: {
       },
     ];
   }, []);
+};
+
+/**
+ * The Norwegian series for a live home: the scheme's own settings, the cached
+ * spot and tariff data, and — on Norgespris — what the home has used this
+ * month, resolved together.
+ *
+ * Its own function beside the builder it feeds, rather than glue inside
+ * `PriceService`, for the same reason the Homey and Power by the Hour sources
+ * have a module each: what a scheme needs to price a home is the scheme's
+ * business, and the service's is choosing between them.
+ */
+export const resolveNorwayHourlyPrices = (
+  settings: NorwaySchemeSettings,
+  store: { readSpotPrices(): unknown; readNettleie(): unknown },
+  providerSurchargeIncVat: number,
+  powerTracker: PowerTrackerReadout,
+  timeZone: string,
+): CombinedHourlyPrice[] => {
+  const { norwayPriceModel } = settings;
+  const now = new Date();
+  return buildCombinedHourlyPricesNorway({
+    spotPrices: store.readSpotPrices(),
+    gridTariffData: store.readNettleie(),
+    providerSurchargeIncVat,
+    priceArea: settings.priceArea,
+    countyCode: settings.countyCode,
+    tariffGroup: settings.tariffGroup,
+    norwayPriceModel,
+    monthUsageKwh: norwayPriceModel === 'norgespris'
+      ? getCurrentMonthUsageKwh(powerTracker, timeZone)
+      : 0,
+    hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris'
+      ? getHourlyUsageEstimateKwh(powerTracker)
+      : 0,
+    now,
+    currentMonthKey: getDateKeyInTimeZone(now, timeZone).slice(0, 7),
+    timeZone,
+  });
 };

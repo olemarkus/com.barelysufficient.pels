@@ -5,8 +5,8 @@
  * and the `PriceOptimizer` lifecycle. Consumers are notified through
  * `onCombinedPricesUpdated` and plan rebuilds via `rebuildPlanFromCache`;
  * they receive resolved flat values (hourly prices, levels, cheap/expensive
- * verdicts) and never branch on which source (spot / flow / Homey Energy)
- * produced them — source resolution stays inside `PriceService`.
+ * verdicts) and never branch on which source (spot / flow / Homey Energy /
+ * Power by the Hour) produced them — source resolution stays inside `PriceService`.
  *
  * All cached price-data persistence goes through the typed stores
  * (`priceDataStore`, the combined-prices store) — never read or write a
@@ -19,7 +19,7 @@ import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
-import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUiApi';
+import type { HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus } from '../../packages/contracts/src/settingsUiApi';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, type CombinedPricePeriod, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
@@ -307,6 +307,15 @@ export class PriceCoordinator {
       this.deps.homey.settings,
       this.priceService.resolveHomeyPricePeriods(),
     );
+  }
+
+  /**
+   * The settings UI's account of the Power by the Hour source: whether the app
+   * answered, which of its price devices this home can be priced from, and
+   * which one is in force.
+   */
+  getPowerhourSourceUiStatus(): PowerhourSourceUiStatus {
+    return this.priceService.getPowerhourSourceUiStatus();
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {

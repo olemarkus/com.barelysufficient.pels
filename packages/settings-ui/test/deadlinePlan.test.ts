@@ -156,6 +156,10 @@ const buildBootstrap = (
     homeyTomorrow: null,
     pvForecastSource: { kind: 'unknown' },
     homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
   },
 });
 
@@ -189,6 +193,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -267,6 +275,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -326,6 +338,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -382,6 +398,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -447,6 +467,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -501,6 +525,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -567,6 +595,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -639,6 +671,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -706,6 +742,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -764,6 +804,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -823,6 +867,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -892,6 +940,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -959,6 +1011,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -1062,6 +1118,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1146,6 +1206,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1228,6 +1292,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1303,6 +1371,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1389,6 +1461,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1466,6 +1542,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -1516,6 +1596,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1581,6 +1665,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const evRevision = {
       revision: 1,
@@ -1665,6 +1753,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1720,6 +1812,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1777,6 +1873,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1842,6 +1942,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1902,6 +2006,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1958,6 +2066,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -2022,6 +2134,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -2106,6 +2222,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2192,6 +2312,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2296,6 +2420,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const revision = {
       revision: 2,
@@ -2403,6 +2531,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const revision = {
       revision: 1,
@@ -2489,6 +2621,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2585,6 +2721,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2674,6 +2814,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2758,6 +2902,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const allocatedRevision = {
       revision: 1,
@@ -2834,6 +2982,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2893,6 +3045,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2952,6 +3108,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -3020,6 +3180,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3084,6 +3248,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3151,6 +3319,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -3215,6 +3387,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     // Recorder-style revision with a learned rate + energy need. The hero's
     // "Needs" stat pair carries the energy figure as a bold payoff value (the
@@ -3293,6 +3469,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -3359,6 +3539,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -3425,6 +3609,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3486,6 +3674,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3553,6 +3745,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3649,6 +3845,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3726,6 +3926,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4083,6 +4287,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4150,6 +4358,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -4224,6 +4436,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4289,6 +4505,10 @@ describe('deadline plan page payload', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     });
     const settings = {
       capacity_limit_kw: 8,
@@ -4502,6 +4722,10 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -5194,6 +5418,10 @@ describe('cost + delivered-so-far hero lines', () => {
     homeyTomorrow: null,
     pvForecastSource: { kind: 'unknown' },
     homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
   });
 
   const buildStubBootstrap = (
@@ -5490,6 +5718,10 @@ describe('cost + delivered-so-far hero lines', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -5856,6 +6088,10 @@ describe('pending hero producer wiring', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const relocatedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5929,6 +6165,10 @@ describe('pending hero producer wiring', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5993,6 +6233,10 @@ describe('pending hero producer wiring', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -6052,6 +6296,10 @@ describe('pending hero producer wiring', () => {
       homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',

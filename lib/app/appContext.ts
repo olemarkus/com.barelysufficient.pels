@@ -77,7 +77,8 @@ import type {
   FlowReportedCapabilityId,
 } from '../device/transport/flowReportedCapabilities';
 import type {
-  HomeyPriceFormulaUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot,
+  HomeyPriceFormulaUiStatus,
+  PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
@@ -428,6 +429,11 @@ export type AppContext = {
   getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus;
   /** Why a Homey-priced home has no prices, for the settings UI to explain. */
   getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus;
+  /**
+   * What the Power by the Hour app answered when PELS last asked it for prices,
+   * and which of its price devices the owner can choose between.
+   */
+  getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

@@ -229,6 +229,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),
+    getPowerhourSourceUiStatus: () => ({ kind: 'unknown' as const }),
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,
     combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),

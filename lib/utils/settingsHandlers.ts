@@ -50,6 +50,7 @@ import {
   POWER_SOURCE,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
+  POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   PV_FORECAST_SOURCE,
   WEATHER_ADVISOR_SETTINGS,
@@ -511,6 +512,13 @@ function buildPriceSettingsHandlers(
       // owner's price formula and, if they price export from Homey, its feed-in
       // terms. Rebuilding alone would leave the home unpriced until the next
       // three-hourly refresh; fetch first, then rebuild on what arrived.
+      await deps.priceService.refreshSpotPrices(true);
+      await refreshPriceDerivedState(deps);
+    },
+    [POWERHOUR_DEVICE_ID]: async () => {
+      // A different device is a different bidding zone, so the stored days are
+      // another home's prices until the source has read the new one. Fetch
+      // first — the refresh is what clears them — then rebuild on what arrived.
       await deps.priceService.refreshSpotPrices(true);
       await refreshPriceDerivedState(deps);
     },

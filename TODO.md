@@ -938,6 +938,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Prices
 
+- [ ] **The Power by the Hour source drops the export price it is handed.** The app's
+      `/dap-prices` slots carry `exportPrice` beside `importPrice` (verified against 8.19.0 on SHS),
+      and `resolveSlot` (`lib/price/powerhourPriceFetch.ts`) reads only the import half. A prosumer
+      on this source therefore gets the weakest feed-in configuration on the page: the spot-share
+      field is Norway-only (`hasSpotPrice` in `ElectricityPricesView.tsx`) and the **Where the price
+      comes from** selector offers Homey Energy only (`export_price_source`), so they are left with
+      a flat manual amount while the source they chose publishes the real number per period.
+      Change: carry `exportPrice` through the adapter into the stored periods, add `power_by_the_hour`
+      to `ExportPriceSourceSetting` (`packages/shared-domain/src/settings/exportPriceSource.ts`), and
+      teach `applyExportPrices` to take a GIVEN per-period export price rather than always deriving
+      one from spot — today every source derives it, which is why this is more than a field read.
+      Done when a home on this source with export pricing on shows the app's own feed-in price on
+      the Budget tab's "Export price now", and the planning price follows it. [P2]
+
 - [ ] **A home with no price-aware device only learns the price level when something else asks
       for a plan rebuild.** The `price_level` Flow trigger and the `pels_insights` level capability
       are both written by `PlanStatusWriter.update`, i.e. during a plan rebuild, and
@@ -964,7 +978,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       price-scheme settings handler restart the optimizer (or re-arm its timer) the way a refresh
       does, so the cadence follows the scheme that is now active. Done when a test switches the
       scheme mid-run and the next wake lands on the new scheme's boundary rather than the old one's.
-      *(Codex review on #2434, 2026-09-17.)* [P2]
+      The `POWERHOUR_DEVICE_ID` handler in the same file has the same gap and needs the same fix:
+      the Power by the Hour source can be moved between an hourly (`dap`) and a quarter-hourly
+      (`dap15`) price device without the scheme changing at all, so the cadence can go stale
+      without the scheme key ever being written.
+      *(Codex review on #2434, 2026-09-17; second path added with the Power by the Hour source.)* [P2]
 
 ## Daily budget and weather
 

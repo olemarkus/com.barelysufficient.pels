@@ -1,3 +1,5 @@
+import type { PriceSchemeSetting } from '../../packages/contracts/src/settingsUiApi';
+
 /**
  * What one priced stretch of time says, whatever its length. Neither a period
  * nor an hour on its own — {@link CombinedHourlyPrice} and
@@ -61,7 +63,16 @@ export type CombinedPricePeriod = CombinedPriceFields & {
   durationMinutes: number;
 };
 
-export type PriceScheme = 'norway' | 'flow' | 'homey';
+/**
+ * Which source prices this home. Declared once, in
+ * `packages/contracts/src/settingsUiApi.ts`, because the settings UI renders
+ * the same union from the same bytes; the shared read policy for those bytes
+ * is `packages/shared-domain/src/settings/priceScheme.ts`.
+ */
+export type PriceScheme = PriceSchemeSetting;
+
+/** That union's read policy, re-exported beside the type it resolves to. */
+export { readPriceSchemeSetting } from '../../packages/shared-domain/src/settings/priceScheme';
 
 export type CombinedPriceEntry = {
   startsAt: string;

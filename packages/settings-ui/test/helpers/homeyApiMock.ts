@@ -332,6 +332,16 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
     homeyCurrency: await getHomeySetting(homey, 'homey_prices_currency') || null,
     homeyToday: await getHomeySetting(homey, 'homey_prices_today') || null,
     homeyTomorrow: await getHomeySetting(homey, 'homey_prices_tomorrow') || null,
+    powerhourCurrency: await getHomeySetting(homey, 'powerhour_prices_currency') || null,
+    powerhourToday: await getHomeySetting(homey, 'powerhour_prices_today') || null,
+    powerhourTomorrow: await getHomeySetting(homey, 'powerhour_prices_tomorrow') || null,
+    // The producer's own boot-window answer: the seams are resolved by the
+    // running app, and this stub has none. Mirrored rather than omitted — a
+    // stub that is missing a field the producer always sends is a stub the
+    // page can pass against and the real payload cannot.
+    pvForecastSource: { kind: 'unknown' },
+    homeyPriceFormula: { kind: 'unknown' },
+    powerhourSource: { kind: 'unknown' },
   };
 };
 

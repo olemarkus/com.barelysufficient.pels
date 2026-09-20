@@ -48,7 +48,9 @@ import { createCombinedPricesReader } from './lib/price/combinedPricesReader';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
-import type { HomeyPriceFormulaUiStatus, PvForecastSourceUiStatus } from './packages/contracts/src/settingsUiApi';
+import type {
+  HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus,
+} from './packages/contracts/src/settingsUiApi';
 import {
   createModeTargetPersistence,
   createUnsupportedDeviceDemotion,
@@ -318,6 +320,11 @@ class PelsApp extends PelsAppBase implements AppContext {
   // coordinator is wired; `unknown` until then is the union's own member for
   // "nothing to report yet".
   public getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus = () => ({ kind: 'unknown' });
+
+  // What the Power by the Hour app answered when PELS last asked it for prices.
+  // Replaced when the price coordinator is wired; `unknown` until then is the
+  // union's own member for "PELS has not asked the app yet".
+  public getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus = () => ({ kind: 'unknown' });
 
   // "Not started" is a named lifecycle state, not an absent field: the
   // controller is built by the post-startup background step, while the

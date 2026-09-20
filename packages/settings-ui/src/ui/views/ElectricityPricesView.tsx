@@ -4,10 +4,16 @@ import type {
   NorwayPriceModel,
   FlowStatus,
   HomeyStatus,
+  PowerhourStatus,
+  StatusValue,
   GridCompanyOption,
   PvForecastSourceSetting,
   PvForecastSourceUiStatus,
 } from '../priceConfigTypes.ts';
+import type {
+  PowerhourDeviceUiOption,
+  PowerhourSourceUiStatus,
+} from '../../../../contracts/src/settingsUiApi.ts';
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { isPvForecastSourceSetting } from '../../../../shared-domain/src/settings/pvForecastSource.ts';
@@ -88,7 +94,11 @@ export type ElectricityPricesViewProps = {
   exportPriceSource: ExportPriceSourceSetting;
   exportSpotFactor: number;
   exportFixed: number;
+  powerhourStatus: PowerhourStatus | null;
+  /** The page's own copy of the choice, ahead of the runtime while a save is in flight. */
+  powerhourDeviceId: string | null;
   onSchemeChange: (scheme: PriceScheme) => void;
+  onPowerhourDeviceChange: (deviceId: string) => void;
   onNorwayModelChange: (model: NorwayPriceModel) => void;
   onPriceAreaChange: (area: string) => void;
   onProviderSurchargeChange: (val: number) => void;
@@ -194,7 +204,7 @@ const LiveSummaryCard = ({
 
 const FlowStatusBlock = ({ status }: { status: FlowStatus }) => (
   <div class="price-config-source-status">
-    <StatusRow label="Power by the Hour" value="Enabled" tone="ok" />
+    <StatusRow label="Flow prices" value="Enabled" tone="ok" />
     <StatusRow label="Today" value={status.today.text} tone={status.today.tone} />
     <StatusRow label="Tomorrow" value={status.tomorrow.text} tone={status.tomorrow.tone} />
   </div>
@@ -219,6 +229,214 @@ const HomeyStatusBlock = ({ status }: { status: HomeyStatus }) => (
   </div>
 );
 
+/**
+ * How the owner reads one of the app's price devices: the name they gave it in
+ * Power by the Hour, then how often it prices.
+ *
+ * Not the bidding zone. That field is the raw ENTSO-E code
+ * (`10YNO-2--------T`) — the least readable string that could go on this page,
+ * and at ~16 characters the one most likely to wrap the status row at 320 px.
+ * The owner's own device name already says which zone it is, because Power by
+ * the Hour names these devices after the zone.
+ */
+const powerhourDeviceLabel = (device: PowerhourDeviceUiOption): string => {
+  const cadence = device.priceIntervalMinutes < 60
+    ? `${device.priceIntervalMinutes}-minute prices`
+    : 'hourly prices';
+  return `${device.deviceName} (${cadence})`;
+};
+
+/**
+ * The sentinel the "nothing chosen" row carries, for the same md-select reason
+ * as `GRID_COMPANY_NONE`: an empty value renders a blank closed field.
+ */
+const POWERHOUR_DEVICE_NONE = '__none__';
+
+type PowerhourDeviceSelectProps = {
+  status: PowerhourSourceUiStatus;
+  /**
+   * The choice as the page has it, which is ahead of `status` for as long as
+   * the runtime's own re-read of the app is in flight. Used only to keep the
+   * field showing what the owner just picked; the resolved state is `status`.
+   */
+  pendingDeviceId: string | null;
+  onChange: (deviceId: string) => void;
+};
+
+/**
+ * The devices on offer, and whether the owner is being asked to choose between
+ * them.
+ *
+ * One device is not a choice while the source is reading it — a select with a
+ * single option is a question the owner cannot answer wrongly or usefully. It
+ * IS a choice once the device they picked has gone: PELS will not adopt the
+ * survivor on their behalf, so without the picker the source stays dead with no
+ * way back (`powerhour_device_id` has no other writer).
+ */
+const powerhourPickerDevices = (status: PowerhourSourceUiStatus): PowerhourDeviceUiOption[] => {
+  const devices = status.kind === 'reading' || status.kind === 'device_missing' ? status.devices : [];
+  if (devices.length === 0) return [];
+  return devices.length < 2 && status.kind !== 'device_missing' ? [] : devices;
+};
+
+const PowerhourDeviceSelect = ({
+  status, pendingDeviceId, onChange,
+}: PowerhourDeviceSelectProps) => {
+  const devices = powerhourPickerDevices(status);
+  if (devices.length === 0) return null;
+  // md-select ignores a `value` no option carries and leaves the closed field
+  // blank, so the id can only ever be used when an option actually holds it —
+  // which is exactly what a stale stored id does not. The sentinel is the one
+  // `GRID_COMPANY_NONE` exists for, and this is its second absent state:
+  // chosen, but gone. A pending choice is shown so the field does not snap back
+  // to the placeholder while the runtime is still re-reading the app.
+  const pending = devices.some((device) => device.deviceId === pendingDeviceId)
+    ? pendingDeviceId
+    : null;
+  const value = status.kind === 'reading'
+    ? status.selected.deviceId
+    : pending ?? POWERHOUR_DEVICE_NONE;
+  return (
+    <div class="field">
+      <span class="field__label pels-text-settings-label">Price device</span>
+      <MdFilledSelect
+        id="powerhour-device-select"
+        aria-label="Price device"
+        value={value}
+        onChange={(e) => {
+          const selected = readValue(e);
+          onChange(selected === POWERHOUR_DEVICE_NONE ? '' : selected);
+        }}
+      >
+        {/* Only while nothing is in force: re-picking it once prices are flowing
+            would silently stop the price source with no warning. */}
+        {status.kind !== 'reading' && (
+          <MdSelectOption value={POWERHOUR_DEVICE_NONE}>
+            <div slot="headline">Choose a price device</div>
+          </MdSelectOption>
+        )}
+        {devices.map((device) => (
+          <MdSelectOption key={device.deviceId} value={device.deviceId}>
+            <div slot="headline">{powerhourDeviceLabel(device)}</div>
+          </MdSelectOption>
+        ))}
+      </MdFilledSelect>
+      <small class="field__hint">
+        PELS takes your prices from the device you pick here. The same zone paired twice
+        works either way — the 15-minute one just follows prices four times an hour.
+      </small>
+    </div>
+  );
+};
+
+/**
+ * What the owner is told about the Power by the Hour source, and what they can
+ * do about it. Each unavailable state names the place the fix is — which is
+ * Homey or the other app, never this page.
+ */
+const powerhourSourceRow = (
+  status: PowerhourSourceUiStatus,
+): { value: StatusValue; detail: string | null } => {
+  if (status.kind === 'reading') {
+    return { value: { text: powerhourDeviceLabel(status.selected), tone: 'ok' }, detail: null };
+  }
+  if (status.kind === 'unknown') {
+    return {
+      value: { text: 'Not read yet', tone: 'warn' },
+      detail: 'PELS hasn’t asked Power by the Hour for prices yet. It tries again '
+        + 'every few hours — or press Refresh prices.',
+    };
+  }
+  if (status.kind === 'not_permitted') {
+    // Not "this needs a Homey Pro": PELS ships local-only, so it is never
+    // installed anywhere app-to-app calls are unavailable. What is left is the
+    // permission, which a PELS update grants.
+    return {
+      value: { text: 'No access to the app', tone: 'warn' },
+      detail: 'Homey hasn’t given PELS access to Power by the Hour. Update PELS and '
+        + 'allow the access it asks for.',
+    };
+  }
+  if (status.kind === 'app_unavailable') {
+    // Three causes reach this arm — the app is absent, it is not running, or it
+    // answered with something PELS cannot read (an install older than the
+    // version that added the route). PELS cannot tell them apart from here, so
+    // the copy claims none of them and names the one place all three are fixed.
+    return {
+      value: { text: 'No prices from the app', tone: 'warn' },
+      detail: 'PELS can’t read prices from Power by the Hour. Check in Homey that the '
+        + 'app is installed, running and up to date, then press Refresh prices.',
+    };
+  }
+  if (status.kind === 'no_devices') {
+    return {
+      value: { text: 'No price devices', tone: 'warn' },
+      detail: 'Power by the Hour is running but has no electricity price device. '
+        + 'Add one for your bidding zone in that app, then press Refresh prices.',
+    };
+  }
+  // One arm, two different facts about the owner: they never chose, or the
+  // device they DID choose has gone. Saying "No device chosen" to the second
+  // contradicts the sentence directly under it.
+  return status.deviceId
+    ? {
+      value: { text: 'Price device is gone', tone: 'warn' },
+      detail: 'The price device PELS was using is gone from Power by the Hour. '
+        + 'Pick another one below.',
+    }
+    : {
+      value: { text: 'No device chosen', tone: 'warn' },
+      detail: 'Power by the Hour has more than one price device. Pick the one '
+        + 'that prices this home below.',
+    };
+};
+
+type PowerhourStatusBlockProps = {
+  status: PowerhourStatus;
+  pendingDeviceId: string | null;
+  onDeviceChange: (deviceId: string) => void;
+};
+
+const PowerhourStatusBlock = ({ status, pendingDeviceId, onDeviceChange }: PowerhourStatusBlockProps) => {
+  const source = powerhourSourceRow(status.source);
+  const hasPicker = powerhourPickerDevices(status.source).length > 0;
+  return (
+    <>
+      <div class="price-config-source-status">
+        {/* When the picker renders, its closed field already reads the device's
+            name — two adjacent renderings of one long label is the doubling this
+            page retired once already. Without a picker the row is the only place
+            the device is named, so it names it. */}
+        <StatusRow
+          label="Price source"
+          value={hasPicker && status.source.kind === 'reading' ? 'Reading prices' : source.value.text}
+          tone={source.value.tone}
+        />
+        {source.detail && <p class="muted" id="electricity-prices-powerhour-issue">{source.detail}</p>}
+        {/* Shown whenever days are STORED, not only while the source is reading:
+            a failed read is a no-op, so PELS keeps planning against these
+            prices, and hiding them would leave the owner unable to tell whether
+            they have prices for tonight — the one thing this block is for. Each
+            row carries its own "updated N min ago". */}
+        {status.hasStoredDays && (
+          <>
+            <StatusRow label="Currency" value={status.currency} tone={status.currencyTone} />
+            <StatusRow label="Today" value={status.today.text} tone={status.today.tone} />
+            <StatusRow label="Tomorrow" value={status.tomorrow.text} tone={status.tomorrow.tone} />
+          </>
+        )}
+      </div>
+      {/* A form control, in the form grid where the page's other selects live —
+          not wedged into the readout strip, whose 4px rhythm is for rows. */}
+      <PowerhourDeviceSelect
+        status={status.source}
+        pendingDeviceId={pendingDeviceId}
+        onChange={onDeviceChange}
+      />
+    </>
+  );
+};
+
 const schemeNote = (scheme: PriceScheme): string | null => {
   if (scheme === 'norway') {
     return 'Norway combines spot prices, grid tariff, provider surcharge, '
@@ -226,12 +444,18 @@ const schemeNote = (scheme: PriceScheme): string | null => {
   }
   if (scheme === 'flow') {
     return 'Flow source uses values as provided (currency/tax may vary). '
-      + 'Use this outside Norway or when you prefer external prices. '
-      + 'Feed today and tomorrow prices via PELS flow actions.';
+      + 'Use this outside Norway when your prices come from somewhere PELS has no '
+      + 'source for; feed today and tomorrow prices via PELS flow actions. If they '
+      + 'come from Power by the Hour, pick that source instead — it needs no flow.';
   }
   if (scheme === 'homey') {
     return 'Homey Energy uses values as provided (currency/tax may vary). '
       + 'Prices are read from your Homey Energy settings and used directly.';
+  }
+  if (scheme === 'powerhour') {
+    return 'Power by the Hour supplies prices straight from that app, with the '
+      + 'markups you set there (currency/tax may vary). No flow needed. Grid tariff '
+      + 'is not included unless you added it there yourself.';
   }
   return null;
 };
@@ -404,6 +628,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
   const isNorway = props.priceScheme === 'norway';
   const isFlow = props.priceScheme === 'flow';
   const isHomey = props.priceScheme === 'homey';
+  const isPowerhour = props.priceScheme === 'powerhour';
 
   return (
     <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
@@ -419,10 +644,13 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
             <div slot="headline">Norway (spot + grid tariff)</div>
           </MdSelectOption>
           <MdSelectOption value="flow">
-            <div slot="headline">Flow (Power by the Hour)</div>
+            <div slot="headline">Flow (prices from a Flow card)</div>
           </MdSelectOption>
           <MdSelectOption value="homey">
             <div slot="headline">Homey Energy (dynamic prices)</div>
+          </MdSelectOption>
+          <MdSelectOption value="powerhour">
+            <div slot="headline">Power by the Hour (app)</div>
           </MdSelectOption>
         </MdFilledSelect>
         <small class="field__hint">Where PELS fetches price data.</small>
@@ -431,6 +659,13 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
       {note && <p class="muted">{note}</p>}
       {isFlow && props.flowStatus && <FlowStatusBlock status={props.flowStatus} />}
       {isHomey && props.homeyStatus && <HomeyStatusBlock status={props.homeyStatus} />}
+      {isPowerhour && props.powerhourStatus && (
+        <PowerhourStatusBlock
+          status={props.powerhourStatus}
+          pendingDeviceId={props.powerhourDeviceId}
+          onDeviceChange={props.onPowerhourDeviceChange}
+        />
+      )}
 
       {isNorway && (
         <NorwaySection
@@ -742,7 +977,7 @@ const PriceAwareDevicesLink = () => (
 );
 
 const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
-  const isExternal = props.priceScheme === 'flow' || props.priceScheme === 'homey';
+  const isExternal = props.priceScheme !== 'norway';
 
   return (
     <>

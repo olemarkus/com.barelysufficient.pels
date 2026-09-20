@@ -18,7 +18,9 @@ import {
 } from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
-import { hasHomeyPriceFormulaSeam, hasPvForecastSourceSeam } from './settingsUiStatusSeams';
+import {
+  hasHomeyPriceFormulaSeam, hasPowerhourSourceSeam, hasPvForecastSourceSeam,
+} from './settingsUiStatusSeams';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -441,10 +443,11 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   };
 };
 
+/** A settings value that is a string, or the absence the payload reports as `null`. */
+const stringOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
 const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => {
   const app = getApp(homey);
-  const priceArea = homey.settings.get('price_area') as unknown;
-  const homeyCurrency = homey.settings.get('homey_prices_currency') as unknown;
   // The settings-UI client (`normalizeCombinedPrices`, `ui/combinedPrices.ts`) accepts
   // both the legacy V1 `{ prices: [...] }` and V2 `{ days: {...} }` shapes,
   // so the raw persisted value is forwarded as-is. A first read through the
@@ -453,11 +456,11 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   return {
     combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
     electricityPrices: homey.settings.get('electricity_prices') as unknown ?? null,
-    priceArea: typeof priceArea === 'string' ? priceArea : null,
+    priceArea: stringOrNull(homey.settings.get('price_area')),
     gridTariffData: homey.settings.get('nettleie_data') as unknown ?? null,
     flowToday: homey.settings.get('flow_prices_today') as unknown ?? null,
     flowTomorrow: homey.settings.get('flow_prices_tomorrow') as unknown ?? null,
-    homeyCurrency: typeof homeyCurrency === 'string' ? homeyCurrency : null,
+    homeyCurrency: stringOrNull(homey.settings.get('homey_prices_currency')),
     homeyToday: homey.settings.get('homey_prices_today') as unknown ?? null,
     homeyTomorrow: homey.settings.get('homey_prices_tomorrow') as unknown ?? null,
     pvForecastSource: hasPvForecastSourceSeam(app)
@@ -465,6 +468,12 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
       : { kind: 'unknown' },
     homeyPriceFormula: hasHomeyPriceFormulaSeam(app)
       ? app.getHomeyPriceFormulaUiStatus()
+      : { kind: 'unknown' },
+    powerhourCurrency: stringOrNull(homey.settings.get('powerhour_prices_currency')),
+    powerhourToday: homey.settings.get('powerhour_prices_today') as unknown ?? null,
+    powerhourTomorrow: homey.settings.get('powerhour_prices_tomorrow') as unknown ?? null,
+    powerhourSource: hasPowerhourSourceSeam(app)
+      ? app.getPowerhourSourceUiStatus()
       : { kind: 'unknown' },
   };
 };

@@ -56,7 +56,10 @@ export const resolvePendingReason = (
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
   if (scheme === 'flow') return 'external_flow';
-  if (scheme === 'norway' || scheme === 'homey') return 'managed';
+  // `powerhour` is managed for the same reason `homey` is: PELS fetches it
+  // itself on a schedule, so prices going missing is PELS's own problem to
+  // report — not, as with `flow`, a flow the owner has to go and fix.
+  if (scheme === 'norway' || scheme === 'homey' || scheme === 'powerhour') return 'managed';
   return 'unknown';
 };
 

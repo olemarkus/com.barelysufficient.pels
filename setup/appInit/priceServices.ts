@@ -34,6 +34,10 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   // reached, and the assignment is the wiring.
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getHomeyPriceFormulaUiStatus = () => coordinator.getHomeyPriceFormulaUiStatus();
+  // Same seam, same reason: what the Power by the Hour app answered is known
+  // only to the component that asked it.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.getPowerhourSourceUiStatus = () => coordinator.getPowerhourSourceUiStatus();
   return coordinator;
 }
 

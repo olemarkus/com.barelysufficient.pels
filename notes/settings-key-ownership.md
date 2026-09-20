@@ -75,7 +75,7 @@ from outside PELS.
   asking the owner.
 
 Keys with owners so far: `mode_device_targets`, `pv_forecast_source`,
-`homey_price_formula`.
+`homey_price_formula`, `price_scheme` + `powerhour_device_id`.
 `capacity_priorities` has the same shape and the same two parsers and is the
 obvious next one — until then it keeps the older reject-the-whole-map policy,
 which is why `parseModeNumberMap` still exists alongside
@@ -87,6 +87,18 @@ runtime reader and the settings UI's select), so a second local parser would
 have been one drift away from planning and the UI naming different sources for
 the same bytes. Its policy is recognise-or-default rather than sanitize-and-keep
 — see the module for why defaulting is safe at this particular key.
+
+`price_scheme` and `powerhour_device_id` (owner:
+`packages/shared-domain/src/settings/priceScheme.ts`) are the case where the
+drift had already happened and stayed harmless by luck. The scheme union was
+written out twice — in `lib/price/priceTypes.ts` and again in the settings UI's
+`priceSettingsPersistence.ts` — with a recognise-or-default policy in each, and
+the two agreed only because nobody had added a fourth source. Adding one
+(`powerhour`) would have meant editing two unions that nothing checks against
+each other, so the union moved to contracts and the policy here first. The UI
+keeps one reading of its own and it is deliberately not this policy: the value
+of the `<select>` ELEMENT is not these bytes, so its fallback answers a
+different question.
 
 `homey_price_formula` (owner: `lib/price/homeyPriceFormula.ts`) is a
 runtime-only key, and the interesting part is its READ policy: neither
@@ -117,13 +129,19 @@ mission-critical configuration mirror rather than a cache of fetched data — an
 it is one short string, rewritten perhaps once a year, so the write cost the
 `/userdata` store exists to avoid does not arise. The prices themselves stay
 out: `combined_prices` and the raw slot payloads are the bulk, and they are the
-ones named below as the next to move.
+ones named below as the next to move. The Power by the Hour payloads
+(`powerhour_prices_today`/`_tomorrow`, plus its `_currency` and `_device`
+markers) are part of that family and move with it — they are stored beside the
+flow and Homey Energy slot pairs because every one of those keys rotates
+through the same code, not because a fresh cache was judged to belong in
+`homey.settings`.
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership
   state (a restore target the app cannot recover is not regenerable), device
   control profiles, smart-task definitions, price/budget/EV/weather settings,
-  meter and source choice, small live latches. The SDK's `ManagerSettings.set`
+  meter and source choice (including which Power by the Hour price device
+  prices the home), small live latches. The SDK's `ManagerSettings.set`
   stringifies the value, stringifies the stored value to compare, parses a copy,
   and then ships the **entire settings object** to Homey core over the runner's
   websocket — on every write of any key. Every byte in any key is paid on every

@@ -59,11 +59,36 @@ export type FlowPort = {
 };
 
 /**
- * Subset of `homey.api` (ManagerApi) the domain uses: emit a realtime UI event.
- * Like `FlowPort`, a standalone port — not folded into `HomeyRuntime`. It has no
- * `energy` member: the SDK gives apps no Homey Energy manager, so its prices are
- * read over the Web API (`lib/price/homeyEnergyPriceFetch.ts`).
+ * A handle on ANOTHER app's own API, as `homey.api.getApiApp` hands it over.
+ *
+ * Only the two reads PELS makes: whether the app is there at all, and one GET
+ * against a route it publishes. Not `post`/`put`/`delete` — PELS reads a peer
+ * app, it does not drive one — and not `on('realtime')`, because nothing
+ * subscribes yet and a port member no caller has exercised is a claim about an
+ * SDK surface nobody has tested.
+ */
+export type ApiAppPort = {
+  /** GET a route the other app publishes, relative to its API root. */
+  get(uri: string): Promise<unknown>;
+  /** True while the app is installed, enabled and running. */
+  getInstalled(): Promise<boolean>;
+};
+
+/**
+ * Subset of `homey.api` (ManagerApi) the domain uses: emit a realtime UI event,
+ * and take a handle on another app's API. Like `FlowPort`, a standalone port —
+ * not folded into `HomeyRuntime`. It has no `energy` member: the SDK gives apps
+ * no Homey Energy manager, so its prices are read over the Web API
+ * (`lib/price/homeyEnergyPriceFetch.ts`).
  */
 export type ApiPort = {
   realtime(event: string, data: unknown): Promise<unknown>;
+  /**
+   * THROWS SYNCHRONOUSLY rather than returning a handle when the call is not
+   * allowed — on a Cloud Homey, where app-to-app calls do not exist, and on any
+   * Homey where this app has not declared `homey:app:<appId>` permission
+   * (`ManagerApi.getApiApp`). Every caller owns that throw; it is a settled
+   * verdict about the platform, not a failed read worth retrying.
+   */
+  getApiApp(appId: string): ApiAppPort;
 };

@@ -521,6 +521,23 @@ export const mockHomeyInstance = {
     // Body of `manager/energy/price/electricity/dynamic/user-costs`: `null` is
     // a real Homey with no user costs configured.
     _priceUserCosts: null as unknown,
+    // App-to-app API (`homey.api.getApiApp`). `null` is a Homey where the call
+    // is not allowed — a Cloud Homey, or a missing `homey:app:<id>` permission
+    // — and the real SDK reports that by THROWING synchronously, which is the
+    // one behaviour every caller of this surface has to survive. A spec that
+    // needs a peer app registers one with `setMockApiApp`.
+    _apiApps: new Map<string, {
+      installed: boolean;
+      get: (uri: string) => Promise<unknown>;
+    } | null>(),
+    getApiApp: (appId: string) => {
+      const registered = mockHomeyInstance.api._apiApps.get(appId);
+      if (!registered) throw new Error(`No permission to use ${appId}`);
+      return {
+        getInstalled: async () => registered.installed,
+        get: (uri: string) => registered.get(uri),
+      };
+    },
     _realtimeEvents: [] as Array<{ event: string; data: unknown }>,
     realtime: async (event: string, data: unknown) => {
       // Track realtime events for testing
@@ -735,6 +752,23 @@ export const setMockGeolocation = (
  */
 export const setMockZones = (zones: Record<string, unknown> | null): void => {
   mockHomeyInstance.zones._zones = zones;
+};
+
+/**
+ * Register a peer app on the app-to-app API, so `homey.api.getApiApp(appId)`
+ * hands back a handle instead of throwing. Leave an app unregistered to drive
+ * the no-permission / Cloud-Homey path, and register one with
+ * `installed: false` to drive "the app is not running".
+ */
+export const setMockApiApp = (
+  appId: string,
+  app: { installed: boolean; get: (uri: string) => Promise<unknown> } | null,
+): void => {
+  if (app === null) {
+    mockHomeyInstance.api._apiApps.delete(appId);
+    return;
+  }
+  mockHomeyInstance.api._apiApps.set(appId, app);
 };
 
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {

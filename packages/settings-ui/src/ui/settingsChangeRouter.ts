@@ -41,6 +41,7 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
+  POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
   PV_FORECAST_SOURCE,
@@ -130,6 +131,12 @@ const PRICE_REFRESH_KEYS = new Set([
   'homey_prices_today',
   'homey_prices_tomorrow',
   'homey_prices_currency',
+  'powerhour_prices_today',
+  'powerhour_prices_tomorrow',
+  'powerhour_prices_currency',
+  // The runtime re-reads the peer app on this write, so the source account it
+  // carries on the prices payload moves with it.
+  POWERHOUR_DEVICE_ID,
   'nettleie_data',
 ]);
 
@@ -208,7 +215,7 @@ const refreshPriceSettings = (key: string) => {
     invalidateApiCache(SETTINGS_UI_PRICES_PATH);
     refreshPricesIfVisible('settings.set');
   }
-  if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL) return;
+  if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL && key !== POWERHOUR_DEVICE_ID) return;
   runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', 'settings.set');
   refreshPricesIfVisible('settings.set');
 };

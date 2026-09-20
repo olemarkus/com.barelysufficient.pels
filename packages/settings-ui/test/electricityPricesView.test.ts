@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderElectricityPricesView, type ElectricityPricesViewProps } from '../src/ui/views/ElectricityPricesView.tsx';
-import type { HomeyStatus } from '../src/ui/priceConfigTypes.ts';
+import type { HomeyStatus, PowerhourStatus } from '../src/ui/priceConfigTypes.ts';
+import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUiApi.ts';
 
 const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): ElectricityPricesViewProps => ({
   thresholdPercent: 20,
@@ -14,6 +15,8 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   tariffGroup: 'Husholdning',
   flowStatus: null,
   homeyStatus: null,
+  powerhourStatus: null,
+  powerhourDeviceId: null,
   currentPriceLevel: null,
   lastFetchedShort: null,
   currentExportPriceText: null,
@@ -46,6 +49,7 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   onExportSpotFactorChange: vi.fn(),
   onExportFixedChange: vi.fn(),
   onPvForecastSourceChange: vi.fn(),
+  onPowerhourDeviceChange: vi.fn(),
   ...overrides,
 });
 
@@ -481,5 +485,131 @@ describe('ElectricityPricesView', () => {
       expect(mount.querySelector('#electricity-prices-setup-issue')).toBeNull();
       expect(mount.textContent).not.toContain('Price setup');
     });
+  });
+});
+
+const powerhourDevice = (deviceId: string, name: string) => ({
+  deviceId,
+  deviceName: name,
+  priceIntervalMinutes: 60,
+  biddingZone: '10YNO-2--------T',
+});
+
+const powerhourStatus = (
+  source: PowerhourSourceUiStatus,
+  hasStoredDays = true,
+): PowerhourStatus => ({
+  source,
+  currency: '\u20ac',
+  currencyTone: 'ok',
+  today: { text: '12/24 hours, updated 1 min ago', tone: 'ok' },
+  tomorrow: { text: 'No data received', tone: 'warn' },
+  hasStoredDays,
+});
+
+const renderPowerhour = (
+  source: PowerhourSourceUiStatus,
+  hasStoredDays = true,
+  powerhourDeviceId: string | null = null,
+) => {
+  const mount = document.createElement('div');
+  document.body.appendChild(mount);
+  renderElectricityPricesView(mount, buildProps({
+    priceScheme: 'powerhour',
+    powerhourStatus: powerhourStatus(source, hasStoredDays),
+    powerhourDeviceId,
+  }));
+  return mount;
+};
+
+describe('ElectricityPricesView, Power by the Hour source', () => {
+  it('offers the source, and tells the flow source apart from it', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps());
+
+    const labels = [...mount.querySelectorAll('#price-source-select md-select-option')]
+      .map((option) => option.textContent?.trim());
+    expect(labels).toContain('Power by the Hour (app)');
+    // The flow option used to be the only place that name appeared; with a
+    // direct source beside it, two options reading "Power by the Hour" would
+    // be a coin toss for the owner.
+    expect(labels).not.toContain('Flow (Power by the Hour)');
+  });
+
+  it('names the device in force and what it costs to read', () => {
+    const only = powerhourDevice('no2', 'NO_Norway_2');
+    const mount = renderPowerhour({ kind: 'reading', selected: only, devices: [only] });
+
+    expect(mount.textContent).toContain('NO_Norway_2');
+    expect(mount.textContent).toContain('12/24 hours');
+  });
+
+  // A failed read is a no-op, so PELS is still planning against these prices —
+  // hiding them would leave the owner unable to tell whether tonight is priced.
+  it('keeps showing the stored days while the source is unavailable', () => {
+    const mount = renderPowerhour({ kind: 'app_unavailable' });
+    expect(mount.textContent).toContain('12/24 hours');
+  });
+
+  // Each unavailable state names the place the fix is, which is never this page.
+  it.each([
+    [{ kind: 'app_unavailable' } as const, 'No prices from the app'],
+    [{ kind: 'not_permitted' } as const, 'No access to the app'],
+    [{ kind: 'no_devices' } as const, 'No price devices'],
+    [{ kind: 'unknown' } as const, 'Not read yet'],
+  ])('explains %o', (source, expected) => {
+    const mount = renderPowerhour(source);
+    expect(mount.textContent).toContain(expected);
+  });
+
+  // ...but with nothing stored there is no claim to make.
+  it('shows no day counts when nothing has been stored', () => {
+    const mount = renderPowerhour({ kind: 'app_unavailable' }, false);
+    expect(mount.textContent).not.toContain('12/24 hours');
+  });
+
+  it('asks the owner to choose when the app has several price devices', () => {
+    const devices = [powerhourDevice('no1', 'NO_Norway_1'), powerhourDevice('no2', 'NO_Norway_2')];
+    const mount = renderPowerhour({ kind: 'device_missing', deviceId: '', devices });
+
+    expect(mount.textContent).toContain('more than one price device');
+    const options = [...mount.querySelectorAll('#powerhour-device-select md-select-option')]
+      .map((option) => option.textContent?.trim());
+    expect(options).toHaveLength(3);
+    expect(options).toContain('NO_Norway_1 (hourly prices)');
+  });
+
+  // One device is not a choice; a select with a single option is a question the
+  // owner cannot answer usefully.
+  it('offers no device picker on a home with one price device', () => {
+    const only = powerhourDevice('no2', 'NO_Norway_2');
+    const mount = renderPowerhour({ kind: 'reading', selected: only, devices: [only] });
+
+    expect(mount.querySelector('#powerhour-device-select')).toBeNull();
+    // ...and with no picker, the row is the only place the device is named.
+    expect(mount.textContent).toContain('NO_Norway_2');
+  });
+
+  // ...but once the chosen device is gone the copy asks them to pick another,
+  // and PELS will not adopt the survivor on their behalf — so a picker with one
+  // option is the only way that sentence is answerable.
+  it('still offers the picker when the chosen device has gone and one is left', () => {
+    const survivor = powerhourDevice('no1', 'NO_Norway_1');
+    const mount = renderPowerhour({ kind: 'device_missing', deviceId: 'no2', devices: [survivor] });
+
+    expect(mount.querySelector('#powerhour-device-select')).not.toBeNull();
+    expect(mount.textContent).toContain('Pick another one below');
+    expect(mount.textContent).toContain('Price device is gone');
+  });
+
+  // The picker's closed field already reads the name; a status row repeating it
+  // is the doubling this page retired once already.
+  it('does not name the device twice when the picker renders', () => {
+    const devices = [powerhourDevice('no1', 'NO_Norway_1'), powerhourDevice('no2', 'NO_Norway_2')];
+    const mount = renderPowerhour({ kind: 'reading', selected: devices[1]!, devices });
+
+    expect(mount.textContent).toContain('Reading prices');
+    expect(mount.textContent?.match(/NO_Norway_2 \(hourly prices\)/g) ?? []).toHaveLength(1);
   });
 });

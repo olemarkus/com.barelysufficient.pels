@@ -12,6 +12,14 @@ import {
   type NettleieFallbackTariffGroup,
 } from './nettleieFallbackData.generated';
 
+/**
+ * When the bundled snapshot was generated, re-exported beside the resolver that
+ * serves it: a caller reporting that it fell back to the snapshot needs to say
+ * how old the snapshot is, and should not have to know which generated file it
+ * came out of.
+ */
+export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
+
 // Last-resort static grid-tariff fallback. Used only when the NVE API is
 // unreachable AND no live tariff has been cached yet (new user). The shape it
 // produces matches the normalized `nettleie_data` entries written from NVE, so

@@ -559,6 +559,10 @@ describe('settingsUiApi', () => {
       homeyCurrency: 'NOK',
       homeyToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
       homeyTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
+      powerhourCurrency: null,
+      powerhourToday: null,
+      powerhourTomorrow: null,
+      powerhourSource: { kind: 'unknown' },
     });
     expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
       generatedAt: 123456,

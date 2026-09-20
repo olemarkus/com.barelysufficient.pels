@@ -10,10 +10,12 @@ import {
 import { readExportPriceSettings } from './exportPriceSettings.ts';
 import {
   PRICE_OPTIMIZATION_ENABLED,
+  POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   PV_FORECAST_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
+import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
 
 /**
@@ -37,7 +39,10 @@ const numberSetting = (value: unknown, fallback: number): number => (
 );
 
 export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput) => {
-  const { priceScheme, norwayPriceModel, priceArea, providerSurcharge, thresholdPercent, minDiffOre } = input;
+  const {
+    priceScheme, powerhourDeviceId, norwayPriceModel, priceArea,
+    providerSurcharge, thresholdPercent, minDiffOre,
+  } = input;
 
   if (priceScheme === 'norway') {
     const validAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
@@ -55,6 +60,9 @@ export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput
 
   const nextSettings = parsePriceSettingsInputs({
     priceSchemeValue: priceScheme,
+    // Carried through the save rather than defaulted: without it every save of
+    // this form would write "no device" over a choice the owner had made.
+    powerhourDeviceIdValue: powerhourDeviceId,
     norwayPriceModelValue: norwayPriceModel,
     priceAreaValue: priceArea,
     providerSurchargeValue: String(providerSurcharge),
@@ -89,6 +97,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     priceOptSettings,
     exportSettings,
     pvForecastSource,
+    powerhourDeviceId,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
     getSetting('norway_price_model'),
@@ -103,6 +112,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     getSetting('price_optimization_settings'),
     readExportPriceSettings(),
     getSetting(PV_FORECAST_SOURCE),
+    getSetting(POWERHOUR_DEVICE_ID),
   ]);
 
   if (priceOptSettings && typeof priceOptSettings === 'object') {
@@ -112,6 +122,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
   return {
     optimizationEnabled: priceOptEnabled !== false,
     priceScheme: normalizePriceSchemeSetting(priceScheme),
+    powerhourDeviceId: readPowerhourDeviceIdSetting(powerhourDeviceId),
     norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
     priceArea: stringSetting(priceArea, 'NO1'),
     providerSurcharge: numberSetting(providerSurcharge, 0),

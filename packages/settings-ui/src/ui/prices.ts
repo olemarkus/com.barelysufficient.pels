@@ -16,6 +16,10 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   homeyTomorrow: null,
   pvForecastSource: { kind: 'unknown' },
   homeyPriceFormula: { kind: 'unknown' },
+  powerhourCurrency: null,
+  powerhourToday: null,
+  powerhourTomorrow: null,
+  powerhourSource: { kind: 'unknown' },
 };
 
 /**

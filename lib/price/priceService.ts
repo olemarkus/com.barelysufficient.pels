@@ -6,6 +6,9 @@ import {
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  POWERHOUR_PRICES_CURRENCY,
+  POWERHOUR_PRICES_TODAY,
+  POWERHOUR_PRICES_TOMORROW,
   PRICE_SCHEME,
 } from '../utils/settingsKeys';
 import {
@@ -17,8 +20,7 @@ import {
 } from './priceServiceUtils';
 import { DEFAULT_PERIOD_MINUTES, getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { shouldUseGridTariffCache } from './gridTariffUtils';
-import { resolveGridTariffFallback } from './staticGridTariffFallback';
-import { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
+import { NETTLEIE_FALLBACK_GENERATED_AT, resolveGridTariffFallback } from './staticGridTariffFallback';
 import {
   buildHomeyEnergyDateInfo,
   fetchHomeyEnergyResults,
@@ -32,6 +34,7 @@ import {
   purgeStaleFlowPriceSlots,
   storeFlowPriceData as storeFlowPriceDataHelper,
   type FlowSlotChange,
+  type PriceSourceLabel,
 } from './priceServiceFlowHelpers';
 import { toHourlyPrices } from './hourlyPriceProjection';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
@@ -42,16 +45,13 @@ import {
   getCombinedPayloadLastFetched,
   toCombinedPayloadFingerprint,
 } from './priceServiceCombined';
+import type { PowerTrackerReadout } from './priceServiceNorgespris';
 import {
-  getCurrentMonthUsageKwh,
-  getHourlyUsageEstimateKwh,
-  type PowerTrackerReadout,
-} from './priceServiceNorgespris';
-import {
-  buildCombinedHourlyPricesNorway,
   readNorwaySchemeSettings,
+  resolveNorwayHourlyPrices,
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
+import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhourScheme';
 import { applyExportPrices } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
@@ -63,6 +63,7 @@ import {
   type PriceLevelBand,
 } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
+import { readPriceSchemeSetting } from './priceTypes';
 import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
 import {
   keepsPersistedPrices, resolveExportConfigForScheme, resolveHomeySeries, syncHomeyPricing,
@@ -104,6 +105,10 @@ export default class PriceService {
   // Forecast-surplus inputs for the planning price, injected by the wiring layer
   // (composed from the PV forecast minus the gross uncontrolled background). Unset
   // for non-prosumers ⇒ budgetPrice is never produced and behaviour is unchanged.
+  // The last account of the Power by the Hour source, from the read the last
+  // refresh made. `unknown` before any refresh has run — see
+  // `getPowerhourSourceUiStatus`.
+  private powerhourSourceStatus: PowerhourSourceUiStatus = { kind: 'unknown' };
   private budgetPriceInputs?: BudgetPriceInputs;
   setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void { this.budgetPriceInputs = inputs; }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key); }
@@ -122,9 +127,7 @@ export default class PriceService {
   // PRICE_SCHEME→scheme mapping. Single source of truth for the early-returns
   // in refreshSpotPrices/getCombinedHourlyPrices.
   getPriceScheme(): PriceScheme {
-    const raw = this.getSettingValue(PRICE_SCHEME);
-    if (raw === 'flow' || raw === 'homey') return raw;
-    return 'norway';
+    return readPriceSchemeSetting(this.getSettingValue(PRICE_SCHEME));
   }
 
   // Public so app-level callers (e.g. the deferred-objective plan-preview cost
@@ -132,11 +135,15 @@ export default class PriceService {
   getPriceUnitLabel(): string {
     const scheme = this.getPriceScheme();
     if (scheme === 'norway') return 'øre/kWh';
-    if (scheme === 'homey') {
-      const currency = this.getSettingValue(HOMEY_PRICES_CURRENCY);
-      return typeof currency === 'string' && currency.trim() ? currency : 'price units';
-    }
+    if (scheme === 'homey') return this.currencyLabel(HOMEY_PRICES_CURRENCY);
+    if (scheme === 'powerhour') return this.currencyLabel(POWERHOUR_PRICES_CURRENCY);
     return 'price units';
+  }
+
+  /** A mirrored currency label, or the unit-less fallback when none was stored. */
+  private currencyLabel(key: string): string {
+    const currency = this.getSettingValue(key);
+    return typeof currency === 'string' && currency.trim() ? currency : 'price units';
   }
 
   private shouldUseSpotPriceCache(params: {
@@ -177,6 +184,10 @@ export default class PriceService {
     }
     if (scheme === 'homey') {
       await this.refreshHomeyEnergyPrices(forceRefresh);
+      return;
+    }
+    if (scheme === 'powerhour') {
+      await this.refreshPowerhourPrices();
       return;
     }
     const priceArea = this.norwaySchemeSettings.priceArea;
@@ -418,6 +429,11 @@ export default class PriceService {
       return this.getPricePeriodsFromPayloads(FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, 'Flow prices');
     }
     if (scheme === 'homey') return this.resolveHomeyPricePeriods().periods;
+    if (scheme === 'powerhour') {
+      return this.getPricePeriodsFromPayloads(
+        POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, 'Power by the Hour prices',
+      );
+    }
     // Norwegian spot prices are hourly, and each entry carries the whole cost
     // stack, so the hour IS the period here.
     return this.getCombinedHourlyPricesNorway()
@@ -440,26 +456,13 @@ export default class PriceService {
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
-    const settings = this.norwaySchemeSettings;
-    const { priceArea, norwayPriceModel } = settings;
-    const timeZone = this.getTimeZone();
-    const currentMonthKey = getDateKeyInTimeZone(new Date(), timeZone).slice(0, 7);
-    return buildCombinedHourlyPricesNorway({
-      spotPrices: this.priceDataStore.readSpotPrices(),
-      gridTariffData: this.priceDataStore.readNettleie(),
-      providerSurchargeIncVat: this.getNumberSetting('provider_surcharge', 0),
-      priceArea,
-      countyCode: settings.countyCode,
-      tariffGroup: settings.tariffGroup,
-      norwayPriceModel,
-      monthUsageKwh: norwayPriceModel === 'norgespris'
-        ? getCurrentMonthUsageKwh(this.getPowerTracker(), this.getTimeZone())
-        : 0,
-      hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? getHourlyUsageEstimateKwh(this.getPowerTracker()) : 0,
-      now: new Date(),
-      currentMonthKey,
-      timeZone,
-    });
+    return resolveNorwayHourlyPrices(
+      this.norwaySchemeSettings,
+      this.priceDataStore,
+      this.getNumberSetting('provider_surcharge', 0),
+      this.getPowerTracker(),
+      this.getTimeZone(),
+    );
   }
 
   private rotateFlowPriceSlots(params: {
@@ -467,7 +470,7 @@ export default class PriceService {
     timeZone: string;
     todaySettingKey: string;
     tomorrowSettingKey: string;
-    label: 'Flow prices' | 'Homey prices';
+    label: PriceSourceLabel;
   }): { todayPayload: FlowPricePayload | null; tomorrowPayload: FlowPricePayload | null } {
     const { now, timeZone, todaySettingKey, tomorrowSettingKey, label } = params;
     const purge = purgeStaleFlowPriceSlots({
@@ -500,7 +503,7 @@ export default class PriceService {
   private getPricePeriodsFromPayloads(
     todaySettingKey: string,
     tomorrowSettingKey: string,
-    label: 'Flow prices' | 'Homey prices',
+    label: PriceSourceLabel,
   ): CombinedPricePeriod[] {
     const now = new Date();
     const timeZone = this.getTimeZone();
@@ -580,6 +583,42 @@ export default class PriceService {
 
   getCurrentHourStartMs(): number {
     return resolveCurrentPriceStartMs(this.getCombinedPricePeriods(), this.getTimeZone());
+  }
+
+  /**
+   * Why the settings UI may be showing no prices on this source, and which
+   * devices the owner can pick between.
+   *
+   * Held from the last refresh rather than read on demand: the settings UI asks
+   * for this on every poll of its prices payload, and an app-to-app round trip
+   * per poll would buy nothing — the answer only moves when the app's devices
+   * or the owner's choice move, and both of those already refresh
+   * (`PRICE_SCHEME` and `POWERHOUR_DEVICE_ID` settings handlers, the three-hourly
+   * cycle, and the owner's own "Refresh prices"). `unknown` until the first
+   * refresh, which is the honest answer while PELS has not asked the app yet.
+   */
+  getPowerhourSourceUiStatus(): PowerhourSourceUiStatus {
+    // Off the source the held verdict is about a home this one is not; the
+    // union's own `unknown` is what the contract promises there.
+    return this.getPriceScheme() === 'powerhour' ? this.powerhourSourceStatus : { kind: 'unknown' };
+  }
+
+  /** See `mirrorPowerhourPrices` for what one pass reads, writes and skips. */
+  private async refreshPowerhourPrices(): Promise<void> {
+    const mirror = await mirrorPowerhourPrices(
+      this.homey.api,
+      this.homey.settings,
+      this.priceDataStore,
+      this.getTimeZone(),
+      () => this.rotateFlowPriceSlots({
+        now: new Date(), timeZone: this.getTimeZone(), label: 'Power by the Hour prices',
+        todaySettingKey: POWERHOUR_PRICES_TODAY, tomorrowSettingKey: POWERHOUR_PRICES_TOMORROW,
+      }),
+    );
+    this.powerhourSourceStatus = mirror.status;
+    if (mirror.level === 'info') this.sinks.structuredLog?.info(mirror.record);
+    else this.sinks.debugStructured(mirror.record);
+    if (mirror.changed) this.updateCombinedPrices();
   }
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {

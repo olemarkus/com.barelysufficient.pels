@@ -1,11 +1,26 @@
 import { getSetting } from './homey.ts';
-import { NORWAY_PRICE_MODEL, PRICE_SCHEME } from '../../../contracts/src/settingsKeys.ts';
+import {
+  NORWAY_PRICE_MODEL, POWERHOUR_DEVICE_ID, PRICE_SCHEME,
+} from '../../../contracts/src/settingsKeys.ts';
+import {
+  isPriceSchemeSetting,
+  readPowerhourDeviceIdSetting,
+  readPriceSchemeSetting,
+  type PriceSchemeSetting,
+} from '../../../shared-domain/src/settings/priceScheme.ts';
 
-export type PriceScheme = 'norway' | 'flow' | 'homey';
+/**
+ * Declared once, in contracts, and read through one shared policy — see
+ * `packages/shared-domain/src/settings/priceScheme.ts` for why this union is
+ * no longer written out here.
+ */
+export type PriceScheme = PriceSchemeSetting;
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';
 
 export type PriceSettingsInput = {
   priceScheme: PriceScheme;
+  /** The Power by the Hour device the owner picked; `null` while they have not. */
+  powerhourDeviceId: string | null;
   norwayPriceModel: NorwayPriceModel;
   priceArea: string;
   providerSurcharge: number;
@@ -18,15 +33,18 @@ export type PriceSettingWrite = {
   value: unknown;
 };
 
-export const normalizePriceSchemeSetting = (value: unknown): PriceScheme => {
-  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
-  return 'norway';
-};
+/** The stored setting, through the policy the runtime reads it with. */
+export const normalizePriceSchemeSetting = readPriceSchemeSetting;
 
-export const normalizePriceSchemeSelection = (value: unknown): PriceScheme => {
-  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
-  return 'homey';
-};
+/**
+ * The `<select>` element's current value, which is NOT the stored setting: the
+ * form always shows one of the options, so anything else means the element was
+ * not found, and the page falls back to the source most homes outside Norway
+ * are on rather than silently proposing to switch them to Norway.
+ */
+export const normalizePriceSchemeSelection = (value: unknown): PriceScheme => (
+  isPriceSchemeSetting(value) ? value : 'homey'
+);
 
 export const normalizeNorwayPriceModel = (value: unknown): NorwayPriceModel => (
   value === 'norgespris' ? 'norgespris' : 'stromstotte'
@@ -44,6 +62,7 @@ const parseIntInput = (value: string | undefined, fallback: number): number => {
 
 export const parsePriceSettingsInputs = (params: {
   priceSchemeValue: unknown;
+  powerhourDeviceIdValue: unknown;
   norwayPriceModelValue: unknown;
   priceAreaValue: string | undefined;
   providerSurchargeValue: string | undefined;
@@ -51,6 +70,7 @@ export const parsePriceSettingsInputs = (params: {
   minDiffOreValue: string | undefined;
 }): PriceSettingsInput => ({
   priceScheme: normalizePriceSchemeSelection(params.priceSchemeValue),
+  powerhourDeviceId: readPowerhourDeviceIdSetting(params.powerhourDeviceIdValue),
   norwayPriceModel: normalizeNorwayPriceModel(params.norwayPriceModelValue),
   priceArea: params.priceAreaValue || 'NO1',
   providerSurcharge: parseFloatInput(params.providerSurchargeValue, 0),
@@ -66,6 +86,7 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsInput> =>
     currentSurchargeRaw,
     currentThresholdRaw,
     currentMinDiffRaw,
+    currentPowerhourDeviceRaw,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
     getSetting(NORWAY_PRICE_MODEL),
@@ -73,10 +94,12 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsInput> =>
     getSetting('provider_surcharge'),
     getSetting('price_threshold_percent'),
     getSetting('price_min_diff_ore'),
+    getSetting(POWERHOUR_DEVICE_ID),
   ]);
 
   return {
     priceScheme: normalizePriceSchemeSetting(currentSchemeRaw),
+    powerhourDeviceId: readPowerhourDeviceIdSetting(currentPowerhourDeviceRaw),
     norwayPriceModel: normalizeNorwayPriceModel(currentModelRaw),
     priceArea: typeof currentAreaRaw === 'string' && currentAreaRaw ? currentAreaRaw : 'NO1',
     providerSurcharge: typeof currentSurchargeRaw === 'number' && Number.isFinite(currentSurchargeRaw)
@@ -98,6 +121,11 @@ export const resolveChangedPriceSettingWrites = (
   const writes: PriceSettingWrite[] = [];
   if (next.priceScheme !== current.priceScheme) {
     writes.push({ key: PRICE_SCHEME, value: next.priceScheme });
+  }
+  if (next.powerhourDeviceId !== current.powerhourDeviceId) {
+    // `''` rather than `null`: the runtime's read policy treats both as "no
+    // choice", and a string keeps the key's stored type from varying.
+    writes.push({ key: POWERHOUR_DEVICE_ID, value: next.powerhourDeviceId ?? '' });
   }
   if (next.norwayPriceModel !== current.norwayPriceModel) {
     writes.push({ key: NORWAY_PRICE_MODEL, value: next.norwayPriceModel });

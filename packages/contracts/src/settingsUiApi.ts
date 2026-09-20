@@ -137,6 +137,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'price_optimization_settings',
   'price_optimization_enabled',
   'price_scheme',
+  'powerhour_device_id',
   'norway_price_model',
   'price_area',
   'provider_surcharge',
@@ -181,6 +182,21 @@ export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
  * and the settings UI can never disagree on what a junk value means.
  */
 export type PvForecastSourceSetting = 'auto' | 'homey_energy' | 'learned';
+
+/**
+ * The `price_scheme` setting values — the ONE declaration of this union.
+ * `lib/price/priceTypes.ts` re-exports it type-only for the runtime, the
+ * settings UI re-exports it for the selector, and the shared junk classifier
+ * lives in `packages/shared-domain/src/settings/priceScheme.ts` so neither
+ * side can invent its own reading of the same bytes.
+ *
+ * - `norway` — Norwegian spot plus the whole cost stack PELS itemises itself.
+ * - `flow` — hourly totals the owner feeds in through a Flow action.
+ * - `homey` — Homey Energy's day-ahead prices, through the owner's formula.
+ * - `powerhour` — the prices the Power by the Hour app already holds, read
+ *   directly from it over Homey's app-to-app API.
+ */
+export type PriceSchemeSetting = 'norway' | 'flow' | 'homey' | 'powerhour';
 
 export type SettingsUiLogRequest = SettingsUiLogEntry;
 
@@ -654,6 +670,46 @@ export type HomeyPriceFormulaUiStatus =
    */
   | { kind: 'prices_nothing'; expression: string };
 
+/**
+ * One price-publishing device in the Power by the Hour app, as the owner has
+ * to choose between them: PELS prices the home from exactly one, and a home
+ * can have several (an hourly zone and a quarter-hourly one, electricity and
+ * gas).
+ */
+export type PowerhourDeviceUiOption = {
+  deviceId: string;
+  deviceName: string;
+  /** `60` on the hourly driver, `15` on the quarter-hourly one. */
+  priceIntervalMinutes: number;
+  /** ENTSO-E bidding zone code, as Power by the Hour reports it; `''` when it has none. */
+  biddingZone: string;
+};
+
+/**
+ * What to tell the owner about the Power by the Hour price source.
+ *
+ * Every arm but `reading` means the home has NO prices from this source, and
+ * each names a different thing for the owner to do — which is why they are not
+ * one nullable error string. `unknown` is the honest answer before the price
+ * seam is wired (the boot window) and on every other price source.
+ */
+export type PowerhourSourceUiStatus =
+  | { kind: 'unknown' }
+  /** The app is not installed, or is installed but not running. */
+  | { kind: 'app_unavailable' }
+  /**
+   * Homey refused the app-to-app handle. Either this Homey is a Cloud Homey
+   * (where app-to-app calls do not exist) or the permission was withheld —
+   * neither is something a retry fixes.
+   */
+  | { kind: 'not_permitted' }
+  /** The app answered, but the owner has paired no price device in it. */
+  | { kind: 'no_devices' }
+  /** The app answered, but the device the owner picked is no longer among them. */
+  | { kind: 'device_missing'; deviceId: string; devices: PowerhourDeviceUiOption[] }
+  /** Prices are being read from `selected`. */
+  | { kind: 'reading'; selected: PowerhourDeviceUiOption; devices: PowerhourDeviceUiOption[] };
+
 export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
   electricityPrices: unknown | null;
@@ -668,6 +724,11 @@ export type SettingsUiPricesPayload = {
   pvForecastSource: PvForecastSourceUiStatus;
   /** `{ kind: 'unknown' }` before the price seam is wired, or off the Homey source. */
   homeyPriceFormula: HomeyPriceFormulaUiStatus;
+  powerhourCurrency: string | null;
+  powerhourToday: unknown | null;
+  powerhourTomorrow: unknown | null;
+  /** `{ kind: 'unknown' }` before the price seam is wired, or off the Power by the Hour source. */
+  powerhourSource: PowerhourSourceUiStatus;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

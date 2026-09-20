@@ -109,8 +109,9 @@ for capacity — useful for an EV charger you only want running during booked ho
 The electricity price for the period it covers — an hour on most sources, or
 15 minutes where your Homey Energy zone publishes quarter-hour prices. The
 **Norway** source combines spot price, grid tariff, surcharges and your chosen
-support scheme into one hourly price; **Homey Energy** and **Flow tag** sources
-work anywhere those prices are published.
+support scheme into one hourly price; the **Homey Energy**, **Power by the Hour**
+and **Flow** sources work anywhere those prices are published, and hand over the
+price as their source states it.
 For most homes this is the price PELS plans around; homes with an export price plan
 against the derived **planning price** (below). See [Using Homey Energy](/homey-energy).
 

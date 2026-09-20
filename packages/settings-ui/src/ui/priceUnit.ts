@@ -54,7 +54,7 @@ export const resolveCostDisplayFromCombinedPrices = (combinedPrices: unknown): C
     return { unit: 'kr', divisor: 100 };
   }
   const { priceScheme, priceUnit } = combinedPrices as CombinedPricesUnitFields;
-  if (priceScheme === 'flow' || priceScheme === 'homey') {
+  if (priceScheme === 'flow' || priceScheme === 'homey' || priceScheme === 'powerhour') {
     const unit = typeof priceUnit === 'string' && priceUnit !== 'price units' ? priceUnit : '';
     return { unit, divisor: 1 };
   }
