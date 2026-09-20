@@ -77,7 +77,7 @@ This is where the core capacity settings and whole-home power source live.
 | Setting | What it does |
 | --- | --- |
 | **Capacity period** | **Hourly average** for hourly tariffs; **15-minute average** for quarter-hour peak tariffs, such as Belgium's capacity tariff. |
-| **Hard cap (kW)** | The average power you don't want the selected period to exceed. Set this from the peak or tariff step you want to protect. |
+| **Hard cap (kW)** | The average power you don't want the selected period to exceed. Set this from the peak or tariff step you want to protect. With no capacity tariff, set it well above what your home ever uses, and PELS never limits for it. |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
 | **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. PELS always reads one named meter: when the only whole-home meter Homey lists is marked **Tracks total home energy consumption** and no Flow has ever sent PELS readings, PELS picks it on its own shortly after starting; otherwise choose it here. A selection does not need Homey's **Tracks total home energy consumption** marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
@@ -100,7 +100,7 @@ Top-level controls:
 | Control | What it means |
 | --- | --- |
 | **Managed** | PELS includes this device in modes and plans. Turning it on also turns on **Limit**, when the device has a power reading; turn Limit off again if PELS should plan around the device without lowering it. |
-| **Limit** | PELS may lower or turn off this device to stay under the hard cap. |
+| **Limit** | PELS may lower, pause or turn off this device: to stay under the hard cap, to keep to your daily budget, or to follow your solar surplus. |
 | **Price** | PELS adjusts the temperature target around electricity prices. |
 
 Device detail sections. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every managed device's page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled. A device PELS does not manage has no live status to report, so its page shows no header, and its Setup section starts expanded.

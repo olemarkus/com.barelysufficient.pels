@@ -128,7 +128,7 @@
             </span>
             <div>
               <strong>Limit</strong>
-              <p>PELS may lower or turn off this device to stay under the hard cap. When off, PELS only starts it for smart tasks.</p>
+              <p>PELS may lower, pause or turn off this device: to stay under the hard cap, to keep to your daily budget, or to follow your solar surplus. When off, PELS only starts it for smart tasks.</p>
             </div>
           </li>
           <li class="device-control-legend__item">
@@ -591,7 +591,7 @@
           <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <!-- Text owned by homeLimits once meter areas exist: "your" stops
                meaning the whole house the moment the home is split. -->
-          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect &mdash; PELS keeps each selected period&rsquo;s average power under this.</small>
+          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect &mdash; PELS keeps each selected period&rsquo;s average power under this. No capacity tariff where you live? Set it well above what your home ever uses, and PELS never limits for it.</small>
         </label>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
@@ -1217,7 +1217,7 @@
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
-                    <small class="field__hint">Allow PELS to limit this device to stay under the hard cap.</small>
+                    <small class="field__hint">Allow PELS to limit this device: to stay under the hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
                   </span>
                 </div>
 

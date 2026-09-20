@@ -33,8 +33,21 @@ export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter are
 // Main home is then one home among several, and a whole-house number typed into
 // a subpart's cap is exactly the mistake the scope bar exists to prevent. The
 // area branch names its scope three times; the Main branch must name it once.
+//
+// The last sentence is for the homes the first one does not describe. Every home
+// runs a hard cap (10 kW until the owner saves their own) and it cannot be
+// turned off, so an owner with no capacity tariff (the Netherlands, Wallonia)
+// is held to a number that means nothing to them, and a hint that speaks only
+// of tariff steps leaves them with nothing to enter. This is a setup-time
+// instruction for a home the cap does not apply to. It is NOT the forbidden
+// "raise the cap to relieve pressure" remedy (`notes/ui-terminology.md` § "Hard
+// cap is a capacity-period ceiling"): for a home WITH a tariff the cap stays a
+// given. Single-home hint only; a home split into meter areas is past this.
+// "Well above", not "above": PELS starts limiting at the hard cap MINUS the
+// safety margin, so a cap only just over the home's peak would still bite.
 export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'The peak or tariff step you want to protect — '
-  + 'PELS keeps each selected period’s average power under this.';
+  + 'PELS keeps each selected period’s average power under this. '
+  + 'No capacity tariff where you live? Set it well above what your home ever uses, and PELS never limits for it.';
 export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s peak or tariff step — '
   + 'PELS keeps each selected period’s average power under this.';
 

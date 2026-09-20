@@ -1669,6 +1669,22 @@ label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules
    before a deadline is to **lower the daily budget** so future days reserve
    available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
    `deadlineLabels.ts`.
+3. **A home with no capacity tariff is told so, once, where the cap is set.**
+   Every home runs a hard cap and it cannot be turned off, so an owner with no
+   tariff (the Netherlands, Wallonia) is held to a number that means nothing to
+   them. The single-home hard cap hint ends `No capacity tariff where you live?
+   Set it well above what your home ever uses, and PELS never limits for it.`
+   (`HOME_LIMITS_MAIN_HARD_CAP_HINT`). This is a setup-time instruction for a
+   home the cap does not apply to, not rule 2's forbidden remedy: for a home
+   WITH a tariff the cap stays a given. "Well above", because limiting starts at
+   the cap minus the safety margin. Do not repeat it in status copy, reason
+   lines or remedies.
+4. **Limit is not a hard-cap control.** It governs everything PELS commands on a
+   device: staying under the hard cap, keeping to the daily budget, and
+   following solar surplus. Copy that describes the Limit toggle names all
+   three, so an owner who came for solar does not read it as somebody else's
+   feature (owner ruling 2026-09-20: never tell an owner to configure
+   something that is not relevant to them).
 
 ## EV charger card states
 
