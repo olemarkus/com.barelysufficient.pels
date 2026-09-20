@@ -41,7 +41,7 @@ When Homey Energy reports solar production, PELS keeps two accounting figures se
 - **Capacity safe pace**: A dynamic run-rate limit derived from the period allowance after the safety margin and the time remaining. PELS starts limiting managed devices when power exceeds this, giving time to react.
 - **Manual action needed**: Triggered when PELS projects a hard-cap breach in the current capacity period and cannot limit any more devices. The **Hard cap breach imminent for at least...** trigger fires the same condition only once it has lasted a chosen number of seconds. Diagnostics may still call this `shortfall`.
 
-The Overview label **Safe pace now** can come from the capacity safe pace, daily budget pace, or both. This section describes the capacity side.
+The Overview label **Safe pace now** can come from the capacity safe pace or the daily budget pace, and the Power-now subline names which one it is. This section describes the capacity side.
 
 ### Dynamic Capacity Safe Pace
 
@@ -51,7 +51,7 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 2. **Used**: Energy already consumed in this period (tracked via power samples)
 3. **Remaining**: Budget minus used energy
 4. **Time left**: Minutes remaining until the period ends
-5. **Burst rate**: Remaining kWh ÷ time left = maximum instantaneous power allowed
+5. **Burst rate**: Remaining kWh ÷ time left = maximum instantaneous power allowed (on the 15-minute period this is additionally capped at the sustainable rate; see [End-of-Period Drain](#end-of-period-drain) below)
 
 **Example**: If you've used 5 kWh with 30 minutes left in the hour and have a 10 kWh hard-cap budget:
 - Remaining: 10 - 5 = 5 kWh
@@ -60,7 +60,7 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 
 ### End-of-Period Drain
 
-To prevent end-of-hour bursting, PELS gradually tightens the capacity safe pace down to the sustainable rate as the hour ends. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
+On the hourly period, PELS gradually tightens the capacity safe pace down to the sustainable rate as the hour ends, so devices are not ramped up to spend a leftover allowance right before the boundary. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
 
 A 15-minute quarter is too short to wind down gradually, so it never bursts in the first place: the safe pace never goes above the hard cap minus the safety margin. Energy you did not use early in a quarter is not spent later in it. The safety margin is your buffer, so size it for your slowest device. The pace still drops below that level after a heavy start, so the quarter's average stays under the hard cap.
 
@@ -83,12 +83,12 @@ PELS handles this automatically—there's no manual intervention needed.
 
 ## Daily Budget (Soft Constraint)
 
-The daily energy budget is a **soft constraint** that helps pace energy use throughout the day. Unlike the hourly capacity limit:
+The daily energy budget is a **soft constraint** that helps pace energy use throughout the day. Unlike the capacity limit:
 
 - **Never triggers manual-action alarms**: If PELS cannot limit enough devices to meet the daily budget, it continues operating without emergency alarms.
-- **No end-of-hour drain**: Daily budget pacing is not time-critical, so it does not tighten toward the sustainable rate as the hour ends.
-- **Combined with hourly**: The planner uses the smaller of the hourly safe pace and daily budget pace for limiting decisions.
-- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count for hourly capacity protection.
+- **No period-boundary tightening**: Daily budget pacing is not time-critical, so it does not tighten toward the sustainable rate as a capacity period ends.
+- **Combined with the capacity pace**: The planner uses the smaller of the capacity safe pace and the daily budget pace for limiting decisions.
+- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count for capacity protection.
 
 See [Daily Energy Budget](daily-budget.md) for detailed documentation.
 

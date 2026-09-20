@@ -27,7 +27,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 
 | Card | What it does |
 | --- | --- |
-| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
+| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that the current capacity period's hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
 | **Hard cap breach imminent for at least... — manual action needed** | The same situation, but only once it has lasted the time you choose (from 10 seconds up to 10 minutes, in 10-second steps). If the situation clears inside that time, nothing fires. Exposes the same `Home` tag. Use it when a brief spike is not worth a notification. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
@@ -63,7 +63,7 @@ passes without a reading. To use the longer durations there, have your Flow repo
 | **Current price is one of the lowest before a time** | True when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
 | **Is power-limit control enabled for device?** | Checks whether power-limit control is enabled for the selected device. |
-| **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hourly hard-cap protection. |
+| **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hard-cap protection. |
 | **Smart task status is...** | True when the saved Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
 
@@ -77,7 +77,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Set capacity limit** | Changes the configured hard cap dynamically. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
 | **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |
-| **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts and hourly hard-cap protection. |
+| **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts and hard-cap protection. |
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
 | **Enable power-limit control for device** | Turns on power-limit control for one device. Only devices PELS can limit are offered; for a device with no power reading (no power meter and no *Energy used when on* in its Homey settings) the card does nothing and PELS logs why. |
 | **Disable power-limit control for device** | Turns off power-limit control for one device. |
@@ -103,7 +103,7 @@ Use **Set operating mode** from schedules or presence events to move between com
 
 Use **Set daily budget** when the daily target should vary by season, tariff, occupancy, or manual Homey controls.
 
-Use **Add budget exemption for device** for a device that should not cause other devices to be limited just to compensate for its daily energy use. Exempt devices still count in real usage and hourly hard-cap protection.
+Use **Add budget exemption for device** for a device that should not cause other devices to be limited just to compensate for its daily energy use. Exempt devices still count in real usage and hard-cap protection.
 
 ### Device state checks
 

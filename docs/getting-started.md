@@ -5,7 +5,7 @@ description: Install PELS on Homey Pro, connect your power meter, set a capacity
 
 # Getting Started
 
-PELS is the Homey app that takes your heavy electrical loads off your hands. It keeps your power usage inside your hourly limit, decides which devices to turn down first, plans Smart tasks around deadlines, and shifts flexible load into cheaper hours — automatically, every hour.
+PELS is the Homey app that takes your heavy electrical loads off your hands. It keeps your power usage inside your capacity limit, decides which devices to turn down first, plans Smart tasks around deadlines, and shifts flexible load into cheaper hours — automatically, every hour.
 
 In practice, most users spend their time in **Apps -> PELS -> Settings** and a small number of Homey Flows.
 
@@ -44,7 +44,7 @@ Go to **Settings > Limits & safety** and configure:
 
 - **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average (Belgium)** when your Belgian grid tariff measures quarter-hour peaks.
 - **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW.
-- **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point.
+- **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point. On the 15-minute period this margin is the whole buffer, so size it for your slowest device. See [Tips > Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
 
 With the Belgian period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
 

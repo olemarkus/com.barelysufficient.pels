@@ -17,8 +17,8 @@ Answers **"how much room do I have right now?"**
 
 The widget shows:
 
-- Current draw against the current effective hour budget, with a coloured bar that turns warning as you approach the safe pace and red when the hour is on pace to exceed the hard cap.
-- Available power remaining in the current hour.
+- **Power now** against **Safe pace now**, with a coloured bar that turns warning as you approach the safe pace and red when the current capacity period is on pace to exceed the hard cap.
+- Available power remaining in the current capacity period (the hour, or the quarter on the Belgian 15-minute period).
 - The number of devices PELS is holding back, when any are.
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
 

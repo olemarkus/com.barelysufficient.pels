@@ -169,6 +169,12 @@ The banner above the Overview tells you which state you are in:
 
 - Confirm a **Price source** is selected and shows data available (Settings →
   Electricity prices).
+- On the **Homey Energy** source, check the status card on that same page. If it
+  reads **Not usable** or **No usable prices**, PELS could not work out your
+  price setup and has paused prices on purpose. Simplify the formula under
+  **Energy > Electricity** in Homey. **Not read yet** means PELS has not reached
+  Homey; press **Refresh prices**. PELS never falls back to the bare market
+  price, because that would look plausible and be too low every hour.
 - For the **Flow tag** source, the external payload must contain full-day JSON.
 - For price-based temperature shifts, the device needs **Price** (or **Setup → Price-based control**)
   enabled, and **Respond to prices** must be on globally.

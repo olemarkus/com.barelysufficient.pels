@@ -27,7 +27,9 @@ Once the behavior matches your expectations, expand the managed device set.
 ## Capacity tuning advice
 
 - Set the limit slightly below the actual grid limit if you want extra safety.
-- The Getting Started default of `0.3` to `0.5 kW` for the safety margin is a reasonable starting point. Narrow it if PELS keeps limiting devices when the home is well below the hard cap. Widen toward `1.0 kW` if PELS reacts later than you want — a larger margin pushes the safe pace further below the hard cap, so PELS starts limiting sooner.
+- The Getting Started default of `0.3` to `0.5 kW` for the safety margin is a reasonable starting point.
+  - **On the hourly period**, narrow it if PELS keeps limiting devices when the home is well below the hard cap. Widen toward `1.0 kW` if PELS reacts later than you want — a larger margin pushes the safe pace further below the hard cap, so PELS starts limiting sooner.
+  - **On the 15-minute period**, the margin is the whole buffer: PELS never paces above the hard cap minus the margin, so limiting while you are below the cap is the design rather than a sign the margin is too wide. Size it for your slowest device. Narrowing it because PELS limits below the cap removes the only room the quarter has to absorb a device that reacts late.
 - Use **Simulation mode** first if you want to see what PELS would do without touching real devices.
 
 ## Price optimization advice

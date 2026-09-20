@@ -174,13 +174,13 @@ Buckets are computed from local midnight to the next local midnight. On DST tran
 - **Profile blending**: ramps from default to learned over time (internal, not shown in UI).
 - **Price shaping** (optional): shifts remaining allowance between the effective floor and cap based on today's prices.
 
-The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily pace for that hour, and the planner uses the tighter of the hourly capacity pace and daily pace.
+The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily pace for that hour, and the planner uses the tighter of the capacity pace and daily pace.
 
 ## Interaction With Other Features
 
-- **Hourly capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only projected breaches of this hourly hard-cap budget trigger urgent manual-action Flows.
+- **Capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only projected breaches of the capacity period's hard-cap budget trigger urgent manual-action Flows.
 - **Daily pace**: Combined with the hourly pace by taking the tighter limit. Never triggers emergency alarms.
-- **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still managed by hourly capacity protection.
+- **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still managed by capacity protection.
 - **Price optimization**: Can reshape the daily plan if price shaping is enabled.
 - **Smart tasks**: Still respect the hard cap. Daily budget can make a task more conservative when the day is already over plan.
 
@@ -188,7 +188,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 These are exposed on the PELS Insights device:
 
-- `pels_hourly_limit_kw` (the current effective hourly limit in kW)
+- `pels_hourly_limit_kw` (the current effective safe pace in kW; the capability keeps its historical name, but the value follows the selected capacity period)
 - `pels_daily_budget_remaining_kwh`
 - `pels_daily_budget_exceeded`
 - `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)

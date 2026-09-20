@@ -87,7 +87,7 @@ For the Belgian period, **Highest completed quarter this month** reports PELS's 
 Important:
 
 - The selected-period hard cap is the only urgent safety boundary.
-- The **Hard cap breach imminent — manual action needed** trigger fires only when PELS projects an hourly hard-cap breach and cannot limit any more load.
+- The **Hard cap breach imminent — manual action needed** trigger fires only when PELS projects a hard-cap breach in the current capacity period and cannot limit any more load.
 
 ## Settings > Devices
 
@@ -235,7 +235,14 @@ If you use external flow tags:
 
 ### Export price (prosumer)
 
-If you sell surplus solar back to the grid, turn on **Use an export price** and set a **share of the spot price** and/or a **fixed amount**. PELS then schedules against the blended **planning price** (what your energy is actually worth once export is accounted for), while your bills, receipts, and the budget's money view stay on the **import price** you are billed. This section appears only when you have a managed solar device or an export price already configured. See [Solar and Self-Consumption](/solar).
+If you sell surplus solar back to the grid, turn on **Use an export price** and set a **share of the spot price** and/or a **fixed amount**.
+
+On the **Homey Energy** price source you also get **Where the price comes from**:
+
+- **Amounts I enter here** — the two amounts above. This is the default, and what every existing setup keeps.
+- **Homey Energy** — the export price you already set up in Homey under **Energy > Electricity**. Choosing it replaces the amount fields, because the price then comes from Homey. If Homey has no export price set up, or PELS cannot work out the formula, PELS plans on the import price as it would for a home with no export price at all, and your own amounts are no longer applied, so check **Energy > Electricity** in Homey before switching. See [Getting paid for solar you export](/homey-energy#getting-paid-for-solar-you-export).
+
+PELS then schedules against the blended **planning price** (what your energy is actually worth once export is accounted for), while your bills, receipts, and the budget's money view stay on the **import price** you are billed. This section appears once PELS can see your solar (a managed solar device reports production, or your meter has recorded about a kilowatt-hour of grid export), and stays visible if you already have an export price configured. See [Solar and Self-Consumption](/solar).
 
 ## Settings > Price-Aware Devices
 

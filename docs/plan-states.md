@@ -34,7 +34,7 @@ Chips stay short. The status line below a chip explains why a device is waiting,
 limited, or resuming.
 
 A device card tells you **what that device needs**. It does not repeat which
-limit the whole house is up against — the hard cap, this hour's pace, or today's
+limit the whole house is up against — the hard cap, the current period's pace, or today's
 budget — because that is the same for every device, and the Overview hero states
 it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 
@@ -45,7 +45,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting to resume** | The device is waiting for power, but PELS cannot put a number on it yet. |
 | **Waiting for available power** | Shown when a device has been waiting on power long enough to be flagged, with no number available. |
 | **Held 2 h — 0.8 kW more needed** | The same power fact as the first row, for a device PELS has been holding back long enough to flag. The elapsed time is why this card offers **Let it run now** and its neighbours do not. |
-| **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
+| **Manual action needed — hard cap may be exceeded** | PELS projects a hard-cap breach in the current capacity period and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
 | **Waiting to resume — 50s** | A resume cooldown is running and this is the device PELS resumes first when the timer ends: turned-off devices go before stepped increases and thermostat raises, and priority orders each group. An active stepped device says **Waiting to increase — 50s**. |
 | **Waiting to resume — other devices are ahead** | The same cooldown holds this device, but another device is ahead of it in that order. Active stepped devices say **Waiting to increase — other devices are ahead**. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |

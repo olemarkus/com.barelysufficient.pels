@@ -46,10 +46,12 @@ home actually reaches the cap, so it has time to react. A margin of 0.3–0.5 kW
 a sensible start. See [Tips → Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
 
 ### Safe pace
-The power level where PELS starts acting right now. It's the hard cap minus the
-safety margin — and, when a daily budget is active and tighter, it can drop below
-that to keep the day on plan. On the Overview it shows as the **Safe pace now**
-marker. It's a moving target, not a fixed limit.
+The power level where PELS starts acting right now. On the 15-minute period it
+never rises above the hard cap minus the safety margin. On the hourly period it
+paces the allowance left in the hour, so in an under-used hour it legitimately
+sits *above* that level and tightens toward it as the hour ends. When a daily
+budget is active and tighter, it can drop below either. On the Overview it shows
+as the **Safe pace now** marker. It's a moving target, not a fixed limit.
 
 ### Available power
 How much more load PELS can fit right now before it reaches the current safe

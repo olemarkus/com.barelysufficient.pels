@@ -5,7 +5,7 @@ description: Turn your Homey Energy data into automatic capacity control and pri
 
 # Homey Energy + PELS
 
-Homey Energy is the energy foundation PELS builds on: whole-home power, dynamic electricity prices, and per-device energy reporting all in one place. PELS takes that foundation and acts on it — when you approach your hourly capacity limit, devices get turned down; when electricity is cheap at 3 AM, the water tank preheats.
+Homey Energy is the energy foundation PELS builds on: whole-home power, dynamic electricity prices, and per-device energy reporting all in one place. PELS takes that foundation and acts on it — when you approach your capacity limit, devices get turned down; when electricity is cheap at 3 AM, the water tank preheats.
 
 **PELS is the active control layer on top of Homey Energy.** It reuses the data Homey already collects and turns it into automatic, hour-by-hour decisions across every managed device.
 
@@ -17,7 +17,7 @@ If you are already using Homey Energy, here is what PELS gives you on top:
 
 ### Automatic capacity control
 
-PELS watches your total power consumption and automatically lowers, pauses, or turns off heaters, water tanks, or EV charging before you exceed your hourly limit. When there is available power again, it resumes them in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
+PELS watches your total power consumption and automatically lowers, pauses, or turns off heaters, water tanks, or EV charging before you exceed your capacity limit. When there is available power again, it resumes them in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
 
 Read more: [Getting Started](/getting-started) · [Configuration](/configuration)
 
@@ -122,7 +122,11 @@ If you change that formula in Homey, PELS picks the change up at its next price 
 
 Homey lets you write a free-form formula as well as using its guided fields. PELS understands the guided fields, ordinary arithmetic (`+ - * / ^` and brackets), and the functions `min`, `max`, `abs`, `floor`, `ceil` and `round` — so a formula like `max(0, [[price]] * 0.9)` works.
 
-If PELS cannot work out your prices — the formula uses something beyond that, or PELS has not yet managed to read your price setup from Homey — it reports prices as unavailable and pauses price-based features, and **Settings > Electricity prices** tells you which of the two it is. It does not fall back to the market price, which would look plausible and be too low every hour.
+If PELS cannot work out your prices, it reports them as unavailable and pauses price-based features rather than falling back to the bare market price, which would look plausible and be too low every hour. The status card under **Settings > Electricity prices** names which of three things happened:
+
+- **Not usable** — the formula uses something beyond what PELS understands. Simplify it under **Energy > Electricity** in Homey.
+- **No usable prices** — the formula is arithmetic PELS understands, but it does not produce a usable price for any hour right now. Check it under **Energy > Electricity** in Homey.
+- **Not read yet** — PELS has not managed to read your price setup from Homey. It tries again at the next refresh, or press **Refresh prices**.
 
 Each hour is classified as cheap, normal, or expensive based on a configurable threshold (default: 25% from average). You then set per-device temperature adjustments — for example, +4 degrees during cheap hours and -4 during expensive hours. PELS applies these automatically.
 
@@ -137,7 +141,9 @@ Under **Settings > Electricity prices > Export price**, turn the section on and 
 - **Amounts I enter here** — the share-of-spot and fixed amount you type into PELS. This is the default, and what every existing setup keeps using.
 - **Homey Energy** — the feed-in price you already set up in Homey under **Energy > Electricity**. Nothing to retype, and a price that follows the hour when your contract does.
 
-Choosing Homey Energy replaces the amount fields, because the price then comes from Homey. If Homey says export pricing is off, PELS treats your exported power as earning nothing rather than inventing a number.
+Choosing Homey Energy replaces the amount fields, because the price then comes from Homey.
+
+Check that Homey actually has an export price before you switch. If export pricing is off in Homey, or PELS cannot work out the export formula, PELS has no export price for those hours: it plans on the import price, exactly as it does for a home with no export price configured, and the Solar card marks that energy as unpriced rather than showing a zero. It never invents a number. Your own amounts are no longer applied while the source is Homey, so set the price up under **Energy > Electricity** in Homey, or switch back to **Amounts I enter here**.
 
 ### When to keep using Norway pricing
 

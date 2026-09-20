@@ -12,7 +12,7 @@ editLink: false
     <p class="landing-kicker">For Homey Pro</p>
     <h1 class="landing-title">Intelligent, automatic power management for Homey Pro.</h1>
     <p class="landing-app-type">Homey app for Homey Pro</p>
-    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your hourly limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day — automatically, every hour, without you watching the meter.</p>
+    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day — automatically, every hour, without you watching the meter.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
       <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
@@ -38,7 +38,7 @@ editLink: false
         <p>Heaters, floor heating, water heaters, ventilation, and EV charging are the obvious wins. PELS turns them down when capacity gets tight and brings them back when there is room — comfort stays steady, the bill drops. For chargers, start with <a href="use-cases/homey-ev-charging-power-limit.html">Homey EV charging without crossing your power limit</a>.</p>
       </article>
       <article class="landing-card">
-        <h3>You want to stay within your hourly limit</h3>
+        <h3>You want to stay within your capacity limit</h3>
         <p>If you are on a power-based grid tariff (effekttrinn in Norway, and similar power-tariff models in Sweden and Finland) where consumption above a chosen level costs more, PELS can keep your hourly draw under the limit automatically.</p>
       </article>
       <article class="landing-card">

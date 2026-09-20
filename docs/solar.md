@@ -100,7 +100,7 @@ When you export, PELS still uses net grid import for the **hard cap**, the **dai
 
 ### See what your solar does
 
-The **Usage tab** shows a Solar card with today's numbers so far — **Produced**, **Used at home** (kWh and the share of production you consumed yourself), and **Exported** — plus a compact previous-days view. When electricity prices are configured, the card also shows **Grid cost avoided today** (what the self-consumed energy would have cost to import) and, once an export price is set under Settings → Electricity prices, **Earned from export today**. The two figures cover different energy — what you used yourself versus what you sent out — so they are shown side by side, never summed into one "savings" number. Money figures are estimates (`≈`), and a value where some hours have no price yet says so.
+The **Usage tab** shows a Solar card with today's numbers so far — **Produced**, **Used at home** (kWh and the share of production you consumed yourself), and **Exported** — plus a compact previous-days view. When electricity prices are configured, the card also shows **Grid cost avoided today** (what the self-consumed energy would have cost to import) and, once an export price is set under **Settings > Electricity prices**, **Earned from export today**. The two figures cover different energy — what you used yourself versus what you sent out — so they are shown side by side, never summed into one "savings" number. Money figures are estimates (`≈`), and a value where some hours have no price yet says so.
 
 The Usage hero's headline still counts what you drew **from the grid**, so on a sunny day it can look surprisingly small next to the Solar card. The hero adds a "+ 1.5 kWh of your own solar" line naming the energy your panels covered locally — the grid never saw it, so it is not in the headline number.
 
@@ -128,7 +128,7 @@ If you also have a battery: because PELS only sees net power and cannot command 
 
 In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it can cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly charge for exported power (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
 
-PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export).
+PELS lets you tell it what exported power is worth to you. Under **Settings > Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar, meaning a managed solar device reports production or your meter has recorded about a kilowatt-hour of grid export, and stays visible if you already have an export price configured).
 
 If your electricity prices come from **Homey Energy**, you can then set **Where the price comes from**:
 
@@ -137,7 +137,7 @@ If your electricity prices come from **Homey Energy**, you can then set **Where 
 
 On the other price sources, or with **Amounts I enter here**, enter what your power company pays you:
 
-- **Share of spot price (%)** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
+- **Share of spot price** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh, as a percentage. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
 - **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there. On Homey Energy, choose **Homey Energy** above instead if your feed-in price follows the hour.
 
 Once it is on:

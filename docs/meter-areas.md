@@ -124,8 +124,9 @@ part of the home you're editing is always named on screen:
 
 Below those, a readout shows where the safe pace starts each period (the hard
 cap minus the safety margin), so you can see the effect of your numbers before
-you leave the page. A 15-minute area also shows its highest completed quarter
-this month.
+you leave the page. On a 15-minute area that is also the level the safe pace
+stays at, since a quarter never bursts above it. A 15-minute area also shows its
+highest completed quarter this month.
 
 ![PELS Limits & safety with "Rental unit" as the shown home: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each selected period at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
 
