@@ -15,7 +15,7 @@ PELS sets the charging current of an Easee charger itself, through the Easee app
 
 ## Step 1: Check the EV Control Mode
 
-Open **Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger. If the charger has no control model yet, PELS picks **EV 1-phase** or **EV 3-phase** from how the Easee app reports the charger is wired: its phase mode, or the grid type it detected.
+Open **More -> Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger. If the charger has no control model yet, PELS picks **EV 1-phase** or **EV 3-phase** from how the Easee app reports the charger is wired: its phase mode, or the grid type it detected.
 
 Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is. **EV 1-phase** assumes 230 V single-phase charging; **EV 3-phase** assumes a 400 V TN supply. If the Easee app cannot tell, for example before the charger has detected its grid, confirm the supply and charging mode before choosing.
 

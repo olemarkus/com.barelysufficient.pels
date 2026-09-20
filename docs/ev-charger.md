@@ -26,7 +26,7 @@ If PELS is not set up yet, start with [Getting Started](/getting-started).
 
 ## Step 1: Open the Charger Settings
 
-Open **Apps -> PELS -> Settings -> Devices**. The charger should appear there. Refresh the device list if it does not.
+Open **More -> Apps -> PELS -> Settings -> Devices**. The charger should appear there. Refresh the device list if it does not.
 
 ## Step 2: Choose the EV Control Mode
 

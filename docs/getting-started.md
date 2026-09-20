@@ -7,7 +7,7 @@ description: Install PELS on Homey Pro, connect your power meter, set a capacity
 
 PELS is the Homey app that takes your heavy electrical loads off your hands. It keeps your power usage inside your capacity limit, decides which devices to turn down first, plans Smart tasks around deadlines, and shifts flexible load into cheaper hours — automatically, every hour.
 
-In practice, most users spend their time in **Apps -> PELS -> Settings** and a small number of Homey Flows.
+In practice, most users spend their time in **More -> Apps -> PELS -> Settings** and a small number of Homey Flows.
 
 If PELS is not installed yet, get it from the [Homey App Store](https://homey.app/a/com.barelysufficient.pels).
 
@@ -24,7 +24,7 @@ If PELS is not installed yet, get it from the [Homey App Store](https://homey.ap
 
 ## Open PELS settings
 
-Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happens.
+In the Homey app, open **More -> Apps -> PELS -> Settings**. This is where all configuration happens. Homey does not take you there after installing, so this is the first thing to find.
 
 The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
 

@@ -18,6 +18,7 @@ editLink: false
       <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
       <a class="VPButton alt" href="getting-started.html">Open the user guide</a>
     </div>
+    <p class="landing-inline-note"><strong>Already installed?</strong> Open the Homey app and go to More &gt; Apps &gt; PELS &gt; Settings. The Set up PELS card there shows what to do first.</p>
   </div>
   <div class="landing-panel landing-panel-accent">
     <figure class="landing-screenshot-frame">
@@ -140,7 +141,7 @@ editLink: false
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>Getting started</h3>
-        <p>Install PELS from the Homey App Store, open the settings page, and create the Flow that sends your power meter reading to PELS.</p>
+        <p>Install PELS from the Homey App Store, open its settings under More &gt; Apps &gt; PELS, and follow the Set up PELS card: your power meter first, then the devices PELS manages.</p>
         <a href="getting-started.html">Open getting started</a>
       </article>
       <article class="landing-card">

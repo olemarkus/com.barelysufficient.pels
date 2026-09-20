@@ -67,7 +67,7 @@ Homey background reading:
 
 First make PELS able to control charging current.
 
-1. Open **Apps -> PELS -> Settings -> Devices**.
+1. Open **More -> Apps -> PELS -> Settings -> Devices**.
 2. Open the EV charger.
 3. Enable **Managed by PELS**.
 4. Choose **EV 1-phase** or **EV 3-phase**, matching your charger setup.
@@ -93,7 +93,7 @@ PELS needs battery percentage for the charger it is planning. Choose one of the 
 
 ### Path A: Select A Supported Car
 
-Open the charger's **Car** section in **Apps -> PELS -> Settings -> Devices** and select the cars that charge there. PELS reads the battery level from the car it matches to the charger. If the car is not listed, use its battery-percentage tag through Path C instead.
+Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devices** and select the cars that charge there. PELS reads the battery level from the car it matches to the charger. If the car is not listed, use its battery-percentage tag through Path C instead.
 
 Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
 
@@ -101,7 +101,7 @@ Selecting a car does not itself establish a match. While the page says **Waiting
 
 Leave the charger's car selection empty. Some charger integrations expose battery level on the charger device itself. If Homey exposes that as a supported battery percentage capability, PELS can read it directly.
 
-Check the charger in **Apps -> PELS -> Settings -> Devices**. The device detail should show battery level once PELS has seen a reading.
+Check the charger in **More -> Apps -> PELS -> Settings -> Devices**. The device detail should show battery level once PELS has seen a reading.
 
 ### Path C: Report Battery Percentage Through A Flow
 

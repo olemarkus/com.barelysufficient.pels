@@ -36,7 +36,7 @@ This pattern does not create a Smart task plan or history entry. The Flow owns t
 
 ## Step 1: Configure the Device
 
-In **Apps -> PELS -> Settings -> Devices**:
+In **More -> Apps -> PELS -> Settings -> Devices**:
 
 1. Enable **Managed by PELS** for the device.
 2. Configure the device's normal PELS control setup.
