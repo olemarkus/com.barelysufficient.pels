@@ -479,7 +479,6 @@ function createBundlePlanningRuntime(params: {
     scope,
     planEngine,
     planService,
-    guard,
     meterSilenceMonitor,
     flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,
     holdDeferredShortfallSideEffect: shortfallSideEffectGate.holdDeferredUntilPreparedApply,
@@ -547,7 +546,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planEngine,
     isActuationFenced,
     planService,
-    guard,
     flushDeferredShortfallSideEffect,
     holdDeferredShortfallSideEffect,
     pipeline,
@@ -608,7 +606,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
 
   const bundle = buildHomeCapacityBundleApi({
     ctx, homeId, logger, timerKey,
-    guard, planEngine, planService, scope,
+    planEngine, planService, scope,
     // The registry's RAW predicates: unlike the scope's execution predicate they
     // arm no source recovery, so the read surface stays inert. Listed
     // explicitly rather than passed as `deps`, so the declared two-key shape and

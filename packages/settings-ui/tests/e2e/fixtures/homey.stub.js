@@ -983,13 +983,14 @@
         ? { state: 'received', lastPowerUpdateMs: tracker.lastTimestamp }
         : { state: 'never' },
       status: classifyPowerStatus(settings.power_tracker_state, settings.pels_status),
-      mainDryRunEffective: typeof settings.capacity_dry_run === 'boolean'
-        ? settings.capacity_dry_run
-        : true,
-      mainCapacityScalars: {
-        limitKw: Number.isFinite(settings.capacity_limit_kw) ? settings.capacity_limit_kw : 10,
-        marginKw: Number.isFinite(settings.capacity_margin_kw) ? settings.capacity_margin_kw : 0.2,
-        periodMinutes: settings.capacity_period_minutes === 15 ? 15 : 60,
+      capacityScalars: {
+        state: 'resolved',
+        scalars: {
+          limitKw: Number.isFinite(settings.capacity_limit_kw) ? settings.capacity_limit_kw : 10,
+          marginKw: Number.isFinite(settings.capacity_margin_kw) ? settings.capacity_margin_kw : 0.2,
+          dryRun: typeof settings.capacity_dry_run === 'boolean' ? settings.capacity_dry_run : true,
+          periodMinutes: settings.capacity_period_minutes === 15 ? 15 : 60,
+        },
       },
       capacityPeak: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
         ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw }
@@ -1696,17 +1697,20 @@
         settings[`power_tracker_state:${scope.homeId}`],
         settings[`pels_status:${scope.homeId}`],
       ),
-      scopedCapacityScalars: {
-        limitKw: Number.isFinite(settings[`capacity_limit_kw:${scope.homeId}`])
-          ? settings[`capacity_limit_kw:${scope.homeId}`]
-          : 10,
-        marginKw: Number.isFinite(settings[`capacity_margin_kw:${scope.homeId}`])
-          ? settings[`capacity_margin_kw:${scope.homeId}`]
-          : 0.2,
-        dryRun: typeof settings[`capacity_dry_run:${scope.homeId}`] === 'boolean'
-          ? settings[`capacity_dry_run:${scope.homeId}`]
-          : true,
-        periodMinutes: settings[`capacity_period_minutes:${scope.homeId}`] === 15 ? 15 : 60,
+      capacityScalars: {
+        state: 'resolved',
+        scalars: {
+          limitKw: Number.isFinite(settings[`capacity_limit_kw:${scope.homeId}`])
+            ? settings[`capacity_limit_kw:${scope.homeId}`]
+            : 10,
+          marginKw: Number.isFinite(settings[`capacity_margin_kw:${scope.homeId}`])
+            ? settings[`capacity_margin_kw:${scope.homeId}`]
+            : 0.2,
+          dryRun: typeof settings[`capacity_dry_run:${scope.homeId}`] === 'boolean'
+            ? settings[`capacity_dry_run:${scope.homeId}`]
+            : true,
+          periodMinutes: settings[`capacity_period_minutes:${scope.homeId}`] === 15 ? 15 : 60,
+        },
       },
       capacityPeak: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
         ? { state: 'recorded', peakKw: settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`] }

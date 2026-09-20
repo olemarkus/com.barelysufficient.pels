@@ -1,4 +1,5 @@
 import { isOverShortfallThreshold } from '../../power/capacityGuard';
+import { applyShortfallPeriodCoverage } from './shortfallAvailability';
 import type { PlanInputCapacityStateSummary } from '../../power/capacityStateSummary';
 import { splitControlledUsageKw } from '../../power/usageAttribution';
 import type { MeasuredPower, PlanContext } from '../planContext';
@@ -34,10 +35,7 @@ export async function reportShortfallToGuard(
   selection: PlanSheddingResult,
   deps: SheddingDeps,
 ): Promise<void> {
-  if (!context.capacityPeriodCoverageComplete) {
-    deps.capacityGuard.recordShortfallUnavailable();
-    return;
-  }
+  if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
   if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
     await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, deps.shortfallThresholdKw);
     return;

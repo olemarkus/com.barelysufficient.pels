@@ -2,7 +2,7 @@ import type { ObservedTemperatureModeUpdates } from '../home/observedTemperature
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
 import type { CapacityScalarSettingsRead } from '../power/capacitySettingsStore';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { CapacityScalarSettings, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,
@@ -252,6 +252,8 @@ export type AppContext = {
   set powerTracker(value: PowerTrackerState);
   /** Persistently re-prime Main after a meter/source change; transient write failure retries internally. */
   resetMainPowerTrackerFreshness(): void;
+  /** This home's capacity scalars as the running app holds them, already resolved. */
+  getCapacityScalars(): CapacityScalarSettings;
   getCurrentMonthCapacityPeakKw(): number | null;
   get capacitySettings(): CapacitySettings;
   set capacitySettings(value: CapacitySettings);

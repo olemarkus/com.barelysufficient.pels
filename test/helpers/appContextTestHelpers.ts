@@ -243,6 +243,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
       state: 'resolved',
       value: { ...capacitySettings, dryRun: capacityDryRun },
     }),
+    getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun }),
     getCurrentMonthCapacityPeakKw: () => null,
     notifyOperatingModeChanged: vi.fn(),
     hydratePowerTracker: vi.fn(),

@@ -322,14 +322,14 @@ describe('planBudget', () => {
         usedKWh: 0,
         bucketStartMs: 0,
         bucketEndMs: 3600000,
-      })).toBe(0);
+      }, Date.now())).toBe(0);
 
       expect(computeDailyUsageSoftLimit({
         plannedKWh: 0,
         usedKWh: 0,
         bucketStartMs: 0,
         bucketEndMs: 3600000,
-      })).toBe(0);
+      }, Date.now())).toBe(0);
     });
 
     it('returns 0 for invalid bucket window', () => {
@@ -338,7 +338,7 @@ describe('planBudget', () => {
         usedKWh: 1,
         bucketStartMs: 1000,
         bucketEndMs: 1000,
-      })).toBe(0);
+      }, Date.now())).toBe(0);
     });
 
     it('clamps now to bucket range and treats non-finite used as 0', () => {
@@ -351,8 +351,7 @@ describe('planBudget', () => {
         usedKWh: Number.NaN,
         bucketStartMs,
         bucketEndMs,
-        nowMs: nowBeforeBucket,
-      });
+      }, nowBeforeBucket);
 
       // now clamps to bucket start (1h remaining), used treated as 0 => 4 kW
       expect(allowed).toBeCloseTo(4, 6);

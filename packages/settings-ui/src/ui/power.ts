@@ -129,6 +129,7 @@ const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
     readings: { state: 'never' },
     status: { state: 'unavailable', reason: 'read_failed' },
     capacityPeak: { state: 'unavailable' },
+    capacityScalars: { state: 'unavailable' },
   };
 };
 

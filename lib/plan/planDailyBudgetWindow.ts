@@ -9,7 +9,8 @@ export type CurrentHourUsageSplit = {
   uncontrolledKWh?: number;
 };
 
-type DailySoftLimitBucket = {
+/** One daily-budget bucket's plan and its window: what paces that bucket. */
+export type DailySoftLimitBucket = {
   plannedKWh: number;
   usedKWh: number;
   bucketStartMs: number;

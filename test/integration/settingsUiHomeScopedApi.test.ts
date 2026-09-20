@@ -222,6 +222,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
           readings: { state: 'never' },
           status: { state: 'unavailable', reason: 'home_scope_unavailable' },
           capacityPeak: { state: 'unavailable' },
+          capacityScalars: { state: 'unavailable' },
           homeScope: { state: 'unavailable' },
         });
         // The solar flags are OMITTED, not fabricated `false` — absence is the
@@ -308,6 +309,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'home_scope_unavailable' },
         capacityPeak: { state: 'unavailable' },
+        capacityScalars: { state: 'unavailable' },
         homeScope: { state: 'unavailable' },
       });
     });
@@ -329,6 +331,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'home_scope_unavailable' },
         capacityPeak: { state: 'unavailable' },
+        capacityScalars: { state: 'unavailable' },
         homeScope: { state: 'unavailable' },
       });
       // The plan composer consumes no membership, so it stays served: the
@@ -364,6 +367,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'home_scope_unavailable' },
         capacityPeak: { state: 'unavailable' },
+        capacityScalars: { state: 'unavailable' },
         homeScope: { state: 'unavailable' },
       });
     });

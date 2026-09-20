@@ -328,7 +328,7 @@ export class PlanBuilder {
     devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
   ): PlanLimits {
     const capacitySoftLimit = this.stampCapacityPace(nowTs);
-    const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
+    const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices, nowTs);
     const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
     return {
       softLimit: dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit,
@@ -408,6 +408,7 @@ export class PlanBuilder {
   private computeDailySoftLimit(
     snapshot: DailyBudgetUiPayload | null,
     devices: PlanInputDevice[],
+    nowTs: number,
   ): DailySoftLimitResolution | null {
     const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
     if (!bucket) return null;
@@ -417,9 +418,7 @@ export class PlanBuilder {
     // missing reading rather than for real budget pressure. Every plan device now
     // carries a resolved draw, so the unresolved state is gone.
     const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices.map(toUsageDevice)));
-    const budgetPaceKw = computeDailyUsageSoftLimit({
-      ...bucket,
-    });
+    const budgetPaceKw = computeDailyUsageSoftLimit(bucket, nowTs);
     // Budget-exempt load should not trigger daily-budget shedding of other devices.
     // Remove exempt energy already metered this hour, then add back the exempt live
     // run rate so the effective daily limit still allows that load to remain on.

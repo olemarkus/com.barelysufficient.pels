@@ -207,10 +207,16 @@ describe('settingsUiApi', () => {
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
     });
     const app = {
-      ...(typeof options.capacityDryRun === 'boolean'
-        ? { capacityDryRun: options.capacityDryRun }
+      // The real app answers its scalars through this seam; a fixture that
+      // configures neither leaves it off, which is the boot window's shape.
+      ...(options.capacitySettings && typeof options.capacityDryRun === 'boolean'
+        ? {
+          getCapacityScalars: () => ({
+            ...options.capacitySettings,
+            dryRun: options.capacityDryRun,
+          }),
+        }
         : {}),
-      ...(options.capacitySettings ? { capacitySettings: options.capacitySettings } : {}),
       planStatuses,
       log,
       error,
@@ -291,8 +297,10 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      // The fixture app exposes no capacity-peak seam.
+      // The fixture app exposes no capacity-peak seam, and its capacity
+      // scalars are not the resolved shape.
       capacityPeak: { state: 'unavailable' },
+      capacityScalars: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -307,9 +315,10 @@ describe('settingsUiApi', () => {
       settings: { capacity_dry_run: undefined },
     });
 
-    expect(getSettingsUiPowerPayload({ homey: homey as never }).mainDryRunEffective).toBe(false);
-    expect(getSettingsUiPowerPayload({ homey: homey as never }).mainCapacityScalars)
-      .toEqual({ limitKw: 12, marginKw: 0.4, periodMinutes: 15 });
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).capacityScalars).toEqual({
+      state: 'resolved',
+      scalars: { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false },
+    });
   });
 
   it('projects the monthly peak without exposing internal quarter state', () => {
@@ -529,8 +538,10 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      // The fixture app exposes no capacity-peak seam.
+      // The fixture app exposes no capacity-peak seam, and its capacity
+      // scalars are not the resolved shape.
       capacityPeak: { state: 'unavailable' },
+      capacityScalars: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });

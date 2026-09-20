@@ -18,6 +18,7 @@ import type { PowerTrackerState } from '../power/tracker';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveHardCapacityKWh, resolveUsableCapacityKWh, resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
+import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
 
 // Floor on the remaining-time divisor for the burst rate, so the rate stays
 // finite as the period ends (avoids remaining/→0 blow-up). Shared by capacity
@@ -112,20 +113,10 @@ export function computeDynamicSoftLimit(
  * The window is the current bucket of the daily plan, not the whole day, so this
  * paces that bucket's share rather than a whole-day burst rate.
  */
-export function computeDailyUsageSoftLimit(params: {
-  plannedKWh: number;
-  usedKWh: number;
-  bucketStartMs: number;
-  bucketEndMs: number;
-  nowMs?: number;
-}): number {
+export function computeDailyUsageSoftLimit(bucket: DailySoftLimitBucket, nowMs: number): number {
   const {
-    plannedKWh,
-    usedKWh,
-    bucketStartMs,
-    bucketEndMs,
-    nowMs = Date.now(),
-  } = params;
+    plannedKWh, usedKWh, bucketStartMs, bucketEndMs,
+  } = bucket;
   if (!Number.isFinite(plannedKWh) || plannedKWh <= 0) return 0;
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
   const boundedNowMs = Math.min(Math.max(nowMs, bucketStartMs), bucketEndMs);

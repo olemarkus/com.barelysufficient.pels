@@ -2230,6 +2230,7 @@ describe('Plan sorting', () => {
       readings: freshPower.readings,
       status: freshPower.status,
       capacityPeak: { state: 'unavailable' },
+      capacityScalars: { state: 'unavailable' },
     });
     const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');

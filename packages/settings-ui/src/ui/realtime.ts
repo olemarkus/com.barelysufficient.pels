@@ -160,7 +160,12 @@ const handlePowerUpdated = (power: unknown) => {
     updateApiCache<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH, {
       status: statusRead,
       ...(pushedReadings !== null ? { readings: pushedReadings } : {}),
-    }, { tracker: {}, readings: { state: 'never' }, capacityPeak: { state: 'unavailable' } });
+    }, {
+      tracker: {},
+      readings: { state: 'never' },
+      capacityPeak: { state: 'unavailable' },
+      capacityScalars: { state: 'unavailable' },
+    });
   }
   // Only a full-tracker push refreshes the hero's "Solar now" triple; a
   // status-only push keeps the cached one (the resolver's staleness gate

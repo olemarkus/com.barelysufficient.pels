@@ -51,8 +51,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   const setup = (
     dryRunSetting: boolean | undefined,
     priorState: boolean,
-    mainDryRunEffective?: boolean,
-    mainCapacityScalars?: { limitKw: number; marginKw: number; periodMinutes: 15 | 60 },
+    runtimeScalars?: { limitKw: number; marginKw: number; periodMinutes: 15 | 60; dryRun: boolean },
   ) => {
     homey = installHomeyMock({
       settings: {
@@ -62,15 +61,14 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
         [CAPACITY_PERIOD_MINUTES]: 60,
         [POWER_SOURCE]: 'flow',
       },
-      ...(typeof mainDryRunEffective === 'boolean'
+      ...(runtimeScalars
         ? {
           uiState: {
             power: {
               tracker: null,
               status: { state: 'unavailable', reason: 'no_status_recorded' },
               readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 },
-              mainDryRunEffective,
-              ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
+              capacityScalars: { state: 'resolved', scalars: runtimeScalars },
             },
           },
         }
@@ -94,7 +92,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('uses the running Main posture after a reload when the persisted key is absent', async () => {
-    setup(undefined, true, false);
+    setup(undefined, true, { limitKw: 10, marginKw: 0.2, periodMinutes: 60, dryRun: false });
 
     await loadCapacitySettings();
 
@@ -103,7 +101,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('preserves retained Main limit and margin when their persisted keys are absent', async () => {
-    setup(undefined, true, false, { limitKw: 12, marginKw: 0.4, periodMinutes: 60 });
+    setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false });
     delete homey.__settingsStore[CAPACITY_LIMIT_KW];
     delete homey.__settingsStore[CAPACITY_MARGIN_KW];
 
@@ -115,7 +113,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('preserves the runtime Belgian period when its persisted key is transiently absent', async () => {
-    setup(undefined, true, false, { limitKw: 12, marginKw: 0.4, periodMinutes: 15 });
+    setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false });
     delete homey.__settingsStore[CAPACITY_PERIOD_MINUTES];
 
     await loadCapacitySettings();

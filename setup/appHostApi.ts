@@ -57,6 +57,7 @@ import {
   createCapacitySettingsStore,
   type CapacityScalarSettingsRead,
 } from '../lib/power/capacitySettingsStore';
+import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 
 /**
  * Stable Homey/widget/settings-API façade. Bodies either resolve a value from
@@ -80,6 +81,11 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
       dryRun: this.context.capacityDryRun,
     }),
   ).read();
+
+  public getCapacityScalars = (): CapacityScalarSettings => ({
+    ...this.context.capacitySettings,
+    dryRun: this.context.capacityDryRun,
+  });
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(
     this.context.powerTracker,

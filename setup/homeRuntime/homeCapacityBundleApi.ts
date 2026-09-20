@@ -18,7 +18,6 @@ import type { SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PlanService } from '../../lib/plan/planService';
-import type CapacityGuard from '../../lib/power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { createPlanEngine } from '../appInit/createPlanEngine';
@@ -95,16 +94,14 @@ const isStableRevision = (sample: StableSampleRevision, revision: number): boole
   sample.state === 'stable' && sample.revision === revision
 );
 
-const buildOwnershipGenerationOperations = (params: {
-  homeId: HomeId;
-  logger: () => ReturnType<AppContext['getStructuredLogger']>;
-  planService: PlanService;
-  isTornDown: () => boolean;
-  getStableSampleRevision: () => StableSampleRevision;
-  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
-  markPreparedOwnershipGenerationReconciled: () => void;
-  flushDeferredShortfallSideEffect: () => Promise<boolean>;
-}): Pick<
+/** The ownership-generation lane: a rebuild lane plus the sample fence it reconciles against. */
+type HomeOwnershipGenerationDeps = HomeRebuildLaneDeps & Pick<
+  HomeCapacityBundleApiParams,
+  'getStableSampleRevision' | 'beginPreparedOwnershipReconcile'
+  | 'markPreparedOwnershipGenerationReconciled' | 'flushDeferredShortfallSideEffect'
+>;
+
+const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps): Pick<
   HomeCapacityBundle,
   'rebuildForMembershipChange'
   | 'prepareOwnershipGeneration'
@@ -193,14 +190,17 @@ const buildOwnershipGenerationOperations = (params: {
  * rebuild after a mode change. Also serves legacy Main-following areas until
  * marker-last migration completes.
  */
-const buildSettingsRebuild = (params: {
-  homeId: HomeId;
-  logger: () => ReturnType<AppContext['getStructuredLogger']>;
-  planService: PlanService;
-  isTornDown: () => boolean;
-  settingsSource: string;
-  failureEvent: string;
-}): (() => void) => () => {
+/** A contained rebuild lane: identity, logging, the plan service, the fence. */
+type HomeRebuildLaneDeps = Pick<
+  HomeCapacityBundleApiParams,
+  'homeId' | 'logger' | 'planService' | 'isTornDown'
+>;
+
+const buildSettingsRebuild = (
+  params: HomeRebuildLaneDeps,
+  settingsSource: string,
+  failureEvent: string,
+): (() => void) => () => {
   if (params.isTornDown()) return;
   // `rebuildPlanFromCache` CONTAINS planner errors and resolves `failed: true`
   // (the catch below only sees non-contained throws), so the resolved outcome
@@ -208,16 +208,16 @@ const buildSettingsRebuild = (params: {
   // above is the precedent. No retry here: the next mode/settings write or
   // power-sample rebuild re-runs the closures, and the log makes the miss
   // visible instead of silent.
-  void params.planService.rebuildPlanFromCache('settings', { detail: params.settingsSource })
+  void params.planService.rebuildPlanFromCache('settings', { detail: settingsSource })
     .then((outcome) => {
       if (!outcome.failed || params.isTornDown()) return;
       params.logger()?.error({
-        event: params.failureEvent,
+        event: failureEvent,
         homeId: params.homeId,
       });
     }).catch((error: unknown) => {
       params.logger()?.error({
-        event: params.failureEvent,
+        event: failureEvent,
         homeId: params.homeId,
         err: normalizeError(error),
       });
@@ -237,49 +237,62 @@ const buildSettingsRebuild = (params: {
  * already value-imports this module and is at its `import-x/max-dependencies`
  * ceiling.
  */
-export const resolveEffectiveDryRun = (params: {
+export type HomeDryRunGates = {
   isTornDown: () => boolean;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
   getScalars: () => CapacityScalarSettings;
-}): boolean => (
-  params.isTornDown()
-  || !params.isMembershipReady()
-  || !params.isMeterSourceAuthorized()
-  || params.getScalars().dryRun
+};
+
+export const resolveEffectiveDryRun = (gates: HomeDryRunGates): boolean => (
+  gates.isTornDown()
+  || !gates.isMembershipReady()
+  || !gates.isMeterSourceAuthorized()
+  || gates.getScalars().dryRun
 );
+
+/**
+ * What the read surface may touch. `getOperatingMode` is the scope's mode
+ * accessor — pure resolution plus an edge-triggered transition log, no recovery
+ * arming — lifted out at the call site so the scope itself stays out of reach.
+ */
+type HomeCapacityBundleReadDeps = Pick<
+  HomeCapacityBundleApiParams,
+  'homeId' | 'planEngine' | 'planService' | 'tracker' | 'getHome' | 'getScalars'
+  | 'readCapacityPeak' | 'isTornDown' | 'readDryRunGates'
+> & { getOperatingMode: () => string };
 
 /**
  * The bundle's READ surface: the diagnostics block plus the already-committed
  * view the per-home settings-UI read seam serves (`lib/home/homeRuntimeRead.ts`).
  * Both are pure reads — no rebuild, no snapshot refresh/decorate, no actuation,
- * and no timer armed. That is why the dry-run value arrives as
- * `readEffectiveDryRun` instead of through the scope: `scope.getCapacityDryRun`
- * routes the source check through the execution predicate, which schedules a
- * recovery rebuild+reconcile when the source is unauthorized — a UI poll
- * landing in a transient `power_source` read failure would otherwise start
- * background actuation work.
+ * and no timer armed. `HomeCapacityBundleReadDeps` carries no `scope`, which is
+ * what keeps that true structurally rather than by convention:
+ * `scope.getCapacityDryRun` routes the source check through the execution
+ * predicate, which schedules a recovery rebuild+reconcile when the source is
+ * unauthorized — a UI poll landing in a transient `power_source` read failure
+ * would otherwise start background actuation work. The read surface therefore
+ * resolves its own dry-run from the RAW registry gates below.
  *
  * Deliberately NO device list either: `scope.getPlanDevices()` seeds observed
  * state, evicts caches and decorates the whole snapshot, so serving it here
  * would turn a UI poll into a snapshot rebuild.
  */
-const buildHomeCapacityBundleReads = (params: {
-  homeId: HomeId;
-  planEngine: ReturnType<typeof createPlanEngine>;
-  planService: PlanService;
-  readEffectiveDryRun: () => boolean;
-  /** THIS home's effective mode (scope accessor — pure resolution, no recovery arming). */
-  getOperatingMode: () => string;
-  tracker: HomeTrackerPersistence;
-  getHome: () => SubHomeConfig;
-  getScalars: () => CapacityScalarSettings;
-  readCapacityPeak: () => number | null;
-}): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
+const buildHomeCapacityBundleReads = (
+  deps: HomeCapacityBundleReadDeps,
+): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
   const {
-    homeId, planEngine, planService, readEffectiveDryRun, getOperatingMode, tracker, getHome, getScalars,
-    readCapacityPeak,
-  } = params;
+    homeId, planEngine, planService, tracker, getHome, getScalars, readCapacityPeak,
+    isTornDown, readDryRunGates, getOperatingMode,
+  } = deps;
+  // Named, not spread: `isTornDown` is bundle-local and must never be shadowed
+  // by a same-named key arriving from the registry side.
+  const readEffectiveDryRun = (): boolean => resolveEffectiveDryRun({
+    isTornDown,
+    isMembershipReady: readDryRunGates.isMembershipReady,
+    isMeterSourceAuthorized: readDryRunGates.isMeterSourceAuthorized,
+    getScalars,
+  });
   const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
     homeId,
     meterDeviceId: getHome().meterDeviceId,
@@ -303,51 +316,11 @@ const buildHomeCapacityBundleReads = (params: {
   };
 };
 
-/**
- * Composes the read surface for one bundle: the RAW registry gates resolved
- * into `readEffectiveDryRun` here, in one place, so the call site cannot pass
- * the scope's recovery-arming execution predicate by mistake. Named, not
- * spread: `isTornDown` is bundle-local and must never be shadowed by a
- * same-named key arriving from the registry side.
- */
-const buildScopedBundleReads = (params: {
-  homeId: HomeId;
-  guard: CapacityGuard;
-  planEngine: ReturnType<typeof createPlanEngine>;
-  planService: PlanService;
-  tracker: HomeTrackerPersistence;
-  getHome: () => SubHomeConfig;
-  getScalars: () => CapacityScalarSettings;
-  readCapacityPeak: () => number | null;
-  getOperatingMode: () => string;
-  isTornDown: () => boolean;
-  readDryRunGates: { isMembershipReady: () => boolean; isMeterSourceAuthorized: () => boolean };
-}): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
-  const { isTornDown, readDryRunGates, getScalars } = params;
-  return buildHomeCapacityBundleReads({
-    homeId: params.homeId,
-    planEngine: params.planEngine,
-    planService: params.planService,
-    getOperatingMode: params.getOperatingMode,
-    tracker: params.tracker,
-    getHome: params.getHome,
-    getScalars,
-    readCapacityPeak: params.readCapacityPeak,
-    readEffectiveDryRun: () => resolveEffectiveDryRun({
-      isTornDown,
-      isMembershipReady: readDryRunGates.isMembershipReady,
-      isMeterSourceAuthorized: readDryRunGates.isMeterSourceAuthorized,
-      getScalars,
-    }),
-  });
-};
-
 type HomeCapacityBundleApiParams = {
   ctx: AppContext;
   homeId: HomeId;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   timerKey: (suffix: string) => string;
-  guard: CapacityGuard;
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
   scope: HomeScope;
@@ -381,30 +354,13 @@ type HomeCapacityBundleApiParams = {
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
   const {
-    ctx, homeId, logger, timerKey, guard, planEngine, planService, scope, tracker, readDryRunGates,
-    pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge, markPreparedOwnershipGenerationReconciled,
-    getHome, setHome, getScalars, setScalars, readCapacityPeak,
-    getStableSampleRevision, beginPreparedOwnershipReconcile,
-    flushDeferredShortfallSideEffect, isTornDown, markTornDown,
-    reloadModeCatalog, isModeCatalogInitialized,
+    ctx, homeId, logger, timerKey, planEngine, planService, scope, tracker,
+    pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
+    getHome, setHome, setScalars, flushDeferredShortfallSideEffect,
+    isTornDown, markTornDown, reloadModeCatalog, isModeCatalogInitialized,
   } = params;
-  const ownershipGenerationOperations = buildOwnershipGenerationOperations({
-    homeId,
-    logger,
-    planService,
-    isTornDown,
-    getStableSampleRevision,
-    beginPreparedOwnershipReconcile,
-    markPreparedOwnershipGenerationReconciled,
-    flushDeferredShortfallSideEffect,
-  });
-  const readOperations = buildScopedBundleReads({
-    homeId, guard, planEngine, planService, tracker, getHome, getScalars, readCapacityPeak,
-    isTornDown, readDryRunGates,
-    // The scope's mode accessor: pure resolution + edge-triggered transition
-    // log, no recovery arming — safe on the read surface (unlike its dry-run).
-    getOperatingMode: scope.getOperatingMode,
-  });
+  const ownershipGenerationOperations = buildOwnershipGenerationOperations(params);
+  const readOperations = buildHomeCapacityBundleReads({ ...params, getOperatingMode: scope.getOperatingMode });
   const capacitySettingsRetryTimer = timerKey('capacitySettingsLoadRetry');
   const reloadCapacityScalars = (): void => {
     if (isTornDown()) return;
@@ -465,22 +421,12 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     updateHomeConfig: (next) => {
       setHome(next);
     },
-    rebuildForModeSettingsChange: buildSettingsRebuild({
-      homeId,
-      logger,
-      planService,
-      isTornDown,
-      settingsSource: 'mode_targets',
-      failureEvent: 'home_mode_targets_rebuild_failed',
-    }),
-    rebuildForDeviceControlSettingsChange: buildSettingsRebuild({
-      homeId,
-      logger,
-      planService,
-      isTornDown,
-      settingsSource: 'temperature_control_disabled_devices',
-      failureEvent: 'home_device_control_settings_rebuild_failed',
-    }),
+    rebuildForModeSettingsChange: buildSettingsRebuild(
+      params, 'mode_targets', 'home_mode_targets_rebuild_failed',
+    ),
+    rebuildForDeviceControlSettingsChange: buildSettingsRebuild(
+      params, 'temperature_control_disabled_devices', 'home_device_control_settings_rebuild_failed',
+    ),
     reloadModeCatalog,
     isModeCatalogInitialized,
     applyMembershipReadyEdge,

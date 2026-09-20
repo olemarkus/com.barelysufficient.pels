@@ -1,4 +1,4 @@
-import type { CapacityPeriodMinutes, CapacityScalarSettings, CapacitySettings } from './capacitySettings.js';
+import type { CapacityPeriodMinutes, CapacityScalarSettings } from './capacitySettings.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
@@ -554,6 +554,15 @@ export type SettingsUiCapacityPeak =
   | { readonly state: 'no_completed_quarter' }
   | { readonly state: 'unavailable' };
 
+/**
+ * The capacity scalars a payload carries, or `unavailable` when the runtime
+ * could not answer (a boot window in which the app object has no seam yet, or
+ * a home with no runtime).
+ */
+export type SettingsUiCapacityScalarsRead =
+  | { readonly state: 'resolved'; readonly scalars: CapacityScalarSettings }
+  | { readonly state: 'unavailable' };
+
 export type SettingsUiPowerPayload = {
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
@@ -564,18 +573,17 @@ export type SettingsUiPowerPayload = {
   /** Producer-resolved readings fact; see `SettingsUiPowerReadings`. */
   readings: SettingsUiPowerReadings;
   status: SettingsUiPowerStatusRead;
-  // Runtime-authoritative Main-home simulation posture. The persisted
-  // `capacity_dry_run` key may be absent while the running app deliberately
-  // retains its last-good value, so a freshly opened WebView must not infer a
-  // boot default from settings absence. Present only on whole-home reads;
-  // scoped reads get their effective posture from the scoped status blob.
-  mainDryRunEffective?: boolean;
-  // Runtime-authoritative Main-home capacity scalars. Like dry-run above, the
-  // running adapter retains these values when a persisted key is absent or
-  // malformed; a WebView reload must render and preserve the same values.
-  mainCapacityScalars?: CapacitySettings;
-  /** Runtime-authoritative scalars on a scoped meter-area read. */
-  scopedCapacityScalars?: CapacityScalarSettings;
+  /**
+   * The running app's own capacity scalars for the home this payload
+   * describes. The running app retains its last-good values when a persisted
+   * key is absent or malformed, so a freshly opened WebView must render these
+   * rather than infer a boot default from settings absence.
+   *
+   * `dryRun` is the home's CONFIGURED simulation flag. A meter area's
+   * EFFECTIVE posture (membership and meter-source gates on top of the flag)
+   * stays where it always was, in the scoped status blob.
+   */
+  capacityScalars: SettingsUiCapacityScalarsRead;
   /** Measured tariff evidence for Belgium's monthly quarter-hour peak. */
   capacityPeak: SettingsUiCapacityPeak;
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's

@@ -9,6 +9,7 @@ import {
 import {
   SETTINGS_UI_POWER_PATH,
   type SettingsUiCapacityPeak,
+  type SettingsUiCapacityScalarsRead,
   type SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
@@ -44,6 +45,7 @@ import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
 import { classifyCapacityPeak } from './capacityPeakRead.ts';
+import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 import {
   renderHomeLimitsSection,
   type HomeLimitsEditorView,
@@ -290,8 +292,8 @@ const renderSection = (): void => {
 type AreaPowerRead = {
   status: unknown;
   capacityPeak: SettingsUiCapacityPeak;
-  /** Untrusted transport value; resolved where the editor's period is. */
-  runtimePeriodMinutes: unknown;
+  /** This area runtime's own scalars; its period seeds an unset persisted key. */
+  capacityScalars: SettingsUiCapacityScalarsRead;
 };
 
 const readAreaStatus = async (homeId: string): Promise<AreaPowerRead> => {
@@ -302,10 +304,11 @@ const readAreaStatus = async (homeId: string): Promise<AreaPowerRead> => {
     return {
       status: liveStatusOrNull(payload.status),
       capacityPeak: classifyCapacityPeak(payload.capacityPeak),
-      runtimePeriodMinutes: payload.scopedCapacityScalars?.periodMinutes,
+      capacityScalars: classifyCapacityScalarsRead(payload.capacityScalars),
     };
   } catch {
-    return { status: null, capacityPeak: { state: 'unavailable' }, runtimePeriodMinutes: null };
+    const unavailable = { state: 'unavailable' } as const;
+    return { status: null, capacityPeak: unavailable, capacityScalars: unavailable };
   }
 };
 
@@ -330,10 +333,9 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
   const capsWriteQueue = resolveAreaCapsWriteQueue({ homeId, limitKw, marginKw });
   const loadedPeriodMinutes = resolveCapacityPeriodMinutes(
     periodRaw,
-    resolveCapacityPeriodMinutes(
-      powerRead.runtimePeriodMinutes,
-      lastGoodPeriodByHomeId.get(homeId) ?? DEFAULT_CAPACITY_PERIOD_MINUTES,
-    ),
+    powerRead.capacityScalars.state === 'resolved'
+      ? powerRead.capacityScalars.scalars.periodMinutes
+      : lastGoodPeriodByHomeId.get(homeId) ?? DEFAULT_CAPACITY_PERIOD_MINUTES,
   );
   const periodWriteQueue = resolveAreaPeriodWriteQueue(homeId, loadedPeriodMinutes);
   const periodMinutes = periodWriteQueue.pendingCount > 0

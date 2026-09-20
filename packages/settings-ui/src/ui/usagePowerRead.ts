@@ -6,6 +6,8 @@ import { getApiReadModel, homeScopedApiUri } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';
 import { resolvePowerStatusRead } from './powerStatusRead.ts';
+import { classifyCapacityPeak } from './capacityPeakRead.ts';
+import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 
 /**
  * The scope-following `ui_power` read (multi-home). Named for the Usage
@@ -50,7 +52,8 @@ const hasOwn = (value: Record<string, unknown>, key: string): boolean => (
  * usage history the panel must keep serving. Only a malformed envelope itself
  * refuses the read.
  */
-type MainPowerEnvelope = Omit<SettingsUiPowerPayload, 'status'> & { status: unknown };
+type MainPowerEnvelope = Omit<SettingsUiPowerPayload, 'status' | 'capacityPeak' | 'capacityScalars'>
+  & { status: unknown; capacityPeak: unknown; capacityScalars: unknown };
 
 const isMainPowerEnvelope = (value: unknown): value is MainPowerEnvelope => {
   if (!isRecord(value) || hasOwn(value, 'homeScope')) return false;
@@ -62,7 +65,17 @@ const isMainPowerEnvelope = (value: unknown): value is MainPowerEnvelope => {
 
 const resolveMainPowerRead = (value: unknown): HomeScopedRead<SettingsUiPowerPayload> => {
   if (!isMainPowerEnvelope(value)) return { state: 'unavailable' };
-  return { state: 'served', payload: { ...value, status: resolvePowerStatusRead(value.status) } };
+  // Each producer-resolved block is classified here, at the one transport
+  // seam, so the served payload satisfies its contract rather than asserting it.
+  return {
+    state: 'served',
+    payload: {
+      ...value,
+      status: resolvePowerStatusRead(value.status),
+      capacityPeak: classifyCapacityPeak(value.capacityPeak),
+      capacityScalars: classifyCapacityScalarsRead(value.capacityScalars),
+    },
+  };
 };
 
 export const readUsagePower = async (): Promise<HomeScopedRead<SettingsUiPowerPayload>> => {

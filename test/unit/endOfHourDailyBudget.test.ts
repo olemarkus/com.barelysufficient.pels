@@ -25,8 +25,7 @@ describe('End-of-Hour Mode', () => {
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
-        nowMs: now,
-      });
+      }, now);
 
       // Remaining: 5 kWh over 5 minutes (but uses min threshold of 10 minutes)
       // remainingHours = max(5/60, 10/60) = 10/60 = 0.1667 hours
@@ -47,8 +46,7 @@ describe('End-of-Hour Mode', () => {
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
-        nowMs: now,
-      });
+      }, now);
 
       // Remaining: 50 kWh over 12 hours = 4.17 kW
       expect(result).toBeCloseTo(4.17, 1);
@@ -67,8 +65,7 @@ describe('End-of-Hour Mode', () => {
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
-        nowMs: now,
-      });
+      }, now);
 
       // Remaining: 1 kWh over 30 seconds (but uses min threshold of 10 minutes)
       // remainingHours = max(0.5/60, 10/60) = 10/60 = 0.1667 hours

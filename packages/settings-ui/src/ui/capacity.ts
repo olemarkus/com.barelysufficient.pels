@@ -80,6 +80,8 @@ import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
 import { classifyCapacityPeak, formatCapacityPeak } from './capacityPeakRead.ts';
+import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
+import { isFiniteNumber } from './combinedPrices.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -121,15 +123,21 @@ const commitCapacityScalars = (scalars: CapacityScalarSettings): void => {
   state.dryRun = scalars.dryRun;
 };
 
-const resolveMainCapacityNumber = (
-  persisted: unknown,
-  runtimeEffective: unknown,
-  lastGood: number,
-): number => {
-  if (typeof persisted === 'number' && Number.isFinite(persisted)) return persisted;
-  if (typeof runtimeEffective === 'number' && Number.isFinite(runtimeEffective)) return runtimeEffective;
-  return lastGood;
-};
+/**
+ * A persisted scalar wins; a missing or malformed one takes `fallback`'s. The
+ * runtime retains its validated in-memory posture when a persisted key is
+ * absent, so an unset key must never make the WebView claim a boot default
+ * (simulation included) while the running app holds a live value.
+ */
+const resolveCapacityScalars = (
+  current: CurrentCapacitySettings,
+  fallback: CapacityScalarSettings,
+): CapacityScalarSettings => ({
+  limitKw: isFiniteNumber(current.limit) ? current.limit : fallback.limitKw,
+  marginKw: isFiniteNumber(current.margin) ? current.margin : fallback.marginKw,
+  dryRun: typeof current.dryRun === 'boolean' ? current.dryRun : fallback.dryRun,
+  periodMinutes: resolveCapacityPeriodMinutes(current.periodMinutes, fallback.periodMinutes),
+});
 
 const needsRuntimeCapacityScalars = (
   limit: unknown,
@@ -144,16 +152,6 @@ const needsRuntimeCapacityScalars = (
   || typeof dryRun !== 'boolean'
   || !isCapacityPeriodMinutes(periodMinutes)
 );
-
-const resolveMainDryRun = (
-  persisted: unknown,
-  runtimeEffective: unknown,
-  lastGood: boolean,
-): boolean => {
-  if (typeof persisted === 'boolean') return persisted;
-  if (typeof runtimeEffective === 'boolean') return runtimeEffective;
-  return lastGood;
-};
 
 export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
@@ -352,21 +350,18 @@ const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> =
   return { limit, margin, dryRun, periodMinutes };
 };
 
-const resolveCapacitySettings = (
+const resolveCapacitySettingsPatch = (
   current: CurrentCapacitySettings,
   patch: CapacitySettingsPatch,
-): CapacityScalarSettings => ({
-  limitKw: patch.limit ?? resolveMainCapacityNumber(current.limit, undefined, lastGoodCapacityScalars.limitKw),
-  marginKw: patch.margin ?? resolveMainCapacityNumber(current.margin, undefined, lastGoodCapacityScalars.marginKw),
-  // The runtime retains its validated in-memory posture when the persisted
-  // key is absent or malformed. Mirror that last-good value so an unset never
-  // makes the WebView claim simulation while the current runtime remains live.
-  dryRun: patch.dryRun ?? (
-    typeof current.dryRun === 'boolean' ? current.dryRun : lastGoodCapacityScalars.dryRun
-  ),
-  periodMinutes: patch.periodMinutes
-    ?? resolveCapacityPeriodMinutes(current.periodMinutes, lastGoodCapacityScalars.periodMinutes),
-});
+): CapacityScalarSettings => {
+  const persisted = resolveCapacityScalars(current, lastGoodCapacityScalars);
+  return {
+    limitKw: patch.limit ?? persisted.limitKw,
+    marginKw: patch.margin ?? persisted.marginKw,
+    dryRun: patch.dryRun ?? persisted.dryRun,
+    periodMinutes: patch.periodMinutes ?? persisted.periodMinutes,
+  };
+};
 
 /** `null` when no runtime read is needed, or when it failed (logged here). */
 const readCapacityPowerModel = async (
@@ -508,18 +503,12 @@ export const loadCapacitySettings = async () => {
   const powerRead = await readCapacityPowerModel(needsRuntimeScalars, periodMinutes);
   const powerSource = await getSetting(POWER_SOURCE);
   const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
-  const runtimeScalars = powerRead?.mainCapacityScalars;
-  const resolved: CapacityScalarSettings = {
-    limitKw: resolveMainCapacityNumber(limit, runtimeScalars?.limitKw, lastGoodCapacityScalars.limitKw),
-    marginKw: resolveMainCapacityNumber(margin, runtimeScalars?.marginKw, lastGoodCapacityScalars.marginKw),
-    dryRun: resolveMainDryRun(dryRun, powerRead?.mainDryRunEffective, lastGoodCapacityScalars.dryRun),
-    // Persisted, then the runtime's, then the last good: each checked, since
-    // the runtime's arrives over the untrusted transport.
-    periodMinutes: resolveCapacityPeriodMinutes(
-      periodMinutes,
-      resolveCapacityPeriodMinutes(runtimeScalars?.periodMinutes, lastGoodCapacityScalars.periodMinutes),
-    ),
-  };
+  // Persisted first, then the running app's own block, then the last good.
+  const runtime = classifyCapacityScalarsRead(powerRead?.capacityScalars);
+  const resolved = resolveCapacityScalars(
+    { limit, margin, dryRun, periodMinutes },
+    runtime.state === 'resolved' ? runtime.scalars : lastGoodCapacityScalars,
+  );
   // Only a successfully completed newer load supersedes this snapshot. A load
   // that merely STARTED later but failed must not discard valid settings with
   // no remaining refresh guaranteed.
@@ -556,7 +545,7 @@ const saveCapacitySettingsPatch = async (
   successMessage = 'Capacity settings saved.',
 ) => {
   const current = await readCurrentCapacitySettings();
-  const resolved = resolveCapacitySettings(current, patch);
+  const resolved = resolveCapacitySettingsPatch(current, patch);
   validateCapacitySettings(resolved);
 
   const writes: Array<Promise<void>> = [];

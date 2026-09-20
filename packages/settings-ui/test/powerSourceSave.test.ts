@@ -444,6 +444,7 @@ describe('savePowerSourceSetting', () => {
       readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
       capacityPeak: { state: 'unavailable' },
+      capacityScalars: { state: 'unavailable' },
     });
     select.value = 'flow';
 

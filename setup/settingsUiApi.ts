@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
@@ -48,7 +49,6 @@ import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDevice
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import {
   projectCapacityPeakForUi,
-  projectMainCapacityScalarsForUi,
   projectPowerTrackerForUi,
 } from '../lib/power/trackerUiProjection';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
@@ -72,8 +72,6 @@ import {
 import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolution';
 
 type SettingsUiApiApp = Homey.App & {
-  capacityDryRun?: unknown;
-  capacitySettings?: unknown;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
@@ -92,6 +90,21 @@ const hasCapacityPeakSeam = (app: unknown): app is CapacityPeakSeam => (
   && app !== null
   && 'getCurrentMonthCapacityPeakKw' in app
   && typeof app.getCurrentMonthCapacityPeakKw === 'function'
+);
+
+/**
+ * The Main home's capacity scalars, straight from the running app. `AppContext`
+ * declares the member required and `lib/power/capacitySettingsStore` is the only
+ * thing that writes the block, so there is nothing to validate here — only the
+ * boot window in which `homey.app` is not yet the PELS app to ask.
+ */
+type CapacityScalarsSeam = { getCapacityScalars: () => CapacityScalarSettings };
+
+const hasCapacityScalarsSeam = (app: unknown): app is CapacityScalarsSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getCapacityScalars' in app
+  && typeof app.getCapacityScalars === 'function'
 );
 
 /**
@@ -393,7 +406,6 @@ const resolvePowerReadings = (tracker: PowerTrackerState): SettingsUiPowerReadin
 
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
-  const mainCapacityScalars = projectMainCapacityScalarsForUi(app?.capacitySettings);
   // The tracker keeps the persisted fallback: it carries usage HISTORY
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
@@ -406,10 +418,9 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     tracker: projectPowerTrackerForUi(tracker),
     readings: resolvePowerReadings(tracker),
     status: classifyMainPowerStatus(homey),
-    ...(typeof app?.capacityDryRun === 'boolean'
-      ? { mainDryRunEffective: app.capacityDryRun }
-      : {}),
-    ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
+    capacityScalars: hasCapacityScalarsSeam(app)
+      ? { state: 'resolved', scalars: app.getCapacityScalars() }
+      : { state: 'unavailable' },
     capacityPeak: hasCapacityPeakSeam(app)
       ? projectCapacityPeakForUi(app.getCurrentMonthCapacityPeakKw())
       : { state: 'unavailable' },
@@ -506,6 +517,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   readings: { state: 'never' },
   status: { state: 'unavailable', reason: 'home_scope_unavailable' },
   capacityPeak: { state: 'unavailable' },
+  capacityScalars: { state: 'unavailable' },
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
@@ -556,7 +568,7 @@ const powerPayloadForHome = (
     readings: resolvePowerReadings(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
-    scopedCapacityScalars: reading.diagnostics.capacityScalars,
+    capacityScalars: { state: 'resolved', scalars: reading.diagnostics.capacityScalars },
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,
     // and a sub-home's `generationBuckets` can never fill: its bundle is built

@@ -10,8 +10,7 @@ describe('daily usage soft limit', () => {
       usedKWh: 1,
       bucketStartMs,
       bucketEndMs,
-      nowMs,
-    });
+    }, nowMs);
     expect(allowed).toBeCloseTo(6, 3);
   });
 
@@ -24,8 +23,7 @@ describe('daily usage soft limit', () => {
       usedKWh: 1,
       bucketStartMs,
       bucketEndMs,
-      nowMs,
-    });
+    }, nowMs);
     // Remaining: 3 kWh over 5 minutes (but uses min threshold of 10 minutes)
     // remainingHours = max(5/60, 10/60) = 10/60 = 0.1667 hours
     // Burst rate: 3 / 0.1667 = 18 kW
@@ -39,8 +37,7 @@ describe('daily usage soft limit', () => {
       usedKWh: 0,
       bucketStartMs: 0,
       bucketEndMs: 60 * 60 * 1000,
-      nowMs: 0,
-    });
+    }, 0);
     expect(allowed).toBe(0);
   });
 });
