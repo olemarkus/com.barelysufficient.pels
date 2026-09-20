@@ -414,6 +414,18 @@ pointing back at it from anywhere else.
 
 **Do NOT rename internal code identifiers, test fixtures, or log strings** — only user-visible text changes.
 
+### The app is English-only; the store copy is not
+
+PELS itself is not translated: every label in the settings UI, the widgets and the Flow cards is
+English in every market. The store descriptions (`README.no.txt`, `README.nl.txt`, `README.fr.txt`,
+and the localized fields in `.homeycompose/app.json`) are translated prose. So when localized copy
+points an owner at something they must find in PELS, it names the label **in English**, after the
+translated word where that reads better: `simulering (Simulation mode)`, `daglig energibudsjett
+(Daily budget)`, `Smart tasks`. A translated label is a word that is not on their screen.
+
+Homey's own menus are the opposite case. Homey translates its app, so a path through it is written
+in the target language: `Mer > Apper > PELS > Innstillinger`.
+
 ### Hero bar labels
 
 | Concept | Label |
