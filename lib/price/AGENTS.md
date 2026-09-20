@@ -71,6 +71,13 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
   the two apart with `getKeys()`, and an unreadable day is left exactly as it is
   (`PowerhourCachedDay`). Both were live data-loss bugs during review; neither has a symptom before
   the hours are already gone.
+- **A Power by the Hour forecast slot is not a price, and never crosses the adapter.** With
+  `forecastEnable` on, the app appends Stekker's AI forecast past its own last market price and
+  marks each one `isForecast: true`; it excludes them from its recency check and draws them
+  desaturated in its own charts. `resolveSlot` drops them, so nothing inward of
+  `powerhourPriceFetch.ts` can tell a forecast from a cleared auction and spend against it. A
+  home with the feature on simply has no prices for tomorrow until the auction lands, which is
+  the same partial day this source already shows for this morning.
 - The `price_scheme` union and its read policy live once, outside this module: the union in
   `packages/contracts/src/settingsUiApi.ts`, the policy in
   `packages/shared-domain/src/settings/priceScheme.ts`. Both the runtime and the settings UI read

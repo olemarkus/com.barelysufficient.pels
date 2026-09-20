@@ -5,7 +5,9 @@ import {
 } from '../../lib/price/powerhourPriceFetch';
 import type { ApiAppPort, ApiPort } from '../../lib/ports/homeyRuntime';
 
-const slot = (time: string, importPrice: number) => ({ time, importPrice, exportPrice: 0, isForecast: false });
+const slot = (time: string, importPrice: number, isForecast = false) => (
+  { time, importPrice, exportPrice: 0, isForecast }
+);
 
 const device = (overrides: Record<string, unknown> = {}) => ({
   deviceId: '10YNO-2--------T_abc123',
@@ -75,6 +77,39 @@ describe('Power by the Hour payload resolution', () => {
     expect(read.kind === 'resolved' && read.devices[0]?.slots).toEqual([
       { startsAt: '2026-09-20T12:00:00.000Z', importPrice: 0.5 },
     ]);
+  });
+
+  // The forecast runs past the market prices, so a mixed payload is the ordinary
+  // shape once the owner has the feature on: keep the cleared half, whole.
+  it('keeps the market slots of a mixed payload and drops only the forecast ones', () => {
+    const read = resolvePowerhourPayload({
+      prices: [device({
+        slots: [
+          slot('2026-09-20T12:00:00.000Z', 0.13, true),
+          slot('2026-09-20T10:00:00.000Z', 0.11),
+          slot('2026-09-20T13:00:00.000Z', 0.14, true),
+          slot('2026-09-20T11:00:00.000Z', 0.12),
+        ],
+      })],
+    });
+    expect(read.kind === 'resolved' && read.devices[0]?.slots).toEqual([
+      { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11 },
+      { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12 },
+    ]);
+  });
+
+  // An app older than the forecast feature states nothing, and an owner who left
+  // it off states `false`. Neither is a forecast.
+  it('keeps a slot whose forecast flag is absent or not a boolean', () => {
+    const read = resolvePowerhourPayload({
+      prices: [device({
+        slots: [
+          { time: '2026-09-20T10:00:00.000Z', importPrice: 0.11 },
+          { time: '2026-09-20T11:00:00.000Z', importPrice: 0.12, isForecast: 'true' },
+        ],
+      })],
+    });
+    expect(read.kind === 'resolved' && read.devices[0]?.slots.map((x) => x.importPrice)).toEqual([0.11, 0.12]);
   });
 
   it('keeps the first of a repeated start and orders by time', () => {

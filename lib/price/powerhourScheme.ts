@@ -243,9 +243,11 @@ export type PowerhourCache = {
 /**
  * One read of one device, as the two day payloads PELS stores.
  *
- * Slots for any other local day are dropped: the app serves up to 24 h of
- * forecast beyond tomorrow when the owner enabled it, and a third day has no
- * slot to be stored in.
+ * Slots for any other local day are dropped. Market prices do not run past
+ * tomorrow, and the forecast that used to reach further is refused at the
+ * adapter (`powerhourPriceFetch.ts`), so this filter has no live cause left —
+ * it stays because a third day has nowhere to be stored, and a payload that
+ * grew one would otherwise land in whichever slot it was read into.
  */
 export const buildPowerhourPayloads = (
   device: PowerhourDevice,
@@ -449,7 +451,7 @@ export type PowerhourMirror = {
  * There is no cache short-circuit, deliberately, and it is the difference
  * between this source and the Homey Energy one: the app answers from the
  * CURRENT period onwards, so every refresh carries slots the stored day does
- * not have yet — a revised price, tomorrow's auction, the forecast extending.
+ * not have yet — a revised price, or tomorrow's auction landing.
  * Skipping the read because today is "already stored" would leave the home on
  * whatever the first read of the day happened to say.
  *

@@ -110,13 +110,32 @@ const resolveIntervalMinutes = (value: unknown): number | null => {
 };
 
 /**
- * One slot, or nothing. A slot with no readable instant or no finite price is
- * dropped rather than defaulted: an absent price is not zero, and zero is a
- * price the planner would act on.
+ * One slot, or nothing.
+ *
+ * A slot with no readable instant or no finite price is dropped rather than
+ * defaulted: an absent price is not zero, and zero is a price the planner would
+ * act on.
+ *
+ * A FORECAST slot is dropped for the opposite reason: it is perfectly well
+ * formed, and it is still not a price. With `forecastEnable` on, the app appends
+ * Stekker's AI forecast past its own last market price and marks each one
+ * `isForecast: true` (in its own `generic_dap_device.js`, not a path in this
+ * repo). It does not treat them as prices itself either — they are excluded
+ * from its recency check and drawn desaturated in its own charts. Carried
+ * inward they would be indistinguishable from a cleared auction, and PELS would
+ * commit a smart task against tomorrow at 09:00 while telling the owner it had
+ * a full day. It is the judgement the Homey Energy source already makes when it
+ * refuses the bare market price: a plausible number is the dangerous kind of
+ * wrong.
+ *
+ * Only a literal `true` is a forecast. An absent or non-boolean field is an app
+ * older than the feature, or an owner who left it off, and both publish market
+ * prices only.
  */
 const resolveSlot = (value: unknown): PowerhourSlot | null => {
   const record = asRecord(value);
   if (!record) return null;
+  if (record.isForecast === true) return null;
   const time = toNonEmptyString(record.time);
   if (!time) return null;
   const startsAtMs = Date.parse(time);
