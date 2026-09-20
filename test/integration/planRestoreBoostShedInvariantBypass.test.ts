@@ -88,7 +88,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
   };
@@ -139,7 +138,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
     const heater = result.planDevices.find((d) => d.id === 'water-heater');
@@ -179,7 +177,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
     const heater = result.planDevices.find((d) => d.id === 'water-heater');

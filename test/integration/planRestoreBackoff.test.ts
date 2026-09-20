@@ -120,7 +120,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const step = (advanceMs: number): number => {
@@ -156,7 +155,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const triggerInstability = (): void => {
@@ -204,7 +202,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const result = applyRestorePlan({
@@ -238,7 +235,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const result = applyRestorePlan({
@@ -285,7 +281,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'set_step' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const result = applyRestorePlan({
@@ -330,7 +325,6 @@ describe('restore cooldown backoff', () => {
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
-      logDebug: vi.fn(),
     };
 
     const result = applyRestorePlan({
@@ -399,7 +393,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -445,7 +438,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -504,7 +496,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -551,7 +542,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -595,7 +585,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -649,7 +638,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map([['dev-temp', fixtureTemperatureSetpointsEntry()]]),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -699,7 +687,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -878,7 +865,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -914,7 +900,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -951,7 +936,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -984,7 +968,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1025,7 +1008,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1066,7 +1048,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1108,7 +1089,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1150,7 +1130,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1186,7 +1165,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1223,7 +1201,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1256,7 +1233,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1286,7 +1262,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1328,7 +1303,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1386,7 +1360,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1438,7 +1411,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1488,7 +1460,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1543,7 +1514,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1600,7 +1570,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1638,7 +1607,6 @@ describe('restore cooldown backoff', () => {
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'off-heater': 16, peer: 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
-      logDebug: vi.fn(),
     };
     const restore = applyRestorePlan({
       planDevices,
@@ -1705,7 +1673,6 @@ describe('restore cooldown backoff', () => {
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'first-temp': 16, 'second-temp': 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
-      logDebug: vi.fn(),
     };
 
     const restore = applyRestorePlan({
@@ -1769,7 +1736,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: now - 10_000 } as PowerTrackerState,
         temperatureSetpoints: new Map([['temp', fixtureTemperatureSetpointsEntry()]]),
         getShedBehavior,
-        logDebug: vi.fn(),
       },
     });
     const held = applyShedTemperatureHold({
@@ -1819,7 +1785,6 @@ describe('restore cooldown backoff', () => {
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
-      logDebug: vi.fn(),
     };
     const restore = applyRestorePlan({
       planDevices,
@@ -1874,7 +1839,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -1956,7 +1920,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2002,7 +1965,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2088,7 +2050,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2124,7 +2085,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2160,7 +2120,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2197,7 +2156,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2234,7 +2192,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2272,7 +2229,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2310,7 +2266,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2347,7 +2302,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2384,7 +2338,6 @@ describe('restore cooldown backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15 }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -2399,7 +2352,6 @@ const makeDeps = () => ({
   temperatureSetpoints: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   log: vi.fn(),
-  logDebug: vi.fn(),
 });
 
 
@@ -3128,7 +3080,6 @@ describe('restore admission — headroom and penalty gates', () => {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -3163,7 +3114,6 @@ describe('restore admission — headroom and penalty gates', () => {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'set_step' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -3202,7 +3152,6 @@ describe('restore admission — headroom and penalty gates', () => {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -3223,7 +3172,6 @@ describe('restore admission — the device need is the whole bar', () => {
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
     temperatureSetpoints: new Map(),
     getShedBehavior: () => ({ action: 'turn_off' as const }),
-    logDebug: vi.fn(),
   });
 
   it('rejects binary restore one watt short of the device need', () => {
@@ -3829,7 +3777,6 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: vi.fn(),
     };
 
     // First call: emits
@@ -4047,7 +3994,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4092,7 +4038,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4138,7 +4083,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4184,7 +4128,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4227,7 +4170,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4289,7 +4231,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4340,7 +4281,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4409,7 +4349,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4459,7 +4398,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4495,7 +4433,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4539,7 +4476,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4586,7 +4522,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4635,7 +4570,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4680,7 +4614,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4739,7 +4672,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4786,7 +4718,6 @@ describe('stepped-load shed invariant', () => {
         powerTracker: { lastTimestamp: 201 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -4807,7 +4738,6 @@ describe('a restore decision is made once, and logged once', () => {
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
     temperatureSetpoints: new Map(),
     getShedBehavior: () => ({ action: 'turn_off' as const }),
-    logDebug: vi.fn(),
   });
 
   // An off device wanting more than the house has, plus one lower-priority

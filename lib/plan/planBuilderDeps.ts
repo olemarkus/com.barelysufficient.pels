@@ -71,5 +71,4 @@ export type PlanBuilderDeps = {
   // direction never reach it (`lib/thermostat/temperatureSetpoints.ts`).
   resolveTemperatureSetpoints: ResolveTemperatureSetpoints;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
 };

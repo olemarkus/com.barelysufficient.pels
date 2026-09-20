@@ -172,7 +172,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 

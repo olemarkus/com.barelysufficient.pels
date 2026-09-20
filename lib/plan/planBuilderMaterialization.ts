@@ -57,7 +57,6 @@ export type PlanMaterializationDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
-  logDebug: (...args: unknown[]) => void;
 };
 
 type HoldPlanResult = {
@@ -106,7 +105,6 @@ export class PlanMaterializationStages {
     context: PlanContext,
     power: MeasuredPower,
     sheddingPlan: SheddingPlan,
-    deviceNameById: ReadonlyMap<string, string>,
   ): RestorePlanResult {
     return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
@@ -114,7 +112,6 @@ export class PlanMaterializationStages {
       power,
       sheddingActive: sheddingPlan.sheddingActive,
       guardInShortfall: sheddingPlan.guardInShortfall,
-      deviceNameById,
     }));
   }
 
@@ -275,10 +272,9 @@ export class PlanMaterializationStages {
     power: MeasuredPower;
     sheddingActive: boolean;
     guardInShortfall: boolean;
-    deviceNameById: ReadonlyMap<string, string>;
   }): RestorePlanResult {
     const {
-      planDevices, context, power, sheddingActive, guardInShortfall, deviceNameById,
+      planDevices, context, power, sheddingActive, guardInShortfall,
     } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
@@ -293,8 +289,6 @@ export class PlanMaterializationStages {
         temperatureSetpoints: context.temperatureSetpoints,
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
-        deviceNameById,
-        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },
     });
     this.state.restoreBackoff.commitCooldown(restoreResult.timing);

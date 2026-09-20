@@ -185,7 +185,6 @@ lib/plan/planBuilderMaterialization.ts 3
 lib/plan/planBuilderOvershoot.ts 4
 lib/plan/planBuilderSurplus.ts 3
 lib/plan/planChangeTracker.ts 1
-lib/plan/planCurrentState.ts 1
 lib/plan/planDailyBudgetWindow.ts 1
 lib/plan/planDebugDedupe.ts 1
 lib/plan/planDevices.ts 4

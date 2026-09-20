@@ -135,7 +135,6 @@ const makeHarness = (params: {
       ? (input) => decorate(input.devices)
       : decorateWithoutDeferredObjectives,
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
   }, state);
   return { builder, guard, state, setTotalKw: (kw: number) => { lastPowerW = kw * 1000; } };

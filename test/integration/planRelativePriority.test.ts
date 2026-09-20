@@ -61,7 +61,6 @@ describe('PlanBuilder relative priority constraint', () => {
         return buildIdentityDecorationBundle(input.devices);
       },
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
       getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());

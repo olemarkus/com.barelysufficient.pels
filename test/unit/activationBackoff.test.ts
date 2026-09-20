@@ -467,7 +467,6 @@ describe('activation backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -503,7 +502,6 @@ describe('activation backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 
@@ -597,7 +595,6 @@ describe('activation backoff', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
 

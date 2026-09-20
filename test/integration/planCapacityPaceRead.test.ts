@@ -51,7 +51,6 @@ const buildPaceBuilder = (params: {
   getShedBehavior: () => ({ action: 'turn_off' }),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   log: vi.fn(),
-  logDebug: vi.fn(),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 }, params.state);
 

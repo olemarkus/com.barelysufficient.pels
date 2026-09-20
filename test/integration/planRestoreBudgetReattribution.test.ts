@@ -141,7 +141,6 @@ const buildBuilder = (params: {
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
-  logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
   getDynamicSoftLimitOverride: () => null,
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,

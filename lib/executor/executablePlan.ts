@@ -372,9 +372,8 @@ export type ExecutableSteppedLoadDesiredState = {
  * Producer-resolved current state used by the device-projection ONLY when the
  * device has no observation this cycle (no descriptor or no observer record for
  * it between planning and dispatch — `executorDeviceRead.ts`). The observed-state
- * producer owns the resolution from
- * the plan device's effective values (`resolveEffectiveCurrentOn` /
- * `selectedStepId`); the executor never re-derives a planning fallback. When an
+ * producer owns the resolution from the plan device's kind-aware observed-state
+ * predicates and `selectedStepId`; the executor never re-derives a planning fallback. When an
  * observation exists, the observed state is authoritative and this is ignored.
  */
 export type ExecutableSteppedLoadCurrentFallback = {

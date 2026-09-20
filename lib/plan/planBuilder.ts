@@ -250,7 +250,7 @@ export class PlanBuilder {
       resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
     );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, heldContext, power, sheddingPlan, deviceNameById,
+      planDevices, heldContext, power, sheddingPlan,
     );
     planDevices = restoreResult.planDevices;
 

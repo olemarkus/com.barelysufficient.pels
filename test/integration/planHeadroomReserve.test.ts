@@ -89,7 +89,6 @@ const makeBuilder = (params: {
       ?? { action: 'turn_off' },
     getDynamicSoftLimitOverride: () => softLimitKw,
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());

@@ -17,8 +17,6 @@ export type RestoreDeps = {
   temperatureSetpoints: TemperatureSetpointsByDevice;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
-  deviceNameById?: ReadonlyMap<string, string>;
-  logDebug: (...args: unknown[]) => void;
 };
 
 export type RestoreBatchState = {

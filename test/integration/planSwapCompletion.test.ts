@@ -67,7 +67,6 @@ const buildDeps = (lastTimestamp: number) => ({
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   structuredLog,
   log: vi.fn(),
-  logDebug: vi.fn(),
 });
 
 /** The beneficiary: higher priority (10), off, wants 1 kW. */

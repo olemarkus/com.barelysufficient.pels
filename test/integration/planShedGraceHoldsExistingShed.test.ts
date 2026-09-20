@@ -104,7 +104,6 @@ describe('shed grace', () => {
       getDynamicSoftLimitOverride: () => 1.84,
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);

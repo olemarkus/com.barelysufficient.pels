@@ -38,17 +38,6 @@ export type ObservedCurrentStateInput = {
   selectedStepId?: string;
 };
 
-/**
- * The same observation plus the precomputed `currentState` label that a
- * `DevicePlanDevice` already carries. Only `resolveObservedCurrentStateValue`
- * (and its plan-layer callers) reads that cache; every other resolver here takes
- * the bare observation. No `Partial<>` wrapper — every field of the base is
- * already optional, so wrapping it said nothing.
- */
-export type CurrentStateInput = ObservedCurrentStateInput & {
-  currentState?: string;
-};
-
 // Deliberately narrower than `ObservedCurrentStateInput`: the off-step question
 // is answered on the stepped axis alone. Withholding `binaryControl` keeps this
 // BODY from reading it, so a defaulted binary bit cannot mask the step state
@@ -113,20 +102,6 @@ export function resolveObservedSteppedLoadCurrentState(
   const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep) return 'unknown';
   return isSteppedLoadOffStep(profile, selectedStep.id) ? 'off' : 'on';
-}
-
-/**
- * Lookup helper: prefer a precomputed `currentState` string when present (the
- * common case for `DevicePlanDevice` consumers, which carry the projection
- * already), else compute from the underlying observation inputs.
- */
-export function resolveObservedCurrentStateValue(device: CurrentStateInput): string {
-  if (typeof device.currentState === 'string') return device.currentState;
-  // Every real device formerly carried a concrete `currentOn` boolean (a
-  // non-binary device defaulted to the fabricated `true`), so this always
-  // resolved through `resolveObservedCurrentState`. With `binaryControl` absent
-  // for non-binary devices, the fabricated default is applied inside the helper.
-  return resolveObservedCurrentState(device);
 }
 
 export function resolveObservedCurrentState(

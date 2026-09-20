@@ -100,7 +100,6 @@ const buildBuilder = (
   getShedBehavior: () => ({ action: 'turn_off' }),
   getDynamicSoftLimitOverride: () => 50,
   log: vi.fn(),
-  logDebug: vi.fn(),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   // Default: no smart tasks, so the policy acts on its own. The cases that need
   // one override this with `decorateWithDecision`, which drives real admission.

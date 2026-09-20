@@ -158,7 +158,6 @@ describe('PlanBuilder budget exemption handling', () => {
       getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => dynamicSoftLimitKw,
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
@@ -237,7 +236,6 @@ describe('PlanBuilder budget exemption handling', () => {
       getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
@@ -291,7 +289,6 @@ describe('PlanBuilder budget exemption handling', () => {
       getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());

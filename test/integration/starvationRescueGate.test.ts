@@ -224,7 +224,6 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
     getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());

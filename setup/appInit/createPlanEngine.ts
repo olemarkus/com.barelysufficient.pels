@@ -84,7 +84,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     resolveTemperatureSetpoints: bindTemperatureSetpoints(deps),
     pendingBinaryCommandStore,
     log: deps.log,
-    logDebug: deps.logDebug,
   };
   const builder = new PlanBuilder(builderDeps, state);
   const executorDeps: PlanExecutorDeps = {
@@ -233,7 +232,6 @@ export function createPlanEngineComposition(
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     log: (...args: unknown[]) => ctx.log(...args),
-    logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
   };
   return composePlanEngine(deps);

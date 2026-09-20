@@ -95,7 +95,7 @@ export type BoostResolveInput = SteppedLoadIdentity & {
 // on this seam's discriminant, so the field is gone from `SteppedLoadIdentity`
 // entirely rather than sitting there unread. Shared by the boost resolvers and
 // the shed-intent resolver below — and matching every other site
-// (`planSteppedLoad`, `planCurrentState`, `planTypes`, `observedState`) — so the
+// (`planSteppedLoad`, `planTypes`, `observedState`) — so the
 // planner's profile-only stepped check and this one cannot drift.
 const hasSteppedLoadProfile = (
   device: { steppedLoadProfile?: SteppedLoadProfile },

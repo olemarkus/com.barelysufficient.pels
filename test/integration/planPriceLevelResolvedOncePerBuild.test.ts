@@ -127,7 +127,6 @@ const buildBuilder = (params: {
     getDynamicSoftLimitOverride: () => 10,
     deviceDiagnostics: params.deviceDiagnostics,
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());

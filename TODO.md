@@ -1331,39 +1331,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       unwritten / malformed / throwing / genuinely-empty as four distinct outcomes. Source:
       adversarial review of the device lane, 2026-09-01. [P2]
 
-- [ ] **Four of `ResolvedCurrentState`'s five fields have no production reader — decide whether
-      that surface is intended or spent.** `lib/plan/planCurrentState.ts` builds a five-field
-      projection (`currentState`, `isOn`, `source`, `reasonCode`, `pendingInfluence`), but the only
-      production path into it is `resolveEffectiveCurrentOn(device).isOn`, called from
-      `lib/executor/executableSteppedLoadProjection.ts`. `resolveEffectiveCurrentState` itself has
-      no production caller, and every `reasonCode` literal it can emit
-      (`observed_target_only`, `observed_step_active`, `observed_step_off`, `observed_binary_on`,
-      `observed_binary_off`, `observed_binary_off_not_applicable`) appears only in this file and in
-      `test/unit/planCurrentState.test.ts`; three of them
-      (`observed_binary_on_not_applicable`, `observed_state_unknown`,
-      `observed_state_unrecognized`) appear only in the producer, not even in the spec. Corollary:
-      the `currentState === 'unknown' ? 'observed_state_unknown' : 'observed_state_unrecognized'`
-      arm cannot be reached from the production producer at all, because
-      `setup/appInit/toPlanDevice.ts` writes `resolveObservedCurrentState`'s output into the cache
-      and that function is three-valued — it never returns `'unknown'` or anything unrecognised.
-      This is NOT filed as a deletion. "Never armed in production" is not by itself grounds for
-      removal in this repo, and a reason-code vocabulary is exactly the kind of surface that is
-      built ahead of the UI that will read it. The question to answer is which of these it is:
-      (a) an intended contract awaiting a consumer — in which case say so in the module docblock,
-      name the consumer it is waiting for, and keep the spec as its executable specification; or
-      (b) a projection that outlived the reason-rendering path it was built for — in which case the
-      unread fields and their literals go, and `resolveEffectiveCurrentOn` collapses to the boolean
-      the executor actually asks for.
-      How to tell: check whether any planned or in-flight surface consumes a device-level reason
-      code (the plan-preview widget and the device-card reason line are the candidates —
-      `packages/shared-domain/src/planCardReasonLine.ts` renders reasons today WITHOUT this
-      projection, which is evidence for (b)); and check git history for whether a consumer was
-      removed rather than never written. Done when the docblock states the answer and the code
-      matches it — either the waiting-for clause is documented, or the unread fields are gone.
-      P2 — no misbehaviour; it is a maintenance cost and a trap, since the dead `'unknown'` arm
-      reads as live handling for a producer state that cannot occur. Source: pels-layering-guardian
-      on PR #2295, 2026-09-03. [P2]
-
 - [ ] **The observed-state label is a closed set returned as `string`, so consumers hedge against
       their own producer.** `lib/observer/observedState.ts` states the set in prose
       (`on` / `off` / `unknown` / `not_applicable`) while every resolver's signature says `string`,
@@ -1959,13 +1926,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
       forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
       declarations for two terminal readers.
-      Two dead logger fields on that same path are left because removing them is not a logging
-      change: `RestoreDeps.logDebug` (`lib/plan/restore/types.ts`) is REQUIRED and has no reader
-      under `lib/plan/restore/**` — its only mention is the forwarding literal in
-      `planBuilderMaterialization.ts` that builds the deps — and `RestoreDeps.deviceNameById` has
-      none either. Because `logDebug` is required, roughly 120 test deps literals carry a
-      `logDebug: vi.fn()` that feeds nothing. Delete both fields and the forwarding literal, then
-      the literals; done when `grep -rn 'logDebug' lib/plan/restore` returns nothing.
       Fix, one cluster per PR, leaf-first — `lib/plan/shedding/**`,
       the `lib/plan` builder plus `planTargetControl.ts`, `lib/device/transport/**`,
       `lib/objectives/**`, then `lib/dailyBudget` + `lib/diagnostics` + `lib/observer`, and last

@@ -88,7 +88,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       ),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
@@ -164,7 +163,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -245,7 +243,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -323,7 +320,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       getDynamicSoftLimitOverride: () => null,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
@@ -394,7 +390,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
@@ -460,7 +455,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
@@ -517,7 +511,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -584,7 +577,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -656,7 +648,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -734,7 +725,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -810,7 +800,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -894,7 +883,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -976,7 +964,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -1081,7 +1068,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -1191,7 +1177,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -1300,7 +1285,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
@@ -1388,7 +1372,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>({ info: vi.fn() }),
         log: vi.fn(),
-        logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
         decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);

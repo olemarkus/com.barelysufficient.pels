@@ -290,7 +290,6 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());

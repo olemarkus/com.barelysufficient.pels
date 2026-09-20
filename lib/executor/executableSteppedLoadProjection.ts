@@ -6,12 +6,13 @@ import {
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import type { DevicePlan } from '../plan/planTypes';
 import {
+  isPlanDeviceObservedOff,
+  isPlanDeviceObservedOn,
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadTransition,
 } from '../plan/planSteppedLoad';
 import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
-import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
 import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,
@@ -38,11 +39,17 @@ import {
 
 type PlanDevice = DevicePlan['devices'][number];
 
+const resolvePlanDeviceObservedOn = (device: PlanDevice): boolean | null => {
+  if (isPlanDeviceObservedOn(device)) return true;
+  if (isPlanDeviceObservedOff(device)) return false;
+  return null;
+};
+
 export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   if (shouldHoldCurrentState(dev)) return undefined;
   const planningCurrent = {
-    on: resolveEffectiveCurrentOn(dev),
+    on: resolvePlanDeviceObservedOn(dev),
     stepId: dev.selectedStepId,
     stepForShed: resolveCurrentStepForShed(dev),
     stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
@@ -112,7 +119,7 @@ export function resolveSteppedLoadCurrentFallback(
 ): ExecutableSteppedLoadCurrentFallback | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   return {
-    on: resolveEffectiveCurrentOn(dev),
+    on: resolvePlanDeviceObservedOn(dev),
     stepId: dev.selectedStepId,
   };
 }

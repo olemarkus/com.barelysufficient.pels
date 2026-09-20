@@ -162,7 +162,6 @@ const buildBuilder = (params: {
   // non-exempt device was admitted out of the reservation first).
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
-  logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
   getDynamicSoftLimitOverride: () => null,
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,

@@ -1,11 +1,9 @@
 const {
-  capturedPlanBuilderDeps,
   capturedPlanExecutorDeps,
   capturedEmitterDeps,
   capturedPriceCoordinatorDeps,
   capturedFlowCardDeps,
 } = vi.hoisted(() => ({
-  capturedPlanBuilderDeps: { current: null as null | Record<string, unknown> },
   capturedPlanExecutorDeps: { current: null as null | Record<string, unknown> },
   capturedEmitterDeps: { current: null as null | Record<string, unknown> },
   capturedPriceCoordinatorDeps: { current: null as null | Record<string, unknown> },
@@ -13,11 +11,7 @@ const {
 }));
 
 vi.mock('../../lib/plan/planBuilder', () => ({
-  PlanBuilder: class MockPlanBuilder {
-    constructor(deps: Record<string, unknown>) {
-      capturedPlanBuilderDeps.current = deps;
-    }
-  },
+  PlanBuilder: class MockPlanBuilder {},
 }));
 
 vi.mock('../../lib/executor/planExecutor', () => ({
@@ -95,25 +89,6 @@ describe('app init plan service wiring', () => {
     expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false })).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
-  });
-
-  it('routes plan engine debug logging through the fixed plan topic', () => {
-    const logDebug = vi.fn();
-    const engineCtx = createAppContextMock({
-      deviceManager: {
-        requestBinaryControl: vi.fn(async () => undefined),
-        requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
-        resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
-        requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
-      } as unknown as AppContext['deviceManager'],
-      logDebug,
-    });
-    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false, () => false), { capacityGuard: engineCtx.capacityGuard, isActuationFenced: () => false });
-
-    expect(engine).toBeDefined();
-    (capturedPlanBuilderDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
-
-    expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
 
   it('fences writes on this home\'s own fence, and on nothing else', async () => {

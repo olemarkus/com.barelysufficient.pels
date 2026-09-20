@@ -230,7 +230,6 @@ const buildBuilder = (
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
-    logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
     getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
@@ -376,7 +375,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
@@ -638,7 +636,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
-      logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
       getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());

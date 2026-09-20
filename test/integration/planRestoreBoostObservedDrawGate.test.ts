@@ -89,7 +89,6 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
-        logDebug: vi.fn(),
       },
     });
   };

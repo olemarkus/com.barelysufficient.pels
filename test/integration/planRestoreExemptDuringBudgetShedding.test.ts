@@ -95,7 +95,6 @@ const runLane = (params: {
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
-      logDebug: vi.fn(),
     },
   });
 };
@@ -364,7 +363,6 @@ const buildBuilder = (params: {
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
-  logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
   getDynamicSoftLimitOverride: () => null,
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,

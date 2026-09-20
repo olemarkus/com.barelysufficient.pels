@@ -105,6 +105,5 @@ export type PlanEngineWiring = {
     stepCommandPending: boolean;
   };
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
 };
