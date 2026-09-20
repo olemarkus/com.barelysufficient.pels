@@ -16,6 +16,7 @@ import {
   writeFreshSetting,
 } from './settingsWrite.ts';
 import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
+import { applyManagedOptInLimit } from './managedOptInLimit.ts';
 
 const runSerializedManagedWrite = createSerializedAsyncRunner();
 
@@ -103,6 +104,13 @@ export function initDeviceDetailManagedControlHandlers(
     });
     if (saved && nextChecked && isCurrentManagedControlIntent(deviceId, intentGeneration)) {
       await applyManagedOptInControlMode(deviceId, phaseRead.presets, refreshOpenDeviceDetail);
+      // The write above awaited: an owner who has turned Managed back off since
+      // must not get Limit switched on for a device they just let go of.
+      if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;
+      await applyManagedOptInLimit(deviceId, () => {
+        refreshSharedDeviceViews();
+        refreshCurrentDeviceControlStates();
+      }, () => isCurrentManagedControlIntent(deviceId, intentGeneration));
     }
   });
 }

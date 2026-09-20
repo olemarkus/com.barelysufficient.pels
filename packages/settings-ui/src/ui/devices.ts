@@ -43,6 +43,7 @@ import {
   applyChargerPhasePresetsRead,
   ensureChargerPhasePresetsRead,
 } from './chargerPhasePresets.ts';
+import { applyManagedOptInLimit } from './deviceDetail/managedOptInLimit.ts';
 import {
   beginManagedControlIntent,
   isCurrentManagedControlIntent,
@@ -176,6 +177,13 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
       phaseRead.presets,
       () => renderDevices(state.latestDevices),
     );
+    // The write above awaited: an owner who has turned Managed back off since
+    // must not get Limit switched on for a device they just let go of.
+    if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;
+    await applyManagedOptInLimit(deviceId, () => {
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+    }, () => isCurrentManagedControlIntent(deviceId, intentGeneration));
   }
 });
 

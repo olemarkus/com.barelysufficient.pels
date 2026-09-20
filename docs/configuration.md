@@ -99,7 +99,7 @@ Top-level controls:
 
 | Control | What it means |
 | --- | --- |
-| **Managed** | PELS includes this device in modes and plans. Turn this on before using Limit or Price. |
+| **Managed** | PELS includes this device in modes and plans. Turning it on also turns on **Limit**, when the device has a power reading; turn Limit off again if PELS should plan around the device without lowering it. |
 | **Limit** | PELS may lower or turn off this device to stay under the hard cap. |
 | **Price** | PELS adjusts the temperature target around electricity prices. |
 

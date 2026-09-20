@@ -117,7 +117,7 @@
             </span>
             <div>
               <strong>Managed</strong>
-              <p>PELS includes this device in modes and plans. Turn this on before using Limit or Price.</p>
+              <p>PELS includes this device in modes and plans. Turning it on also turns on Limit, when the device has a power reading.</p>
             </div>
           </li>
           <li class="device-control-legend__item">
@@ -137,7 +137,7 @@
             </span>
             <div>
               <strong>Price</strong>
-              <p>PELS adjusts the temperature target around electricity prices: higher in cheap hours, lower in expensive hours. Works with temperature devices only.</p>
+              <p>PELS adjusts the temperature target around electricity prices: higher in cheap hours, lower in expensive hours. Works with managed temperature devices only.</p>
             </div>
           </li>
         </ul>
@@ -181,7 +181,7 @@
           <small class="field__hint">Drag to reorder — the top device keeps running longest. Changes save automatically.</small>
         </div>
         <ul id="priority-list" class="device-list tight-list"></ul>
-        <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
+        <p id="priority-empty" class="muted" hidden>No managed devices. Turn on Managed for a device under Devices to set its priority here.</p>
       </form>
       <md-dialog id="mode-delete-dialog">
         <div slot="headline">Delete mode?</div>

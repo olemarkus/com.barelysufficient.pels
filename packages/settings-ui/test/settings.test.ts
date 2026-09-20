@@ -1268,14 +1268,17 @@ describe('settings script', () => {
     const managedCalls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
     expect(managedCalls[managedCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
 
+    // Turning Managed on turns Limit on with it: no second tap.
+    const controllableWrites = () => setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+    await waitFor(() => controllableWrites().length > 0, 1500);
+    expect(controllableWrites().at(-1)?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
+
+    // The toggle is the opt-out, for a device PELS should plan around but not lower.
     await waitFor(() => getToggles().controllable.getAttribute('aria-disabled') !== 'true');
+    const writesBeforeOptOut = controllableWrites().length;
     getToggles().controllable.click();
-    await waitFor(() => {
-      const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
-      return calls.length > 0;
-    }, 1500);
-    const controllableCalls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
-    expect(controllableCalls[controllableCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
+    await waitFor(() => controllableWrites().length > writesBeforeOptOut, 1500);
+    expect(controllableWrites().at(-1)?.[1]).toEqual(expect.objectContaining({ 'socket-1': false }));
   });
 
   it('allows toggling managed and capacity control for an off socket with Homey energy metadata', async () => {
@@ -1319,15 +1322,17 @@ describe('settings script', () => {
       const calls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
       return calls.length > 0;
     }, 1500);
-    await waitFor(() => getToggles().controllable.getAttribute('aria-disabled') !== 'true');
+    // Turning Managed on turns Limit on with it: no second tap.
+    const controllableWrites = () => setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+    await waitFor(() => controllableWrites().length > 0, 1500);
+    expect(controllableWrites().at(-1)?.[1]).toEqual(expect.objectContaining({ 'socket-2': true }));
 
+    // The toggle is the opt-out, for a device PELS should plan around but not lower.
+    await waitFor(() => getToggles().controllable.getAttribute('aria-disabled') !== 'true');
+    const writesBeforeOptOut = controllableWrites().length;
     getToggles().controllable.click();
-    await waitFor(() => {
-      const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
-      return calls.length > 0;
-    }, 1500);
-    const controllableCalls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
-    expect(controllableCalls[controllableCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-2': true }));
+    await waitFor(() => controllableWrites().length > writesBeforeOptOut, 1500);
+    expect(controllableWrites().at(-1)?.[1]).toEqual(expect.objectContaining({ 'socket-2': false }));
   });
 
   it('normalizes loaded priorities to a strict, deterministic order', async () => {

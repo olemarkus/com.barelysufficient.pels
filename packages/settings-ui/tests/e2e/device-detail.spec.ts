@@ -88,7 +88,22 @@ test.describe('Device detail panel', () => {
     // on/off device row (item: control grammar) — it is stated once in the
     // Devices "Explain" expander.
     await expect(waterHeaterRow).not.toContainText('temperature devices only');
-    await expect(page.locator('#device-control-legend')).toContainText('Works with temperature devices only');
+    await expect(page.locator('#device-control-legend')).toContainText('Works with managed temperature devices only');
+  });
+
+  test('says "turn Managed on first" once in Explain, not under every unmanaged row', async ({ page }) => {
+    // On a new install every row is unmanaged, and two grey lines under each of
+    // them said the same thing. Managed is also what turns Limit on.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { managed_devices: {}, controllable_devices: {} },
+      };
+    });
+    await openDevices(page);
+    const heatPumpRow = page.locator('#devices-panel [data-device-id="dev_heatpump"]').first();
+    await expect(heatPumpRow).toBeVisible();
+    await expect(heatPumpRow).not.toContainText('requires Managed');
+    await expect(page.locator('#device-control-legend')).toContainText('Turning it on also turns on Limit');
   });
 
   test('opens and closes via back button, overlay backdrop, and Escape', async ({ page }) => {

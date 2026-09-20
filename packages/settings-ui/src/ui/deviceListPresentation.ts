@@ -10,7 +10,7 @@ import {
 import { PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL } from '../../../shared-domain/src/planCardGrammar.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import { resolveManagedState, state } from './state.ts';
-import { PRICE_TEMPERATURE_ONLY_REASON, type RowDisabledReasons } from './deviceControlAvailability.ts';
+import { LEGEND_ONLY_REASONS, type RowDisabledReasons } from './deviceControlAvailability.ts';
 
 export type DeviceGroup = {
   key: string;
@@ -75,10 +75,11 @@ export const appendRedesignDisabledReasons = (
   reasons: RowDisabledReasons,
 ) => {
   const uniqueReasons = Array.from(new Set(Object.values(reasons).filter((reason): reason is string => (
-    // The temperature-only price caveat is a static capability fact stated once
-    // in the "Explain" expander, so it is dropped from the per-row list to avoid
-    // repeating the same sentence under every on/off device.
-    Boolean(reason) && reason !== PRICE_TEMPERATURE_ONLY_REASON
+    // A reason true of a whole class of rows (on/off devices have no price
+    // response; an unmanaged device has neither Limit nor Price) is stated once
+    // in the "Explain" expander, so it is dropped from the per-row list rather
+    // than repeated under every such device. What remains is about THIS device.
+    typeof reason === 'string' && reason !== '' && !LEGEND_ONLY_REASONS.has(reason)
   ))));
   if (!uniqueReasons.length) return;
 

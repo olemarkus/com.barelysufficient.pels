@@ -638,7 +638,9 @@ describe('modes list meter-area filtering', () => {
     renderPriorities(THREE_DEVICES);
 
     expect(empty.hidden).toBe(false);
-    expect(empty.textContent).toBe('No controllable devices found. Refresh devices first.');
+    expect(empty.textContent).toBe(
+      'No managed devices. Turn on Managed for a device under Devices to set its priority here.',
+    );
   });
 
   it('clears an earlier catalog when refreshing the same area fails', async () => {

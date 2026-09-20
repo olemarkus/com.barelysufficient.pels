@@ -3,7 +3,21 @@ export type RowSwitchTitles = { managed: string; limit: string; price: string };
 // This is a static capability fact (the device has no temperature target), not
 // an actionable per-device state the owner can toggle. It is stated once in the
 // Devices "Explain" expander rather than repeated under every on/off device row.
-export const PRICE_TEMPERATURE_ONLY_REASON = 'Price works with temperature devices only.';
+const PRICE_TEMPERATURE_ONLY_REASON = 'Price works with temperature devices only.';
+
+// "Turn Managed on first" is the same sentence for every unmanaged device, and
+// on a new install that is every row: two grey lines under each of them. It is
+// stated once in the Devices "Explain" expander and stays on the disabled
+// toggle's own title; turning Managed on is also what turns Limit on.
+const LIMIT_NEEDS_MANAGED_REASON = 'Limit requires Managed to be on first.';
+const PRICE_NEEDS_MANAGED_REASON = 'Price requires Managed to be on first.';
+
+/** Reasons true of whole classes of rows, said once in the legend rather than per row. */
+export const LEGEND_ONLY_REASONS: ReadonlySet<string> = new Set([
+  PRICE_TEMPERATURE_ONLY_REASON,
+  LIMIT_NEEDS_MANAGED_REASON,
+  PRICE_NEEDS_MANAGED_REASON,
+]);
 
 /**
  * The one way an owner makes a device limitable, named once so every surface
@@ -58,7 +72,7 @@ export const getLimitDisabledReason = (params: {
   const { isLoadingComplete, supportsPower, isManaged } = params;
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
   if (!supportsPower) return `Limit needs a power reading: ${POWER_READING_REMEDY}.`;
-  if (!isManaged) return 'Limit requires Managed to be on first.';
+  if (!isManaged) return LIMIT_NEEDS_MANAGED_REASON;
   return null;
 };
 
@@ -70,7 +84,7 @@ export const getPriceDisabledReason = (params: {
   const { isLoadingComplete, supportsTemperature, isManaged } = params;
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
   if (!supportsTemperature) return PRICE_TEMPERATURE_ONLY_REASON;
-  if (!isManaged) return 'Price requires Managed to be on first.';
+  if (!isManaged) return PRICE_NEEDS_MANAGED_REASON;
   return null;
 };
 

@@ -163,6 +163,44 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#dry-run-banner')).toBeVisible();
   });
 
+  test('turning Managed on turns Limit on with it, even over a stored off', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          managed_devices: {},
+          // The heat pump has no entry. The water heater carries a stored `false`,
+          // which is what the runtime leaves behind when a device loses its
+          // power reading: it is not reliably an owner's opt-out.
+          controllable_devices: { dev_waterheater: false },
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
+
+    const readControllable = () => page.evaluate(() => new Promise<Record<string, boolean>>((resolve) => {
+      (window as unknown as {
+        Homey: { get: (key: string, cb: (error: Error | null, value?: unknown) => void) => void };
+      }).Homey.get('controllable_devices', (_error, value) => resolve((value ?? {}) as Record<string, boolean>));
+    }));
+    const managedToggle = (deviceId: string) => page.locator(
+      `.pels-device-card__row[data-device-id="${deviceId}"] md-icon-button[data-aria-label="Managed by PELS"]`,
+    );
+
+    await managedToggle('dev_heatpump').click();
+    await expect.poll(async () => (await readControllable()).dev_heatpump).toBe(true);
+
+    await managedToggle('dev_waterheater').click();
+    await expect.poll(async () => (await readControllable()).dev_waterheater).toBe(true);
+
+    // The Limit toggle in the same row is the opt-out, and it sticks.
+    await page.locator(
+      '.pels-device-card__row[data-device-id="dev_heatpump"] md-icon-button[data-aria-label^="Power-limit control"]',
+    ).click();
+    await expect.poll(async () => (await readControllable()).dev_heatpump).toBe(false);
+  });
+
   test('overview empty state links to the Devices settings page', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
