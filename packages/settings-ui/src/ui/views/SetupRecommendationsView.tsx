@@ -13,6 +13,7 @@ export type SetupRecommendationsViewProps = {
   setupPath: SetupPath | null;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
+  busyRecommendationId: string | null;
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
   onRestore: (recommendation: SetupRecommendation) => void;
@@ -23,6 +24,7 @@ type RecommendationCardProps = {
   recommendation: SetupRecommendation;
   dismissed: boolean;
   dismissalStatus: SetupRecommendationsViewProps['dismissalStatus'];
+  busyRecommendationId: string | null;
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
   onRestore: (recommendation: SetupRecommendation) => void;
@@ -37,6 +39,8 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
 
 const RecommendationCard = (props: RecommendationCardProps) => {
   const { recommendation, dismissed, onAction, onDismiss, onRestore } = props;
+  const busy = props.busyRecommendationId !== null
+    && recommendation.target.kind === 'flow-conflict-check';
   return (
     <article class="pels-surface-card setup-recommendation-card" data-tone={dismissed ? 'muted' : undefined}>
       <div class="setup-recommendation-card__header">
@@ -48,12 +52,17 @@ const RecommendationCard = (props: RecommendationCardProps) => {
       <p class="pels-card-supporting">{recommendation.body}</p>
       <div class="setup-recommendation-card__actions">
         {!dismissed && (
-          <MdFilledTonalButton type="button" onClick={() => onAction(recommendation)}>
-            {recommendation.actionLabel}
+          <MdFilledTonalButton
+            type="button"
+            disabled={busy || undefined}
+            onClick={() => onAction(recommendation)}
+          >
+            {busy ? 'Checking…' : recommendation.actionLabel}
           </MdFilledTonalButton>
         )}
         {props.dismissalStatus === 'available' && <MdTextButton
           type="button"
+          disabled={busy || undefined}
           onClick={() => dismissed ? onRestore(recommendation) : onDismiss(recommendation)}
         >
           {dismissed ? 'Show again' : 'Dismiss'}
@@ -88,6 +97,7 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
             recommendation={recommendation}
             dismissed={false}
             dismissalStatus={props.dismissalStatus}
+            busyRecommendationId={props.busyRecommendationId}
             onAction={props.onAction}
             onDismiss={props.onDismiss}
             onRestore={props.onRestore}
@@ -111,6 +121,7 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
               recommendation={recommendation}
               dismissed
               dismissalStatus={props.dismissalStatus}
+              busyRecommendationId={props.busyRecommendationId}
               onAction={props.onAction}
               onDismiss={props.onDismiss}
               onRestore={props.onRestore}

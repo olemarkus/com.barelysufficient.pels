@@ -1,4 +1,9 @@
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
+import {
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
+} from '../../contracts/src/settingsUiApi.ts';
 
 const OTHER_MODULES_SETTING = 'price_optimization_settings';
 const OTHER_MODULES_API_PATH = '/ui_hub_market';
@@ -53,6 +58,7 @@ const installSurfaces = () => {
     <div id="setup-recommendations-banner-root"></div>
     <div id="setup-recommendations-root"></div>
     <span id="settings-nav-chip-recommendations"></span>
+    <div id="toast"></div>
   `;
 };
 
@@ -115,6 +121,222 @@ describe('recommendation loading', () => {
       .toContain('Use built-in device control for Connected 300');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Some recommendation checks couldn’t be refreshed right now');
+  });
+
+  it('rechecks a Flow conflict immediately and removes a cleared recommendation', async () => {
+    const conflictedDevice = device({
+      available: true,
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' },
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: true,
+        activationRequired: false, activationEnabled: false,
+      },
+    });
+    const recommendations = await loadSubject([conflictedDevice]);
+    getSetting.mockResolvedValue({});
+    callApi.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_RECOMMENDATION_CARS_PATH) return resolvedCars();
+      if (path === SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH) {
+        return {
+          devices: [{
+            id: conflictedDevice.id,
+            controlAdapter: { ...conflictedDevice.controlAdapter!, activationEnabled: true },
+          }],
+        };
+      }
+      return {};
+    });
+
+    await recommendations.loadRecommendationData();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      expect(surface?.textContent).toContain('Use built-in device control for Connected 300');
+      const checkAgain = [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .find((button) => button.textContent?.trim() === 'Check again');
+
+      checkAgain?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(surface?.textContent).not.toContain('Remove conflicting Flow control for Connected 300');
+      });
+      expect(callApi).toHaveBeenCalledWith('POST', SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH, {});
+      expect(surface?.textContent).toContain('No setup suggestions right now');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
+  it('disables every Flow-conflict action while the shared refresh is in flight', async () => {
+    const flowConflict = {
+      conflictingCapabilities: ['setDynamicChargerCurrent'],
+      flowName: 'Elbillader',
+    };
+    const controlAdapter = {
+      kind: 'capability_adapter' as const,
+      activationAvailable: true,
+      activationRequired: false,
+      activationEnabled: true,
+    };
+    const firstDevice = device({ available: true, flowConflict, controlAdapter });
+    const secondDevice = device({
+      id: 'device-2',
+      name: 'Garage charger',
+      available: true,
+      flowConflict,
+      controlAdapter,
+    });
+    const unrelatedDevice = device({
+      id: 'device-3',
+      name: 'Heat pump',
+      available: true,
+      controlAdapter: { ...controlAdapter, activationEnabled: false },
+    });
+    const recommendations = await loadSubject([firstDevice, secondDevice, unrelatedDevice]);
+    getSetting.mockResolvedValue({});
+    let releaseRefresh: () => void = () => {};
+    const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    let refreshAttempts = 0;
+    callApi.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_RECOMMENDATION_CARS_PATH) return resolvedCars();
+      if (path === SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH) {
+        refreshAttempts += 1;
+        await refreshGate;
+        return {
+          devices: [firstDevice, secondDevice].map((entry) => ({
+            id: entry.id,
+            flowConflict: entry.flowConflict,
+            controlAdapter: entry.controlAdapter,
+          })),
+        };
+      }
+      return {};
+    });
+
+    await recommendations.loadRecommendationData();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      const checkButtons = () => [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .filter((button) => ['Check again', 'Checking…'].includes(button.textContent?.trim() ?? ''));
+
+      expect(checkButtons()).toHaveLength(2);
+      checkButtons()[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(checkButtons()).toHaveLength(2);
+        expect(checkButtons().every((button) => button.disabled)).toBe(true);
+        const unrelatedAction = [...surface!.querySelectorAll('md-filled-tonal-button')]
+          .find((button) => button.textContent?.trim() === 'Review device');
+        expect(unrelatedAction?.disabled).toBe(false);
+      });
+
+      checkButtons()[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(refreshAttempts).toBe(1);
+
+      releaseRefresh();
+      await vi.waitFor(() => {
+        expect(checkButtons().every((button) => !button.disabled)).toBe(true);
+      });
+    } finally {
+      releaseRefresh();
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
+  it('keeps the last good conflict after a malformed refresh and allows retry', async () => {
+    const conflictedDevice = device({
+      available: true,
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' },
+      controlAdapter: {
+        kind: 'capability_adapter', activationAvailable: true,
+        activationRequired: false, activationEnabled: true,
+      },
+    });
+    const recommendations = await loadSubject([conflictedDevice]);
+    const { primeApiCache } = await import('../src/ui/homey.ts');
+    primeApiCache(SETTINGS_UI_DEVICES_PATH, {
+      devices: [conflictedDevice],
+      chargerPhasePresets: { state: 'resolved', presets: {} },
+      hasManagedSolarDevice: false,
+      hasExhibitedExport: false,
+      surplusPoolReachable: false,
+    });
+    getSetting.mockResolvedValue({});
+    let refreshAttempts = 0;
+    callApi.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_RECOMMENDATION_CARS_PATH) return resolvedCars();
+      if (path === SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH) {
+        refreshAttempts += 1;
+        return {
+          devices: refreshAttempts === 1
+            ? [{ available: true }]
+            : [{
+              id: conflictedDevice.id,
+              flowConflict: refreshAttempts === 2
+                ? { conflictingCapabilities: 'malformed' }
+                : undefined,
+              controlAdapter: refreshAttempts === 3
+                ? { ...conflictedDevice.controlAdapter!, activationEnabled: 'malformed' }
+                : refreshAttempts === 4
+                  ? { ...conflictedDevice.controlAdapter!, activationEnabled: true }
+                  : conflictedDevice.controlAdapter,
+            }],
+        };
+      }
+      return {};
+    });
+
+    await recommendations.loadRecommendationData();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      const clickCheckAgain = () => [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .find((button) => button.textContent?.trim() === 'Check again')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      clickCheckAgain();
+      await vi.waitFor(() => {
+        expect(refreshAttempts).toBe(1);
+        expect(surface?.textContent).toContain('Check again');
+      });
+      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+      const { getTargetDevices } = await import('../src/ui/devices.ts');
+      await expect(getTargetDevices()).resolves.toEqual([conflictedDevice]);
+
+      clickCheckAgain();
+      await vi.waitFor(() => {
+        expect(refreshAttempts).toBe(2);
+        expect(surface?.textContent).toContain('Check again');
+      });
+      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+
+      clickCheckAgain();
+      await vi.waitFor(() => {
+        expect(refreshAttempts).toBe(3);
+        expect(surface?.textContent).toContain('Check again');
+      });
+      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+
+      clickCheckAgain();
+      await vi.waitFor(() => {
+        expect(surface?.textContent).not.toContain('Remove conflicting Flow control for Connected 300');
+      });
+      expect(refreshAttempts).toBe(4);
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
   });
 
   it('retries a cold-start dismissal gap before treating the setting as absent', async () => {

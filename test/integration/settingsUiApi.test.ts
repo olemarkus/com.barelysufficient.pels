@@ -16,6 +16,7 @@ import {
   refreshSettingsUiPrices,
   resetSettingsUiPowerStats,
 } from '../../setup/settingsUiApi';
+import { refreshSettingsUiFlowConflicts } from '../../setup/settingsUiFlowConflictApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
@@ -102,6 +103,7 @@ describe('settingsUiApi', () => {
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
       latestDevices = [{ id: 'dev-2', name: 'Pump' }];
     });
+    const refreshFlowConflictsForUi = vi.fn().mockResolvedValue({ state: 'resolved' });
     const refreshSpotPrices = vi.fn().mockResolvedValue(undefined);
     const refreshGridTariffData = vi.fn().mockResolvedValue(undefined);
     const updateDailyBudgetAndRecordCap = vi.fn();
@@ -221,6 +223,7 @@ describe('settingsUiApi', () => {
       log,
       error,
       refreshTargetDevicesSnapshot,
+      refreshFlowConflictsForUi,
       priceCoordinator: {
         refreshSpotPrices,
         refreshGridTariffData,
@@ -265,6 +268,7 @@ describe('settingsUiApi', () => {
       log,
       error,
       refreshTargetDevicesSnapshot,
+      refreshFlowConflictsForUi,
       refreshSpotPrices,
       refreshGridTariffData,
       replacePowerTrackerForUi,
@@ -391,6 +395,46 @@ describe('settingsUiApi', () => {
     // `priority` is resolved over the payload's own device set — see
     // `withResolvedPriorities`.
     expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1 }]);
+  });
+
+  it('rechecks Flow conflicts and returns only the current conflict-gated control facts', async () => {
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'dev-1',
+        name: 'Charger',
+        flowConflict: { conflictingCapabilities: ['target_charger_current'], flowName: 'Elbillader' },
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationRequired: false,
+          activationEnabled: false,
+        },
+      }],
+    });
+
+    const result = await refreshSettingsUiFlowConflicts({ homey: homey as never });
+
+    expect(homey.refreshFlowConflictsForUi).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      devices: [{
+        id: 'dev-1',
+        flowConflict: { conflictingCapabilities: ['target_charger_current'], flowName: 'Elbillader' },
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationRequired: false,
+          activationEnabled: false,
+        },
+      }],
+    });
+  });
+
+  it('does not present the previous device model when the Flow check is unavailable', async () => {
+    const homey = createHomey();
+    homey.refreshFlowConflictsForUi.mockResolvedValueOnce({ state: 'unavailable' });
+
+    await expect(refreshSettingsUiFlowConflicts({ homey: homey as never }))
+      .rejects.toThrow('Homey Flows could not be checked right now');
   });
 
   it('returns refreshed prices from the app wrapper', async () => {
@@ -1063,11 +1107,15 @@ describe('settingsUiApi', () => {
   it('throws a PELS_APP_NOT_READY-prefixed error when refresh or reset hits the boot window', async () => {
     const homey = createHomey();
     delete (homey.app as Partial<typeof homey.app>).refreshTargetDevicesSnapshot;
+    delete (homey.app as Partial<typeof homey.app>).refreshFlowConflictsForUi;
     delete (homey.app as Partial<typeof homey.app>).priceCoordinator;
     delete (homey.app as Partial<typeof homey.app>).replacePowerTrackerForUi;
 
     await expect(refreshSettingsUiDevices({ homey: homey as never })).rejects.toThrow(
       /^PELS_APP_NOT_READY: Refresh devices unavailable/,
+    );
+    await expect(refreshSettingsUiFlowConflicts({ homey: homey as never })).rejects.toThrow(
+      /^PELS_APP_NOT_READY: Refresh Flow conflicts unavailable/,
     );
     await expect(refreshSettingsUiPrices({ homey: homey as never })).rejects.toThrow(
       /^PELS_APP_NOT_READY: Refresh prices unavailable/,

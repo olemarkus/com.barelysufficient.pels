@@ -69,6 +69,7 @@ import {
   createHomeRebuildRuntime,
 } from './lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { AppNativeWiring } from './setup/appNativeWiring';
+import { FlowConflictRefreshCoordinator } from './lib/flowApi/flowConflictRefreshCoordinator';
 import {
   AppServiceWiring,
   createPreparedMainReconcileFence,
@@ -466,7 +467,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     timers: this.timers,
     syncHeadroomUsageObservation: (deviceId, kw) => { this.planService.syncHeadroomUsageObservation(deviceId, kw); },
   });
+  private readonly flowConflictRefreshCoordinator = new FlowConflictRefreshCoordinator();
   protected readonly nativeWiring = new AppNativeWiring({
+    flowConflictRefreshCoordinator: this.flowConflictRefreshCoordinator,
     getNativeWiringUninitializing: () => this.nativeWiringUninitializing,
     getAutoNativeWiringDecisions: () => this.autoNativeWiringDecisions,
     setAutoNativeWiringDecisions: (decisions) => { this.autoNativeWiringDecisions = decisions; },

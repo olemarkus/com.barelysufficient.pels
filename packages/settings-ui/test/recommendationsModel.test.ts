@@ -74,8 +74,8 @@ describe('setup recommendations', () => {
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
       title: 'Use built-in device control for Connected 300',
-      actionLabel: 'Review device',
-      target: { kind: 'device', deviceId: 'device-1' },
+      actionLabel: 'Check again',
+      target: { kind: 'flow-conflict-check', deviceId: 'device-1' },
     });
     expect(recommendations[0]?.body).toContain('Limit water heater');
     expect(recommendations[0]?.body).toContain('Your current Flow keeps working');
@@ -101,8 +101,8 @@ describe('setup recommendations', () => {
     expect(recommendations[0]).toMatchObject({
       id: 'flow-conflict:device-1',
       title: 'Remove conflicting Flow control for Connected 300',
-      actionLabel: 'Review conflict',
-      target: { kind: 'device', deviceId: 'device-1' },
+      actionLabel: 'Check again',
+      target: { kind: 'flow-conflict-check', deviceId: 'device-1' },
     });
     expect(recommendations[0]?.body).toContain('Charge at night');
     expect(recommendations[0]?.body).toContain('Disable the Flow');

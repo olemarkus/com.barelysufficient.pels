@@ -11,6 +11,7 @@ import {
 import type { AppContext } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
+import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type {
   SettingsUiPlanDevice,
@@ -61,6 +62,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   refreshTargetDevicesSnapshot?: (
     options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
   ) => Promise<void>;
+  refreshFlowConflictsForUi?: () => Promise<FlowConflictRefreshResult>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
 /** A home's live status, or its absence: nothing published this run, or the app shell is not there. */
@@ -347,6 +349,16 @@ export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']):
   }
   await app.refreshTargetDevicesSnapshot();
   return getLatestDevicesForUiFromApp(homey) ?? [];
+};
+
+export const requestSettingsUiFlowConflictRefreshForApp = (
+  homey: Homey.App['homey'],
+): Promise<FlowConflictRefreshResult> => {
+  const app = getRuntimeApp(homey);
+  if (!app?.refreshFlowConflictsForUi) {
+    throw appNotReadyError('Refresh Flow conflicts');
+  }
+  return app.refreshFlowConflictsForUi();
 };
 
 export const refreshSettingsUiPricesForApp = async (homey: Homey.App['homey']): Promise<void> => {

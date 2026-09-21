@@ -1855,6 +1855,13 @@
       hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
       surplusPoolReachable: settings.ui_devices_surplus_pool_reachable ?? true,
     }),
+    'POST /ui_refresh_flow_conflicts': () => ({
+      devices: (settings.target_devices_snapshot ?? []).map((device) => ({
+        id: device.id,
+        ...(device.flowConflict ? { flowConflict: device.flowConflict } : {}),
+        ...(device.controlAdapter ? { controlAdapter: device.controlAdapter } : {}),
+      })),
+    }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
     'POST /ui_reset_power_stats': () => ({

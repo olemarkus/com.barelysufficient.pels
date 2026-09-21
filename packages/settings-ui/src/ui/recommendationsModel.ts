@@ -10,6 +10,7 @@ export type RecommendationDismissals = Record<string, number>;
 export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
   | { kind: 'devices' }
+  | { kind: 'flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string };
 
@@ -36,6 +37,19 @@ const RECOMMENDATION_VERSION = 1;
 const recommendationId = (kind: string, entityId: string): string => (
   `${kind}:${encodeURIComponent(entityId)}`
 );
+
+const nativeControlRecommendationAction = (
+  deviceId: string,
+  hasConflict: boolean,
+): Pick<SetupRecommendation, 'actionLabel' | 'target'> => {
+  if (hasConflict) {
+    return {
+      actionLabel: 'Check again',
+      target: { kind: 'flow-conflict-check', deviceId },
+    };
+  }
+  return { actionLabel: 'Review device', target: { kind: 'device', deviceId } };
+};
 
 export const normalizeRecommendationDismissals = (value: unknown): RecommendationDismissals => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
@@ -80,8 +94,8 @@ export const resolveNativeControlRecommendations = (
         title: `Remove conflicting Flow control for ${device.name}`,
         body: `Built-in device control is on, but ${flowReference} can still change the same setting. `
           + 'Disable the Flow, or delete its device-control action, so it cannot override PELS.',
-        actionLabel: 'Review conflict',
-        target: { kind: 'device', deviceId: device.id },
+        actionLabel: 'Check again',
+        target: { kind: 'flow-conflict-check', deviceId: device.id },
       }];
     }
     const flowReference = hasConflict && conflict.flowName
@@ -99,8 +113,7 @@ export const resolveNativeControlRecommendations = (
       category: 'recommendation',
       title: `Use built-in device control for ${device.name}`,
       body,
-      actionLabel: 'Review device',
-      target: { kind: 'device', deviceId: device.id },
+      ...nativeControlRecommendationAction(device.id, hasConflict),
     }];
   })
 );

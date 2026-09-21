@@ -1817,11 +1817,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the change would re-learn are the owner's. Done when a profile persist touches one row and
       `meta` names the layout. Found in the store design audit, 2026-09-07. [P2]
 
-- [ ] **Seven setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Six setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Seven files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (35
-      declarations; 21 files / 104 at the guard's introduction). **Two of the seven files will never
+      by `scripts/check-setup-stateless.mjs`. Six files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (33
+      declarations; 21 files / 104 at the guard's introduction). **Two of the six files will never
       move** — `powerSamplePipeline.ts` and `appSnapshotHelpers.ts` are orchestrators whose imports
       close every domain destination. Their STATE can still move, so this entry's done-condition
       stands: `powerSamplePipeline.ts`'s state move is tracked as `` `schedulePlanRebuild` is still
@@ -1843,7 +1843,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `appDeviceSupport.ts` still holds a module-level `Set` and imports
       `lib/plan/planTemperatureDevice`, which `no-device-to-peer-except-power` forbids, so that type
       guard has to be resolved before it can follow. `appNativeWiring.ts` has its own entry,
-      `` `setup/appNativeWiring.ts`'s re-entrancy latch is the last of the three coalescers ``,
+      `` `setup/appNativeWiring.ts` still owns conflict-apply logic above its domains ``,
       while `appSnapshotHelpers.ts` has none — its state move is part of this umbrella and is not
       tracked separately;
       (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
@@ -1884,18 +1884,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       before moving them. Done when the seam takes a named argument, all four callbacks are bound at
       construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
-- [ ] **`setup/appNativeWiring.ts`'s re-entrancy latch is the last of the three coalescers.**
-      `nativeWiringDecisionInFlight` (1 declaration) looks like the single-flight loop the other two
-      now share (`lib/utils/singleFlightLoop.ts`), but its policy is different on purpose: an overlapping
-      `applyNativeWiringAutoDecisions` is DROPPED, not queued, because a periodic re-query has no
-      urgency and a queued re-run would cost a second detection pass plus a possible plan rebuild.
-      Giving `createSingleFlightLoop` a drop mode would be a flag parameter on a concurrency
-      primitive — the wrong trade. The file's real blocker is different anyway: it names
+- [ ] **`setup/appNativeWiring.ts` still owns conflict-apply logic above its domains.**
+      Its re-entrancy latch moved to the domain-owned
+      `lib/flowApi/flowConflictRefreshCoordinator.ts`: overlapping background scans are dropped,
+      while an explicit user check queues a fresh pass after older work and receives a typed
+      `resolved | unavailable` result. That removed the file from the setup-state allowlist without
+      forcing the distinct policies into `lib/utils/singleFlightLoop.ts`. The file's remaining
+      blocker is different: it names
       `SnapshotWarmupGate` and `PlanService` types and imports `setup/flowConflictProbe`, so
       `no-device-to-peer-except-power` bars `lib/device` until those arrive as flat injected
       callbacks. Done when `AppNativeWiring` takes `awaitSnapshotWarmup` and `rebuildPlanFromCache`
       as callbacks, the conflict probe is injected or moved, the component lives in `lib/device`,
-      and its allowlist line is gone. Found 2026-09-01. [P2]
+      and its setup-peer allowlist line is gone. Found 2026-09-01; state moved 2026-09-21. [P2]
 
 - [ ] **`setup/homeMainMeterAuthority.ts` straddles two leaf modules, so neither will take it.**
       Seven declarations — an edge-trigger log latch per warning, the last-resolved meter and

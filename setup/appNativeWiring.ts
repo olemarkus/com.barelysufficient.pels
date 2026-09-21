@@ -5,6 +5,10 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
+import type {
+  FlowConflictRefreshCoordinator,
+  FlowConflictRefreshResult,
+} from '../lib/flowApi/flowConflictRefreshCoordinator';
 
 const NATIVE_WIRING_DETECTION_MAX_ATTEMPTS = 3;
 const NATIVE_WIRING_DETECTION_RETRY_DELAY_MS = 2000;
@@ -37,6 +41,7 @@ function flowConflictKey(conflicts: FlowConflictMap): string {
  * back through the app instance so test spies/replacements intercept them.
  */
 export type AppNativeWiringDeps = {
+  flowConflictRefreshCoordinator: FlowConflictRefreshCoordinator;
   getNativeWiringUninitializing: () => boolean;
   getAutoNativeWiringDecisions: () => Record<string, boolean>;
   setAutoNativeWiringDecisions: (decisions: Record<string, boolean>) => void;
@@ -60,8 +65,6 @@ export type AppNativeWiringDeps = {
 }
 
 export class AppNativeWiring {
-  private nativeWiringDecisionInFlight = false;
-
   constructor(private readonly deps: AppNativeWiringDeps) {}
 
   runNativeWiringDetectionBestEffort(): void {
@@ -138,20 +141,22 @@ export class AppNativeWiring {
     return this.deps.getAutoNativeWiringDecisions()[deviceId] === true;
   }
 
-  // Guarded entry point: startup runs this once and a periodic timer re-runs it
-  // (see startPostStartupBackgroundTasks). The in-flight flag keeps overlapping
-  // runs — startup vs a periodic tick, or two ticks — from racing.
+  // Startup runs this once and a periodic timer re-runs it (see
+  // startPostStartupBackgroundTasks). The flow-domain coordinator drops
+  // overlapping best-effort requests without keeping mutable state in setup.
   async applyNativeWiringAutoDecisions(): Promise<void> {
-    if (this.nativeWiringDecisionInFlight) return;
-    this.nativeWiringDecisionInFlight = true;
-    try {
-      await this.runNativeWiringDecision();
-    } finally {
-      this.nativeWiringDecisionInFlight = false;
-    }
+    await this.deps.flowConflictRefreshCoordinator.requestBackground(
+      () => this.runNativeWiringDecision(),
+    );
   }
 
-  private async runNativeWiringDecision(): Promise<void> {
+  refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
+    return this.deps.flowConflictRefreshCoordinator.requestExplicit(
+      () => this.runNativeWiringDecision(),
+    );
+  }
+
+  private async runNativeWiringDecision(): Promise<FlowConflictRefreshResult> {
     // Wait for the snapshot warm-up gate so detection runs against a populated
     // snapshot rather than the initial empty array — the bootstrap refresh is
     // deferred in production. The gate also releases on its own timeout bound,
@@ -160,7 +165,9 @@ export class AppNativeWiring {
     const detection = await this.detectNativeWiringConflictsWithSnapshotRetry();
     // The read above can resolve after teardown began; never refresh the
     // snapshot or rebuild the plan against a half-torn-down app.
-    if (this.deps.getNativeWiringUninitializing() || detection.status !== 'ok') return;
+    if (this.deps.getNativeWiringUninitializing() || detection.status !== 'ok') {
+      return { state: 'unavailable' };
+    }
 
     const nextDecisions: Record<string, boolean> = {};
     for (const deviceId of detection.autoEnableDeviceIds) {
@@ -176,7 +183,7 @@ export class AppNativeWiring {
       nativeWiringDecisionKey(this.deps.getAutoNativeWiringDecisions()) === nativeWiringDecisionKey(nextDecisions)
       && flowConflictKey(this.deps.getFlowConflictsByDevice()) === flowConflictKey(nextConflicts)
     ) {
-      return;
+      return { state: 'resolved' };
     }
 
     const previousDecisions = this.deps.getAutoNativeWiringDecisions();
@@ -198,5 +205,6 @@ export class AppNativeWiring {
       this.deps.setFlowConflictsByDevice(previousConflicts);
       throw error;
     }
+    return { state: 'resolved' };
   }
 }

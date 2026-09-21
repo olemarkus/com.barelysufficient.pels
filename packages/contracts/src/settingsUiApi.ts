@@ -94,6 +94,7 @@ export type SettingsUiHomeScope =
   | { readonly state: 'resolved'; readonly homeId: string }
   | { readonly state: 'unavailable' };
 export const SETTINGS_UI_REFRESH_DEVICES_PATH = '/ui_refresh_devices';
+export const SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH = '/ui_refresh_flow_conflicts';
 export const SETTINGS_UI_REFRESH_PRICES_PATH = '/ui_refresh_prices';
 export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
 export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
@@ -475,6 +476,21 @@ export type SettingsUiDevicesPayload = {
   // shape, NOT "this home manages nothing" (the two solar flags are then
   // omitted for the same reason).
   homeScope?: SettingsUiHomeScope;
+};
+
+/**
+ * The deliberately narrow result of an explicit Homey Flow conflict scan.
+ * Everything else on `/ui_devices` remains owned by that read model; this
+ * command reports the conflict and native-control facts it refreshed, keyed
+ * by device id.
+ */
+export type SettingsUiFlowConflictRefreshDevice = Pick<
+  SettingsUiDeviceSnapshot,
+  'id' | 'flowConflict' | 'controlAdapter'
+>;
+
+export type SettingsUiFlowConflictRefreshPayload = {
+  devices: SettingsUiFlowConflictRefreshDevice[];
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {

@@ -217,6 +217,10 @@
       "method": "POST",
       "path": "/ui_refresh_devices"
     },
+    "ui_refresh_flow_conflicts": {
+      "method": "POST",
+      "path": "/ui_refresh_flow_conflicts"
+    },
     "ui_refresh_prices": {
       "method": "POST",
       "path": "/ui_refresh_prices"

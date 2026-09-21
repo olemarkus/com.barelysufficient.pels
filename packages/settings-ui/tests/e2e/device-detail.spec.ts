@@ -63,6 +63,59 @@ const readMaterialDisabled = async (page: Page, selector: string): Promise<boole
 );
 
 test.describe('Device detail panel', () => {
+  test('checks a fixed Flow conflict immediately from the warning', async ({ page }) => {
+    await page.addInitScript(() => {
+      const conflicted = {
+        id: 'dev_flow_charger',
+        name: 'Garage charger',
+        available: true,
+        deviceClass: 'evcharger',
+        capabilities: ['onoff'],
+        targets: [],
+        nativeWriteCapabilities: ['setDynamicChargerCurrent'],
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationRequired: false,
+          activationEnabled: false,
+        },
+        flowConflict: {
+          conflictingCapabilities: ['setDynamicChargerCurrent'],
+          flowName: 'Elbillader',
+        },
+      };
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          target_devices_snapshot: [conflicted],
+          managed_devices: { dev_flow_charger: true },
+          controllable_devices: { dev_flow_charger: true },
+          native_ev_wiring_devices: {},
+        },
+        apiHandlers: {
+          'POST /ui_refresh_flow_conflicts': () => ({
+            devices: [{
+              id: conflicted.id,
+              controlAdapter: { ...conflicted.controlAdapter, activationEnabled: true },
+            }],
+          }),
+        },
+      };
+    });
+    await openDeviceDetail(page, 'dev_flow_charger');
+    const notice = page.locator('#device-detail-flow-conflict-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('Elbillader');
+
+    await notice.getByRole('button', { name: 'Check again' }).click();
+
+    await expect(notice).toBeHidden();
+    await expect(page.locator('#toast')).toContainText('No conflicting Flow control found.');
+    await expect(page.locator('#device-detail-native-wiring')).toHaveJSProperty('selected', true);
+    expect(await page.locator('#device-detail-panel').evaluate((panel) => (
+      panel.scrollWidth <= panel.clientWidth
+    ))).toBe(true);
+  });
+
   test('opens only from the explicit device settings button', async ({ page }) => {
     await openDevices(page);
     const overlay = page.locator('#device-detail-overlay');

@@ -9,6 +9,7 @@ const buildDom = () => {
     <div id="device-detail-flow-conflict-notice" hidden>
       <span id="device-detail-flow-conflict-title"></span>
       <small id="device-detail-flow-conflict-body"></small>
+      <md-text-button id="device-detail-flow-conflict-check">Check again</md-text-button>
     </div>
     <div id="device-detail-native-wiring-row" hidden></div>
     <md-switch id="device-detail-native-wiring"></md-switch>

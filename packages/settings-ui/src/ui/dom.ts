@@ -177,6 +177,9 @@ export const deviceDetailNativeWiringNotice = qs('#device-detail-native-wiring-n
 export const deviceDetailFlowConflictNotice = qs('#device-detail-flow-conflict-notice');
 export const deviceDetailFlowConflictTitle = qs('#device-detail-flow-conflict-title');
 export const deviceDetailFlowConflictBody = qs('#device-detail-flow-conflict-body');
+export const deviceDetailFlowConflictCheck = document.querySelector(
+  '#device-detail-flow-conflict-check',
+) as MdButtonElement;
 export const deviceDetailNativeWiringNoticeAction = document.querySelector(
   '#device-detail-native-wiring-notice-action',
 ) as MdButtonElement;

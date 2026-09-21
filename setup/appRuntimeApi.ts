@@ -3,6 +3,7 @@ import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } f
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
 import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type {
@@ -233,6 +234,9 @@ abstract class AppRuntimeApi extends Base {
   }
   protected applyNativeWiringAutoDecisions(): Promise<void> {
     return this.nativeWiring.applyNativeWiringAutoDecisions();
+  }
+  public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
+    return this.nativeWiring.refreshFlowConflictsForUi();
   }
   protected initPriceCoordinator(): Promise<void> { return this.serviceWiring.initPriceCoordinator(); }
   protected initDailyBudgetService(): void { this.serviceWiring.initDailyBudgetService(); }

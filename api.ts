@@ -52,6 +52,7 @@ import {
   previewSettingsUiSmartTask,
   updateSettingsUiSmartTask,
 } from './setup/settingsUiSmartTaskApi';
+import { refreshSettingsUiFlowConflicts } from './setup/settingsUiFlowConflictApi';
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -214,6 +215,9 @@ export = {
   }),
   ui_refresh_devices: withApiLogging('ui_refresh_devices', ({ homey }: ApiContext) => (
     refreshSettingsUiDevices({ homey })
+  )),
+  ui_refresh_flow_conflicts: withApiLogging('ui_refresh_flow_conflicts', ({ homey }: ApiContext) => (
+    refreshSettingsUiFlowConflicts({ homey })
   )),
   ui_refresh_prices: withApiLogging('ui_refresh_prices', ({ homey }: ApiContext) => (
     refreshSettingsUiPrices({ homey })

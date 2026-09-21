@@ -29,6 +29,8 @@ import {
   renderSetupRecommendationsBanner,
   renderSetupRecommendationsView,
 } from './views/SetupRecommendationsView.tsx';
+import { checkFlowConflictNow } from './flowConflictRefresh.ts';
+import { showToast, showToastError } from './toast.ts';
 
 export type RecommendationNavigation = {
   openPanel: (panelId: string) => void;
@@ -65,6 +67,7 @@ let loadGeneration = 0;
 let dismissalRevision = 0;
 let carInventoryGeneration = 0;
 let carInventoryRefresh: Promise<void> | undefined;
+let busyRecommendationId: string | null = null;
 const runSerializedDismissalWrite = createSerializedAsyncRunner();
 const RECOMMENDATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
 
@@ -179,9 +182,25 @@ const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Pro
     : { state: 'unavailable' };
 };
 
-const openRecommendationTarget = (recommendation: SetupRecommendation): void => {
-  if (navigationRead.state !== 'resolved') return;
+const runRecommendationAction = (recommendation: SetupRecommendation): void => {
   const { target } = recommendation;
+  if (target.kind === 'flow-conflict-check') {
+    if (busyRecommendationId !== null) return;
+    busyRecommendationId = recommendation.id;
+    refreshRecommendationSurfaces();
+    void checkFlowConflictNow(target.deviceId)
+      .then((hasConflict) => showToast(
+        hasConflict ? 'PELS still finds Flow control for this device.' : 'No conflicting Flow control found.',
+        hasConflict ? 'warn' : 'ok',
+      ))
+      .catch((error) => showToastError(error, 'Could not check Homey Flows. Try again.'))
+      .finally(() => {
+        busyRecommendationId = null;
+        refreshRecommendationSurfaces();
+      });
+    return;
+  }
+  if (navigationRead.state !== 'resolved') return;
   if (target.kind === 'panel') {
     navigationRead.navigation.openPanel(target.panelId);
     return;
@@ -246,7 +265,8 @@ export const refreshRecommendationSurfaces = (): void => {
       setupPath,
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
-      onAction: openRecommendationTarget,
+      busyRecommendationId,
+      onAction: runRecommendationAction,
       onDismiss: (recommendation) => {
         void runSerializedDismissalWrite(() => writeDismissal(recommendation, true));
       },

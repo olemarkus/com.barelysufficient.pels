@@ -254,6 +254,11 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    conflicts are explained by the separate notice.
 
    *Follow-ups:*
+   - **Shipped:** a user-triggered **Check again** action on the
+     device-detail warning and setup recommendation. It runs the same
+     fail-closed conflict detection immediately, then refreshes the existing
+     device read model so a fixed Flow no longer leaves the warning visible
+     until the 30-minute background re-query.
    - ~~Re-run conflict detection after snapshot refreshes so a Flow added after
      startup is reflected without a restart and a degraded empty-snapshot startup
      recovers automatically.~~ **Shipped** (`0dd6dafe`): periodic conflict

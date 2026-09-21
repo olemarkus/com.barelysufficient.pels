@@ -57,13 +57,23 @@ const refreshHomeBadgesAndRepaint = (): void => {
   });
 };
 
+const hasValidFlowConflict = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const conflict = value as { conflictingCapabilities?: unknown; flowName?: unknown };
+  return Array.isArray(conflict.conflictingCapabilities)
+    && conflict.conflictingCapabilities.every((capability) => typeof capability === 'string')
+    && (conflict.flowName === undefined || typeof conflict.flowName === 'string');
+};
+
 const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListItem => (
   typeof value === 'object'
   && value !== null
   && typeof (value as { available?: unknown }).available === 'boolean'
+  && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)
 );
 
-const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
+export const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
   if (!Array.isArray(value) || !value.every(hasResolvedAvailability)) {
     throw new TypeError('Invalid device list response.');
   }

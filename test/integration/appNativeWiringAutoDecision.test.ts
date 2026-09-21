@@ -49,7 +49,7 @@ describe('applyNativeWiringAutoDecisions', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('skips a concurrent run while one is in flight (no overlapping reads)', async () => {
+  it('drops a concurrent background run while one is in flight', async () => {
     let releaseGet: () => void = () => {};
     const gate = new Promise<void>((resolve) => { releaseGet = resolve; });
     let getCalls = 0;
@@ -60,16 +60,52 @@ describe('applyNativeWiringAutoDecisions', () => {
     const { app } = stubApp([hoiaxCandidate('hoiax-1')]);
 
     const first = app['applyNativeWiringAutoDecisions']();
-    await Promise.resolve(); // let the first run begin its (gated) reads
+    await vi.waitFor(() => { expect(getCalls).toBe(2); });
     const callsDuringFirst = getCalls;
 
-    // A concurrent call while the first is in flight must early-return without
-    // starting its own detection reads.
+    // Background refreshes are best-effort: another periodic request adds no
+    // information and must not queue a second expensive Flow read.
     await app['applyNativeWiringAutoDecisions']();
     expect(getCalls).toBe(callsDuringFirst);
 
     releaseGet();
     await first;
+  });
+
+  it('queues an explicit check behind an older scan and reads the fixed Flow state', async () => {
+    let releaseFirstScan: () => void = () => {};
+    const firstScanGate = new Promise<void>((resolve) => { releaseFirstScan = resolve; });
+    let getCalls = 0;
+    setRestClient({
+      get: async (path) => {
+        const scanIndex = Math.floor(getCalls / 2);
+        getCalls += 1;
+        if (scanIndex === 0) {
+          await firstScanGate;
+          return path === 'manager/flow/flow/' ? {
+            conflicting: {
+              name: 'Old bridge',
+              actions: [{ id: 'homey:device:hoiax-1:max_power_3000' }],
+            },
+          } : {};
+        }
+        return {};
+      },
+      put: vi.fn(),
+    });
+    const { app } = stubApp([hoiaxCandidate('hoiax-1')]);
+
+    const background = app['applyNativeWiringAutoDecisions']();
+    await vi.waitFor(() => { expect(getCalls).toBe(2); });
+    const explicit = app.refreshFlowConflictsForUi();
+    expect(getCalls).toBe(2);
+
+    releaseFirstScan();
+    await background;
+    await expect(explicit).resolves.toEqual({ state: 'resolved' });
+    expect(getCalls).toBe(4);
+    expect(app['flowConflictsByDevice']).toEqual({});
+    expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });
   });
 
   it('drops the apply when uninit begins while the flow read is in flight', async () => {
@@ -78,11 +114,12 @@ describe('applyNativeWiringAutoDecisions', () => {
     // the snapshot or rebuild the plan against a half-torn-down app.
     let releaseGet: () => void = () => {};
     const gate = new Promise<void>((resolve) => { releaseGet = resolve; });
-    setRestClient({ get: async () => { await gate; return {}; }, put: vi.fn() });
+    let getCalls = 0;
+    setRestClient({ get: async () => { getCalls += 1; await gate; return {}; }, put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
 
     const run = app['applyNativeWiringAutoDecisions']();
-    await Promise.resolve(); // park the run on the gated read
+    await vi.waitFor(() => { expect(getCalls).toBe(2); });
 
     // Simulate onUninit racing the in-flight read.
     app['nativeWiringUninitializing'] = true;
@@ -156,5 +193,12 @@ describe('applyNativeWiringAutoDecisions', () => {
     expect(app['autoNativeWiringDecisions']).toEqual({});
     expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('reports an explicit check as unavailable when the flow read fails closed', async () => {
+    setRestClient({ get: async () => { throw new Error('403 Forbidden'); }, put: vi.fn() });
+    const { app } = stubApp([hoiaxCandidate('hoiax-1')]);
+
+    await expect(app.refreshFlowConflictsForUi()).resolves.toEqual({ state: 'unavailable' });
   });
 });

@@ -1,6 +1,7 @@
 import { NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
 import {
   deviceDetailFlowConflictBody,
+  deviceDetailFlowConflictCheck,
   deviceDetailFlowConflictNotice,
   deviceDetailFlowConflictTitle,
   deviceDetailNativeWiring,
@@ -17,6 +18,8 @@ import {
 } from '../deviceUtils.ts';
 import { state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
+import { checkFlowConflictNow } from '../flowConflictRefresh.ts';
+import { showToast, showToastError } from '../toast.ts';
 
 // Tracks the device id we have already auto-expanded the Setup disclosure
 // for. Refresh paths (devices-updated, snapshot refresh, plan-updated) call
@@ -173,5 +176,24 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     // jsdom does not implement scrollIntoView; tolerate it.
     deviceDetailNativeWiringRow.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
     deviceDetailNativeWiring?.focus?.();
+  });
+
+  deviceDetailFlowConflictCheck?.addEventListener('click', async () => {
+    const deviceId = getCurrentDetailDeviceId();
+    if (!deviceId || deviceDetailFlowConflictCheck.disabled) return;
+    deviceDetailFlowConflictCheck.disabled = true;
+    deviceDetailFlowConflictCheck.textContent = 'Checking…';
+    try {
+      const hasConflict = await checkFlowConflictNow(deviceId);
+      await showToast(
+        hasConflict ? 'PELS still finds Flow control for this device.' : 'No conflicting Flow control found.',
+        hasConflict ? 'warn' : 'ok',
+      );
+    } catch (error) {
+      await showToastError(error, 'Could not check Homey Flows. Try again.');
+    } finally {
+      deviceDetailFlowConflictCheck.disabled = false;
+      deviceDetailFlowConflictCheck.textContent = 'Check again';
+    }
   });
 };
