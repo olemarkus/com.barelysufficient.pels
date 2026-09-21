@@ -1,4 +1,5 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 
 /**
  * The first-run setup path: what must be true before PELS manages a home's
@@ -79,6 +80,12 @@ export type SetupPathFacts = {
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
   limitableDeviceCount: number;
   simulating: boolean;
+  /**
+   * Where the hub is, from geography alone (never its language). `unavailable`
+   * draws the market-neutral copy, which is always correct; a resolved market
+   * only ever sharpens it.
+   */
+  market: SettingsUiHubMarketRead;
 };
 
 export type SetupPath = {
@@ -108,11 +115,23 @@ const formatPeriod = (periodMinutes: CapacityPeriodMinutes): string => (
   periodMinutes === 15 ? '15-minute average' : 'hourly average'
 );
 
-const resolveHardCapDetail = (hardCap: SetupHardCap): string => (
-  hardCap.state === 'saved'
+// Flanders bills the 15-minute peak; Wallonia and Brussels have no such tariff,
+// and a country code cannot tell them apart. So this names Flanders and leaves
+// the rest of Belgium alone, rather than telling a Walloon to change a setting
+// that does not apply to them.
+export const isBelgianHourly = (
+  market: SettingsUiHubMarketRead,
+  periodMinutes: CapacityPeriodMinutes,
+): boolean => market.state === 'resolved' && market.country === 'BE' && periodMinutes === 60;
+
+const FLANDERS_PERIOD_NOTE = ' In Flanders, use the 15-minute average.';
+
+const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
+  const base = hardCap.state === 'saved'
     ? `${formatKw(hardCap.limitKw)} ${formatPeriod(hardCap.periodMinutes)}, ${formatKw(hardCap.marginKw)} safety margin`
-    : `${formatKw(hardCap.runningLimitKw)} ${formatPeriod(hardCap.periodMinutes)} until you set yours`
-);
+    : `${formatKw(hardCap.runningLimitKw)} ${formatPeriod(hardCap.periodMinutes)} until you set yours`;
+  return isBelgianHourly(market, hardCap.periodMinutes) ? `${base}.${FLANDERS_PERIOD_NOTE}` : base;
+};
 
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
@@ -150,7 +169,7 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
       id: 'hardCap' as const,
       done: facts.hardCap.state === 'saved',
       title: 'Hard cap',
-      detail: resolveHardCapDetail(facts.hardCap),
+      detail: resolveHardCapDetail(facts.hardCap, facts.market),
       target: { panel: 'limits' },
     }] : []),
   ];

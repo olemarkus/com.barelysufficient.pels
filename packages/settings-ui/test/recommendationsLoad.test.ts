@@ -1,6 +1,7 @@
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
 const OTHER_MODULES_SETTING = 'price_optimization_settings';
+const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
@@ -12,7 +13,11 @@ vi.mock('../src/ui/homey.ts', async () => {
   const actual = await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts');
   return {
     ...actual,
-    callApi: (...args: unknown[]) => callApi(...args),
+    // Routed by path for the same reason as the settings below: this spec counts
+    // the CAR inventory calls, and the hub-market read shares the seam.
+    callApi: (...args: unknown[]) => (
+      args[1] === OTHER_MODULES_API_PATH ? Promise.resolve({ state: 'unavailable' }) : callApi(...args)
+    ),
     // Routed by key. This spec sequences and counts the ACKNOWLEDGEMENT reads;
     // the after-setup suggestions read the price settings through the same
     // seam, in parallel, and would otherwise consume a `...Once` value meant

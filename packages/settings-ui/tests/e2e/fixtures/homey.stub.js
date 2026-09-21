@@ -1777,6 +1777,15 @@
       ];
     },
     'GET /ui_recommendation_cars': () => ({ state: 'resolved', cars: [] }),
+    // Mirrors `readHubMarket` (lib/home/hubMarket.ts): an ISO country the
+    // runtime resolved from the hub's location, or `unavailable`. The baseline
+    // is `unavailable`, the market-neutral copy every other spec expects; a
+    // spec seeds a country via `settings.ui_hub_market_country`.
+    'GET /ui_hub_market': () => (
+      typeof settings.ui_hub_market_country === 'string'
+        ? { state: 'resolved', country: settings.ui_hub_market_country }
+        : { state: 'unavailable' }
+    ),
     'GET /homey_energy_meters': () => {
       // Backs both whole-home meter pickers: the meters the endpoint resolved
       // from the Homey Energy report (whole-home cumulative + sensor-class

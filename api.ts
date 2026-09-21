@@ -6,6 +6,8 @@ import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
 import { supportsCarAssociation } from './lib/device/evCarLinkObservation';
 import { readCarAssociationCandidatesFromHomey } from './lib/device/settingsUiDeviceReads';
+import { readHubMarket } from './lib/home/hubMarket';
+import { createHomeyWebApiGet } from './setup/homeyWebApi';
 import {
   getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
@@ -13,6 +15,7 @@ import {
 } from './setup/appDebugHelpers';
 import type {
   HomeyEnergyMeterEntry,
+  SettingsUiHubMarketRead,
   SettingsUiRecommendationCarsRead,
 } from './packages/contracts/src/settingsUiApi';
 import {
@@ -194,6 +197,12 @@ export = {
   ui_recommendation_cars: withApiLogging('ui_recommendation_cars', (
     { homey }: ApiContext,
   ): SettingsUiRecommendationCarsRead => readCarAssociationCandidatesFromHomey(homey)),
+  // Where the hub is, from Homey's location-derived `country`. `lib/home` owns the
+  // read and resolves every failure to `unavailable`, so this never throws and
+  // never blocks the settings UI: it asks once, after its first paint.
+  ui_hub_market: withApiLogging('ui_hub_market', (): Promise<SettingsUiHubMarketRead> => (
+    readHubMarket(createHomeyWebApiGet())
+  )),
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick
   // is guaranteed readable — unlike a capability/class filter over the device list.

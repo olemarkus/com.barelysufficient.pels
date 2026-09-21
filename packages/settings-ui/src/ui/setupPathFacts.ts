@@ -1,5 +1,7 @@
 import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 import {
+  isBelgianHourly,
   isSetupStepOpen,
   resolveSetupPath,
   type SetupHardCap,
@@ -24,6 +26,10 @@ import { state } from './state.ts';
 
 let power: SetupPowerReadings | null = null;
 let hardCap: SetupHardCap | null = null;
+// Not part of the `loading` gate: `unavailable` is the market-neutral copy, which
+// is always correct, so the path never waits for this. A resolved market only
+// ever sharpens what is already on screen.
+let market: SettingsUiHubMarketRead = { state: 'unavailable' };
 const listeners = new Set<() => void>();
 
 // Several callers report "something the path reads may have moved" (a device
@@ -32,7 +38,9 @@ const listeners = new Set<() => void>();
 let lastNotifiedPath = '';
 
 const notify = (): void => {
-  const resolved = JSON.stringify(readSetupPath());
+  // The market is part of it: with setup complete the path is `null` either way,
+  // yet a market landing still changes which recommendations are drawn.
+  const resolved = JSON.stringify([readSetupPath(), market]);
   if (resolved === lastNotifiedPath) return;
   lastNotifiedPath = resolved;
   listeners.forEach((listener) => listener());
@@ -52,6 +60,21 @@ export const publishSetupPower = (next: SetupPowerReadings): void => {
   power = next;
   notify();
 };
+
+export const publishSetupMarket = (next: SettingsUiHubMarketRead): void => {
+  market = next;
+  notify();
+};
+
+/**
+ * The home is in Belgium and holds an HOURLY average (`isBelgianHourly`). `false`
+ * until the hard cap has been read: nothing is asked of the owner on a guess.
+ */
+export const isBelgianHomeOnHourlyPeriod = (): boolean => (
+  hardCap !== null && isBelgianHourly(market, hardCap.periodMinutes)
+);
+
+export const readSetupMarket = (): SettingsUiHubMarketRead => market;
 
 /**
  * `persistedLimitKw` is the persisted cap as its reader resolved it: a number
@@ -89,6 +112,7 @@ export const readSetupPath = (): SetupPathRead => {
     path: resolveSetupPath({
       power,
       hardCap,
+      market,
       managedDeviceCount: managedIds.length,
       limitableDeviceCount: managedIds.filter((id) => state.controllableMap[id] === true).length,
       simulating: state.dryRun,

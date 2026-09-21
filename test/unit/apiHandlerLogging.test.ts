@@ -106,6 +106,16 @@ describe('api handler error logging', () => {
     await expect(handler({ homey })).resolves.toEqual({ state: 'resolved', cars: [] });
   });
 
+  it('answers unavailable for the hub market when Homey\'s Web API cannot be read', async () => {
+    // No REST client in this harness, so the read throws. `lib/home` owns that
+    // failure: the handler neither throws nor guesses a country, and the
+    // settings UI draws its market-neutral copy.
+    const { homey } = buildHomey();
+    await expect(
+      (api as unknown as Record<string, Handler>).ui_hub_market({ homey }),
+    ).resolves.toEqual({ state: 'unavailable' });
+  });
+
   it('keeps the domain unavailable result at the API boundary', async () => {
     const { homey } = buildHomey();
     await expect(

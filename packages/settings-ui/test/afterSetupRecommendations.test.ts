@@ -23,6 +23,8 @@ const everythingApplies: AfterSetupFacts = {
   },
   solarSurplusAvailable: true,
   smartTaskConfigured: { state: 'known', value: false },
+  market: { state: 'unavailable' },
+  belgianHomeOnHourlyPeriod: false,
 };
 
 const ids = (facts: AfterSetupFacts) => resolveAfterSetupRecommendations(facts).map((entry) => entry.id);
@@ -106,6 +108,39 @@ describe('after-setup suggestions', () => {
       expect(ids({ ...everythingApplies, smartTaskConfigured: { state: 'unknown' } })).toEqual([
         'after-setup:prices', 'after-setup:solar',
       ]);
+    });
+  });
+
+  describe('tailored by where the hub is', () => {
+    it('puts an owner\'s own solar first in the Netherlands, where net metering is ending', () => {
+      expect(ids({ ...everythingApplies, market: { state: 'resolved', country: 'NL' } })).toEqual([
+        'after-setup:solar', 'after-setup:prices', 'after-setup:smart-tasks',
+      ]);
+    });
+
+    it('changes the order only: no market adds or removes an optional feature', () => {
+      const norway = ids({ ...everythingApplies, market: { state: 'resolved', country: 'NO' } });
+      expect(norway).toEqual(ids(everythingApplies));
+    });
+
+    it('asks a Belgian home on the hourly average to check its capacity period', () => {
+      const [first] = resolveAfterSetupRecommendations({ ...everythingApplies, belgianHomeOnHourlyPeriod: true });
+      expect(first?.id).toBe('market:flanders-capacity-period');
+      // A real recommendation, and a question: only the owner knows whether
+      // Belgium means Flanders, so the body says who may dismiss it.
+      expect(first?.category).toBe('recommendation');
+      expect(first?.body).toContain('If you live in Flanders');
+      expect(first?.body).toContain('Elsewhere in Belgium this does not apply');
+      expect(first?.target).toEqual({ kind: 'panel', panelId: 'limits' });
+    });
+
+    it('does not ask when PELS may limit nothing: no cap is in force to be wrong', () => {
+      const facts = {
+        ...everythingApplies,
+        belgianHomeOnHourlyPeriod: true,
+        devices: { state: 'known' as const, value: [device({ temperature: true, limitable: false })] },
+      };
+      expect(ids(facts)).not.toContain('market:flanders-capacity-period');
     });
   });
 });

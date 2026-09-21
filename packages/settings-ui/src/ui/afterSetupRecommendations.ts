@@ -1,3 +1,4 @@
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 
 /**
@@ -55,9 +56,39 @@ export type AfterSetupFacts = {
    */
   solarSurplusAvailable: boolean;
   smartTaskConfigured: AfterSetupKnown<boolean>;
+  /** Where the hub is, from geography alone. `unavailable` = the neutral order. */
+  market: SettingsUiHubMarketRead;
+  /**
+   * A Belgian home holding an HOURLY average. Flanders bills the 15-minute
+   * peak; the rest of Belgium has no such tariff, and a country code cannot
+   * tell them apart.
+   */
+  belgianHomeOnHourlyPeriod: boolean;
 };
 
 const VERSION = 1;
+
+/**
+ * The one silent way to get capacity control wrong: a Flemish home left on the
+ * hourly default protects an average its tariff does not bill. It cannot sit on
+ * the setup path, because that step closes the moment a cap is saved, which is
+ * exactly when the mistake becomes invisible.
+ *
+ * A real recommendation, not an optional feature, and deliberately a QUESTION:
+ * the country says Belgium, only the owner knows whether that means Flanders.
+ * Dismiss is a Walloon or Brussels owner saying it does not apply.
+ */
+const FLANDERS_PERIOD: SetupRecommendation = {
+  id: 'market:flanders-capacity-period',
+  version: VERSION,
+  category: 'recommendation',
+  title: 'Check your capacity period',
+  body: 'In Flanders the capacity tariff bills your highest 15-minute average, and PELS is holding an '
+    + 'hourly average. If you live in Flanders, change Capacity period to 15-minute average. '
+    + 'Elsewhere in Belgium this does not apply, and you can dismiss it.',
+  actionLabel: 'Open Limits & safety',
+  target: { kind: 'panel', panelId: 'limits' },
+};
 
 const suggestion = (
   id: string,
@@ -97,22 +128,41 @@ const SMART_TASKS = suggestion('smart-tasks', {
   actionLabel: 'Open Smart tasks',
 }, 'deadlines');
 
+const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceEnabled' | 'usesSolarSurplus'): boolean => (
+  devices.some((device) => device[flag])
+);
+
+/** Prices and solar: the same two everywhere, only their order follows the market. */
+const resolvePricesAndSolar = (
+  facts: AfterSetupFacts,
+  devices: readonly AfterSetupDevice[],
+): SetupRecommendation[] => {
+  const prices = devices.some((device) => device.temperature) && !usesAny(devices, 'priceEnabled')
+    ? [PRICES] : [];
+  const solar = facts.solarSurplusAvailable
+    && devices.some((device) => device.limitable)
+    && !usesAny(devices, 'usesSolarSurplus')
+    ? [SOLAR] : [];
+  // In the Netherlands net metering is ending, so an owner's own solar comes first.
+  const solarFirst = facts.market.state === 'resolved' && facts.market.country === 'NL';
+  return solarFirst ? [...solar, ...prices] : [...prices, ...solar];
+};
+
+const resolveSmartTasks = (
+  facts: AfterSetupFacts,
+  devices: readonly AfterSetupDevice[],
+): SetupRecommendation[] => (
+  facts.smartTaskConfigured.state === 'known'
+    && !facts.smartTaskConfigured.value
+    && devices.some((device) => device.taskCapable)
+    ? [SMART_TASKS] : []
+);
+
 export const resolveAfterSetupRecommendations = (facts: AfterSetupFacts): SetupRecommendation[] => {
   if (!facts.setupComplete || facts.devices.state === 'unknown') return [];
   const devices = facts.devices.value;
-
-  const pricesApply = devices.some((device) => device.temperature)
-    && !devices.some((device) => device.priceEnabled);
-  const solarApplies = facts.solarSurplusAvailable
-    && devices.some((device) => device.limitable)
-    && !devices.some((device) => device.usesSolarSurplus);
-  const smartTasksApply = facts.smartTaskConfigured.state === 'known'
-    && !facts.smartTaskConfigured.value
-    && devices.some((device) => device.taskCapable);
-
-  return [
-    ...(pricesApply ? [PRICES] : []),
-    ...(solarApplies ? [SOLAR] : []),
-    ...(smartTasksApply ? [SMART_TASKS] : []),
-  ];
+  // No cap is in force, so none can be wrong, unless PELS may limit something.
+  const flanders = facts.belgianHomeOnHourlyPeriod && devices.some((device) => device.limitable)
+    ? [FLANDERS_PERIOD] : [];
+  return [...flanders, ...resolvePricesAndSolar(facts, devices), ...resolveSmartTasks(facts, devices)];
 };

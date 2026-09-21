@@ -17,6 +17,7 @@ import { state } from './state.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import { loadAfterSetupFacts, readAfterSetupFacts } from './afterSetupFacts.ts';
 import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts';
+import { loadHubMarket } from './hubMarket.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
 import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
@@ -295,6 +296,8 @@ export const loadRecommendationData = async (): Promise<void> => {
     loadRecommendationDismissals(),
     refreshCarInventory(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
+    // Publishes to the setup path, which redraws these surfaces on a change.
+    loadHubMarket(),
   ]);
 };
 

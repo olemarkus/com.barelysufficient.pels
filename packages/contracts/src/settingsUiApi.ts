@@ -38,6 +38,22 @@ export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
 export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 
+export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';
+
+/**
+ * Where the hub physically is, as an ISO 3166-1 alpha-2 country code, resolved
+ * by the runtime from Homey's own location-derived `country` (it follows the
+ * hub's map location, verified 2026-09-20: never the language, never the Athom
+ * account). `unavailable` is a read the runtime could not answer or an answer
+ * that is not a country code; the UI then shows its market-neutral default.
+ *
+ * Geography only, on purpose: the settings UI tailors emphasis by market, and a
+ * hub's language says nothing reliable about which tariff it lives under.
+ */
+export type SettingsUiHubMarketRead =
+  | { state: 'resolved'; country: string }
+  | { state: 'unavailable' };
+
 export type SettingsUiRecommendationCar = {
   id: string;
   name: string;

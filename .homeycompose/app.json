@@ -264,6 +264,10 @@
       "method": "GET",
       "path": "/ui_recommendation_cars"
     },
+    "ui_hub_market": {
+      "method": "GET",
+      "path": "/ui_hub_market"
+    },
     "homey_energy_meters": {
       "method": "GET",
       "path": "/homey_energy_meters"

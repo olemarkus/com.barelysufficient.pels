@@ -24,6 +24,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_HUB_MARKET_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
@@ -420,6 +421,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     state: 'resolved',
     cars: getUiOverride(homey, 'recommendationCars') ?? [],
   }),
+  // Mirrors `readHubMarket` (lib/home/hubMarket.ts). `unavailable` is the
+  // baseline, the market-neutral copy every spec expects.
+  [buildRouteKey('GET', SETTINGS_UI_HUB_MARKET_PATH)]: () => async () => ({ state: 'unavailable' }),
   [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homeyEnergyMeters') ?? []
   ),

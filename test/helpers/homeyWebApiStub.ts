@@ -14,6 +14,31 @@ import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 export const noHomeyWebApi: HomeyWebApiGet = async () => null;
 
 /**
+ * A Homey Web API that answers the given manager routes (paths relative to
+ * `/api`, as the readers ask for them) and rejects every other one the way the
+ * real client does for a route it cannot serve. Records what was asked, so a
+ * spec can pin the exact path a reader depends on.
+ */
+export const homeyWebApiServing = (
+  routes: Readonly<Record<string, unknown>>,
+): { get: HomeyWebApiGet; requestedPaths: string[] } => {
+  const requestedPaths: string[] = [];
+  return {
+    requestedPaths,
+    get: async (path) => {
+      requestedPaths.push(path);
+      if (!Object.hasOwn(routes, path)) throw new HomeyHttpStatusError(404, `Cannot GET /api/${path}`);
+      return routes[path];
+    },
+  };
+};
+
+/** The REST client before `initHomeyHttpClient` has run, or a hub that is unreachable. */
+export const unreachableHomeyWebApi: HomeyWebApiGet = async () => {
+  throw new Error('REST client not initialized — call initHomeyHttpClient first');
+};
+
+/**
  * Mirror what Homey reports for a home whose owner has configured no price
  * formula, so the raw prices a spec feeds in are the prices it gets back.
  *

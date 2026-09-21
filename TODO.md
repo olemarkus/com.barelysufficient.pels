@@ -1510,22 +1510,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       in shared-domain from that cluster lacks a Node importer. Source: Codex review on the
       no-capacity-tariff copy PR (2026-09-20). [P2]
 
-- [ ] **The setup path is the same in every market; its emphasis should not be.** `resolveSetupPath`
-      (`packages/settings-ui/src/ui/setupPathModel.ts`) is deliberately market-neutral because the
-      settings UI knows nothing geographic. The hub does: `GET /api/manager/system/` carries an ISO
-      `country` (verified `NO` on a hub whose language is `en`, so it is not language-derived), and
-      `setup/homeyLocationAdapter.ts` already reads the hub coordinates. Resolve a `market` fact in
-      the runtime (country first; coordinates where country cannot answer — Belgium's 15-minute
-      tariff is Flanders only), ship it on `ui_bootstrap`, and use it for two things: a Hard cap
-      detail that says so when the hub is in Flanders and the period is still hourly, and the
-      order of the after-setup suggestions (`afterSetupRecommendations.ts`: solar and prices first
-      in the Netherlands). The path already shows a step only when what it configures is in force for
-      the home; market data may sharpen that rule, never loosen it. First confirm what `country` follows by moving a test hub's location.
-      Never infer a market from language. Done when a Flemish hub on the hourly default reads the
-      15-minute nudge and a Norwegian hub reads exactly today's copy. Persona: brand-new owner
-      outside Norway; hypothesis: a path that names their tariff and their reason for installing
-      stops PELS reading as a Norwegian capacity app. Source: owner, 2026-09-19. [P2]
-
 - [ ] **Duplicate `#plan-empty` ids (static first-paint + Preact render).** Both nodes coexist
       in the document; the onboarding e2e works around it with a visibility filter. Rename the
       static placeholder's id or drop it once the redesign surface owns first paint. Source:

@@ -4,7 +4,7 @@ import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceU
 import { getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { confirmSettingAbsence } from './settingAbsence.ts';
-import { readSetupPath } from './setupPathFacts.ts';
+import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
 import { state, type PriceOptimizationConfig } from './state.ts';
 
 /**
@@ -73,6 +73,8 @@ export const readAfterSetupFacts = (): AfterSetupFacts => {
       : { state: 'unknown' },
     solarSurplusAvailable: state.surplusPoolReachable
       && (state.hasManagedSolarDevice || state.hasExhibitedExport),
+    market: readSetupMarket(),
+    belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
     smartTaskConfigured: hasLoadedDeferredObjectiveSettings()
       ? {
         state: 'known',

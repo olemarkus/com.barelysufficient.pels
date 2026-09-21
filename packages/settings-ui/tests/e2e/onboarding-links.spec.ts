@@ -265,6 +265,68 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#setup-recommendations-banner-root .banner')).toHaveCount(0);
   });
 
+  test('a Belgian hub on the hourly average is asked to check its capacity period', async ({ page }) => {
+    // Geography only: the runtime resolves the country from the hub's location.
+    // The default fixture holds an hourly cap and limits devices.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { ui_hub_market_country: 'BE' },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // A real recommendation, so the banner counts it rather than offering extras.
+    const banner = page.locator('#setup-recommendations-banner-root');
+    await expect(banner).toContainText('1 recommendation');
+    await banner.getByText('Review').click();
+
+    const card = page.locator('.setup-recommendation-card', { hasText: 'Check your capacity period' });
+    await expect(card).toContainText('If you live in Flanders');
+    // Wallonia and Brussels have no such tariff, and a country code cannot tell.
+    await expect(card).toContainText('Elsewhere in Belgium this does not apply');
+    await expect(card.locator('.plan-chip')).toHaveText('Recommended');
+
+    await card.getByText('Open Limits & safety').click();
+    await expect(page.locator('#limits-panel')).toBeVisible();
+  });
+
+  test('a Belgian hub already on the 15-minute average is asked nothing', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { ui_hub_market_country: 'BE', capacity_period_minutes: 15 },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
+    await expect(page.locator('#setup-recommendations-banner-root .banner')).toHaveCount(0);
+  });
+
+  test('a Dutch hub is offered its own solar first; a Norwegian hub keeps the neutral order', async ({ page }) => {
+    const titlesFor = async (country: string) => {
+      await page.addInitScript((seeded) => {
+        (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+          settings: {
+            ui_hub_market_country: seeded,
+            price_optimization_settings: {},
+            deferred_objectives: { version: 1, objectivesByDeviceId: {} },
+          },
+        };
+      }, country);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
+      const cards = page.locator('#setup-recommendations-root .setup-recommendation-card .plan-card__title');
+      await expect(cards).toHaveCount(3);
+      return cards.allTextContents();
+    };
+
+    expect(await titlesFor('NL')).toEqual([
+      'Use more of your own solar', 'Heat more while power is cheap', 'Have something ready by a set time',
+    ]);
+    expect(await titlesFor('NO')).toEqual([
+      'Heat more while power is cheap', 'Use more of your own solar', 'Have something ready by a set time',
+    ]);
+  });
+
   test('overview empty state links to the Devices settings page', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();

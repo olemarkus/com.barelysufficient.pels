@@ -1613,6 +1613,29 @@ returning owner who unmanages their last device.
 - There is no "setup complete" state: once every step in force is done the card
   is gone.
 
+### Tailoring by market: geography only
+
+The runtime tells the settings UI which country the hub is in (`GET
+/ui_hub_market`, owned by `lib/home/hubMarket.ts`), from Homey's own
+location-derived `country`. It follows the location the owner set on the map
+(verified 2026-09-20 by moving a test hub). **Never infer a market from the hub's
+language** (owner ruling 2026-09-19).
+
+- `unavailable` draws the market-neutral copy, which is always correct. A
+  resolved market only ever sharpens it, and a Norwegian hub reads exactly the
+  neutral copy. No surface waits for the market.
+- **A market changes emphasis and order, never what exists.** No market adds or
+  removes an optional feature. The Netherlands gets `Use more of your own solar`
+  before prices, because net metering is ending there.
+- **Belgium, hourly average, a device PELS may limit:** Flanders bills the
+  15-minute peak; Wallonia and Brussels have no such tariff, and a country code
+  cannot tell them apart. So it is a QUESTION, never a verdict, and it names who
+  may ignore it: the recommendation `Check your capacity period` (`If you live
+  in Flanders … Elsewhere in Belgium this does not apply, and you can dismiss
+  it.`), and on the setup path's Hard cap step `In Flanders, use the 15-minute
+  average.` It is a recommendation and not a setup step because that step closes
+  the moment a cap is saved, which is exactly when the mistake goes quiet.
+
 ### After setup: optional features
 
 Once the setup path closes, PELS suggests what else applies to the home, on the

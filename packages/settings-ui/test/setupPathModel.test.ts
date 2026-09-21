@@ -19,6 +19,7 @@ const freshInstall: SetupPathFacts = {
   managedDeviceCount: 0,
   limitableDeviceCount: 0,
   simulating: true,
+  market: { state: 'unavailable' },
 };
 
 // Everything the path asks for, with simulation still on: a cautious owner who
@@ -29,6 +30,7 @@ const configuredAndSimulating: SetupPathFacts = {
   managedDeviceCount: 3,
   limitableDeviceCount: 1,
   simulating: true,
+  market: { state: 'unavailable' },
 };
 
 // An owner who manages thermostats for their price response and nothing else:
@@ -39,6 +41,7 @@ const priceOnlyOwner: SetupPathFacts = {
   managedDeviceCount: 2,
   limitableDeviceCount: 0,
   simulating: false,
+  market: { state: 'unavailable' },
 };
 
 const statuses = (facts: SetupPathFacts) => (
@@ -102,6 +105,35 @@ describe('setup path', () => {
     });
     expect(detailOf(saved(15), 'hardCap')).toBe('2.5 kW 15-minute average, 0.2 kW safety margin');
     expect(detailOf(saved(60), 'hardCap')).toBe('2.5 kW hourly average, 0.2 kW safety margin');
+  });
+
+  describe('tailored by where the hub is, never by its language', () => {
+    const belgian = (periodMinutes: 15 | 60): SetupPathFacts => ({
+      ...freshInstall,
+      managedDeviceCount: 1,
+      limitableDeviceCount: 1,
+      market: { state: 'resolved', country: 'BE' },
+      hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes },
+    });
+
+    it('names Flanders to a Belgian home still on the hourly default', () => {
+      // Flanders bills the 15-minute peak; the rest of Belgium has no such
+      // tariff and a country code cannot tell them apart, so this names
+      // Flanders rather than telling every Belgian owner to change it.
+      expect(detailOf(belgian(60), 'hardCap'))
+        .toBe('10 kW hourly average until you set yours. In Flanders, use the 15-minute average.');
+    });
+
+    it('says nothing more once that home is on the 15-minute average', () => {
+      expect(detailOf(belgian(15), 'hardCap')).toBe('10 kW 15-minute average until you set yours');
+    });
+
+    it('gives a Norwegian hub, and an unknown one, exactly the neutral copy', () => {
+      const norwegian = { ...belgian(60), market: { state: 'resolved' as const, country: 'NO' } };
+      const unknown = { ...belgian(60), market: { state: 'unavailable' as const } };
+      expect(detailOf(norwegian, 'hardCap')).toBe('10 kW hourly average until you set yours');
+      expect(detailOf(unknown, 'hardCap')).toBe('10 kW hourly average until you set yours');
+    });
   });
 
   it('sells no single market in its lede', () => {
