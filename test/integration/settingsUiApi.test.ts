@@ -103,7 +103,10 @@ describe('settingsUiApi', () => {
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
       latestDevices = [{ id: 'dev-2', name: 'Pump' }];
     });
-    const refreshFlowConflictsForUi = vi.fn().mockResolvedValue({ state: 'resolved' });
+    const refreshFlowConflictsForUi = vi.fn().mockResolvedValue({
+      state: 'resolved',
+      flowFacts: { writes: new Map(), evSocReporters: [] },
+    });
     const refreshSpotPrices = vi.fn().mockResolvedValue(undefined);
     const refreshGridTariffData = vi.fn().mockResolvedValue(undefined);
     const updateDailyBudgetAndRecordCap = vi.fn();
@@ -445,6 +448,7 @@ describe('settingsUiApi', () => {
           activationEnabled: false,
         },
       }],
+      evSocReporters: [],
     });
   });
 

@@ -1,6 +1,7 @@
 import type {
   SettingsUiRecommendationCar,
   SettingsUiRecommendationCarsRead,
+  SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { supportsNativeWiringActivation, type SettingsUiDeviceDetailItem } from './deviceUtils.ts';
@@ -11,6 +12,7 @@ export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
   | { kind: 'devices' }
   | { kind: 'flow-conflict-check'; deviceId: string }
+  | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string };
 
@@ -138,7 +140,7 @@ export const resolveCarAssociationRecommendations = (
     associatedCarIds.has(car.id) ? [] : [{
       id: recommendationId('charger-car', car.id),
       version: RECOMMENDATION_VERSION,
-      category: 'recommendation' as const,
+      category: 'optional' as const,
       title: `Choose a charger for ${car.name}`,
       body: 'Choose the charger this car uses so PELS can read its battery level while it charges.',
       actionLabel: 'Choose charger',
@@ -147,17 +149,51 @@ export const resolveCarAssociationRecommendations = (
   ));
 };
 
+export const resolveEvSocFlowConflictRecommendations = (
+  devices: readonly SettingsUiDeviceDetailItem[],
+  associations: EvCarAssociations,
+  reporters: readonly SettingsUiEvSocFlowReporter[],
+): SetupRecommendation[] => {
+  const chargersById = new Map(
+    devices
+      .filter((device) => device.deviceClass === 'evcharger')
+      .map((device) => [device.id, device]),
+  );
+  return reporters.flatMap((reporter) => {
+    const charger = chargersById.get(reporter.chargerDeviceId);
+    if (!charger || (associations[charger.id]?.carIds.length ?? 0) === 0) return [];
+    const body = reporter.flowName
+      ? `With a car selected, PELS ignores the “Report battery level for charger” action in the Flow `
+        + `“${reporter.flowName}”. Remove that action or disable the Flow if you no longer need it.`
+      : 'With a car selected, PELS ignores “Report battery level for charger” actions in enabled Homey Flows. '
+        + 'Remove those actions or disable those Flows if you no longer need them.';
+    return [{
+      id: recommendationId('ev-soc-flow-conflict', charger.id),
+      version: RECOMMENDATION_VERSION,
+      category: 'recommendation' as const,
+      title: `Remove unused battery reporting for ${charger.name}`,
+      body,
+      actionLabel: 'Check again',
+      target: { kind: 'ev-soc-flow-conflict-check' as const, deviceId: charger.id },
+    }];
+  });
+};
+
 export const resolveSetupRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
   cars: readonly SettingsUiRecommendationCar[],
   associations: EvCarAssociations,
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>>,
+  evSocReporters: readonly SettingsUiEvSocFlowReporter[] = [],
 ): SetupRecommendation[] => (
   [
-    ...resolveNativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
-    ...resolveCarAssociationRecommendations(devices, cars, associations),
+    ...[
+      ...resolveNativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
+      ...resolveEvSocFlowConflictRecommendations(devices, associations, evSocReporters),
+    ].sort((left, right) => left.title.localeCompare(right.title)),
+    ...resolveCarAssociationRecommendations(devices, cars, associations)
+      .sort((left, right) => left.title.localeCompare(right.title)),
   ]
-    .sort((left, right) => left.title.localeCompare(right.title))
 );
 
 export const groupSetupRecommendations = (

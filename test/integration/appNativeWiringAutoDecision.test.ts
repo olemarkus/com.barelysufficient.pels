@@ -102,7 +102,10 @@ describe('applyNativeWiringAutoDecisions', () => {
 
     releaseFirstScan();
     await background;
-    await expect(explicit).resolves.toEqual({ state: 'resolved' });
+    await expect(explicit).resolves.toEqual({
+      state: 'resolved',
+      flowFacts: { writes: new Map(), evSocReporters: [] },
+    });
     expect(getCalls).toBe(4);
     expect(app['flowConflictsByDevice']).toEqual({});
     expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });

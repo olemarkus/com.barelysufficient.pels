@@ -20,6 +20,7 @@
  */
 import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
+import type { UserFlowFacts } from '../lib/flowApi/userFlows';
 import { isToggleGatedNativeWriteSet } from '../lib/device/nativeSteppedLoadWiring';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 
@@ -38,7 +39,12 @@ export type NativeWiringFlowConflict = {
 };
 
 export type NativeWiringConflictDetection =
-  | { status: 'ok'; autoEnableDeviceIds: string[]; conflicts: NativeWiringFlowConflict[] }
+  | {
+    status: 'ok';
+    autoEnableDeviceIds: string[];
+    conflicts: NativeWiringFlowConflict[];
+    flowFacts: UserFlowFacts;
+  }
   | { status: 'unknown' };
 
 /**
@@ -85,7 +91,7 @@ export async function detectNativeWiringConflicts(deps: {
   const gatedCandidates = candidates.filter(
     (candidate) => isToggleGatedNativeWriteSet(candidate.ownedCapabilities),
   );
-  const conflicts = classifyFlowConflicts(result.writes, gatedCandidates);
+  const conflicts = classifyFlowConflicts(result.facts.writes, gatedCandidates);
   const conflictedIds = new Set(conflicts.map((conflict) => conflict.deviceId));
 
   const autoEnableDeviceIds = gatedCandidates
@@ -109,6 +115,7 @@ export async function detectNativeWiringConflicts(deps: {
   return {
     status: 'ok',
     autoEnableDeviceIds,
+    flowFacts: result.facts,
     conflicts: conflicts.map((conflict) => (
       conflict.flowName === undefined
         ? { deviceId: conflict.deviceId, conflictingCapabilities: conflict.conflictingCapabilities }

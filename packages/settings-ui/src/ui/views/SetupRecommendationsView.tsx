@@ -12,6 +12,7 @@ export type SetupRecommendationsViewProps = {
   setupPath: SetupPathRead;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
+  retryAvailable: boolean;
   busyRecommendationId: string | null;
   onAction: (recommendation: SetupRecommendation) => void;
   onDismiss: (recommendation: SetupRecommendation) => void;
@@ -36,10 +37,15 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
   optional: 'Optional',
 };
 
+const isFlowConflictCheck = (recommendation: SetupRecommendation): boolean => (
+  recommendation.target.kind === 'flow-conflict-check'
+  || recommendation.target.kind === 'ev-soc-flow-conflict-check'
+);
+
 const RecommendationCard = (props: RecommendationCardProps) => {
   const { recommendation, dismissed, onAction, onDismiss, onRestore } = props;
   const busy = props.busyRecommendationId !== null
-    && recommendation.target.kind === 'flow-conflict-check';
+    && isFlowConflictCheck(recommendation);
   return (
     <article class="pels-surface-card setup-recommendation-card" data-tone={dismissed ? 'muted' : undefined}>
       <div class="setup-recommendation-card__header">
@@ -74,7 +80,12 @@ const RecommendationCard = (props: RecommendationCardProps) => {
 const RecommendationsList = (props: SetupRecommendationsViewProps) => (
   <>
     {props.readiness === 'partial' && (
-      <p class="muted setup-recommendations-loading">Some recommendation checks couldn’t be refreshed right now.</p>
+      <>
+        <p class="muted setup-recommendations-loading">Some recommendation checks couldn’t be refreshed right now.</p>
+        {props.retryAvailable && props.dismissalStatus === 'available' && (
+          <MdTextButton type="button" onClick={props.onRetry}>Try again</MdTextButton>
+        )}
+      </>
     )}
     {/* While the setup path is open it IS the page's content; "no suggestions"
         beside an unfinished setup would read as "nothing to do". */}
@@ -165,11 +176,12 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
 // setup. Optional features are not that: with only those active, the banner says
 // there is more on offer and lets the owner decide whether to look.
 const resolveBannerCopy = (active: readonly SetupRecommendation[]): { title: string; action: string } => {
-  if (active.every((recommendation) => recommendation.category === 'optional')) {
+  const recommendationCount = active.filter((recommendation) => recommendation.category === 'recommendation').length;
+  if (recommendationCount === 0) {
     return { title: 'PELS can do more for this home', action: 'See what' };
   }
   return {
-    title: active.length === 1 ? '1 recommendation' : `${active.length} recommendations`,
+    title: recommendationCount === 1 ? '1 recommendation' : `${recommendationCount} recommendations`,
     action: 'Review',
   };
 };

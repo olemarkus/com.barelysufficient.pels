@@ -141,13 +141,16 @@ describe('invalidations during an in-flight read', () => {
   // it lands — device models have no periodic invalidation, so a deleted home
   // or reassigned device would otherwise stay resolved for the whole session.
   const pendingCallbacks: Array<() => void> = [];
+  let requestSequence = 0;
   const deferredClient: HomeySettingsClient = {
     ready: () => Promise.resolve(),
     get: (_key: string, cb: HomeyCallback<unknown>) => cb(null, null),
     set: (_key: string, _value: unknown, cb: HomeyCallback<void>) => cb(null),
     api: vi.fn((_method, uri, bodyOrCallback, cb) => {
       const callback = (typeof bodyOrCallback === 'function' ? bodyOrCallback : cb) as HomeyCallback<unknown>;
-      pendingCallbacks.push(() => callback(null, `fetched:${uri}`));
+      requestSequence += 1;
+      const response = `fetched:${uri}:${requestSequence}`;
+      pendingCallbacks.push(() => callback(null, response));
     }),
   };
 
@@ -160,23 +163,25 @@ describe('invalidations during an in-flight read', () => {
     setHomeyClient(deferredClient);
     vi.mocked(deferredClient.api!).mockClear();
     pendingCallbacks.length = 0;
+    requestSequence = 0;
   });
 
   it.each([
     ['a scoped-homes sweep', () => invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH)],
     ['an all-homes sweep', () => invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH)],
     ['an exact-key invalidation of the same path', () => invalidateApiCache(scoped(SETTINGS_UI_PLAN_PATH, AREA))],
-  ])('does not cache a scoped response that predates %s', async (_label, invalidate) => {
+  ])('retries a scoped response that predates %s', async (_label, invalidate) => {
     const uri = scoped(SETTINGS_UI_PLAN_PATH, AREA);
     const inFlight = getApiReadModel(uri);
     invalidate();
     flushPending();
-    // The caller still gets the response it asked for…
-    expect(await inFlight).toBe(`fetched:${uri}`);
-    // …but the next read must refetch instead of resolving the pre-sweep value.
-    const second = getApiReadModel(uri);
+    // The original caller must not receive the pre-sweep response: a state
+    // consumer would otherwise commit it even though the cache rejected it.
+    await vi.waitFor(() => expect(deferredClient.api).toHaveBeenCalledTimes(2));
     flushPending();
-    await second;
+    expect(await inFlight).toBe(`fetched:${uri}:2`);
+    // The retried response is current and caches normally.
+    expect(await getApiReadModel(uri)).toBe(`fetched:${uri}:2`);
     expect(deferredClient.api).toHaveBeenCalledTimes(2);
   });
 
@@ -184,8 +189,8 @@ describe('invalidations during an in-flight read', () => {
     const uri = scoped(SETTINGS_UI_PLAN_PATH, AREA);
     const first = getApiReadModel(uri);
     flushPending();
-    expect(await first).toBe(`fetched:${uri}`);
-    expect(await getApiReadModel(uri)).toBe(`fetched:${uri}`);
+    expect(await first).toBe(`fetched:${uri}:1`);
+    expect(await getApiReadModel(uri)).toBe(`fetched:${uri}:1`);
     expect(deferredClient.api).toHaveBeenCalledTimes(1);
   });
 
@@ -197,7 +202,7 @@ describe('invalidations during an in-flight read', () => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
     flushPending();
     await inFlight;
-    expect(await getApiReadModel(uri)).toBe(`fetched:${uri}`);
+    expect(await getApiReadModel(uri)).toBe(`fetched:${uri}:1`);
     expect(deferredClient.api).toHaveBeenCalledTimes(1);
   });
 });

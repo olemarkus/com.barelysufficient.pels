@@ -1,7 +1,9 @@
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
+  type SettingsUiEvSocFlowReporter,
   type SettingsUiFlowConflictRefreshDevice,
+  type SettingsUiFlowConflictRefreshPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
   callApi,
@@ -9,7 +11,14 @@ import {
 } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
 
-let refreshInFlight: Promise<SettingsUiFlowConflictRefreshDevice[]> | undefined;
+export type EvSocFlowReportersRead =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'resolved'; reporters: readonly SettingsUiEvSocFlowReporter[] }
+  | { state: 'stale'; reporters: readonly SettingsUiEvSocFlowReporter[] };
+
+let refreshInFlight: Promise<SettingsUiFlowConflictRefreshPayload> | undefined;
+let evSocFlowReportersRead: EvSocFlowReportersRead = { state: 'loading' };
 const REFRESH_ERROR_MESSAGE = 'Could not check Homey Flows. Try again.';
 
 const hasValidFlowConflict = (
@@ -55,6 +64,29 @@ const parseRefreshedDevices = (value: unknown): SettingsUiFlowConflictRefreshDev
   return value;
 };
 
+const hasEvSocFlowReporterShape = (value: unknown): value is SettingsUiEvSocFlowReporter => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const reporter = value as Record<string, unknown>;
+  return typeof reporter.chargerDeviceId === 'string'
+    && reporter.chargerDeviceId.length > 0
+    && reporter.chargerDeviceId === reporter.chargerDeviceId.trim()
+    && (reporter.flowName === undefined || (
+      typeof reporter.flowName === 'string'
+      && reporter.flowName.length > 0
+      && reporter.flowName === reporter.flowName.trim()
+    ));
+};
+
+const parseEvSocFlowReporters = (value: unknown): SettingsUiEvSocFlowReporter[] => {
+  if (!Array.isArray(value) || !value.every(hasEvSocFlowReporterShape)) {
+    throw new TypeError(REFRESH_ERROR_MESSAGE);
+  }
+  if (new Set(value.map((reporter) => reporter.chargerDeviceId)).size !== value.length) {
+    throw new TypeError(REFRESH_ERROR_MESSAGE);
+  }
+  return value;
+};
+
 const withRefreshedNativeControlFacts = (
   device: SettingsUiDeviceView,
   refreshed: SettingsUiFlowConflictRefreshDevice,
@@ -64,7 +96,7 @@ const withRefreshedNativeControlFacts = (
   controlAdapter: refreshed.controlAdapter,
 });
 
-const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefreshDevice[]> => {
+const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefreshPayload> => {
   const response = await callApi<unknown>(
     'POST',
     SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
@@ -75,24 +107,66 @@ const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefre
   }
   const payload = response as Record<string, unknown>;
   const refreshedDevices = parseRefreshedDevices(payload.devices);
+  const evSocReporters = parseEvSocFlowReporters(payload.evSocReporters);
   const refreshedById = new Map(refreshedDevices.map((device) => [device.id, device]));
-  const devices = state.latestDevices.map((device) => {
-    const refreshed = refreshedById.get(device.id);
-    return refreshed ? withRefreshedNativeControlFacts(device, refreshed) : device;
-  });
   // The command response contains only the facts it refreshed. Drop the full
   // read-model cache rather than putting a partial device into that trusted
-  // cache; the next ordinary read repopulates it through `/ui_devices`.
+  // cache. This is unconditional so an older cold-boot read cannot commit
+  // into the cache after the backend scan changed native-control facts.
   invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
-  state.latestDevices = devices;
-  state.devicesLoaded = true;
-  document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
-  return refreshedDevices;
+  if (state.devicesLoaded) {
+    const devices = state.latestDevices.map((device) => {
+      const refreshed = refreshedById.get(device.id);
+      return refreshed ? withRefreshedNativeControlFacts(device, refreshed) : device;
+    });
+    state.latestDevices = devices;
+    document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
+  }
+  return { devices: refreshedDevices, evSocReporters };
 };
 
-export const checkFlowConflictNow = async (deviceId: string): Promise<boolean> => {
+export const readEvSocFlowReporters = (): EvSocFlowReportersRead => evSocFlowReportersRead;
+
+const runFlowConflictRefresh = async (): Promise<SettingsUiFlowConflictRefreshPayload> => {
   refreshInFlight ??= refreshFlowConflictDevices().finally(() => { refreshInFlight = undefined; });
-  const refreshedDevices = await refreshInFlight;
+  try {
+    const payload = await refreshInFlight;
+    evSocFlowReportersRead = { state: 'resolved', reporters: payload.evSocReporters };
+    return payload;
+  } catch (error) {
+    evSocFlowReportersRead = evSocFlowReportersRead.state === 'resolved'
+      || evSocFlowReportersRead.state === 'stale'
+      ? { state: 'stale', reporters: evSocFlowReportersRead.reporters }
+      : { state: 'unavailable' };
+    throw error;
+  }
+};
+
+/** Advisory callers may share one scan; they only need the latest available facts. */
+export const refreshFlowConflictFacts = (): Promise<SettingsUiFlowConflictRefreshPayload> => (
+  runFlowConflictRefresh()
+);
+
+/** A user check starts after any older scan so it observes edits made before the click. */
+export const refreshFlowConflictFactsExplicit = async (): Promise<SettingsUiFlowConflictRefreshPayload> => {
+  const predecessor = refreshInFlight;
+  if (predecessor) {
+    try {
+      await predecessor;
+    } catch {
+      // The explicit scan is still owed after an unavailable advisory scan.
+    }
+  }
+  return runFlowConflictRefresh();
+};
+
+export const hasEvSocFlowReporter = (deviceId: string): boolean => (
+  (evSocFlowReportersRead.state === 'resolved' || evSocFlowReportersRead.state === 'stale')
+  && evSocFlowReportersRead.reporters.some((reporter) => reporter.chargerDeviceId === deviceId)
+);
+
+export const checkFlowConflictNow = async (deviceId: string): Promise<boolean> => {
+  const { devices: refreshedDevices } = await refreshFlowConflictFactsExplicit();
   if (!refreshedDevices.some((device) => device.id === deviceId)) {
     throw new Error(REFRESH_ERROR_MESSAGE);
   }

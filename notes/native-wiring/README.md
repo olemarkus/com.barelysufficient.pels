@@ -57,6 +57,12 @@ Observation flows (reading the device, or PELS *report* cards that push state
 *into* PELS) are never conflicts — only writes to PELS' own control
 capability fight PELS.
 
+The same Flow inventory also exposes one separate UI fact: enabled
+**Report battery level for charger** actions, normalized by target charger.
+That action is not a native-control conflict. It becomes redundant only when
+the owner selects a car for the same charger, because selected-car mode ignores
+Flow and charger-native battery reports.
+
 Per-device-class native-write capability sets (the right-hand side of the
 intersection, consumed by the conflict classifier in a later PR):
 
@@ -141,19 +147,25 @@ id === "homey:device:<deviceId>:<capabilityId>"
 `homey:device:` prefix, split the remainder on the first `:`.
 
 PELS-app cards (`homey:app:com.barelysufficient.pels:*`) and manager cards
-(`homey:manager:*`) do not match the prefix and are ignored.
+(`homey:manager:*`) do not match the prefix and are not device-capability
+writes. The battery-report card is additionally recognized as the separate
+charger-reporting fact described above.
 
 `args.device` differs between shapes (bare string id in flat flows, `{ id,
-name }` object in advanced flows) — irrelevant here because we key off the
-card `id`, not `args`.
+name }` object in advanced flows, with a legacy `{ data: { id } }` form also
+accepted). Native-control writes key off the card `id`; the battery-report fact
+uses this normalized target argument.
 
 ## Fail-closed contract
 
-The reader returns a typed three-state, never a bare boolean:
+The reader returns a typed two-arm result, never a bare boolean:
 
 ```ts
 type FlowReadResult =
-  | { status: 'ok';      writes: Map<deviceId, Set<capabilityId>> }
+  | { status: 'ok';      facts: {
+                            writes: FlowCapabilityWrites;
+                            evSocReporters: EvSocFlowReporter[]
+                          } }
   | { status: 'unknown'; reason: string };
 ```
 
@@ -180,7 +192,7 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 ## PR decomposition
 
 1. **PR1 (shipped):** `lib/flowApi/` defensive reader + pure normalizer →
-   `Map<deviceId, Set<capabilityId>>`, fail-closed three-state, plus a
+   `Map<deviceId, Set<capabilityId>>`, fail-closed two-arm result, plus a
    fire-and-forget startup telemetry probe (`setup/flowConflictProbe.ts`)
    that structured-logs read outcome + write counts. No behaviour change.
 2. **PR2 (shipped):** pure conflict classifier (`lib/flowApi/flowConflict.ts`)

@@ -1684,6 +1684,21 @@ things the path's lede promises: prices, solar, Smart tasks.
 - **Dismiss is the owner saying "not relevant to me"**, remembered like any
   other recommendation. Do not add a suggestion that cannot be dismissed.
 
+### Car battery recommendations
+
+- A supported car with no charger selection is **Optional**, not Recommended.
+  Basic capacity control works without a car battery level, so `Choose a
+  charger for <car>` must never imply that the setup is wrong.
+- An enabled **Report battery level for charger** Flow action becomes a real
+  recommendation only when its target charger has a selected car. PELS ignores
+  that action in this state, so the recommendation names the charger, names the
+  single Flow when possible, and asks the owner to remove the action or disable
+  the Flow if it is no longer needed.
+- A selected and matched car that has not reported a finite battery level is a
+  local warning on the charger page. An unmatched car keeps the more specific
+  `Waiting to match a car` state; it is expected matching latency, not the same
+  fault.
+
 ## Mode label
 
 With one home, the Settings page renders one selector labelled `Current mode`.

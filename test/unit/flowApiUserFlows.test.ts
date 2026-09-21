@@ -1,6 +1,8 @@
 import {
   normalizeFlowCapabilityWrites,
+  normalizeUserFlowFacts,
   parseDeviceCapabilityWrite,
+  parseEvSocReportTarget,
 } from '../../lib/flowApi/userFlows';
 import {
   readFlowCapabilityWrites,
@@ -107,6 +109,26 @@ describe('parseDeviceCapabilityWrite', () => {
   });
 });
 
+describe('parseEvSocReportTarget', () => {
+  it('extracts string, autocomplete, and legacy charger arguments', () => {
+    const card = (device: unknown) => ({
+      id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+      args: { device },
+    });
+    expect(parseEvSocReportTarget(card(easeeId))).toBe(easeeId);
+    expect(parseEvSocReportTarget(card({ id: easeeId, name: 'Easee' }))).toBe(easeeId);
+    expect(parseEvSocReportTarget(card({ data: { id: easeeId } }))).toBe(easeeId);
+  });
+
+  it('distinguishes unrelated cards from a malformed reporting action', () => {
+    expect(parseEvSocReportTarget({ id: 'homey:manager:mobile:push_text' })).toBeUndefined();
+    expect(parseEvSocReportTarget({
+      id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+      args: {},
+    })).toBeNull();
+  });
+});
+
 describe('normalizeFlowCapabilityWrites', () => {
   it('collects device-capability writes from both flat and advanced flows', () => {
     const writes = normalizeFlowCapabilityWrites(flatFlowsFixture, advancedFlowsFixture);
@@ -187,6 +209,51 @@ describe('normalizeFlowCapabilityWrites', () => {
   });
 });
 
+describe('normalizeUserFlowFacts', () => {
+  it('reports an enabled battery-level action with its single Flow name', () => {
+    const facts = normalizeUserFlowFacts(flatFlowsFixture, advancedFlowsFixture);
+
+    expect(facts.evSocReporters).toEqual([{
+      chargerDeviceId: zaptecId,
+      flowName: 'Zaptec stepped load',
+    }]);
+  });
+
+  it('supports flat Flows and omits the name when several Flows report for one charger', () => {
+    const report = {
+      id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+      args: { device: { id: easeeId } },
+    };
+    const facts = normalizeUserFlowFacts(
+      {
+        first: { name: 'First', actions: [report] },
+        second: { name: 'Second', actions: [report] },
+        disabled: { enabled: false, actions: [report] },
+      },
+      {},
+    );
+
+    expect(facts.evSocReporters).toEqual([{ chargerDeviceId: easeeId }]);
+  });
+
+  it('normalizes the single Flow name before exposing it to the UI', () => {
+    const facts = normalizeUserFlowFacts({
+      report: {
+        name: '  Report car battery  ',
+        actions: [{
+          id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+          args: { device: easeeId },
+        }],
+      },
+    }, {});
+
+    expect(facts.evSocReporters).toEqual([{
+      chargerDeviceId: easeeId,
+      flowName: 'Report car battery',
+    }]);
+  });
+});
+
 describe('readFlowCapabilityWrites (fail-closed)', () => {
   const okGet = (responses: Record<string, unknown>): FlowApiGet => async (path) => {
     if (path in responses) return responses[path];
@@ -207,7 +274,7 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
 
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') throw new Error('expected readable Advanced Flows');
-      expect(writtenCapabilities(result.writes, easeeId)).toEqual(new Set(['max_power_3000']));
+      expect(writtenCapabilities(result.facts.writes, easeeId)).toEqual(new Set(['max_power_3000']));
     },
   );
 
@@ -229,7 +296,11 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
     });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('expected ok');
-    expect(new Set(result.writes.get(zaptecId)?.keys())).toEqual(new Set(['installation_current_control']));
+    expect(new Set(result.facts.writes.get(zaptecId)?.keys())).toEqual(new Set(['installation_current_control']));
+    expect(result.facts.evSocReporters).toEqual([{
+      chargerDeviceId: zaptecId,
+      flowName: 'Zaptec stepped load',
+    }]);
   });
 
   it('distinguishes read-ok-but-empty from unknown', async () => {
@@ -238,7 +309,7 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
     });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('expected ok');
-    expect(result.writes.size).toBe(0);
+    expect(result.facts.writes.size).toBe(0);
   });
 
   it('returns unknown when the flat endpoint throws (e.g. 403 / transport error)', async () => {
@@ -251,6 +322,24 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
     expect(result.status).toBe('unknown');
     if (result.status !== 'unknown') throw new Error('expected unknown');
     expect(result.reason).toContain('403');
+  });
+
+  it('fails closed when a battery-reporting action has no usable charger', async () => {
+    const result = await readFlowCapabilityWrites({
+      get: okGet({
+        [FLOW_API_PATH]: {
+          broken: {
+            actions: [{
+              id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+              args: {},
+            }],
+          },
+        },
+        [ADVANCED_FLOW_API_PATH]: {},
+      }),
+    });
+
+    expect(result.status).toBe('unknown');
   });
 
   it('returns unknown when the advanced endpoint throws even if flat read', async () => {

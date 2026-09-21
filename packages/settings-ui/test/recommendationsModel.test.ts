@@ -6,7 +6,10 @@ import {
   resolveSetupRecommendations,
 } from '../src/ui/recommendationsModel.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
-import type { SettingsUiRecommendationCar } from '../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiEvSocFlowReporter,
+  SettingsUiRecommendationCar,
+} from '../../contracts/src/settingsUiApi.ts';
 
 const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
   id: 'device-1',
@@ -23,7 +26,14 @@ const resolve = (
   cars: readonly SettingsUiRecommendationCar[] = [],
   associations: EvCarAssociations = {},
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>> = {},
-) => resolveSetupRecommendations(devices, cars, associations, nativeWiringEnabledByDeviceId);
+  evSocReporters: readonly SettingsUiEvSocFlowReporter[] = [],
+) => resolveSetupRecommendations(
+  devices,
+  cars,
+  associations,
+  nativeWiringEnabledByDeviceId,
+  evSocReporters,
+);
 
 describe('setup recommendations', () => {
   it.each(['Easee', 'Høiax'])(
@@ -119,10 +129,58 @@ describe('setup recommendations', () => {
 
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
+      category: 'optional',
       title: 'Choose a charger for Polestar 3',
       actionLabel: 'Choose charger',
       target: { kind: 'device', deviceId: 'charger-1' },
     });
+  });
+
+  it('warns when an enabled Flow still reports battery level for a charger with a selected car', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' })],
+      [],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    expect(recommendations).toEqual([expect.objectContaining({
+      category: 'recommendation',
+      title: 'Remove unused battery reporting for Easee',
+      actionLabel: 'Check again',
+      target: { kind: 'ev-soc-flow-conflict-check', deviceId: 'charger-1' },
+    })]);
+    expect(recommendations[0]?.body).toContain('Report car battery');
+    expect(recommendations[0]?.body).toContain('ignores');
+  });
+
+  it('does not call battery reporting a conflict until a car is selected for that charger', () => {
+    const chargers = [
+      device({ id: 'charger-1', deviceClass: 'evcharger' }),
+      device({ id: 'charger-2', deviceClass: 'evcharger' }),
+    ];
+    expect(resolve(chargers, [], {}, {}, [{ chargerDeviceId: 'charger-1' }])).toEqual([]);
+    expect(resolve(
+      chargers,
+      [],
+      { 'charger-2': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1' }],
+    )).toEqual([]);
+  });
+
+  it('uses plural cleanup copy when several or unnamed reporting Flows are involved', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' })],
+      [],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1' }],
+    );
+
+    expect(recommendations[0]?.body).toContain('actions in enabled Homey Flows');
+    expect(recommendations[0]?.body).toContain('Remove those actions');
   });
 
   it('routes an unconfigured car to the device list when several chargers are available', () => {

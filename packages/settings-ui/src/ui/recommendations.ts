@@ -7,8 +7,7 @@ import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
   parseRecommendationCarsRead,
-  resolveCarAssociationRecommendations,
-  resolveNativeControlRecommendations,
+  resolveSetupRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
@@ -33,7 +32,13 @@ import {
   renderSetupRecommendationsBanner,
   renderSetupRecommendationsView,
 } from './views/SetupRecommendationsView.tsx';
-import { checkFlowConflictNow } from './flowConflictRefresh.ts';
+import {
+  checkFlowConflictNow,
+  hasEvSocFlowReporter,
+  readEvSocFlowReporters,
+  refreshFlowConflictFacts,
+  refreshFlowConflictFactsExplicit,
+} from './flowConflictRefresh.ts';
 import { showToast, showToastError } from './toast.ts';
 import { subscribeToHomeScope } from './homeScope.ts';
 
@@ -82,8 +87,12 @@ const hasLoadedDismissals = (read: DismissalReadState): read is LoadedDismissalR
 
 const resolveRecommendationReadiness = (afterSetupRead: AfterSetupFactsRead): RecommendationReadiness => {
   if (!state.devicesLoaded) return 'loading';
+  const needsFlowReporterCheck = Object.values(state.evCarAssociations)
+    .some((association) => association.carIds.length > 0);
+  const flowReporterRead = readEvSocFlowReporters();
   return state.evCarAssociationsLoaded
     && carInventory.state === 'resolved'
+    && (!needsFlowReporterCheck || flowReporterRead.state === 'resolved')
     && afterSetupRead.state === 'resolved'
     ? 'resolved'
     : 'partial';
@@ -96,17 +105,26 @@ const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null }
 
 const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): SetupRecommendation[] => {
   if (!state.devicesLoaded) return [];
-  const nativeRecommendations = resolveNativeControlRecommendations(state.latestDevices, state.nativeWiringMap);
-  const carRecommendations = state.evCarAssociationsLoaded
+  const cars = state.evCarAssociationsLoaded
     && (carInventory.state === 'resolved' || carInventory.state === 'stale')
-    ? resolveCarAssociationRecommendations(state.latestDevices, carInventory.cars, state.evCarAssociations)
+    ? carInventory.cars
+    : [];
+  const flowReporterRead = readEvSocFlowReporters();
+  const evSocReporters = state.evCarAssociationsLoaded
+    && (flowReporterRead.state === 'resolved' || flowReporterRead.state === 'stale')
+    ? flowReporterRead.reporters
     : [];
   // Device fixes first, by name; then what PELS can do next, in the order the
   // setup path's lede names them. The second group is not sorted into the
   // first: a wiring fix for one device outranks an optional feature.
   return [
-    ...[...nativeRecommendations, ...carRecommendations]
-      .sort((left, right) => left.title.localeCompare(right.title)),
+    ...resolveSetupRecommendations(
+      state.latestDevices,
+      cars,
+      state.evCarAssociations,
+      state.nativeWiringMap,
+      evSocReporters,
+    ),
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts)
       : []),
@@ -208,6 +226,26 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
       });
     return;
   }
+  if (target.kind === 'ev-soc-flow-conflict-check') {
+    if (busyRecommendationId !== null) return;
+    busyRecommendationId = recommendation.id;
+    refreshRecommendationSurfaces();
+    void refreshFlowConflictFactsExplicit()
+      .then(() => {
+        const hasSelectedCar = (state.evCarAssociations[target.deviceId]?.carIds.length ?? 0) > 0;
+        const hasConflict = hasSelectedCar && hasEvSocFlowReporter(target.deviceId);
+        return showToast(
+          hasConflict ? 'PELS still finds battery reporting for this charger.' : 'No unused battery reporting found.',
+          hasConflict ? 'warn' : 'ok',
+        );
+      })
+      .catch((error) => showToastError(error, 'Could not check Homey Flows. Try again.'))
+      .finally(() => {
+        busyRecommendationId = null;
+        refreshRecommendationSurfaces();
+      });
+    return;
+  }
   if (navigationRead.state !== 'resolved') return;
   if (target.kind === 'panel') {
     navigationRead.navigation.openPanel(target.panelId);
@@ -273,6 +311,9 @@ export const refreshRecommendationSurfaces = (): void => {
       setupPath: setupRead,
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
+      retryAvailable: dismissalRead.state === 'unavailable'
+        || (Object.values(state.evCarAssociations).some((association) => association.carIds.length > 0)
+          && ['stale', 'unavailable'].includes(readEvSocFlowReporters().state)),
       busyRecommendationId,
       onAction: runRecommendationAction,
       onDismiss: (recommendation) => {
@@ -324,21 +365,38 @@ const refreshCarInventory = (): Promise<void> => {
   return carInventoryRefresh;
 };
 
+const loadRecommendationFlowFacts = async (
+  refresh: typeof refreshFlowConflictFacts = refreshFlowConflictFacts,
+): Promise<void> => {
+  try {
+    await refresh();
+  } catch (error) {
+    await logSettingsError('Failed to check Homey Flows for recommendations', error, 'setup recommendations');
+  }
+  refreshRecommendationSurfaces();
+};
+
 export const loadRecommendationData = async (): Promise<void> => {
   await Promise.all([
     loadRecommendationDismissals(),
     refreshCarInventory(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
+    loadRecommendationFlowFacts(),
     // Publishes to the setup path, which redraws these surfaces on a change.
     loadHubMarket(),
   ]);
 };
 
 const retryRecommendationData = (): void => {
-  if (dismissalRead.state !== 'unavailable') return;
-  dismissalRead = { state: 'loading' };
+  const retryDismissals = dismissalRead.state === 'unavailable';
+  const retryFlowFacts = ['stale', 'unavailable'].includes(readEvSocFlowReporters().state);
+  if (!retryDismissals && !retryFlowFacts) return;
+  if (retryDismissals) dismissalRead = { state: 'loading' };
   refreshRecommendationSurfaces();
-  void loadRecommendationDismissals();
+  void Promise.all([
+    retryDismissals ? loadRecommendationDismissals() : Promise.resolve(),
+    retryFlowFacts ? loadRecommendationFlowFacts(refreshFlowConflictFactsExplicit) : Promise.resolve(),
+  ]);
 };
 
 export const clearRecommendationDismissals = (): void => {
@@ -377,7 +435,15 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
       const dismissalLoad = dismissalRead.state === 'resolved'
         ? Promise.resolve()
         : loadRecommendationDismissals();
-      void Promise.all([refreshCarInventory(), dismissalLoad, associationLoad]).then(refreshRecommendationSurfaces);
+      // Flow inventory can change while this WebView stays open. Refresh on
+      // every visit so a newly added reporting action can create a suggestion.
+      const flowFactsLoad = loadRecommendationFlowFacts();
+      void Promise.all([
+        refreshCarInventory(),
+        dismissalLoad,
+        associationLoad,
+        flowFactsLoad,
+      ]).then(refreshRecommendationSurfaces);
     } else if (panelId === 'overview' || panelId === 'settings') {
       refreshRecommendationSurfaces();
     }

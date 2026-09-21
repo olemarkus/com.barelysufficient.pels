@@ -121,7 +121,9 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 Selecting a car chooses its matched battery reading as the charger's battery source.
 While any car is selected, PELS ignores both the charger's own battery reading and
 the **Report battery level for charger** Flow card. Until a car is matched, the charger
-has no battery level. Clear the car selection to use native or Flow battery reporting again.
+has no battery level. **Setup & recommendations** flags an enabled Flow that still reports
+battery level for this charger, because that action is ignored while a car is selected.
+Clear the car selection to use native or Flow battery reporting again.
 
 When a selected car is unavailable in Homey, PELS temporarily removes its association and
 battery level because the retained car data cannot be trusted. The charger remains managed
@@ -135,7 +137,7 @@ Notes:
 - Devices without a usable power estimate cannot use power-limit control.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
 - Turn on **Disable temperature control** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and — for a device with power levels, such as a compatible water heater — lowering it a level at a time. Saved temperature settings remain available when temperature control is enabled again.
-- **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and Easee chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, then turn on **Use built-in device control**. A Flow that only reads the device, reports battery level, or adjusts an unrelated setting is not a conflict and should remain in place.
+- **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and Easee chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, then turn on **Use built-in device control**. A Flow that only reads the device, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - **Power when running** is how much PELS assumes the device draws while it runs, and it decides how much power PELS frees up before resuming it. The field shows the figure PELS is using now and says where it came from — measured by PELS, read from the device, from Homey, or a rough estimate when PELS has no reading yet. Type a value in watts to correct it, or leave it empty to let PELS work it out. It is not shown for stepped loads, which are sized per configured step. If the figure looks wrong and you would rather fix it at the source, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
 - For EV current-control setup, see [Configure an EV Charger](/ev-charger).

@@ -51,7 +51,7 @@ describe('detectNativeWiringConflicts', () => {
         candidateDevice(hoiaxId, ['max_power_3000', 'onoff']),
       ],
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'ok', autoEnableDeviceIds: [],
       conflicts: [
         { deviceId: easeeId, conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' },
@@ -68,7 +68,9 @@ describe('detectNativeWiringConflicts', () => {
       structuredLog: logger,
     });
 
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
+    expect(result).toMatchObject({
+      status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [],
+    });
     expect(events[0]).toMatchObject({ outcome: 'ok', candidateCount: 1, conflictCount: 0, autoEnableCount: 1 });
   });
 
@@ -77,7 +79,7 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'max_power_3000') }),
       getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'ok',
       autoEnableDeviceIds: [],
       conflicts: [{ deviceId: hoiaxId, conflictingCapabilities: ['max_power_3000'] }],
@@ -92,7 +94,9 @@ describe('detectNativeWiringConflicts', () => {
       }),
       getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
+    expect(result).toMatchObject({
+      status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [],
+    });
   });
 
   it('auto-enables an Easee charger with no Flow setting its current', async () => {
@@ -100,7 +104,9 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [easeeId], conflicts: [] });
+    expect(result).toMatchObject({
+      status: 'ok', autoEnableDeviceIds: [easeeId], conflicts: [],
+    });
   });
 
   it('holds an Easee charger on the Flow when a Flow uses the app\'s dynamic current card', async () => {
@@ -124,7 +130,7 @@ describe('detectNativeWiringConflicts', () => {
       }),
       getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'ok',
       autoEnableDeviceIds: [],
       conflicts: [{ deviceId: easeeId, conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Elbillader' }],
@@ -136,7 +142,7 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getDescriptors: () => [candidateDevice(targetPowerId, ['target_power'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
+    expect(result).toMatchObject({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
 
   it('does not surface a conflict for an always-on target_power device (no false banner)', async () => {
@@ -147,7 +153,7 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(targetPowerId, 'target_power') }),
       getDescriptors: () => [candidateDevice(targetPowerId, ['target_power'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
+    expect(result).toMatchObject({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
 
   it('returns unknown and no decisions when the flow read fails closed', async () => {
@@ -178,6 +184,36 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getDescriptors: () => [],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
+    expect(result).toMatchObject({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
+  });
+
+  it('reports enabled battery-level Flow actions separately from native-control conflicts', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({
+        [FLOW_API_PATH]: {},
+        [ADVANCED_FLOW_API_PATH]: {
+          battery: {
+            name: 'Report car battery',
+            cards: {
+              report: {
+                id: 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level',
+                type: 'action',
+                args: { device: { id: easeeId } },
+              },
+            },
+          },
+        },
+      }),
+      getDescriptors: () => [candidateDevice(easeeId, easeeNativeWrites)],
+    });
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      autoEnableDeviceIds: [easeeId],
+      conflicts: [],
+      flowFacts: {
+        evSocReporters: [{ chargerDeviceId: easeeId, flowName: 'Report car battery' }],
+      },
+    });
   });
 });

@@ -353,4 +353,23 @@ describe('charger car picker', () => {
     // it stops shouting.
     expect(flowNote().classList.contains('field__hint--alert')).toBe(false);
   });
+
+  it('warns when the matched car has not reported a battery level', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger({
+      associatedCar: {
+        carId: 'car-1', carName: 'Polestar 3', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000,
+      },
+    }));
+    await flush();
+
+    expect(flowNote().textContent).toContain('has not reported a battery level');
+    expect(flowNote().textContent).toContain('Charge boost and Smart tasks cannot use it yet');
+    expect(flowNote().classList.contains('field__hint--alert')).toBe(true);
+  });
 });

@@ -490,8 +490,15 @@ export type SettingsUiFlowConflictRefreshDevice = Pick<
   'id' | 'flowConflict' | 'controlAdapter'
 >;
 
+export type SettingsUiEvSocFlowReporter = {
+  chargerDeviceId: string;
+  /** Present only when exactly one named enabled Flow reports for the charger. */
+  flowName?: string;
+};
+
 export type SettingsUiFlowConflictRefreshPayload = {
   devices: SettingsUiFlowConflictRefreshDevice[];
+  evSocReporters: SettingsUiEvSocFlowReporter[];
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {

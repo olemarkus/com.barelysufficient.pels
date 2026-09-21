@@ -374,20 +374,22 @@ export const callApi = async <T>(
 };
 
 export const getApiReadModel = async <T>(uri: string): Promise<T> => {
-  if (apiCache.has(uri)) {
-    countApiCacheHit();
-    return apiCache.get(uri) as T;
+  while (true) {
+    if (apiCache.has(uri)) {
+      countApiCacheHit();
+      return apiCache.get(uri) as T;
+    }
+    const generationAtFetch = apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0;
+    const value = await callApi<T>('GET', uri);
+    // An invalidation means this response predates a completed write or refresh.
+    // Retry here so consumers receive a current read model and can trust it when
+    // committing UI state; merely refusing to cache the old response still let
+    // a late cold-boot request overwrite newer facts in that state.
+    if (!isApiCacheWriteStillValid(uri, generationAtFetch)) continue;
+    // A scoped refusal is never cached at all (see `isUnavailableScopedPayload`).
+    if (!isUnavailableScopedPayload(value)) apiCache.set(uri, value);
+    return value;
   }
-  const generationAtFetch = apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0;
-  const value = await callApi<T>('GET', uri);
-  // The caller still gets the response; it just must not OUTLIVE an
-  // invalidation that swept this path while the GET was in flight — the next
-  // read refetches instead of resolving a pre-sweep payload from the cache.
-  // A scoped refusal is never cached at all (see `isUnavailableScopedPayload`).
-  if (!isUnavailableScopedPayload(value) && isApiCacheWriteStillValid(uri, generationAtFetch)) {
-    apiCache.set(uri, value);
-  }
-  return value;
 };
 
 const isHomeySettingsClient = (candidate: unknown): candidate is HomeySettingsClient => (

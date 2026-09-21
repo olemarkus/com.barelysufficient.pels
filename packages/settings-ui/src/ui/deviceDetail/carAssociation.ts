@@ -195,12 +195,21 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
   deviceDetailCarFlowNote.hidden = ticked.length === 0;
   if (ticked.length === 0) return;
 
-  const matched = device.associatedCar;
-  deviceDetailCarFlowNote.classList.toggle('field__hint--alert', matched === undefined);
-  deviceDetailCarFlowNote.textContent = matched
+  const decorated = device.associatedCar;
+  const matched = decorated && ticked.includes(decorated.carId) ? decorated : undefined;
+  const hasBatteryLevel = matched !== undefined
+    && typeof matched.socPct === 'number'
+    && Number.isFinite(matched.socPct);
+  deviceDetailCarFlowNote.classList.toggle('field__hint--alert', !hasBatteryLevel);
+  if (!matched) {
+    deviceDetailCarFlowNote.textContent = 'Until a car is matched this charger has no battery level: '
+      + 'while a car is ticked, both the Flow card that reports it and the charger\'s own reading are ignored.';
+    return;
+  }
+  deviceDetailCarFlowNote.textContent = hasBatteryLevel
     ? `Battery level comes from ${formatDisplayDeviceName(matched.carName)}.`
-    : 'Until a car is matched this charger has no battery level: while a car is ticked, '
-      + 'both the Flow card that reports it and the charger\'s own reading are ignored.';
+    : `${formatDisplayDeviceName(matched.carName)} is matched but has not reported a battery level. `
+      + 'Charge boost and Smart tasks cannot use it yet.';
 };
 
 const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {

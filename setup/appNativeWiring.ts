@@ -183,7 +183,7 @@ export class AppNativeWiring {
       nativeWiringDecisionKey(this.deps.getAutoNativeWiringDecisions()) === nativeWiringDecisionKey(nextDecisions)
       && flowConflictKey(this.deps.getFlowConflictsByDevice()) === flowConflictKey(nextConflicts)
     ) {
-      return { state: 'resolved' };
+      return { state: 'resolved', flowFacts: detection.flowFacts };
     }
 
     const previousDecisions = this.deps.getAutoNativeWiringDecisions();
@@ -205,6 +205,6 @@ export class AppNativeWiring {
       this.deps.setFlowConflictsByDevice(previousConflicts);
       throw error;
     }
-    return { state: 'resolved' };
+    return { state: 'resolved', flowFacts: detection.flowFacts };
   }
 }

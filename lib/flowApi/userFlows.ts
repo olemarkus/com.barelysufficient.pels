@@ -7,10 +7,10 @@
  *
  * This module is intentionally pure: it takes already-fetched flow-list
  * responses (shape `unknown`, straight off the Web API) and extracts the
- * raw signal — which device capabilities are written by a flow ACTION card.
- * It does NOT know PELS' per-device-class native-write sets; intersecting
- * the write map with those sets is the conflict classifier's job (a later
- * PR). Keeping that boundary here is what makes this PR zero-behaviour.
+ * raw signals — which device capabilities are written by a Flow action and
+ * which chargers receive PELS battery reports. It does NOT know PELS'
+ * per-device-class native-write sets or the owner's selected-car settings;
+ * those facts are combined by their respective consumers.
  *
  * Two endpoints, two shapes, one extraction rule:
  *   - /api/manager/flow/flow/         → { [flowId]: { trigger, conditions, actions } }
@@ -24,10 +24,11 @@
  * never colons — so deviceId is the segment up to the first colon after the
  * `homey:device:` prefix, and capabilityId is the remainder).
  *
- * PELS-app bridge cards (e.g. `homey:app:com.barelysufficient.pels:desired_stepped_load_changed`)
- * do not match the `homey:device:` prefix and are intentionally ignored: a
- * bridge flow's conflict surfaces through the vendor capability its action
- * writes, which is captured here as a normal device-capability write.
+ * PELS-app bridge cards do not count as device-capability writes: a bridge
+ * flow's native-control conflict surfaces through the vendor capability its
+ * action writes. The one separately owned fact is PELS' battery-report action,
+ * which is normalized by charger so the UI can detect when selecting a car has
+ * made that Flow action redundant.
  */
 
 /**
@@ -41,7 +42,25 @@
  */
 export type FlowCapabilityWrites = Map<string, Map<string, Map<string, string>>>;
 
+/**
+ * Flow-inventory fact owned and normalized by `lib/flowApi`: one entry per
+ * charger targeted by an enabled battery-report action. `flowName` is present
+ * only when exactly one named Flow reports for that charger.
+ * Governing contract: `notes/native-wiring/README.md`.
+ */
+export type EvSocFlowReporter = {
+  chargerDeviceId: string;
+  flowName?: string;
+};
+
+/** Clean result of normalizing both Homey Flow inventories. */
+export type UserFlowFacts = {
+  writes: FlowCapabilityWrites;
+  evSocReporters: EvSocFlowReporter[];
+};
+
 const DEVICE_CARD_ID_PREFIX = 'homey:device:';
+export const EV_SOC_REPORT_CARD_ID = 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -63,6 +82,25 @@ export function parseDeviceCapabilityWrite(
   const capabilityId = rest.slice(separatorIndex + 1);
   if (!deviceId || !capabilityId) return null;
   return { deviceId, capabilityId };
+}
+
+function readFlowDeviceId(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (!isRecord(value)) return null;
+  if (typeof value.id === 'string') return value.id.trim() || null;
+  return isRecord(value.data) && typeof value.data.id === 'string'
+    ? value.data.id.trim() || null
+    : null;
+}
+
+/**
+ * `undefined` means this is not the PELS battery-report action; `null` means
+ * it is that action but its charger argument is malformed.
+ */
+export function parseEvSocReportTarget(card: unknown): string | null | undefined {
+  if (!isRecord(card) || card.id !== EV_SOC_REPORT_CARD_ID) return undefined;
+  if (!isRecord(card.args)) return null;
+  return readFlowDeviceId(card.args.device);
 }
 
 function recordWrite(
@@ -87,6 +125,7 @@ function recordWrite(
 
 function collectFromCard(
   writes: FlowCapabilityWrites,
+  evSocReports: Map<string, Map<string, string>>,
   card: unknown,
   flowId: string,
   flowName: string,
@@ -94,12 +133,21 @@ function collectFromCard(
   if (!isRecord(card)) return;
   const write = parseDeviceCapabilityWrite(card.id);
   if (write) recordWrite(writes, write.deviceId, write.capabilityId, flowId, flowName);
+  const chargerDeviceId = parseEvSocReportTarget(card);
+  if (typeof chargerDeviceId === 'string') {
+    let byFlow = evSocReports.get(chargerDeviceId);
+    if (!byFlow) {
+      byFlow = new Map();
+      evSocReports.set(chargerDeviceId, byFlow);
+    }
+    byFlow.set(flowId, flowName);
+  }
 }
 
 // A Flow's display name, or '' when it has no usable name (the classifier
 // then cannot name it and falls back to the generic conflict copy).
 function flowDisplayName(flow: Record<string, unknown>): string {
-  return typeof flow.name === 'string' ? flow.name : '';
+  return typeof flow.name === 'string' ? flow.name.trim() : '';
 }
 
 // A flow with `enabled === false` is returned by the Web API with its cards
@@ -110,20 +158,25 @@ function isDisabledFlow(flow: Record<string, unknown>): boolean {
   return flow.enabled === false;
 }
 
-function collectFromFlatFlows(writes: FlowCapabilityWrites, flatFlows: Record<string, unknown>): void {
+function collectFromFlatFlows(
+  writes: FlowCapabilityWrites,
+  evSocReports: Map<string, Map<string, string>>,
+  flatFlows: Record<string, unknown>,
+): void {
   for (const [flowId, flow] of Object.entries(flatFlows)) {
     if (!isRecord(flow) || isDisabledFlow(flow)) continue;
     const actions = flow.actions;
     if (!Array.isArray(actions)) continue;
     const flowName = flowDisplayName(flow);
     for (const action of actions) {
-      collectFromCard(writes, action, flowId, flowName);
+      collectFromCard(writes, evSocReports, action, flowId, flowName);
     }
   }
 }
 
 function collectFromAdvancedFlows(
   writes: FlowCapabilityWrites,
+  evSocReports: Map<string, Map<string, string>>,
   advancedFlows: Record<string, unknown>,
 ): void {
   for (const [flowId, flow] of Object.entries(advancedFlows)) {
@@ -133,7 +186,7 @@ function collectFromAdvancedFlows(
     const flowName = flowDisplayName(flow);
     for (const card of Object.values(cards)) {
       if (!isRecord(card) || card.type !== 'action') continue;
-      collectFromCard(writes, card, flowId, flowName);
+      collectFromCard(writes, evSocReports, card, flowId, flowName);
     }
   }
 }
@@ -149,8 +202,21 @@ export function normalizeFlowCapabilityWrites(
   flatFlows: Record<string, unknown>,
   advancedFlows: Record<string, unknown>,
 ): FlowCapabilityWrites {
+  return normalizeUserFlowFacts(flatFlows, advancedFlows).writes;
+}
+
+export function normalizeUserFlowFacts(
+  flatFlows: Record<string, unknown>,
+  advancedFlows: Record<string, unknown>,
+): UserFlowFacts {
   const writes: FlowCapabilityWrites = new Map();
-  collectFromFlatFlows(writes, flatFlows);
-  collectFromAdvancedFlows(writes, advancedFlows);
-  return writes;
+  const evSocReports = new Map<string, Map<string, string>>();
+  collectFromFlatFlows(writes, evSocReports, flatFlows);
+  collectFromAdvancedFlows(writes, evSocReports, advancedFlows);
+  const evSocReporters = [...evSocReports.entries()].map(([chargerDeviceId, byFlow]) => {
+    const names = [...byFlow.values()];
+    const flowName = byFlow.size === 1 && names[0] ? names[0] : undefined;
+    return flowName === undefined ? { chargerDeviceId } : { chargerDeviceId, flowName };
+  });
+  return { writes, evSocReporters };
 }

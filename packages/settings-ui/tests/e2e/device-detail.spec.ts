@@ -97,6 +97,7 @@ test.describe('Device detail panel', () => {
               id: conflicted.id,
               controlAdapter: { ...conflicted.controlAdapter, activationEnabled: true },
             }],
+            evSocReporters: [],
           }),
         },
       };

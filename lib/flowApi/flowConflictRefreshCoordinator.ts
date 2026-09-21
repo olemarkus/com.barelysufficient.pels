@@ -6,8 +6,10 @@
  * it, so the scan serving a user's "Check again" starts after that request.
  * See notes/native-wiring/README.md.
  */
+import type { UserFlowFacts } from './userFlows';
+
 export type FlowConflictRefreshResult =
-  | { readonly state: 'resolved' }
+  | { readonly state: 'resolved'; readonly flowFacts: UserFlowFacts }
   | { readonly state: 'unavailable' };
 
 export type FlowConflictRefreshRun = () => Promise<FlowConflictRefreshResult>;

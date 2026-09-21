@@ -2,13 +2,13 @@
  * Defensive reader for the Homey user-flow lists.
  *
  * Fail-closed contract (see notes/native-wiring/): the result is a typed
- * three-state. A consumer must be able to tell "read OK, no conflicting
+ * two-arm result. A consumer must be able to tell "read OK, no conflicting
  * writes found" apart from "could not read" — otherwise a later auto-enable
  * step could flip native wiring on during a transient Web API failure, the
  * exact bug this contract exists to prevent.
  *
- *   { status: 'ok', writes }        → both endpoints returned a flow map.
- *                                     `writes` may be empty (genuinely none).
+ *   { status: 'ok', facts }         → both endpoints returned a flow map.
+ *                                     `facts.writes` may be empty (genuinely none).
  *   { status: 'unknown', reason }   → a read threw, returned a non-object,
  *                                     or otherwise could not be trusted.
  *
@@ -21,13 +21,17 @@
  * prefix), reject on non-2xx or transport error.
  */
 import { normalizeError } from '../utils/errorUtils';
-import { normalizeFlowCapabilityWrites, type FlowCapabilityWrites } from './userFlows';
+import {
+  normalizeUserFlowFacts,
+  parseEvSocReportTarget,
+  type UserFlowFacts,
+} from './userFlows';
 
 export const FLOW_API_PATH = 'manager/flow/flow/';
 export const ADVANCED_FLOW_API_PATH = 'manager/flow/advancedflow/';
 
 export type FlowReadResult =
-  | { status: 'ok'; writes: FlowCapabilityWrites }
+  | { status: 'ok'; facts: UserFlowFacts }
   | { status: 'unknown'; reason: string };
 
 export type FlowApiGet = (path: string) => Promise<unknown>;
@@ -47,7 +51,11 @@ function isTrustedFlatFlowMap(value: Record<string, unknown>): boolean {
     if (!isRecord(flow)) return false;
     if (flow.enabled === false) return true;
     return Array.isArray(flow.actions)
-      && flow.actions.every((action) => isRecord(action) && typeof action.id === 'string');
+      && flow.actions.every((action) => (
+        isRecord(action)
+        && typeof action.id === 'string'
+        && parseEvSocReportTarget(action) !== null
+      ));
   });
 }
 
@@ -59,7 +67,7 @@ function isTrustedAdvancedFlowMap(value: Record<string, unknown>): boolean {
     return Object.values(flow.cards).every((card) => (
       isRecord(card)
       && (card.type === 'action'
-        ? typeof card.id === 'string'
+        ? typeof card.id === 'string' && parseEvSocReportTarget(card) !== null
         : typeof card.type === 'string' && ADVANCED_FLOW_NON_ACTION_TYPES.has(card.type))
     ));
   });
@@ -89,7 +97,7 @@ async function readEndpoint(
 }
 
 /**
- * Read both flow endpoints and resolve the device-capability write map.
+ * Read both Flow endpoints and resolve the producer-owned user-Flow facts.
  * Fails closed: any unreadable / untrusted endpoint yields `status: 'unknown'`.
  */
 export async function readFlowCapabilityWrites(deps: { get: FlowApiGet }): Promise<FlowReadResult> {
@@ -104,8 +112,5 @@ export async function readFlowCapabilityWrites(deps: { get: FlowApiGet }): Promi
   if (!flat.ok) return { status: 'unknown', reason: flat.reason };
   if (!advanced.ok) return { status: 'unknown', reason: advanced.reason };
 
-  return {
-    status: 'ok',
-    writes: normalizeFlowCapabilityWrites(flat.value, advanced.value),
-  };
+  return { status: 'ok', facts: normalizeUserFlowFacts(flat.value, advanced.value) };
 }

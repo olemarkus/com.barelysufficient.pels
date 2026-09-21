@@ -11,9 +11,10 @@ export type SettingsUiFlowConflictRefreshPort = {
 };
 
 /**
- * Run an explicit scan and project only the conflict-gated control facts the
- * settings UI must merge immediately. An unavailable scan never exposes the
- * previous snapshot as if it were a fresh answer.
+ * Run an explicit scan and project the conflict-gated control facts the UI
+ * must merge immediately plus normalized battery-reporting facts used by
+ * recommendations. An unavailable scan never exposes the previous snapshot
+ * as if it were a fresh answer.
  */
 export const refreshSettingsUiFlowConflictPayload = async (
   port: SettingsUiFlowConflictRefreshPort,
@@ -27,5 +28,12 @@ export const refreshSettingsUiFlowConflictPayload = async (
     ...(device.flowConflict ? { flowConflict: device.flowConflict } : {}),
     ...(device.controlAdapter ? { controlAdapter: device.controlAdapter } : {}),
   }));
-  return { devices };
+  return {
+    devices,
+    evSocReporters: result.flowFacts.evSocReporters.map((reporter) => (
+      reporter.flowName === undefined
+        ? { chargerDeviceId: reporter.chargerDeviceId }
+        : { chargerDeviceId: reporter.chargerDeviceId, flowName: reporter.flowName }
+    )),
+  };
 };

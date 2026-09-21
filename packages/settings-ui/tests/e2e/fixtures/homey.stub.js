@@ -1888,6 +1888,7 @@
         ...(device.flowConflict ? { flowConflict: device.flowConflict } : {}),
         ...(device.controlAdapter ? { controlAdapter: device.controlAdapter } : {}),
       })),
+      evSocReporters: [],
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
