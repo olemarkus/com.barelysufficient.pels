@@ -8,7 +8,7 @@ const device = (overrides: Partial<AfterSetupDevice> = {}): AfterSetupDevice => 
   temperature: false,
   limitable: true,
   taskCapable: false,
-  priceEnabled: false,
+  priceConfigured: false,
   usesSolarSurplus: false,
   ...overrides,
 });
@@ -17,12 +17,10 @@ const device = (overrides: Partial<AfterSetupDevice> = {}): AfterSetupDevice => 
 // solar, and none of the three features is in use.
 const everythingApplies: AfterSetupFacts = {
   setupComplete: true,
-  devices: {
-    state: 'known',
-    value: [device({ temperature: true, taskCapable: true }), device({ taskCapable: true })],
-  },
+  devices: [device({ temperature: true, taskCapable: true }), device({ taskCapable: true })],
+  priceOptimizationEnabled: true,
   solarSurplusAvailable: true,
-  smartTaskConfigured: { state: 'known', value: false },
+  smartTaskConfigured: false,
   market: { state: 'unavailable' },
   belgianHomeOnHourlyPeriod: false,
 };
@@ -54,7 +52,7 @@ describe('after-setup suggestions', () => {
     it('does not suggest prices to a home with nothing Price can act on', () => {
       // Price adjusts a temperature target. An owner with only a charger and a
       // pool pump has no device it applies to.
-      const facts = { ...everythingApplies, devices: { state: 'known' as const, value: [device({ taskCapable: true })] } };
+      const facts = { ...everythingApplies, devices: [device({ taskCapable: true })] };
       expect(ids(facts)).not.toContain('after-setup:prices');
     });
 
@@ -62,52 +60,42 @@ describe('after-setup suggestions', () => {
       expect(ids({ ...everythingApplies, solarSurplusAvailable: false })).not.toContain('after-setup:solar');
       const nothingLimitable = {
         ...everythingApplies,
-        devices: { state: 'known' as const, value: [device({ temperature: true, limitable: false })] },
+        devices: [device({ temperature: true, limitable: false })],
       };
       expect(ids(nothingLimitable)).not.toContain('after-setup:solar');
     });
 
     it('does not suggest Smart tasks to a home with nothing that could take one', () => {
-      const facts = { ...everythingApplies, devices: { state: 'known' as const, value: [device()] } };
+      const facts = { ...everythingApplies, devices: [device()] };
       expect(ids(facts)).not.toContain('after-setup:smart-tasks');
     });
   });
 
   describe('never what the owner already uses', () => {
-    it('drops prices once any device follows them', () => {
+    it('drops prices once any device has an explicit Price choice, including Off', () => {
       const facts = {
         ...everythingApplies,
-        devices: { state: 'known' as const, value: [device({ temperature: true, priceEnabled: true })] },
+        devices: [device({ temperature: true, priceConfigured: true })],
       };
       expect(ids(facts)).not.toContain('after-setup:prices');
+    });
+
+    it('drops prices when the owner turned the global feature off', () => {
+      expect(ids({ ...everythingApplies, priceOptimizationEnabled: false }))
+        .not.toContain('after-setup:prices');
     });
 
     it('drops solar once any device uses the surplus', () => {
       const facts = {
         ...everythingApplies,
-        devices: { state: 'known' as const, value: [device({ usesSolarSurplus: true })] },
+        devices: [device({ usesSolarSurplus: true })],
       };
       expect(ids(facts)).not.toContain('after-setup:solar');
     });
 
     it('drops Smart tasks once one is configured', () => {
-      expect(ids({ ...everythingApplies, smartTaskConfigured: { state: 'known', value: true } }))
+      expect(ids({ ...everythingApplies, smartTaskConfigured: true }))
         .not.toContain('after-setup:smart-tasks');
-    });
-  });
-
-  describe('an unread fact is not a feature nobody turned on', () => {
-    it('suggests nothing while the device and price settings are unknown', () => {
-      // A failed read of the price settings looks exactly like a home with
-      // Price off everywhere; suggesting it then is telling an owner to set up
-      // what they set up last year.
-      expect(ids({ ...everythingApplies, devices: { state: 'unknown' } })).toEqual([]);
-    });
-
-    it('holds back only Smart tasks while only those settings are unknown', () => {
-      expect(ids({ ...everythingApplies, smartTaskConfigured: { state: 'unknown' } })).toEqual([
-        'after-setup:prices', 'after-setup:solar',
-      ]);
     });
   });
 
@@ -138,7 +126,7 @@ describe('after-setup suggestions', () => {
       const facts = {
         ...everythingApplies,
         belgianHomeOnHourlyPeriod: true,
-        devices: { state: 'known' as const, value: [device({ temperature: true, limitable: false })] },
+        devices: [device({ temperature: true, limitable: false })],
       };
       expect(ids(facts)).not.toContain('market:flanders-capacity-period');
     });

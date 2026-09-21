@@ -26,6 +26,8 @@ const install = async () => {
   vi.doMock('../src/ui/homeScope.ts', () => ({
     getHomeScope: () => ({ selectedHomeId }),
     getHomeIdForUiDevice: () => selectedHomeId,
+    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId: {} }),
+    subscribeToHomeScope: () => undefined,
   }));
   const homey = createHomeyMock({
     settings: {
@@ -99,6 +101,91 @@ describe('mode mutations stay bound to their starting meter area', () => {
     expect(writes.every(([key]) => key.endsWith(`:${AREA_A}`))).toBe(true);
     expect(writes.some(([, value]) => JSON.stringify(value).includes('device-b'))).toBe(false);
     expect(state.capacityPriorities).toEqual({ Sleep: { 'device-b': 1 } });
+  });
+
+  it('commits the captured priority order without mutating a different home', async () => {
+    const { homey, state } = await install();
+    document.querySelector('#priority-list')?.replaceChildren(
+      Object.assign(document.createElement('div'), { className: 'device-row' }),
+      Object.assign(document.createElement('div'), { className: 'device-row' }),
+    );
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .device-row'));
+    const [firstRow, secondRow] = rows;
+    if (!firstRow || !secondRow) throw new Error('priority rows not installed');
+    firstRow.dataset.deviceId = 'device-two';
+    secondRow.dataset.deviceId = 'device-a';
+    state.capacityPriorities.Home = { 'device-a': 1, 'device-two': 2 };
+
+    let finishWrite!: () => void;
+    homey.set.mockImplementation((_key, _value, callback) => {
+      finishWrite = () => callback?.(null);
+    });
+    const { savePriorities } = await import('../src/ui/modes.ts');
+    const pendingSave = savePriorities();
+
+    await vi.waitFor(() => expect(homey.set).toHaveBeenCalledOnce());
+    expect(state.capacityPriorities.Home).toEqual({ 'device-a': 1, 'device-two': 2 });
+    expect(homey.set).toHaveBeenCalledWith(
+      `capacity_priorities:${AREA_A}`,
+      {
+        Away: { 'device-a': 1 },
+        Home: { 'device-a': 2, 'device-two': 1 },
+      },
+      expect.any(Function),
+    );
+
+    switchGlobalStateToAreaB(state);
+    finishWrite();
+    await expect(pendingSave).resolves.toEqual({
+      status: 'saved',
+      homeId: AREA_A,
+      mode: 'Home',
+      deviceIds: ['device-two', 'device-a'],
+    });
+    expect(state.capacityPriorities).toEqual({ Sleep: { 'device-b': 1 } });
+  });
+
+  it('rebases queued mode-priority saves onto the latest persisted catalog', async () => {
+    const { homey, state } = await install();
+    const installRows = (deviceIds: readonly string[]): void => {
+      document.querySelector('#priority-list')?.replaceChildren(
+        ...deviceIds.map((deviceId) => {
+          const row = document.createElement('div');
+          row.className = 'device-row';
+          row.dataset.deviceId = deviceId;
+          return row;
+        }),
+      );
+    };
+    installRows(['device-two', 'device-a']);
+    state.capacityPriorities.Home = { 'device-a': 1, 'device-two': 2 };
+    state.capacityPriorities.Away = { 'device-a': 1, 'device-two': 2 };
+
+    let releaseFirstWrite!: () => void;
+    let writeCount = 0;
+    homey.set.mockImplementation((key, value, callback) => {
+      homey.__settingsStore[key] = structuredClone(value);
+      writeCount += 1;
+      if (writeCount === 1) {
+        releaseFirstWrite = () => callback?.(null);
+        return;
+      }
+      callback?.(null);
+    });
+    const { savePriorities } = await import('../src/ui/modes.ts');
+    const homeSave = savePriorities();
+    await vi.waitFor(() => expect(writeCount).toBe(1));
+
+    state.editingMode = 'Away';
+    installRows(['device-a', 'device-two']);
+    const awaySave = savePriorities();
+    releaseFirstWrite();
+    await Promise.all([homeSave, awaySave]);
+
+    expect(homey.__settingsStore[`capacity_priorities:${AREA_A}`]).toEqual({
+      Home: { 'device-a': 2, 'device-two': 1 },
+      Away: { 'device-a': 1, 'device-two': 2 },
+    });
   });
 
   it('adds from an immutable catalog after Showing changes mid-read', async () => {

@@ -3,14 +3,13 @@ import type { SetupRecommendation } from '../recommendationsModel.ts';
 import { AppBar } from './AppBar.tsx';
 import { MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
 import { SetupPathCard } from './SetupPathCard.tsx';
-import type { SetupPath } from '../setupPathModel.ts';
+import type { SetupPathRead } from '../setupPathFacts.ts';
 
 export type SetupRecommendationsViewProps = {
   active: readonly SetupRecommendation[];
   dismissed: readonly SetupRecommendation[];
-  // The first-run setup path while it is still open; null once setup is
-  // complete or while its facts are loading.
-  setupPath: SetupPath | null;
+  // The first-run setup state: loading, complete, or the open path to render.
+  setupPath: SetupPathRead;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   busyRecommendationId: string | null;
@@ -79,12 +78,12 @@ const RecommendationsList = (props: SetupRecommendationsViewProps) => (
     )}
     {/* While the setup path is open it IS the page's content; "no suggestions"
         beside an unfinished setup would read as "nothing to do". */}
-    {props.active.length === 0 && props.setupPath === null && (
+    {props.active.length === 0 && props.setupPath.state === 'complete' && (
       <section class="pels-surface-card setup-recommendations-empty">
         <strong>{props.readiness === 'partial' ? 'No suggestions from the checks that finished' : 'No setup suggestions right now'}</strong>
         <p class="pels-card-supporting">
           {props.readiness === 'partial'
-            ? 'Try again later to check the remaining optional suggestions.'
+            ? 'Try again later to check the remaining suggestions.'
             : 'PELS has no device setup changes to suggest.'}
         </p>
       </section>
@@ -138,9 +137,9 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
     <AppBar
       back={{ label: 'Back to Settings', target: 'settings' }}
       title="Setup & recommendations"
-      lede="The steps to get PELS running, and changes that can make it work better with your devices."
+      lede="The essentials PELS uses for this home, and changes that can make it work better with your devices."
     />
-    {props.setupPath !== null && <SetupPathCard path={props.setupPath} surface="setup" />}
+    {props.setupPath.state === 'open' && <SetupPathCard path={props.setupPath.path} surface="setup" />}
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>
     )}

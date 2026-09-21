@@ -1,22 +1,23 @@
 const savePriorities = vi.fn();
 const renderPriorities = vi.fn();
-const getSettingFresh = vi.fn();
+const isPriorityContextCurrent = vi.fn();
 
 vi.mock('../src/ui/modes.ts', () => ({
-  savePriorities: (...args: unknown[]) => savePriorities(...args),
   renderPriorities: (...args: unknown[]) => renderPriorities(...args),
 }));
-vi.mock('../src/ui/homey.ts', async () => ({
-  ...(await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts')),
-  getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
+vi.mock('../src/ui/modePrioritySave.ts', () => ({
+  isPriorityContextCurrent: (...args: unknown[]) => isPriorityContextCurrent(...args),
+  savePriorities: (...args: unknown[]) => savePriorities(...args),
 }));
 
 const installModesPage = () => {
   document.body.innerHTML = `
     <div id="priority-unplaced" hidden><md-text-button id="priority-keep-order"></md-text-button></div>
     <ul id="priority-list">
-      <li data-device-id="bedroom"></li>
-      <li data-device-id="pool"></li>
+      <li class="device-row" data-device-id="bedroom">
+        <md-filled-text-field class="mode-target-input" data-device-id="bedroom"></md-filled-text-field>
+      </li>
+      <li class="device-row" data-device-id="pool"></li>
     </ul>`;
 };
 
@@ -27,16 +28,18 @@ const load = async () => {
     import('../src/ui/setupPathFacts.ts'),
   ]);
   state.editingMode = 'Home';
+  state.loadedModeHomeId = 'main';
   state.capacityPriorities = { Home: {} };
   const onChange = vi.fn();
   facts.onSetupPathChange(onChange);
   initModePriorityConfirm();
-  return { state };
+  return { state, onChange };
 };
 
 const clickKeep = async () => {
   document.getElementById('priority-keep-order')?.dispatchEvent(new Event('click'));
-  await vi.waitFor(() => expect(renderPriorities).toHaveBeenCalled());
+  await vi.waitFor(() => expect(savePriorities).toHaveBeenCalled());
+  await Promise.resolve();
 };
 
 describe('Keep this order', () => {
@@ -44,7 +47,7 @@ describe('Keep this order', () => {
     vi.resetModules();
     savePriorities.mockReset();
     renderPriorities.mockReset();
-    getSettingFresh.mockReset();
+    isPriorityContextCurrent.mockReset().mockReturnValue(true);
     installModesPage();
   });
 
@@ -52,31 +55,44 @@ describe('Keep this order', () => {
     const { state } = await load();
     expect(document.getElementById('priority-unplaced')?.hidden).toBe(false);
 
-    // The production save places every listed device in `state` before it writes.
-    savePriorities.mockImplementation(async () => { state.capacityPriorities.Home = { bedroom: 1, pool: 2 }; });
-    getSettingFresh.mockResolvedValue({ Home: { bedroom: 1, pool: 2 } });
+    savePriorities.mockImplementation(async () => {
+      state.capacityPriorities.Home = { bedroom: 1, pool: 2 };
+      return {
+        status: 'saved', homeId: 'main', mode: 'Home', deviceIds: ['bedroom', 'pool'],
+      };
+    });
     await clickKeep();
     expect(document.getElementById('priority-unplaced')?.hidden).toBe(true);
   });
 
   it('does not count an order the write failed to save', async () => {
-    const { state } = await load();
-    // `savePriorities` reports a rejected write with a toast and then RESOLVES,
-    // with `state` already updated. Homey still holds the old, empty order.
-    savePriorities.mockImplementation(async () => { state.capacityPriorities.Home = { bedroom: 1, pool: 2 }; });
-    getSettingFresh.mockResolvedValue({ Home: {} });
+    const { state, onChange } = await load();
+    savePriorities.mockResolvedValue({ status: 'not-saved' });
     await clickKeep();
 
     expect(state.capacityPriorities).toEqual({ Home: {} });
     expect(document.getElementById('priority-unplaced')?.hidden).toBe(false);
+    expect(renderPriorities).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('treats an unreadable read-back as not saved', async () => {
+  it('ignores a saved result after the visible mode changes', async () => {
     const { state } = await load();
-    savePriorities.mockImplementation(async () => { state.capacityPriorities.Home = { bedroom: 1, pool: 2 }; });
-    getSettingFresh.mockRejectedValue(new Error('bridge'));
-    await clickKeep();
+    let resolveSave!: (value: {
+      status: 'saved'; homeId: string; mode: string; deviceIds: string[];
+    }) => void;
+    savePriorities.mockReturnValue(new Promise((resolve) => { resolveSave = resolve; }));
+
+    document.getElementById('priority-keep-order')?.dispatchEvent(new Event('click'));
+    await vi.waitFor(() => expect(savePriorities).toHaveBeenCalledOnce());
+    state.editingMode = 'Away';
+    isPriorityContextCurrent.mockReturnValue(false);
+    resolveSave({
+      status: 'saved', homeId: 'main', mode: 'Home', deviceIds: ['bedroom', 'pool'],
+    });
+    await Promise.resolve();
+
     expect(state.capacityPriorities).toEqual({ Home: {} });
-    expect(document.getElementById('priority-unplaced')?.hidden).toBe(false);
+    expect(renderPriorities).not.toHaveBeenCalled();
   });
 });

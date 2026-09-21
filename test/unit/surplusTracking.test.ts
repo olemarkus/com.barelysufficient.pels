@@ -105,7 +105,6 @@ describe('resolveSurplusTrackingPosture — candidacy', () => {
 
   it.each([
     ['not opted in', { surplusWilling: false }],
-    ['opt-in absent', { surplusWilling: undefined }],
     ['pool can never open', { surplusPoolReachable: false }],
     ['no step ladder', { steppedLoadProfile: undefined }],
     ['not controllable', { control: { managed: true, commandAuthority: false } }],

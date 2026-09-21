@@ -133,10 +133,12 @@ export const initDeviceDetailPriceOptHandlers = (params: {
       enabled: config.enabled,
       cheapDelta: config.cheapDelta,
       expensiveDelta: config.expensiveDelta,
+      priceConfigured: config.priceConfigured,
     };
     config.enabled = enabled;
     config.cheapDelta = cheapDelta;
     config.expensiveDelta = expensiveDelta;
+    config.priceConfigured = true;
 
     try {
       await savePriceOptimizationSettings();
@@ -150,7 +152,8 @@ export const initDeviceDetailPriceOptHandlers = (params: {
       if (current
         && current.enabled === enabled
         && current.cheapDelta === cheapDelta
-        && current.expensiveDelta === expensiveDelta) {
+        && current.expensiveDelta === expensiveDelta
+        && current.priceConfigured) {
         Object.assign(current, previousValues);
       }
       // Re-bind the inputs and toggle only if the user is still on this

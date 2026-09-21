@@ -48,18 +48,23 @@ const priceOnlyOwner: SetupPathFacts = {
 };
 
 const statuses = (facts: SetupPathFacts) => (
-  resolveSetupPath(facts)?.steps.map((step) => `${step.id}:${step.status}`)
+  pathOf(facts)?.steps.map((step) => `${step.id}:${step.status}`)
 );
 
 const detailOf = (facts: SetupPathFacts, id: 'power' | 'hardCap' | 'devices' | 'priority') => (
-  resolveSetupPath(facts)?.steps.find((step) => step.id === id)?.detail
+  pathOf(facts)?.steps.find((step) => step.id === id)?.detail
 );
+
+const pathOf = (facts: SetupPathFacts) => {
+  const resolved = resolveSetupPath(facts);
+  return resolved.state === 'open' ? resolved.path : undefined;
+};
 
 describe('setup path', () => {
   it('asks a fresh install for the two things every home needs, and nothing else', () => {
     // No hard cap row: nothing may be limited yet, so no cap is in force.
     expect(statuses(freshInstall)).toEqual(['power:next', 'devices:later']);
-    const path = resolveSetupPath(freshInstall);
+    const path = pathOf(freshInstall);
     expect(path && formatSetupProgress(path)).toBe('0 of 2');
   });
 
@@ -67,7 +72,7 @@ describe('setup path', () => {
     it('never shows the hard cap to an owner PELS may not limit anything for', () => {
       // Asking them to set a capacity cap would be asking for something that
       // never touches their home. Their setup is complete.
-      expect(resolveSetupPath(priceOnlyOwner)).toBeNull();
+      expect(resolveSetupPath(priceOnlyOwner)).toEqual({ state: 'complete' });
     });
 
     it('never keeps the path open over an unsaved cap that is not in force', () => {
@@ -83,7 +88,7 @@ describe('setup path', () => {
     });
 
     it('puts Devices before Hard cap: what may be limited, then to what', () => {
-      const path = resolveSetupPath({ ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 });
+      const path = pathOf({ ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 });
       expect(path?.steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap']);
       expect(path && formatSetupProgress(path)).toBe('1 of 3');
     });
@@ -112,17 +117,18 @@ describe('setup path', () => {
     });
 
     it('closes once every limitable device has a place', () => {
-      expect(resolveSetupPath(threeLimitable(0))).toBeNull();
+      expect(resolveSetupPath(threeLimitable(0))).toEqual({ state: 'complete' });
     });
 
     it('is never shown with a single limitable device: there is nothing to order', () => {
       const one = { ...threeLimitable(1), managedDeviceCount: 1, limitableDeviceCount: 1 };
-      expect(resolveSetupPath(one)).toBeNull();
+      expect(resolveSetupPath(one)).toEqual({ state: 'complete' });
     });
 
     it('is left out, not asked on a guess, while the order is unknown', () => {
       // The Main home's mode catalog has not arrived, or a meter area's is loaded.
-      expect(resolveSetupPath({ ...threeLimitable(3), priorityOrder: { state: 'unknown' } })).toBeNull();
+      expect(resolveSetupPath({ ...threeLimitable(3), priorityOrder: { state: 'unknown' } }))
+        .toEqual({ state: 'complete' });
     });
   });
 
@@ -179,8 +185,8 @@ describe('setup path', () => {
   it('sells no single market in its lede', () => {
     // The Netherlands has no household capacity tariff; an owner there came for
     // solar and dynamic prices and must not read this as somebody else's app.
-    expect(resolveSetupPath(freshInstall)?.lede).toBe(
-      'PELS starts managing your devices once these are done. Prices, solar and Smart tasks build on them.',
+    expect(pathOf(freshInstall)?.lede).toBe(
+      'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.',
     );
   });
 
@@ -204,24 +210,25 @@ describe('setup path', () => {
   });
 
   it('says simulation is on while the path is open, and nothing once PELS is live', () => {
-    expect(resolveSetupPath(freshInstall)?.simulationNote)
-      .toBe('Simulation is on, so devices stay as-is until you turn it off.');
-    expect(resolveSetupPath({ ...freshInstall, simulating: false })?.simulationNote).toBeNull();
+    expect(pathOf(freshInstall)?.simulating).toBe(true);
+    expect(pathOf({ ...freshInstall, simulating: false })?.simulating).toBe(false);
   });
 
   it('closes on a configured home that is still simulating', () => {
     // Simulation is not a step: the simulation banner speaks for this home, and
     // a card that waited for go-live would sit on its Overview for weeks.
-    expect(resolveSetupPath(configuredAndSimulating)).toBeNull();
+    expect(resolveSetupPath(configuredAndSimulating)).toEqual({ state: 'complete' });
   });
 
   it('comes back when a returning owner unmanages their last device', () => {
-    const path = resolveSetupPath({
+    const resolved = resolveSetupPath({
       ...configuredAndSimulating, managedDeviceCount: 0, limitableDeviceCount: 0, simulating: false,
     });
-    expect(path?.steps.map((step) => `${step.id}:${step.status}`)).toEqual(['power:done', 'devices:next']);
-    expect(isSetupStepOpen(path, 'devices')).toBe(true);
-    expect(isSetupStepOpen(path, 'power')).toBe(false);
-    expect(isSetupStepOpen(null, 'devices')).toBe(false);
+    expect(resolved.state === 'open'
+      ? resolved.path.steps.map((step) => `${step.id}:${step.status}`)
+      : []).toEqual(['power:done', 'devices:next']);
+    expect(isSetupStepOpen(resolved, 'devices')).toBe(true);
+    expect(isSetupStepOpen(resolved, 'power')).toBe(false);
+    expect(isSetupStepOpen({ state: 'complete' }, 'devices')).toBe(false);
   });
 });

@@ -1,19 +1,25 @@
-// Fresh modules per test: the facts module remembers its confirmed read, and
-// these tests are about what is claimed BEFORE and AFTER that read lands.
-const load = async (reads: { first: unknown | Error; fresh?: ReadonlyArray<unknown | Error> }) => {
+import type { PriceOptimizationSetupRead } from '../../contracts/src/priceOptimizationSettings.ts';
+
+const load = async (
+  priceOptimizationSetup: PriceOptimizationSetupRead,
+  membershipByDeviceId: Readonly<Record<string, string>> = {},
+) => {
   vi.resetModules();
-  const pending = [...(reads.fresh ?? [])];
-  const settle = (value: unknown | Error) => (value instanceof Error ? Promise.reject(value) : Promise.resolve(value));
-  vi.doMock('../src/ui/homey.ts', async () => ({
-    ...(await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts')),
-    getSetting: () => settle(reads.first),
-    getSettingFresh: () => settle(pending.shift()),
-    sleep: async () => undefined,
+  vi.doMock('../src/ui/prices.ts', () => ({
+    getPricesReadModel: async () => ({ priceOptimizationSetup }),
   }));
-  vi.doMock('../src/ui/logging.ts', async () => ({
-    ...(await vi.importActual<typeof import('../src/ui/logging.ts')>('../src/ui/logging.ts')),
-    logSettingsError: async () => undefined,
+  vi.doMock('../src/ui/setupPathFacts.ts', () => ({
+    readSetupPath: () => ({ state: 'complete' }),
+    readSetupMarket: () => ({ state: 'unavailable' }),
+    isBelgianHomeOnHourlyPeriod: () => false,
   }));
+  vi.doMock('../src/ui/homeScope.ts', () => ({
+    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId }),
+  }));
+  vi.doMock('../src/ui/deferredObjectiveSettings.ts', () => ({
+    hasLoadedDeferredObjectiveSettings: () => true,
+  }));
+  vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: async () => undefined }));
   const facts = await import('../src/ui/afterSetupFacts.ts');
   const { state } = await import('../src/ui/state.ts');
   state.devicesLoaded = true;
@@ -26,79 +32,87 @@ const load = async (reads: { first: unknown | Error; fresh?: ReadonlyArray<unkno
   return { facts, state };
 };
 
-const devicesOf = (read: ReturnType<Awaited<ReturnType<typeof load>>['facts']['readAfterSetupFacts']>) => (
-  read.devices.state === 'known' ? read.devices.value : 'unknown'
-);
+const resolvedSetup = (overrides: {
+  enabled?: boolean;
+  configuredDeviceIds?: readonly string[];
+  solarSurplusDeviceIds?: readonly string[];
+} = {}): PriceOptimizationSetupRead => ({
+  state: 'resolved',
+  setup: {
+    enabled: overrides.enabled ?? true,
+    configuredDeviceIds: overrides.configuredDeviceIds ?? [],
+    solarSurplusDeviceIds: overrides.solarSurplusDeviceIds ?? [],
+  },
+});
+
+const readFacts = (facts: Awaited<ReturnType<typeof load>>['facts']) => {
+  const read = facts.readAfterSetupFacts();
+  if (read.state !== 'resolved') throw new Error('Expected resolved after-setup facts.');
+  return read.facts;
+};
 
 describe('after-setup facts', () => {
-  afterEach(() => {
-    vi.doUnmock('../src/ui/homey.ts');
-    vi.doUnmock('../src/ui/logging.ts');
-  });
-
-  it('claims nothing about Price or solar until the price settings have been read', async () => {
-    const { facts } = await load({ first: {} });
-    expect(devicesOf(facts.readAfterSetupFacts())).toBe('unknown');
+  it('claims nothing until the price owner returns a resolved read', async () => {
+    const { facts } = await load({ state: 'unavailable' });
     await facts.loadAfterSetupFacts();
-    expect(devicesOf(facts.readAfterSetupFacts())).toEqual([{
-      temperature: true, limitable: true, taskCapable: true, priceEnabled: false, usesSolarSurplus: false,
-    }]);
+    expect(facts.readAfterSetupFacts()).toEqual({ state: 'unavailable' });
   });
 
   it('counts managed devices only', async () => {
-    const { facts } = await load({ first: { unmanaged: { enabled: true } } });
+    const { facts } = await load(resolvedSetup({ configuredDeviceIds: ['unmanaged'] }));
     await facts.loadAfterSetupFacts();
-    // The unmanaged thermostat follows prices in the stored map, but PELS does
-    // not manage it, so it neither applies nor counts as "already in use".
-    expect(devicesOf(facts.readAfterSetupFacts())).toHaveLength(1);
+    expect(readFacts(facts).devices).toHaveLength(1);
+    expect(readFacts(facts).devices[0]?.priceConfigured).toBe(false);
   });
 
-  it('does not take one nullish read for a home that uses neither feature', async () => {
-    // A configured home whose first read failed: the fresh re-read finds Price on.
-    const { facts } = await load({ first: undefined, fresh: [{ thermostat: { enabled: true, surplusWilling: true } }] });
+  it('counts Main-home devices only when meter areas are active', async () => {
+    const { facts, state } = await load(resolvedSetup({ configuredDeviceIds: ['area-heater'] }), {
+      'area-heater': 'h_area',
+    });
+    state.latestDevices = [
+      { id: 'thermostat', deviceType: 'temperature', powerCapable: true },
+      { id: 'area-heater', deviceType: 'temperature', powerCapable: true },
+    ] as typeof state.latestDevices;
+    state.managedMap = { thermostat: true, 'area-heater': true };
+    state.controllableMap = { thermostat: true, 'area-heater': true };
+
     await facts.loadAfterSetupFacts();
-    expect(devicesOf(facts.readAfterSetupFacts())).toMatchObject([{ priceEnabled: true, usesSolarSurplus: true }]);
+
+    expect(readFacts(facts).devices).toHaveLength(1);
+    expect(readFacts(facts).devices[0]?.priceConfigured).toBe(false);
   });
 
-  it('accepts a key that stays absent as a home using neither', async () => {
-    const { facts } = await load({ first: undefined, fresh: [undefined, null] });
+  it('preserves the global Price opt-out', async () => {
+    const { facts } = await load(resolvedSetup({ enabled: false }));
     await facts.loadAfterSetupFacts();
-    expect(devicesOf(facts.readAfterSetupFacts())).toMatchObject([{ priceEnabled: false, usesSolarSurplus: false }]);
+    expect(readFacts(facts).priceOptimizationEnabled).toBe(false);
   });
 
-  it('stays unknown when the confirming re-read fails: a failed read is not absence', async () => {
-    // Nullish first, then a re-read that throws. Nothing was learned about the
-    // key, so nothing may be claimed about Price or solar.
-    const { facts } = await load({ first: undefined, fresh: [undefined, new Error('bridge')] });
+  it('treats an explicit per-device Off entry as configured', async () => {
+    const { facts } = await load(resolvedSetup({ configuredDeviceIds: ['thermostat'] }));
     await facts.loadAfterSetupFacts();
-    expect(devicesOf(facts.readAfterSetupFacts())).toBe('unknown');
+    expect(readFacts(facts).devices[0]?.priceConfigured).toBe(true);
+  });
+
+  it('carries producer-resolved solar-surplus use', async () => {
+    const { facts } = await load(resolvedSetup({ solarSurplusDeviceIds: ['thermostat'] }));
+    await facts.loadAfterSetupFacts();
+    expect(readFacts(facts).devices[0]?.usesSolarSurplus).toBe(true);
   });
 
   it('does not count a thermostat whose temperature control is turned off', async () => {
-    const { facts, state } = await load({ first: {} });
+    const { facts, state } = await load(resolvedSetup());
     state.temperatureControlDisabledMap = { thermostat: true };
     await facts.loadAfterSetupFacts();
-    // Price cannot move it and it cannot take a heating task.
-    expect(devicesOf(facts.readAfterSetupFacts())).toMatchObject([{ temperature: false, taskCapable: false }]);
+    expect(readFacts(facts).devices[0]).toMatchObject({ temperature: false, taskCapable: false });
   });
 
-  it('stays unknown when the settings cannot be read at all', async () => {
-    const { facts } = await load({ first: new Error('bridge') });
-    await facts.loadAfterSetupFacts();
-    expect(devicesOf(facts.readAfterSetupFacts())).toBe('unknown');
-  });
-
-  it('lets a toggle made this session win over the earlier read', async () => {
-    const { facts, state } = await load({ first: {} });
+  it('does not reinterpret the settings UI raw state as trusted setup facts', async () => {
+    const { facts, state } = await load(resolvedSetup());
     await facts.loadAfterSetupFacts();
     state.priceOptimizationSettings = {
-      thermostat: { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false },
-    } as typeof state.priceOptimizationSettings;
-    expect(devicesOf(facts.readAfterSetupFacts())).toMatchObject([{ priceEnabled: true }]);
-  });
-
-  it('claims nothing about Smart tasks until their settings have loaded', async () => {
-    const { facts } = await load({ first: {} });
-    expect(facts.readAfterSetupFacts().smartTaskConfigured).toEqual({ state: 'unknown' });
+      thermostat: null,
+    } as unknown as typeof state.priceOptimizationSettings;
+    expect(readFacts(facts).devices[0]).toMatchObject({ priceConfigured: false, usesSolarSurplus: false });
   });
 });

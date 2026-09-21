@@ -48,6 +48,7 @@ import { createCombinedPricesReader } from './lib/price/combinedPricesReader';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
+import { createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
 import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus,
 } from './packages/contracts/src/settingsUiApi';
@@ -79,7 +80,6 @@ import {
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
-import type { CapacitySettings } from './packages/contracts/src/capacitySettings';
 import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';
@@ -141,8 +141,13 @@ class PelsApp extends PelsAppBase implements AppContext {
         }
       },
     });
-  public capacitySettings: CapacitySettings = { limitKw: 10, marginKw: 0.2, periodMinutes: 60 };
+  public capacitySettings: AppContext['capacitySettings'] = { limitKw: 10, marginKw: 0.2, periodMinutes: 60 };
   public capacityDryRun = true;
+  public readonly capacitySettingsStore = createCapacitySettingsStore(
+    this.homey.settings,
+    MAIN_HOME_ID,
+    () => ({ ...this.capacitySettings, dryRun: this.capacityDryRun }),
+  );
   public operatingMode = 'Home';
   public modeAliases: Record<string, string> = {};
   public capacityPriorities: Record<string, Record<string, number>> = {};

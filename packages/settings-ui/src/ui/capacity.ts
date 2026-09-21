@@ -56,7 +56,6 @@ import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   DEFAULT_CAPACITY_PERIOD_MINUTES,
-  isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,
 } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type {
@@ -68,7 +67,10 @@ import {
   type SimulationBannerScope,
 } from '../../../shared-domain/src/simulationPosture.ts';
 import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
-import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiCapacityPeak,
+  SettingsUiPowerPayload,
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   classifyPowerReadingsFact,
   resolvePowerReadingsBannerContent,
@@ -84,21 +86,23 @@ import {
   isSimulationCarriedBySetupPath,
   onSetupPathChange,
   publishSetupHardCapRead,
+  publishSetupHardCapUnavailable,
   publishSetupPower,
+  publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
-import { reportSetupHardCapRead } from './setupHardCapRead.ts';
-import { classifyCapacityPeak, formatCapacityPeak } from './capacityPeakRead.ts';
-import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
+import { formatCapacityPeak } from './capacityPeakRead.ts';
 import { isFiniteNumber } from './combinedPrices.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
-type CapacitySettingsPatch = {
-  limit?: number;
-  margin?: number;
-  dryRun?: boolean;
-  periodMinutes?: CapacityPeriodMinutes;
-};
+type CapacitySettingsCommand =
+  | {
+    kind: 'limits';
+    limitKw: number;
+    marginKw: number;
+    periodMinutes: CapacityPeriodMinutes;
+  }
+  | { kind: 'simulation'; dryRun: boolean };
 
 type CurrentCapacitySettings = {
   limit: unknown;
@@ -119,8 +123,7 @@ let lastGoodCapacityScalars: CapacityScalarSettings = {
 
 // An unavailable read is a no-op: the last shown peak (or the template's
 // "Peak unavailable") stays until a read that knows the answer.
-const renderMonthlyQuarterPeak = (rawPeak: unknown): void => {
-  const peak = classifyCapacityPeak(rawPeak);
+const renderMonthlyQuarterPeak = (peak: SettingsUiCapacityPeak): void => {
   if (settingsCapacityMonthlyPeakValue && peak.state !== 'unavailable') {
     settingsCapacityMonthlyPeakValue.textContent = formatCapacityPeak(peak);
   }
@@ -146,20 +149,6 @@ const resolveCapacityScalars = (
   dryRun: typeof current.dryRun === 'boolean' ? current.dryRun : fallback.dryRun,
   periodMinutes: resolveCapacityPeriodMinutes(current.periodMinutes, fallback.periodMinutes),
 });
-
-const needsRuntimeCapacityScalars = (
-  limit: unknown,
-  margin: unknown,
-  dryRun: unknown,
-  periodMinutes: unknown,
-): boolean => (
-  typeof limit !== 'number'
-  || !Number.isFinite(limit)
-  || typeof margin !== 'number'
-  || !Number.isFinite(margin)
-  || typeof dryRun !== 'boolean'
-  || !isCapacityPeriodMinutes(periodMinutes)
-);
 
 export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
@@ -325,23 +314,27 @@ export const refreshLimitsValidationHints = () => {
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
 
-const syncCapacityOwnedControls = (scalars: CapacityScalarSettings) => {
-  const {
-    limitKw, marginKw, dryRun, periodMinutes,
-  } = scalars;
+const syncCapacityLimitControls = (scalars: CapacityScalarSettings) => {
+  const { limitKw, marginKw, periodMinutes } = scalars;
   if (settingsCapacityLimitInput) {
     settingsCapacityLimitInput.value = limitKw.toString();
   }
   if (settingsCapacityMarginInput) {
     settingsCapacityMarginInput.value = marginKw.toString();
   }
-  if (settingsSimulationModeInput) {
-    settingsSimulationModeInput.selected = dryRun;
-  }
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
   if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
   updateCapacityReactionHint(limitKw, marginKw);
   renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
+};
+
+const syncSimulationModeControl = (dryRun: boolean): void => {
+  if (settingsSimulationModeInput) settingsSimulationModeInput.selected = dryRun;
+};
+
+const syncCapacityOwnedControls = (scalars: CapacityScalarSettings): void => {
+  syncCapacityLimitControls(scalars);
+  syncSimulationModeControl(scalars.dryRun);
 };
 
 const readNumberInput = (input: MdFilledTextFieldElement | null, label: string): number => {
@@ -360,30 +353,31 @@ const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> =
   return { limit, margin, dryRun, periodMinutes };
 };
 
-const resolveCapacitySettingsPatch = (
+const resolveCapacitySettingsCommand = (
   current: CurrentCapacitySettings,
-  patch: CapacitySettingsPatch,
+  command: CapacitySettingsCommand,
 ): CapacityScalarSettings => {
   const persisted = resolveCapacityScalars(current, lastGoodCapacityScalars);
-  return {
-    limitKw: patch.limit ?? persisted.limitKw,
-    marginKw: patch.margin ?? persisted.marginKw,
-    dryRun: patch.dryRun ?? persisted.dryRun,
-    periodMinutes: patch.periodMinutes ?? persisted.periodMinutes,
-  };
+  return command.kind === 'limits'
+    ? {
+      limitKw: command.limitKw,
+      marginKw: command.marginKw,
+      dryRun: persisted.dryRun,
+      periodMinutes: command.periodMinutes,
+    }
+    : { ...persisted, dryRun: command.dryRun };
 };
 
-/** `null` when no runtime read is needed, or when it failed (logged here). */
-const readCapacityPowerModel = async (
-  needsRuntimeScalars: boolean,
-  periodMinutes: unknown,
-): Promise<SettingsUiPowerPayload | null> => {
-  if (!needsRuntimeScalars && periodMinutes !== 15) return null;
+type CapacityPowerRead =
+  | { state: 'resolved'; payload: SettingsUiPowerPayload }
+  | { state: 'unavailable' };
+
+const readCapacityPowerModel = async (): Promise<CapacityPowerRead> => {
   try {
-    return await getPowerReadModel();
+    return { state: 'resolved', payload: await getPowerReadModel() };
   } catch (caught) {
     await logSettingsError('Failed to load runtime capacity state', caught, 'capacity');
-    return null;
+    return { state: 'unavailable' };
   }
 };
 
@@ -411,6 +405,7 @@ const NO_READINGS_YET_FALLBACK = 'No power readings yet.';
 // discarding unrelated capacity values read from a realtime refresh.
 let capacitySettingsLoadGeneration = 0;
 let capacitySettingsAppliedGeneration = 0;
+let capacitySettingsMutationRevision = 0;
 let powerSourcePaintGeneration = 0;
 let confirmedPowerSourcePaintGeneration = 0;
 
@@ -467,7 +462,13 @@ onSetupPathChange(() => {
 });
 
 export const loadStaleDataStatus = async () => {
-  const power = await getPowerReadModel();
+  const read = await readCapacityPowerModel();
+  if (read.state === 'unavailable') {
+    publishSetupPowerUnavailable();
+    publishSetupHardCapUnavailable();
+    return;
+  }
+  const power = read.payload;
   renderMonthlyQuarterPeak(power.capacityPeak);
   // Producer-resolved fact, classified ONCE at this transport seam (the GET
   // response is untrusted): a junk payload keeps the last-known fact rather
@@ -475,7 +476,12 @@ export const loadStaleDataStatus = async () => {
   const fact = classifyPowerReadingsFact(power.readings);
   if (fact !== null) updateStaleDataBanner(fact);
   else if (lastBannerReadings !== undefined) refreshStaleDataBanner();
-  else updateStaleDataBanner({ state: 'never' });
+  else publishSetupPowerUnavailable();
+  if (power.hardCapConfiguration.state === 'resolved' && power.capacityScalars.state === 'resolved') {
+    publishSetupHardCapRead(power.hardCapConfiguration.configured, power.capacityScalars.scalars);
+  } else {
+    publishSetupHardCapUnavailable();
+  }
 };
 
 export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayload | null) => {
@@ -509,6 +515,7 @@ const syncLoadedPowerSourceForGeneration = (
 export const loadCapacitySettings = async () => {
   capacitySettingsLoadGeneration += 1;
   const generation = capacitySettingsLoadGeneration;
+  const mutationRevision = capacitySettingsMutationRevision;
   const sourceGeneration = powerSourcePaintGeneration;
   // Publish the home scope first and independently. A transient roster/marker
   // read failure must narrow the banner to Main even if another settings read
@@ -517,18 +524,15 @@ export const loadCapacitySettings = async () => {
   const {
     limit, margin, dryRun, periodMinutes,
   } = await readCurrentCapacitySettings();
-  // Missing persisted keys are not Main-home defaults: the running app keeps
-  // its last-good scalars. The bootstrap-primed whole-home power snapshot
-  // carries that authoritative in-memory state across a WebView reload.
-  const needsRuntimeScalars = needsRuntimeCapacityScalars(limit, margin, dryRun, periodMinutes);
-  // Preserve the established settings-only load path for hourly homes. The
-  // power read is needed only to recover runtime-authoritative missing scalars
-  // or to show a quarter-hour home’s measured monthly peak.
-  const powerRead = await readCapacityPowerModel(needsRuntimeScalars, periodMinutes);
+  // The power payload carries two runtime-owned facts settings values cannot
+  // establish: last-good running scalars and whether the hard-cap key exists.
+  const powerRead = await readCapacityPowerModel();
   const powerSource = await getSetting(POWER_SOURCE);
   const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
   // Persisted first, then the running app's own block, then the last good.
-  const runtime = classifyCapacityScalarsRead(powerRead?.capacityScalars);
+  const runtime = powerRead.state === 'resolved'
+    ? powerRead.payload.capacityScalars
+    : { state: 'unavailable' } as const;
   const resolved = resolveCapacityScalars(
     { limit, margin, dryRun, periodMinutes },
     runtime.state === 'resolved' ? runtime.scalars : lastGoodCapacityScalars,
@@ -536,7 +540,7 @@ export const loadCapacitySettings = async () => {
   // Only a successfully completed newer load supersedes this snapshot. A load
   // that merely STARTED later but failed must not discard valid settings with
   // no remaining refresh guaranteed.
-  if (generation < capacitySettingsAppliedGeneration) return;
+  if (generation < capacitySettingsAppliedGeneration || mutationRevision !== capacitySettingsMutationRevision) return;
   capacitySettingsAppliedGeneration = generation;
   syncCapacityOwnedControls(resolved);
   // Meter selection is independently persisted. A power-source save may fence
@@ -547,13 +551,12 @@ export const loadCapacitySettings = async () => {
   syncLoadedPowerSourceForGeneration(sourceGeneration, powerSource);
   const dryRunChanged = state.dryRun !== resolved.dryRun;
   commitCapacityScalars(resolved);
-  // `limit` is the RAW persisted read: the setup path asks whether the owner has
-  // saved a hard cap, which the resolved value (runtime default included) cannot
-  // say. Not awaited: confirming an absent key re-reads for up to a second, and
-  // nothing on this page waits for the setup path.
-  void reportSetupHardCapRead(limit, resolved);
-  // No power read (an hourly home, or a failed read) leaves the last value.
-  if (powerRead !== null) renderMonthlyQuarterPeak(powerRead.capacityPeak);
+  if (powerRead.state === 'resolved') {
+    const configuration = powerRead.payload.hardCapConfiguration;
+    if (configuration.state === 'resolved') publishSetupHardCapRead(configuration.configured, resolved);
+    else publishSetupHardCapUnavailable();
+    renderMonthlyQuarterPeak(powerRead.payload.capacityPeak);
+  } else publishSetupHardCapUnavailable();
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // The banner may already have rendered from the template's defaults while
@@ -569,33 +572,49 @@ export const loadCapacitySettings = async () => {
   if (dryRunChanged) refreshPlanSurface();
 };
 
-const saveCapacitySettingsPatch = async (
-  patch: CapacitySettingsPatch,
+const saveCapacitySettingsCommand = async (
+  command: CapacitySettingsCommand,
   successMessage = 'Capacity settings saved.',
 ) => {
+  capacitySettingsMutationRevision += 1;
   const current = await readCurrentCapacitySettings();
-  const resolved = resolveCapacitySettingsPatch(current, patch);
+  const resolved = resolveCapacitySettingsCommand(current, command);
   validateCapacitySettings(resolved);
 
   const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, resolved.limitKw);
-  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, resolved.marginKw);
-  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, resolved.dryRun);
-  pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, resolved.periodMinutes);
+  if (command.kind === 'limits') {
+    pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, resolved.limitKw);
+    pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, resolved.marginKw);
+    pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, resolved.periodMinutes);
+  } else {
+    pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, resolved.dryRun);
+  }
   // Never power_source: a hard-cap/margin/simulation save must not materialize
   // the 'flow' default for a user who never chose a source, and the select's
   // own change goes through the guarded seam (`savePowerSourceSetting`).
   if (writes.length > 0) {
     await Promise.all(writes);
   }
-  const dryRunChanged = current.dryRun !== resolved.dryRun;
-  commitCapacityScalars(resolved);
-  // The write above persisted the cap, whatever was there before.
-  publishSetupHardCapRead(resolved.limitKw, resolved);
-  // This save owns only cap, margin and simulation. In particular it must not
-  // repaint the Power source from its pre-write read: a source save can overlap
-  // this awaited settings write and owns that control's final value.
-  syncCapacityOwnedControls(resolved);
+  // A save commits only the fields named by its command. Another save or a
+  // realtime settings refresh may have established newer values for the other
+  // fields while these writes were in flight; merge into that latest trusted
+  // snapshot rather than restoring the pre-write read.
+  const committed = command.kind === 'limits'
+    ? {
+      ...lastGoodCapacityScalars,
+      limitKw: resolved.limitKw,
+      marginKw: resolved.marginKw,
+      periodMinutes: resolved.periodMinutes,
+    }
+    : { ...lastGoodCapacityScalars, dryRun: resolved.dryRun };
+  const dryRunChanged = state.dryRun !== committed.dryRun;
+  commitCapacityScalars(committed);
+  if (command.kind === 'limits') {
+    publishSetupHardCapRead(true, committed);
+    syncCapacityLimitControls(committed);
+  } else {
+    syncSimulationModeControl(committed.dryRun);
+  }
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // Toggling simulation flips the hero decision sentence and the device-card
@@ -607,9 +626,10 @@ const saveCapacitySettingsPatch = async (
 };
 
 export const saveSettingsLimitsSettings = async () => {
-  await saveCapacitySettingsPatch({
-    limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
-    margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
+  await saveCapacitySettingsCommand({
+    kind: 'limits',
+    limitKw: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
+    marginKw: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
     periodMinutes: resolveCapacityPeriodMinutes(
       Number(settingsCapacityPeriodSelect?.value),
       lastGoodCapacityScalars.periodMinutes,
@@ -620,7 +640,8 @@ export const saveSettingsLimitsSettings = async () => {
 export const saveSimulationModeSettings = async (
   enabled = settingsSimulationModeInput ? settingsSimulationModeInput.selected : true,
 ) => {
-  await saveCapacitySettingsPatch({
+  await saveCapacitySettingsCommand({
+    kind: 'simulation',
     dryRun: enabled,
   }, 'Simulation mode updated.');
 };

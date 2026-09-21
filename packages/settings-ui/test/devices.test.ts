@@ -170,7 +170,16 @@ describe('devices render — redesign shell', () => {
     state.initialLoadComplete = true;
     state.managedMap = { 'h1': true };
     state.controllableMap = { 'h1': true };
-    state.priceOptimizationSettings = { 'h1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 } };
+    state.priceOptimizationSettings = {
+      'h1': {
+        enabled: false,
+        cheapDelta: 5,
+        expensiveDelta: -5,
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 2,
+      },
+    };
     state.budgetExemptMap = {};
     state.latestDevices = [
       buildDevice({ id: 'h1', name: 'Heater', deviceClass: 'heater', powerCapable: true}),

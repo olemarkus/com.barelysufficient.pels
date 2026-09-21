@@ -28,7 +28,11 @@ const makeDeps = (overrides: { currentPrice?: number } = {}) => {
     priceStatus: {
       getCombinedPricePeriods: () => state.prices,
     },
-    getSettings: () => ({ 'device-1': { enabled: true, cheapDelta: 10, expensiveDelta: 10 } }),
+    getSettings: () => ({
+      'device-1': {
+        enabled: true, cheapDelta: 10, expensiveDelta: 10, surplusWilling: false, surplusDelta: 0,
+      },
+    }),
     isEnabled: () => true,
     getThresholdPercent: () => 20,
     getMinDiffOre: () => 5,

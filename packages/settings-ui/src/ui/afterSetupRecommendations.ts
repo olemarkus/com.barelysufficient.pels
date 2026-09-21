@@ -22,9 +22,7 @@ import type { SetupRecommendation } from './recommendationsModel.ts';
  *   surplus PELS can use);
  * - it is not already in use — recommending prices to an owner who set them up
  *   last year is the same mistake from the other side;
- * - and every fact behind that verdict is KNOWN. An unread setting looks exactly
- *   like a feature nobody turned on, so an unknown fact yields no suggestion
- *   rather than a wrong one.
+ * - and every fact behind that verdict has been resolved by its boundary.
  *
  * None shows while the setup path is open. One thing at a time: the path is the
  * instruction until it is done.
@@ -38,24 +36,24 @@ export type AfterSetupDevice = {
   limitable: boolean;
   /** Could take a Smart task: a charger, or anything with a temperature target. */
   taskCapable: boolean;
-  priceEnabled: boolean;
+  /** The owner made an explicit per-device Price choice, including Off. */
+  priceConfigured: boolean;
   usesSolarSurplus: boolean;
 };
-
-/** `unknown` = the setting has not been read (or could not be), so nothing is claimed. */
-export type AfterSetupKnown<T> = { state: 'unknown' } | { state: 'known'; value: T };
 
 export type AfterSetupFacts = {
   setupComplete: boolean;
   /** Managed devices only; their Price and solar flags come from the price settings. */
-  devices: AfterSetupKnown<readonly AfterSetupDevice[]>;
+  devices: readonly AfterSetupDevice[];
+  /** Producer-resolved global owner choice; explicit Off suppresses the Price suggestion. */
+  priceOptimizationEnabled: boolean;
   /**
    * The home has solar AND the surplus engine can act on it. Both: a home with
    * panels but a pool the runtime declines would be offered a toggle that
    * cannot engage. "Has solar" includes a zero-export home that curtails.
    */
   solarSurplusAvailable: boolean;
-  smartTaskConfigured: AfterSetupKnown<boolean>;
+  smartTaskConfigured: boolean;
   /** Where the hub is, from geography alone. `unavailable` = the neutral order. */
   market: SettingsUiHubMarketRead;
   /**
@@ -128,7 +126,7 @@ const SMART_TASKS = suggestion('smart-tasks', {
   actionLabel: 'Open Smart tasks',
 }, 'deadlines');
 
-const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceEnabled' | 'usesSolarSurplus'): boolean => (
+const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceConfigured' | 'usesSolarSurplus'): boolean => (
   devices.some((device) => device[flag])
 );
 
@@ -137,7 +135,9 @@ const resolvePricesAndSolar = (
   facts: AfterSetupFacts,
   devices: readonly AfterSetupDevice[],
 ): SetupRecommendation[] => {
-  const prices = devices.some((device) => device.temperature) && !usesAny(devices, 'priceEnabled')
+  const prices = facts.priceOptimizationEnabled
+    && devices.some((device) => device.temperature)
+    && !usesAny(devices, 'priceConfigured')
     ? [PRICES] : [];
   const solar = facts.solarSurplusAvailable
     && devices.some((device) => device.limitable)
@@ -152,15 +152,14 @@ const resolveSmartTasks = (
   facts: AfterSetupFacts,
   devices: readonly AfterSetupDevice[],
 ): SetupRecommendation[] => (
-  facts.smartTaskConfigured.state === 'known'
-    && !facts.smartTaskConfigured.value
+  !facts.smartTaskConfigured
     && devices.some((device) => device.taskCapable)
     ? [SMART_TASKS] : []
 );
 
 export const resolveAfterSetupRecommendations = (facts: AfterSetupFacts): SetupRecommendation[] => {
-  if (!facts.setupComplete || facts.devices.state === 'unknown') return [];
-  const devices = facts.devices.value;
+  if (!facts.setupComplete) return [];
+  const { devices } = facts;
   // No cap is in force, so none can be wrong, unless PELS may limit something.
   const flanders = facts.belgianHomeOnHourlyPeriod && devices.some((device) => device.limitable)
     ? [FLANDERS_PERIOD] : [];

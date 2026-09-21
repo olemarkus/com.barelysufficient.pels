@@ -87,12 +87,11 @@ test.describe('Onboarding links', () => {
           // none is built for a meter that never reported.
           pels_status: null,
           power_tracker_state: null,
-          capacity_limit_kw: null,
-          capacity_margin_kw: null,
           managed_devices: {},
           controllable_devices: {},
           plan_snapshot: null,
         },
+        unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -139,7 +138,7 @@ test.describe('Onboarding links', () => {
     // those devices, so this is the moment the owner needs to see it.
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
-        settings: { capacity_limit_kw: null, capacity_margin_kw: null },
+        unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });

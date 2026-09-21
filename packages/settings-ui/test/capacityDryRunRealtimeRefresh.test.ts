@@ -69,6 +69,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
               status: { state: 'unavailable', reason: 'no_status_recorded' },
               readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 },
               capacityScalars: { state: 'resolved', scalars: runtimeScalars },
+              hardCapConfiguration: { state: 'resolved', configured: true },
             },
           },
         }
@@ -100,7 +101,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
     expect(renders).toBeGreaterThan(0);
   });
 
-  it('preserves retained Main limit and margin when their persisted keys are absent', async () => {
+  it('does not materialize retained Main limits during a simulation-only save', async () => {
     setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false });
     delete homey.__settingsStore[CAPACITY_LIMIT_KW];
     delete homey.__settingsStore[CAPACITY_MARGIN_KW];
@@ -108,18 +109,18 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
     await loadCapacitySettings();
     await saveSimulationModeSettings(false);
 
-    expect(homey.set).toHaveBeenCalledWith(CAPACITY_LIMIT_KW, 12, expect.any(Function));
-    expect(homey.set).toHaveBeenCalledWith(CAPACITY_MARGIN_KW, 0.4, expect.any(Function));
+    expect(homey.set).not.toHaveBeenCalledWith(CAPACITY_LIMIT_KW, expect.anything(), expect.any(Function));
+    expect(homey.set).not.toHaveBeenCalledWith(CAPACITY_MARGIN_KW, expect.anything(), expect.any(Function));
   });
 
-  it('preserves the runtime Belgian period when its persisted key is transiently absent', async () => {
+  it('does not materialize the runtime Belgian period during a simulation-only save', async () => {
     setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false });
     delete homey.__settingsStore[CAPACITY_PERIOD_MINUTES];
 
     await loadCapacitySettings();
     await saveSimulationModeSettings(false);
 
-    expect(homey.set).toHaveBeenCalledWith(CAPACITY_PERIOD_MINUTES, 15, expect.any(Function));
+    expect(homey.set).not.toHaveBeenCalledWith(CAPACITY_PERIOD_MINUTES, expect.anything(), expect.any(Function));
   });
 
   it('re-renders when simulation flips off in another WebView', async () => {

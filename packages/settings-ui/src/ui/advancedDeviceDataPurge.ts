@@ -22,6 +22,7 @@ import { normalizeEvCarAssociations } from '../../../contracts/src/evCarAssociat
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';
+import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -278,7 +279,10 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
     {
       key: 'price_optimization_settings',
       fallback: state.priceOptimizationSettings,
-      apply: (value) => { state.priceOptimizationSettings = readRecordSetting(value); },
+      apply: (value) => {
+        const read = classifyPriceOptimizationConfigMap(value);
+        if (read.state === 'resolved') state.priceOptimizationSettings = read.settings;
+      },
     },
     {
       key: TEMPERATURE_CONTROL_MODES,

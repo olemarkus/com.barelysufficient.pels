@@ -107,13 +107,17 @@ export type SetupPath = {
   steps: readonly SetupStep[];
   doneCount: number;
   lede: string;
-  /** Says simulation is on while the path is open; null when PELS is live. */
-  simulationNote: string | null;
+  /** Whether the path should name the simulation posture below its steps. */
+  simulating: boolean;
 };
 
-const LEDE = 'PELS starts managing your devices once these are done. Prices, solar and Smart tasks build on them.';
-const SIMULATION_NOTE = 'Simulation is on, so devices stay as-is until you turn it off.';
+export type SetupPathState =
+  | { state: 'complete' }
+  | { state: 'open'; path: SetupPath };
 
+type SetupPathVisibility = SetupPathState | { state: 'loading' };
+
+const LEDE = 'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.';
 const formatKw = (value: number): string => `${Number(value.toFixed(1))} kW`;
 
 const countDevices = (count: number): string => (count === 1 ? '1 device' : `${count} devices`);
@@ -168,7 +172,7 @@ const resolveDevicesDetail = (facts: SetupPathFacts): string => {
 };
 
 /**
- * `null` when setup is complete — there is no "all done" card, because a
+ * `complete` when setup is complete — there is no "all done" card, because a
  * finished setup has nothing left to say (the Overview says it instead).
  */
 // In force only with two or more devices to order, and only judged when the
@@ -185,7 +189,7 @@ const resolvePriorityStep = (facts: SetupPathFacts): Array<Omit<SetupStep, 'stat
   }];
 };
 
-export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
+export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
   // In force only once some managed device may be limited; see the header.
   const hardCapApplies = facts.limitableDeviceCount > 0;
   const candidates: Array<Omit<SetupStep, 'status'> & { done: boolean }> = [
@@ -212,7 +216,7 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
     }] : []),
     ...resolvePriorityStep(facts),
   ];
-  if (candidates.every((step) => step.done)) return null;
+  if (candidates.every((step) => step.done)) return { state: 'complete' };
 
   const nextIndex = candidates.findIndex((step) => !step.done);
   const statusAt = (done: boolean, index: number): SetupStepStatus => {
@@ -225,16 +229,19 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
   }));
 
   return {
-    steps,
-    doneCount: candidates.filter((step) => step.done).length,
-    lede: LEDE,
-    simulationNote: facts.simulating ? SIMULATION_NOTE : null,
+    state: 'open',
+    path: {
+      steps,
+      doneCount: candidates.filter((step) => step.done).length,
+      lede: LEDE,
+      simulating: facts.simulating,
+    },
   };
 };
 
 /** Whether the path is open AND still waiting on this step. */
-export const isSetupStepOpen = (path: SetupPath | null, id: SetupStepId): boolean => (
-  path !== null && path.steps.some((step) => step.id === id && step.status !== 'done')
+export const isSetupStepOpen = (read: SetupPathVisibility, id: SetupStepId): boolean => (
+  read.state === 'open' && read.path.steps.some((step) => step.id === id && step.status !== 'done')
 );
 
 /** Compact progress for a chip: `1 of 2`. */

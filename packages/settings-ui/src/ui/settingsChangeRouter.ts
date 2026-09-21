@@ -47,6 +47,8 @@ import {
   PV_FORECAST_SOURCE,
   PLAN_STATUS_PUBLISHED_EVENT,
   POWER_TRACKER_PERSISTED_EVENT,
+  PRICE_OPTIMIZATION_ENABLED,
+  PRICE_OPTIMIZATION_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
@@ -72,6 +74,7 @@ import {
 import {
   clearRecommendationDismissals,
   loadRecommendationDismissals,
+  refreshAfterSetupRecommendations,
   refreshRecommendationSurfaces,
   SETUP_RECOMMENDATION_DISMISSALS,
 } from './recommendations.ts';
@@ -115,6 +118,13 @@ const CAPACITY_SETTINGS_KEYS = new Set([
   HOMEY_ENERGY_METER_DEVICE_ID,
   HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
 ]);
+
+const refreshCapacitySettings = (key: string, context: 'settings.set' | 'settings.unset') => {
+  if (!CAPACITY_SETTINGS_KEYS.has(key)) return;
+  if (key === CAPACITY_LIMIT_KW) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+  runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', context);
+};
+
 const ADVANCED_SETTINGS_KEYS = new Set([
   DEBUG_LOGGING_TOPICS,
   'debug_logging_enabled',
@@ -138,6 +148,8 @@ const PRICE_REFRESH_KEYS = new Set([
   // carries on the prices payload moves with it.
   POWERHOUR_DEVICE_ID,
   'nettleie_data',
+  PRICE_OPTIMIZATION_ENABLED,
+  PRICE_OPTIMIZATION_SETTINGS,
 ]);
 
 const DEVICE_CONTROL_KEYS = new Set([
@@ -210,14 +222,21 @@ const refreshDailyBudgetSettings = (key: string) => {
   syncSettingsHubChips();
 };
 
-const refreshPriceSettings = (key: string) => {
+const refreshPriceSettings = (key: string, context: 'settings.set' | 'settings.unset') => {
   if (PRICE_REFRESH_KEYS.has(key)) {
     invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-    refreshPricesIfVisible('settings.set');
+    refreshPricesIfVisible(context);
+  }
+  if (key === PRICE_OPTIMIZATION_ENABLED || key === PRICE_OPTIMIZATION_SETTINGS) {
+    runLoggedTask(
+      refreshAfterSetupRecommendations(),
+      'Failed to refresh setup suggestions after Price settings changed',
+      context,
+    );
   }
   if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL && key !== POWERHOUR_DEVICE_ID) return;
-  runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', 'settings.set');
-  refreshPricesIfVisible('settings.set');
+  runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', context);
+  refreshPricesIfVisible(context);
 };
 
 /** The Main home's tracker persisted: the whole-home power read models are stale. */
@@ -397,9 +416,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Main capacity settings retain the runtime's last-good values when absent.
   // Route the bare key through the full loader so it can preserve and repaint
   // that posture instead of fabricating a boot default.
-  if (CAPACITY_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.unset');
-  }
+  refreshCapacitySettings(key, 'settings.unset');
   // An unset suffixed flag is a real posture change too: the runtime reads an
   // absent per-area flag as its simulating boot default. So is an unset
   // roster — the posture must narrow with it, and no other unset route
@@ -415,6 +432,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Only `settings.set` consulted this set before, leaving switches asserting a
   // configuration the runtime had already dropped.
   if (DEVICE_CONTROL_KEYS.has(key)) refreshModeAndDeviceControls();
+  refreshPriceSettings(key, 'settings.unset');
   // The home-scoped read-model routes fire on unset too — the full mirror of
   // the set path, because NONE of the keys that route reads is set-only: an
   // unset `capacity_dry_run:<selectedId>` returns the runtime posture to its
@@ -447,9 +465,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   reloadWeatherInsightIfWeatherKey(key, 'settings.set');
   reloadRecommendationsIfKey(key, 'settings.set');
 
-  if (CAPACITY_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
-  }
+  refreshCapacitySettings(key, 'settings.set');
   notifyHomeScopedControllers(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
@@ -486,7 +502,7 @@ export const createSettingsSetHandler = () => (key: string) => {
     refreshHomeBadgesForUi('settings.set');
   }
 
-  refreshPriceSettings(key);
+  refreshPriceSettings(key, 'settings.set');
   refreshHomeScopedReadModels(key, 'settings.set');
   refreshDailyBudgetSettings(key);
 };

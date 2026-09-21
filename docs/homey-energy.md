@@ -51,7 +51,7 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 ### Setup
 
-1. Open **Apps > PELS > Settings**.
+1. Open **More > Apps > PELS > Settings**.
 2. Go to **Settings > Limits & safety**.
 3. Change **Power source** to **Power meter**.
 4. Pick your meter under **Whole-home meter**, just below **Power source**.
@@ -104,7 +104,7 @@ This is the recommended path **outside Norway**. PELS ships a built-in Norwegian
 
 ### Setup
 
-1. Open **Apps > PELS > Settings**.
+1. Open **More > Apps > PELS > Settings**.
 2. Go to **Settings > Electricity prices**.
 3. Change **Price source** to **Homey Energy (dynamic prices)**.
 

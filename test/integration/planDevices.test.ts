@@ -1263,7 +1263,9 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const tankTargets = (targetC: number) => ({ getModeDeviceTargets: () => ({ Home: { tank: targetC } }) });
     const cheapHour = (cheapDelta: number) => ({
       getPriceOptimizationEnabled: () => true,
-      getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta, expensiveDelta: 0 } }),
+      getPriceOptimizationSettings: () => ({
+        tank: { enabled: true, cheapDelta, expensiveDelta: 0, surplusWilling: false, surplusDelta: 0 },
+      }),
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
     });
 
@@ -1455,7 +1457,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice()], {
           getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: -1 } }),
+          getPriceOptimizationSettings: () => ({
+            tank: {
+              enabled: true, cheapDelta: 2, expensiveDelta: -1, surplusWilling: false, surplusDelta: 0,
+            },
+          }),
           getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
         }),
         state: createPlanEngineState(),
@@ -1484,7 +1490,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         })], {
           getModeDeviceTargets: () => ({ Home: { tank: 22 } }),
           getPriceOptimizationEnabled: () => true,
-          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }),
+          getPriceOptimizationSettings: () => ({
+            tank: {
+              enabled: true, cheapDelta: 3, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+            },
+          }),
           getCurrentHourPriceLevel: () => priceLevel,
           getThermalDirection: () => 'cooling',
         }),

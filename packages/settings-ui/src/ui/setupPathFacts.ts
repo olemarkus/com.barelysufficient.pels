@@ -6,11 +6,12 @@ import {
   isSetupStepOpen,
   resolveSetupPath,
   type SetupHardCap,
-  type SetupPath,
   type SetupPathFacts,
+  type SetupPathState,
   type SetupPowerReadings,
 } from './setupPathModel.ts';
 import { countUnplacedDevices } from './modePriorityPlace.ts';
+import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import { state } from './state.ts';
 
 /**
@@ -27,8 +28,13 @@ import { state } from './state.ts';
  * published: they already have one owner there, and a second copy would drift.
  */
 
-let power: SetupPowerReadings | null = null;
-let hardCap: SetupHardCap | null = null;
+type SetupFactsRead<T> =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'ready'; value: T };
+
+let power: SetupFactsRead<SetupPowerReadings> = { state: 'loading' };
+let hardCap: SetupFactsRead<SetupHardCap> = { state: 'loading' };
 // Not part of the `loading` gate: `unavailable` is the market-neutral copy, which
 // is always correct, so the path never waits for this. A resolved market only
 // ever sharpens what is already on screen.
@@ -41,7 +47,7 @@ const listeners = new Set<() => void>();
 let lastNotifiedPath = '';
 
 const notify = (): void => {
-  // The market is part of it: with setup complete the path is `null` either way,
+  // The market is part of it: with setup complete the path is unchanged either way,
   // yet a market landing still changes which recommendations are drawn.
   const resolved = JSON.stringify([readSetupPath(), market]);
   if (resolved === lastNotifiedPath) return;
@@ -59,8 +65,17 @@ export const onSetupPathChange = (listener: () => void): void => {
  */
 export const notifySetupPathChange = (): void => notify();
 
+subscribeToHomeScope(notifySetupPathChange);
+
 export const publishSetupPower = (next: SetupPowerReadings): void => {
-  power = next;
+  power = { state: 'ready', value: next };
+  notify();
+};
+
+/** A bounded first read failed; preserve a previously trusted value. */
+export const publishSetupPowerUnavailable = (): void => {
+  if (power.state === 'ready') return;
+  power = { state: 'unavailable' };
   notify();
 };
 
@@ -74,36 +89,41 @@ export const publishSetupMarket = (next: SettingsUiHubMarketRead): void => {
  * until the hard cap has been read: nothing is asked of the owner on a guess.
  */
 export const isBelgianHomeOnHourlyPeriod = (): boolean => (
-  hardCap !== null && isBelgianHourly(market, hardCap.periodMinutes)
+  hardCap.state === 'ready' && isBelgianHourly(market, hardCap.value.periodMinutes)
 );
 
 export const readSetupMarket = (): SettingsUiHubMarketRead => market;
 
 /**
- * `persistedLimitKw` is the persisted cap as its reader resolved it: a number
- * when the owner has saved one, anything else once absence is CONFIRMED
- * (`setupHardCapRead.ts` owns that; a single nullish read is not absence). A
- * saved cap never becomes unsaved again, so once one has been seen a later
- * read without it is the SDK's transient unreadable-store answer: the step
- * stays done rather than sending the owner back, and `running` (the scalars
- * the app is actually using) still refreshes.
+ * `configured` is the capacity owner's verdict from the SDK settings key list,
+ * not an inference from a nullable value in the browser. `running` is the
+ * independently resolved scalar block the app is actually enforcing.
  */
 export const publishSetupHardCapRead = (
-  persistedLimitKw: unknown,
+  configured: boolean,
   running: CapacityScalarSettings,
 ): void => {
-  const saved = (typeof persistedLimitKw === 'number' && Number.isFinite(persistedLimitKw))
-    || hardCap?.state === 'saved';
   const { limitKw, marginKw, periodMinutes } = running;
-  hardCap = saved
-    ? { state: 'saved', limitKw, marginKw, periodMinutes }
-    : { state: 'unset', runningLimitKw: limitKw, periodMinutes };
+  hardCap = {
+    state: 'ready',
+    value: configured
+      ? { state: 'saved', limitKw, marginKw, periodMinutes }
+      : { state: 'unset', runningLimitKw: limitKw, periodMinutes },
+  };
   notify();
 };
 
-type SetupPathRead =
+/** A bounded first read failed; preserve a previously trusted value. */
+export const publishSetupHardCapUnavailable = (): void => {
+  if (hardCap.state === 'ready') return;
+  hardCap = { state: 'unavailable' };
+  notify();
+};
+
+export type SetupPathRead =
   | { state: 'loading' }
-  | { state: 'resolved'; path: SetupPath | null };
+  | { state: 'unavailable' }
+  | SetupPathState;
 
 // `state.capacityPriorities` belongs to whichever home's mode catalog is
 // loaded. Setup configures the Main home, so anything else is `unknown`: the
@@ -119,22 +139,26 @@ const resolvePriorityOrder = (limitableIds: readonly string[]): SetupPathFacts['
 
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 export const readSetupPath = (): SetupPathRead => {
-  if (power === null || hardCap === null || !state.devicesLoaded) return { state: 'loading' };
-  const knownIds = new Set(state.latestDevices.map((device) => device.id));
+  const membership = readHomeMembership();
+  if (power.state === 'loading' || hardCap.state === 'loading' || !state.devicesLoaded
+    || membership.state === 'loading') return { state: 'loading' };
+  if (power.state === 'unavailable' || hardCap.state === 'unavailable'
+    || membership.state === 'unavailable') return { state: 'unavailable' };
+  const knownIds = new Set(state.latestDevices
+    .filter((device) => !membership.runtimeActive
+      || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
+    .map((device) => device.id));
   const managedIds = [...knownIds].filter((id) => state.managedMap[id] === true);
   const limitableIds = managedIds.filter((id) => state.controllableMap[id] === true);
-  return {
-    state: 'resolved',
-    path: resolveSetupPath({
-      power,
-      hardCap,
-      market,
-      managedDeviceCount: managedIds.length,
-      limitableDeviceCount: limitableIds.length,
-      priorityOrder: resolvePriorityOrder(limitableIds),
-      simulating: state.dryRun,
-    }),
-  };
+  return resolveSetupPath({
+    power: power.value,
+    hardCap: hardCap.value,
+    market,
+    managedDeviceCount: managedIds.length,
+    limitableDeviceCount: limitableIds.length,
+    priorityOrder: resolvePriorityOrder(limitableIds),
+    simulating: state.dryRun,
+  });
 };
 
 // While the setup path is open, the card stands in for two global banners.
@@ -144,10 +168,10 @@ export const readSetupPath = (): SetupPathRead => {
 // path's to count. An unread roster is not "no areas".
 const SETUP_PATH_PANELS: ReadonlySet<string> = new Set(['overview', 'recommendations']);
 
-const readOpenPath = (knownSingleHome: boolean): SetupPath | null => {
-  if (!knownSingleHome) return null;
+const readOpenPath = (knownSingleHome: boolean): SetupPathState => {
+  if (!knownSingleHome) return { state: 'complete' };
   const read = readSetupPath();
-  return read.state === 'resolved' ? read.path : null;
+  return read.state === 'open' ? read : { state: 'complete' };
 };
 
 const isCardOnScreen = (): boolean => SETUP_PATH_PANELS.has(state.activePanel);
@@ -166,7 +190,7 @@ const isCardOnScreen = (): boolean => SETUP_PATH_PANELS.has(state.activePanel);
 // home left simulating is exactly what it is for.
 export const isSimulationCarriedBySetupPath = (knownSingleHome: boolean): boolean => {
   const path = readOpenPath(knownSingleHome);
-  if (path === null) return false;
+  if (path.state === 'complete') return false;
   return isCardOnScreen() || isSetupStepOpen(path, 'devices');
 };
 

@@ -54,7 +54,6 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
 
   it.each([
     ['not willing', { surplusWilling: false }],
-    ['willing absent', { surplusWilling: undefined }],
     ['no binary control capability', { hasBinaryControl: false }],
     // A charger: its demand arrives with a car, so being off is not going
     // without, and it is not a dump load.
@@ -193,7 +192,7 @@ const allocatorPass = (params: {
   signedNetKw: number;
   nowTs: number;
   priorities?: Record<string, number>;
-  configs?: Record<string, { surplusWilling?: boolean; surplusDelta?: number }>;
+  configs?: Record<string, { surplusWilling: boolean; surplusDelta: number }>;
   excludeIds?: ReadonlySet<string>;
 }) => resolveSurplusEligibility({
   // The rank rides on the device: the producer ranks the whole planned set

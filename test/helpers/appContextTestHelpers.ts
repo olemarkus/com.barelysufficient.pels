@@ -240,10 +240,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getStructuredDebugEmitter: getStructuredDebugEmitterOverride ?? vi.fn(() => structuredDebugEmitter),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
-    readCapacityScalarSettings: () => ({
-      state: 'resolved',
-      value: { ...capacitySettings, dryRun: capacityDryRun },
-    }),
+    capacitySettingsStore: {
+      read: () => ({
+        state: 'resolved',
+        value: { ...capacitySettings, dryRun: capacityDryRun },
+      }),
+      readHardCapConfiguration: () => ({ state: 'resolved', configured: true }),
+    },
     getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun }),
     getCurrentMonthCapacityPeakKw: () => null,
     notifyOperatingModeChanged: vi.fn(),

@@ -15,7 +15,11 @@ import {
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
-import { loadAfterSetupFacts, readAfterSetupFacts } from './afterSetupFacts.ts';
+import {
+  loadAfterSetupFacts,
+  readAfterSetupFacts,
+  type AfterSetupFactsRead,
+} from './afterSetupFacts.ts';
 import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts';
 import { loadHubMarket } from './hubMarket.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
@@ -31,6 +35,7 @@ import {
 } from './views/SetupRecommendationsView.tsx';
 import { checkFlowConflictNow } from './flowConflictRefresh.ts';
 import { showToast, showToastError } from './toast.ts';
+import { subscribeToHomeScope } from './homeScope.ts';
 
 export type RecommendationNavigation = {
   openPanel: (panelId: string) => void;
@@ -75,10 +80,11 @@ const hasLoadedDismissals = (read: DismissalReadState): read is LoadedDismissalR
   read.state === 'resolved' || read.state === 'stale'
 );
 
-const resolveRecommendationReadiness = (): RecommendationReadiness => {
+const resolveRecommendationReadiness = (afterSetupRead: AfterSetupFactsRead): RecommendationReadiness => {
   if (!state.devicesLoaded) return 'loading';
   return state.evCarAssociationsLoaded
     && carInventory.state === 'resolved'
+    && afterSetupRead.state === 'resolved'
     ? 'resolved'
     : 'partial';
 };
@@ -88,7 +94,7 @@ const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null }
   page: document.getElementById('setup-recommendations-root'),
 });
 
-const resolveCurrentRecommendations = (): SetupRecommendation[] => {
+const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): SetupRecommendation[] => {
   if (!state.devicesLoaded) return [];
   const nativeRecommendations = resolveNativeControlRecommendations(state.latestDevices, state.nativeWiringMap);
   const carRecommendations = state.evCarAssociationsLoaded
@@ -101,7 +107,9 @@ const resolveCurrentRecommendations = (): SetupRecommendation[] => {
   return [
     ...[...nativeRecommendations, ...carRecommendations]
       .sort((left, right) => left.title.localeCompare(right.title)),
-    ...resolveAfterSetupRecommendations(readAfterSetupFacts()),
+    ...(afterSetupRead.state === 'resolved'
+      ? resolveAfterSetupRecommendations(afterSetupRead.facts)
+      : []),
   ];
 };
 
@@ -235,11 +243,12 @@ const writeDismissal = async (recommendation: SetupRecommendation, dismissed: bo
 
 export const refreshRecommendationSurfaces = (): void => {
   const { banner, page } = getSurfaces();
+  const afterSetupRead = readAfterSetupFacts();
   const hasDismissals = hasLoadedDismissals(dismissalRead);
   const coreLoaded = hasDismissals && state.devicesLoaded;
-  const readiness = resolveRecommendationReadiness();
+  const readiness = resolveRecommendationReadiness(afterSetupRead);
   const dismissals = hasLoadedDismissals(dismissalRead) ? dismissalRead.dismissals : {};
-  const groups = groupSetupRecommendations(resolveCurrentRecommendations(), dismissals);
+  const groups = groupSetupRecommendations(resolveCurrentRecommendations(afterSetupRead), dismissals);
   if (banner) {
     renderSetupRecommendationsBanner(banner, {
       active: coreLoaded ? groups.active : [],
@@ -249,20 +258,19 @@ export const refreshRecommendationSurfaces = (): void => {
     });
   }
   const setupRead = readSetupPath();
-  const setupPath = setupRead.state === 'resolved' ? setupRead.path : null;
   const chip = document.getElementById('settings-nav-chip-recommendations');
   if (chip) {
     // Open setup outranks the suggestion count: it is what the row is for until
     // it is done, and one chip cannot carry both numbers.
     const hasSuggestions = coreLoaded && groups.active.length > 0;
-    chip.hidden = setupPath === null && !hasSuggestions;
-    if (setupPath !== null) chip.textContent = formatSetupProgress(setupPath);
+    chip.hidden = setupRead.state !== 'open' && !hasSuggestions;
+    if (setupRead.state === 'open') chip.textContent = formatSetupProgress(setupRead.path);
     else if (hasSuggestions) chip.textContent = String(groups.active.length);
   }
   if (page) {
     renderSetupRecommendationsView(page, {
       ...groups,
-      setupPath,
+      setupPath: setupRead,
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
       busyRecommendationId,
@@ -276,6 +284,11 @@ export const refreshRecommendationSurfaces = (): void => {
       onRetry: retryRecommendationData,
     });
   }
+};
+
+export const refreshAfterSetupRecommendations = async (): Promise<void> => {
+  await loadAfterSetupFacts();
+  refreshRecommendationSurfaces();
 };
 
 export const loadRecommendationDismissals = async (): Promise<void> => {
@@ -343,6 +356,9 @@ const readTabId = (event: Event): string => {
 
 export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigation): void => {
   navigationRead = { state: 'resolved', navigation: nextNavigation };
+  // Recommendation applicability depends on the identities of Main-home
+  // devices, not only on the setup path's aggregate counts.
+  subscribeToHomeScope(refreshRecommendationSurfaces);
   document.addEventListener('devices-updated', () => { void refreshCarInventory(); });
   document.addEventListener('ev-car-associations-updated', refreshRecommendationSurfaces);
   onSetupPathChange(refreshRecommendationSurfaces);

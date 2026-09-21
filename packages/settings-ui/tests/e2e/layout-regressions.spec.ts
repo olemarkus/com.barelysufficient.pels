@@ -248,6 +248,7 @@ test.describe('settings shell layout regressions', () => {
     { label: 'Settings', open: (page) => openTopTab(page, 'Settings') },
     { label: 'Devices', open: (page) => openSettingsSection(page, 'devices') },
     { label: 'Prices', open: (page) => openSettingsSection(page, 'electricity-prices') },
+    { label: 'Recommendations', open: (page) => openSettingsSection(page, 'recommendations') },
     { label: 'Advanced', open: (page) => openSettingsSection(page, 'advanced') },
   ];
 

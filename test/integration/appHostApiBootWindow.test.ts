@@ -29,7 +29,7 @@ const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService']) => 
   return new TestHostApi();
 };
 
-describe('AppHostApi daily budget in the boot window', () => {
+describe('AppHostApi boot window', () => {
   it('reads unavailable while the service is not wired yet', () => {
     expect(createHostApi(undefined).getDailyBudgetUiPayload()).toEqual({ kind: 'unavailable' });
   });
@@ -45,5 +45,9 @@ describe('AppHostApi daily budget in the boot window', () => {
     const getUiPayload = vi.fn((): DailyBudgetUiRead => read);
     expect(createHostApi({ getUiPayload } as never).getDailyBudgetUiPayload()).toBe(read);
     expect(getUiPayload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports price-optimization setup as unavailable before its owner is wired', () => {
+    expect(createHostApi(undefined).readPriceOptimizationSetup()).toEqual({ state: 'unavailable' });
   });
 });

@@ -97,7 +97,7 @@ const makeHarness = (params: {
   totalKw: number;
   softLimitOverride?: number | null;
   priceOptSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number;
-    surplusWilling?: boolean; surplusDelta?: number; }>;
+    surplusWilling: boolean; surplusDelta: number; }>;
   powerSampleAgeMs?: number;
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
   // The "Leave off until turned on again" port; defaults to a device no one opted in.
@@ -285,7 +285,11 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const h = makeHarness({
       totalKw: 0.5,
       leaveOffOnRelease,
-      priceOptSettings: { [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true } },
+      priceOptSettings: {
+        [PUMP]: {
+          enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+        },
+      },
     });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     await vi.advanceTimersByTimeAsync(10_000);
@@ -561,7 +565,11 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const empty = makeHarness({ totalKw: 1.2 });
     const nonWilling = makeHarness({
       totalKw: 1.2,
-      priceOptSettings: { heater: { enabled: false, cheapDelta: 0, expensiveDelta: 0 } },
+      priceOptSettings: {
+        heater: {
+          enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: false, surplusDelta: 0,
+        },
+      },
     });
     const planA = await empty.builder.buildDevicePlanSnapshot(devices());
     const planB = await nonWilling.builder.buildDevicePlanSnapshot(devices());
@@ -741,7 +749,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     const ctx = createAppContextMock({
       powerTracker: exportedBefore,
       priceOptimizationSettings: {
-        [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+        [PUMP]: {
+          enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+        },
       },
     });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
@@ -757,7 +767,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     const ctx = createAppContextMock({
       ...(powerTracker ? { powerTracker } : {}),
       priceOptimizationSettings: {
-        [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+        [PUMP]: {
+          enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+        },
       },
     });
     vi.mocked(ctx.homey.settings.get).mockImplementation(
@@ -796,7 +808,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
 
   it('does not stamp a non-willing device, an unmanaged device, or a temperature device', () => {
     const willing = {
-      [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+      [PUMP]: {
+        enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+      },
     };
     const managedCtx = (settings: typeof willing | Record<string, never>, managed: boolean) => {
       const ctx = createAppContextMock({ priceOptimizationSettings: settings });
@@ -819,7 +833,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
       const ctx = createAppContextMock({
         powerTracker: exportedBefore,
         priceOptimizationSettings: {
-          [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+          [PUMP]: {
+            enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+          },
         },
       });
       (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;

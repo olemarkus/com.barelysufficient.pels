@@ -26,6 +26,9 @@ import {
   resolvePowerWeekChartValueRange,
 } from './powerWeekChartEcharts.ts';
 import { getApiReadModel, getHomeyTimezone } from './homey.ts';
+import { classifyHardCapConfigurationRead } from './hardCapConfigurationRead.ts';
+import { classifyCapacityPeak } from './capacityPeakRead.ts';
+import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 import { getHomeScope } from './homeScope.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { createToggleGroup } from './components.ts';
@@ -124,12 +127,21 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 // keeps the scope discriminated.
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-  return payload ?? {
+  if (payload) {
+    return {
+      ...payload,
+      capacityPeak: classifyCapacityPeak(payload.capacityPeak),
+      capacityScalars: classifyCapacityScalarsRead(payload.capacityScalars),
+      hardCapConfiguration: classifyHardCapConfigurationRead(payload.hardCapConfiguration),
+    };
+  }
+  return {
     tracker: {},
     readings: { state: 'never' },
     status: { state: 'unavailable', reason: 'read_failed' },
     capacityPeak: { state: 'unavailable' },
     capacityScalars: { state: 'unavailable' },
+    hardCapConfiguration: { state: 'unavailable' },
   };
 };
 

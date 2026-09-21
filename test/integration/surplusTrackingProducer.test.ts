@@ -25,7 +25,9 @@ const willingCtx = (deviceId: string) => {
   const ctx = createAppContextMock({
     powerTracker: exportedBefore,
     priceOptimizationSettings: {
-      [deviceId]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+      [deviceId]: {
+        enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+      },
     },
   });
   (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
@@ -97,7 +99,9 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     // permanently, with no time-based escape.
     const ctx = createAppContextMock({
       priceOptimizationSettings: {
-        [CHARGER]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+        [CHARGER]: {
+          enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0,
+        },
       },
     });
     // A store that answers: another key is listed, the export bit is not. An

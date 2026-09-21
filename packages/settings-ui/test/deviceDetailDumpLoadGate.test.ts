@@ -120,7 +120,16 @@ const openPanel = async (params: OpenPanelParams) => {
   state.controllableMap = { [deviceId]: params.controllable ?? true };
   state.budgetExemptMap = {};
   state.priceOptimizationSettings = params.surplusWilling
-    ? { [deviceId]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true } }
+    ? {
+      [deviceId]: {
+        enabled: false,
+        cheapDelta: 0,
+        expensiveDelta: 0,
+        priceConfigured: false,
+        surplusWilling: true,
+        surplusDelta: 0,
+      },
+    }
     : {};
   state.hasManagedSolarDevice = params.hasManagedSolarDevice;
   state.hasExhibitedExport = params.hasExhibitedExport ?? false;
@@ -371,7 +380,9 @@ describe('device detail "Run on solar surplus" blob round-trip', () => {
       enabled: false,
       cheapDelta: 0,
       expensiveDelta: 0,
+      priceConfigured: false,
       surplusWilling: true,
+      surplusDelta: 0,
     });
     expect(savePriceOptimizationSettings).toHaveBeenCalled();
   });
@@ -387,7 +398,9 @@ describe('device detail "Run on solar surplus" blob round-trip', () => {
       enabled: false,
       cheapDelta: 0,
       expensiveDelta: 0,
+      priceConfigured: false,
       surplusWilling: false,
+      surplusDelta: 0,
     });
   });
 

@@ -78,10 +78,22 @@ test.describe('Run on solar surplus (dump-load toggle)', () => {
     await setMdSwitch(page, switchSelector, true);
     await expect.poll(async () => {
       const settings = await readHomeySetting<Record<string, {
-        enabled?: boolean; cheapDelta?: number; expensiveDelta?: number; surplusWilling?: boolean;
+        enabled: boolean;
+        cheapDelta: number;
+        expensiveDelta: number;
+        priceConfigured: boolean;
+        surplusWilling: boolean;
+        surplusDelta: number;
       }> | null>(page, 'price_optimization_settings');
       return settings?.dev_poolpump;
-    }).toEqual({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true });
+    }).toEqual({
+      enabled: false,
+      cheapDelta: 0,
+      expensiveDelta: 0,
+      priceConfigured: false,
+      surplusWilling: true,
+      surplusDelta: 0,
+    });
 
     // Close and reopen (same session): the switch reads the opt-in back.
     await page.locator('#device-detail-close').click();

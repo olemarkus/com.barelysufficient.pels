@@ -1938,7 +1938,20 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    expect(app['priceOptimizationSettings']).toEqual(settings);
+    expect(app['priceOptimizationSettings']).toEqual({
+      'water-heater-1': {
+        ...settings['water-heater-1'],
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 0,
+      },
+      'water-heater-2': {
+        ...settings['water-heater-2'],
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 0,
+      },
+    });
   });
 
   it('updates settings when price_optimization_settings changes', async () => {
@@ -1971,8 +1984,15 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('price_optimization_settings', newSettings);
     await flushPromises();
 
-    // Settings should be updated
-    expect(app['priceOptimizationSettings']).toEqual(newSettings);
+    // The SDK boundary resolves legacy omissions before runtime consumers see it.
+    expect(app['priceOptimizationSettings']).toEqual({
+      'water-heater-1': {
+        ...newSettings['water-heater-1'],
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 0,
+      },
+    });
   });
 
   it('skips price optimization when globally disabled', async () => {

@@ -163,6 +163,7 @@ describe('selection', () => {
     install([{ homeId: AREA_ID, name: 'Utleie' }]);
     await refreshHomeScope();
     await flushAsync();
+    listener.mockClear();
 
     pickHome(AREA_ID);
     expect(getHomeScope().selectedHomeId).toBe(AREA_ID);
@@ -350,6 +351,24 @@ describe('reconciliation against a fresh roster', () => {
     notifyHomeScopeSettingChanged(DEVICE_HOME_ASSIGNMENTS);
     await flushAsync();
 
+    expect(getHomeIdForUiDevice('dev-1')).toBe(AREA_ID);
+  });
+
+  it('notifies subscribers when a resolved refresh changes device ownership', async () => {
+    install([{ homeId: AREA_ID, name: 'Utleie' }]);
+    await refreshHomeScope();
+    const listener = vi.fn();
+    subscribeToHomeScope(listener);
+
+    homey.__uiState.homes = {
+      ...homesPayload([{ homeId: AREA_ID, name: 'Utleie' }]),
+      membershipByDeviceId: {
+        'dev-1': { homeId: AREA_ID, source: 'pin' },
+      },
+    };
+    await refreshHomeScope();
+
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(getHomeIdForUiDevice('dev-1')).toBe(AREA_ID);
   });
 

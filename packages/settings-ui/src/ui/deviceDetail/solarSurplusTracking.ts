@@ -134,7 +134,14 @@ const buildTrackingConfig = (
 ): PriceOptimizationConfig => (
   existing
     ? { ...existing, surplusWilling }
-    : { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling }
+    : {
+      enabled: false,
+      cheapDelta: 0,
+      expensiveDelta: 0,
+      priceConfigured: false,
+      surplusWilling,
+      surplusDelta: 0,
+    }
 );
 
 export const initDeviceDetailSurplusTrackingHandlers = (params: {

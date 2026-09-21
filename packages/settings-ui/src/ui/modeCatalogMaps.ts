@@ -4,14 +4,19 @@ import {
 } from '../../../shared-domain/src/settings/modeDeviceTargets.ts';
 
 export type ModeNumberMap = Record<string, Record<string, number>>;
+export type ModeNumberMapRead =
+  | { state: 'resolved'; value: ModeNumberMap }
+  | { state: 'unavailable' };
 
-/** Validate a complete persisted mode map before any UI edit can rewrite it. */
-export const parseModeNumberMap = (
+/** Classify an untrusted persisted priority catalog once at its API boundary. */
+export const classifyModeNumberMap = (
   value: unknown,
   allowAbsent = false,
-): ModeNumberMap | null => {
-  if (value === undefined || value === null) return allowAbsent ? {} : null;
-  if (typeof value !== 'object' || Array.isArray(value)) return null;
+): ModeNumberMapRead => {
+  if (value === undefined || value === null) {
+    return allowAbsent ? { state: 'resolved', value: {} } : { state: 'unavailable' };
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) return { state: 'unavailable' };
   const modes = Object.entries(value as Record<string, unknown>);
   if (!modes.every(([, entries]) => (
     entries
@@ -20,8 +25,17 @@ export const parseModeNumberMap = (
     && Object.values(entries).every((entry) => (
       typeof entry === 'number' && Number.isFinite(entry)
     ))
-  ))) return null;
-  return value as ModeNumberMap;
+  ))) return { state: 'unavailable' };
+  return { state: 'resolved', value: value as ModeNumberMap };
+};
+
+/** Validate a complete persisted mode map before any UI edit can rewrite it. */
+export const parseModeNumberMap = (
+  value: unknown,
+  allowAbsent = false,
+): ModeNumberMap | null => {
+  const read = classifyModeNumberMap(value, allowAbsent);
+  return read.state === 'resolved' ? read.value : null;
 };
 
 

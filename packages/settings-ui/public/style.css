@@ -8580,6 +8580,7 @@ md-switch {
   #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel,
+  #recommendations-panel,
   #deadlines-panel
 ) {
   display: grid;
@@ -8601,6 +8602,7 @@ md-switch {
   #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel,
+  #recommendations-panel,
   #deadlines-panel
 ).hidden {
   display: none;
@@ -8982,6 +8984,7 @@ md-switch {
     #weather-panel,
     #electricity-prices-panel,
     #price-aware-devices-panel,
+    #recommendations-panel,
     #deadlines-panel
   ) {
     gap: var(--spacing-2);

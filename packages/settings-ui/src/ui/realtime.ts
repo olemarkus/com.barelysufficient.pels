@@ -165,6 +165,7 @@ const handlePowerUpdated = (power: unknown) => {
       readings: { state: 'never' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
+      hardCapConfiguration: { state: 'unavailable' },
     });
   }
   // Only a full-tracker push refreshes the hero's "Solar now" triple; a

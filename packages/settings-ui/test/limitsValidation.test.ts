@@ -3,6 +3,8 @@
 // pair, that it clears once the pair becomes valid, and that the save path
 // blocks the API call without silently snapping the field back.
 
+import type { SettingsUiCapacityPeak } from '../../contracts/src/settingsUiApi.ts';
+
 const LIMITS_FORM_TEMPLATE = [
   '<form id="settings-limits-form">',
   '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',
@@ -39,10 +41,15 @@ const buildLimitsDom = () => {
   };
 };
 
-const loadCapacityModule = async (
-  settings: Record<string, unknown> = {},
-  powerReadError?: Error,
-  capacityPeak: unknown = { state: 'recorded', peakKw: 4.75 },
+const loadCapacityModuleWithWriter = async (
+  settings: Record<string, unknown>,
+  powerReadError: Error | undefined,
+  capacityPeak: SettingsUiCapacityPeak,
+  writeSetting: (
+    key: string,
+    value: unknown,
+    settingsStore: Record<string, unknown>,
+  ) => Promise<void>,
 ) => {
   vi.resetModules();
   const settingsStore: Record<string, unknown> = {
@@ -52,7 +59,9 @@ const loadCapacityModule = async (
     power_source: 'flow',
     ...settings,
   };
-  const setSetting = vi.fn().mockResolvedValue(undefined);
+  const setSetting = vi.fn(async (key: string, value: unknown) => {
+    await writeSetting(key, value, settingsStore);
+  });
   const getSetting = vi.fn().mockImplementation(async (key: string) => settingsStore[key]);
   vi.doMock('../src/ui/homey.ts', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../src/ui/homey.ts')>();
@@ -70,6 +79,8 @@ const loadCapacityModule = async (
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'no_measurement' },
         capacityPeak,
+        capacityScalars: { state: 'unavailable' },
+        hardCapConfiguration: { state: 'unavailable' },
       }),
   }));
   const showToast = vi.fn().mockResolvedValue(undefined);
@@ -86,6 +97,25 @@ const loadCapacityModule = async (
     settingsStore,
   };
 };
+
+const persistSettingImmediately = async (
+  key: string,
+  value: unknown,
+  settingsStore: Record<string, unknown>,
+): Promise<void> => {
+  settingsStore[key] = value;
+};
+
+const loadCapacityModule = async (
+  settings: Record<string, unknown> = {},
+  powerReadError?: Error,
+  capacityPeak: SettingsUiCapacityPeak = { state: 'recorded', peakKw: 4.75 },
+) => loadCapacityModuleWithWriter(
+  settings,
+  powerReadError,
+  capacityPeak,
+  persistSettingImmediately,
+);
 
 describe('Limits & safety inline validation', () => {
   it('shows an alert when the margin meets or exceeds the hard cap', async () => {
@@ -185,6 +215,74 @@ describe('Limits & safety inline validation', () => {
     expect(setSetting).toHaveBeenCalledWith('capacity_period_minutes', 60);
   });
 
+  it('does not restore stale simulation state when an older limits save finishes last', async () => {
+    const dom = buildLimitsDom();
+    let releaseLimitWrite!: () => void;
+    let markLimitWriteStarted!: () => void;
+    const limitWriteStarted = new Promise<void>((resolve) => { markLimitWriteStarted = resolve; });
+    const limitWrite = new Promise<void>((resolve) => { releaseLimitWrite = resolve; });
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      {},
+      undefined,
+      { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'capacity_limit_kw') {
+          markLimitWriteStarted();
+          await limitWrite;
+        }
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+    dom.limit.value = '12';
+    dom.margin.value = '0.5';
+
+    const limitsSave = capacity.saveSettingsLimitsSettings();
+    await limitWriteStarted;
+    await capacity.saveSimulationModeSettings(false);
+    releaseLimitWrite();
+    await limitsSave;
+
+    const simulation = document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean };
+    expect(simulation.selected).toBe(false);
+    expect(settingsStore.capacity_dry_run).toBe(false);
+    expect(dom.limit.value).toBe('12');
+  });
+
+  it('does not restore stale limits when an older simulation save finishes last', async () => {
+    const dom = buildLimitsDom();
+    let releaseSimulationWrite!: () => void;
+    let markSimulationWriteStarted!: () => void;
+    const simulationWriteStarted = new Promise<void>((resolve) => { markSimulationWriteStarted = resolve; });
+    const simulationWrite = new Promise<void>((resolve) => { releaseSimulationWrite = resolve; });
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      {},
+      undefined,
+      { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'capacity_dry_run') {
+          markSimulationWriteStarted();
+          await simulationWrite;
+        }
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+
+    const simulationSave = capacity.saveSimulationModeSettings(false);
+    await simulationWriteStarted;
+    dom.limit.value = '12';
+    dom.margin.value = '0.5';
+    await capacity.saveSettingsLimitsSettings();
+    releaseSimulationWrite();
+    await simulationSave;
+
+    expect(dom.limit.value).toBe('12');
+    expect(settingsStore.capacity_limit_kw).toBe(12);
+    const simulation = document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean };
+    expect(simulation.selected).toBe(false);
+  });
+
   it('keeps valid Belgian settings visible when the optional peak read fails', async () => {
     const dom = buildLimitsDom();
     const { capacity } = await loadCapacityModule(
@@ -212,17 +310,4 @@ describe('Limits & safety inline validation', () => {
     expect(document.querySelector('#settings-capacity-monthly-peak')?.hasAttribute('hidden')).toBe(true);
   });
 
-  it('does not render a negative peak from the untrusted power payload', async () => {
-    buildLimitsDom();
-    const { capacity } = await loadCapacityModule(
-      { capacity_period_minutes: 15 },
-      undefined,
-      { state: 'recorded', peakKw: -1 },
-    );
-
-    await capacity.loadCapacitySettings();
-
-    expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent)
-      .toBe('Peak unavailable');
-  });
 });

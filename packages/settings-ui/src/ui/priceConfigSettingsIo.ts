@@ -17,6 +17,7 @@ import {
 import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
 import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
+import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
 
 /**
  * The settings-store side of the Electricity prices page: one batched read that
@@ -115,8 +116,9 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     getSetting(POWERHOUR_DEVICE_ID),
   ]);
 
-  if (priceOptSettings && typeof priceOptSettings === 'object') {
-    state.priceOptimizationSettings = priceOptSettings as typeof state.priceOptimizationSettings;
+  const priceOptimizationRead = classifyPriceOptimizationConfigMap(priceOptSettings);
+  if (priceOptimizationRead.state === 'resolved') {
+    state.priceOptimizationSettings = priceOptimizationRead.settings;
   }
 
   return {

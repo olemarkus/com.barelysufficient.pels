@@ -11,6 +11,7 @@ import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/plan/planTypes';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PriceLevel } from '../../lib/price/priceLevels';
+import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
@@ -42,11 +43,7 @@ export type PlanEngineWiring = {
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPriceOptimizationEnabled: () => boolean;
-  getPriceOptimizationSettings: () => Record<string, {
-    enabled: boolean;
-    cheapDelta: number;
-    expensiveDelta: number;
-  }>;
+  getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
   getCurrentHourPriceLevel: () => PriceLevel;
   getInferredSurplusKw: () => number;
   /**

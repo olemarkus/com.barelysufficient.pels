@@ -29,7 +29,9 @@ const resolve = (dev: PlanInputDevice, reads: Partial<TemperatureIntentReads>) =
 
 const priced = (level: PriceLevel, cheapDelta: number, expensiveDelta: number): Partial<TemperatureIntentReads> => ({
   getPriceOptimizationEnabled: () => true,
-  getPriceOptimizationSettings: () => ({ unit: { enabled: true, cheapDelta, expensiveDelta } }),
+  getPriceOptimizationSettings: () => ({
+    unit: { enabled: true, cheapDelta, expensiveDelta, surplusWilling: false, surplusDelta: 0 },
+  }),
   getCurrentHourPriceLevel: () => level,
 });
 
@@ -142,7 +144,11 @@ describe('temperature setpoints, resolved before the planner', () => {
     }));
     fixtureTemperatureSetpoints({
       getPriceOptimizationEnabled: () => true,
-      getPriceOptimizationSettings: () => ({ b: { enabled: true, cheapDelta: 1, expensiveDelta: -1 } }),
+      getPriceOptimizationSettings: () => ({
+        b: {
+          enabled: true, cheapDelta: 1, expensiveDelta: -1, surplusWilling: false, surplusDelta: 0,
+        },
+      }),
       getCurrentHourPriceLevel,
     })(devices);
     expect(getCurrentHourPriceLevel).toHaveBeenCalledTimes(1);

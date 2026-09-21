@@ -1660,10 +1660,11 @@ things the path's lede promises: prices, solar, Smart tasks.
 
 - **Only what is relevant to this home, never what it already uses, and never on
   an unread fact.** Prices needs a managed device with a temperature target;
-  solar needs a home that exports AND a pool the runtime can act on AND a device
-  PELS may limit; Smart tasks needs a device that could take one. Each is
-  dropped once any device uses it. An unread setting looks exactly like a
-  feature nobody turned on, so an unknown fact yields no suggestion.
+  solar needs available surplus — measured export or inferred zero-export
+  curtailment — AND a pool the runtime can act on AND a device PELS may limit;
+  Smart tasks needs a device that could take one. Each is dropped once any
+  device uses it. An unread setting looks exactly like a feature nobody turned
+  on, so an unknown fact yields no suggestion.
 - **The solar copy never says "export".** It must be true of a zero-export home
   that curtails as well as one that exports: `while your solar produces more
   than the home is using`.

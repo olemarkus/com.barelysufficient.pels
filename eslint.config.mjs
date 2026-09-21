@@ -769,13 +769,17 @@ export default tseslint.config(
   // `ctx.getDeviceDescriptors()` (`setup/appTargetPowerReachabilityWiring.ts`). A
   // `deviceReads` assigned during ordered startup would be `undefined` there, so
   // no `setup/appInit/*` factory can own the construction.
-  // Public/runtime behavior now lives behind AppHostApi and
-  // AppRuntimeApi; this exact-current 32 ceiling is the single backend exception over 20.
+  // Raised 32 -> 33 for the Main-home capacity settings store, likewise
+  // constructed here: its
+  // SDK-backed port is classified by the lib/power owner, while setup receives
+  // only the already-owned component. Public/runtime behavior now lives behind
+  // AppHostApi and AppRuntimeApi; this exact-current 33 ceiling is the single
+  // backend exception over 20.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 32, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 33, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

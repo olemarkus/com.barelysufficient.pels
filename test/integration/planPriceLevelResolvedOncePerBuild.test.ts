@@ -82,7 +82,13 @@ const buildBuilder = (params: {
   deviceIds: string[];
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
-  priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  priceOptimizationSettings?: Record<string, {
+    enabled: boolean;
+    cheapDelta: number;
+    expensiveDelta: number;
+    surplusWilling: boolean;
+    surplusDelta: number;
+  }>;
   /** Devices that report they are cooling; every other device heats. */
   coolingDeviceIds?: string[];
 }): PlanBuilder => {
@@ -103,13 +109,17 @@ const buildBuilder = (params: {
       getPriceOptimizationEnabled: () => params.priceOptimizationEnabled,
       getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
       getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? Object.fromEntries(
-        params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
+        params.deviceIds.map((id) => [id, {
+          enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+        }]),
       ),
       getShedBehavior: () => ({ action: 'turn_off' }),
       getThermalDirection: (deviceId) => (params.coolingDeviceIds?.includes(deviceId) ? 'cooling' : 'heating'),
     }),
     getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? Object.fromEntries(
-      params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
+      params.deviceIds.map((id) => [id, {
+        enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+      }]),
     ),
     getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
@@ -253,7 +263,11 @@ describe('current-hour price level is resolved once per plan build', () => {
 
     const builder = buildBuilder({
       priceOptimizationEnabled: true,
-      priceOptimizationSettings: { 'heater-7': { enabled: true, cheapDelta: 2, expensiveDelta: -2 } },
+      priceOptimizationSettings: {
+        'heater-7': {
+          enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+        },
+      },
       getCurrentHourPriceLevel,
       deviceIds,
     });

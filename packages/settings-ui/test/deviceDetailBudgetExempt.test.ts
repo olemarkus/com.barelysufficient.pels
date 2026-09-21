@@ -144,6 +144,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/logging.ts', () => ({
@@ -186,6 +187,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/logging.ts', () => ({
@@ -243,6 +245,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/logging.ts', () => ({
@@ -299,6 +302,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/logging.ts', () => ({
@@ -354,6 +358,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError,
     }));
     vi.doMock('../src/ui/logging.ts', () => ({
@@ -420,6 +425,7 @@ describe('device detail budget exemption', () => {
       savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
       showToastError,
     }));
     vi.doMock('../src/ui/logging.ts', () => ({

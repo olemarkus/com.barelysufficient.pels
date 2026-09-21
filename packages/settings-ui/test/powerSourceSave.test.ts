@@ -445,6 +445,7 @@ describe('savePowerSourceSetting', () => {
       status: { state: 'unavailable', reason: 'no_measurement' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
+      hardCapConfiguration: { state: 'unavailable' },
     });
     select.value = 'flow';
 
@@ -700,5 +701,42 @@ describe('savePowerSourceSetting', () => {
     );
     expect(applySettingsPatch).toHaveBeenCalledWith({ power_source: 'homey_energy' });
     expect(select.value).toBe('homey_energy');
+  });
+
+  it('does not let an older capacity load overwrite a newer saved hard cap', async () => {
+    let resolveOldLimit!: (value: number) => void;
+    let markOldReadStarted!: () => void;
+    const oldReadStarted = new Promise<void>((resolve) => { markOldReadStarted = resolve; });
+    const oldLimit = new Promise<number>((resolve) => { resolveOldLimit = resolve; });
+    let limitReads = 0;
+    const { capacitySettings } = await loadCapacityModule({
+      persistedSource: 'flow',
+      saveResult: async () => ({ ok: true }),
+      getSetting: async (key) => {
+        if (key === HOMES_CONFIG || key === HOMES_CONFIG_INITIALIZED) return null;
+        if (key === CAPACITY_LIMIT_KW) {
+          limitReads += 1;
+          if (limitReads === 1) {
+            markOldReadStarted();
+            return oldLimit;
+          }
+          return 10;
+        }
+        if (key === CAPACITY_MARGIN_KW) return 0.2;
+        if (key === CAPACITY_DRY_RUN) return false;
+        if (key === POWER_SOURCE) return 'flow';
+        return undefined;
+      },
+    });
+
+    const staleLoad = capacitySettings.loadCapacitySettings();
+    await oldReadStarted;
+    (document.querySelector('#settings-capacity-limit') as SelectLike).value = '8';
+    (document.querySelector('#settings-capacity-margin') as SelectLike).value = '0.2';
+    await capacitySettings.saveSettingsLimitsSettings();
+    resolveOldLimit(12);
+    await staleLoad;
+
+    expect((document.querySelector('#settings-capacity-limit') as SelectLike).value).toBe('8');
   });
 });

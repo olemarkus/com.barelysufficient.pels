@@ -899,6 +899,12 @@
   if (initialSettings && typeof initialSettings === 'object') {
     Object.assign(settings, initialSettings);
   }
+  const initialUnsetSettings = initialOverrides.unsetSettings;
+  if (Array.isArray(initialUnsetSettings)) {
+    initialUnsetSettings
+      .filter((key) => typeof key === 'string')
+      .forEach((key) => { delete settings[key]; });
+  }
 
   const ensureEvSupportState = () => {
     const hasEvDevice = settings.target_devices_snapshot.some((device) => device.id === evDeviceSnapshot.id);
@@ -995,6 +1001,10 @@
           periodMinutes: settings.capacity_period_minutes === 15 ? 15 : 60,
         },
       },
+      hardCapConfiguration: {
+        state: 'resolved',
+        configured: Object.prototype.hasOwnProperty.call(settings, 'capacity_limit_kw'),
+      },
       capacityPeak: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
         ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw }
         : { state: 'no_completed_quarter' },
@@ -1011,22 +1021,38 @@
     };
   };
 
-  const buildPricesPayload = () => ({
-    combinedPrices: settings.combined_prices ?? null,
-    electricityPrices: settings.electricity_prices ?? null,
-    priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
-    gridTariffData: settings.nettleie_data ?? null,
-    flowToday: settings.flow_prices_today ?? null,
-    flowTomorrow: settings.flow_prices_tomorrow ?? null,
-    homeyCurrency: typeof settings.homey_prices_currency === 'string' ? settings.homey_prices_currency : null,
-    homeyToday: settings.homey_prices_today ?? null,
-    homeyTomorrow: settings.homey_prices_tomorrow ?? null,
-    // Runtime provenance of the PV-forecast source selection (mirrors
-    // getSettingsUiPrices). Seed `pv_forecast_source_status` in a scenario to
-    // render the Solar forecast provenance line; the default `unknown` is the
-    // pre-wiring boot window.
-    pvForecastSource: settings.pv_forecast_source_status ?? { kind: 'unknown' },
-  });
+  const buildPricesPayload = () => {
+    const deviceSettings = settings.price_optimization_settings;
+    const settingsRecord = deviceSettings && typeof deviceSettings === 'object' && !Array.isArray(deviceSettings)
+      ? deviceSettings
+      : {};
+    return {
+      combinedPrices: settings.combined_prices ?? null,
+      electricityPrices: settings.electricity_prices ?? null,
+      priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
+      gridTariffData: settings.nettleie_data ?? null,
+      flowToday: settings.flow_prices_today ?? null,
+      flowTomorrow: settings.flow_prices_tomorrow ?? null,
+      homeyCurrency: typeof settings.homey_prices_currency === 'string' ? settings.homey_prices_currency : null,
+      homeyToday: settings.homey_prices_today ?? null,
+      homeyTomorrow: settings.homey_prices_tomorrow ?? null,
+      // Runtime provenance of the PV-forecast source selection (mirrors
+      // getSettingsUiPrices). Seed `pv_forecast_source_status` in a scenario to
+      // render the Solar forecast provenance line; the default `unknown` is the
+      // pre-wiring boot window.
+      pvForecastSource: settings.pv_forecast_source_status ?? { kind: 'unknown' },
+      priceOptimizationSetup: {
+        state: 'resolved',
+        setup: {
+          enabled: settings.price_optimization_enabled !== false,
+          configuredDeviceIds: Object.keys(settingsRecord),
+          solarSurplusDeviceIds: Object.entries(settingsRecord)
+            .filter(([, entry]) => entry && typeof entry === 'object' && entry.surplusWilling === true)
+            .map(([deviceId]) => deviceId),
+        },
+      },
+    };
+  };
 
   const buildPlanPayload = () => {
     // Branch on `hasOwnProperty` so a scenario can force a null plan (used to
@@ -1715,6 +1741,7 @@
           periodMinutes: settings[`capacity_period_minutes:${scope.homeId}`] === 15 ? 15 : 60,
         },
       },
+      hardCapConfiguration: { state: 'unavailable' },
       capacityPeak: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
         ? { state: 'recorded', peakKw: settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`] }
         : { state: 'no_completed_quarter' },

@@ -29,7 +29,7 @@ export function temperatureControlDisabledDevices(
 }
 
 /** Effective offsets preserve the owner's saved preferences while manual targets are followed. */
-export function temperaturePolicyPriceSettings<T extends { enabled: boolean; surplusWilling?: boolean }>(
+export function temperaturePolicyPriceSettings<T extends { enabled: boolean; surplusWilling: boolean }>(
   settings: Record<string, T>,
   allowsAdjustments: (deviceId: string) => boolean,
 ): Record<string, T> {

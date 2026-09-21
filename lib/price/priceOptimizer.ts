@@ -18,10 +18,10 @@ export type PriceOptimizationSettings = {
   expensiveDelta: number;
   // Surplus-absorb rides this same per-device blob (a distinct cause from price —
   // triggered by exporting, not a cheap hour). `surplusWilling` opts the device in;
-  // `surplusDelta` is the raise-only setpoint lift (°C). Optional so existing
-  // persisted blobs and non-solar homes stay byte-identical.
-  surplusWilling?: boolean;
-  surplusDelta?: number;
+  // `surplusDelta` is the raise-only setpoint lift (°C). The settings adapter
+  // resolves legacy omissions before this value reaches business logic.
+  surplusWilling: boolean;
+  surplusDelta: number;
 };
 
 /**
@@ -48,8 +48,7 @@ export function resolvePriceOptimizationConfig(
   // Own keys only: a device id naming an Object.prototype member has no entry.
   if (!Object.hasOwn(settings, deviceId)) return NOT_PRICE_AWARE;
   const { enabled, cheapDelta, expensiveDelta, surplusWilling, surplusDelta } = settings[deviceId]!;
-  const lifts = surplusWilling === true && typeof surplusDelta === 'number'
-    && Number.isFinite(surplusDelta) && surplusDelta > 0;
+  const lifts = surplusWilling && surplusDelta > 0;
   return { enabled, cheapDelta, expensiveDelta, surplusLiftC: lifts ? surplusDelta : 0 };
 }
 

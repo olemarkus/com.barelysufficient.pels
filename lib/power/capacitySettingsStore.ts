@@ -11,7 +11,9 @@
  * reads the historical unsuffixed keys, any other home reads home-suffixed
  * keys (`homeScopedSettingsKey` in `lib/utils/settingsKeys.ts`).
  *
- * `read` is junk-tolerant per field: a missing/non-finite numeric scalar or
+ * `readHardCapConfiguration` resolves whether the hard-cap key has ever been
+ * written from `getKeys()`, independently of every scalar `get()`. `read` is
+ * junk-tolerant per field: a missing/non-finite numeric scalar or
  * non-boolean dry-run flag resolves to the caller-supplied last-good snapshot.
  * The period's absence is different: an unlisted key is an install that never
  * wrote the setting and may use the compatibility default, while a listed key
@@ -27,6 +29,7 @@
  */
 import type { HomeId } from '../utils/settingsKeys';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import type { SettingsUiHardCapConfigurationRead } from '../../packages/contracts/src/settingsUiApi';
 import {
   isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,
@@ -61,6 +64,7 @@ export type CapacityScalarSettingsRead =
  */
 export type CapacitySettingsStore = {
   read(): CapacityScalarSettingsRead;
+  readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
 };
 
 const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
@@ -79,13 +83,26 @@ export function createCapacitySettingsStore(
   lastGood: () => CapacityScalarSettings,
 ): CapacitySettingsStore {
   return {
+    readHardCapConfiguration(): SettingsUiHardCapConfigurationRead {
+      try {
+        const keys = settings.getKeys();
+        if (keys.length === 0) return { state: 'unavailable' };
+        return {
+          state: 'resolved',
+          configured: keys.includes(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId)),
+        };
+      } catch {
+        return { state: 'unavailable' };
+      }
+    },
     read(): CapacityScalarSettingsRead {
       try {
         const keys = settings.getKeys();
         // PELS always owns settings keys. An empty list is the SDK's transient
         // unreadable-store spelling, never evidence of a fresh install.
         if (keys.length === 0) return { state: 'unavailable' };
-        const limit = settings.get(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId));
+        const limitKey = homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId);
+        const limit = settings.get(limitKey);
         const margin = settings.get(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId));
         const dryRun = settings.get(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId));
         const periodKey = homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, homeId);

@@ -466,7 +466,7 @@ describe('MyApp initialization', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     const app = createApp();
     await initApp(app);
-    vi.spyOn(app, 'readCapacityScalarSettings').mockReturnValue({ state: 'unavailable' });
+    vi.spyOn(app.capacitySettingsStore, 'read').mockReturnValue({ state: 'unavailable' });
 
     const profiles = buildSteppedLoadProfiles('dev-1');
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, profiles);

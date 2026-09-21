@@ -50,6 +50,13 @@ import {
   readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
+import { notifySetupPathChange } from './setupPathFacts.ts';
+import {
+  isPriorityContextCurrent,
+  savePriorities,
+} from './modePrioritySave.ts';
+
+export { savePriorities };
 
 type MaterialTextFieldElement = HTMLElement & {
   value: string;
@@ -329,37 +336,16 @@ const initSortable = () => {
     touchStartThreshold: 5,
     onEnd: async () => {
       refreshPriorityBadges();
-      await savePriorities();
+      const outcome = await savePriorities();
+      if (outcome.status !== 'saved') {
+        renderPriorities(state.latestDevices);
+        return;
+      }
+      if (!isPriorityContextCurrent(outcome.homeId, outcome.mode, outcome.deviceIds)) return;
+      renderPriorities(state.latestDevices);
+      notifySetupPathChange();
     },
   });
-};
-
-export const savePriorities = async () => {
-  try {
-    const homeId = getHomeScope().selectedHomeId;
-    if (state.loadedModeHomeId !== homeId || isModeMutationLocked(homeId)) return;
-    const mode = resolveModeName(modeSelect?.value || '');
-    state.editingMode = mode;
-    const rows = getPriorityRows();
-    const modeMap = state.capacityPriorities[mode] || {};
-    rows.forEach((row, index) => {
-      const id = row.dataset.deviceId;
-      if (id) {
-        modeMap[id] = index + 1;
-      }
-    });
-    state.capacityPriorities[mode] = modeMap;
-    const prioritiesForSave = Object.fromEntries(
-      Object.entries(state.capacityPriorities).map(([name, entries]) => [name, { ...entries }]),
-    );
-    await serializeModeCatalogWrite(homeId, () => (
-      setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), prioritiesForSave)
-    ));
-    await showToast(`Priorities saved for ${mode}.`, 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to save priorities', error, 'savePriorities');
-    await showToastError(error, 'Failed to save priorities.');
-  }
 };
 
 export const applyTargetChange = async (deviceId: string, rawValue: string) => {

@@ -15,6 +15,14 @@ const KEEP_ID = 'heater-2';
 const CONTROL_PROFILE = {
   steps: [{ id: 'off', planningPowerW: 0 }],
 };
+const PRICE_CONFIG = {
+  enabled: true,
+  cheapDelta: 5,
+  expensiveDelta: -5,
+  priceConfigured: true,
+  surplusWilling: false,
+  surplusDelta: 2,
+};
 
 const perDeviceMap = <T>(value: T): Record<string, T> => ({
   [DEVICE_ID]: value,
@@ -35,7 +43,7 @@ describe('advanced device data purge', () => {
       [OVERSHOOT_BEHAVIORS]: perDeviceMap({ action: 'turn_off' }),
       [TEMPERATURE_BOOST_SETTINGS]: perDeviceMap({ enabled: true }),
       [EV_BOOST_SETTINGS]: perDeviceMap({ enabled: true }),
-      price_optimization_settings: perDeviceMap({ enabled: true }),
+      price_optimization_settings: perDeviceMap(PRICE_CONFIG),
       [TEMPERATURE_CONTROL_DISABLED_DEVICES]: perDeviceMap(true),
       [CAPACITY_PRIORITIES]: { Home: { [DEVICE_ID]: 1, [KEEP_ID]: 2 } },
       [MODE_DEVICE_TARGETS]: { Home: { [DEVICE_ID]: 20, [KEEP_ID]: 21 } },
@@ -71,7 +79,7 @@ describe('advanced device data purge', () => {
     state.shedBehaviors = perDeviceMap({ action: 'turn_off' }) as typeof state.shedBehaviors;
     state.temperatureBoostSettings = perDeviceMap({ enabled: true }) as typeof state.temperatureBoostSettings;
     state.evBoostSettings = perDeviceMap({ enabled: true }) as typeof state.evBoostSettings;
-    state.priceOptimizationSettings = perDeviceMap({ enabled: true }) as typeof state.priceOptimizationSettings;
+    state.priceOptimizationSettings = perDeviceMap(PRICE_CONFIG);
     state.temperatureControlDisabledMap = perDeviceMap(true);
     state.capacityPriorities = settings[CAPACITY_PRIORITIES];
     state.modeTargets = settings[MODE_DEVICE_TARGETS];
@@ -87,7 +95,7 @@ describe('advanced device data purge', () => {
     expect(state.shedBehaviors).toEqual({ [KEEP_ID]: { action: 'turn_off' } });
     expect(state.temperatureBoostSettings).toEqual({ [KEEP_ID]: { enabled: true } });
     expect(state.evBoostSettings).toEqual({ [KEEP_ID]: { enabled: true } });
-    expect(state.priceOptimizationSettings).toEqual({ [KEEP_ID]: { enabled: true } });
+    expect(state.priceOptimizationSettings).toEqual({ [KEEP_ID]: PRICE_CONFIG });
     expect(state.temperatureControlDisabledMap).toEqual(perDeviceMap(true));
     expect(state.capacityPriorities).toEqual({ Home: { [KEEP_ID]: 2 } });
     expect(state.modeTargets).toEqual({ Home: { [KEEP_ID]: 21 } });

@@ -9,7 +9,7 @@ import {
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import { MAIN_HOME_NAME } from '../../../shared-domain/src/homeScopeCopy.ts';
 import { getSetting, setSetting } from './homey.ts';
-import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
+import { getHomeScope, readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { parseModeNumberMap, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
@@ -188,7 +188,24 @@ export const refreshCurrentModes = async (): Promise<void> => {
   renderRows(rows);
 };
 
+const refreshCurrentModesForMembership = (): void => {
+  const membership = readHomeMembership();
+  if (membership.state === 'resolved') {
+    void refreshCurrentModes();
+    return;
+  }
+  if (membership.state === 'unavailable') {
+    renderRows([{
+      homeId: MAIN_HOME_ID,
+      homeName: MAIN_HOME_NAME,
+      mode: DEFAULT_MODE_NAME,
+      modes: [DEFAULT_MODE_NAME],
+      unavailable: true,
+    }]);
+  }
+};
+
 export const initCurrentModes = (): void => {
-  subscribeToHomeScope(() => { void refreshCurrentModes(); });
-  void refreshHomeScope().then(() => refreshCurrentModes());
+  subscribeToHomeScope(refreshCurrentModesForMembership);
+  refreshCurrentModesForMembership();
 };

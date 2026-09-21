@@ -351,7 +351,7 @@ abstract class AppRuntimeApi extends Base {
   public loadCapacitySettings = (): void => { this.loadCapacitySettingsFromStore(false); };
 
   private loadCapacitySettingsFromStore(rebuildAfterRecovery: boolean): void {
-    const capacityRead = this.context.readCapacityScalarSettings();
+    const capacityRead = this.context.capacitySettingsStore.read();
     scheduleCapacitySettingsReadRetry(
       capacityRead,
       this.timers,

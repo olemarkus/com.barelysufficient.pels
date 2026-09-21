@@ -99,7 +99,13 @@ const buildObservation = (params: {
   softLimitSource?: PlanContext['softLimitSource'];
   fixtureTotalKw?: number;
   priceOptimizationEnabled?: boolean;
-  priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  priceOptimizationSettings?: Record<string, {
+    enabled: boolean;
+    cheapDelta: number;
+    expensiveDelta: number;
+    surplusWilling: boolean;
+    surplusDelta: number;
+  }>;
   currentHourPriceLevel?: PriceLevel;
   thermalDirection?: ThermalDirection;
 }) => {
@@ -559,7 +565,11 @@ describe('plan diagnostics observations', () => {
       },
       modeTargets: { 'heater-1': 20 },
       priceOptimizationEnabled: true,
-      priceOptimizationSettings: { 'heater-1': { enabled: true, cheapDelta: 4, expensiveDelta: -4 } },
+      priceOptimizationSettings: {
+        'heater-1': {
+          enabled: true, cheapDelta: 4, expensiveDelta: -4, surplusWilling: false, surplusDelta: 0,
+        },
+      },
       currentHourPriceLevel: PriceLevel.CHEAP,
     });
 
@@ -607,7 +617,11 @@ describe('plan diagnostics observations', () => {
       },
       modeTargets: { 'ac-1': 22 },
       priceOptimizationEnabled: true,
-      priceOptimizationSettings: { 'ac-1': { enabled: true, cheapDelta: 3, expensiveDelta: -2 } },
+      priceOptimizationSettings: {
+        'ac-1': {
+          enabled: true, cheapDelta: 3, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+        },
+      },
       currentHourPriceLevel: level,
       thermalDirection: 'cooling',
     });

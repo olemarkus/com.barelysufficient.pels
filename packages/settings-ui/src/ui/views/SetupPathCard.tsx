@@ -79,6 +79,8 @@ export const SetupPathCard = ({ path, surface }: { path: SetupPath; surface: 'ov
     <MdList class="settings-nav-list setup-path__steps">
       {path.steps.map((step) => <StepRow key={step.id} step={step} />)}
     </MdList>
-    {path.simulationNote !== null && <p class="pels-card-supporting">{path.simulationNote}</p>}
+    {path.simulating && (
+      <p class="pels-card-supporting">Simulation is on, so devices stay as-is until you turn it off.</p>
+    )}
   </section>
 );

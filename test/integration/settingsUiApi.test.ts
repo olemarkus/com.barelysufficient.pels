@@ -209,13 +209,16 @@ describe('settingsUiApi', () => {
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
     });
     const app = {
-      // The real app answers its scalars through this seam; a fixture that
-      // configures neither leaves it off, which is the boot window's shape.
+          // A fixture that configures neither seam leaves the boot-window shape.
       ...(options.capacitySettings && typeof options.capacityDryRun === 'boolean'
         ? {
           getCapacityScalars: () => ({
             ...options.capacitySettings,
             dryRun: options.capacityDryRun,
+          }),
+          readHardCapConfiguration: () => ({
+            state: 'resolved' as const,
+            configured: store.has('capacity_limit_kw'),
           }),
         }
         : {}),
@@ -305,6 +308,7 @@ describe('settingsUiApi', () => {
       // scalars are not the resolved shape.
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
+      hardCapConfiguration: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -322,6 +326,21 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPowerPayload({ homey: homey as never }).capacityScalars).toEqual({
       state: 'resolved',
       scalars: { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false },
+    });
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).hardCapConfiguration).toEqual({
+      state: 'resolved', configured: false,
+    });
+  });
+
+  it('serves authoritative Main hard-cap provenance independently of the running scalars', () => {
+    const homey = createHomey({
+      capacityDryRun: false,
+      capacitySettings: { limitKw: 12, marginKw: 0.4, periodMinutes: 15 },
+      settings: { capacity_limit_kw: 8 },
+    });
+
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).hardCapConfiguration).toEqual({
+      state: 'resolved', configured: true,
     });
   });
 
@@ -586,6 +605,7 @@ describe('settingsUiApi', () => {
       // scalars are not the resolved shape.
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
+      hardCapConfiguration: { state: 'unavailable' },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -607,6 +627,7 @@ describe('settingsUiApi', () => {
       powerhourToday: null,
       powerhourTomorrow: null,
       powerhourSource: { kind: 'unknown' },
+      priceOptimizationSetup: { state: 'unavailable' },
     });
     expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
       generatedAt: 123456,
@@ -615,6 +636,29 @@ describe('settingsUiApi', () => {
         'dev-1': expect.objectContaining({ currentPenaltyLevel: 2 }),
       }),
     });
+  });
+
+  it('carries the price owner\'s classified setup facts without re-reading settings', () => {
+    const homey = createHomey();
+    const readPriceOptimizationSetup = vi.fn(() => ({
+      state: 'resolved' as const,
+      setup: {
+        enabled: false,
+        configuredDeviceIds: ['heater-disabled'],
+        solarSurplusDeviceIds: ['water-heater'],
+      },
+    }));
+    Object.assign(homey.app, { readPriceOptimizationSetup });
+
+    expect(getSettingsUiPricesPayload({ homey: homey as never }).priceOptimizationSetup).toEqual({
+      state: 'resolved',
+      setup: {
+        enabled: false,
+        configuredDeviceIds: ['heater-disabled'],
+        solarSurplusDeviceIds: ['water-heater'],
+      },
+    });
+    expect(readPriceOptimizationSetup).toHaveBeenCalledTimes(1);
   });
 
   it('carries the solar tracker families through the ui_power payload verbatim', () => {

@@ -3,6 +3,7 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
+import { classifyPriceOptimizationSetupRead } from './priceOptimizationSetupRead.ts';
 
 const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
@@ -20,6 +21,7 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   powerhourToday: null,
   powerhourTomorrow: null,
   powerhourSource: { kind: 'unknown' },
+  priceOptimizationSetup: { state: 'unavailable' },
 };
 
 /**
@@ -31,7 +33,9 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
 export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => {
   const payload = await getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH);
   if (!payload) return EMPTY_PRICES_PAYLOAD;
-  return payload.homeyPriceFormula
-    ? payload
-    : { ...payload, homeyPriceFormula: EMPTY_PRICES_PAYLOAD.homeyPriceFormula };
+  return {
+    ...payload,
+    homeyPriceFormula: payload.homeyPriceFormula ?? EMPTY_PRICES_PAYLOAD.homeyPriceFormula,
+    priceOptimizationSetup: classifyPriceOptimizationSetupRead(payload.priceOptimizationSetup),
+  };
 };

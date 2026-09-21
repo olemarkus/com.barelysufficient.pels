@@ -59,6 +59,7 @@ import type {
 import { liveStatusOrNull } from './powerStatusRead.ts';
 import { resolvePvForecastSourceUiStatus } from '../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { EXPORT_PRICE_SOURCE_DEFAULT } from '../../../shared-domain/src/settings/exportPriceSource.ts';
+import { refreshAfterSetupRecommendations } from './recommendations.ts';
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -209,6 +210,8 @@ const handleOptimizationToggle = async (enabled: boolean) => {
   renderAll();
   try {
     await setSetting(PRICE_OPTIMIZATION_ENABLED, enabled);
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+    await refreshAfterSetupRecommendations();
     await showToast(enabled ? 'Price optimization enabled.' : 'Price optimization disabled.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to update price optimization', error, 'priceConfig');
@@ -440,7 +443,8 @@ const exportSourceHandler = createExportSourceHandler(exportPriceHandlersContext
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
   const previousCheapDelta = existing.cheapDelta;
-  state.priceOptimizationSettings[deviceId] = { ...existing, cheapDelta: val };
+  const previousPriceConfigured = existing.priceConfigured;
+  state.priceOptimizationSettings[deviceId] = { ...existing, cheapDelta: val, priceConfigured: true };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
@@ -450,8 +454,12 @@ const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
     // map (the earlier approach) clobbered newer persisted edits from
     // overlapping handlers.
     const current = state.priceOptimizationSettings[deviceId];
-    if (current && current.cheapDelta === val) {
-      state.priceOptimizationSettings[deviceId] = { ...current, cheapDelta: previousCheapDelta };
+    if (current && current.cheapDelta === val && current.priceConfigured) {
+      state.priceOptimizationSettings[deviceId] = {
+        ...current,
+        cheapDelta: previousCheapDelta,
+        priceConfigured: previousPriceConfigured,
+      };
       renderPriceAwareDevices();
     }
     await logSettingsError('Failed to save cheap delta', error, 'priceConfig');
@@ -462,15 +470,20 @@ const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
 const handleDeviceExpensiveDeltaChange = async (deviceId: string, val: number) => {
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
   const previousExpensiveDelta = existing.expensiveDelta;
-  state.priceOptimizationSettings[deviceId] = { ...existing, expensiveDelta: val };
+  const previousPriceConfigured = existing.priceConfigured;
+  state.priceOptimizationSettings[deviceId] = { ...existing, expensiveDelta: val, priceConfigured: true };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
   } catch (error) {
     // Same field-level rollback rationale as `cheapDelta` above.
     const current = state.priceOptimizationSettings[deviceId];
-    if (current && current.expensiveDelta === val) {
-      state.priceOptimizationSettings[deviceId] = { ...current, expensiveDelta: previousExpensiveDelta };
+    if (current && current.expensiveDelta === val && current.priceConfigured) {
+      state.priceOptimizationSettings[deviceId] = {
+        ...current,
+        expensiveDelta: previousExpensiveDelta,
+        priceConfigured: previousPriceConfigured,
+      };
       renderPriceAwareDevices();
     }
     await logSettingsError('Failed to save expensive delta', error, 'priceConfig');

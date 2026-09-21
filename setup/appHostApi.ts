@@ -14,14 +14,17 @@ import {
   getAllModes as getAllModesHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
-import { MAIN_HOME_ID, OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
+import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
 import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
-import type { SettingsUiPlanSnapshot } from '../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiHardCapConfigurationRead,
+  SettingsUiPlanSnapshot,
+} from '../packages/contracts/src/settingsUiApi';
 import type {
   CreateSmartTaskCandidateDevicesRead,
   PelsWidgetHostApi,
@@ -53,11 +56,8 @@ import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
-import {
-  createCapacitySettingsStore,
-  type CapacityScalarSettingsRead,
-} from '../lib/power/capacitySettingsStore';
 import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
+import type { PriceOptimizationSetupRead } from '../packages/contracts/src/priceOptimizationSettings';
 
 /**
  * Stable Homey/widget/settings-API façade. Bodies either resolve a value from
@@ -73,19 +73,19 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
 
-  public readCapacityScalarSettings = (): CapacityScalarSettingsRead => createCapacitySettingsStore(
-    this.homey.settings,
-    MAIN_HOME_ID,
-    () => ({
-      ...this.context.capacitySettings,
-      dryRun: this.context.capacityDryRun,
-    }),
-  ).read();
+  public readHardCapConfiguration = (): SettingsUiHardCapConfigurationRead => (
+    this.context.capacitySettingsStore.readHardCapConfiguration()
+  );
 
   public getCapacityScalars = (): CapacityScalarSettings => ({
     ...this.context.capacitySettings,
     dryRun: this.context.capacityDryRun,
   });
+
+  public readPriceOptimizationSetup = (): PriceOptimizationSetupRead => {
+    const coordinator = this.context.priceCoordinator;
+    return coordinator ? coordinator.readPriceOptimizationSetup() : { state: 'unavailable' };
+  };
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(
     this.context.powerTracker,

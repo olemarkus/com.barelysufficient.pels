@@ -1,85 +1,89 @@
+import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
+import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import type { AfterSetupDevice, AfterSetupFacts } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
-import { getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
-import { confirmSettingAbsence } from './settingAbsence.ts';
+import { getPricesReadModel } from './prices.ts';
+import { readHomeMembership, type HomeMembershipRead } from './homeScope.ts';
 import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
-import { state, type PriceOptimizationConfig } from './state.ts';
+import { state } from './state.ts';
+
+type PriceSetupState =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'ready'; setup: PriceOptimizationSetup };
+
+export type AfterSetupFactsRead =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | { state: 'resolved'; facts: AfterSetupFacts };
+
+let priceSetupState: PriceSetupState = { state: 'loading' };
+let priceSetupLoadGeneration = 0;
 
 /**
- * Gathers what the after-setup suggestions are judged from. Everything here is
- * either already in `state` or one settings key, and each fact is `unknown`
- * until it has actually been read — see the model's header for why an unread
- * setting must never pass for a feature nobody turned on.
- */
-
-const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
-
-type PriceSettingsRecord = Record<string, PriceOptimizationConfig>;
-
-// `null` until the confirmed read lands; stays `null` if it failed.
-let persistedPriceSettings: PriceSettingsRecord | null = null;
-
-const isRecord = (value: unknown): value is PriceSettingsRecord => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
-/**
- * Price and solar-surplus opt-ins live in one per-device map. An absent map is
- * the normal state of a home that uses neither, which is exactly when these
- * suggestions matter, so absence is confirmed rather than assumed.
+ * Load producer-classified price facts. An unavailable response is a no-op:
+ * keep the last good value, or keep waiting if none has ever arrived.
  */
 export const loadAfterSetupFacts = async (): Promise<void> => {
+  priceSetupLoadGeneration += 1;
+  const generation = priceSetupLoadGeneration;
   try {
-    const first = await getSetting(PRICE_OPTIMIZATION_SETTINGS);
-    const confirmed = await confirmSettingAbsence(PRICE_OPTIMIZATION_SETTINGS, first, isRecord);
-    // Unreadable stays `null`: nothing is claimed about Price or solar.
-    if (confirmed.state === 'unavailable') return;
-    persistedPriceSettings = confirmed.state === 'present' ? confirmed.value : {};
+    const read = (await getPricesReadModel()).priceOptimizationSetup;
+    if (generation !== priceSetupLoadGeneration) return;
+    if (read.state === 'resolved') priceSetupState = { state: 'ready', setup: read.setup };
+    else if (priceSetupState.state !== 'ready') priceSetupState = { state: 'unavailable' };
   } catch (error) {
     await logSettingsError('Failed to read price settings for suggestions', error, 'setup recommendations');
+    if (generation === priceSetupLoadGeneration && priceSetupState.state !== 'ready') {
+      priceSetupState = { state: 'unavailable' };
+    }
   }
 };
 
-const resolveDevices = (priceSettings: PriceSettingsRecord): AfterSetupDevice[] => (
-  state.latestDevices
+type ResolvedHomeMembership = Extract<HomeMembershipRead, { state: 'resolved' }>;
+
+const resolveDevices = (
+  setup: PriceOptimizationSetup,
+  membership: ResolvedHomeMembership,
+): AfterSetupDevice[] => {
+  const configuredDeviceIds = new Set(setup.configuredDeviceIds);
+  const solarSurplusDeviceIds = new Set(setup.solarSurplusDeviceIds);
+  return state.latestDevices
+    .filter((device) => !membership.runtimeActive
+      || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .filter((device) => state.managedMap[device.id] === true)
     .map((device) => {
-      // A temperature target PELS is ALLOWED to command. A thermostat whose
-      // temperature control the owner turned off still has the capability, but
-      // Price cannot move it and it cannot take a heating task, so it makes
-      // neither suggestion relevant.
       const temperature = supportsTemperatureControlDevice(device);
-      // `state` carries this session's own toggles, so it wins over the read.
-      const price = state.priceOptimizationSettings[device.id] ?? priceSettings[device.id];
       return {
         temperature,
         limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
         taskCapable: temperature || device.deviceClass === 'evcharger',
-        priceEnabled: price?.enabled === true,
-        usesSolarSurplus: price?.surplusWilling === true,
+        priceConfigured: configuredDeviceIds.has(device.id),
+        usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
       };
-    })
-);
+    });
+};
 
-export const readAfterSetupFacts = (): AfterSetupFacts => {
-  const setup = readSetupPath();
-  const devicesKnown = state.devicesLoaded && persistedPriceSettings !== null;
+export const readAfterSetupFacts = (): AfterSetupFactsRead => {
+  const setupPath = readSetupPath();
+  const membership = readHomeMembership();
+  if (setupPath.state === 'loading' || !state.devicesLoaded || priceSetupState.state === 'loading'
+    || membership.state === 'loading' || !hasLoadedDeferredObjectiveSettings()) return { state: 'loading' };
+  if (setupPath.state === 'unavailable' || priceSetupState.state === 'unavailable'
+    || membership.state === 'unavailable') return { state: 'unavailable' };
   return {
-    setupComplete: setup.state === 'resolved' && setup.path === null,
-    devices: devicesKnown && persistedPriceSettings !== null
-      ? { state: 'known', value: resolveDevices(persistedPriceSettings) }
-      : { state: 'unknown' },
-    solarSurplusAvailable: state.surplusPoolReachable
-      && (state.hasManagedSolarDevice || state.hasExhibitedExport),
-    market: readSetupMarket(),
-    belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
-    smartTaskConfigured: hasLoadedDeferredObjectiveSettings()
-      ? {
-        state: 'known',
-        value: Object.keys(state.deferredObjectiveSettings?.objectivesByDeviceId ?? {}).length > 0,
-      }
-      : { state: 'unknown' },
+    state: 'resolved',
+    facts: {
+      setupComplete: setupPath.state === 'complete',
+      devices: resolveDevices(priceSetupState.setup, membership),
+      priceOptimizationEnabled: priceSetupState.setup.enabled,
+      solarSurplusAvailable: state.surplusPoolReachable
+        && (state.hasManagedSolarDevice || state.hasExhibitedExport),
+      market: readSetupMarket(),
+      belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
+      smartTaskConfigured: Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0,
+    },
   };
 };

@@ -155,7 +155,9 @@ const openPanel = async (params: OpenPanelParams) => {
         enabled: false,
         cheapDelta: 0,
         expensiveDelta: 0,
+        priceConfigured: false,
         surplusWilling: true,
+        surplusDelta: 0,
       },
     }
     : {};

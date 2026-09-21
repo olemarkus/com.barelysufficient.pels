@@ -32,7 +32,7 @@ import {
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
-import type { SetupPath } from './setupPathModel.ts';
+import type { SetupPathRead } from './setupPathFacts.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
@@ -160,11 +160,9 @@ let planPayloadReceived = false;
 // Setup configures the Main home; a meter area has no path of its own, so
 // there it is simply resolved-and-closed. `resolved: false` means the facts have
 // not all arrived, which the view must not mistake for "setup is complete".
-const resolveOverviewSetupPath = (): { path: SetupPath | null; resolved: boolean } => {
-  if (overviewScope.kind !== 'main') return { path: null, resolved: true };
-  const read = readSetupPath();
-  return read.state === 'resolved' ? { path: read.path, resolved: true } : { path: null, resolved: false };
-};
+const resolveOverviewSetupPath = (): SetupPathRead => (
+  overviewScope.kind === 'main' ? readSetupPath() : { state: 'complete' }
+);
 
 const doRender = () => {
   const surface = getPlanSurface();
@@ -190,8 +188,7 @@ const doRender = () => {
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
     smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
-    setupPath: setup.path,
-    setupResolved: setup.resolved,
+    setupPath: setup,
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
     },

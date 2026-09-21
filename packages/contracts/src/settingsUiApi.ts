@@ -4,6 +4,7 @@ import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjective
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
+import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
 import type {
   DecoratedDeviceSnapshot,
   ObservedStateOfChargeProbe,
@@ -611,6 +612,15 @@ export type SettingsUiCapacityScalarsRead =
   | { readonly state: 'resolved'; readonly scalars: CapacityScalarSettings }
   | { readonly state: 'unavailable' };
 
+/**
+ * Whether the owner has saved the hard capacity limit. The runtime settings
+ * owner resolves this from `getKeys()`; consumers must not infer it from a
+ * fallback scalar value or a nullable SDK read.
+ */
+export type SettingsUiHardCapConfigurationRead =
+  | { readonly state: 'resolved'; readonly configured: boolean }
+  | { readonly state: 'unavailable' };
+
 export type SettingsUiPowerPayload = {
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
@@ -632,6 +642,8 @@ export type SettingsUiPowerPayload = {
    * stays where it always was, in the scoped status blob.
    */
   capacityScalars: SettingsUiCapacityScalarsRead;
+  /** Authoritative persisted-configuration provenance for the hard cap. */
+  hardCapConfiguration: SettingsUiHardCapConfigurationRead;
   /** Measured tariff evidence for a monthly quarter-hour peak. */
   capacityPeak: SettingsUiCapacityPeak;
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
@@ -761,6 +773,8 @@ export type SettingsUiPricesPayload = {
   powerhourTomorrow: unknown | null;
   /** `{ kind: 'unknown' }` before the price seam is wired, or off the Power by the Hour source. */
   powerhourSource: PowerhourSourceUiStatus;
+  /** Price-domain-classified setup facts; never a raw settings blob. */
+  priceOptimizationSetup: PriceOptimizationSetupRead;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

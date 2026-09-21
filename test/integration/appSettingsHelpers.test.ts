@@ -87,15 +87,18 @@ const buildContext = (): AppContext => {
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
     emitPowerTrackerPersisted: vi.fn(),
-    readCapacityScalarSettings: vi.fn(() => ({
-      state: 'resolved' as const,
-      value: {
-        limitKw: 12,
-        marginKw: 0.5,
-        dryRun: false,
-        periodMinutes: 60 as const,
-      },
-    })),
+    capacitySettingsStore: {
+      read: vi.fn(() => ({
+        state: 'resolved' as const,
+        value: {
+          limitKw: 12,
+          marginKw: 0.5,
+          dryRun: false,
+          periodMinutes: 60 as const,
+        },
+      })),
+      readHardCapConfiguration: vi.fn(() => ({ state: 'resolved' as const, configured: true })),
+    },
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),

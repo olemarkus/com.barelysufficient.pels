@@ -344,6 +344,7 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
     pvForecastSource: { kind: 'unknown' },
     homeyPriceFormula: { kind: 'unknown' },
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
   };
 };
 

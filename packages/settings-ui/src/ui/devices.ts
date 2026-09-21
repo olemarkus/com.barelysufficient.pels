@@ -15,7 +15,7 @@ import {
   primeApiCache,
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { state } from './state.ts';
+import { defaultPriceOptimizationConfig, state } from './state.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
@@ -211,9 +211,10 @@ const buildControllableToggleHandler = (deviceId: string) => withInitialLoadGuar
 
 const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('price opt', async (checked) => {
   if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
   }
   state.priceOptimizationSettings[deviceId].enabled = checked;
+  state.priceOptimizationSettings[deviceId].priceConfigured = true;
   try {
     await savePriceOptimizationSettings();
     renderPriceOptimization(state.latestDevices);

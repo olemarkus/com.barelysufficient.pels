@@ -70,6 +70,8 @@ export type HomeScopeState = {
 let areas: HomeScopeArea[] = [];
 let runtimeActive = false;
 let membershipByDeviceId: Record<string, string> = {};
+type RosterState = 'loading' | 'unavailable' | 'resolved';
+let rosterState: RosterState = 'loading';
 let selectedHomeId: string = MAIN_HOME_ID;
 // Armed at boot, consumed by the session's first roster resolution: the
 // persisted id is only ever a CANDIDATE. A stale id (its area deleted from
@@ -89,6 +91,7 @@ let tabListenerBound = false;
 // older answer landing last would resurrect a deleted area or drop a new one.
 let rosterGeneration = 0;
 const listeners = new Set<() => void>();
+let listenerPublicationRevision = 0;
 
 // localStorage may be unavailable inside the Homey iframe (privacy mode,
 // sandboxed contexts, jsdom-less test envs). Both helpers swallow access errors
@@ -126,6 +129,26 @@ export const getHomeIdForUiDevice = (deviceId: string): string => (
   runtimeActive ? membershipByDeviceId[deviceId] ?? MAIN_HOME_ID : MAIN_HOME_ID
 );
 
+export type HomeMembershipRead =
+  | { state: 'loading' }
+  | { state: 'unavailable' }
+  | {
+    state: 'resolved';
+    runtimeActive: boolean;
+    membershipByDeviceId: Readonly<Record<string, string>>;
+  };
+
+/**
+ * The last vouched-for device ownership snapshot. Consumers that make a
+ * whole-home claim must wait for `resolved`; the empty boot defaults do not
+ * mean that every device belongs to Main.
+ */
+export const readHomeMembership = (): HomeMembershipRead => (
+  rosterState === 'resolved'
+    ? { state: 'resolved', runtimeActive, membershipByDeviceId }
+    : { state: rosterState }
+);
+
 /**
  * Whether at least one meter area is actually IN USE — the gate for the honest
  * scope lines and not-supported-yet notices (Budget's Main-home scope line,
@@ -147,6 +170,7 @@ export const subscribeToHomeScope = (listener: () => void): void => {
 // would otherwise abort the remaining listeners mid-notification, leaving those
 // panels on a scope the shell has already moved off.
 const notifyListeners = (): void => {
+  listenerPublicationRevision += 1;
   listeners.forEach((listener) => {
     try {
       listener();
@@ -154,6 +178,24 @@ const notifyListeners = (): void => {
       void logSettingsError('Home scope listener failed', caught, 'homeScope');
     }
   });
+};
+
+const sameAreas = (left: readonly HomeScopeArea[], right: readonly HomeScopeArea[]): boolean => (
+  left.length === right.length
+  && left.every((area) => (
+    right.some((candidate) => candidate.homeId === area.homeId && candidate.name === area.name)
+  ))
+);
+
+const sameMembership = (
+  left: Readonly<Record<string, string>>,
+  right: Readonly<Record<string, string>>,
+): boolean => {
+  const leftDeviceIds = Object.keys(left);
+  return leftDeviceIds.length === Object.keys(right).length
+    && leftDeviceIds.every((deviceId) => (
+      Object.prototype.hasOwnProperty.call(right, deviceId) && left[deviceId] === right[deviceId]
+    ));
 };
 
 const buildOptions = (): HomeScopeOption[] => [
@@ -246,9 +288,11 @@ const reconcileSelection = (): void => {
 /**
  * Refetch the meter-area roster, reconcile the selection against it, and
  * repaint the bar. Call this from a scope-aware panel's activation hook so the
- * bar never sits on a stale roster. Does NOT notify subscribers — the caller is
- * already refreshing that surface; `notifyHomeScopeSettingChanged` is the path
- * for changes that arrive on their own.
+ * bar never sits on a stale roster. The first settled availability state is
+ * published because boot consumers may still be waiting for ownership; later
+ * direct refreshes stay silent when availability is unchanged because the
+ * caller is already refreshing its surface. `notifyHomeScopeSettingChanged`
+ * is the path for later changes that arrive on their own.
  */
 /**
  * The `ui_homes` read resolved to a semantic result. This adapter owns the
@@ -370,6 +414,11 @@ export const refreshHomeScope = async (): Promise<void> => {
   // A newer refresh started while this one was in flight; its answer wins and
   // will paint. Applying this stale one could resurrect a just-deleted area.
   if (generation !== rosterGeneration) return;
+  const previousState = rosterState;
+  const previousAreas = areas;
+  const previousRuntimeActive = runtimeActive;
+  const previousMembership = membershipByDeviceId;
+  const previousSelectedHomeId = selectedHomeId;
   if (read.status === 'resolved') {
     // Only a vouched-for response reshapes the roster — an empty `homes` here is
     // a real "no meter areas" state and correctly clears it. Anything else keeps
@@ -377,15 +426,32 @@ export const refreshHomeScope = async (): Promise<void> => {
     areas = read.areas;
     runtimeActive = read.runtimeActive;
     membershipByDeviceId = read.membershipByDeviceId;
+    rosterState = 'resolved';
     reconcileSelection();
+  } else if (rosterState !== 'resolved') {
+    rosterState = 'unavailable';
   }
   renderScopeBar();
+  // Availability may be unchanged while the vouched-for roster, membership,
+  // runtime posture, or reconciled selection changed underneath consumers.
+  // An identical tab-activation refresh stays silent so it cannot restart the
+  // panel work that caused the refresh in the first place.
+  const scopeChanged = previousState !== rosterState
+    || previousRuntimeActive !== runtimeActive
+    || previousSelectedHomeId !== selectedHomeId
+    || !sameAreas(previousAreas, areas)
+    || !sameMembership(previousMembership, membershipByDeviceId);
+  if (scopeChanged) notifyListeners();
 };
 
 /** Refresh ownership and then publish the settled last-good scope to consumers. */
 export const refreshHomeScopeAndNotify = async (): Promise<void> => {
+  const previousPublicationRevision = listenerPublicationRevision;
   await refreshHomeScope();
-  notifyListeners();
+  // Explicit refresh callers also use the notification as their completion
+  // signal when the settled scope is unchanged or the adapter kept last-good
+  // state after an unavailable read.
+  if (listenerPublicationRevision === previousPublicationRevision) notifyListeners();
 };
 
 /**

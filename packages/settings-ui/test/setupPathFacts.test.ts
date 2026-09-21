@@ -2,8 +2,12 @@ import type { CapacityScalarSettings } from '../../contracts/src/capacitySetting
 
 // The module holds the facts between publishes, so each test loads a fresh copy
 // (and the `state` it reads) rather than inheriting the last test's.
-const load = async () => {
+const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
   vi.resetModules();
+  vi.doMock('../src/ui/homeScope.ts', () => ({
+    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId }),
+    subscribeToHomeScope: () => undefined,
+  }));
   const facts = await import('../src/ui/setupPathFacts.ts');
   const { state } = await import('../src/ui/state.ts');
   return { facts, state };
@@ -18,8 +22,8 @@ const running: CapacityScalarSettings = {
 
 const hardCapDetail = (facts: Awaited<ReturnType<typeof load>>['facts']): string | undefined => {
   const read = facts.readSetupPath();
-  return read.state === 'resolved'
-    ? read.path?.steps.find((step) => step.id === 'hardCap')?.detail
+  return read.state === 'open'
+    ? read.path.steps.find((step) => step.id === 'hardCap')?.detail
     : undefined;
 };
 
@@ -28,11 +32,31 @@ describe('setup path facts', () => {
     const { facts, state } = await load();
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });
     facts.publishSetupPower(NEVER);
-    facts.publishSetupHardCapRead(undefined, running);
+    facts.publishSetupHardCapRead(false, running);
     // A guess here would tell an owner with ten managed devices to go choose some.
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });
     state.devicesLoaded = true;
-    expect(facts.readSetupPath().state).toBe('resolved');
+    expect(facts.readSetupPath().state).toBe('open');
+  });
+
+  it('reports a bounded first-read failure instead of loading forever', async () => {
+    const { facts, state } = await load();
+    state.devicesLoaded = true;
+    facts.publishSetupPowerUnavailable();
+    facts.publishSetupHardCapUnavailable();
+
+    expect(facts.readSetupPath()).toEqual({ state: 'unavailable' });
+  });
+
+  it('preserves last-good setup facts across later read failures', async () => {
+    const { facts, state } = await load();
+    state.devicesLoaded = true;
+    facts.publishSetupPower(NEVER);
+    facts.publishSetupHardCapRead(false, running);
+    facts.publishSetupPowerUnavailable();
+    facts.publishSetupHardCapUnavailable();
+
+    expect(facts.readSetupPath().state).toBe('open');
   });
 
   it('keeps a saved hard cap saved through an unreadable settings read', async () => {
@@ -43,10 +67,8 @@ describe('setup path facts', () => {
     state.managedMap = { heater: true };
     state.controllableMap = { heater: true };
     facts.publishSetupPower(NEVER);
-    facts.publishSetupHardCapRead(8, { ...running, limitKw: 8, marginKw: 0.4 });
-    // The SDK's transient answer for a key it could not read; the running
-    // scalars are the app's last-good and still refresh.
-    facts.publishSetupHardCapRead(undefined, { ...running, limitKw: 8, marginKw: 0.5 });
+    facts.publishSetupHardCapRead(true, { ...running, limitKw: 8, marginKw: 0.4 });
+    facts.publishSetupHardCapRead(true, { ...running, limitKw: 8, marginKw: 0.5 });
     expect(hardCapDetail(facts)).toBe('8 kW hourly average, 0.5 kW safety margin');
   });
 
@@ -58,10 +80,26 @@ describe('setup path facts', () => {
     state.managedMap = { heater: true, gone: true };
     state.controllableMap = { gone: true };
     facts.publishSetupPower(NEVER);
-    facts.publishSetupHardCapRead(undefined, running);
+    facts.publishSetupHardCapRead(false, running);
     const read = facts.readSetupPath();
-    const devices = read.state === 'resolved' ? read.path?.steps.find((step) => step.id === 'devices') : undefined;
+    const devices = read.state === 'open' ? read.path.steps.find((step) => step.id === 'devices') : undefined;
     expect(devices?.detail).toBe('1 device managed');
+  });
+
+  it('counts only Main-home devices when meter areas are active', async () => {
+    const { facts, state } = await load({ areaHeater: 'area-1' });
+    state.devicesLoaded = true;
+    state.latestDevices = [{ id: 'mainHeater' }, { id: 'areaHeater' }] as typeof state.latestDevices;
+    state.managedMap = { mainHeater: true, areaHeater: true };
+    state.controllableMap = { mainHeater: false, areaHeater: true };
+    facts.publishSetupPower(NEVER);
+    facts.publishSetupHardCapRead(false, running);
+    const read = facts.readSetupPath();
+    const devices = read.state === 'open'
+      ? read.path.steps.find((step) => step.id === 'devices')
+      : undefined;
+    expect(devices?.detail).toBe('1 device managed');
+    expect(read.state === 'open' && read.path.steps.some((step) => step.id === 'hardCap')).toBe(false);
   });
 
   describe('priority order', () => {
@@ -75,12 +113,12 @@ describe('setup path facts', () => {
       state.loadedModeHomeId = 'main';
       state.activeMode = 'Home';
       loaded.facts.publishSetupPower(RECEIVED);
-      loaded.facts.publishSetupHardCapRead(8, { ...running, limitKw: 8 });
+      loaded.facts.publishSetupHardCapRead(true, { ...running, limitKw: 8 });
       return loaded;
     };
     const priorityStep = (facts: Awaited<ReturnType<typeof load>>['facts']) => {
       const read = facts.readSetupPath();
-      return read.state === 'resolved' ? read.path?.steps.find((step) => step.id === 'priority') : undefined;
+      return read.state === 'open' ? read.path.steps.find((step) => step.id === 'priority') : undefined;
     };
 
     it('counts limitable devices with no entry in the ACTIVE mode', async () => {
@@ -96,7 +134,7 @@ describe('setup path facts', () => {
       const { facts, state } = await twoLimitable();
       state.capacityPriorities = { Home: { bedroom: 99, pool: 100 } };
       expect(priorityStep(facts)).toBeUndefined();
-      expect(facts.readSetupPath()).toEqual({ state: 'resolved', path: null });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
     });
 
     it('judges nothing while a meter area\'s mode catalog is the one loaded', async () => {
@@ -113,7 +151,7 @@ describe('setup path facts', () => {
     const listener = vi.fn();
     facts.onSetupPathChange(listener);
     facts.publishSetupPower(NEVER);
-    facts.publishSetupHardCapRead(undefined, running);
+    facts.publishSetupHardCapRead(false, running);
     const afterFacts = listener.mock.calls.length;
     // A device-list tick, and the same power fact published again, move nothing.
     facts.notifySetupPathChange();
@@ -130,7 +168,7 @@ describe('setup path facts', () => {
       loaded.state.devicesLoaded = true;
       loaded.state.latestDevices = [{ id: 'heater' }] as typeof loaded.state.latestDevices;
       loaded.facts.publishSetupPower(NEVER);
-      loaded.facts.publishSetupHardCapRead(undefined, running);
+      loaded.facts.publishSetupHardCapRead(false, running);
       return loaded;
     };
 
@@ -160,7 +198,7 @@ describe('setup path facts', () => {
       state.managedMap = { heater: true };
       state.activePanel = 'overview';
       facts.publishSetupPower(RECEIVED);
-      facts.publishSetupHardCapRead(8, { ...running, limitKw: 8 });
+      facts.publishSetupHardCapRead(true, { ...running, limitKw: 8 });
       expect(facts.isSimulationCarriedBySetupPath(true)).toBe(false);
     });
   });
@@ -170,7 +208,7 @@ describe('setup path facts', () => {
       const loaded = await load();
       loaded.state.devicesLoaded = true;
       loaded.facts.publishSetupPower(NEVER);
-      loaded.facts.publishSetupHardCapRead(undefined, running);
+      loaded.facts.publishSetupHardCapRead(false, running);
       return loaded;
     };
 

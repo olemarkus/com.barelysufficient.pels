@@ -142,6 +142,7 @@ const buildBootstrap = (
     status: { state: 'unavailable', reason: 'no_status_recorded' },
     capacityPeak: { state: 'unavailable' },
     capacityScalars: { state: 'unavailable' },
+    hardCapConfiguration: { state: 'unavailable' },
     readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
   },
   prices: {
@@ -160,6 +161,7 @@ const buildBootstrap = (
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
   },
 });
 
@@ -197,6 +199,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -279,6 +282,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -342,6 +346,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -402,6 +407,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -471,6 +477,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -529,6 +536,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -599,6 +607,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -675,6 +684,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -746,6 +756,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -808,6 +819,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -871,6 +883,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -944,6 +957,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1015,6 +1029,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -1122,6 +1137,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1210,6 +1226,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1296,6 +1313,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1375,6 +1393,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1465,6 +1484,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1546,6 +1566,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -1600,6 +1621,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1669,6 +1691,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const evRevision = {
       revision: 1,
@@ -1757,6 +1780,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1816,6 +1840,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1877,6 +1902,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1946,6 +1972,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2010,6 +2037,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -2070,6 +2098,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -2138,6 +2167,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -2226,6 +2256,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2316,6 +2347,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2424,6 +2456,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const revision = {
       revision: 2,
@@ -2535,6 +2568,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const revision = {
       revision: 1,
@@ -2625,6 +2659,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2725,6 +2760,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2818,6 +2854,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const learnedRevision = {
       revision: 2,
@@ -2906,6 +2943,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const allocatedRevision = {
       revision: 1,
@@ -2986,6 +3024,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -3049,6 +3088,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -3112,6 +3152,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -3184,6 +3225,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3252,6 +3294,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3323,6 +3366,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -3391,6 +3435,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     // Recorder-style revision with a learned rate + energy need. The hero's
     // "Needs" stat pair carries the energy figure as a bold payoff value (the
@@ -3473,6 +3518,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -3543,6 +3589,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -3613,6 +3660,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3678,6 +3726,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3749,6 +3798,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3849,6 +3899,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3930,6 +3981,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4291,6 +4343,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4362,6 +4415,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -4440,6 +4494,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4509,6 +4564,7 @@ describe('deadline plan page payload', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     });
     const settings = {
       capacity_limit_kw: 8,
@@ -4726,6 +4782,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -5422,6 +5479,7 @@ describe('cost + delivered-so-far hero lines', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
   });
 
   const buildStubBootstrap = (
@@ -5722,6 +5780,7 @@ describe('cost + delivered-so-far hero lines', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -6092,6 +6151,7 @@ describe('pending hero producer wiring', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const relocatedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -6169,6 +6229,7 @@ describe('pending hero producer wiring', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -6237,6 +6298,7 @@ describe('pending hero producer wiring', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -6300,6 +6362,7 @@ describe('pending hero producer wiring', () => {
     powerhourToday: null,
     powerhourTomorrow: null,
     powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',

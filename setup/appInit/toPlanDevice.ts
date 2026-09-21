@@ -221,7 +221,10 @@ function resolveSurplusPostureForDevice(params: {
   const none = { surplusOnly: false, surplusTracking: false };
   if (device.temperatureControlDisabled === true) return none;
   if (opts?.surplusPostureEnabled === false) return none;
-  const surplusWilling = ctx.priceOptimizationSettings[device.id]?.surplusWilling;
+  // A missing per-device entry means the owner has not opted this device in.
+  // Resolve that absence here so the planner receives a complete decision and
+  // can trust the boolean without knowing settings-map provenance.
+  const surplusWilling = ctx.priceOptimizationSettings[device.id]?.surplusWilling ?? false;
   const surplusPoolReachable = ctx.isSurplusPoolReachable();
   // The two postures are mutually exclusive by construction — the binary one
   // requires `plainBinaryControlModel` and a non-stepped snapshot, the tracking

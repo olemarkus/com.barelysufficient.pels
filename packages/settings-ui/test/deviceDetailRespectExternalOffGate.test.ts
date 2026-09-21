@@ -164,7 +164,16 @@ const openPanel = async (params: OpenPanelParams) => {
   state.respectExternalOffMap = params.optedIn ? { [deviceId]: true } : {};
   state.temperatureControlDisabledMap = params.temperatureControlDisabled ? { [deviceId]: true } : {};
   state.priceOptimizationSettings = params.priceEnabled
-    ? { [deviceId]: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }
+    ? {
+      [deviceId]: {
+        enabled: true,
+        cheapDelta: 3,
+        expensiveDelta: -2,
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 2,
+      },
+    }
     : {};
   state.capacityPriorities = { Home: { [deviceId]: 1 } };
   state.modeTargets = { Home: params.modeTarget === undefined ? {} : { [deviceId]: params.modeTarget } };
@@ -687,7 +696,14 @@ describe('device detail "Disable temperature control"', () => {
     state.latestDevices = [...state.latestDevices, secondDevice];
     state.managedMap['heater-2'] = true;
     state.controllableMap['heater-2'] = true;
-    state.priceOptimizationSettings['heater-2'] = { enabled: true, cheapDelta: 3, expensiveDelta: -2 };
+    state.priceOptimizationSettings['heater-2'] = {
+      enabled: true,
+      cheapDelta: 3,
+      expensiveDelta: -2,
+      priceConfigured: true,
+      surplusWilling: false,
+      surplusDelta: 2,
+    };
     openDeviceDetail('heater-2');
     const second = temperatureControlToggle();
     if (!second) throw new Error('second temperature-control switch missing');

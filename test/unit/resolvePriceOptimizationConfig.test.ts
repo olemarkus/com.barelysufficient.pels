@@ -9,13 +9,17 @@ describe('resolvePriceOptimizationConfig', () => {
   });
 
   it('carries a surplus lift only when the owner opted in with a positive one', () => {
-    const base = { enabled: true, cheapDelta: 2, expensiveDelta: -2 };
+    const base = {
+      enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
+    };
     expect(resolvePriceOptimizationConfig({ hp: { ...base, surplusWilling: true, surplusDelta: 1.5 } }, 'hp').surplusLiftC)
       .toBe(1.5);
     expect(resolvePriceOptimizationConfig({ hp: { ...base, surplusWilling: false, surplusDelta: 1.5 } }, 'hp').surplusLiftC)
       .toBe(0);
     expect(resolvePriceOptimizationConfig({ hp: { ...base, surplusWilling: true, surplusDelta: 0 } }, 'hp').surplusLiftC)
       .toBe(0);
-    expect(resolvePriceOptimizationConfig({ hp: base }, 'hp')).toEqual({ ...base, surplusLiftC: 0 });
+    expect(resolvePriceOptimizationConfig({ hp: base }, 'hp')).toEqual({
+      enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusLiftC: 0,
+    });
   });
 });

@@ -1,11 +1,11 @@
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
+import type { AfterSetupFactsRead } from '../src/ui/afterSetupFacts.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 
-const OTHER_MODULES_SETTING = 'price_optimization_settings';
 const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();
 const getSetting = vi.fn();
@@ -13,6 +13,10 @@ const getSettingFresh = vi.fn();
 const setSetting = vi.fn();
 const sleep = vi.fn().mockResolvedValue(undefined);
 const logSettingsError = vi.fn().mockResolvedValue(undefined);
+let afterSetupRead: AfterSetupFactsRead;
+let publishHomeScopeChange = (): void => {
+  throw new Error('Recommendations did not subscribe to home-scope changes.');
+};
 
 vi.mock('../src/ui/homey.ts', async () => {
   const actual = await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts');
@@ -20,19 +24,12 @@ vi.mock('../src/ui/homey.ts', async () => {
     ...actual,
     // Routed by path for the same reason as the settings below: this spec counts
     // the CAR inventory calls, and the hub-market read shares the seam.
-    callApi: (...args: unknown[]) => (
-      args[1] === OTHER_MODULES_API_PATH ? Promise.resolve({ state: 'unavailable' }) : callApi(...args)
-    ),
-    // Routed by key. This spec sequences and counts the ACKNOWLEDGEMENT reads;
-    // the after-setup suggestions read the price settings through the same
-    // seam, in parallel, and would otherwise consume a `...Once` value meant
-    // for the read under test. An empty map is a home using neither feature.
-    getSetting: (...args: unknown[]) => (
-      args[0] === OTHER_MODULES_SETTING ? Promise.resolve({}) : getSetting(...args)
-    ),
-    getSettingFresh: (...args: unknown[]) => (
-      args[0] === OTHER_MODULES_SETTING ? Promise.resolve({}) : getSettingFresh(...args)
-    ),
+    callApi: (...args: unknown[]) => {
+      if (args[1] === OTHER_MODULES_API_PATH) return Promise.resolve({ state: 'unavailable' });
+      return callApi(...args);
+    },
+    getSetting: (...args: unknown[]) => getSetting(...args),
+    getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
     setSetting: (...args: unknown[]) => setSetting(...args),
     sleep: (...args: unknown[]) => sleep(...args),
   };
@@ -43,6 +40,27 @@ vi.mock('../src/ui/logging.ts', async () => {
   return {
     ...actual,
     logSettingsError: (...args: unknown[]) => logSettingsError(...args),
+  };
+});
+
+vi.mock('../src/ui/setupPathFacts.ts', () => ({
+  isBelgianHomeOnHourlyPeriod: () => false,
+  notifySetupPathChange: () => undefined,
+  onSetupPathChange: () => undefined,
+  readSetupMarket: () => ({ state: 'unavailable' }),
+  readSetupPath: () => ({ state: 'complete' }),
+}));
+
+vi.mock('../src/ui/afterSetupFacts.ts', () => ({
+  loadAfterSetupFacts: () => Promise.resolve(),
+  readAfterSetupFacts: () => afterSetupRead,
+}));
+
+vi.mock('../src/ui/homeScope.ts', async () => {
+  const actual = await vi.importActual<typeof import('../src/ui/homeScope.ts')>('../src/ui/homeScope.ts');
+  return {
+    ...actual,
+    subscribeToHomeScope: (listener: () => void) => { publishHomeScopeChange = listener; },
   };
 });
 
@@ -87,6 +105,21 @@ beforeEach(() => {
   sleep.mockResolvedValue(undefined);
   getSettingFresh.mockResolvedValue(undefined);
   setSetting.mockResolvedValue(undefined);
+  afterSetupRead = {
+    state: 'resolved',
+    facts: {
+      setupComplete: true,
+      devices: [],
+      priceOptimizationEnabled: true,
+      solarSurplusAvailable: false,
+      smartTaskConfigured: false,
+      market: { state: 'unavailable' },
+      belgianHomeOnHourlyPeriod: false,
+    },
+  };
+  publishHomeScopeChange = () => {
+    throw new Error('Recommendations did not subscribe to home-scope changes.');
+  };
 });
 
 describe('recommendation loading', () => {
@@ -121,6 +154,66 @@ describe('recommendation loading', () => {
       .toContain('Use built-in device control for Connected 300');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Some recommendation checks couldn’t be refreshed right now');
+  });
+
+  it('does not claim an all-clear while Price setup facts are unavailable', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    afterSetupRead = { state: 'loading' };
+
+    await recommendations.loadRecommendationData();
+
+    const text = document.getElementById('setup-recommendations-root')?.textContent ?? '';
+    expect(text).toContain('Some recommendation checks couldn’t be refreshed right now');
+    expect(text).toContain('No suggestions from the checks that finished');
+    expect(text).not.toContain('No setup suggestions right now');
+  });
+
+  it('redraws membership-dependent suggestions when Main-home ownership changes', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    afterSetupRead = {
+      state: 'resolved',
+      facts: {
+        setupComplete: true,
+        devices: [{
+          temperature: true,
+          limitable: false,
+          taskCapable: true,
+          priceConfigured: false,
+          usesSolarSurplus: false,
+        }],
+        priceOptimizationEnabled: true,
+        solarSurplusAvailable: false,
+        smartTaskConfigured: false,
+        market: { state: 'unavailable' },
+        belgianHomeOnHourlyPeriod: false,
+      },
+    };
+
+    await recommendations.loadRecommendationData();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      expect(surface?.textContent).toContain('Heat more while power is cheap');
+
+      afterSetupRead = {
+        state: 'resolved',
+        facts: { ...afterSetupRead.facts, devices: [] },
+      };
+      publishHomeScopeChange();
+
+      expect(surface?.textContent).not.toContain('Heat more while power is cheap');
+      expect(surface?.textContent).toContain('No setup suggestions right now');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
   });
 
   it('rechecks a Flow conflict immediately and removes a cleared recommendation', async () => {

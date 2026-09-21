@@ -67,7 +67,7 @@ Go to **Settings > Devices**. For each device you want PELS to manage, configure
 
 | Control | What it means |
 | --- | --- |
-| **Managed** | PELS includes the device in its planning. Unmanaged devices are treated as background load. Turning Managed on also turns on Limit. |
+| **Managed** | PELS includes the device in its planning. Unmanaged devices are treated as background load. For devices with a power reading, turning Managed on also turns on Limit. |
 | **Limit** | PELS is allowed to lower, pause or turn this device off: to stay within your hard cap, to keep to your daily budget, or to follow your solar surplus. |
 | **Price** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
 

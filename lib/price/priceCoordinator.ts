@@ -23,7 +23,11 @@ import type { HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus } from '../../p
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, type CombinedPricePeriod, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
-import type { PriceOptimizationSettingsStore } from './priceOptimizationSettingsStore';
+import type {
+  PriceOptimizationDeviceSettings,
+  PriceOptimizationSettingsStore,
+} from './priceOptimizationSettingsStore';
+import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PriceDataStore } from './priceDataStore';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
@@ -75,11 +79,7 @@ export class PriceCoordinator {
   // the callback would call updateCombinedPrices and reschedule itself.
   private stopped = false;
   private priceOptimizationEnabled = true;
-  private priceOptimizationSettings: Record<string, {
-    enabled: boolean;
-    cheapDelta: number;
-    expensiveDelta: number;
-  }> = {};
+  private priceOptimizationSettings: PriceOptimizationDeviceSettings = {};
 
   constructor(private deps: PriceCoordinatorDeps) {
     this.priceService = new PriceService(
@@ -105,8 +105,12 @@ export class PriceCoordinator {
     return this.priceOptimizationEnabled;
   }
 
-  getPriceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> {
+  getPriceOptimizationSettings(): PriceOptimizationDeviceSettings {
     return this.priceOptimizationSettings;
+  }
+
+  readPriceOptimizationSetup(): PriceOptimizationSetupRead {
+    return this.deps.priceOptimizationSettingsStore.readSetup();
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
@@ -120,9 +124,9 @@ export class PriceCoordinator {
   }
 
   loadPriceOptimizationSettings(): void {
-    const settings = this.deps.priceOptimizationSettingsStore.readDeviceSettings();
-    if (settings) {
-      this.priceOptimizationSettings = settings;
+    const read = this.deps.priceOptimizationSettingsStore.readDeviceSettings();
+    if (read.state === 'resolved') {
+      this.priceOptimizationSettings = read.settings;
     }
   }
 

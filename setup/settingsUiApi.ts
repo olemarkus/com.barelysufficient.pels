@@ -1,5 +1,4 @@
 import type Homey from 'homey';
-import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
@@ -19,8 +18,14 @@ import {
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import {
-  hasHomeyPriceFormulaSeam, hasPowerhourSourceSeam, hasPvForecastSourceSeam,
-} from './settingsUiStatusSeams';
+  hasHardCapConfigurationSeam,
+  hasCapacityPeakSeam,
+  hasCapacityScalarsSeam,
+  hasHomeyPriceFormulaSeam,
+  hasPowerhourSourceSeam,
+  hasPriceOptimizationSetupSeam,
+  hasPvForecastSourceSeam,
+} from '../lib/ports/settingsUiStatusSeams';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -79,35 +84,6 @@ type SettingsUiApiApp = Homey.App & {
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
 };
-
-/**
- * The Main home's capacity-peak seam (`AppContext` declares it required). Same
- * boundary role as `PvForecastSourceSeam` above: presence is a runtime question
- * only because `homey.app` is typed as the SDK's base `App`.
- */
-type CapacityPeakSeam = { getCurrentMonthCapacityPeakKw: () => number | null };
-
-const hasCapacityPeakSeam = (app: unknown): app is CapacityPeakSeam => (
-  typeof app === 'object'
-  && app !== null
-  && 'getCurrentMonthCapacityPeakKw' in app
-  && typeof app.getCurrentMonthCapacityPeakKw === 'function'
-);
-
-/**
- * The Main home's capacity scalars, straight from the running app. `AppContext`
- * declares the member required and `lib/power/capacitySettingsStore` is the only
- * thing that writes the block, so there is nothing to validate here — only the
- * boot window in which `homey.app` is not yet the PELS app to ask.
- */
-type CapacityScalarsSeam = { getCapacityScalars: () => CapacityScalarSettings };
-
-const hasCapacityScalarsSeam = (app: unknown): app is CapacityScalarsSeam => (
-  typeof app === 'object'
-  && app !== null
-  && 'getCapacityScalars' in app
-  && typeof app.getCapacityScalars === 'function'
-);
 
 /**
  * The daily-budget seam the running app exposes (`AppContext` and
@@ -423,6 +399,9 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     capacityScalars: hasCapacityScalarsSeam(app)
       ? { state: 'resolved', scalars: app.getCapacityScalars() }
       : { state: 'unavailable' },
+    hardCapConfiguration: hasHardCapConfigurationSeam(app)
+      ? app.readHardCapConfiguration()
+      : { state: 'unavailable' },
     capacityPeak: hasCapacityPeakSeam(app)
       ? projectCapacityPeakForUi(app.getCurrentMonthCapacityPeakKw())
       : { state: 'unavailable' },
@@ -475,6 +454,9 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     powerhourSource: hasPowerhourSourceSeam(app)
       ? app.getPowerhourSourceUiStatus()
       : { kind: 'unknown' },
+    priceOptimizationSetup: hasPriceOptimizationSetupSeam(app)
+      ? app.readPriceOptimizationSetup()
+      : { state: 'unavailable' },
   };
 };
 
@@ -527,6 +509,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   status: { state: 'unavailable', reason: 'home_scope_unavailable' },
   capacityPeak: { state: 'unavailable' },
   capacityScalars: { state: 'unavailable' },
+  hardCapConfiguration: { state: 'unavailable' },
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
@@ -578,6 +561,9 @@ const powerPayloadForHome = (
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
     capacityScalars: { state: 'resolved', scalars: reading.diagnostics.capacityScalars },
+    // Sub-home diagnostics expose running scalars but not persisted key
+    // provenance; absence must remain unavailable rather than be guessed.
+    hardCapConfiguration: { state: 'unavailable' },
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,
     // and a sub-home's `generationBuckets` can never fill: its bundle is built

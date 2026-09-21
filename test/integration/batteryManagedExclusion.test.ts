@@ -151,7 +151,9 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     const priceDeps: PlanDevicesDeps = {
       ...defaultDeps,
       getPriceOptimizationSettings: () => ({
-        [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 },
+        [BATTERY_ID]: {
+          enabled: true, cheapDelta: 3, expensiveDelta: 3, surplusWilling: false, surplusDelta: 0,
+        },
       }),
     };
     for (const currentHourPriceLevel of [PriceLevel.CHEAP, PriceLevel.EXPENSIVE] as const) {
@@ -159,7 +161,11 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         context: buildContext([batteryInputDevice()], {
           intent: {
             getPriceOptimizationEnabled: () => true,
-            getPriceOptimizationSettings: () => ({ [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 } }),
+            getPriceOptimizationSettings: () => ({
+              [BATTERY_ID]: {
+                enabled: true, cheapDelta: 3, expensiveDelta: 3, surplusWilling: false, surplusDelta: 0,
+              },
+            }),
             getCurrentHourPriceLevel: () => currentHourPriceLevel,
           },
         }),

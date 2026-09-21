@@ -20,18 +20,12 @@ import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/sr
 import type { ChargerPhasePresets } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
+import {
+  DEFAULT_PRICE_OPTIMIZATION_CONFIG,
+  type PriceOptimizationConfig,
+} from './priceOptimizationConfig.ts';
 
-
-export type PriceOptimizationConfig = {
-  enabled: boolean;
-  cheapDelta: number;
-  expensiveDelta: number;
-  // Surplus-absorb rides this same per-device blob (a distinct cause from price —
-  // triggered by exporting, not a cheap hour). Optional so non-solar blobs stay
-  // byte-identical.
-  surplusWilling?: boolean;
-  surplusDelta?: number;
-};
+export type { PriceOptimizationConfig } from './priceOptimizationConfig.ts';
 
 /**
  * Settings-UI device view: the decorated backend snapshot plus the UI's own
@@ -144,11 +138,7 @@ export type MeterAreaSimulationEntry = {
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
-  enabled: false,
-  cheapDelta: 5,
-  expensiveDelta: -5,
-  surplusWilling: false,
-  surplusDelta: 2,
+  ...DEFAULT_PRICE_OPTIMIZATION_CONFIG,
 };
 
 

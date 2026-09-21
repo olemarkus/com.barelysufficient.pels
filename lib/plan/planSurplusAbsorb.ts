@@ -41,20 +41,17 @@ const supportsTemperatureLift = (device: PlanInputDevice): boolean => (
 // Per-device price-opt blob, extended with the surplus-absorb opt-in fields it
 // rides. By convention the planner keeps a local structural copy of this blob
 // (matching the inline shapes in planEngine/planBuilder) so it depends on the
-// settings-deps seam rather than lib/price's persistence type; optional fields
-// keep non-solar blobs byte-identical.
+// settings-deps seam rather than lib/price's persistence type. The settings
+// adapter has already resolved legacy omissions before this reaches planning.
 export type PriceOptDeviceConfig = {
   enabled: boolean;
   cheapDelta: number;
   expensiveDelta: number;
-  surplusWilling?: boolean;
-  surplusDelta?: number;
+  surplusWilling: boolean;
+  surplusDelta: number;
 };
 
-type SurplusConfig = {
-  surplusWilling?: boolean;
-  surplusDelta?: number;
-};
+type SurplusConfig = Pick<PriceOptDeviceConfig, 'surplusWilling' | 'surplusDelta'>;
 
 // Local guard — kept off lib/utils so this new plan module stays self-contained
 // (per the lib/plan ↛ lib/utils path rule).
@@ -69,7 +66,7 @@ const positiveOrZero = (value: unknown): number => (isFiniteNumber(value) && val
 // allocator, or it would reserve export it never draws and starve lower-priority
 // devices.
 const willingWithLift = (config: SurplusConfig | undefined): boolean => (
-  config?.surplusWilling === true && isFiniteNumber(config.surplusDelta) && config.surplusDelta > 0
+  config !== undefined && config.surplusWilling && config.surplusDelta > 0
 );
 
 /**
@@ -109,7 +106,7 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
  * helper carries no tracker or estimator branch.
  */
 export function resolveSurplusOnlyPosture(params: {
-  surplusWilling: boolean | undefined;
+  surplusWilling: boolean;
   hasBinaryControl: boolean;
   // Producer-resolved: being off means going without. A dump load qualifies; a
   // charger does not, because its demand arrives with a car. Asked as this bit
@@ -129,7 +126,7 @@ export function resolveSurplusOnlyPosture(params: {
   // off indefinitely rather than merely leaving it idle.
   surplusPoolReachable: boolean;
 }): boolean {
-  return params.surplusWilling === true
+  return params.surplusWilling
     && params.surplusPoolReachable
     && params.hasBinaryControl
     && params.hasStandingDemand
@@ -169,7 +166,7 @@ export function resolveSurplusOnlyPosture(params: {
  *   a bit that only names EVs.
  */
 export function resolveSurplusTrackingPosture(params: {
-  surplusWilling: boolean | undefined;
+  surplusWilling: boolean;
   targets: readonly TargetCapabilitySnapshot[] | undefined;
   steppedLoadProfile: SteppedLoadProfile | undefined;
   control: DeviceControlPosture;
@@ -178,7 +175,7 @@ export function resolveSurplusTrackingPosture(params: {
   // the device to its floor forever rather than merely leaving it unmodulated.
   surplusPoolReachable: boolean;
 }): boolean {
-  return params.surplusWilling === true
+  return params.surplusWilling
     && params.surplusPoolReachable
     && isSteppedLoadSnapshot(params)
     && params.targets?.some((target) => target.id === 'target_temperature') !== true

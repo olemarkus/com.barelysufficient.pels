@@ -42,7 +42,46 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: true });
     expect(resolvedValue(store.read())).toEqual({ limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60 });
+  });
+
+  it('resolves an unwritten hard cap from key presence without mistaking the fallback for a saved value', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_MARGIN_KW, 0.4);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: false });
+    expect(resolvedValue(store.read()).limitKw).toBe(12);
+  });
+
+  it('keeps unavailable hard-cap provenance explicit at the UI boundary', () => {
+    const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'unavailable' });
+  });
+
+  it('keeps a listed hard cap configured when its value read is transiently unavailable', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_LIMIT_KW, 7.5);
+    const readSetting = settings.get.bind(settings);
+    settings.get = (key: string): unknown => (key === CAPACITY_LIMIT_KW ? null : readSetting(key));
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+
+    expect(store.read()).toEqual({
+      state: 'resolved',
+      value: fallback(),
+    });
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: true });
+  });
+
+  it('keeps hard-cap provenance resolved when an unrelated listed period is malformed', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_LIMIT_KW, 8);
+    settings.set(CAPACITY_PERIOD_MINUTES, 30);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+
+    expect(store.read()).toEqual({ state: 'unavailable' });
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: true });
   });
 
   it('reads home-suffixed keys for a non-main home', () => {

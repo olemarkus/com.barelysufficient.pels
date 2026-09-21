@@ -257,7 +257,16 @@ describe('advanced device cleanup', () => {
       'dev-1': { action: 'set_step' },
       'dev-2': { action: 'turn_off' },
     };
-    state.priceOptimizationSettings = { 'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 } };
+    state.priceOptimizationSettings = {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 5,
+        expensiveDelta: -5,
+        priceConfigured: true,
+        surplusWilling: false,
+        surplusDelta: 2,
+      },
+    };
     state.capacityPriorities = { Home: { 'dev-1': 1, 'dev-2': 2 } };
     state.modeTargets = { Home: { 'dev-1': 21, 'dev-2': 19 } };
     return state;

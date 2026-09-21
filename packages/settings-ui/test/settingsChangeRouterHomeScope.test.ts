@@ -12,10 +12,14 @@ import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
+  SETTINGS_UI_PRICES_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 import {
+  CAPACITY_LIMIT_KW,
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
+  PRICE_OPTIMIZATION_ENABLED,
+  PRICE_OPTIMIZATION_SETTINGS,
 } from '../../contracts/src/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
@@ -98,6 +102,28 @@ describe('settings-change router sweeps home-scoped read models', () => {
     expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
     // Plan entries are not the tracker's to sweep.
     expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
+  });
+
+  it.each([
+    ['set', createSettingsSetHandler],
+    ['unset', createSettingsUnsetHandler],
+  ] as const)('%s of the hard cap drops cached configuration provenance', async (_event, createHandler) => {
+    primeApiCache(SETTINGS_UI_POWER_PATH, 'stale-power');
+    primeApiCache(scoped(SETTINGS_UI_POWER_PATH), 'stale-area-power');
+    createHandler()(CAPACITY_LIMIT_KW);
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'stale-power')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'stale-area-power')).toBe(false);
+  });
+
+  it.each([
+    ['set', PRICE_OPTIMIZATION_ENABLED, createSettingsSetHandler],
+    ['unset', PRICE_OPTIMIZATION_ENABLED, createSettingsUnsetHandler],
+    ['set', PRICE_OPTIMIZATION_SETTINGS, createSettingsSetHandler],
+    ['unset', PRICE_OPTIMIZATION_SETTINGS, createSettingsUnsetHandler],
+  ] as const)('%s of %s drops cached Price setup facts', async (_event, key, createHandler) => {
+    primeApiCache(SETTINGS_UI_PRICES_PATH, 'stale-prices');
+    createHandler()(key);
+    expect(await isCached(SETTINGS_UI_PRICES_PATH, 'stale-prices')).toBe(false);
   });
 
   it('a malformed power_tracker_persisted push sweeps nothing', async () => {
