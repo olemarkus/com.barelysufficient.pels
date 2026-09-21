@@ -4773,6 +4773,18 @@ md-filled-button.is-busy {
   border-radius: var(--radius-md);
 }
 
+/* The Modes screen's "nobody chose this order" notice: text, then its one action. */
+.priority-unplaced {
+  display: grid;
+  gap: var(--spacing-1);
+  justify-items: start;
+  margin-block-end: var(--spacing-3);
+}
+
+.priority-unplaced p {
+  margin: 0;
+}
+
 .pels-notice-info {
   color: var(--text);
 }

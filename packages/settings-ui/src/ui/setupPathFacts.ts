@@ -1,4 +1,5 @@
 import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
+import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 import {
   isBelgianHourly,
@@ -6,8 +7,10 @@ import {
   resolveSetupPath,
   type SetupHardCap,
   type SetupPath,
+  type SetupPathFacts,
   type SetupPowerReadings,
 } from './setupPathModel.ts';
+import { countUnplacedDevices } from './modePriorityPlace.ts';
 import { state } from './state.ts';
 
 /**
@@ -102,11 +105,24 @@ type SetupPathRead =
   | { state: 'loading' }
   | { state: 'resolved'; path: SetupPath | null };
 
+// `state.capacityPriorities` belongs to whichever home's mode catalog is
+// loaded. Setup configures the Main home, so anything else is `unknown`: the
+// catalog has not arrived yet, or a meter area's is on screen.
+const resolvePriorityOrder = (limitableIds: readonly string[]): SetupPathFacts['priorityOrder'] => {
+  if (state.loadedModeHomeId !== MAIN_HOME_ID) return { state: 'unknown' };
+  return {
+    state: 'known',
+    mode: state.activeMode,
+    unplacedCount: countUnplacedDevices(limitableIds, state.activeMode),
+  };
+};
+
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 export const readSetupPath = (): SetupPathRead => {
   if (power === null || hardCap === null || !state.devicesLoaded) return { state: 'loading' };
   const knownIds = new Set(state.latestDevices.map((device) => device.id));
   const managedIds = [...knownIds].filter((id) => state.managedMap[id] === true);
+  const limitableIds = managedIds.filter((id) => state.controllableMap[id] === true);
   return {
     state: 'resolved',
     path: resolveSetupPath({
@@ -114,7 +130,8 @@ export const readSetupPath = (): SetupPathRead => {
       hardCap,
       market,
       managedDeviceCount: managedIds.length,
-      limitableDeviceCount: managedIds.filter((id) => state.controllableMap[id] === true).length,
+      limitableDeviceCount: limitableIds.length,
+      priorityOrder: resolvePriorityOrder(limitableIds),
       simulating: state.dryRun,
     }),
   };

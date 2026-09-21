@@ -23,6 +23,7 @@ import {
 } from '../../../../contracts/src/settingsKeys.ts';
 import { getSetting } from '../homey.ts';
 import { getHomeIdForUiDevice } from '../homeScope.ts';
+import { hasPlaceInOrder } from '../modePriorityPlace.ts';
 import {
   assertWritableModeDeviceTargets,
   parseModeNumberMap,
@@ -124,13 +125,14 @@ const getAllModes = (catalog: DetailModeCatalog) => {
 };
 
 const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, deviceId: string) => {
-  // The stored map only carries an explicit rank once the user has ordered
-  // devices for that mode (drag on the Modes screen assigns 1..N). An unset
-  // device falls back to the lowest slot (100), which reads as noise as a
-  // "#100" — surface a humane "not set" instead, and drop the "#" jargon on the
-  // real ranks.
+  // The map only carries a rank once the owner has ordered devices for that mode
+  // (the Modes screen assigns 1..N). A device nobody placed has no entry; say so
+  // in words, and drop the "#" jargon on the real ranks.
+  //
+  // "Not set" alone hid the consequence: an unplaced device is not outside the
+  // order, it is at the END of it, so it is the first to be limited.
   const priority = catalog.priorities[mode]?.[deviceId];
-  if (typeof priority !== 'number' || priority >= 100) return 'Priority not set';
+  if (!hasPlaceInOrder(priority)) return 'Priority not set, so limited first';
   return `Priority ${priority}`;
 };
 

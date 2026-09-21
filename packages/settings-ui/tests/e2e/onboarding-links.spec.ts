@@ -145,13 +145,62 @@ test.describe('Onboarding links', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const card = page.locator('#overview-setup-path');
-    await expect(card).toContainText('2 of 3 done');
+    // Meter, devices and (the fixture places every device) the priority order.
+    await expect(card).toContainText('3 of 4 done');
     const hardCap = card.locator('[data-setup-step="hardCap"]');
     await expect(hardCap).toHaveAttribute('data-setup-status', 'next');
     await expect(hardCap).toContainText('10 kW hourly average until you set yours');
 
     await hardCap.click();
     await expect(page.locator('#limits-panel')).toBeVisible();
+  });
+
+  test('the Priority step asks what keeps running longest, once there is an order to choose', async ({ page }) => {
+    // Everything else is done, several devices may be limited, and nobody has
+    // ordered them: the order in force breaks ties by device id.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { capacity_priorities: {} },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const priority = page.locator('#overview-setup-path [data-setup-step="priority"]');
+    await expect(priority).toHaveAttribute('data-setup-status', 'next');
+    await expect(priority).toContainText('Choose what keeps running longest');
+
+    await priority.click();
+    await expect(page.locator('#modes-panel')).toBeVisible();
+
+    // The Modes screen already shows an order. An owner who is content with it
+    // can say so; before, only a drag could, and this step would ask forever.
+    const notice = page.locator('#priority-unplaced');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('Nobody has chosen this order yet');
+    await page.locator('#priority-keep-order').click();
+    await expect(notice).toBeHidden();
+
+    // Saved exactly as shown: every listed device now has a place, 1..N.
+    const saved = await page.evaluate(() => new Promise<Record<string, Record<string, number>>>((resolve) => {
+      (window as unknown as {
+        Homey: { get: (key: string, cb: (error: Error | null, value?: unknown) => void) => void };
+      }).Homey.get('capacity_priorities', (_error, value) => resolve(value as Record<string, Record<string, number>>));
+    }));
+    const places = Object.values(saved.Home ?? {}).sort((a, b) => a - b);
+    expect(places.length).toBeGreaterThan(1);
+    expect(places).toEqual(places.map((_place, index) => index + 1));
+
+    // That was the last open step, so the setup path is done.
+    await page.getByRole('tab', { name: 'Overview' }).click();
+    await expect(page.locator('#overview-setup-path')).toHaveCount(0);
+  });
+
+  test('a home whose order was chosen is not asked to keep it', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.locator('.settings-nav-card[data-settings-target="modes"]').click();
+    await expect(page.locator('#priority-list li').first()).toBeVisible();
+    await expect(page.locator('#priority-unplaced')).toBeHidden();
   });
 
   test('a configured home that is still simulating gets the banner, not the setup path', async ({ page }) => {

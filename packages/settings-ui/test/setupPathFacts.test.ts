@@ -64,6 +64,49 @@ describe('setup path facts', () => {
     expect(devices?.detail).toBe('1 device managed');
   });
 
+  describe('priority order', () => {
+    const twoLimitable = async () => {
+      const loaded = await load();
+      const { state } = loaded;
+      state.devicesLoaded = true;
+      state.latestDevices = [{ id: 'bedroom' }, { id: 'pool' }] as typeof state.latestDevices;
+      state.managedMap = { bedroom: true, pool: true };
+      state.controllableMap = { bedroom: true, pool: true };
+      state.loadedModeHomeId = 'main';
+      state.activeMode = 'Home';
+      loaded.facts.publishSetupPower(RECEIVED);
+      loaded.facts.publishSetupHardCapRead(8, { ...running, limitKw: 8 });
+      return loaded;
+    };
+    const priorityStep = (facts: Awaited<ReturnType<typeof load>>['facts']) => {
+      const read = facts.readSetupPath();
+      return read.state === 'resolved' ? read.path?.steps.find((step) => step.id === 'priority') : undefined;
+    };
+
+    it('counts limitable devices with no entry in the ACTIVE mode', async () => {
+      const { facts, state } = await twoLimitable();
+      // Placed in Night, not in Home: only the active mode's order is in force.
+      state.capacityPriorities = { Home: { bedroom: 1 }, Night: { bedroom: 1, pool: 2 } };
+      expect(priorityStep(facts)?.detail).toBe('1 device not placed yet, so limited first');
+    });
+
+    it('judges a place by membership, never by how large the rank is', async () => {
+      // The catalog is already normalised to 1..N, so a big number is a real
+      // place in a big home, not a sentinel for "unset".
+      const { facts, state } = await twoLimitable();
+      state.capacityPriorities = { Home: { bedroom: 99, pool: 100 } };
+      expect(priorityStep(facts)).toBeUndefined();
+      expect(facts.readSetupPath()).toEqual({ state: 'resolved', path: null });
+    });
+
+    it('judges nothing while a meter area\'s mode catalog is the one loaded', async () => {
+      const { facts, state } = await twoLimitable();
+      state.loadedModeHomeId = 'garage';
+      // Those priorities are another home's; the step is left out, not guessed.
+      expect(priorityStep(facts)).toBeUndefined();
+    });
+  });
+
   it('runs listeners only when the path actually moved', async () => {
     const { facts, state } = await load();
     state.devicesLoaded = true;

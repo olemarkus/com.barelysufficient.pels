@@ -1579,6 +1579,20 @@ returning owner who unmanages their last device.
   in force, tariff or no tariff, because every home runs one (10 kW until the
   owner saves their own), and the step appears then. Hence the order: Devices
   before Hard cap. Apply the same test before adding any step.
+- **`Priority` follows the same rule, one device later.** With two or more
+  devices PELS may limit, an order IS in force whether or not anyone chose it: an
+  unplaced device sorts last and ties break by device id, so a new install limits
+  the bedroom before the pool pump for no reason anyone gave. The step appears
+  then (`Choose what keeps running longest`), returns for a device added later
+  (`1 device not placed yet, so limited first`), and is never shown with a single
+  limitable device. The device page says the same consequence: `Priority not set,
+  so limited first`.
+- **The Modes screen lets an owner keep the order it shows.** `Nobody has chosen
+  this order yet, so PELS is using its own. Drag to change it, or keep it as it
+  is.` / `Keep this order`, only while a listed device is unplaced. Without it
+  only a drag could place a device, and the Priority step would have asked a
+  contented owner forever. Any step that asks "have you chosen X?" needs a way
+  to answer "yes, as it is".
 - Each step is a **noun title that never changes** with a detail line that
   does. The status icon carries done / next / later; there is no "Next" chip (it
   wrapped the title at 320 px).

@@ -22,6 +22,14 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * appears, naming the number it is running on. Hence Devices before Hard cap:
  * what may be limited, then to what.
  *
+ * Priority is the same kind of step, one device later. With two or more
+ * devices PELS may limit, an order IS in force whether or not anyone chose it:
+ * a device with no stored place sorts last, and ties break by device id, so on a
+ * new install the bedroom heater may be limited before the pool pump for no
+ * reason anyone gave. What should keep running longest is the one thing only
+ * the owner knows, and nothing else in setup asks it. With a single limitable
+ * device there is nothing to order, and the step is not shown.
+ *
  * The same rule is why the copy picks no market. Norway and Flanders come for
  * the capacity tariff, the Netherlands for solar and dynamic prices; the lede
  * says what builds on the steps rather than selling the hard cap, and the Hard
@@ -37,7 +45,7 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * beside its one consumer rather than in shared-domain.
  */
 
-type SetupStepId = 'power' | 'hardCap' | 'devices';
+type SetupStepId = 'power' | 'hardCap' | 'devices' | 'priority';
 
 /** `next` is the first step still open; every later open step is `later`. */
 type SetupStepStatus = 'done' | 'next' | 'later';
@@ -80,6 +88,13 @@ export type SetupPathFacts = {
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
   limitableDeviceCount: number;
   simulating: boolean;
+  /**
+   * How many devices PELS may limit still have no place in the active mode's
+   * priority order. `unknown` while the Main home's mode catalog is not the one
+   * loaded (it has not arrived, or a meter area's is on screen): the step is
+   * then left out rather than asked on a guess.
+   */
+  priorityOrder: { state: 'unknown' } | { state: 'known'; unplacedCount: number; mode: string };
   /**
    * Where the hub is, from geography alone (never its language). `unavailable`
    * draws the market-neutral copy, which is always correct; a resolved market
@@ -133,6 +148,15 @@ const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarket
   return isBelgianHourly(market, hardCap.periodMinutes) ? `${base}.${FLANDERS_PERIOD_NOTE}` : base;
 };
 
+const resolvePriorityDetail = (facts: SetupPathFacts, unplacedCount: number, mode: string): string => {
+  if (unplacedCount === 0) return `${countDevices(facts.limitableDeviceCount)} in order for ${mode}`;
+  // Nothing placed yet is the new install; some unplaced is a device added later,
+  // which has silently joined the end of the order and is limited first.
+  return unplacedCount === facts.limitableDeviceCount
+    ? 'Choose what keeps running longest'
+    : `${countDevices(unplacedCount)} not placed yet, so limited first`;
+};
+
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
 // that owner to go turn Limit on asks for something they did not come for.
@@ -147,6 +171,20 @@ const resolveDevicesDetail = (facts: SetupPathFacts): string => {
  * `null` when setup is complete — there is no "all done" card, because a
  * finished setup has nothing left to say (the Overview says it instead).
  */
+// In force only with two or more devices to order, and only judged when the
+// order is actually known; see the header.
+const resolvePriorityStep = (facts: SetupPathFacts): Array<Omit<SetupStep, 'status'> & { done: boolean }> => {
+  if (facts.limitableDeviceCount < 2 || facts.priorityOrder.state === 'unknown') return [];
+  const { unplacedCount, mode } = facts.priorityOrder;
+  return [{
+    id: 'priority',
+    done: unplacedCount === 0,
+    title: 'Priority',
+    detail: resolvePriorityDetail(facts, unplacedCount, mode),
+    target: { panel: 'modes' },
+  }];
+};
+
 export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
   // In force only once some managed device may be limited; see the header.
   const hardCapApplies = facts.limitableDeviceCount > 0;
@@ -172,6 +210,7 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPath | null => {
       detail: resolveHardCapDetail(facts.hardCap, facts.market),
       target: { panel: 'limits' },
     }] : []),
+    ...resolvePriorityStep(facts),
   ];
   if (candidates.every((step) => step.done)) return null;
 

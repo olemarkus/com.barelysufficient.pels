@@ -20,6 +20,7 @@ const freshInstall: SetupPathFacts = {
   limitableDeviceCount: 0,
   simulating: true,
   market: { state: 'unavailable' },
+  priorityOrder: { state: 'unknown' },
 };
 
 // Everything the path asks for, with simulation still on: a cautious owner who
@@ -31,6 +32,7 @@ const configuredAndSimulating: SetupPathFacts = {
   limitableDeviceCount: 1,
   simulating: true,
   market: { state: 'unavailable' },
+  priorityOrder: { state: 'unknown' },
 };
 
 // An owner who manages thermostats for their price response and nothing else:
@@ -42,13 +44,14 @@ const priceOnlyOwner: SetupPathFacts = {
   limitableDeviceCount: 0,
   simulating: false,
   market: { state: 'unavailable' },
+  priorityOrder: { state: 'unknown' },
 };
 
 const statuses = (facts: SetupPathFacts) => (
   resolveSetupPath(facts)?.steps.map((step) => `${step.id}:${step.status}`)
 );
 
-const detailOf = (facts: SetupPathFacts, id: 'power' | 'hardCap' | 'devices') => (
+const detailOf = (facts: SetupPathFacts, id: 'power' | 'hardCap' | 'devices' | 'priority') => (
   resolveSetupPath(facts)?.steps.find((step) => step.id === id)?.detail
 );
 
@@ -83,6 +86,43 @@ describe('setup path', () => {
       const path = resolveSetupPath({ ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 });
       expect(path?.steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap']);
       expect(path && formatSetupProgress(path)).toBe('1 of 3');
+    });
+  });
+
+  describe('priority: an order is in force the moment two devices may be limited', () => {
+    // Meter connected, cap saved, three devices PELS may limit.
+    const threeLimitable = (unplacedCount: number): SetupPathFacts => ({
+      ...configuredAndSimulating,
+      managedDeviceCount: 3,
+      limitableDeviceCount: 3,
+      priorityOrder: { state: 'known', unplacedCount, mode: 'Home' },
+    });
+
+    it('asks a new install what keeps running longest, last of all', () => {
+      // Nobody placed anything, so the order PELS is using breaks ties by
+      // device id. Only the owner knows the bedroom outranks the pool pump.
+      expect(statuses(threeLimitable(3))).toEqual([
+        'power:done', 'devices:done', 'hardCap:done', 'priority:next',
+      ]);
+      expect(detailOf(threeLimitable(3), 'priority')).toBe('Choose what keeps running longest');
+    });
+
+    it('comes back for a device added later, and says what that costs it', () => {
+      expect(detailOf(threeLimitable(1), 'priority')).toBe('1 device not placed yet, so limited first');
+    });
+
+    it('closes once every limitable device has a place', () => {
+      expect(resolveSetupPath(threeLimitable(0))).toBeNull();
+    });
+
+    it('is never shown with a single limitable device: there is nothing to order', () => {
+      const one = { ...threeLimitable(1), managedDeviceCount: 1, limitableDeviceCount: 1 };
+      expect(resolveSetupPath(one)).toBeNull();
+    });
+
+    it('is left out, not asked on a guess, while the order is unknown', () => {
+      // The Main home's mode catalog has not arrived, or a meter area's is loaded.
+      expect(resolveSetupPath({ ...threeLimitable(3), priorityOrder: { state: 'unknown' } })).toBeNull();
     });
   });
 

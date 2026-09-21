@@ -26,7 +26,7 @@ If PELS is not installed yet, get it from the [Homey App Store](https://homey.ap
 
 In the Homey app, open **More -> Apps -> PELS -> Settings**. This is where all configuration happens. Homey does not take you there after installing, so this is the first thing to find.
 
-The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
+The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. With two or more such devices it asks which should keep running longest; you can reorder them or keep the order shown. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
 
 When it does, the Overview may show **PELS can do more for this home**. That opens the features that apply to your home and are not in use yet: following electricity prices, using your own solar, and Smart tasks. Each one can be dismissed if it is not for you.
 
