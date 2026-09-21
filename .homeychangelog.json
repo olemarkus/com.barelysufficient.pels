@@ -544,5 +544,8 @@
   },
   "3.6.0": {
     "en": "PELS can now take electricity prices straight from the Power by the Hour app, with no Flow to build. Install that app, add a price device for your area, then choose Power by the Hour under Electricity prices. If you have more than one price device, PELS asks which one prices your home. These are that app's own prices: the market price plus any markups you set there. They do not include the grid tariff unless you added it there yourself. Prices start from the hour you pick the source, so earlier hours of that day stay blank, and forecast prices are never used, only prices that have actually been set.\n\nThe 15-minute capacity period under Limits and safety is now called '15-minute average' instead of naming Belgium, since several markets bill on quarter-hour peaks."
+  },
+  "3.7.0": {
+    "en": "The Overview now guides you through first-time setup, showing what is complete and linking directly to power, device, hard-cap, and priority settings. Turning Managed on also enables Limit for devices with power readings, and setup guidance adapts to your location and configuration.\n\nAfter setup, PELS suggests relevant optional features such as price response, solar surplus, and Smart tasks. Flow-conflict recommendations can now be checked again on demand, and guidance is clearer for homes without capacity tariffs."
   }
 }
