@@ -12,6 +12,18 @@ const distDir = path.join(vitePressDir, 'dist');
 const tmpRootDir = path.join(rootDir, 'tmp');
 const defaultSiteUrl = 'https://pels.barelysufficient.org';
 const generatedChannelManifest = 'channels.json';
+const gitRepositoryEnvironmentVariables = new Set([
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_DIR',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_WORK_TREE',
+]);
+const childEnv = Object.fromEntries(
+  Object.entries(process.env)
+    .filter(([name]) => !gitRepositoryEnvironmentVariables.has(name.toUpperCase())),
+);
 
 const channelBase = {
   live: '/',
@@ -87,17 +99,11 @@ async function fetchRefs() {
     '--tags',
     'origin',
     '+refs/heads/*:refs/remotes/origin/*',
-  ]);
+  ], { env: childEnv });
 }
 
-async function prepareDocsSource(channel, tmpDir) {
-  const archivePath = path.join(tmpDir, `${channel.key}.tar`);
-  const checkoutDir = path.join(tmpDir, channel.key);
+async function prepareDocsSource(channel, checkoutDir) {
   const sourceDir = path.join(checkoutDir, 'docs');
-
-  await fs.mkdir(checkoutDir, { recursive: true });
-  await run('git', ['archive', '--format=tar', `--output=${archivePath}`, '--', channel.ref, 'docs']);
-  await run('tar', ['-xf', archivePath, '-C', checkoutDir]);
 
   const taggedSidebarPath = path.join(sourceDir, '.vitepress', 'sidebar.mts');
   const taggedSidebar = await readFileIfExists(taggedSidebarPath);
@@ -115,6 +121,12 @@ async function prepareDocsSource(channel, tmpDir) {
   await rewriteRootRelativeHtmlLinks(sourceDir, channel.base);
 
   return sourceDir;
+}
+
+async function removeDocsWorktree(checkoutDir) {
+  // The current config overlay and channel-specific link rewrites make this
+  // disposable worktree dirty by design.
+  await run('git', ['worktree', 'remove', '--force', checkoutDir], { env: childEnv });
 }
 
 async function readFileIfExists(filePath) {
@@ -203,29 +215,48 @@ async function rewriteRootRelativeHtmlLinks(sourceDir, base) {
   });
 }
 
+async function assertSitemapHasLastmod(outDir, channel) {
+  const sitemap = await fs.readFile(path.join(outDir, 'sitemap.xml'), 'utf8');
+
+  if (!sitemap.includes('<lastmod>')) {
+    throw new Error(`${channel} docs sitemap has no Git-derived <lastmod> entries`);
+  }
+}
+
 async function buildChannel(channel, allChannels, siteUrl, tmpDir) {
-  const sourceDir = await prepareDocsSource(channel, tmpDir);
-  const outDir = path.join(tmpDir, 'out', channel.key);
-  const env = {
-    ...process.env,
-    PELS_DOCS_SITE_URL: siteUrl,
-    PELS_DOCS_BASE: channel.base,
-    PELS_DOCS_CHANNEL: channel.key,
-    PELS_DOCS_OUT_DIR: outDir,
-    PELS_DOCS_LIVE_REF: allChannels.live.ref,
-    PELS_DOCS_TEST_REF: allChannels.test.ref,
-    PELS_DOCS_DEV_REF: displayRef(allChannels.dev.ref),
-  };
+  const checkoutDir = path.join(tmpDir, channel.key);
 
-  await run('npx', ['vitepress', 'build', sourceDir], { env });
+  // VitePress resolves page and sitemap timestamps with `git log` from each
+  // Markdown file, so the selected ref must remain inside a real worktree.
+  await run('git', ['worktree', 'add', '--detach', checkoutDir, channel.ref], { env: childEnv });
 
-  const targetDir = channel.key === 'live'
-    ? distDir
-    : path.join(distDir, channel.key);
+  try {
+    const sourceDir = await prepareDocsSource(channel, checkoutDir);
+    const outDir = path.join(tmpDir, 'out', channel.key);
+    const env = {
+      ...childEnv,
+      PELS_DOCS_SITE_URL: siteUrl,
+      PELS_DOCS_BASE: channel.base,
+      PELS_DOCS_CHANNEL: channel.key,
+      PELS_DOCS_OUT_DIR: outDir,
+      PELS_DOCS_LIVE_REF: allChannels.live.ref,
+      PELS_DOCS_TEST_REF: allChannels.test.ref,
+      PELS_DOCS_DEV_REF: displayRef(allChannels.dev.ref),
+    };
 
-  await fs.mkdir(path.dirname(targetDir), { recursive: true });
-  await fs.rm(targetDir, { recursive: true, force: true });
-  await fs.cp(outDir, targetDir, { recursive: true });
+    await run('npx', ['vitepress', 'build', sourceDir], { env });
+    await assertSitemapHasLastmod(outDir, channel.key);
+
+    const targetDir = channel.key === 'live'
+      ? distDir
+      : path.join(distDir, channel.key);
+
+    await fs.mkdir(path.dirname(targetDir), { recursive: true });
+    await fs.rm(targetDir, { recursive: true, force: true });
+    await fs.cp(outDir, targetDir, { recursive: true });
+  } finally {
+    await removeDocsWorktree(checkoutDir);
+  }
 }
 
 async function writeManifest(siteUrl, channels) {
