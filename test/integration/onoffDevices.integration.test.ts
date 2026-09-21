@@ -139,14 +139,14 @@ describe('On/off device integration', () => {
     expect(entry).toBeUndefined();
   });
 
-  it('supports on/off devices with Homey energy approximation delta', async () => {
+  it('uses Homey energy approximation delta to size a real-metered on/off device', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
 
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         energyObj: {
           approximation: {
             usageOn: 110,
@@ -174,14 +174,14 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerKw).toBeCloseTo(0.1, 6);
   });
 
-  it('uses canonical settings energy values for on/off devices when present', async () => {
+  it('uses canonical settings energy values to size a real-metered on/off device', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
 
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: false,
         settings: {
           energy_value_on: 12.5,
@@ -250,14 +250,14 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
   });
 
-  it('supports on/off devices with Homey energy W fallback when approximation is missing', async () => {
+  it('uses Homey energy W fallback to size a real-metered on/off device', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
 
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: true,
         energyObj: {
           W: 0.125,
@@ -284,14 +284,14 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerKw).toBeCloseTo(0.000125, 9);
   });
 
-  it('does not use Homey energy W fallback for explicitly off on/off devices but keeps them power-capable', async () => {
+  it('does not use Homey energy W fallback for explicitly off real-metered devices', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
 
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: false,
         energyObj: {
           W: 0.125,
@@ -315,7 +315,7 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerKw).toBe(1);
   });
 
-  it('keeps usageConstant-only on/off devices out of the snapshot when no flow-backed power exists', async () => {
+  it('keeps usageConstant-only devices out of planning without clearing structural support', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
@@ -341,10 +341,12 @@ describe('On/off device integration', () => {
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
-    expect(entry).toBeUndefined();
+    expect(entry).toEqual(expect.objectContaining({ powerCapable: true }));
+    expect(app.planService.getPlanDevices().find((device: { id: string }) => device.id === 'device-a'))
+      .toBeUndefined();
   });
 
-  it('keeps off sockets manageable when Homey energy W metadata is present (including 0W)', async () => {
+  it('keeps real-metered off sockets manageable when Homey energy W metadata is present', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
@@ -354,7 +356,7 @@ describe('On/off device integration', () => {
 
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: false,
         energyObj: {
           W: 0,
@@ -381,7 +383,7 @@ describe('On/off device integration', () => {
     expect(controllable['device-a']).toBe(true);
   });
 
-  it('bug: should recover power-capable support after off->on transition when W metadata appears', async () => {
+  it('updates a real-metered device estimate after an off->on transition exposes W metadata', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
@@ -391,7 +393,7 @@ describe('On/off device integration', () => {
 
     const apiGetSpy = vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: false,
         energyObj: {
           W: 0,
@@ -403,7 +405,7 @@ describe('On/off device integration', () => {
 
     apiGetSpy.mockResolvedValue({
       'device-a': buildOnOffApiDevice({
-        capabilities: ['onoff'],
+        capabilities: ['onoff', 'measure_power'],
         onoff: true,
         energyObj: {
           W: 0.125,
@@ -433,7 +435,7 @@ describe('On/off device integration', () => {
     expect(controllable['device-a']).toBe(true);
   });
 
-  it('bug: off virtual socket/light should remain user-manageable even when W=0 and live report has no device entry', async () => {
+  it('preserves metadata-only device settings without admitting it to planning', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
@@ -483,12 +485,9 @@ describe('On/off device integration', () => {
       expectedPowerKw?: number;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
-    expect(entry).toBeDefined();
-    expect(entry).toEqual(expect.objectContaining({
-      powerCapable: true,
-      expectedPowerSource: 'default',
-      expectedPowerKw: 1,
-    }));
+    expect(entry).toEqual(expect.objectContaining({ powerCapable: true }));
+    expect(app.planService.getPlanDevices().find((device: { id: string }) => device.id === 'device-a'))
+      .toBeUndefined();
 
     const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;

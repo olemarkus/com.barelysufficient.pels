@@ -1021,6 +1021,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater',
         temperature: { currentTemperature: 16, target: { id: 'target_temperature', value: 16, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+        measuredPowerKw: 1.2,
         expectedPowerKw: 1.2,
         binaryControl: { on: true },
       },
@@ -1058,6 +1059,7 @@ describe('Device plan snapshot', () => {
     app.deviceManager.setSnapshotForTests([
       {
         available: true,
+        measuredPowerKw: 0,
         expectedPowerKw: 0,
         expectedPowerSource: 'default',
         id: 'dev-1',
@@ -1097,6 +1099,7 @@ describe('Device plan snapshot', () => {
     app.deviceManager.setSnapshotForTests([
       {
         available: true,
+        measuredPowerKw: 0,
         expectedPowerKw: 0,
         expectedPowerSource: 'default',
         id: 'dev-1',
@@ -1136,6 +1139,7 @@ describe('Device plan snapshot', () => {
     app.deviceManager.setSnapshotForTests([
       {
         available: true,
+        measuredPowerKw: 0,
         expectedPowerKw: 0,
         expectedPowerSource: 'default',
         id: 'dev-1',
@@ -1155,6 +1159,7 @@ describe('Device plan snapshot', () => {
     app.deviceManager.setSnapshotForTests([
       {
         available: true,
+        measuredPowerKw: 0,
         expectedPowerKw: 0,
         expectedPowerSource: 'default',
         id: 'dev-1',
@@ -1438,7 +1443,8 @@ describe('Device plan snapshot', () => {
   });
 
   it('updates planned target when switching modes', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -1772,6 +1778,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
+        measuredPowerKw: 1,
         expectedPowerKw: 1,
         binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
@@ -1784,6 +1791,7 @@ describe('Device plan snapshot', () => {
         id: 'dev-2',
         name: 'Heater B',
         targets: [],
+        measuredPowerKw: 0,
         expectedPowerKw: 1,
         binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
@@ -2404,6 +2412,7 @@ describe('Device plan snapshot', () => {
         deviceType: 'temperature',
         temperature: { currentTemperature: 65, target: { id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 } },
         targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
+        measuredPowerKw: 0,
         expectedPowerKw: 3,
         binaryControl: { on: true },
         controllable: true,
@@ -2796,9 +2805,14 @@ describe('Device plan snapshot', () => {
 
   it('sorts plan devices by priority ascending (priority 1 = most important, first)', async () => {
     // Create devices with different priorities (lower number = higher importance)
-    const dev1 = new MockDevice('dev-1', 'Most Important Heater', ['target_temperature']);
-    const dev2 = new MockDevice('dev-2', 'Least Important Heater', ['target_temperature']);
-    const dev3 = new MockDevice('dev-3', 'Medium Priority Heater', ['target_temperature']);
+    const dev1 = new MockDevice('dev-1', 'Most Important Heater', ['target_temperature', 'measure_power']);
+    const dev2 = new MockDevice('dev-2', 'Least Important Heater', ['target_temperature', 'measure_power']);
+    const dev3 = new MockDevice('dev-3', 'Medium Priority Heater', ['target_temperature', 'measure_power']);
+    await Promise.all([
+      dev1.setCapabilityValue('measure_power', 1000),
+      dev2.setCapabilityValue('measure_power', 1000),
+      dev3.setCapabilityValue('measure_power', 1000),
+    ]);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1, dev2, dev3]),
@@ -3278,9 +3292,10 @@ describe('Dry run mode', () => {
   });
 
   it('builds plan targets for mode changes in dry run mode', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 20);
     await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3411,9 +3426,10 @@ describe('Dry run mode', () => {
   });
 
   it('price optimization uses current operating mode targets in plan', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 40);
     await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3461,6 +3477,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         temperature: { currentTemperature: 40, target: { id: 'target_temperature', value: 40, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 40, unit: '°C' }],
+        measuredPowerKw: 1,
         expectedPowerKw: 1,
         binaryControl: { on: true },
         controllable: true,
@@ -3474,9 +3491,10 @@ describe('Dry run mode', () => {
   });
 
   it('applies price optimization when capacity control is disabled', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 50);
     await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3511,6 +3529,7 @@ describe('Dry run mode', () => {
         deviceType: 'temperature',
         temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 50, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 50, unit: '°C' }],
+        measuredPowerKw: 1,
         expectedPowerKw: 1,
         binaryControl: { on: true },
       },

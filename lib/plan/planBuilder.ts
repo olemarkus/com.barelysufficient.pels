@@ -28,7 +28,12 @@ import type { PlanBuilderDeps } from './planBuilderDeps';
 import { resolvePowerCycleReading } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
+import {
+  computeDailyUsageSoftLimit,
+  computeDynamicSoftLimit,
+  computeShortfallThreshold,
+  isDailyBudgetBelowSustainableCapacity,
+} from './planBudget';
 import {
   buildPlanContext,
   resolveMeasuredPower,
@@ -310,6 +315,8 @@ export class PlanBuilder {
       power,
       planDevices: finalized.planDevices,
       restoreResult,
+      budgetPressureEligible: isDailyBudgetBelowSustainableCapacity(dailyBudgetSnapshot, this.capacitySettings),
+      smartTaskDrivingDeviceIds: decoration.drivingDeviceIds,
       nowTs,
     });
     return {

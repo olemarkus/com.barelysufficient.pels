@@ -38,6 +38,8 @@ type BuildDeviceDiagnosticsObservationsParams = {
   power: MeasuredPower;
   planDevices: DevicePlanDevice[];
   restoreResult: RestorePlanResult;
+  budgetPressureEligible: boolean;
+  smartTaskDrivingDeviceIds: ReadonlySet<string>;
 };
 
 export const buildDeviceDiagnosticsObservations = (
@@ -49,6 +51,8 @@ export const buildDeviceDiagnosticsObservations = (
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
+    budgetPressureEligible: params.budgetPressureEligible,
+    smartTaskDriving: params.smartTaskDrivingDeviceIds.has(device.id),
     // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
     // AND capacity not also breached. Hourly-cap exhaustion forces
     // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
@@ -294,6 +298,8 @@ const buildDiagnosticsObservation = (params: {
   device: DevicePlanDevice;
   restoreResult: RestorePlanResult;
   budgetReleasableHeadroomHold: boolean;
+  budgetPressureEligible: boolean;
+  smartTaskDriving: boolean;
 }): DeviceDiagnosticsPlanObservation => {
   const {
     temperatureSetpoints,
@@ -301,13 +307,17 @@ const buildDiagnosticsObservation = (params: {
     device,
     restoreResult,
     budgetReleasableHeadroomHold,
+    budgetPressureEligible,
+    smartTaskDriving,
   } = params;
   // Demand metrics and the starvation lanes both ask the same question — does
   // being off mean this device is going without? — and the producer answered it
   // (`hasStandingDemand`). A charger with no car is not starved, and neither
   // this file nor its callers need to know that is what makes it different.
   const { hasStandingDemand } = device;
-  const includeDemandMetrics = hasStandingDemand && device.control.commandAuthority && device.available;
+  const includeDemandMetrics = (hasStandingDemand || smartTaskDriving)
+    && device.control.commandAuthority
+    && device.available;
   const setpoints = resolveObservationSetpoints(temperatureSetpoints, inputDevice);
   const desiredTarget = setpoints === null ? null : setpoints.desiredC;
   const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
@@ -364,6 +374,7 @@ const buildDiagnosticsObservation = (params: {
     pelsCommandsTurnOffShed,
     pelsHoldsBelowTarget,
     expectedPowerKw: device.expectedPowerKw,
+    budgetPressureDenied: budgetPressureEligible && unmetDemand,
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

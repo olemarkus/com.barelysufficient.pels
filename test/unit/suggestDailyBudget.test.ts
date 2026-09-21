@@ -1,5 +1,5 @@
 import type { EnergySignatureFit } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
+import { suggestDailyBudgetKwh } from '../../lib/weather/suggestDailyBudget';
 
 const baseFit: EnergySignatureFit = {
   model: 'changepoint',
@@ -59,18 +59,18 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.suggestedBudgetKwh).toBe(28); // 20 + q90 8, not 20 + q80 5
   });
 
-  it('adds the budget-pressure term on top of the headroom, bounded to half the prediction', () => {
+  it('adds the full budget-pressure term on top of the headroom', () => {
     const state = { kwh: 7, throughDateKey: '2026-07-31' };
     const result = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0, budgetPressure: state });
     expect(result.budgetPressureKwh).toBe(7);
     expect(result.suggestedBudgetKwh).toBe(62); // 50 predicted + 5 q80 + 7 pressure
 
-    // The ceiling is half the prediction (25 here), so a runaway term is clamped.
+    // Pressure is not model-relative: it exists to correct an under-predicting model.
     const runaway = suggestDailyBudgetKwh({
       fit: baseFit, forecastMeanTempC: 0, budgetPressure: { kwh: 90, throughDateKey: '2026-07-31' },
     });
-    expect(runaway.budgetPressureKwh).toBe(25);
-    expect(runaway.suggestedBudgetKwh).toBe(80);
+    expect(runaway.budgetPressureKwh).toBe(90);
+    expect(runaway.suggestedBudgetKwh).toBe(145);
   });
 
   it('keeps the capacity ceiling above the pressure term, and reports what it really added', () => {
@@ -126,6 +126,17 @@ describe('suggestDailyBudgetKwh', () => {
     const warmFit = { ...baseFit, baseLoadKwhPerDay: 6, medianDayKwh: 7, lowObservedDayKwh: 5, residualQ80: 0.2 };
     const floor = suggestDailyBudgetKwh({ fit: warmFit, forecastMeanTempC: 20 });
     expect(floor.suggestedBudgetKwh).toBe(20); // MIN_DAILY_BUDGET_KWH
+  });
+
+  it('uses the target local-day length for the sustainable capacity ceiling', () => {
+    const shortDay = suggestDailyBudgetKwh({
+      fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 23,
+    });
+    const longDay = suggestDailyBudgetKwh({
+      fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 25,
+    });
+    expect(shortDay.suggestedBudgetKwh).toBe(46);
+    expect(longDay.suggestedBudgetKwh).toBe(50);
   });
 
   it('never suggests below the home-demonstrated q05 floor', () => {

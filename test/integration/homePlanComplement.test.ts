@@ -248,6 +248,19 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
   });
 
+  it('excludes a device until a trusted device-power reading exists', () => {
+    const { measuredPowerKw: _measuredPowerKw, ...unmetered } = mainDevice as TargetDeviceSnapshot & {
+      measuredPowerKw: number;
+    };
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [unmetered as TargetDeviceSnapshot],
+      homeMembership: makeMembershipService([{ deviceId: 'device-main', zoneId: 'z1' }]),
+      resolveManagedState: vi.fn(() => true),
+    });
+
+    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
+  });
+
   it('excludes a sub-home zone member from the main plan devices', () => {
     createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
     const ctx = makeCtx(makeMembershipService(membershipInputs));

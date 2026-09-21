@@ -2210,9 +2210,12 @@ describe('Price optimization', () => {
     });
 
     // Set up mock driver for the device so DeviceTransport can find it
-    const waterHeater2 = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    const waterHeater2 = new MockDevice(
+      'water-heater-1', 'Water Heater', ['target_temperature', 'onoff', 'measure_power'],
+    );
     waterHeater2.setCapabilityValue('target_temperature', 55);
     waterHeater2.setCapabilityValue('onoff', true);
+    waterHeater2.setCapabilityValue('measure_power', 1_000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater2]),
     });
@@ -2236,9 +2239,12 @@ describe('Price optimization', () => {
   });
 
   it('plan shows expensiveDelta applied during expensive hours', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    const waterHeater = new MockDevice(
+      'water-heater-1', 'Water Heater', ['target_temperature', 'onoff', 'measure_power'],
+    );
     waterHeater.setCapabilityValue('target_temperature', 55);
     waterHeater.setCapabilityValue('onoff', true);
+    waterHeater.setCapabilityValue('measure_power', 1_000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
@@ -2315,9 +2321,12 @@ describe('Price optimization', () => {
   });
 
   it('plan shows base temperature during normal hours (no delta)', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    const waterHeater = new MockDevice(
+      'water-heater-1', 'Water Heater', ['target_temperature', 'onoff', 'measure_power'],
+    );
     waterHeater.setCapabilityValue('target_temperature', 55);
     waterHeater.setCapabilityValue('onoff', true);
+    waterHeater.setCapabilityValue('measure_power', 1_000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
@@ -2393,9 +2402,12 @@ describe('Price optimization', () => {
   });
 
   it('plan does not apply delta when price optimization is disabled', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    const waterHeater = new MockDevice(
+      'water-heater-1', 'Water Heater', ['target_temperature', 'onoff', 'measure_power'],
+    );
     waterHeater.setCapabilityValue('target_temperature', 55);
     waterHeater.setCapabilityValue('onoff', true);
+    waterHeater.setCapabilityValue('measure_power', 1_000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
@@ -2471,9 +2483,12 @@ describe('Price optimization', () => {
   });
 
   it('applies price optimization delta on startup during expensive hour', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Connected 300', ['target_temperature', 'onoff']);
+    const waterHeater = new MockDevice(
+      'water-heater-1', 'Connected 300', ['target_temperature', 'onoff', 'measure_power'],
+    );
     waterHeater.setCapabilityValue('target_temperature', 65);
     waterHeater.setCapabilityValue('onoff', true);
+    waterHeater.setCapabilityValue('measure_power', 1_000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });

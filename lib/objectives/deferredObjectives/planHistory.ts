@@ -1,8 +1,6 @@
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryV5,
@@ -16,18 +14,12 @@ import {
   type StallEvidence,
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
-import { resolveFinalProgressValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import {
   appendHourlyContribution,
-  buildFinalHourFlush,
   buildFinalizedAttributionEvent,
-  detectHourRollover,
   drainProgressSamples,
-  hasTrustworthyProgress,
   hourBucketMs,
   type HourPriceResolver,
-  type HourProgressSnapshot,
-  pickKwhPerUnit,
 } from './planHistoryV4Helpers';
 import {
   buildKey,
@@ -47,6 +39,8 @@ import {
 } from './planHistoryInProgressState';
 import { randomUUID } from 'node:crypto';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
+import type { MeteredDeviceReading } from '../../ports/meteredSnapshots';
 
 const logger = getLogger('plan/deferred-history');
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
@@ -59,6 +53,36 @@ export const HISTORY_ENTRY_CAP = 30;
 // in the future, treat the run as abandoned (settings disabled, device removed, evaluator
 // dropped to unknown for an extended stretch).
 const ABANDON_GRACE_MS = 60 * 60 * 1000;
+const MAX_METERED_DELIVERY_SAMPLE_GAP_MS = 10 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+type DeliveryInterval = {
+  startMs: number;
+  endMs: number;
+  powerKw: number;
+};
+
+const readingEndMs = (reading: MeteredDeviceReading): number => (
+  reading.kind === 'instantaneous' ? reading.observedAtMs : reading.endMs
+);
+
+const resolveDeliveryInterval = (
+  reading: MeteredDeviceReading,
+  previous: MeteredDeviceReading | undefined,
+): DeliveryInterval | null => {
+  if (reading.kind === 'interval_average') {
+    if (previous !== undefined && reading.endMs <= readingEndMs(previous)) return null;
+    if (reading.endMs <= reading.startMs) return null;
+    return { startMs: reading.startMs, endMs: reading.endMs, powerKw: reading.powerKw };
+  }
+  if (previous?.kind !== 'instantaneous') return null;
+  if (reading.observedAtMs <= previous.observedAtMs) return null;
+  return {
+    startMs: previous.observedAtMs,
+    endMs: reading.observedAtMs,
+    powerKw: previous.powerKw,
+  };
+};
 
 // Reads through the observer-layer idle classifier
 // (`lib/observer/idleClassifier.ts`). `near_target_idle` and `capped_idle`
@@ -112,7 +136,10 @@ export type PlanHistoryPersistDeps = {
   // settings.set threw and the host swallowed it). A `false` return keeps the recorder dirty
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
-  save: (history: DeferredObjectivePlanHistoryV5) => boolean;
+  save: (
+    history: DeferredObjectivePlanHistoryV5,
+    meteredDeliveryStates: readonly PersistedMeteredDeliveryState[],
+  ) => boolean;
   // Optional bus the recorder publishes ended events to as runs finalize. The
   // recorder filters by `discoveredFrom === 'observation'` and public outcome
   // (`met`/`missed`/`abandoned`) before publishing — backfill and replaced
@@ -136,29 +163,18 @@ export type PlanHistoryPersistDeps = {
   // so the recorder stays usable in tests and headless callers. Gated on the
   // `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
   debugStructured?: StructuredDebugEmitter;
-  // Optional side-effect callback that persists the in-flight postmortem hour
-  // anchors (`currentHourOpening` / `lastKWhPerUnit`) onto the matching active
-  // plan after each observe cycle. The active-plan recorder owns the persisted
-  // active-plans blob, so the recorder threads its in-memory anchors out through
-  // this seam rather than writing the setting itself. On a PELS restart mid-run
-  // the persisted anchor is read back in `startRecord` so the in-flight hour's
-  // postmortem bar isn't blanked. Optional so the recorder stays usable in tests
-  // and headless callers (without it, the lossy-restart behaviour is unchanged).
-  persistInProgressAnchors?: (anchors: {
-    deviceId: string;
-    deadlineAtMs: number;
-    hourOpening: { hourMs: number; value: number } | null;
-    kWhPerUnit: number | null;
-  }) => void;
 };
 
 export type PlanHistoryLoadResult = {
   snapshot: DeferredObjectivePlanHistoryV5;
   persistenceSafe: boolean;
+  meteredDeliveryStates?: readonly PersistedMeteredDeliveryState[];
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
   private inProgress = new Map<InProgressKey, InProgressRecord>();
+  private lastMeteredDeliveryByDeviceId = new Map<string, MeteredDeviceReading>();
+  private restoredMeteredDeliveryByKey = new Map<InProgressKey, PersistedMeteredDeliveryState>();
 
   private entries: DeferredObjectivePlanHistoryRecord[];
 
@@ -170,6 +186,9 @@ export class DeferredObjectivePlanHistoryRecorder {
     const loaded = deps.load();
     this.entries = loaded.snapshot.entries.slice();
     this.persistenceSafe = loaded.persistenceSafe;
+    for (const state of loaded.meteredDeliveryStates ?? []) {
+      this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), state);
+    }
     this.trimEntries();
   }
 
@@ -253,20 +272,34 @@ export class DeferredObjectivePlanHistoryRecorder {
       const merged = plannable
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
-      const withRollover = this.applyHourlyDeliveryRollover(merged, diag, nowMs);
-      const settled = this.maybePromoteOnStall(withRollover, diag, nowMs, getStallClassification);
+      const settled = this.maybePromoteOnStall(merged, diag, nowMs, getStallClassification);
       this.inProgress.set(key, settled);
-      this.persistAnchors(settled);
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
     // deadline event is the recorded thing; observation quality is captured separately via
-    // observedIntervals + progress nullability. The stale-deadline guard still applies so a
-    // diagnostic whose deadline has already passed doesn't create a junk record finalized on
-    // the same cycle.
-    if (diag.deadlineAtMs! <= nowMs) return;
-    const next = startRecord(diag, nowMs, plan);
+    // observedIntervals + progress nullability. A stale deadline starts no new record, but a
+    // restored metered run must be reconstructed and finalized so its saved delivery survives.
+    if (diag.deadlineAtMs! <= nowMs) {
+      const restored = this.restoredMeteredDeliveryByKey.get(key);
+      if (restored === undefined) return;
+      const recovered = startRecord(diag, nowMs, plan);
+      if (recovered === null) return;
+      this.pushEntry(finalizeRecord(
+        restoreMeteredDelivery(recovered, restored),
+        nowMs,
+        'deadline_passed',
+      ));
+      this.restoredMeteredDeliveryByKey.delete(key);
+      return;
+    }
+    let next = startRecord(diag, nowMs, plan);
     if (!next) return;
+    const restored = this.restoredMeteredDeliveryByKey.get(key);
+    if (restored !== undefined) {
+      next = restoreMeteredDelivery(next, restored);
+      this.restoredMeteredDeliveryByKey.delete(key);
+    }
     // Deliberately skip stall promotion on first-seen records. The
     // classification ticks AFTER plan emission (`tickIdleClassifier`), so the
     // value we'd read here is the *previous* cycle's result — which belongs
@@ -277,20 +310,6 @@ export class DeferredObjectivePlanHistoryRecorder {
     // the classifier has had a chance to re-evaluate against the actual
     // current objective — handles promotion through the `existing` branch.
     this.inProgress.set(key, next);
-    this.persistAnchors(next);
-  }
-
-  // Thread the record's in-flight postmortem anchors out to the active-plan
-  // recorder (when wired) so they survive a PELS restart mid-run. Pure read of
-  // the record — the active-plan recorder no-ops when no plan tracks the run yet
-  // and only marks the active plans dirty when a value actually changed.
-  private persistAnchors(record: InProgressRecord): void {
-    this.deps.persistInProgressAnchors?.({
-      deviceId: record.deviceId,
-      deadlineAtMs: record.deadlineAtMs,
-      hourOpening: record.currentHourOpening,
-      kWhPerUnit: record.lastKWhPerUnit,
-    });
   }
 
   /**
@@ -313,6 +332,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (config.deadlineAtMs <= fromMs || config.deadlineAtMs > toMs) continue;
       const key = buildKey(config.deviceId, config.deadlineAtMs);
       if (existingKeys.has(key)) continue;
+      if (this.restoredMeteredDeliveryByKey.has(key)) continue;
       existingKeys.add(key);
       this.pushEntry(synthesizeBackfillEntry(config));
     }
@@ -332,8 +352,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   finalizeForUserChange(deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned'): void {
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
-      const flushed = this.flushOpenHourAtFinalize(record);
-      this.pushEntry(finalizeRecord(flushed, nowMs, reason));
+      this.pushEntry(finalizeRecord(record, nowMs, reason));
       this.inProgress.delete(key);
     }
   }
@@ -356,142 +375,91 @@ export class DeferredObjectivePlanHistoryRecorder {
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
       if (record.deadlineAtMs > nowMs) continue;
-      const flushed = this.flushOpenHourAtFinalize(record);
-      this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
+      this.pushEntry(finalizeRecord(record, nowMs, 'deadline_passed'));
       this.inProgress.delete(key);
     }
   }
 
-  // Drive the internal hour-rollover detector after a cycle's progress
-  // sample has been recorded. Each closed-hour contribution is folded into
-  // the record through the shared merge helper, so the finalize-time flush
-  // and this per-cycle rollover agree on the postmortem totals. The
-  // `currentHourOpening` anchor and cached `lastKWhPerUnit` are always
-  // refreshed so the next cycle's rollover sees the freshest values, even on
-  // cycles that produced no contribution.
-  private applyHourlyDeliveryRollover(
-    record: InProgressRecord,
-    diag: DeferredObjectiveDiagnostic,
-    nowMs: number,
-  ): InProgressRecord {
-    if (!hasTrustworthyProgress(diag)) return record;
-    const nowProgress = diag.objectiveKind === 'temperature'
-      ? diag.currentTemperatureC
-      : diag.currentPercent;
-    if (nowProgress === null) return record;
-    const kWhPerUnit = pickKwhPerUnit(diag);
-    // Anchor an opening on the first trustworthy reading even when
-    // kWh/unit isn't resolved yet — once a profile lands later in the run
-    // we can still attribute the closing hour using the freshly-resolved
-    // factor. Skip emission for the prior hour if kWh/unit was missing
-    // when it closed.
-    if (record.currentHourOpening === null) {
-      return {
-        ...record,
-        currentHourOpening: { hourMs: hourBucketMs(nowMs), value: nowProgress },
-        lastKWhPerUnit: kWhPerUnit ?? record.lastKWhPerUnit,
-      };
+  /**
+   * Integrate trusted, source-timed device-meter readings for every open
+   * Smart-task run. Retained snapshots repeat the same source timestamp and are
+   * therefore a no-op. Direct watt readings close the prior sample's forward
+   * interval; cumulative-meter averages book their own already-covered interval.
+   */
+  observeMeteredDelivery(readings: readonly MeteredDeviceReading[]): void {
+    const previousByDeviceId = this.lastMeteredDeliveryByDeviceId;
+    this.lastMeteredDeliveryByDeviceId = new Map(readings.map((reading) => [reading.deviceId, reading]));
+    const readingByDeviceId = new Map(readings.map((reading) => [reading.deviceId, reading]));
+    for (const [key, record] of this.inProgress) {
+      const reading = readingByDeviceId.get(record.deviceId);
+      if (reading === undefined) continue;
+      const previous = previousByDeviceId.get(record.deviceId);
+      let next = record;
+      const interval = resolveDeliveryInterval(reading, previous);
+      const intervalIsTrustworthy = interval !== null && (
+        reading.kind === 'interval_average'
+        || interval.endMs - interval.startMs <= MAX_METERED_DELIVERY_SAMPLE_GAP_MS
+      );
+      if (intervalIsTrustworthy) {
+        const startMs = Math.max(interval.startMs, record.startedAtMs);
+        const endMs = Math.min(interval.endMs, record.deadlineAtMs);
+        if (endMs > startMs) {
+          next = this.integrateMeteredDelivery(next, startMs, endMs, interval.powerKw);
+          this.dirty = true;
+        }
+      }
+      this.inProgress.set(key, next);
     }
-    if (kWhPerUnit === null) {
-      // No factor yet — keep the existing opening so the eventual
-      // resolution can still attribute against it, but skip emission.
-      return { ...record, lastKWhPerUnit: kWhPerUnit ?? record.lastKWhPerUnit };
-    }
-    const rollover = detectHourRollover({
-      opening: record.currentHourOpening,
-      nowProgress,
-      nowMs,
-      kWhPerUnit,
-      resolvePrice: this.deps.resolveHourPrice,
-    });
-    if (rollover === null) {
-      // No transition — only refresh the cached kWh/unit so finalize-time
-      // flush uses the latest factor.
-      return { ...record, lastKWhPerUnit: kWhPerUnit };
-    }
-    return this.foldContributionsIntoRecord({
-      record,
-      contributions: rollover.contributions,
-      nextOpening: rollover.nextOpening,
-      kWhPerUnit,
-      costDisplay: rollover.costDisplay,
-    });
   }
 
-  // Pure merge of zero-or-more emitted contributions into an in-progress
-  // record. The single place the delivery totals are summed, so the
-  // per-cycle rollover and the finalize-time flush agree byte-for-byte on
-  // the persisted entry. Always advances `currentHourOpening` and
-  // `lastKWhPerUnit` so finalize-time flushing has the right anchor even
-  // when no contribution fired this cycle. Captures the run's `costDisplay`
-  // provenance the first time a priced contribution supplies one (first-write
-  // wins so an unchanging scheme isn't re-stamped, and a mid-run scheme switch
-  // keeps the currency the bulk of the run was recorded under).
-  private foldContributionsIntoRecord(params: {
-    record: InProgressRecord;
-    contributions: readonly DeferredObjectivePlanHistoryHourlyContribution[];
-    nextOpening: HourProgressSnapshot;
-    kWhPerUnit: number;
-    costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
-  }): InProgressRecord {
-    const { record, contributions, nextOpening, kWhPerUnit, costDisplay } = params;
-    if (contributions.length === 0) {
-      return { ...record, currentHourOpening: nextOpening, lastKWhPerUnit: kWhPerUnit };
-    }
-    let { hourlyContributions, deliveredKWh, totalCost } = record;
-    for (const contribution of contributions) {
-      hourlyContributions = appendHourlyContribution(hourlyContributions, contribution);
-      deliveredKWh += contribution.deliveredKWh;
-      totalCost += contribution.deliveredKWh * contribution.priceValue;
+  private integrateMeteredDelivery(
+    record: InProgressRecord,
+    startMs: number,
+    endMs: number,
+    currentDrawKw: number,
+  ): InProgressRecord {
+    let cursorMs = startMs;
+    let deliveredKWh = record.deliveredKWh;
+    let totalCost = record.totalCost;
+    let costDisplay = record.costDisplay;
+    let hourlyContributions = record.hourlyContributions;
+    let deliveryPriceComplete = record.deliveryPriceComplete;
+    while (cursorMs < endMs) {
+      const hourMs = hourBucketMs(cursorMs);
+      const sliceEndMs = Math.min(endMs, hourMs + ONE_HOUR_MS);
+      const sliceDeliveredKWh = currentDrawKw * ((sliceEndMs - cursorMs) / ONE_HOUR_MS);
+      const price = this.deps.resolveHourPrice?.(hourMs) ?? null;
+      if (price === null) {
+        deliveredKWh += sliceDeliveredKWh;
+        deliveryPriceComplete = deliveryPriceComplete && sliceDeliveredKWh === 0;
+      } else {
+        deliveredKWh += sliceDeliveredKWh;
+        totalCost += sliceDeliveredKWh * price.priceValue;
+        costDisplay ??= price.costDisplay;
+        hourlyContributions = appendHourlyContribution(hourlyContributions, {
+          atMs: hourMs,
+          deliveredKWh: sliceDeliveredKWh,
+          priceValue: price.priceValue,
+          tone: price.tone,
+        });
+      }
+      cursorMs = sliceEndMs;
     }
     return {
       ...record,
-      hourlyContributions,
+      hasDeliveryContribution: true,
       deliveredKWh,
       totalCost,
-      costDisplay: record.costDisplay ?? costDisplay ?? null,
-      hasDeliveryContribution: true,
-      currentHourOpening: nextOpening,
-      lastKWhPerUnit: kWhPerUnit,
+      costDisplay,
+      hourlyContributions,
+      deliveryPriceComplete,
     };
-  }
-
-  // Flush a final contribution for the still-open hour when the run
-  // finalizes. Without this, a sub-hour run (short EV top-up, brief
-  // thermal nudge) that never crossed an hour boundary would record
-  // `hasDeliveryContribution: false` and drop its delivery entirely. The
-  // helper returns the record updated with the flushed contribution (or
-  // the original record if no flush was possible — no opening anchor, no
-  // measurable delta, no kWh/unit, or no price resolver).
-  private flushOpenHourAtFinalize(record: InProgressRecord): InProgressRecord {
-    const finalProgress = resolveFinalProgressValue(record);
-    // Option (a): advance the opening anchor to the *next* hour bucket so a
-    // (defensive) re-entry on the returned record cannot collide with the
-    // just-flushed hour. Finalization deletes the record immediately today, so
-    // this is belt-and-braces — but the previous shape (re-using the
-    // just-closed `hourMs`) was a latent double-count waiting for a refactor.
-    // See `buildFinalHourFlush` for the next-bucket math.
-    const flush = buildFinalHourFlush({
-      opening: record.currentHourOpening,
-      finalProgress,
-      kWhPerUnit: record.lastKWhPerUnit,
-      resolvePrice: this.deps.resolveHourPrice,
-    });
-    if (flush === null) return record;
-    return this.foldContributionsIntoRecord({
-      record,
-      contributions: [flush.contribution],
-      nextOpening: flush.nextOpening,
-      kWhPerUnit: record.lastKWhPerUnit!,
-      costDisplay: flush.costDisplay,
-    });
   }
 
   private finalizeStaleRecords(seenKeys: ReadonlySet<InProgressKey>, nowMs: number): void {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
-        const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
+        this.pushEntry(finalizeRecord(record, nowMs, 'deadline_passed'));
         this.inProgress.delete(key);
         continue;
       }
@@ -500,8 +468,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       // window before declaring the run abandoned, in case the device briefly drops out and
       // recovers.
       if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
-        const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'));
+        this.pushEntry(finalizeRecord(record, nowMs, 'abandoned'));
         this.inProgress.delete(key);
       }
     }
@@ -550,7 +517,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     const persisted = this.deps.save({
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
-    });
+    }, this.buildMeteredDeliverySnapshot());
     if (!persisted) return false;
     this.dirty = false;
     return true;
@@ -572,15 +539,69 @@ export class DeferredObjectivePlanHistoryRecorder {
     const recovered = this.deps.load();
     if (!recovered.persistenceSafe) return;
     this.entries = mergeRecoveredEntries(recovered.snapshot.entries, this.entries);
+    for (const state of recovered.meteredDeliveryStates ?? []) {
+      const key = buildKey(state.deviceId, state.deadlineAtMs);
+      const active = this.inProgress.get(key);
+      if (active === undefined) {
+        this.restoredMeteredDeliveryByKey.set(key, state);
+      } else {
+        this.inProgress.set(key, mergeMeteredDelivery(active, state));
+      }
+    }
     this.trimEntries();
     this.persistenceSafe = true;
+  }
+
+  private buildMeteredDeliverySnapshot(): PersistedMeteredDeliveryState[] {
+    const restored = [...this.restoredMeteredDeliveryByKey.values()];
+    const active = [...this.inProgress.values()].flatMap((record) => (
+      record.hasDeliveryContribution
+        ? [{
+          deviceId: record.deviceId,
+          deadlineAtMs: record.deadlineAtMs,
+          startedAtMs: record.startedAtMs,
+          deliveredKWh: record.deliveredKWh,
+          totalCost: record.totalCost,
+          costDisplay: record.costDisplay,
+          deliveryPriceComplete: record.deliveryPriceComplete,
+          hourlyContributions: record.hourlyContributions.slice(),
+        }]
+        : []
+    ));
+    return [...restored, ...active];
   }
 
   // Test-only seam: clear in-progress state without touching persisted entries.
   resetInProgressForTests(): void {
     this.inProgress.clear();
+    this.lastMeteredDeliveryByDeviceId.clear();
   }
 }
+
+const restoreMeteredDelivery = (
+  record: InProgressRecord,
+  state: PersistedMeteredDeliveryState,
+): InProgressRecord => mergeMeteredDelivery(record, state);
+
+const mergeMeteredDelivery = (
+  record: InProgressRecord,
+  state: PersistedMeteredDeliveryState,
+): InProgressRecord => {
+  let hourlyContributions = state.hourlyContributions.slice();
+  for (const contribution of record.hourlyContributions) {
+    hourlyContributions = appendHourlyContribution(hourlyContributions, contribution);
+  }
+  return {
+    ...record,
+    startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
+    deliveredKWh: state.deliveredKWh + record.deliveredKWh,
+    totalCost: state.totalCost + record.totalCost,
+    costDisplay: state.costDisplay ?? record.costDisplay,
+    hasDeliveryContribution: true,
+    deliveryPriceComplete: state.deliveryPriceComplete && record.deliveryPriceComplete,
+    hourlyContributions,
+  };
+};
 
 const mergeRecoveredEntries = (
   durable: readonly DeferredObjectivePlanHistoryRecord[],

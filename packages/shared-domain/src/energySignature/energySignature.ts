@@ -100,11 +100,8 @@ function selectFitRecords(records: WeatherDailyRecord[]): FitSelection {
 /**
  * Recent days the DAILY BUDGET damaged — the suggestion then leans up.
  *
- * Keyed on the day-close verdict (`dayWasBudgetDamaged`), not on hold time: a
- * home whose budget merely shapes the day — holds at noon, serves by evening —
- * produces no lean, because deferral is the feature working. Only a day that
- * ended with a device still denied (or, for records predating the verdict, the
- * legacy hold-time bar) arms it.
+ * Keyed on `dayWasBudgetDamaged`, which reads the cause-independent denied-energy
+ * integral. Records predating that integral retain their legacy hold-time bar.
  *
  * Deliberately NOT gated on temperature. It used to require the day to be below
  * the heating knee, which made the whole correction dead above it: a home whose

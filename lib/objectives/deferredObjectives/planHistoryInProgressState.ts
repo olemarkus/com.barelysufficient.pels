@@ -29,9 +29,6 @@ import {
   captureRevisionSnapshot,
   drainProgressSamples,
   hasTrustworthyProgress,
-  hourBucketMs,
-  type HourProgressSnapshot,
-  pickKwhPerUnit,
   recordProgressSample,
   seedProgressSamples,
 } from './planHistoryV4Helpers';
@@ -92,9 +89,9 @@ export type InProgressRecord = Omit<
   // (deterministic eviction, full-run coverage preserved) so the in-memory
   // map stays bounded. Drained into the entry at finalization.
   progressSamples: Map<number, DeferredObjectivePlanHistoryProgressSample>;
-  // Total useful kWh delivered to the device across the run. Summed from the
-  // hour-rollover contributions; persisted only when at least one contribution
-  // was recorded so empty runs stay byte-stable across upgrades.
+  // Total kWh delivered to the device across the run, integrated from its
+  // trusted measured-power feed. Persisted after the first metered sample,
+  // including an exact zero-delivery run.
   deliveredKWh: number;
   // Σ priceValue × deliveredKWh across the run, in the price scheme's raw
   // minor unit at record time (øre for the default Norwegian scheme).
@@ -102,8 +99,8 @@ export type InProgressRecord = Omit<
   // (cost / delivered) stays internally consistent.
   totalCost: number;
   // Price-display provenance (`{ unit, divisor }`) the `totalCost` above is
-  // being accumulated under, captured the first time a priced contribution
-  // fires (rollover or finalize flush) from the hour-price resolver's
+  // being accumulated under, captured the first time a priced metered interval
+  // is integrated from the hour-price resolver's
   // `costDisplay`. `null` until the first priced contribution. Persisted at
   // finalize so the archive formats the figure in its recorded currency; a run
   // that never received a priced contribution finalizes with it null (and the
@@ -115,6 +112,10 @@ export type InProgressRecord = Omit<
   // than dropped. Without this flag a run with one zero-priced delivered
   // hour would look identical to a run that never received a contribution.
   hasDeliveryContribution: boolean;
+  // True until a positive metered interval cannot be paired with a price.
+  // Delivery remains authoritative either way; this only decides whether the
+  // accumulated cost is complete enough to persist.
+  deliveryPriceComplete: boolean;
   // Chronological per-revision metadata appended each time the active plan's
   // `latest.revision` index increases. Bounded implicitly by the active-plan
   // recorder's per-cycle dedupe — `prices_revised` and `rate_refined` only
@@ -122,8 +123,8 @@ export type InProgressRecord = Omit<
   // ~5-10 entries at most. No explicit cap; adding one is only worth doing if a
   // pathological replan loop ever surfaces.
   revisions: DeferredObjectivePlanHistoryRevisionLogEntry[];
-  // Per-hour delivery contributions appended on every closed hour. Each entry
-  // mirrors one contribution: hour-aligned `atMs`, delivered kWh, the
+  // Per-hour metered delivery contributions. Each entry mirrors one
+  // contribution: hour-aligned `atMs`, delivered kWh, the
   // spot-price the recorder summed into `totalCost`, and the price tone the
   // hour-price resolver returned. The postmortem bar strip
   // (`DeadlinePlanHistoryDetail`) reads this list to render one bar per
@@ -132,38 +133,6 @@ export type InProgressRecord = Omit<
   // `hasDeliveryContribution` the same way `deliveredKWh` / `totalCost`
   // are.
   hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
-  // First trustworthy progress reading observed in the currently-open hour.
-  // The internal hour-rollover detector uses this as the "hour opening"
-  // anchor — when the next observation lands in a later hour bucket, the
-  // delta (opening → first reading in the *next* hour) is converted to
-  // delivered kWh using `lastKWhPerUnit` and attributed to `opening.hourMs`
-  // (the just-closed hour) as a contribution. See `detectHourRollover` in
-  // `planHistoryV4Helpers.ts` for the attribution contract.
-  // `null` when no trustworthy reading has been observed yet (cold start,
-  // sensor offline) so the rollover skips emission until coverage resumes.
-  //
-  // Restart contract: this anchor IS persisted across PELS restarts. The
-  // in-progress map is still rebuilt from live diagnostics, but `startRecord`
-  // restores the opening from the active plan's `inFlightHourOpening` (written
-  // each observe cycle via `persistInProgressAnchors` → the active-plan
-  // recorder's `applyInProgressAnchors`). So a restart mid-run re-uses the
-  // pre-restart opening and the closing-hour delta is attributed across the
-  // restart boundary rather than blanking the in-flight hour's postmortem bar.
-  // When no anchor was persisted (legacy plan / cold-start run with no
-  // trustworthy reading yet) it degrades to the previous re-anchor-on-first-
-  // -reading behaviour.
-  currentHourOpening: HourProgressSnapshot | null;
-  // Effective kWh-per-unit factor from the most recent diagnostic. Cached
-  // on the record so `finalizeRecord` can flush the still-open hour's
-  // contribution without re-reading a diagnostic (the finalization paths
-  // — `finalizeStaleRecords`, `finalizeForUserChange`, `finalizeElapsedDeadline`
-  // — do not carry one).
-  // `null` when no diagnostic ever resolved a profile. Persisted across
-  // restarts via the active plan's `inFlightKWhPerUnit` — same restart
-  // contract as `currentHourOpening` (see above) — so the restored opening can
-  // still be converted to delivered kWh after a mid-run restart even before a
-  // fresh diagnostic re-resolves the factor.
-  lastKWhPerUnit: number | null;
 };
 
 
@@ -351,57 +320,10 @@ export const startRecord = (
     totalCost: 0,
     costDisplay: null,
     hasDeliveryContribution: false,
+    deliveryPriceComplete: true,
     revisions: [],
     hourlyContributions: [],
-    // Restore the persisted postmortem anchor when the active plan carries one
-    // (a restart picking up an in-flight run): re-using the pre-restart opening
-    // means the closing-hour delta is attributed across the restart boundary
-    // rather than blanking the in-flight hour. Fall back to seeding from the
-    // current reading when no anchor was persisted (cold start / legacy plan).
-    currentHourOpening: restoreHourOpening(plan) ?? seedHourOpening(diag, nowMs),
-    lastKWhPerUnit: pickKwhPerUnit(diag) ?? restoreKWhPerUnit(plan),
   };
-};
-
-// Restore the persisted in-flight hour-opening anchor from the active plan, when
-// present. Absent on legacy plans and cold-start runs — both degrade to the
-// pre-existing seed-from-current-reading behaviour. Guarded against a malformed
-// persisted shape defensively even though the active-plan normalizer already
-// rejects non-finite anchors.
-const restoreHourOpening = (
-  plan: DeferredObjectiveActivePlanV1 | undefined,
-): HourProgressSnapshot | null => {
-  const opening = plan?.inFlightHourOpening;
-  if (!opening) return null;
-  if (!Number.isFinite(opening.hourMs) || !Number.isFinite(opening.value)) return null;
-  return { hourMs: opening.hourMs, value: opening.value };
-};
-
-// Restore the persisted kWh-per-unit factor from the active plan. Only a
-// finite-positive value is meaningful (mirrors `pickKwhPerUnit`); absent ⇒ null
-// (cold start) so the rollover skips emission until a profile resolves.
-const restoreKWhPerUnit = (
-  plan: DeferredObjectiveActivePlanV1 | undefined,
-): number | null => {
-  const value = plan?.inFlightKWhPerUnit;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
-  return value;
-};
-
-// Anchor the hour-rollover detector at run start. We adopt the first
-// trustworthy reading as the opening of the current hour so a run that
-// starts mid-hour and finalizes inside the same hour can still flush a
-// contribution at finalize-time. Returns null when the start diagnostic
-// carries no trustworthy progress — the rollover detector will adopt the
-// first later cycle that does.
-const seedHourOpening = (
-  diag: DeferredObjectiveDiagnostic,
-  nowMs: number,
-): HourProgressSnapshot | null => {
-  if (!hasTrustworthyProgress(diag)) return null;
-  const value = diag.currentValue;
-  if (value === null) return null;
-  return { hourMs: hourBucketMs(nowMs), value };
 };
 
 
@@ -500,7 +422,9 @@ const backfillStartProgress = (
 // `??` on the record, so the first answer wins: this is the energy the run set
 // out to need, not a later remainder.
 //
-// Gated on nothing having been delivered yet, and that gate is load-bearing.
+// Gated on no positive energy having been delivered yet, and that gate is
+// load-bearing. A trusted 0 kW interval is still an exact delivery observation,
+// but it does not turn a later resolved requirement into a remainder.
 // `resolveCommitmentKWh` reads `remainingUnits` as of the cycle it is asked, so
 // once the device has already made progress the answer is a REMAINDER, not the
 // run's total requirement — while `deliveredKWh` keeps accumulating from the
@@ -520,7 +444,7 @@ const backfillCommitment = (
   diag: DeferredObjectiveDiagnostic,
 ): Partial<Pick<InProgressRecord, 'initialEnergyExpectedKWh'>> => {
   if (record.initialEnergyExpectedKWh !== undefined) return {};
-  if (record.hasDeliveryContribution) return {};
+  if (record.deliveredKWh > 0) return {};
   return { initialEnergyExpectedKWh: resolveCommitmentKWh(diag) };
 };
 
@@ -764,8 +688,9 @@ export const finalizeRecord = (
     // a contribution stay byte-stable across upgrades. The flag captures
     // "feed actually ran" so a legitimately zero-cost / zero-delivered run
     // still persists 0 rather than hiding the contribution.
-    ...(record.hasDeliveryContribution
-      ? { deliveredKWh: record.deliveredKWh, totalCost: record.totalCost }
+    ...(record.hasDeliveryContribution ? { deliveredKWh: record.deliveredKWh } : {}),
+    ...(record.hasDeliveryContribution && record.deliveryPriceComplete
+      ? { totalCost: record.totalCost }
       : {}),
     // Persist the price-display provenance the `totalCost` was accumulated
     // under so the archive formats the figure in its recorded currency rather

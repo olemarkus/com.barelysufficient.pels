@@ -523,6 +523,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         deferredAvoidDeviceIds: new Set<string>(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
+        drivingDeviceIds: new Set([PUMP]),
       }),
     });
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
@@ -544,6 +545,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         deferredAvoidDeviceIds: new Set<string>(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
+        drivingDeviceIds: new Set([PUMP]),
       }),
     });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);

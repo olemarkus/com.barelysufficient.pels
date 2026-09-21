@@ -34,6 +34,7 @@ const buildCollector = (
   getUnreliablePeriods: () => [],
   getDaySuppression: () => ({}),
   getAppliedDailyBudgetKwh: () => 50,
+  getSustainableCapacityKw: () => 5,
   getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
   readMeterScopeSignature: () => meterScopeSignature,
   readMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }),

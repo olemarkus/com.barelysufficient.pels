@@ -1571,7 +1571,7 @@ describe('DeviceTransport', () => {
             expect(snapshot[0].powerCapable).toBe(false);
         });
 
-        it('marks no-power onoff devices as power-capable when Homey energy estimate exists', async () => {
+        it('keeps Homey Energy metadata as structural support without fabricating a reading', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
                 dev1: {
@@ -1595,10 +1595,30 @@ describe('DeviceTransport', () => {
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
-            expect(snapshot[0].expectedPowerSource).toBe('homey-energy');
-            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.1, 6);
-            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.1, 6);
             expect(snapshot[0].powerCapable).toBe(true);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw)
+                .toBeUndefined();
+        });
+
+        it('does not treat empty Homey Energy metadata as structural power support', async () => {
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Virtual Light',
+                    class: 'socket',
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                    energyObj: {},
+                    energy: {},
+                },
+            });
+
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+
+            expect(deviceManager.getSnapshot()).toEqual([]);
         });
 
         it('uses Homey energy live report as measured fallback when direct power capabilities are absent', async () => {
@@ -1643,7 +1663,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('keeps off on/off devices power-capable when Homey energy W metadata exists', async () => {
+        it('keeps off Homey Energy devices supported while their live reading is absent', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
                 dev1: {
@@ -1665,8 +1685,8 @@ describe('DeviceTransport', () => {
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
             expect(snapshot[0].powerCapable).toBe(true);
-            expect(snapshot[0].expectedPowerSource).toBe('default');
-            expect(snapshot[0].expectedPowerKw).toBe(1);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw)
+                .toBeUndefined();
         });
 
         it('uses providers to populate priority and controllable fields', async () => {
@@ -1738,7 +1758,14 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const snapshot = deviceManager.getSnapshot();
 
-            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeCloseTo(1, 3);
+            const measured = snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
+            expect(measured.measuredPowerKw).toBeCloseTo(1, 3);
+            expect(measured.measuredPowerReading).toEqual({
+                kind: 'interval_average',
+                powerKw: 1,
+                startMs: new Date('2026-01-01T00:00:30.000Z').getTime(),
+                endMs: new Date('2026-01-01T01:00:30.000Z').getTime(),
+            });
             expect(snapshot[0].powerCapable).toBe(true);
             expect(snapshot[0].lastFreshDataMs).toBe(new Date('2026-01-01T01:00:30.000Z').getTime());
 
@@ -1790,11 +1817,10 @@ describe('DeviceTransport', () => {
             vi.useRealTimers();
         });
 
-        it('does not bring back a meter_power rate once a device.update has resolved no reading', async () => {
-            // An idle meter-only device: its meter has stopped moving, so a
-            // device.update carrying only a temperature tick resolves no rate.
-            // The rate the previous device.update retained must not come back
-            // on the next refresh, which reads the same unmoved meter.
+        it('retains the last meter_power rate until its meter capability is removed', async () => {
+            // A temperature-only update and the following refresh both carry
+            // the same cumulative meter sample. Neither is a newer power
+            // observation, so the last trusted rate carries forward.
             vi.useFakeTimers();
             vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
             const buildAc = (meterKwh: number, meterAt: string, temperature: number) => ({
@@ -1822,11 +1848,26 @@ describe('DeviceTransport', () => {
 
             vi.setSystemTime(new Date('2026-01-01T01:05:00.000Z'));
             deviceManager.injectDeviceUpdateForTest(buildAc(101, '2026-01-01T01:00:30.000Z', 21));
-            expect(readMeasuredPowerKw()).toBeUndefined();
+            expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
 
             mockApiGet.mockResolvedValue({ dev1: buildAc(101, '2026-01-01T01:00:30.000Z', 21) });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            expect(readMeasuredPowerKw()).toBeUndefined();
+            expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'AC',
+                class: 'airconditioning',
+                capabilities: ['target_temperature', 'measure_temperature'],
+                capabilitiesObj: {
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                },
+            });
+            const withoutMeter = deviceManager.getSnapshot()[0] as (
+                TargetDeviceSnapshot & MeasuredPowerObservedProbe
+            ) | undefined;
+            expect(withoutMeter?.measuredPowerKw).toBeUndefined();
 
             vi.useRealTimers();
         });

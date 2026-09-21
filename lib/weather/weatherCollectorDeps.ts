@@ -38,6 +38,8 @@ export type WeatherCollectorDeps = {
    * budget-pressure loop pairs it with the day's measured kWh to size its step.
    */
   getAppliedDailyBudgetKwh: () => number | undefined;
+  /** Sustainable capacity rate: hard cap minus its configured safety margin. */
+  getSustainableCapacityKw: () => number;
   getSettings: () => WeatherAdvisorSettings;
   /**
    * Resolved fingerprint of the whole-home metering arrangement, composed by

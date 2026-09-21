@@ -22,8 +22,13 @@ import {
   predictDailyKwh,
   quantile,
 } from '../../packages/shared-domain/src/energySignature/energySignature';
-import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import { suggestDailyBudgetKwh } from './suggestDailyBudget';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  getNextLocalDayStartUtcMs,
+  shiftDateKey,
+} from '../utils/dateUtils';
 import {
   resolveComingDayFromState,
   resolveMetDay,
@@ -287,8 +292,9 @@ function resolveTomorrowOutlook(
     : recomputeTomorrowSuggestion(input, fit, tomorrowKey);
   if (!resolved) return null;
 
+  const capacityDayHours = resolveLocalDayHours(tomorrowKey, input.timeZone);
   const capacityCapKwh = input.capacityLimitKw !== undefined && input.capacityLimitKw > 0
-    ? input.capacityLimitKw * 24
+    ? input.capacityLimitKw * capacityDayHours
     : Number.POSITIVE_INFINITY;
   return {
     prediction: {
@@ -339,10 +345,16 @@ function recomputeTomorrowSuggestion(
       fit,
       forecastMeanTempC: meanTempC,
       capacityLimitKw: input.capacityLimitKw,
+      capacityDayHours: resolveLocalDayHours(tomorrowKey, input.timeZone),
       ...(input.state.budgetPressure !== undefined ? { budgetPressure: input.state.budgetPressure } : {}),
     }),
   };
 }
+
+const resolveLocalDayHours = (dateKey: string, timeZone: string): number => {
+  const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
+  return (getNextLocalDayStartUtcMs(dayStartMs, timeZone) - dayStartMs) / (60 * 60 * 1000);
+};
 
 /**
  * Payload forecastStatus: a prediction follows ITS provenance; without one

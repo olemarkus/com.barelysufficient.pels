@@ -5,6 +5,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { selectMeteredSnapshots } from '../../lib/ports/meteredSnapshots';
 import type { ObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 
 /**
@@ -126,7 +127,7 @@ export const readCreateSmartTaskCandidateDevices = (
   if (meterSources.state === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
-    devices: ctx.latestTargetSnapshot.filter(isRuntimePlannedDevice)
+    devices: selectMeteredSnapshots(ctx.latestTargetSnapshot).filter(isRuntimePlannedDevice)
       .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id))
       .filter((device) => !meterSources.deviceIds.has(device.id)),
   };

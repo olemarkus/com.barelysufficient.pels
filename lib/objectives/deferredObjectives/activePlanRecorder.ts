@@ -57,7 +57,6 @@ import { buildObjectiveSignature, compareObjectiveSignatures } from './activePla
 import {
   buildRevision,
   buildSignatureFromDiagnostic,
-  carryInFlightAnchors,
   createPlanFromDiagnostic,
   createPlanFromSeed,
   diagTargetTemperatureC,
@@ -73,7 +72,6 @@ import {
   resolvePendingReason,
   resolveProvenance,
   resolveSourceTransition,
-  sameHourOpening,
   shouldWriteReplanRevision,
   toInitialKwhPerUnitField,
 } from './activePlanRevisionBuild';
@@ -175,43 +173,6 @@ export class DeferredObjectiveActivePlanRecorder {
     delete this.plans[deviceId];
     this.lastSeenAtMs.delete(deviceId);
     this.lastScheduleSettledHourMs.delete(deviceId);
-    this.dirty = true;
-  }
-
-  // Persist the plan-history recorder's in-flight postmortem anchors onto the
-  // matching active plan so a PELS restart mid-run can restore them (otherwise
-  // the in-flight hour renders as a falsely-empty bar — "device did nothing").
-  // The history recorder owns the anchor computation; this is the single seam it
-  // uses to thread the values into the persisted active-plans blob. No-op when no
-  // plan tracks `(deviceId, deadlineAtMs)` (the active-plan recorder hasn't seen
-  // the diagnostic yet — the next cycle re-stamps once both recorders agree on
-  // the run). Dirty only flips when a value actually changed so a steady run does
-  // not re-persist the active plans every cycle. Distinct from `observe`: this
-  // never writes a revision or touches the `:58` settle gate.
-  applyInProgressAnchors(params: {
-    deviceId: string;
-    deadlineAtMs: number;
-    hourOpening: { hourMs: number; value: number } | null;
-    kWhPerUnit: number | null;
-  }): void {
-    const existing = this.plans[params.deviceId];
-    if (!existing || existing.deadlineAtMs !== params.deadlineAtMs) return;
-    const nextOpening = params.hourOpening ?? undefined;
-    // Only persist a finite-positive factor (mirrors the contract guard +
-    // `pickKwhPerUnit`); a non-positive/absent factor leaves the field absent.
-    const nextKwh = params.kWhPerUnit !== null
-      && Number.isFinite(params.kWhPerUnit)
-      && params.kWhPerUnit > 0
-      ? params.kWhPerUnit
-      : undefined;
-    const openingUnchanged = sameHourOpening(existing.inFlightHourOpening, nextOpening);
-    if (openingUnchanged && existing.inFlightKWhPerUnit === nextKwh) return;
-    const updated: DeferredObjectiveActivePlanV1 = { ...existing };
-    if (nextOpening === undefined) delete updated.inFlightHourOpening;
-    else updated.inFlightHourOpening = nextOpening;
-    if (nextKwh === undefined) delete updated.inFlightKWhPerUnit;
-    else updated.inFlightKWhPerUnit = nextKwh;
-    this.plans[params.deviceId] = updated;
     this.dirty = true;
   }
 
@@ -448,14 +409,6 @@ export class DeferredObjectiveActivePlanRecorder {
       ...(revision.estimatedDurationText !== undefined
         ? { initialEstimatedDurationText: revision.estimatedDurationText }
         : {}),
-      // Preserve any postmortem in-flight anchor the plan-history recorder
-      // already persisted for THIS run (same deadline — a different-deadline
-      // record is deleted upstream). Without this, the pending→first-revision
-      // transition would drop a just-restored anchor and a restart in the
-      // intervening cycle would blank the in-flight hour's postmortem bar. The
-      // history recorder re-stamps it next cycle regardless; this just closes
-      // the one-cycle window.
-      ...carryInFlightAnchors(previous),
       original: revision,
       latest: revision,
     };
@@ -685,14 +638,6 @@ export class DeferredObjectiveActivePlanRecorder {
       history: reason === 'objective_changed'
         ? []
         : [latest, ...(current.history ?? [])].slice(0, MAX_HISTORY_REVISIONS),
-      // Drop the prior run's postmortem in-flight anchors on an objective change
-      // — they belong to a DIFFERENT run (new target/deadline/device). The
-      // history recorder finalizes the old run and starts a fresh one, whose
-      // `startRecord` must NOT restore the stale opening (it would mis-attribute
-      // the first post-change rollover against an old hour/reading). The fresh
-      // run re-stamps a correct anchor on its next cycle. Spreading
-      // `...currentWithoutSnapshot` above carried them; override to absent here.
-      ...(reason === 'objective_changed' ? { inFlightHourOpening: undefined, inFlightKWhPerUnit: undefined } : {}),
     };
     this.dirty = true;
     this.emit({

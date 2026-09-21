@@ -28,6 +28,7 @@ export const buildPlannedHeater = (id: string, name: string, zoneId: string): Ta
     name,
     zoneId,
     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+    measuredPowerKw: 0,
     targets: [target],
     temperature: { currentTemperature: 45, target },
   } as unknown as TargetDeviceSnapshot;

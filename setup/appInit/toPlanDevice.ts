@@ -25,6 +25,7 @@ import type {
   DeviceControlModel,
   EvBoostConfig,
   EvObservedProbe,
+  MeasuredPowerObservedFields,
   MeasuredPowerObservedProbe,
   StateOfChargeObservedProbe,
   SteppedLoadDecoration,
@@ -496,12 +497,34 @@ export type ToPlanDeviceInput = DeviceSurfaces & SteppedLoadDecoration & Associa
 
 export function toPlanDevice(
   ctx: AppContext,
+  rawDevice: ToPlanDeviceInput,
+  opts?: ToPlanDeviceOptions,
+): UnrankedPlanInputDevice {
+  return projectPlanDevice(ctx, rawDevice, getCurrentDrawKw(rawDevice), opts);
+}
+
+/**
+ * Runtime-control projection for an already-admitted metered device. Unlike the
+ * broad projection used by settings maintenance, this path has no missing-read
+ * fallback: admission proved the measured value and the planner trusts it.
+ */
+export function toMeteredPlanDevice(
+  ctx: AppContext,
+  rawDevice: ToPlanDeviceInput & MeasuredPowerObservedFields,
+  opts?: ToPlanDeviceOptions,
+): UnrankedPlanInputDevice {
+  return projectPlanDevice(ctx, rawDevice, rawDevice.measuredPowerKw, opts);
+}
+
+function projectPlanDevice(
+  ctx: AppContext,
   // `ToPlanDeviceInput`, not a restatement of it: the key-set assertion below is
   // computed from THIS type, so declaring the parameter separately would let the
   // two drift — add a probe to the parameter, `keyof` the alias does not move, the
   // assertion still passes, and the new field rides the rest-spread anyway. Which
   // is the case the assertion exists to catch.
   rawDevice: ToPlanDeviceInput,
+  currentDrawKw: number,
   opts?: ToPlanDeviceOptions,
 ): UnrankedPlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -620,6 +643,7 @@ export function toPlanDevice(
     // any structural consumer, which is exactly the second competing answer this
     // change exists to remove. `currentDrawKw` below is the only answer.
     measuredPowerKw: _measuredPowerKw,
+    measuredPowerReading: _measuredPowerReading,
     // Same discipline, binary axis. `withBinaryDiscriminant` strips these when the
     // plan OUTPUT is regrouped (`planDevicesBase`), but this producer attaches
     // `currentOn` itself without routing through it, so the spread would carry the
@@ -723,10 +747,11 @@ export function toPlanDevice(
     ...objective,
     canSetControlResolved,
     residualKw,
-    // The single place the device's draw is decided: the meter's reading, or 0.
-    // The raw field is stripped from the spread above, so no consumer can reach
-    // past this answer to a second one.
-    currentDrawKw: getCurrentDrawKw(device),
+    // The caller resolves the draw before entering this shared projection. The
+    // runtime-control caller supplies the required meter value directly; the
+    // settings-maintenance caller may use the broad observer projection because
+    // it never admits or controls a device.
+    currentDrawKw,
     ...resolveTemperatureInputFields(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     // Two-state by contract — see `resolveConfirmedNotDrawing`. Always stamped,

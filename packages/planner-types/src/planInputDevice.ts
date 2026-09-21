@@ -663,5 +663,6 @@ export type PlanDeviceCarriedKey =
  */
 export type PlanDeviceStrippedKey =
   'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
+  | 'measuredPowerReading'
   | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature' | 'temperatureAdjustmentsDisabled'
   | 'temperatureControlDisabled' | 'thermostatMode';

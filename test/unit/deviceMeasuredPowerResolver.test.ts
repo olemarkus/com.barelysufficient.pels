@@ -74,7 +74,14 @@ describe('DeviceMeasuredPowerResolver', () => {
         homeyEnergyLiveW: 125,
         homeyEnergyObservedAtMs: oneHourLaterMs,
       },
-    })).toEqual({ measuredPowerKw: 1, observedAtMs: oneHourLaterMs });
+    })).toEqual({
+      measuredPowerKw: 1,
+      observedAtMs: oneHourLaterMs,
+      reading: {
+        kind: 'interval_average', powerKw: 1,
+        startMs: anchorMs, endMs: oneHourLaterMs,
+      },
+    });
     expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 1, ts: now });
   });
 
@@ -166,7 +173,14 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'heater-1',
       deviceLabel: 'Heater',
       observation: { meterEnergy: { kwh: 42, observedAtMs: republishedMs } },
-    })).toEqual({ measuredPowerKw: 0, observedAtMs: republishedMs });
+    })).toEqual({
+      measuredPowerKw: 0,
+      observedAtMs: republishedMs,
+      reading: {
+        kind: 'interval_average', powerKw: 0,
+        startMs: firstMs, endMs: republishedMs,
+      },
+    });
     expect(lastPositiveMeasuredPowerKw).toEqual({});
   });
 
@@ -200,7 +214,14 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: { meterEnergy: { kwh: 102, observedAtMs: laterMs } },
-    })).toEqual({ measuredPowerKw: 2, observedAtMs: laterMs });
+    })).toEqual({
+      measuredPowerKw: 2,
+      observedAtMs: laterMs,
+      reading: {
+        kind: 'interval_average', powerKw: 2,
+        startMs: anchorMs, endMs: laterMs,
+      },
+    });
   });
 
   // Skipping a too-close pair must not consume it: advancing the anchor on a
@@ -233,7 +254,14 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: { meterEnergy: { kwh: 101, observedAtMs: laterMs } },
-    })).toEqual({ measuredPowerKw: 1, observedAtMs: laterMs });
+    })).toEqual({
+      measuredPowerKw: 1,
+      observedAtMs: laterMs,
+      reading: {
+        kind: 'interval_average', powerKw: 1,
+        startMs: anchorMs, endMs: laterMs,
+      },
+    });
   });
 
   it('falls back to Homey Energy live watts when no direct capabilities are available', () => {
@@ -280,7 +308,11 @@ describe('DeviceMeasuredPowerResolver', () => {
     // A dropped reading is indistinguishable downstream from "this device has no
     // `measure_power`", and absence is what licenses a consumer to substitute
     // RATED power — so 3 W could be booked as kilowatts. Report the reading.
-    expect(measuredPower).toEqual({ measuredPowerKw: 0.003, observedAtMs: 1234 });
+    expect(measuredPower).toEqual({
+      measuredPowerKw: 0.003,
+      observedAtMs: 1234,
+      reading: { kind: 'instantaneous', powerKw: 0.003, observedAtMs: 1234 },
+    });
     expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.003, ts: 5000 });
   });
 
@@ -294,7 +326,11 @@ describe('DeviceMeasuredPowerResolver', () => {
       observation: { measurePowerW: 0, measurePowerObservedAtMs: 1234 },
     });
 
-    expect(measuredPower).toEqual({ measuredPowerKw: 0, observedAtMs: 1234 });
+    expect(measuredPower).toEqual({
+      measuredPowerKw: 0,
+      observedAtMs: 1234,
+      reading: { kind: 'instantaneous', powerKw: 0, observedAtMs: 1234 },
+    });
     // Zero is a draw of nothing, not a positive reading.
     expect(lastPositiveMeasuredPowerKw).toEqual({});
   });

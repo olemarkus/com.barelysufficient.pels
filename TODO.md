@@ -444,28 +444,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
-- [ ] **A smart-task miss the daily budget only CONTRIBUTED to feeds nothing.**
-      `budgetContributedToShortfall` names the case where uncapping the budget places strictly
-      more energy but the run was short of time or capacity too. It reaches the settings UI and
-      the widget, and stops there: it is not persisted onto
-      `DeferredObjectivePlanHistoryRevisionSnapshot`, so the weather day rollup cannot see it and
-      such a day decays the budget-pressure term exactly like an undamaged one. Deliberate, not an
-      oversight — all three obvious treatments are wrong. Growing the integral winds up toward a
-      budget that cannot meet the deadline. Holding it stops the leak, and the leak is
-      load-bearing (`NEGLIGIBLE_KWH`'s snap to zero is what lets auto-apply ever lower a budget
-      again), so a home with a recurring contributing miss would freeze the term forever. Reaching
-      `dayWasBudgetDamaged` raises the suggestion for `DRIFT_RECENT_DAYS = 14` days through the
-      quantile swap — too strong for a signal that today cannot tell a budget cap from another
-      task's reservation (see the entry below, which must land first). Done when a contributing
-      miss moves the suggestion by a bounded amount that decays, and a home with one every day can
-      still have its budget lowered. Files:
-      `packages/contracts/src/deferredObjectivePlanHistory.ts`,
-      `lib/weather/deadlineMissBudgetDay.ts`,
-      `packages/shared-domain/src/energySignature/budgetPressure.ts`. Persona: an owner whose
-      morning heating task is chronically both late-started and budget-squeezed; hypothesis: their
-      budget never rises because no single miss is ever purely the budget's fault. Source:
-      adversarial review of the deadline-miss pressure change, 2026-09-09. [P2]
-
 - [ ] **The budget-contribution probe cannot tell a per-bucket budget cap from another
       task's reservation.** `resolveBudgetBoundFeasibility` uncaps by setting
       `usefulEnergyCapKWh: Number.POSITIVE_INFINITY`, but that field is not the raw budget
@@ -1067,8 +1045,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       controller deliberately subtracts budget-exempt usage before pacing (`dailyBudgetState.ts`:
       "Budget control ignores exempt load, but reporting stays on real metered usage"). On a home with exempt
       devices, their energy is counted as a budget overrun even when non-exempt usage stayed inside the budget,
-      so the loop can grow on a day that never actually ran out. Bounded by the per-day step cap and the
-      prediction-relative ceiling, and inert on a home with no exemptions configured — which is why it is not
+      so the loop can grow on a day that never actually ran out. Bounded by the per-day step cap and inert on a
+      home with no exemptions configured — which is why it is not
       being fixed in the PR that introduced it. Fix: carry the day's non-exempt (budget-counted) kWh on the
       record and measure against that. Persona: an owner with a "Get power now" exemption or an always-on
       exempt device; hypothesis: their suggested budget drifts up for energy the budget was never governing.
@@ -1083,6 +1061,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       correctly-layered producer; delete the setup-local copy and widen the assembler's `Pick<AppContext, …>` to
       include `dailyBudgetService`. Persona: an owner who just changed their budget and reloads the Budget page;
       hypothesis: "Your daily budget" reads the old value for one refresh. [P2]
+
+- [ ] **Post-release docs: require a real per-device power reading for managed loads.**
+      Update `docs/technical.md` and `docs/homey-energy.md`: Energy settings and
+      Homey metadata still refine expected draw, but they do not admit a device
+      for control. Admission requires a trusted `measure_power`, derived
+      `meter_power`, or Homey Energy live device reading. [docs]
 
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
       *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
@@ -1130,31 +1114,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       observation stamp on a REPEATED identical reading"
       (`test/integration/observedDeviceStateProjection.test.ts`). Source: adversarial + runtime-reality
       review of the stage-6 PR.
-
-- [ ] **P2 — `isDevicePowerCapable` takes one of its terms from the estimate ladder's winning
-      rung, so a manual "Power when running" can unmanage a device.**
-      `lib/device/transport/managerParseDevice.ts` `isDevicePowerCapable` is documented as
-      STRUCTURAL ("must only go false for a durable fact about the device, never for a transient
-      read") and is what `disableUnsupportedDevices` (`setup/appDeviceSupport.ts`) demotes on,
-      permanently. Its fourth term is `powerEstimate.hasEnergyEstimate`, which
-      `resolveExpectedPower` (`lib/device/devicePowerEstimate.ts`) sets only when the
-      `homey-energy` rung WINS; the manual override and `settings.load` rungs sit above it and
-      return without the flag. Its third term, `hasPotentialHomeyEnergyEstimate`
-      (`lib/device/managerEnergy.ts`), reads only `energyObj`/`energy`, not the Advanced-settings
-      `energy_value_on`/`energy_value_off` the ladder's fourth rung reads. Reachable state: a
-      device with no `measure_power`/`meter_power`, absent from the live report, whose `energyObj`
-      carries no numeric `W` and no `approximation.usageOn`, and whose only evidence is
-      `settings.energy_value_on` — powerCapable through term 4 alone. The owner then sets **Power
-      when running** (offered on exactly such a device, `deviceDetail/expectedPower.ts` gates on
-      `supportsPowerDevice`), the override rung wins, term 4 goes false, term 3 was never true,
-      and the next refresh demotes Power-limit control with nothing writing it back. **What
-      changes:** make eligibility structural — `hasPotentialHomeyEnergyEstimate` also reads
-      `settings.energy_value_on`/`energy_value_off` (same delta/on-state rule as
-      `resolveSettingsEnergyWatts`), and term 4 is dropped, so no rung above `homey-energy` can
-      mask the evidence. **Done when:** a `deviceManager` integration case with only
-      `settings.energy_value_on` plus a manual expected-power override stays `powerCapable: true`
-      and keeps `controllable` across a refresh. Source: eligibility audit from the VThermo
-      report (forum #140), 2026-09-11.
 
 - [ ] **P2 — the observer projection keeps serving a device the transport dropped between
       refreshes.** `dropDeviceWithoutRemainingControlFacet`

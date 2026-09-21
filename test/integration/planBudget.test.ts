@@ -3,11 +3,70 @@ import {
   computeDailyUsageSoftLimit,
   computeDynamicSoftLimit,
   computeShortfallThreshold,
+  isDailyBudgetBelowSustainableCapacity,
 } from '../../lib/plan/planBudget';
+import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
+
+const budgetSnapshot = (dailyBudgetKWh: number, hours: number, enabled = true): DailyBudgetUiPayload => {
+  const dateKey = '2026-10-25';
+  const zeros = Array.from({ length: hours }, () => 0);
+  return {
+    todayKey: dateKey,
+    days: {
+      [dateKey]: {
+        dateKey,
+        timeZone: 'Europe/Oslo',
+        nowUtc: '2026-10-25T12:00:00.000Z',
+        dayStartUtc: '2026-10-24T22:00:00.000Z',
+        currentBucketIndex: 12,
+        budget: { enabled, dailyBudgetKWh, priceShapingEnabled: false },
+        state: {
+          usedNowKWh: 0,
+          allowedNowKWh: 0,
+          remainingKWh: dailyBudgetKWh,
+          deviationKWh: 0,
+          exceeded: false,
+          frozen: false,
+          confidence: 1,
+          priceShapingActive: false,
+        },
+        buckets: {
+          startUtc: Array.from({ length: hours }, (_, index) => new Date(index * 3_600_000).toISOString()),
+          startLocalLabels: Array.from({ length: hours }, (_, index) => String(index)),
+          plannedWeight: zeros,
+          plannedKWh: zeros,
+          plannedUncontrolledKWh: zeros,
+          plannedControlledKWh: zeros,
+          actualKWh: zeros,
+          actualControlledKWh: zeros,
+          actualUncontrolledKWh: zeros,
+          allowedCumKWh: zeros,
+          price: zeros,
+          priceFactor: zeros,
+        },
+      },
+    },
+  };
+};
 
 describe('planBudget', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe('budget-pressure eligibility', () => {
+    const capacity = { limitKw: 5, marginKw: 0.5, periodMinutes: 60 } as const;
+
+    it('stays active below hard cap minus margin for the actual local-day length', () => {
+      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(112.4, 25), capacity)).toBe(true);
+      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(112.5, 25), capacity)).toBe(false);
+      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(103.4, 23), capacity)).toBe(true);
+      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(103.5, 23), capacity)).toBe(false);
+    });
+
+    it('is inactive when daily-budget control is disabled', () => {
+      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(40, 24, false), capacity)).toBe(false);
+    });
   });
 
   describe('computeDynamicSoftLimit', () => {

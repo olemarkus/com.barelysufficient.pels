@@ -26,6 +26,7 @@ import {
     assembleDeviceSnapshot,
     resolveDeviceCapabilityProfile,
 } from './managerParseDeviceFields';
+import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 
 export type DeviceTransportParseProviders = {
     /**
@@ -84,6 +85,7 @@ export type DeviceTransportParseDeps = {
         capsStatus: { hasPower: boolean },
         measuredPower: { measuredPowerKw?: number },
         powerEstimate: ReturnType<typeof estimatePower>,
+        previousSnapshot?: TransportDeviceSnapshot,
     ) => boolean;
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
@@ -173,9 +175,11 @@ export function parseDevice(params: {
  * a whole fleet — so `capsStatus.hasPower` admits them and dropping the term
  * demoted nothing.
  *
- * There is no "load-only devices stay power-capable" rule to preserve; there
- * never was one. A device that reports nothing about what it is drawing cannot be
- * planned against, which is also why `getCurrentDrawKw` reads only the meter.
+ * Homey Energy metadata is a structural support signal, not a reading. It keeps
+ * an owner's persisted opt-in intact while a live-report sample is temporarily
+ * missing; the metered-snapshot gate still excludes the device from planning
+ * until an actual Homey Energy value arrives. A load-only device has no such
+ * support signal and remains unsupported.
  *
  * See `notes/persisted-settings-state.md`: transient external failures get a grace
  * window, never a destructive reset of persisted state.
@@ -185,12 +189,14 @@ export function isDevicePowerCapable(params: {
     capsStatus: { hasPower: boolean };
     measuredPower: { measuredPowerKw?: number };
     powerEstimate: ReturnType<typeof estimatePower>;
+    previousSnapshot?: TransportDeviceSnapshot;
 }): boolean {
-    const { device, capsStatus, measuredPower, powerEstimate } = params;
-    // The live reading comes from its own producer (`resolveMeasuredPowerKw`),
-    // which the caller already holds — the estimate no longer echoes it back.
+    const { capsStatus, measuredPower, previousSnapshot } = params;
+    // `powerCapable` answers durable support, not admission. Direct meter
+    // capabilities and Homey Energy metadata preserve the owner's settings;
+    // only an actual/retained trusted sample passes the separate planning gate.
     return capsStatus.hasPower
+        || hasPotentialHomeyEnergyEstimate(params.device)
         || typeof measuredPower.measuredPowerKw === 'number'
-        || hasPotentialHomeyEnergyEstimate(device)
-        || powerEstimate.hasEnergyEstimate === true;
+        || (previousSnapshot !== undefined && hasObservedMeasuredPower(previousSnapshot));
 }

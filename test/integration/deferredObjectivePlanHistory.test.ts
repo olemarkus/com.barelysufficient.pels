@@ -4,8 +4,6 @@ import {
 } from '../../lib/objectives/deferredObjectives/planHistory';
 import {
   appendRevisionLogIfNew,
-  buildFinalHourFlush,
-  detectHourRollover,
   MAX_REVISIONS_PER_ENTRY,
 } from '../../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import type {
@@ -25,8 +23,14 @@ import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import type {
+  PersistedMeteredDeliveryState,
+} from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
 
 const HOUR_MS = 60 * 60 * 1000;
+const instantReading = (powerKw: number, observedAtMs: number) => ({
+  deviceId: 'dev', kind: 'instantaneous' as const, powerKw, observedAtMs,
+});
 
 const makeHorizon = (
   overrides: Partial<DeferredObjectiveHorizonPlan> = {},
@@ -100,20 +104,31 @@ const makeDiag = (
   };
 };
 
-const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV5): {
+const buildPersistDeps = (
+  initial?: DeferredObjectivePlanHistoryV5,
+  initialMeteredDeliveryStates: readonly PersistedMeteredDeliveryState[] = [],
+): {
   deps: PlanHistoryPersistDeps;
   saved: () => DeferredObjectivePlanHistoryV5 | null;
+  savedMeteredDelivery: () => readonly PersistedMeteredDeliveryState[];
 } => {
   let saved: DeferredObjectivePlanHistoryV5 | null = null;
+  let savedMeteredDelivery = initialMeteredDeliveryStates;
   return {
     deps: {
       load: () => ({
         snapshot: initial === undefined ? { version: 5, entries: [] } : initial,
         persistenceSafe: true,
+        meteredDeliveryStates: savedMeteredDelivery,
       }),
-      save: (next) => { saved = next; return true; },
+      save: (next, meteredDeliveryStates) => {
+        saved = next;
+        savedMeteredDelivery = meteredDeliveryStates;
+        return true;
+      },
     },
     saved: () => saved,
+    savedMeteredDelivery: () => savedMeteredDelivery,
   };
 };
 
@@ -1849,510 +1864,183 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
   });
 
-  describe('internal hour-rollover delivery wiring', () => {
-    // Regression target: v2.7.2 shipped the history v4 schema plus a push
-    // API no production caller ever invoked, so every real entry persisted
-    // with `hasDeliveryContribution: false` and the postmortem strip / cost
-    // narrative chip were dark. The recorder drives contributions itself
-    // from the observe loop using the diagnostic's progress delta and an
-    // injected hourly price+tone resolver — these tests assert wired
-    // entries populate the v4 delivery fields end-to-end. The unused push
-    // API is gone; this loop is the only way delivery is recorded.
-
-    const buildPersistDepsWithPrice = (
-      pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }>,
-    ) => {
-      const inner = buildPersistDeps();
-      return {
-        deps: {
-          ...inner.deps,
-          // Default øre/kr display so the captured provenance round-trips; tests
-          // that assert on `costDisplay` use `buildPersistDepsWithDisplay`.
-          resolveHourPrice: (hourStartMs: number) => {
-            const hit = pricesByHourMs[hourStartMs];
-            return hit ? { ...hit, costDisplay: { unit: 'kr', divisor: 100 } } : null;
-          },
-        },
-        saved: inner.saved,
-      };
-    };
-
-    // Variant that lets a test pin the exact `costDisplay` the resolver supplies
-    // so it can assert the recorder persists THAT provenance onto the entry.
-    const buildPersistDepsWithDisplay = (
-      pricesByHourMs: Record<
-        number,
-        {
-          priceValue: number;
-          tone: 'cheap' | 'normal' | 'expensive';
-          costDisplay: { unit: string; divisor: number };
-        }
-      >,
-    ) => {
-      const inner = buildPersistDeps();
-      return {
-        deps: {
-          ...inner.deps,
-          resolveHourPrice: (hourStartMs: number) => pricesByHourMs[hourStartMs] ?? null,
-        },
-        saved: inner.saved,
-      };
-    };
-
-    it('emits a contribution for the just-closed hour on each observed hour rollover', () => {
-      const { deps, saved } = buildPersistDepsWithPrice({
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
-        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal' },
-      });
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 5 * HOUR_MS;
-      // Three cycles, one per hour bucket. Δtemp 50→52 in hour 1, 52→55 in hour 2.
-      // kWh/°C = 1.5 → 3.0 kWh in hour 1, 4.5 kWh in hour 2.
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
-        3 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.hourlyContributions).toBeDefined();
-      // Hour 1 (opening 50, closing 52 → 3.0 kWh @ 0.5) + Hour 2 (opening 52,
-      // closing 55 → 4.5 kWh @ 0.8). The currently-open hour (3) flushes at
-      // finalize using `finalProgress`, but Δ is 0 since the third observe
-      // was the run's last reading, so only hours 1 and 2 land.
-      expect(entry.hourlyContributions).toHaveLength(2);
-      expect(entry.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS,
-        deliveredKWh: 3.0,
-        priceValue: 0.5,
-        tone: 'cheap',
-      });
-      expect(entry.hourlyContributions![1]).toEqual({
-        atMs: 2 * HOUR_MS,
-        deliveredKWh: 4.5,
-        priceValue: 0.8,
-        tone: 'normal',
-      });
-      expect(entry.deliveredKWh).toBeCloseTo(7.5);
-      expect(entry.totalCost).toBeCloseTo(3.0 * 0.5 + 4.5 * 0.8);
-    });
-
-    it('persists the resolver-supplied costDisplay onto the finalized entry', () => {
-      // The provenance fix: the recorder captures the price-display scheme the
-      // `totalCost` was accumulated under so the archive can format it in its
-      // recorded currency after a later scheme switch.
-      const { deps, saved } = buildPersistDepsWithDisplay({
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap', costDisplay: { unit: 'kr', divisor: 100 } },
-        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } },
-      });
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 5 * HOUR_MS;
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.totalCost).toBeDefined();
-      expect(entry.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
-    });
-
-    it('captures the first priced hour costDisplay and keeps it across a mid-run scheme switch', () => {
-      // First-write-wins: the run keeps the currency the bulk of it was recorded
-      // under even if the resolver reports a different scheme on a later hour.
-      const { deps, saved } = buildPersistDepsWithDisplay({
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap', costDisplay: { unit: 'kr', divisor: 100 } },
-        [2 * HOUR_MS]: { priceValue: 3, tone: 'normal', costDisplay: { unit: 'EUR', divisor: 1 } },
-      });
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 5 * HOUR_MS;
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
-        3 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
-    });
-
-    it('omits costDisplay (legacy fallback) when no priced contribution ever fired', () => {
-      // No resolver entry for any hour → no priced contribution → the entry omits
-      // costDisplay, and the archive falls back to the recording-era øre/kr default.
-      const { deps, saved } = buildPersistDepsWithDisplay({});
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 5 * HOUR_MS;
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.costDisplay).toBeUndefined();
-    });
-
-    it('flushes the still-open hour at finalize so sub-hour runs persist their delivery', () => {
-      const { deps, saved } = buildPersistDepsWithPrice({
-        [HOUR_MS]: { priceValue: 1.0, tone: 'expensive' },
-      });
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = HOUR_MS + 30 * 60_000;
-      // Two observations inside the same hour — never crosses a boundary.
-      // 50 → 51 °C in the hour, kWh/°C = 1.5 → 1.5 kWh delivered.
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })],
-        HOUR_MS + 20 * 60_000,
-      );
-      // Deadline passes → finalize.
-      recorder.observe([], deadlineAtMs + 1);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.hourlyContributions).toHaveLength(1);
-      expect(entry.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS,
-        deliveredKWh: 1.5,
-        priceValue: 1.0,
-        tone: 'expensive',
-      });
-      expect(entry.deliveredKWh).toBeCloseTo(1.5);
-      expect(entry.totalCost).toBeCloseTo(1.5);
-    });
-
-    it('skips emission when the resolver returns no price for the closed hour', () => {
-      // No price registered → resolver returns null → no contribution.
-      const { deps, saved } = buildPersistDepsWithPrice({});
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 3 * HOUR_MS;
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53 })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      // No price for the closed hour → no contribution → fields absent.
-      expect(entry.hourlyContributions).toBeUndefined();
-      expect(entry.deliveredKWh).toBeUndefined();
-      expect(entry.totalCost).toBeUndefined();
-    });
-
-    it('skips emission when no kWh-per-unit factor has resolved yet', () => {
-      const { deps, saved } = buildPersistDepsWithPrice({
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
-      });
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 3 * HOUR_MS;
-      // `kWhPerUnitBanded: null` → cold start before any profile (learned or
-      // bootstrap) resolved. We can still anchor the opening progress, but
-      // there's nothing to multiply against, so no contribution lands.
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, kWhPerUnitBanded: null })],
-        HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53, kWhPerUnitBanded: null })],
-        2 * HOUR_MS + 5 * 60_000,
-      );
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.hourlyContributions).toBeUndefined();
-      expect(entry.deliveredKWh).toBeUndefined();
-    });
-
-    // Build a minimal active plan carrying the persisted in-flight anchors so a
-    // post-restart recorder can restore them in `startRecord`. Mirrors the
-    // active-plan recorder's `applyInProgressAnchors` write target.
-    const buildPlansWithAnchors = (params: {
-      deviceId: string;
-      deadlineAtMs: number;
-      inFlightHourOpening?: { hourMs: number; value: number };
-      inFlightKWhPerUnit?: number;
-    }) => ({
-      version: 1 as const,
-      plansByDeviceId: {
-        [params.deviceId]: {
-          deviceId: params.deviceId,
-          deviceName: 'Water Heater',
-          objectiveKind: 'temperature' as const,
-          targetTemperatureC: 65,
-          targetPercent: null,
-          deadlineAtMs: params.deadlineAtMs,
-          startedAtMs: 0,
-          pending: false,
-          objectiveSignature: 'sig',
-          original: null,
-          latest: null,
-          ...(params.inFlightHourOpening ? { inFlightHourOpening: params.inFlightHourOpening } : {}),
-          ...(params.inFlightKWhPerUnit !== undefined
-            ? { inFlightKWhPerUnit: params.inFlightKWhPerUnit }
-            : {}),
-        },
-      },
-    });
-
-    it('restores the persisted in-flight hour anchor across a restart mid-run', () => {
-      // Root-cause fix: `currentHourOpening` / `lastKWhPerUnit` are now persisted
-      // onto the active plan (`inFlightHourOpening` / `inFlightKWhPerUnit`) via
-      // `persistInProgressAnchors`. A restart picking up the in-flight run
-      // restores the pre-restart opening in `startRecord`, so the closing-hour
-      // delta is attributed across the restart boundary rather than blanking the
-      // in-flight hour's postmortem bar.
-      const pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }> = {
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
-        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal' },
-      };
-      const persisted = buildPersistDepsWithPrice(pricesByHourMs);
-      const deadlineAtMs = 5 * HOUR_MS;
-
-      // First "PELS process": anchor at 50 °C in hour 1. Capture the anchor the
-      // recorder threads out — this is what the active-plan recorder would have
-      // persisted onto the active plan.
-      let persistedAnchor: {
-        hourOpening: { hourMs: number; value: number } | null;
-        kWhPerUnit: number | null;
-      } | null = null;
-      const recorderA = new DeferredObjectivePlanHistoryRecorder({
+  describe('metered delivery wiring', () => {
+    const run = (params: {
+      drawKw: number;
+      resolveHourPrice?: PlanHistoryPersistDeps['resolveHourPrice'];
+      progressAtEnd?: number;
+    }) => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
         ...persisted.deps,
-        persistInProgressAnchors: (anchors) => {
-          persistedAnchor = { hourOpening: anchors.hourOpening, kWhPerUnit: anchors.kWhPerUnit };
-        },
+        ...(params.resolveHourPrice ? { resolveHourPrice: params.resolveHourPrice } : {}),
       });
-      recorderA.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
-        HOUR_MS + 5 * 60_000,
-      );
-      // The anchor was threaded out: opening at 50 °C in hour 1, factor 1.5.
-      expect(persistedAnchor).not.toBeNull();
-      expect(persistedAnchor!.hourOpening).toEqual({ hourMs: HOUR_MS, value: 50 });
-      expect(persistedAnchor!.kWhPerUnit).toBe(1.5);
-      // Process dies here. Persisted active plan now carries the anchor.
-      const restoredPlans = buildPlansWithAnchors({
-        deviceId: 'dev',
-        deadlineAtMs,
-        inFlightHourOpening: persistedAnchor!.hourOpening ?? undefined,
-        inFlightKWhPerUnit: persistedAnchor!.kWhPerUnit ?? undefined,
+      const deadlineAtMs = 10 * 60_000;
+      recorder.observeMeteredDelivery([instantReading(params.drawKw, 0)]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observeMeteredDelivery([instantReading(params.drawKw, 5 * 60_000)]);
+      recorder.observe([
+        makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: params.progressAtEnd ?? 50 }),
+      ], 5 * 60_000);
+      recorder.observeMeteredDelivery([instantReading(params.drawKw, deadlineAtMs)]);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+      return persisted.saved()!.entries[0]!;
+    };
+
+    it('integrates trusted power independently of objective progress', () => {
+      const entry = run({
+        drawKw: 2,
+        progressAtEnd: 50,
+        resolveHourPrice: () => ({
+          priceValue: 0.5,
+          tone: 'cheap',
+          costDisplay: { unit: 'kr', divisor: 100 },
+        }),
       });
-
-      // Second "PELS process": fresh recorder, fed the restored active plan.
-      // First post-restart reading is 53 °C still inside hour 1; the recorder
-      // restores the opening at 50 (not 53).
-      const recorderB = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      recorderB.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53 })],
-        HOUR_MS + 40 * 60_000,
-        restoredPlans,
-      );
-      // Cross into hour 2 with 55 °C. Delta from the RESTORED opening (50 → 55)
-      // attributes 5 °C × 1.5 kWh/°C = 7.5 kWh to hour 1 — the full delivery,
-      // including the 50 → 53 delivered before the restart.
-      recorderB.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
-        2 * HOUR_MS + 5 * 60_000,
-        restoredPlans,
-      );
-      recorderB.observe([], deadlineAtMs);
-      recorderB.flushIfDirty();
-
-      const entry = persisted.saved()!.entries[0]!;
-      expect(entry.hourlyContributions).toHaveLength(1);
-      expect(entry.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS,
-        deliveredKWh: 7.5, // full 50→55 delta — the pre-restart 50→53 is no longer lost
+      expect(entry.deliveredKWh).toBeCloseTo(2 / 6, 6);
+      expect(entry.totalCost).toBeCloseTo(1 / 6, 6);
+      expect(entry.hourlyContributions).toEqual([{
+        atMs: 0,
+        deliveredKWh: 2 / 6,
         priceValue: 0.5,
         tone: 'cheap',
-      });
-      expect(entry.deliveredKWh).toBeCloseTo(7.5);
+      }]);
     });
 
-    it('degrades to re-anchoring on restart when the active plan carries no anchor (legacy)', () => {
-      // Legacy / cold-start fallback: a persisted plan from before the anchor
-      // field shipped (or a run that never reached a trustworthy reading) omits
-      // `inFlightHourOpening`. The recorder must NOT crash and must fall back to
-      // the pre-existing re-anchor-on-first-post-restart-reading behaviour, so
-      // only the post-restart delta is attributed.
-      const pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }> = {
-        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
-        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal' },
-      };
-      const persisted = buildPersistDepsWithPrice(pricesByHourMs);
-      const deadlineAtMs = 5 * HOUR_MS;
+    it('persists exact zero delivery from a real meter', () => {
+      const entry = run({ drawKw: 0, progressAtEnd: 55 });
+      expect(entry.deliveredKWh).toBe(0);
+      expect(entry.totalCost).toBe(0);
+    });
 
-      // Legacy active plan: no anchor fields at all.
-      const legacyPlans = buildPlansWithAnchors({ deviceId: 'dev', deadlineAtMs });
+    it('keeps delivery when price data is absent and omits incomplete cost', () => {
+      const entry = run({ drawKw: 3 });
+      expect(entry.deliveredKWh).toBeCloseTo(0.5, 6);
+      expect(entry.totalCost).toBeUndefined();
+      expect(entry.hourlyContributions).toBeUndefined();
+    });
 
+    it('does not integrate beyond the task deadline when the lifecycle tick is late', () => {
+      const persisted = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      // First post-restart reading 53 °C in hour 1 — re-anchors here.
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53 })],
-        HOUR_MS + 40 * 60_000,
-        legacyPlans,
-      );
-      // Cross into hour 2 with 55 °C: delta from the post-restart re-anchor
-      // (53 → 55) attributes 2 °C × 1.5 = 3.0 kWh to hour 1.
-      recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
-        2 * HOUR_MS + 5 * 60_000,
-        legacyPlans,
-      );
+      const deadlineAtMs = 5 * 60_000;
+      recorder.observeMeteredDelivery([instantReading(2, 0)]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      recorder.observeMeteredDelivery([instantReading(2, 10 * 60_000)]);
+      recorder.observe([], 10 * 60_000);
+      recorder.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
+    });
+
+    it('does not turn one returning sample after a gap into an exact zero-delivery result', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = 10 * 60_000;
+      recorder.observeMeteredDelivery([instantReading(2, 0)]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      recorder.observeMeteredDelivery([]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
+      recorder.observeMeteredDelivery([instantReading(0, deadlineAtMs)]);
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
-      const entry = persisted.saved()!.entries[0]!;
-      expect(entry.hourlyContributions).toHaveLength(1);
-      expect(entry.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS,
-        deliveredKWh: 3.0, // post-restart delta only — legacy plan had no anchor to restore
-        priceValue: 0.5,
-        tone: 'cheap',
-      });
-      expect(entry.deliveredKWh).toBeCloseTo(3.0);
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeUndefined();
     });
 
-    it('finalize-time flush advances the opening anchor to the next hour bucket', () => {
-      // Regression: `flushOpenHourAtFinalize` historically returned the
-      // just-closed `hourMs` as the new `nextOpening.hourMs`. Today the
-      // recorder deletes the in-progress record immediately after flushing, so
-      // the stale anchor never surfaces — but a future refactor that observes
-      // the returned record (e.g. one more rollover detection pass before
-      // delete) would re-attribute progress against the just-flushed hour and
-      // double-count. Pin the next-bucket shape directly on the pure helper so
-      // the contract is enforced regardless of caller discipline.
-      const opening = { hourMs: HOUR_MS, value: 50 };
-      const flush = buildFinalHourFlush({
-        opening,
-        finalProgress: 51,
-        kWhPerUnit: 1.5,
-        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
-          : null),
-      });
-      expect(flush).not.toBeNull();
-      expect(flush!.contribution).toEqual({
-        atMs: HOUR_MS,
-        deliveredKWh: 1.5,
-        priceValue: 1.0,
-        tone: 'expensive',
-      });
-      // The fix: nextOpening points to the NEXT hour bucket, not the
-      // just-flushed one. The pre-fix value would have been `HOUR_MS` (the
-      // same bucket as `opening.hourMs`).
-      expect(flush!.nextOpening.hourMs).toBe(2 * HOUR_MS);
-      expect(flush!.nextOpening.hourMs).not.toBe(opening.hourMs);
-      expect(flush!.nextOpening.value).toBe(51);
+    it('does not refresh a retained meter sample on lifecycle ticks', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = 20 * 60_000;
+      const retained = instantReading(2, 0);
+      recorder.observeMeteredDelivery([retained]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      recorder.observeMeteredDelivery([retained]);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
+      recorder.observeMeteredDelivery([retained]);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeUndefined();
     });
 
-    it('finalize-time flush returns null when there is no opening anchor', () => {
-      // Cold start / no anchor: flush is a no-op. Matches
-      // `buildFinalHourContribution`'s null-on-no-anchor contract so the
-      // recorder's `flushOpenHourAtFinalize` wrapper short-circuits.
-      const flush = buildFinalHourFlush({
-        opening: null,
-        finalProgress: 51,
-        kWhPerUnit: 1.5,
-        resolvePrice: () => ({ priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }),
-      });
-      expect(flush).toBeNull();
+    it('books cumulative-meter averages into their covered interval', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = 5 * 60_000;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      recorder.observeMeteredDelivery([{
+        deviceId: 'dev',
+        kind: 'interval_average',
+        powerKw: 2,
+        startMs: 0,
+        endMs: 60 * 60_000,
+      }]);
+      recorder.observe([], 60 * 60_000);
+      recorder.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
     });
 
-    it('round-trip: feeding the post-flush nextOpening back into detectHourRollover never re-attributes to the just-closed hour', () => {
-      // Behavioural complement to the structural pin above. The previous test
-      // pins `nextOpening.hourMs === opening.hourMs + ONE_HOUR_MS` — the
-      // *shape* of the post-flush record. This test pins the *consequence*:
-      // taking that record and replaying it through the rollover detector
-      // would NOT emit a contribution carrying `atMs === opening.hourMs`
-      // (the just-closed hour). Defends against a future refactor that wires
-      // the post-flush record back into the rollover path (e.g. one more
-      // detection pass before delete) from silently double-counting against
-      // the just-flushed hour.
-      //
-      // The detector is sensitive to the relative position of
-      // `opening.hourMs` vs `currentHourMs`: with the fix in place, replaying
-      // with a `nowMs` in any later hour emits contributions only against the
-      // *new* opening (`nextOpening.hourMs = 2*HOUR_MS`). Pre-fix
-      // (`nextOpening.hourMs = HOUR_MS`), the same replay would emit a second
-      // contribution at `atMs === HOUR_MS` — the just-flushed hour — and
-      // double-count. This test calls that boundary out explicitly.
-      const opening = { hourMs: HOUR_MS, value: 50 };
-      const flush = buildFinalHourFlush({
-        opening,
-        finalProgress: 51,
-        kWhPerUnit: 1.5,
-        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
-          : { priceValue: 2.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
-      });
-      expect(flush).not.toBeNull();
+    it('restores accumulated metered delivery after a restart without filling the restart gap', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = 15 * 60_000;
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      beforeRestart.observeMeteredDelivery([instantReading(2, 0)]);
+      beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      beforeRestart.observeMeteredDelivery([instantReading(2, 5 * 60_000)]);
+      beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
+      expect(beforeRestart.flushIfDirty()).toBe(true);
+      expect(persisted.savedMeteredDelivery()[0]?.deliveredKWh).toBeCloseTo(1 / 6, 6);
 
-      // Replay with a `nowMs` in a later hour and a small forward delta.
-      // The rollover detector now sees a true hour boundary (from
-      // `nextOpening.hourMs = 2*HOUR_MS` to `currentHourMs = 3*HOUR_MS`) —
-      // any emitted contribution must anchor at the *new* opening
-      // (`2*HOUR_MS`), not at the original `opening.hourMs` (`HOUR_MS`,
-      // the just-flushed hour). Pre-fix, the post-flush `nextOpening.hourMs`
-      // would still be `HOUR_MS` and the detector would emit
-      // `atMs === HOUR_MS`, double-counting against the closed hour.
-      const replay = detectHourRollover({
-        opening: flush!.nextOpening,
-        nowProgress: 52,
-        nowMs: 3 * HOUR_MS + 5 * 60_000,
-        kWhPerUnit: 1.5,
-        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
-          : { priceValue: 2.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      afterRestart.observe([], 6 * 60_000);
+      expect(afterRestart.flushIfDirty()).toBe(false);
+      expect(persisted.savedMeteredDelivery()[0]?.deliveredKWh).toBeCloseTo(1 / 6, 6);
+      afterRestart.observeMeteredDelivery([instantReading(2, 10 * 60_000)]);
+      afterRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 10 * 60_000);
+      afterRestart.observeMeteredDelivery([instantReading(2, deadlineAtMs)]);
+      afterRestart.observe([], deadlineAtMs);
+      afterRestart.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 3, 6);
+      expect(persisted.savedMeteredDelivery()).toEqual([]);
+    });
+
+    it('finalizes restored metered delivery when the first post-restart tick is after the deadline', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = 10 * 60_000;
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      beforeRestart.observeMeteredDelivery([instantReading(2, 0)]);
+      beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      beforeRestart.observeMeteredDelivery([instantReading(2, 5 * 60_000)]);
+      beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
+      expect(beforeRestart.flushIfDirty()).toBe(true);
+
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      afterRestart.backfillFromConfig([{
+        deviceId: 'dev',
+        objectiveKind: 'temperature',
+        deadlineAtMs,
+        targetTemperatureC: 65,
+        targetPercent: null,
+      }], 0, 11 * 60_000);
+      expect(afterRestart.getHistorySnapshot().entries).toEqual([]);
+
+      afterRestart.observe([
+        makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 }),
+      ], 11 * 60_000);
+      afterRestart.flushIfDirty();
+
+      expect(persisted.saved()!.entries).toHaveLength(1);
+      expect(persisted.saved()!.entries[0]).toMatchObject({
+        outcome: 'missed',
+        startedAtMs: 0,
+        observedIntervals: [{ fromMs: 11 * 60_000, toMs: 11 * 60_000 }],
       });
-      expect(replay).not.toBeNull();
-      // No contribution may carry the just-closed hour's anchor — this is
-      // the assertion that catches the regression.
-      for (const contribution of replay!.contributions) {
-        expect(contribution.atMs).not.toBe(opening.hourMs);
-      }
-      // Stronger: the only emitted contribution should land on the
-      // post-flush opening's hour (`2 * HOUR_MS`), confirming the replay
-      // correctly accounted forward, not back.
-      expect(replay!.contributions).toHaveLength(1);
-      expect(replay!.contributions[0]!.atMs).toBe(2 * HOUR_MS);
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
+      expect(persisted.savedMeteredDelivery()).toEqual([]);
     });
   });
 
@@ -3144,6 +2832,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // delivered-vs-committed comparison reads. A revision's own
       // `energyExpectedKWh` is the energy still outstanding at that moment and
       // shrinks as the run delivers, so it cannot serve as the commitment.
+      recorder.observeMeteredDelivery([instantReading(18, 0)]);
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -3159,8 +2848,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         0,
         plans,
       );
-      // Cycle 2 lands in the next hour, so the rollover closes hour 0 and
-      // attributes its delta: 2 °C × 1.6 kWh/°C = 3.2 kWh delivered.
+      // The real meter attributes 3.0 kWh before the next diagnostic.
+      recorder.observeMeteredDelivery([instantReading(18, 10 * 60_000)]);
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -3258,6 +2947,26 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.initialEnergyExpectedKWh).toBeCloseTo(3.0);
     });
 
+    it('backfills the commitment after an exact zero-delivery interval', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observeMeteredDelivery([instantReading(0, 0)]);
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, energyNeededKWh: null, energyExpectedKWh: null,
+      })], 0);
+      recorder.observeMeteredDelivery([instantReading(0, 5 * 60_000)]);
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, energyNeededKWh: 5, energyExpectedKWh: 3,
+      })], 5 * 60_000);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.deliveredKWh).toBe(0);
+      expect(saved()!.entries[0]!.initialEnergyExpectedKWh).toBe(3);
+    });
+
     it('records no commitment when the run was still learning as delivery began', () => {
       // `resolveCommitmentKWh` reads `remainingUnits` as of the cycle it is
       // asked, so once the device has already delivered, the answer is a
@@ -3275,6 +2984,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
 
       // Cycle 1: still learning — no requirement to state.
+      recorder.observeMeteredDelivery([instantReading(1.5, 0)]);
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -3285,9 +2995,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         })],
         0,
       );
-      // Cycle 2 crosses the hour boundary while the profile is STILL
-      // unresolved, so the rollover records delivery before any commitment
-      // could be stated.
+      // The real meter records delivery while the profile is still unresolved,
+      // before any commitment could be stated.
+      recorder.observeMeteredDelivery([instantReading(1.5, 5 * 60_000)]);
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',

@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-20: 369 files, 937 bundles.
+# Seeded 2026-09-21: 366 files, 930 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -136,7 +136,7 @@ lib/executor/targetPowerReachability.ts 4
 lib/logging/deviationGate.ts 1
 lib/logging/logDedupe.ts 2
 lib/objectives/deferredObjectives/activePlanDuration.ts 1
-lib/objectives/deferredObjectives/activePlanRecorder.ts 2
+lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/activePlanRevisionBuild.ts 7
 lib/objectives/deferredObjectives/activePlanSchedule.ts 3
 lib/objectives/deferredObjectives/admission.ts 1
@@ -154,8 +154,6 @@ lib/objectives/deferredObjectives/frozenHorizonPlan.ts 2
 lib/objectives/deferredObjectives/horizonPlanner.ts 10
 lib/objectives/deferredObjectives/hoursRemainingCrossings.ts 3
 lib/objectives/deferredObjectives/objectiveWrite.ts 1
-lib/objectives/deferredObjectives/planHistory.ts 2
-lib/objectives/deferredObjectives/planHistoryV4Helpers.ts 3
 lib/objectives/deferredObjectives/planPreview.ts 3
 lib/objectives/deferredObjectives/policyHorizon.ts 3
 lib/objectives/deferredObjectives/priorityAllocation.ts 7
@@ -321,7 +319,6 @@ packages/shared-domain/src/deferredPlanHistoryAttribution.ts 1
 packages/shared-domain/src/deferredPlanHistoryChartData.ts 2
 packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts 1
 packages/shared-domain/src/deviceOverview.ts 1
-packages/shared-domain/src/energySignature/budgetPressure.ts 1
 packages/shared-domain/src/energySignature/energySignature.ts 1
 packages/shared-domain/src/homesManagement.ts 3
 packages/shared-domain/src/homesManagementCopy.ts 1

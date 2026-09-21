@@ -1780,8 +1780,9 @@ describe('MyApp initialization', () => {
   });
 
   it('set_capacity_mode applies device targets when not in dry run', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2121,8 +2122,9 @@ describe('MyApp initialization', () => {
   });
 
   it('handles mode rename without losing settings or leaving dangling entries', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2592,9 +2594,10 @@ describe('computeDynamicSoftLimit', () => {
   });
 
   it('builds device plan in dry-run mode without actuating', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),

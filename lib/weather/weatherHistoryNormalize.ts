@@ -146,15 +146,22 @@ export function normalizeMetForecast(raw: unknown): WeatherMetForecastCache | un
  * the pressure loop grows on, never a witness flag, so a 0 would assert the
  * budget denied nothing rather than that PELS could not measure what it denied.
  *
- * `budgetDeniedKwh`/`budgetDeniedMs` deliberately KEEP a zero: for the day-close
- * damage verdict, presence means the day's midnight was witnessed — a real
- * "watched to the close, nothing denied" — while absence routes
- * `dayWasBudgetDamaged` to the legacy counters. Dropping the zero would erase
- * that distinction on exactly the days it matters.
+ * `budgetDeniedKwh`/`budgetDeniedMs` deliberately KEEP a zero. The explicit
+ * `budgetDenialObserved` bit distinguishes a real integrated zero from an
+ * upgraded diagnostics row that predates the integral. Older weather-history
+ * records used presence of the pair as that witness, so normalization infers
+ * the bit only when the persisted payload itself omitted it.
  */
 export function normalizeSuppression(raw: unknown): WeatherDaySuppression | undefined {
   if (!isUnknownRecord(raw)) return undefined;
+  let budgetDenialObserved: boolean | undefined;
+  if (typeof raw.budgetDenialObserved === 'boolean') {
+    budgetDenialObserved = raw.budgetDenialObserved;
+  } else if (isNonNegativeFinite(raw.budgetDeniedKwh) || isNonNegativeFinite(raw.budgetDeniedMs)) {
+    budgetDenialObserved = true;
+  }
   const normalized: WeatherDaySuppression = {
+    ...(budgetDenialObserved === undefined ? {} : { budgetDenialObserved }),
     ...(isNonNegativeFinite(raw.budgetDeniedKwh) ? { budgetDeniedKwh: raw.budgetDeniedKwh } : {}),
     ...(isNonNegativeFinite(raw.budgetDeniedMs) ? { budgetDeniedMs: raw.budgetDeniedMs } : {}),
     ...(raw.budgetDeniedUnwitnessed === true ? { budgetDeniedUnwitnessed: true } : {}),

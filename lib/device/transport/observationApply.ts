@@ -119,7 +119,12 @@ function applyMeasuredPowerObservation(
     const snapshot = nextSnapshot;
     // Same single rule as every other write seam; a rejected reading is absent.
     const kw = normalizeMeasuredPowerKw(observation.value);
-    if (kw === null || Object.is(snapshot.measuredPowerKw, kw)) return false;
+    if (kw === null) return false;
+    snapshot.measuredPowerObservedAtMs = observation.observedAt;
+    snapshot.measuredPowerReading = {
+      kind: 'instantaneous', powerKw: kw, observedAtMs: observation.observedAt,
+    };
+    if (Object.is(snapshot.measuredPowerKw, kw)) return false;
     snapshot.measuredPowerKw = kw;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;

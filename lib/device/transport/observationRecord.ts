@@ -276,23 +276,13 @@ function recordSnapshotScalarObservation(
 }
 
 /**
- * An observation that saw the measured power change TO no reading is the newest
- * word on it, so the value an earlier push retained is superseded and must go.
+ * Before a device has produced a trusted power sample, an observation that
+ * resolves no reading must not leave a synthetic retained observation behind.
  *
- * A retained `measure_power` observation exists to outlive an older pull: the
- * refresh merge re-applies it whenever the fetched device cannot prove itself
- * fresher. A device measured only by `meter_power` never can — it has no
- * `measure_power.lastUpdated` — so a rate one `device.update` retained came back
- * on every refresh. Once its meter stopped moving, the next `device.update`
- * resolved no reading (the resolver's no-window case), recorded nothing, and
- * left that rate standing: an idle device read its last running power until its
- * meter moved again. Deleting the retained observation is what closes it; the
- * absence then resolves to no draw at `getCurrentDrawKw`, as a meter that has
- * not moved should.
- *
- * It closes only the case an observation sees. An idle device that sends no
- * further `device.update` still has its last rate re-applied on every refresh,
- * because nothing here observes the drop.
+ * Once a real sample exists, `managerParseDeviceFields` carries it across a
+ * refresh with no newer sample. Absence is a no-op, not evidence of zero draw;
+ * a cumulative meter reports a true zero only when its observation timestamp
+ * advances without an energy delta.
  */
 function forgetSupersededMeasuredPower(
     state: DeviceTransportObservationState,

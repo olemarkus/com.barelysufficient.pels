@@ -13,7 +13,7 @@
 // resolver. This boundary also projects each home's current planned set to
 // unique relative ranks before either the planner or smart-task clock reads it.
 
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
+import { evictMissingDeviceCacheEntries, toMeteredPlanDevice } from '../appInit/toPlanDevice';
 import {
   isAffirmativelyOn,
   releaseExternalOffHoldsForObservedOn,
@@ -27,6 +27,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import { rankModeDevices } from '../../packages/shared-domain/src/modeCatalogResolution';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
+import { selectMeteredSnapshots } from '../../lib/ports/meteredSnapshots';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** This home's stored priority source; absence must remain distinguishable from rank 100. */
@@ -106,8 +107,8 @@ export const buildHomePlanDevices = (
   options?: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
   const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
-  const devices = homeDevices
-    .map((device) => toPlanDevice(ctx, device, options))
+  const devices = selectMeteredSnapshots(homeDevices)
+    .map((device) => toMeteredPlanDevice(ctx, device, options))
     .filter(isRuntimePlannedPlanDevice);
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/modeCatalogResolution.ts`).

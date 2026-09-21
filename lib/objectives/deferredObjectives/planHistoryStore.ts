@@ -36,6 +36,10 @@ import {
   normalizeDeferredObjectivePlanHistory,
   parseDeferredObjectivePlanHistory,
 } from './planHistorySettings';
+import {
+  isPersistedMeteredDeliveryState,
+  type PersistedMeteredDeliveryState,
+} from './planHistoryMeteredState';
 
 const storeLogger = getLogger('deferred-objectives/plan-history-store');
 
@@ -44,15 +48,27 @@ export type PlanHistoryStore = {
   read(): DeferredObjectivePlanHistoryV5 | null;
   /** Persist `history`, touching only the rows that differ from what the store holds. */
   write(history: DeferredObjectivePlanHistoryV5): void;
+  readMeteredDelivery(): PersistedMeteredDeliveryState[];
+  writeMeteredDelivery(states: readonly PersistedMeteredDeliveryState[]): void;
 };
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS deferred_objective_plan_history (
   id TEXT PRIMARY KEY NOT NULL, finalized_at_ms INTEGER NOT NULL, entry_json TEXT NOT NULL
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS deferred_objective_metered_delivery (
+  run_key TEXT PRIMARY KEY NOT NULL, state_json TEXT NOT NULL
+) WITHOUT ROWID;
 `;
 
-type Statements = { upsert: PreparedStatement; remove: PreparedStatement; load: PreparedStatement };
+type Statements = {
+  upsert: PreparedStatement;
+  remove: PreparedStatement;
+  load: PreparedStatement;
+  upsertMetered: PreparedStatement;
+  removeMetered: PreparedStatement;
+  loadMetered: PreparedStatement;
+};
 
 const prepareStatements = (db: UserdataDatabase): Statements => ({
   upsert: db.prepare('INSERT INTO deferred_objective_plan_history (id, finalized_at_ms, entry_json) VALUES (?, ?, ?) '
@@ -61,6 +77,12 @@ const prepareStatements = (db: UserdataDatabase): Statements => ({
   load: db.prepare(
     'SELECT id, finalized_at_ms, entry_json FROM deferred_objective_plan_history ORDER BY finalized_at_ms, id',
   ),
+  upsertMetered: db.prepare(
+    'INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?) '
+      + 'ON CONFLICT (run_key) DO UPDATE SET state_json = excluded.state_json',
+  ),
+  removeMetered: db.prepare('DELETE FROM deferred_objective_metered_delivery WHERE run_key = ?'),
+  loadMetered: db.prepare('SELECT run_key, state_json FROM deferred_objective_metered_delivery ORDER BY run_key'),
 });
 
 const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -96,10 +118,19 @@ const heldOf = (history: DeferredObjectivePlanHistoryV5): Held => (
   new Map(history.entries.map((entry) => [entry.id, entry]))
 );
 
+type HeldMetered = Map<string, PersistedMeteredDeliveryState>;
+const meteredKey = (state: Pick<PersistedMeteredDeliveryState, 'deviceId' | 'deadlineAtMs'>): string => (
+  `${state.deviceId}|${state.deadlineAtMs}`
+);
+const heldMeteredOf = (states: readonly PersistedMeteredDeliveryState[]): HeldMetered => (
+  new Map(states.map((state) => [meteredKey(state), state]))
+);
+
 export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
   let held: Held | null = null;
+  let heldMetered: HeldMetered | null = null;
 
   /**
    * Runs inside a transaction: a row that does not parse, fails the strict
@@ -133,6 +164,27 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
     }
   };
 
+  const loadMetered = (): PersistedMeteredDeliveryState[] => {
+    const rows = s.loadMetered.all() as Array<{ run_key: string; state_json: string }>;
+    return rows.flatMap((row) => {
+      const parsed = parseRow(row.state_json);
+      if (isPersistedMeteredDeliveryState(parsed) && meteredKey(parsed) === row.run_key) return [parsed];
+      storeLogger.error({ event: 'deferred_objective_metered_delivery_row_quarantined', key: row.run_key });
+      s.removeMetered.run(row.run_key);
+      return [];
+    });
+  };
+
+  const writeMeteredDiff = (next: HeldMetered, previous: HeldMetered | null): void => {
+    for (const [key, state] of next) {
+      const before = previous?.get(key);
+      if (before === undefined || !sameJson(before, state)) s.upsertMetered.run(key, JSON.stringify(state));
+    }
+    for (const key of previous?.keys() ?? []) {
+      if (!next.has(key)) s.removeMetered.run(key);
+    }
+  };
+
   return {
     read: () => db.transaction(() => {
       const history = load();
@@ -151,6 +203,19 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
         writeDiff(next, previous);
       });
       held = next;
+    },
+    readMeteredDelivery: () => db.transaction(() => {
+      const states = loadMetered();
+      heldMetered = heldMeteredOf(states);
+      return states;
+    }),
+    writeMeteredDelivery: (states) => {
+      const next = heldMeteredOf(states);
+      db.transaction(() => {
+        const previous = heldMetered ?? heldMeteredOf(loadMetered());
+        writeMeteredDiff(next, previous);
+      });
+      heldMetered = next;
     },
   };
 };

@@ -203,8 +203,8 @@ const isHourlyTone = (value: unknown): value is DeferredObjectivePlanHistoryHour
 
 // Per-hour delivery contribution shape persisted on v4 entries. Recorder
 // writes hour-aligned `atMs` (positive), non-negative `deliveredKWh`, finite
-// `priceValue`, and a resolved tone (`detectHourRollover` only emits a priced
-// contribution — see `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts`).
+// `priceValue`, and a resolved tone (the meter integrator only emits a priced
+// contribution when its hour-price resolver succeeds).
 // A tampered payload could smuggle NaN price into the postmortem totals or
 // an unknown tone string into the bar-strip colour mapper; reject those at
 // the persistence boundary.

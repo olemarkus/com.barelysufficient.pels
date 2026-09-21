@@ -115,31 +115,6 @@ export const notifyRevisionWrittenIfPubliclyObservable = (params: {
   });
 };
 
-// Byte-equality of the persisted in-flight hour anchor so `applyInProgressAnchors`
-// can skip marking the active plans dirty when nothing moved (a steady run holds
-// the same opening until the hour rolls over).
-export const sameHourOpening = (
-  a: { hourMs: number; value: number } | undefined,
-  b: { hourMs: number; value: number } | undefined,
-): boolean => {
-  if (a === undefined || b === undefined) return a === b;
-  return a.hourMs === b.hourMs && a.value === b.value;
-};
-
-// Carry forward the persisted in-flight postmortem anchors from a prior plan
-// record (same run) onto a freshly-built one, omitting absent fields so the
-// byte-shape stays stable for plans that never had an anchor.
-export const carryInFlightAnchors = (
-  previous: DeferredObjectiveActivePlanV1 | undefined,
-): Pick<DeferredObjectiveActivePlanV1, 'inFlightHourOpening' | 'inFlightKWhPerUnit'> => ({
-  ...(previous?.inFlightHourOpening !== undefined
-    ? { inFlightHourOpening: previous.inFlightHourOpening }
-    : {}),
-  ...(previous?.inFlightKWhPerUnit !== undefined
-    ? { inFlightKWhPerUnit: previous.inFlightKWhPerUnit }
-    : {}),
-});
-
 export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string | null => {
   if (diag.deadlineAtMs === null) return null;
   return buildObjectiveSignature({

@@ -13,6 +13,27 @@ const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
+const hasUsableEnergyMetadata = (value: unknown): boolean => {
+  const energy = asRecord(value);
+  if (energy === null) return false;
+  const approximation = asRecord(energy.approximation);
+  const usageOnW = toFiniteNumber(approximation?.usageOn);
+  const usageOffW = toFiniteNumber(approximation?.usageOff);
+  const usageConstantW = toFiniteNumber(approximation?.usageConstant);
+  if (usageOnW !== null && usageOffW !== null && usageOnW - usageOffW > 0) return true;
+  if (usageOnW !== null && usageOnW > 0) return true;
+  if (usageConstantW !== null && usageConstantW >= 0) return true;
+  const energyW = toFiniteNumber(energy.W);
+  return energyW !== null && energyW >= 0;
+};
+
+// Structural support only: this says Homey can describe the device's load so a
+// temporary live-report gap must not erase the owner's settings. It is never a
+// measured reading and therefore never admits the device to a plan by itself.
+export const hasPotentialHomeyEnergyEstimate = (device: HomeyDeviceLike): boolean => (
+  hasUsableEnergyMetadata(device.energyObj) || hasUsableEnergyMetadata(device.energy)
+);
+
 /**
  * Net grid power (W) for an explicitly selected whole-home meter, resolved
  * from the same `manager/energy/live` payload. A device marked "Tracks total
@@ -379,18 +400,4 @@ export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevice
       return [[deviceId, watts] as const];
     }),
   );
-};
-
-export const hasPotentialHomeyEnergyEstimate = (device: HomeyDeviceLike): boolean => {
-  const energy = asRecord(device.energyObj) || asRecord(device.energy);
-  if (!energy) return false;
-
-  const approx = asRecord(energy.approximation);
-  const usageOnW = toFiniteNumber(approx?.usageOn);
-  const usageOffW = toFiniteNumber(approx?.usageOff);
-  if (usageOnW !== null && usageOffW !== null && usageOnW - usageOffW > 0) return true;
-  if (usageOnW !== null && usageOnW > 0) return true;
-
-  const energyW = toFiniteNumber(energy.W);
-  return energyW !== null && energyW >= 0;
 };

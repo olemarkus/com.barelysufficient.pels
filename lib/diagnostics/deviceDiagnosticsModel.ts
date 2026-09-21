@@ -12,6 +12,9 @@ export type PersistedDayAggregate = {
   blockedByHeadroomMs: number;
   blockedByCooldownBackoffMs: number;
   targetDeficitMs: number;
+  budgetDeniedMs: number;
+  budgetDeniedKwh: number;
+  budgetDenialObserved: boolean;
   shedCount: number;
   restoreCount: number;
   failedActivationCount: number;
@@ -63,6 +66,9 @@ export const createEmptyDayAggregate = (): PersistedDayAggregate => ({
   blockedByHeadroomMs: 0,
   blockedByCooldownBackoffMs: 0,
   targetDeficitMs: 0,
+  budgetDeniedMs: 0,
+  budgetDeniedKwh: 0,
+  budgetDenialObserved: false,
   shedCount: 0,
   restoreCount: 0,
   failedActivationCount: 0,
@@ -97,6 +103,9 @@ const sanitizeDayAggregate = (raw: unknown): PersistedDayAggregate => {
     blockedByHeadroomMs: clampDurationMs(record.blockedByHeadroomMs),
     blockedByCooldownBackoffMs: clampDurationMs(record.blockedByCooldownBackoffMs),
     targetDeficitMs: clampDurationMs(record.targetDeficitMs),
+    budgetDeniedMs: clampDurationMs(record.budgetDeniedMs),
+    budgetDeniedKwh: clampDurationMs(record.budgetDeniedKwh),
+    budgetDenialObserved: record.budgetDenialObserved === true,
     shedCount: clampNonNegativeInt(record.shedCount),
     restoreCount: clampNonNegativeInt(record.restoreCount),
     failedActivationCount: clampNonNegativeInt(record.failedActivationCount),

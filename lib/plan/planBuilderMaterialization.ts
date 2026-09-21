@@ -251,6 +251,8 @@ export class PlanMaterializationStages {
     power: MeasuredPower;
     planDevices: DevicePlanDevice[];
     restoreResult: RestorePlanResult;
+    budgetPressureEligible: boolean;
+    smartTaskDrivingDeviceIds: ReadonlySet<string>;
     nowTs: number;
   }): void {
     trackPlanStage('plan_observe_diag_ms', () => {
@@ -261,6 +263,8 @@ export class PlanMaterializationStages {
         power: params.power,
         planDevices: params.planDevices,
         restoreResult: params.restoreResult,
+        budgetPressureEligible: params.budgetPressureEligible,
+        smartTaskDrivingDeviceIds: params.smartTaskDrivingDeviceIds,
       });
       this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
     });

@@ -50,12 +50,11 @@ export type DeferredDecorationInput = {
  *   cycle — not `inactive`). The planner's surplus dump-load hold excludes
  *   these ids so a standing "Run on solar surplus" hold can never fight an
  *   active smart task (smart-task precedence, plan-side).
- *
- * The narrower "a task is actively DRIVING this device" fact — a `planned`
- * decision — does not travel here: it rides the device itself as
- * `PlanInputDevice.startPolicyHoldLifted`, because a device that is already OFF
- * never enters the shed set and the readers that must still see the lift only
- * ever hold the device.
+ * - `drivingDeviceIds`: devices whose task needs energy in this hour: either it
+ *   booked the hour (`planned`) or it could not book enough energy and left the
+ *   hour to the ordinary planner (`unclaimed`). This is the task's demand signal
+ *   for diagnostics, including binary loads such as EV chargers that have no
+ *   thermostat-style standing-demand fact.
  */
 export type DeferredDecorationBundle = {
   admittedDevices: PlanInputDevice[];
@@ -63,4 +62,5 @@ export type DeferredDecorationBundle = {
   deferredAvoidDeviceIds: Set<string>;
   deferredReleaseIntentByDeviceId: Record<string, DeferredReleaseIntent>;
   admittedDeviceIds: ReadonlySet<string>;
+  drivingDeviceIds: ReadonlySet<string>;
 };

@@ -25,7 +25,6 @@ import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
 import {
   foldBudgetPressureDay,
-  PRESSURE_CEILING_FRACTION,
 } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -663,15 +662,15 @@ export class WeatherCollector {
    * evidence away.
    */
   private foldClosedDayIntoBudgetPressure(record: WeatherDailyRecord): void {
-    // Bound the integral by what the suggestion could actually apply, using the
-    // prediction from the previous recompute (the refit runs after this batch).
-    const predictedKwh = this.state.latestSuggestion?.predictedKwh;
+    const timeZone = this.deps.getTimeZone();
+    const dayStartMs = getDateKeyStartMs(record.dateKey, timeZone);
+    const dayLengthHours = (getNextLocalDayStartUtcMs(dayStartMs, timeZone) - dayStartMs) / HOUR_MS;
     this.state = {
       ...this.state,
       budgetPressure: foldBudgetPressureDay(
         this.state.budgetPressure,
         record,
-        predictedKwh !== undefined ? PRESSURE_CEILING_FRACTION * predictedKwh : undefined,
+        this.deps.getSustainableCapacityKw() * dayLengthHours,
       ),
     };
   }
@@ -712,20 +711,16 @@ export class WeatherCollector {
 }
 
 /**
- * The two halves of the day-close damage verdict, as the rollup log reports
- * them. Both distinguish "no verdict" from "watched, nothing denied", so both
- * resolve absence to `null` rather than 0 — the loop reads those two states
- * differently and a log that conflated them could not explain a term that moved.
+ * The two denial signals as the rollup log reports them. Both resolve absence
+ * to `null` rather than fabricating zero.
  *
  * Split out of `rollup` to keep that method under the complexity cap.
  */
 const damageVerdictLogFields = (
   record: WeatherDailyRecord | undefined,
 ): { budgetDeniedKwh: number | null; deadlineMissDeniedKwh: number | null } => ({
-  // Devices still being refused when the local day ended: null = no witness
-  // (restart/gap across midnight), 0 = watched to the close and nothing denied.
+  // Cause-independent denied energy integrated across observed demand spans.
   budgetDeniedKwh: record?.suppression?.budgetDeniedKwh ?? null,
-  // The same question asked of smart tasks: null = no budget-bound deadline miss
-  // closed on this day, 0 = one did but PELS could not price what it never got.
+  // Denied energy attached to budget-bound smart-task deadline misses.
   deadlineMissDeniedKwh: record?.suppression?.deadlineMissDeniedKwh ?? null,
 });

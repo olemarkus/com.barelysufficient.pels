@@ -23,6 +23,7 @@ import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCro
 import type { DeferredObjectiveSettingsV1 } from './settings';
 import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { PriorityAllocationTracker } from './priorityAllocation';
+import type { MeteredDeviceReading } from '../../ports/meteredSnapshots';
 
 type StallClassification = StallEvidence | undefined;
 
@@ -63,6 +64,8 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getTimeZone: () => string;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
   getDevices: () => ObjectiveDeviceInput[];
+  /** Trusted meter records with their source timestamps/covered intervals. */
+  getMeteredDeviceReadings: () => readonly MeteredDeviceReading[];
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -108,6 +111,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
+    meteredReadings: readonly MeteredDeviceReading[],
     getStallClassification?: (deviceId: string) => StallClassification,
   ) => void;
   /**
@@ -158,10 +162,11 @@ export class DeferredObjectiveLifecycleEmitter {
     // history record). The read itself is in-memory (no SDK call).
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
+    const devices = this.deps.getDevices();
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),
-      devices: this.deps.getDevices(),
+      devices,
       settings,
       powerTracker: this.deps.getPowerTracker(),
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
@@ -184,6 +189,7 @@ export class DeferredObjectiveLifecycleEmitter {
       diagnostics,
       nowMs,
       activePlans,
+      this.deps.getMeteredDeviceReadings(),
       this.deps.getStallClassification,
     );
 

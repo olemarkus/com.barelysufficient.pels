@@ -28,7 +28,7 @@ import {
 import {
   buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,
-  toPlanDevice,
+  toMeteredPlanDevice,
   type CancelDeferredObjectiveOutcome,
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
@@ -40,6 +40,7 @@ import {
 } from './appInit/smartTaskHomeScope';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
+import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
 import { getLogger } from '../lib/logging/logger';
 import { resolveConfiguredDevicePriority } from '../lib/utils/capacityHelpers';
 
@@ -349,7 +350,10 @@ export class AppSmartTaskApi {
       absenceTrustworthy: true,
     });
     const planDevices = planService.getPlanDevices();
-    const candidateDevice = snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined;
+    const meteredSnapshotDevice = snapshotDevice && asMeteredSnapshot(snapshotDevice);
+    const candidateDevice = meteredSnapshotDevice
+      ? toMeteredPlanDevice(this.ctx, meteredSnapshotDevice)
+      : undefined;
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
@@ -367,8 +371,8 @@ export class AppSmartTaskApi {
       timeZone: this.ctx.getTimeZone(),
       deviceId,
       candidate: gatedCandidate,
-      // Convert through the same `toPlanDevice` producer the plan cycle uses so
-      // the projected steps/power match the live planner. `toPlanDevice` is a
+      // Convert through the same metered producer the plan cycle uses so
+      // the projected steps/power match the live planner. The projection is a
       // pure read projection (no live-state mutation), so the preview is
       // read-only by construction. Undefined when the device is in neither
       // snapshot → projection comes back `unavailable`.
@@ -416,7 +420,8 @@ export class AppSmartTaskApi {
     // persisted. Uses the SAME predicate the plan service and the candidate
     // listing use so the three never diverge.
     const device = this.ctx.latestTargetSnapshot.find((entry) => entry.id === deviceId);
-    if (!device || !isRuntimePlannedDevice(device)) {
+    const meteredDevice = device && asMeteredSnapshot(device);
+    if (!meteredDevice || !isRuntimePlannedDevice(meteredDevice)) {
       const inPickerOrSnapshot = device !== undefined
         || this.ctx.getUiPickerDevices().some((entry) => entry.id === deviceId);
       return { ok: false, reason: inPickerOrSnapshot ? 'device_not_planned' : 'device_not_found' };
@@ -459,7 +464,7 @@ export class AppSmartTaskApi {
       { ...gatedCandidate, enabled: true },
     );
     if (!entry) return { ok: false, reason: 'invalid_candidate' };
-    return { ok: true, device, entry };
+    return { ok: true, device: meteredDevice, entry };
   }
 
   // Persist a new smart task (deferred objective) for an eligible device,

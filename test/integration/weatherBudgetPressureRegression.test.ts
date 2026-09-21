@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature } from '../../packages/shared-domain/src/energySignature/energySignature';
-import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
+import { suggestDailyBudgetKwh } from '../../lib/weather/suggestDailyBudget';
 import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 /**
@@ -161,6 +161,7 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     // Watched to the close, nothing denied: the verdict is an explicit zero even
     // though devices were held (and served) for hours during the day.
     const folded = foldBudgetPressureDay(CARRIED, augEighth({
+      budgetDenialObserved: true,
       budgetDeniedKwh: 0,
       budgetDeniedMs: 0,
       blockedByHeadroomMs: 6 * 60 * 60 * 1000,
@@ -173,6 +174,7 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     // Hypothetical: hovedbad still latched at midnight with 2 h of denied time
     // at its 1.14 kW draw.
     const folded = foldBudgetPressureDay(CARRIED, augEighth({
+      budgetDenialObserved: true,
       budgetDeniedKwh: 2.28,
       budgetDeniedMs: 2 * 60 * 60 * 1000,
     }));
@@ -182,7 +184,11 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
 
   it('grows on a denial day the budget kept UNDER its number — invisible to the old step', () => {
     const folded = foldBudgetPressureDay(CARRIED, {
-      ...augEighth({ budgetDeniedKwh: 3.42, budgetDeniedMs: 3 * 60 * 60 * 1000 }),
+      ...augEighth({
+        budgetDenialObserved: true,
+        budgetDeniedKwh: 3.42,
+        budgetDeniedMs: 3 * 60 * 60 * 1000,
+      }),
       kwhTotal: 58,
     });
     expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 3.42, 9);

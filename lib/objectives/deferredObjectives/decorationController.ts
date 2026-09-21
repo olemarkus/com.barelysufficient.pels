@@ -15,6 +15,7 @@ import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredDemandDeviceIds,
   buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
   type DeferredAdmissionDecision,
@@ -84,6 +85,7 @@ export class DeferredObjectiveDecorationController {
       deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(evaluations),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
+      drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
     };
   }
 

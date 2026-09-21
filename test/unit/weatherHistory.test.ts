@@ -138,7 +138,11 @@ describe('rollupDay', () => {
       unreliablePower: false,
       suppression: { budgetDeniedKwh: 0, budgetDeniedMs: 0, targetDeficitMs: 0 },
     });
-    expect(state.records[0].suppression).toEqual({ budgetDeniedKwh: 0, budgetDeniedMs: 0 });
+    expect(state.records[0].suppression).toEqual({
+      budgetDenialObserved: true,
+      budgetDeniedKwh: 0,
+      budgetDeniedMs: 0,
+    });
   });
 
   it('drops a zero deadline-miss denial — it is a magnitude, not a witness flag', () => {

@@ -212,6 +212,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       power: context,
       planDevices,
       restoreResult: emptyRestoreResult,
+      budgetPressureEligible: false,
+      smartTaskDrivingDeviceIds: new Set<string>(),
     });
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
     expect(solarObservation?.eligibleForStarvation).toBe(false);

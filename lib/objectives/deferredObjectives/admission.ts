@@ -29,6 +29,14 @@ export type DeferredAdmissionDecision =
   // command the device anywhere, so this kind cannot carry one even by accident.
   | { kind: 'unclaimed'; budgetExempt: false; releaseIntent?: never };
 
+export const buildDeferredDemandDeviceIds = (
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+): ReadonlySet<string> => new Set(
+  [...decisions]
+    .filter(([, decision]) => decision.kind === 'planned' || decision.kind === 'unclaimed')
+    .map(([deviceId]) => deviceId),
+);
+
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
 // planner's lowest-step allocation is what we _can_ deliver, not a reason to

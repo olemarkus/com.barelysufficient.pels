@@ -64,7 +64,8 @@ describe('Mode device targets', () => {
   });
 
   it('applies device targets when operating_mode or mode_device_targets changes', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -85,7 +86,8 @@ describe('Mode device targets', () => {
   });
 
   it('updates temperatures when targets change for the active mode', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature']);
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -109,7 +111,8 @@ describe('Mode device targets', () => {
   });
 
   it('never sends an illegal target value when the device json includes a target step', async () => {
-    const heater = new MockDevice('dev-1', 'Connected 300', ['target_temperature']);
+    const heater = new MockDevice('dev-1', 'Connected 300', ['target_temperature', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityMetadata('target_temperature', {
       units: '°C',
       min: 35,

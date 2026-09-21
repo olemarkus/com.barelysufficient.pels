@@ -6,8 +6,10 @@ import type {
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature } from '../../packages/shared-domain/src/energySignature/energySignature';
-import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { suggestDailyBudgetKwh } from './suggestDailyBudget';
+import { getDateKeyInTimeZone, getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../utils/dateUtils';
+
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * Derives the energy-signature fit and the budget suggestion from the collected
@@ -74,6 +76,7 @@ export function computeEnergySignatureUpdate(
       forecast,
       capacityLimitKw: deps.getCapacityLimitKw(),
       budgetPressure: state.budgetPressure,
+      timeZone: deps.getTimeZone(),
       nowMs,
     })
     : undefined;
@@ -128,9 +131,14 @@ function buildSuggestion(params: {
   forecast: ResolvedComingDay;
   capacityLimitKw: number | undefined;
   budgetPressure: WeatherHistoryState['budgetPressure'];
+  timeZone: string;
   nowMs: number;
 }): EnergySignatureSuggestion {
-  const { fit, forecast, capacityLimitKw, budgetPressure, nowMs } = params;
+  const {
+    fit, forecast, capacityLimitKw, budgetPressure, timeZone, nowMs,
+  } = params;
+  const targetDayStartMs = getDateKeyStartMs(forecast.targetDateKey, timeZone);
+  const capacityDayHours = (getNextLocalDayStartUtcMs(targetDayStartMs, timeZone) - targetDayStartMs) / HOUR_MS;
   return {
     targetDateKey: forecast.targetDateKey,
     forecastMeanTempC: forecast.meanTempC,
@@ -139,6 +147,7 @@ function buildSuggestion(params: {
       fit,
       forecastMeanTempC: forecast.meanTempC,
       capacityLimitKw,
+      capacityDayHours,
       ...(budgetPressure !== undefined ? { budgetPressure } : {}),
     }),
     ...(forecast.tempMinC !== undefined ? { tempMinC: forecast.tempMinC } : {}),

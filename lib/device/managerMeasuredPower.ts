@@ -5,6 +5,7 @@ import { updateLastKnownPower } from './managerRuntime';
 import { readDeviceMeasuredPowerObservation } from './measuredPowerReader';
 import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import type { ResolvedTransportPowerState } from './transport/transportTypes';
+import type { MeteredPowerReading } from '../../packages/contracts/src/types';
 
 /**
  * Below this a reading is standby noise, not evidence of what the device draws
@@ -24,7 +25,7 @@ export function resolveMeasuredPowerKw(params: {
   measuredPowerResolver: DeviceMeasuredPowerResolver;
   powerState: ResolvedTransportPowerState;
   logger: Logger;
-}): { measuredPowerKw?: number; observedAtMs?: number } {
+}): { measuredPowerKw?: number; observedAtMs?: number; reading?: MeteredPowerReading } {
   const {
     deviceId,
     deviceLabel,

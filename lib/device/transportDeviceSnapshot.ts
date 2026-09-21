@@ -37,7 +37,8 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
  * - `StateOfChargeObservedProbe` for `stateOfCharge` (see
  *   `StateOfChargeObservedFields`).
  * - `MeasuredPowerObservedProbe` for `measuredPowerKw` /
- *   `measuredPowerObservedAtMs` (see `MeasuredPowerObservedFields`).
+ *   `measuredPowerObservedAtMs` / `measuredPowerReading` (see
+ *   `MeasuredPowerObservedFields`).
  * - `SteppedLoadDescriptorProbe` for `steppedLoadProfile` / `targetPowerConfig`
  *   (see `SteppedLoadDescriptorFields`).
  * - `ReportedStepObservedProbe` for `reportedStepId` and exact target-power

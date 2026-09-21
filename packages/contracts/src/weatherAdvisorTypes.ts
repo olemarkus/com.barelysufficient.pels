@@ -43,30 +43,23 @@ export type WeatherDailyQuality = {
  */
 export type WeatherDaySuppression = {
   /**
-   * The day-close damage verdict: energy the daily budget was still DENYING
-   * managed devices when the local day ended — episodes latched across midnight
-   * with cause `daily_budget`, priced at each device's expected draw. A hold
-   * PELS admitted before the day ended contributes nothing (deferral is the
-   * feature working; only unserved denial is damage). Present, possibly 0, on
-   * every day whose midnight the diagnostics service witnessed; ABSENT means no
-   * witness (restart, sample gap, or a record predating this evidence) — only
-   * then do the legacy duration counters below decide suppression.
+   * Whether `budgetDeniedKwh` came from the continuous denial integrator.
+   * False distinguishes upgraded pre-integrator diagnostics rows from a real
+   * observed zero; absent is accepted only for older weather-history records.
    */
+  budgetDenialObserved?: boolean;
+  /** Integrated denied energy while budget pressure was eligible. */
   budgetDeniedKwh?: number;
-  /** Σ ms of the same denied-at-close holds. Diagnostic companion. */
+  /** Σ ms of the same continuously observed denied spans. */
   budgetDeniedMs?: number;
   /**
-   * A verdict-capable build rolled this day up WITHOUT a witnessed verdict
-   * (restart, sample gap, or boot catch-up across its midnight). Unprovable is
-   * not damage: this blocks the legacy hold-time fallback below, which counts
-   * served deferrals as evidence. Absent on records written by older builds —
-   * only those may fall back to the legacy counters.
+   * Legacy-read compatibility for records written by the retired day-close
+   * witness model. New continuous-integral records never write this field.
    */
   budgetDeniedUnwitnessed?: true;
   /**
    * Σ ms managed temperature devices were held below their intended target.
-   * Legacy hold-time evidence: it counts a served deferral and an unserved
-   * denial identically, which is why `budgetDeniedKwh` replaced it as the gate.
+   * Legacy hold-time evidence used only for pre-integrator records.
    */
   targetDeficitMs?: number;
   /** Σ ms a device could not run because capacity was saturated. */
@@ -450,7 +443,7 @@ export type WeatherAdvisorSuggestion = {
   kwh: number;
   /** The active daily budget for comparison; null when the daily budget is off. */
   currentDailyBudgetKwh: number | null;
-  /** Tomorrow's expected usage exceeds what the hard cap delivers in a day (cap × 24 h). */
+  /** Tomorrow's expected usage exceeds sustainable capacity over the target local day. */
   cappedByCapacity: boolean;
   /** The daily budget has recently been limiting the home — the suggestion was raised to match. */
   budgetMayBeLimiting: boolean;

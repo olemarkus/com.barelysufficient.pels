@@ -1,6 +1,7 @@
 import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
+  MeteredPowerReading,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
@@ -35,6 +36,7 @@ import {
     shouldDropForEvPlugStateContract,
 } from './managerParse';
 import {
+    hasPotentialHomeyEnergyEstimate,
     isObserveOnlyRoleDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
@@ -142,6 +144,22 @@ function readReportedThermostatMode(
     return isReportedThermostatMode(value) ? normalizeReportedThermostatMode(value) : previousSnapshot?.thermostatMode;
 }
 
+function resolveRetainedMeasuredPower(
+    device: HomeyDeviceLike,
+    capsStatus: DeviceCapabilityProfile['capsStatus'],
+    measuredPower: ReturnType<typeof resolveMeasuredPowerKw>,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): ReturnType<typeof resolveMeasuredPowerKw> {
+    if (measuredPower.measuredPowerKw !== undefined) return measuredPower;
+    if (!capsStatus.hasPower && !hasPotentialHomeyEnergyEstimate(device)) return measuredPower;
+    if (previousSnapshot?.measuredPowerKw === undefined) return measuredPower;
+    return {
+        measuredPowerKw: previousSnapshot.measuredPowerKw,
+        observedAtMs: previousSnapshot.measuredPowerObservedAtMs,
+        reading: previousSnapshot.measuredPowerReading,
+    };
+}
+
 function resolveDeviceControlBundle(params: {
     identity: ParsedDeviceIdentity;
     deps: DeviceTransportParseDeps;
@@ -198,7 +216,13 @@ function resolveDeviceControlBundle(params: {
     const available = resolveAvail(
         binaryCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
     );
-    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, powerEstimate);
+    const powerCapable = isPowerCapable(
+        effectiveDevice,
+        capsStatus,
+        measuredPower,
+        powerEstimate,
+        previousSnapshot,
+    );
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType: overlay.flowAugmentedDeviceType,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
@@ -225,10 +249,8 @@ export function assembleDeviceSnapshot(params: {
     purpose: ParseDevicePurpose;
     managedDecision: ManagedFilterDecision;
 }): TransportDeviceSnapshot | null {
-    const {
-        identity, deps, overlay, capsStatus, now, livePowerWByDeviceId,
-        previousSnapshot, purpose, managedDecision,
-    } = params;
+    const { identity, deps, overlay, capsStatus, now, livePowerWByDeviceId,
+        previousSnapshot, purpose, managedDecision } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { providers, debugStructured, resolveLatestLocalWriteMs } = deps;
     // Resolved once here and handed to both consumers: the power estimate needs it
@@ -253,6 +275,11 @@ export function assembleDeviceSnapshot(params: {
         powerState: deps.powerState,
         logger: deps.logger,
     });
+    // Keep the last trusted measurement when a refresh has no newer sample.
+    // In particular, re-reading one `meter_power` sample must not drop admission.
+    const resolvedMeasuredPower = resolveRetainedMeasuredPower(
+        effectiveDevice, capsStatus, measuredPower, previousSnapshot,
+    );
     const candidateTargets = buildTargets({
         targetCaps: capsStatus.targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
         debugStructured,
@@ -261,7 +288,8 @@ export function assembleDeviceSnapshot(params: {
     const thermostatMode = readReportedThermostatMode(overlay, previousSnapshot);
     const targets = temperature ? [temperature.target] : [];
     const control = resolveDeviceControlBundle({
-        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate,
+        measuredPower: resolvedMeasuredPower,
         previousSnapshot, purpose, managedDecision,
     });
     if (!control) return null;
@@ -289,7 +317,7 @@ export function assembleDeviceSnapshot(params: {
         temperature,
         binaryCapabilityId: control.binaryCapabilityId,
         powerEstimate,
-        measuredPowerKw: measuredPower.measuredPowerKw,
+        measuredPowerKw: resolvedMeasuredPower.measuredPowerKw, measuredPowerReading: resolvedMeasuredPower.reading,
         powerCapable: control.powerCapable,
         binaryControl: control.binaryControl,
         evCharging: control.evCharging,
@@ -328,7 +356,7 @@ export function assembleDeviceSnapshot(params: {
         reportedStepId: overlay.reportedStepId, reportedStepPowerW: overlay.reportedStepPowerW,
         reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
         suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
-        measuredPowerObservedAtMs: measuredPower.observedAtMs,
+        measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
@@ -385,8 +413,7 @@ function buildParsedDeviceSnapshot(params: {
     available: boolean;
     reportedStepId?: string; reportedStepPowerW?: number; reportedStepObservedAtMs?: number;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
-    measuredPowerKw?: number;
-    measuredPowerObservedAtMs?: number;
+    measuredPowerKw?: number; measuredPowerObservedAtMs?: number; measuredPowerReading?: MeteredPowerReading;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
 }): TransportDeviceSnapshot {
@@ -420,8 +447,7 @@ function buildParsedDeviceSnapshot(params: {
         available,
         reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
-        measuredPowerKw,
-        measuredPowerObservedAtMs,
+        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading,
         lastFreshDataMs,
         lastLocalWriteMs,
     } = params;
@@ -454,8 +480,7 @@ function buildParsedDeviceSnapshot(params: {
         thermostatMode: params.thermostatMode,
         stateOfCharge,
         temperature,
-        measuredPowerKw,
-        measuredPowerObservedAtMs,
+        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading,
         zone: resolveZoneLabel(device),
         zoneId: resolveZoneId(device),
         capabilities,

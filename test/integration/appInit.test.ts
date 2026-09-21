@@ -158,6 +158,7 @@ describe('app init plan service wiring', () => {
         {
           available: true,
           id: 'socket-1',
+          measuredPowerKw: 0,
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Socket',
           targets: [],
@@ -168,6 +169,7 @@ describe('app init plan service wiring', () => {
         {
           available: true,
           id: 'ev-1',
+          measuredPowerKw: 0,
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'EV',
           deviceClass: 'evcharger',
@@ -178,6 +180,7 @@ describe('app init plan service wiring', () => {
         },
         { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
           id: 'temp-1',
+          measuredPowerKw: 0,
           name: 'Thermostat',
           targets: [],
           capabilities: ['measure_temperature', 'target_temperature'],
@@ -608,7 +611,12 @@ describe('app init plan service wiring', () => {
     capturedEmitterDeps.current = null;
     createDeferredObjectiveLifecycleEmitter(ctx);
     const observe = (capturedEmitterDeps.current as unknown as {
-      observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
+      observeDeferredObjectivePlanHistory: (
+        diagnostics: readonly unknown[],
+        nowMs: number,
+        activePlans: null,
+        meteredDevices: readonly never[],
+      ) => void;
     }).observeDeferredObjectivePlanHistory;
 
     const baseMs = 1_000_000_000_000;
@@ -618,15 +626,15 @@ describe('app init plan service wiring', () => {
 
     // First idle observe — closure-state `lastWatermarkPersistMs` is 0, the difference vs a
     // real-clock nowMs is far above the threshold, so the watermark advances on this first tick.
-    observe([], baseMs);
+    observe([], baseMs, null, []);
     expect(countWatermarkWrites()).toBe(1);
 
     // Second observe one minute later, still idle. Below the 5-minute throttle → no write.
-    observe([], baseMs + 60_000);
+    observe([], baseMs + 60_000, null, []);
     expect(countWatermarkWrites()).toBe(1);
 
     // Third observe past the throttle threshold → second write.
-    observe([], baseMs + 60_000 + 5 * 60_000 + 1);
+    observe([], baseMs + 60_000 + 5 * 60_000 + 1, null, []);
     expect(countWatermarkWrites()).toBe(2);
   });
 
@@ -678,11 +686,16 @@ describe('app init plan service wiring', () => {
     capturedEmitterDeps.current = null;
     createDeferredObjectiveLifecycleEmitter(ctx);
     const observe = (capturedEmitterDeps.current as unknown as {
-      observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
+      observeDeferredObjectivePlanHistory: (
+        diagnostics: readonly unknown[],
+        nowMs: number,
+        activePlans: null,
+        meteredDevices: readonly never[],
+      ) => void;
     }).observeDeferredObjectivePlanHistory;
 
-    observe([], 1_000_000_000_000);
-    observe([], 1_000_000_000_000 + 10 * 60_000);
+    observe([], 1_000_000_000_000, null, []);
+    observe([], 1_000_000_000_000 + 10 * 60_000, null, []);
     const watermarkWrites = setSpy.mock.calls.filter(
       ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
     ).length;

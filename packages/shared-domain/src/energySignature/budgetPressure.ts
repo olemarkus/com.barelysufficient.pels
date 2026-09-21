@@ -15,15 +15,11 @@ import type {
  * proportional control: one fixed nudge that cannot track a mismatch bigger
  * than itself.
  *
- * This term closes the loop instead, on the owner's damage model: **deferral is
- * the feature working; only unserved denial is damage.** A device held at noon
- * and admitted at one contributed nothing — the budget shaped the day and the
- * home got its energy. The evidence that grows this term is the day-close
- * verdict (`budgetDeniedKwh`): energy the budget was still denying latched
- * devices when the local day ended, plus however far the day measurably ran
- * past its budget. Days without damage decay the term — including days that
- * overshot but denied nothing, because a budget that hurt nobody needs no
- * correction.
+ * This term closes the loop from cause-independent denied-energy evidence.
+ * Whenever the configured budget is below sustainable capacity, every observed
+ * unmet-demand span contributes even if the immediate refusal is labelled
+ * hard-cap or cooldown. The daily overshoot measures how far the applied budget
+ * missed real demand; quiet days decay the term.
  *
  * It composes with the residual headroom rather than duplicating it: the step is
  * measured against the budget that was actually applied, which already carried
@@ -37,9 +33,9 @@ import type {
  */
 
 /**
- * Legacy bar for records written before the day-close verdict existed: a day
+ * Legacy bar for records written before the denied-energy integral existed: a day
  * counted as suppressed past this much hold-time censoring. Those records keep
- * the meaning they were written with; verdict-bearing records never reach it.
+ * the meaning they were written with; integral-bearing records never reach it.
  */
 const MIN_SUPPRESSION_MS = 60 * 60 * 1000;
 /** One day may add at most this much, so the loop ramps instead of jumping. */
@@ -59,22 +55,6 @@ const NO_OVERSHOOT_DECAY = 0.75;
  * budget automatically lowered again after one suppressed stretch.
  */
 const NEGLIGIBLE_KWH = 0.25;
-/**
- * The term may not push the suggestion more than half again over what the model
- * predicts. Generous enough to cover the mismatches actually seen (an away-biased
- * base load ran ~40% low), tight enough that a stuck meter or a misattributed
- * device cannot double a home's budget.
- */
-export const PRESSURE_CEILING_FRACTION = 0.5;
-/**
- * Absolute backstop for the accumulator when no prediction is available to bound
- * it against. Kept close to the reachable output rather than far above it: an
- * accumulator allowed to run far past what the suggestion can apply is classic
- * integrator windup — it would keep integrating with no visible effect, then owe
- * the owner a week of decay before the correction even began to relax.
- */
-const MAX_ACCUMULATED_KWH = 40;
-
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
 
 const isFinitePositive = (value: number | undefined): value is number => (
@@ -88,53 +68,29 @@ const deadlineMissDeniedKwhOf = (record: WeatherDailyRecord): number => {
 };
 
 /**
- * Did the daily budget DAMAGE the home on this day?
+ * Did budget pressure deny energy on this day? An observed zero is
+ * authoritative; only records predating the integral use legacy duration bars.
  *
- * Damage is the day-close verdict: an episode still latched when the local day
- * ended, attributed to the daily budget — deferred-then-served holds are the
- * feature working and count for nothing. When the verdict is present it is
- * authoritative either way; a recorded 0 means "watched to the close, nothing
- * denied" and must NOT fall through to the legacy counters, which measured
- * something weaker (hold time, served or not) and would re-arm the loop on
- * ordinary shaping.
- *
- * Cause attribution here is deliberate and does not conflict with the old
- * "no instantaneous attribution" rule: at day close, "the budget was still
- * denying this device when the day ran out" is exactly the day-granularity
- * question that rule said instantaneous filtering could not answer.
- *
- * Records written before the verdict existed fall back to the legacy hold-time
+ * Records written before the integral existed fall back to the legacy hold-time
  * bar, keeping the meaning they were written with.
  */
 export function dayWasBudgetDamaged(record: WeatherDailyRecord): boolean {
   const suppression = record.suppression;
   if (!suppression) return false;
-  // A deadline that went by with a smart task still wanting energy the budget
-  // held back is damage on its own terms, and the midnight sweep cannot answer
-  // for it either way: a missed run's objective is finalized at its deadline, so
-  // by midnight there is nothing left to latch and the day reports an honest
-  // `budgetDeniedKwh: 0`. Asked FIRST for exactly that reason — otherwise such a
-  // day reads as quiet and DECAYS the term, which is how a day of deadlines the
-  // budget caused PELS to miss came to argue for lowering that same budget.
-  //
-  // BOTH consumers of this verdict see it: the pressure loop below and the
-  // raise-lean's `recentSuppressionSuspected`, which widens the residual
-  // quantile q80 → q90 for 14 days. That is intended — a day the budget damaged
-  // outright is exactly what the lean is evidence for — but it is why this stays
-  // gated on PRICEABLE denial and not on mere presence of a miss.
+  // Deadline misses are independent evidence and remain additive to the
+  // continuously observed device-demand integral.
   if (deadlineMissDeniedKwhOf(record) > 0) return true;
-  if (typeof suppression.budgetDeniedKwh === 'number' && Number.isFinite(suppression.budgetDeniedKwh)) {
-    return suppression.budgetDeniedKwh > 0;
+  if (suppression.budgetDenialObserved === true) {
+    return deniedKwhOf(record) > 0;
   }
-  // A verdict-capable build watched this day but could not witness its close
-  // (restart / gap / catch-up). Unprovable is not damage — and the legacy
-  // counters below must not answer for it, because they count served deferrals.
+  // Retired day-close records can explicitly say their verdict was unwitnessed.
+  // Preserve that historical no-damage result instead of applying older bars.
   if (suppression.budgetDeniedUnwitnessed === true) return false;
   return (suppression.targetDeficitMs ?? 0) >= MIN_SUPPRESSION_MS
     || (suppression.blockedByHeadroomMs ?? 0) >= MIN_SUPPRESSION_MS;
 }
 
-/** The day-close denied energy, 0 when absent or junk. */
+/** Integrated denied energy, 0 when absent or junk. */
 const deniedKwhOf = (record: WeatherDailyRecord): number => {
   const value = record.suppression?.budgetDeniedKwh;
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
@@ -166,17 +122,16 @@ export function foldBudgetPressureDay(
   previous: BudgetPressureState | undefined,
   record: WeatherDailyRecord,
   /**
-   * Anti-windup bound: the largest value the suggestion could actually apply,
-   * i.e. `PRESSURE_CEILING_FRACTION × predictedKwh` for the day. Pass it whenever
-   * a prediction is known. Integrating past what the output can express is what
-   * puts dead time between "the budget is adequate now" and "the loop notices".
+   * Anti-windup bound: the sustainable capacity energy for the local day. The
+   * pressure may keep growing past an inaccurate model prediction, but never
+   * past what the hard cap minus its safety margin can physically deliver.
    */
   applicableCeilingKwh?: number,
 ): BudgetPressureState {
   if (previous !== undefined && record.dateKey <= previous.throughDateKey) return previous;
   const ceilingKwh = isFinitePositive(applicableCeilingKwh)
-    ? Math.min(applicableCeilingKwh, MAX_ACCUMULATED_KWH)
-    : MAX_ACCUMULATED_KWH;
+    ? applicableCeilingKwh
+    : Number.POSITIVE_INFINITY;
   const carried = Math.min(previous?.kwh ?? 0, ceilingKwh);
   // An undamaged day means no pressure, and that is true whether or not the
   // day's overshoot could be measured — so this check comes FIRST. Ordering it
@@ -185,7 +140,7 @@ export function foldBudgetPressureDay(
   // every day became "unmeasurable", and the term (which arms the auto-apply
   // lowering guard) could never decay again.
   //
-  // Note what this decays THROUGH under the day-close model: a day that overshot
+  // This decays through a day that overshot
   // its budget but denied nothing. The overshoot alone says the estimate ran
   // low; if nobody was hurt, the budget needs no correction — the estimate for
   // tomorrow is the fit's job, not this term's.
@@ -195,9 +150,9 @@ export function foldBudgetPressureDay(
   };
   if (!dayWasBudgetDamaged(record)) return decay();
   const overshootKwh = measuredBudgetOvershootKwh(record);
-  // The LARGER of the two denials, not their sum. They usually describe
-  // different holds — the midnight sweep prices what devices were still being
-  // refused at day close, this prices what a task never got before its deadline
+  // The LARGER of the two denials, not their sum. They can describe
+  // different holds — the continuous integral prices device demand, while the
+  // second value prices what a task never got before its deadline
   // — but they can describe one hold twice: a temperature device with a smart
   // task on it can miss at 22:00 and still be budget-held at midnight, and
   // nothing in either producer excludes the other. Summing would then price one
@@ -207,8 +162,8 @@ export function foldBudgetPressureDay(
   // back out of.
   const deniedKwh = Math.max(deniedKwhOf(record), deadlineMissDeniedKwhOf(record));
   if (deniedKwh > 0) {
-    // Verdict-bearing damage: grow by the energy the budget denied — to devices
-    // still held at day close, or to a task whose deadline went by — plus however
+    // Integral-bearing damage: grow by the energy the budget denied to devices
+    // or to a task whose deadline went by, plus however
     // far the day measurably ran past its budget. The
     // denied energy is the failure measure in its own right — a day the budget
     // held everything in check WHILE denying a device shows no overshoot at all,
@@ -222,7 +177,7 @@ export function foldBudgetPressureDay(
       throughDateKey: record.dateKey,
     };
   }
-  // Legacy records (no verdict): the rules they were written under, verbatim.
+  // Legacy records (no integral): the rules they were written under, verbatim.
   // An unmeasurable overshoot holds (a badly-timed restart must not erode real
   // evidence); a day inside its budget decays; a day past it grows by the
   // overshoot.
@@ -235,19 +190,15 @@ export function foldBudgetPressureDay(
 }
 
 /**
- * The term as the suggestion should apply it: the accumulated kWh, bounded by a
- * fraction of what the model predicts for the day. The relative ceiling lives
- * here rather than in the accumulator because the prediction is only known at
- * suggestion time, and it is what stops a broken signal from doubling a budget.
+ * The term as the suggestion should apply it. Its physical ceiling belongs to
+ * the final suggestion clamp; tying it to the model prediction prevented the
+ * loop from correcting the very model errors it exists to learn around.
  */
 export function resolveBudgetPressureKwh(params: {
   state: BudgetPressureState | undefined;
-  predictedKwh: number;
-  ceilingFraction: number;
 }): number {
-  const { state, predictedKwh, ceilingFraction } = params;
+  const { state } = params;
   const accumulated = state?.kwh ?? 0;
   if (!Number.isFinite(accumulated) || accumulated <= 0) return 0;
-  if (!Number.isFinite(predictedKwh) || predictedKwh <= 0) return 0;
-  return clamp(accumulated, 0, ceilingFraction * predictedKwh);
+  return accumulated;
 }

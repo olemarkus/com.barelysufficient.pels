@@ -524,6 +524,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         deferredAvoidDeviceIds: new Set<string>(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set<string>(),
+        drivingDeviceIds: new Set<string>(),
       }),
       structuredLog: structuredLog as never,
       log: vi.fn(),
@@ -573,6 +574,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         // measured cycle and this is not one.
         deferredReleaseIntentByDeviceId: { release: 'binary_release', resume: 'binary_restore' },
         admittedDeviceIds: new Set<string>(),
+        drivingDeviceIds: new Set<string>(),
       }),
       log: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,

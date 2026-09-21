@@ -3,6 +3,7 @@ import type { Logger } from '../utils/types';
 import type { DeviceMeasuredPowerObservation, MeterEnergyReading } from './measuredPowerReader';
 import { getLogger } from '../logging/logger';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import type { MeteredPowerReading } from '../../packages/contracts/src/types';
 
 const moduleLogger = getLogger('device/measured-power');
 
@@ -15,6 +16,7 @@ type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energy';
 type DeviceMeasuredPowerResolution = {
   measuredPowerKw?: number;
   observedAtMs?: number;
+  reading?: MeteredPowerReading;
 };
 
 /**
@@ -33,6 +35,10 @@ export class DeviceMeasuredPowerResolver {
   // Dated in OBSERVATION time (the capability's own `lastUpdated`), never in
   // resolve time — see `resolveMeterDelta`.
   private readonly lastMeterEnergy: Record<string, MeterEnergyReading> = {};
+  private readonly unstampedDirectReadingByDevice = new Map<string, {
+    watts: number;
+    observedAtMs: number;
+  }>();
   private readonly lastResolvedSourceByDevice = new Map<string, { signature: string; emittedAt: number }>();
 
   constructor(private readonly deps: {
@@ -96,10 +102,25 @@ export class DeviceMeasuredPowerResolver {
     // a consumer to a RATED-power fallback, so a 3 W standby draw could be booked
     // as kilowatts. The reading is the answer; report it.
     const measuredPowerKw = normalized;
+    const retainedUnstamped = this.unstampedDirectReadingByDevice.get(deviceId);
+    const resolvedObservedAtMs = observedAtMs ?? (
+      retainedUnstamped !== undefined && Object.is(retainedUnstamped.watts, watts)
+        ? retainedUnstamped.observedAtMs
+        : now
+    );
+    if (observedAtMs === undefined) {
+      this.unstampedDirectReadingByDevice.set(deviceId, { watts, observedAtMs: resolvedObservedAtMs });
+    } else {
+      this.unstampedDirectReadingByDevice.delete(deviceId);
+    }
     if (measuredPowerKw > 0) {
       this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
     }
-    return { measuredPowerKw, observedAtMs };
+    return {
+      measuredPowerKw,
+      observedAtMs,
+      reading: { kind: 'instantaneous', powerKw: measuredPowerKw, observedAtMs: resolvedObservedAtMs },
+    };
   }
 
   /**
@@ -172,14 +193,28 @@ export class DeviceMeasuredPowerResolver {
     this.lastMeterEnergy[deviceId] = reading;
     const measuredPowerKw = (kwh - previous.kwh) / deltaHours;
     if (measuredPowerKw <= 0) {
-      return { measuredPowerKw: 0, observedAtMs };
+      return {
+        measuredPowerKw: 0,
+        observedAtMs,
+        reading: {
+          kind: 'interval_average', powerKw: 0,
+          startMs: previous.observedAtMs, endMs: observedAtMs,
+        },
+      };
     }
 
     // As in `resolveDirectWatts`: a small but real delta is reported, not
     // dropped. Dropping it produced absence, and absence is what licenses a
     // consumer to substitute rated power.
     this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
-    return { measuredPowerKw, observedAtMs };
+    return {
+      measuredPowerKw,
+      observedAtMs,
+      reading: {
+        kind: 'interval_average', powerKw: measuredPowerKw,
+        startMs: previous.observedAtMs, endMs: observedAtMs,
+      },
+    };
   }
 
   private logSourceChange(

@@ -19,6 +19,7 @@ import type { CapacitySettings } from '../../packages/contracts/src/capacitySett
 import { resolveHardCapacityKWh, resolveUsableCapacityKWh, resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
+import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
 // Floor on the remaining-time divisor for the burst rate, so the rate stays
 // finite as the period ends (avoids remaining/→0 blow-up). Shared by capacity
@@ -44,6 +45,21 @@ const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 10 / 3600;
 // has nothing to drain. See notes/end-of-hour-mode.md for the rationale and the
 // TAU trade-off.
 const EOH_DRAIN_TAU_MIN = 4;
+
+/**
+ * Whether the daily budget sits below the home's sustainable capacity for the
+ * actual local day. Bucket count is the day length, so DST days correctly use
+ * 23 or 25 hours. A disabled or unavailable budget cannot create pressure.
+ */
+export function isDailyBudgetBelowSustainableCapacity(
+  snapshot: DailyBudgetUiPayload | null,
+  capacitySettings: CapacitySettings,
+): boolean {
+  if (snapshot === null) return false;
+  const day = snapshot.days[snapshot.todayKey];
+  if (day === undefined || !day.budget.enabled) return false;
+  return day.budget.dailyBudgetKWh < resolveUsableCapacityKw(capacitySettings) * day.buckets.startUtc.length;
+}
 
 /**
  * Returns `capacityPaceKw` as `allowedKw` — the dynamic selected-period threshold on the

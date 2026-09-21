@@ -2,6 +2,7 @@ import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjective
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredDemandDeviceIds,
   buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
 } from '../../lib/objectives/deferredObjectives/admission';
@@ -243,6 +244,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('dev1')).toEqual({ kind: 'unclaimed', budgetExempt: false });
+    expect(buildDeferredDemandDeviceIds(decisions)).toEqual(new Set(['dev1']));
   });
 
   it('does not command a binary EV charger off in an unbooked hour while the task is short', () => {

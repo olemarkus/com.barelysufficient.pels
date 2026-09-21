@@ -108,6 +108,8 @@ const buildObservation = (params: {
   }>;
   currentHourPriceLevel?: PriceLevel;
   thermalDirection?: ThermalDirection;
+  budgetPressureEligible?: boolean;
+  smartTaskDriving?: boolean;
 }) => {
   const cycle = buildContext(
     buildPlanInputDevice(params.inputDevice),
@@ -137,6 +139,10 @@ const buildObservation = (params: {
     // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
     planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
     restoreResult: buildRestoreResult(params.restoreResult),
+    budgetPressureEligible: params.budgetPressureEligible ?? false,
+    smartTaskDrivingDeviceIds: params.smartTaskDriving
+      ? new Set([params.inputDevice.id ?? params.planDevice.id ?? ''])
+      : new Set<string>(),
   })[0];
 };
 
@@ -335,6 +341,44 @@ describe('plan diagnostics observations', () => {
       desiredStateSummary: 'on',
       eligibleForStarvation: false,
       suppressionState: 'none',
+    });
+  });
+
+  it('records cause-independent budget pressure when a Smart task is driving an off EV', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'ev-1',
+        name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
+        deviceType: 'onoff',
+        deviceClass: 'evcharger',
+        targets: [],
+        binaryCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_paused',
+        binaryControl: { on: false },
+        controllable: true,
+        available: true,
+      },
+      planDevice: {
+        id: 'ev-1',
+        name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
+        deviceClass: 'evcharger',
+        currentState: 'off',
+        plannedState: 'shed',
+        reason: r('shed due to capacity'),
+        controllable: true,
+        available: true,
+      },
+      smartTaskDriving: true,
+      budgetPressureEligible: true,
+    });
+
+    expect(observation).toMatchObject({
+      includeDemandMetrics: true,
+      unmetDemand: true,
+      budgetPressureDenied: true,
+      eligibleForStarvation: false,
     });
   });
 

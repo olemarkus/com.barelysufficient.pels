@@ -69,7 +69,11 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     // still a fresh observation. `changed` gates expensive downstream work
     // (calibration ingest, rebuild scheduling); it does not decide what was
     // observed, and a device holding a steady draw must not decay to "stale".
-    snapshot.measuredPowerObservedAtMs = Date.now();
+    const observedAtMs = Date.now();
+    snapshot.measuredPowerObservedAtMs = observedAtMs;
+    snapshot.measuredPowerReading = {
+      kind: 'instantaneous', powerKw: measuredKw, observedAtMs,
+    };
     if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
       return { changed: false, observationAdvanced: true, normalizedValue: measuredKw };
     }

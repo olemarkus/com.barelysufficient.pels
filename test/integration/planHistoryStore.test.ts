@@ -7,6 +7,9 @@ import {
   DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING,
 } from '../../lib/utils/settingsKeys';
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  PersistedMeteredDeliveryState,
+} from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
 import { MockSettings } from '../mocks/homey';
 
 const open = () => {
@@ -46,6 +49,28 @@ const totalChanges = (db: ReturnType<typeof open>['db']): number => (
 );
 
 describe('planHistoryStore', () => {
+  it('round-trips and removes in-progress metered delivery independently of finalized history', () => {
+    const { db, store } = open();
+    const state: PersistedMeteredDeliveryState = {
+      deviceId: 'dev',
+      deadlineAtMs: 10_000,
+      startedAtMs: 1_000,
+      deliveredKWh: 1.25,
+      totalCost: 0.5,
+      costDisplay: { unit: 'kr', divisor: 100 },
+      deliveryPriceComplete: true,
+      hourlyContributions: [{ atMs: 0, deliveredKWh: 1.25, priceValue: 0.4, tone: 'cheap' }],
+    };
+
+    expect(store.readMeteredDelivery()).toEqual([]);
+    store.writeMeteredDelivery([state]);
+    expect(store.readMeteredDelivery()).toEqual([state]);
+    const row = db.prepare('SELECT COUNT(*) AS n FROM deferred_objective_metered_delivery').get() as { n: number };
+    expect(row.n).toBe(1);
+    store.writeMeteredDelivery([]);
+    expect(store.readMeteredDelivery()).toEqual([]);
+  });
+
   it('answers null while empty, and round-trips a history one row per entry, oldest first', () => {
     const { db, store } = open();
     expect(store.read()).toBeNull();

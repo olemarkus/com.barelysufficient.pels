@@ -17,7 +17,11 @@ import {
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
-import type { DeviceDiagnosticsServiceDeps, LiveDemandObservation } from './deviceDiagnosticsServiceTypes';
+import type {
+  DeviceDiagnosticsDaySuppressionTotals,
+  DeviceDiagnosticsServiceDeps,
+  LiveDemandObservation,
+} from './deviceDiagnosticsServiceTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
@@ -27,6 +31,7 @@ const moduleLogger = getLogger('diagnostics/device');
 // Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
 // production always wires `debugStructured`) fallback path.
 const debugFallbackEmit: StructuredDebugEmitter = (payload) => moduleLogger.debug(payload);
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
 export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
@@ -105,16 +110,29 @@ export class DeviceDiagnosticsPersistence {
    * a misleading all-zero object. Read-only, dateKey-scoped — diagnostics
    * stays planner-orthogonal.
    */
-  getDaySuppressionTotals(dateKey: string): { targetDeficitMs: number; blockedByHeadroomMs: number } | undefined {
+  getDaySuppressionTotals(dateKey: string): DeviceDiagnosticsDaySuppressionTotals | undefined {
     let targetDeficitMs = 0;
     let blockedByHeadroomMs = 0;
+    let budgetDeniedMs = 0;
+    let budgetDeniedKwh = 0;
+    let budgetDenialObserved = false;
     for (const deviceState of Object.values(this.persistedState.devicesById)) {
       const aggregate = deviceState.daysByDateKey[dateKey];
       if (!aggregate) continue;
       targetDeficitMs += aggregate.targetDeficitMs;
       blockedByHeadroomMs += aggregate.blockedByHeadroomMs;
+      budgetDeniedMs += aggregate.budgetDeniedMs;
+      budgetDeniedKwh += aggregate.budgetDeniedKwh;
+      budgetDenialObserved ||= aggregate.budgetDenialObserved;
     }
-    return targetDeficitMs > 0 || blockedByHeadroomMs > 0 ? { targetDeficitMs, blockedByHeadroomMs } : undefined;
+    if (targetDeficitMs <= 0 && blockedByHeadroomMs <= 0 && budgetDeniedMs <= 0) return undefined;
+    return {
+      targetDeficitMs,
+      blockedByHeadroomMs,
+      budgetDeniedMs,
+      budgetDeniedKwh,
+      budgetDenialObserved,
+    };
   }
 
   getPersistedDeviceIds(): string[] {
@@ -132,6 +150,7 @@ export class DeviceDiagnosticsPersistence {
     observation: LiveDemandObservation,
   ): void {
     if (!observation.includeDemandMetrics || !observation.unmetDemand || endTs <= startTs) return;
+    this.markBudgetDenialObservedByDay(deviceId, startTs, endTs);
     this.addDurationByDay(deviceId, startTs, endTs, 'unmetDemandMs');
     if (observation.targetDeficitActive) {
       this.addDurationByDay(deviceId, startTs, endTs, 'targetDeficitMs');
@@ -141,6 +160,27 @@ export class DeviceDiagnosticsPersistence {
     } else if (observation.blockCause === 'cooldown_backoff') {
       this.addDurationByDay(deviceId, startTs, endTs, 'blockedByCooldownBackoffMs');
     }
+    if (observation.budgetPressureDenied) {
+      this.addBudgetDeniedByDay(deviceId, startTs, endTs, observation.expectedPowerKw);
+    }
+  }
+
+  private markBudgetDenialObservedByDay(deviceId: string, startTs: number, endTs: number): void {
+    this.forEachLocalDaySlice(startTs, endTs, (dateKey) => {
+      const aggregate = this.getDayAggregate(deviceId, dateKey);
+      if (aggregate.budgetDenialObserved) return;
+      aggregate.budgetDenialObserved = true;
+      this.markDirty(deviceId);
+    });
+  }
+
+  private addBudgetDeniedByDay(deviceId: string, startTs: number, endTs: number, powerKw: number): void {
+    this.forEachLocalDaySlice(startTs, endTs, (dateKey, sliceMs) => {
+      const aggregate = this.getDayAggregate(deviceId, dateKey);
+      aggregate.budgetDeniedMs += sliceMs;
+      aggregate.budgetDeniedKwh += powerKw * (sliceMs / MS_PER_HOUR);
+      this.markDirty(deviceId);
+    });
   }
 
   private addDurationByDay(
@@ -152,18 +192,27 @@ export class DeviceDiagnosticsPersistence {
       'unmetDemandMs' | 'blockedByHeadroomMs' | 'blockedByCooldownBackoffMs' | 'targetDeficitMs'
     >,
   ): void {
+    this.forEachLocalDaySlice(startTs, endTs, (dateKey, sliceMs) => {
+      const aggregate = this.getDayAggregate(deviceId, dateKey);
+      aggregate[key] += sliceMs;
+      this.markDirty(deviceId);
+    });
+  }
+
+  private forEachLocalDaySlice(
+    startTs: number,
+    endTs: number,
+    visit: (dateKey: string, sliceMs: number) => void,
+  ): void {
     if (endTs <= startTs) return;
-    let cursorTs = startTs;
     const timeZone = this.deps.getTimeZone();
+    let cursorTs = startTs;
     while (cursorTs < endTs) {
       const dateKey = getDateKeyInTimeZone(new Date(cursorTs), timeZone);
       const dayStartTs = getDateKeyStartMs(dateKey, timeZone);
-      const nextDayStartTs = getNextLocalDayStartUtcMs(dayStartTs, timeZone);
-      const sliceEndTs = Math.min(endTs, nextDayStartTs);
-      const aggregate = this.getDayAggregate(deviceId, dateKey);
-      aggregate[key] += Math.max(0, sliceEndTs - cursorTs);
+      const sliceEndTs = Math.min(endTs, getNextLocalDayStartUtcMs(dayStartTs, timeZone));
+      visit(dateKey, Math.max(0, sliceEndTs - cursorTs));
       cursorTs = sliceEndTs;
-      this.markDirty(deviceId);
     }
   }
 

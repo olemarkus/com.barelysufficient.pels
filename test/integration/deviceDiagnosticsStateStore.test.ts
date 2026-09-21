@@ -17,6 +17,9 @@ const day = (unmetDemandMs: number): PersistedDayAggregate => ({
   blockedByHeadroomMs: 0,
   blockedByCooldownBackoffMs: 0,
   targetDeficitMs: 0,
+  budgetDeniedMs: 0,
+  budgetDeniedKwh: 0,
+  budgetDenialObserved: false,
   shedCount: 1,
   restoreCount: 1,
   failedActivationCount: 0,
@@ -111,6 +114,27 @@ describe('deviceDiagnosticsStateStore', () => {
     db.prepare('UPDATE device_diagnostics_days SET aggregate_json = ? WHERE date_key = ?').run('{not json', YESTERDAY);
     expect(Object.keys(store.read().state.devicesById['dev-1']!.daysByDateKey)).toEqual([TODAY]);
     expect(rowCount(db)).toBe(1);
+  });
+
+  it('keeps pre-integrator v2 rows distinguishable from an observed zero denial', () => {
+    const { db, store } = open();
+    const legacyDay = day(10) as unknown as Record<string, unknown>;
+    delete legacyDay.budgetDeniedMs;
+    delete legacyDay.budgetDeniedKwh;
+    delete legacyDay.budgetDenialObserved;
+    db.prepare(
+      'INSERT INTO device_diagnostics_days (device_id, date_key, aggregate_json) VALUES (?, ?, ?)',
+    ).run('dev-1', TODAY, JSON.stringify(legacyDay));
+    db.prepare('INSERT INTO device_diagnostics_meta (key, value_json) VALUES (?, ?)')
+      .run('version', JSON.stringify(2));
+    db.prepare('INSERT INTO device_diagnostics_meta (key, value_json) VALUES (?, ?)')
+      .run('windowDays', JSON.stringify(21));
+
+    expect(store.read().state.devicesById['dev-1']!.daysByDateKey[TODAY]).toMatchObject({
+      budgetDeniedMs: 0,
+      budgetDeniedKwh: 0,
+      budgetDenialObserved: false,
+    });
   });
 });
 

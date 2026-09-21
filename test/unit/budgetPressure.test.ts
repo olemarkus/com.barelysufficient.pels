@@ -28,10 +28,14 @@ const pressureDay = (dateKey: string, kwhTotal: number, appliedBudgetKwh: number
   suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
 });
 
-describe('dayWasBudgetDamaged — day-close verdict', () => {
-  it('is damaged only when energy was still denied at day close', () => {
-    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { budgetDeniedKwh: 1.2 } }))).toBe(true);
-    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { budgetDeniedKwh: 0.001 } }))).toBe(true);
+describe('dayWasBudgetDamaged — continuous denial integral', () => {
+  it('is damaged whenever observed denied energy is positive', () => {
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd', suppression: { budgetDenialObserved: true, budgetDeniedKwh: 1.2 },
+    }))).toBe(true);
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd', suppression: { budgetDenialObserved: true, budgetDeniedKwh: 0.001 },
+    }))).toBe(true);
   });
 
   // The whole point of recording an explicit zero: a day watched to its close
@@ -40,7 +44,12 @@ describe('dayWasBudgetDamaged — day-close verdict', () => {
   it('takes a recorded zero as authoritative, never falling back to the legacy counters', () => {
     expect(dayWasBudgetDamaged(day({
       dateKey: 'd',
-      suppression: { budgetDeniedKwh: 0, targetDeficitMs: 6 * HOUR_MS, blockedByHeadroomMs: 6 * HOUR_MS },
+      suppression: {
+        budgetDenialObserved: true,
+        budgetDeniedKwh: 0,
+        targetDeficitMs: 6 * HOUR_MS,
+        blockedByHeadroomMs: 6 * HOUR_MS,
+      },
     }))).toBe(false);
   });
 
@@ -57,8 +66,8 @@ describe('dayWasBudgetDamaged — day-close verdict', () => {
   it('ignores a junk verdict rather than treating it as evidence', () => {
     expect(dayWasBudgetDamaged(day({
       dateKey: 'd',
-      suppression: { budgetDeniedKwh: Number.NaN, targetDeficitMs: 6 * HOUR_MS },
-    }))).toBe(true);
+      suppression: { budgetDenialObserved: true, budgetDeniedKwh: Number.NaN, targetDeficitMs: 6 * HOUR_MS },
+    }))).toBe(false);
   });
 });
 
@@ -69,6 +78,18 @@ describe('dayWasBudgetDamaged — legacy records (no verdict)', () => {
     expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { targetDeficitMs: 6 * HOUR_MS } })))
       .toBe(true);
     expect(dayWasBudgetDamaged(day({ dateKey: 'd' }))).toBe(false);
+  });
+
+  it('falls back for an upgraded diagnostics row that has synthetic zero denial fields', () => {
+    expect(dayWasBudgetDamaged(day({
+      dateKey: 'd',
+      suppression: {
+        budgetDenialObserved: false,
+        budgetDeniedKwh: 0,
+        budgetDeniedMs: 0,
+        targetDeficitMs: 6 * HOUR_MS,
+      },
+    }))).toBe(true);
   });
 
   it('pins the one-hour bar exactly for records that predate the verdict', () => {
@@ -196,33 +217,24 @@ describe('foldBudgetPressureDay', () => {
     expect(folded.kwh).toBe(0);
   });
 
-  it('caps the accumulator at an absolute backstop when no ceiling is known', () => {
+  it('does not impose a model-relative or absolute ceiling when no physical ceiling is known', () => {
     let state;
     for (let index = 1; index <= 9; index += 1) {
       state = foldBudgetPressureDay(state, pressureDay(`2026-07-0${index}`, 200, 40));
     }
-    expect(state?.kwh).toBe(40);
+    expect(state?.kwh).toBe(90);
   });
 });
 
 describe('resolveBudgetPressureKwh', () => {
-  it('bounds the term by a fraction of the prediction', () => {
-    expect(resolveBudgetPressureKwh({
-      state: { kwh: 7, throughDateKey: 'd' }, predictedKwh: 40, ceilingFraction: 0.5,
-    })).toBe(7);
-    expect(resolveBudgetPressureKwh({
-      state: { kwh: 90, throughDateKey: 'd' }, predictedKwh: 40, ceilingFraction: 0.5,
-    })).toBe(20);
+  it('returns the full accumulated pressure', () => {
+    expect(resolveBudgetPressureKwh({ state: { kwh: 7, throughDateKey: 'd' } })).toBe(7);
+    expect(resolveBudgetPressureKwh({ state: { kwh: 90, throughDateKey: 'd' } })).toBe(90);
   });
 
-  it('contributes nothing without a term or a usable prediction', () => {
-    expect(resolveBudgetPressureKwh({ state: undefined, predictedKwh: 40, ceilingFraction: 0.5 })).toBe(0);
-    expect(resolveBudgetPressureKwh({
-      state: { kwh: 7, throughDateKey: 'd' }, predictedKwh: 0, ceilingFraction: 0.5,
-    })).toBe(0);
-    expect(resolveBudgetPressureKwh({
-      state: { kwh: Number.NaN, throughDateKey: 'd' }, predictedKwh: 40, ceilingFraction: 0.5,
-    })).toBe(0);
+  it('contributes nothing without a valid term', () => {
+    expect(resolveBudgetPressureKwh({ state: undefined })).toBe(0);
+    expect(resolveBudgetPressureKwh({ state: { kwh: Number.NaN, throughDateKey: 'd' } })).toBe(0);
   });
 });
 
@@ -233,7 +245,11 @@ describe('foldBudgetPressureDay — day-close verdict', () => {
     dateKey,
     kwhTotal,
     appliedBudgetKwh: budget,
-    suppression: { budgetDeniedKwh: deniedKwh, budgetDeniedMs: 2 * HOUR_MS },
+    suppression: {
+      budgetDenialObserved: true,
+      budgetDeniedKwh: deniedKwh,
+      budgetDeniedMs: 2 * HOUR_MS,
+    },
   });
 
   it('grows by denied energy plus the measured overshoot', () => {
@@ -259,7 +275,7 @@ describe('foldBudgetPressureDay — day-close verdict', () => {
       quality: {
         partialTemp: false, missingKwh: false, unreliablePower: true, backfilled: false,
       },
-      suppression: { budgetDeniedKwh: 2.5 },
+      suppression: { budgetDenialObserved: true, budgetDeniedKwh: 2.5 },
     }));
     expect(folded.kwh).toBeCloseTo(2.5, 5);
   });
@@ -274,7 +290,11 @@ describe('foldBudgetPressureDay — day-close verdict', () => {
       dateKey: '2026-08-08',
       kwhTotal: 62.83,
       appliedBudgetKwh: 60.72,
-      suppression: { budgetDeniedKwh: 0, blockedByHeadroomMs: 6 * HOUR_MS },
+      suppression: {
+        budgetDenialObserved: true,
+        budgetDeniedKwh: 0,
+        blockedByHeadroomMs: 6 * HOUR_MS,
+      },
     }));
     expect(folded.kwh).toBeCloseTo(6, 5);
   });

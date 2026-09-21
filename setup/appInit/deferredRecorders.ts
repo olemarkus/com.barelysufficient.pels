@@ -125,8 +125,10 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // history can never be written over one the process failed to read.
     load: () => {
       let snapshot: ReturnType<typeof normalizeDeferredObjectivePlanHistory>;
+      let meteredDeliveryStates: ReturnType<typeof store.readMeteredDelivery>;
       try {
         snapshot = store.read() ?? normalizeDeferredObjectivePlanHistory(null);
+        meteredDeliveryStates = store.readMeteredDelivery();
       } catch (error) {
         if (!loadUnavailable) {
           loadUnavailable = true;
@@ -142,11 +144,12 @@ export function createDeferredObjectivePlanHistoryRecorder(
           event: 'deferred_objective_plan_history_load_recovered',
         });
       }
-      return { snapshot, persistenceSafe: true };
+      return { snapshot, persistenceSafe: true, meteredDeliveryStates };
     },
-    save: (next) => {
+    save: (next, meteredDeliveryStates) => {
       try {
         store.write(next);
+        store.writeMeteredDelivery(meteredDeliveryStates);
         return true;
       } catch (error) {
         ctx.getStructuredLogger('deferred_objectives')?.error({
@@ -165,15 +168,6 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
-    // Thread the recorder's in-flight postmortem anchors onto the active plan so
-    // a PELS restart mid-run can restore them (otherwise the in-flight hour
-    // renders as a falsely-empty postmortem bar). Resolved lazily: the active-
-    // plan recorder is constructed after this one (see `initPlanEngine` in
-    // `app.ts`), so it may be absent on the very first observe ticks — the
-    // recorder simply omits the anchor that cycle and re-stamps the next.
-    persistInProgressAnchors: (anchors) => (
-      ctx.deferredObjectiveActivePlanRecorder?.applyInProgressAnchors(anchors)
-    ),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;

@@ -1,13 +1,10 @@
-import type { BudgetPressureState, EnergySignatureFit } from '../../../contracts/src/weatherAdvisorTypes';
-import { predictDailyKwh } from './energySignature';
-import { PRESSURE_CEILING_FRACTION, resolveBudgetPressureKwh } from './budgetPressure';
+import type { BudgetPressureState, EnergySignatureFit } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { predictDailyKwh } from '../../packages/shared-domain/src/energySignature/energySignature';
+import { resolveBudgetPressureKwh } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 // Mirrors lib/dailyBudget/dailyBudgetConstants.ts and packages/contracts/src/
-// dailyBudgetConstants.ts (all three must stay in sync). Deliberate copy:
-// shared-domain ships inside the Homey app bundle while packages/contracts is
-// DELETED from it by scripts/sanitize-homey-build.mjs (contracts is types-only
-// at runtime — a value import here crash-looped the app at boot), and the
-// lib/ copy is unreachable across the packages-isolation boundary.
+// dailyBudgetConstants.ts (all copies must stay in sync). The contracts package
+// is types-only at runtime, so this backend weather owner keeps the values.
 const MIN_DAILY_BUDGET_KWH = 20;
 const MAX_DAILY_BUDGET_KWH = 360;
 
@@ -26,13 +23,15 @@ const MAX_DAILY_BUDGET_KWH = 360;
  * 4. Floor at the 5th percentile of observed days — never suggest below what the
  *    home has demonstrably used.
  * 5. Clamp to the daily-budget setting bounds and (when known) the capacity
- *    ceiling × 24 h — suggesting an unreachable number misleads.
+ *    sustainable-capacity ceiling × the target local day's 23/24/25 hours.
  */
 export type DailyBudgetSuggestionInput = {
   fit: EnergySignatureFit;
   forecastMeanTempC: number;
-  /** Hard capacity cap (kW); the suggestion never exceeds cap × 24 h. */
+  /** Sustainable capacity rate (hard cap minus margin), in kW. */
   capacityLimitKw?: number;
+  /** Length of the target local day; 23/24/25 across DST. */
+  capacityDayHours?: number;
   /** Accumulated budget-pressure term; absent when the loop has nothing to add. */
   budgetPressure?: BudgetPressureState;
 };
@@ -54,7 +53,9 @@ const MIN_RELATIVE_HEADROOM = 0.05;
 const OBSERVED_RANGE_SLACK_C = 2;
 
 export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyBudgetSuggestionResult {
-  const { fit, forecastMeanTempC, capacityLimitKw, budgetPressure } = input;
+  const {
+    fit, forecastMeanTempC, capacityLimitKw, capacityDayHours = 24, budgetPressure,
+  } = input;
   // Never extrapolate OUTSIDE the observed range in either direction: the
   // cold side underestimates exactly during cold snaps, and the warm side of
   // a winter-only linear fit descends without bound (negative predictions on
@@ -83,26 +84,22 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   // Integral term on top of that proportional one. It is measured against the
   // budget that was actually applied — which already carried the headroom — so
   // the two compose rather than double-count.
-  const pressureKwh = resolveBudgetPressureKwh({
-    state: budgetPressure,
-    predictedKwh,
-    ceilingFraction: PRESSURE_CEILING_FRACTION,
-  });
+  const pressureKwh = resolveBudgetPressureKwh({ state: budgetPressure });
   const capacityCapKwh = capacityLimitKw !== undefined && capacityLimitKw > 0
-    ? capacityLimitKw * 24
+    ? capacityLimitKw * capacityDayHours
     : Number.POSITIVE_INFINITY;
   const clamp = (modelledKwh: number): number => Math.min(
     MAX_DAILY_BUDGET_KWH,
     capacityCapKwh,
     // The capacity ceiling is physical, so it outranks the setting's 20 kWh
-    // minimum: with a sub-minimum hard cap the suggestion must stay under the
+    // minimum: with a sub-minimum capacity ceiling the suggestion stays under the
     // cap rather than be raised back to an impossible number.
     Math.max(MIN_DAILY_BUDGET_KWH, modelledKwh),
   );
   const floorKwh = fit.lowObservedDayKwh;
   const suggestedBudgetKwh = clamp(Math.max(predictedKwh + headroom + pressureKwh, floorKwh));
   // Report what the term actually CONTRIBUTED, not what it had accumulated: a
-  // floor or the hard cap can absorb some or all of it, and the reason line
+  // floor or the physical capacity ceiling can absorb some or all of it, and the reason line
   // names this number to the owner ("so N kWh was added"). Claiming a raise the
   // suggestion did not receive would be a lie in the one place they check.
   const budgetPressureKwh = Math.max(0, suggestedBudgetKwh - clamp(Math.max(predictedKwh + headroom, floorKwh)));

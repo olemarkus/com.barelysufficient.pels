@@ -748,7 +748,19 @@ export type StateOfChargeObservedProbe = {
 export type MeasuredPowerObservedFields = {
     measuredPowerKw: number;
     measuredPowerObservedAtMs?: number;
+    measuredPowerReading?: MeteredPowerReading;
 };
+
+/**
+ * Time semantics for a trusted device-meter result. Direct watt readings are
+ * point observations whose value applies until the next observation. A
+ * cumulative energy meter resolves an average over the exact interval between
+ * its two source observations, so consumers must book it backwards into that
+ * covered interval rather than forwards from the resolve time.
+ */
+export type MeteredPowerReading =
+    | { kind: 'instantaneous'; powerKw: number; observedAtMs: number }
+    | { kind: 'interval_average'; powerKw: number; startMs: number; endMs: number };
 
 /**
  * Measured-power observed cluster as a plain optional: the "might have an
@@ -762,6 +774,7 @@ export type MeasuredPowerObservedFields = {
 export type MeasuredPowerObservedProbe = {
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
+    measuredPowerReading?: MeteredPowerReading;
 };
 
 /**
@@ -895,7 +908,8 @@ export type AssociatedCarDecoration = {
 };
 
 export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration
-    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & AssociatedCarDecoration;
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & AssociatedCarDecoration
+    & MeasuredPowerObservedProbe;
 
 /**
  * A device as a consumer that asks about its IDENTITY and CONFIG sees it —

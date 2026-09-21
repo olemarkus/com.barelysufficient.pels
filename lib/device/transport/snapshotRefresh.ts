@@ -441,7 +441,14 @@ function buildParseDeviceDeps(ctx: TransportContext) {
             capsStatus: { hasPower: boolean },
             measuredPower: { measuredPowerKw?: number },
             powerEstimate: ReturnType<typeof estimatePower>,
-        ) => isDevicePowerCapable({ device, capsStatus, measuredPower, powerEstimate }),
+            previousSnapshot?: TransportDeviceSnapshot,
+        ) => isDevicePowerCapable({
+            device,
+            capsStatus,
+            measuredPower,
+            powerEstimate,
+            previousSnapshot,
+        }),
         resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(ctx.observationState, deviceId),
     };
 }

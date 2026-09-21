@@ -46,6 +46,9 @@ export type DeviceDiagnosticsPlanObservation = {
   // The device's modelled draw when running, in kW. Prices a budget-denied hold
   // into the energy the daily-budget evidence is measured in.
   expectedPowerKw: number;
+  // Cause-independent daily-budget pressure. True whenever this device has
+  // unmet demand while the configured budget is below sustainable capacity.
+  budgetPressureDenied: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
@@ -135,6 +138,8 @@ export type LiveDemandObservation = {
   targetDeficitActive: boolean;
   desiredStateSummary: string;
   appliedStateSummary: string;
+  expectedPowerKw: number;
+  budgetPressureDenied: boolean;
 };
 
 
@@ -180,43 +185,21 @@ export type LiveStarvationState = {
   starvationLastResumedAt?: number;
   starvationCause: DeviceDiagnosticsStarvationCountingCause | null;
   starvationPauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-  // Day-scoped accrual of latched, `daily_budget`-attributed counting time — the
-  // magnitude behind the day-close damage verdict the weather advisor reads. The
-  // current slot belongs to `deniedBudgetDayKey`; the first CONTINUOUS
-  // observation span crossing local midnight rolls it into the previous-day
-  // slot. Rolled-slot presence therefore implies the boundary was witnessed by
-  // an unbroken span; a sample gap across midnight wipes both slots instead
-  // (state at the boundary is unknowable, and unprovable means not damage).
-  // In-memory only, reset with the episode: a served hold leaves nothing behind.
-  deniedBudgetDayMs: number;
-  deniedBudgetDayKey?: string;
-  deniedBudgetPrevDayMs?: number;
-  deniedBudgetPrevDayKey?: string;
-  // Whether the DAILY BUDGET was the cause of the last counting slice accrued
-  // into the current-day slot. Tracked per slice because the live
-  // `starvationCause` is mutable — a zero-length span at the first post-midnight
-  // observation refreshes it before the crossing span rolls, and the budget
-  // RESETTING at midnight makes exactly that flip likely.
-  deniedBudgetDayCauseWasBudget?: boolean;
-  // The per-slice cause flag above, snapshotted at the roll: whether the budget
-  // was the cause in force when the previous day CLOSED. The 00:05 join gates
-  // the rolled slot on this, never on the live cause.
-  deniedBudgetPrevDayClosedByBudget?: boolean;
 };
 
 /**
- * Home-level censoring evidence for one local day. The legacy `*Ms` totals come
- * from the persisted per-device aggregates; the `budgetDenied*` pair is joined
- * from LIVE episode state at read time and is only present when the local
- * midnight closing `dateKey` was witnessed by an unbroken observation stream —
- * present-with-zero means "watched, nothing denied", absent means "no witness"
- * (restart, sample gap, or a day that predates this evidence).
+ * Home-level censoring evidence for one local day, read from persisted
+ * per-device aggregates. Budget denial is integrated over every continuously
+ * observed unmet-demand span while the configured budget is below sustainable
+ * capacity; it does not depend on an instantaneous planner reason label.
  */
 export type DeviceDiagnosticsDaySuppressionTotals = {
   targetDeficitMs: number;
   blockedByHeadroomMs: number;
-  budgetDeniedKwh?: number;
-  budgetDeniedMs?: number;
+  budgetDeniedKwh: number;
+  budgetDeniedMs: number;
+  /** True when the continuous budget-denial signal was actually observed. */
+  budgetDenialObserved: boolean;
   // Set when a verdict-capable build rolled this day up WITHOUT a witnessed
   // verdict (restart or sample gap across its midnight). Blocks the legacy
   // hold-time fallback: an unwitnessed modern day is "unprovable, so not
@@ -231,9 +214,6 @@ export type LiveDeviceDiagnostics = {
   lastObservationBatchId?: number;
   lastObservation?: LiveDemandObservation;
   lastStarvationObservation?: LiveStarvationObservation;
-  // The device's modelled draw from the most recent sample — prices a latched
-  // episode's denied time into kWh at the day-close join.
-  lastExpectedPowerKw?: number;
   openShedTs?: number;
   openRestoreTs?: number;
   currentPenaltyLevel: number;

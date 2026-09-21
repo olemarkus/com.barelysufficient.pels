@@ -10,11 +10,15 @@ import {
   DEFERRED_OBJECTIVES_SETTINGS,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  MeasuredPowerObservedFields,
+  TargetDeviceSnapshot,
+  TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 
 // A managed temperature device in the runtime-planned snapshot, with a 30..75 °C
 // settable target so device-specific bounds validation has a real range.
-const buildPlannedHeater = (): TargetDeviceSnapshot => {
+const buildPlannedHeater = (): TargetDeviceSnapshot & MeasuredPowerObservedFields & TemperatureObservedProbe => {
   const target = { id: 'target_temperature' as const, value: 50, min: 30, max: 75, step: 0.5 };
   return {
     id: 'heater-1',
@@ -22,7 +26,8 @@ const buildPlannedHeater = (): TargetDeviceSnapshot => {
     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
     targets: [target],
     temperature: { currentTemperature: 45, target },
-  } as unknown as TargetDeviceSnapshot;
+    measuredPowerKw: 2,
+  } as TargetDeviceSnapshot & MeasuredPowerObservedFields & TemperatureObservedProbe;
 };
 
 const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
@@ -114,6 +119,17 @@ describe('createDeferredObjective (app)', () => {
     const result = app.createDeferredObjective('picker-only', tempCandidate(60));
     expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     expect(readStored().objectivesByDeviceId['picker-only']).toBeUndefined();
+    await app.onUninit?.();
+  });
+
+  it('rejects a device whose real power meter has not produced a reading', async () => {
+    const app = await initApp();
+    const { measuredPowerKw: _missingReading, ...unmetered } = buildPlannedHeater();
+    app.setSnapshotForTests([unmetered as TargetDeviceSnapshot]);
+
+    const result = app.createDeferredObjective('heater-1', tempCandidate(60));
+
+    expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     await app.onUninit?.();
   });
 

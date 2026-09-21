@@ -6,6 +6,7 @@ import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { getRawDevice } from '../../lib/device/transport/managerHomeyApi';
 import { readDeviceTemperature } from '../../lib/weather/weatherDeviceRead';
 import { DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH } from '../../lib/utils/settingsKeys';
+import { resolveWeatherSustainableCapacityKw } from '../../lib/weather/weatherCapacity';
 
 /**
  * Wires the pure readout builder (`lib/weather/weatherAdvisorReadout`) to the
@@ -28,7 +29,7 @@ export async function assembleWeatherAdvisorReadout(params: {
   // The forecast comes from a direct MET Norway fetch, not a device — only the
   // outdoor (historical) device is read here, for its name + live validity line.
   const outdoor = await readDevice(settings.outdoorDeviceId);
-  const limitKw = ctx.capacitySettings.limitKw;
+  const limitKw = resolveWeatherSustainableCapacityKw(ctx.capacitySettings);
   const currentDailyBudgetKwh = resolveDailyBudgetKwh(ctx);
   // Validity uses ONLY the on-demand read (which reads the currently-selected
   // device id), never the collector's device-unstamped cache: right after a
