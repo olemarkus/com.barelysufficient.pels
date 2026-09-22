@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   HomeySolarForecastController,
-  type HomeySolarForecastControllerCtx,
+  type HomeySolarForecastLogger,
 } from '../../lib/solar/homeySolarForecastController';
 import { summaryHourCount } from '../../lib/solar/homeyEnergySolarForecast';
 import type { SolarForecastDayRead } from '../../lib/solar/homeyEnergySolarForecast';
@@ -18,17 +18,50 @@ const resolvedDay = (dateKey: string): SolarForecastDayRead => ({
 type Harness = {
   controller: HomeySolarForecastController;
   fetches: string[];
-  logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
+  logger: LoggerSpy;
 };
+
+type LoggerSpy = {
+  info: ReturnType<typeof vi.fn<(obj: Record<string, unknown>) => void>>;
+  warn: ReturnType<typeof vi.fn<(obj: Record<string, unknown>) => void>>;
+};
+
+const createLogger = (): LoggerSpy => ({
+  info: vi.fn<(obj: Record<string, unknown>) => void>(),
+  warn: vi.fn<(obj: Record<string, unknown>) => void>(),
+});
+
+type TestControllerArgs = {
+  fetchForecastDay: (localDateKey: string) => Promise<SolarForecastDayRead>;
+  getTimeZone: () => string;
+  getNowMs: () => number;
+  readSourceSetting: () => PvForecastSourceSetting;
+  hasSolarProductionCandidate: () => boolean;
+  isLearnedActive: () => boolean;
+  logger: HomeySolarForecastLogger;
+};
+
+const createController = (args: TestControllerArgs): HomeySolarForecastController => (
+  new HomeySolarForecastController(
+    args.fetchForecastDay,
+    args.getTimeZone,
+    args.getNowMs,
+    args.readSourceSetting,
+    args.hasSolarProductionCandidate,
+    args.isLearnedActive,
+    args.logger,
+  )
+);
 
 const makeController = (overrides: {
   setting?: PvForecastSourceSetting;
+  hasSolarCandidate?: boolean;
   learnedActive?: boolean;
   read?: (dateKey: string) => SolarForecastDayRead;
 } = {}): Harness => {
   const fetches: string[] = [];
-  const logger = { info: vi.fn(), warn: vi.fn() };
-  const ctx: HomeySolarForecastControllerCtx = {
+  const logger = createLogger();
+  const args: TestControllerArgs = {
     fetchForecastDay: async (dateKey) => {
       fetches.push(dateKey);
       return overrides.read?.(dateKey) ?? resolvedDay(dateKey);
@@ -36,10 +69,11 @@ const makeController = (overrides: {
     getTimeZone: () => 'Europe/Oslo',
     getNowMs: () => NOW_MS,
     readSourceSetting: () => overrides.setting ?? 'auto',
+    hasSolarProductionCandidate: () => overrides.hasSolarCandidate ?? true,
     isLearnedActive: () => overrides.learnedActive ?? true,
     logger,
   };
-  return { controller: new HomeySolarForecastController(ctx), fetches, logger };
+  return { controller: createController(args), fetches, logger };
 };
 
 const loggedEvents = (logger: Harness['logger']): string[] => (
@@ -68,9 +102,9 @@ describe('HomeySolarForecastController', () => {
       expect(fetches).toEqual([]);
     });
 
-    it('probes ONCE at start even without solar production, then stays quiet without a success', async () => {
-      // A home whose panels only Homey Energy knows about must still discover
-      // the forecast; a genuinely non-solar home pays one local read and stops.
+    it('probes ONCE for an eligible device without learned production, then stays quiet without a success', async () => {
+      // A configured panel that has not fed the learned lane must still
+      // discover Homey's forecast.
       const { controller, fetches } = makeController({
         learnedActive: false,
         read: () => ({ kind: 'unavailable' }),
@@ -89,17 +123,48 @@ describe('HomeySolarForecastController', () => {
       expect(fetches).toHaveLength(4);
     });
 
-    it('probes an explicit homey_energy even without solar production', async () => {
+    it('probes an explicit homey_energy with an eligible device even without learned production', async () => {
       const { controller, fetches } = makeController({ setting: 'homey_energy', learnedActive: false });
       await controller.refresh();
+      expect(fetches).toHaveLength(2);
+    });
+
+    it('skips Homey forecast requests when no eligible solar device exists', async () => {
+      const automatic = makeController({ hasSolarCandidate: false });
+      const explicit = makeController({ setting: 'homey_energy', hasSolarCandidate: false });
+      await automatic.controller.refresh();
+      await explicit.controller.refresh();
+      expect(automatic.fetches).toEqual([]);
+      expect(explicit.fetches).toEqual([]);
+      expect(loggedEvents(automatic.logger)).toEqual([]);
+      expect(loggedEvents(explicit.logger)).toEqual([]);
+    });
+
+    it('discovers Homey forecast after an eligible solar device appears', async () => {
+      let hasSolarCandidate = false;
+      const fetches: string[] = [];
+      const controller = createController({
+        fetchForecastDay: async (dateKey) => { fetches.push(dateKey); return resolvedDay(dateKey); },
+        getTimeZone: () => 'Europe/Oslo',
+        getNowMs: () => NOW_MS,
+        readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => hasSolarCandidate,
+        isLearnedActive: () => false,
+        logger: createLogger(),
+      });
+      await controller.refresh();
+      expect(fetches).toEqual([]);
+      hasSolarCandidate = true;
+      await controller.refreshEligibility();
+      await controller.refreshEligibility(); // unchanged snapshot ⇒ no extra forecast fetch
       expect(fetches).toHaveLength(2);
     });
 
     it('keeps auto-probing after a prior success even if the learned lane goes quiet', async () => {
       let learnedActive = true;
       const fetches: string[] = [];
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const controller = new HomeySolarForecastController({
+      const logger = createLogger();
+      const controller = createController({
         fetchForecastDay: async (dateKey) => {
           fetches.push(dateKey);
           return resolvedDay(dateKey);
@@ -107,6 +172,7 @@ describe('HomeySolarForecastController', () => {
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => learnedActive,
         logger,
       });
@@ -120,8 +186,8 @@ describe('HomeySolarForecastController', () => {
       let read: SolarForecastDayRead['kind'] = 'resolved';
       let learnedActive = true;
       const fetches: string[] = [];
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const controller = new HomeySolarForecastController({
+      const logger = createLogger();
+      const controller = createController({
         fetchForecastDay: async (dateKey) => {
           fetches.push(dateKey);
           return read === 'resolved' ? resolvedDay(dateKey) : { kind: read };
@@ -129,6 +195,7 @@ describe('HomeySolarForecastController', () => {
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => learnedActive,
         logger,
       });
@@ -148,8 +215,8 @@ describe('HomeySolarForecastController', () => {
       // the source undiscoverable until an app restart.
       let read: SolarForecastDayRead['kind'] = 'failed';
       const fetches: string[] = [];
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const controller = new HomeySolarForecastController({
+      const logger = createLogger();
+      const controller = createController({
         fetchForecastDay: async (dateKey) => {
           fetches.push(dateKey);
           return read === 'resolved' ? resolvedDay(dateKey) : { kind: read };
@@ -157,6 +224,7 @@ describe('HomeySolarForecastController', () => {
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => false,
         logger,
       });
@@ -183,13 +251,14 @@ describe('HomeySolarForecastController', () => {
       // the owner's choice. One read at construction, then the held value.
       const readSourceSetting = vi.fn(() => 'learned' as const);
       const fetches: string[] = [];
-      const controller = new HomeySolarForecastController({
+      const controller = createController({
         fetchForecastDay: async (dateKey) => { fetches.push(dateKey); return resolvedDay(dateKey); },
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting,
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => true,
-        logger: { info: vi.fn(), warn: vi.fn() },
+        logger: createLogger(),
       });
       expect(readSourceSetting).toHaveBeenCalledTimes(1);
       await controller.refresh();
@@ -202,13 +271,14 @@ describe('HomeySolarForecastController', () => {
     it('re-resolves the held setting only on the change event, and then acts on it', async () => {
       let stored: 'learned' | 'homey_energy' = 'learned';
       const fetches: string[] = [];
-      const controller = new HomeySolarForecastController({
+      const controller = createController({
         fetchForecastDay: async (dateKey) => { fetches.push(dateKey); return resolvedDay(dateKey); },
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => stored,
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => false,
-        logger: { info: vi.fn(), warn: vi.fn() },
+        logger: createLogger(),
       });
       await controller.refresh();
       expect(fetches).toEqual([]); // pinned to learned
@@ -273,6 +343,113 @@ describe('HomeySolarForecastController', () => {
       expect(onRefreshed).toHaveBeenCalledTimes(2);
     });
 
+    it('clears a populated Homey forecast when the solar device is removed', async () => {
+      let hasSolarCandidate = true;
+      const controller = createController({
+        fetchForecastDay: async (dateKey) => resolvedDay(dateKey),
+        getTimeZone: () => 'Europe/Oslo',
+        getNowMs: () => NOW_MS,
+        readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => hasSolarCandidate,
+        isLearnedActive: () => true,
+        logger: createLogger(),
+      });
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+      await controller.refresh();
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(2);
+      expect(onRefreshed).toHaveBeenCalledTimes(1);
+
+      hasSolarCandidate = false;
+      await controller.refreshEligibility();
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(0);
+      expect(onRefreshed).toHaveBeenCalledTimes(2);
+      await controller.refreshEligibility();
+      expect(onRefreshed).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the forecast immediately when its solar device disappears during a refresh', async () => {
+      let hasSolarCandidate = true;
+      let releaseFetch: (() => void) | undefined;
+      let markFetchStarted: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { releaseFetch = resolve; });
+      const fetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve; });
+      let shouldWait = false;
+      const logger = createLogger();
+      const controller = createController({
+        fetchForecastDay: async (dateKey) => {
+          if (shouldWait) {
+            markFetchStarted?.();
+            await gate;
+          }
+          return resolvedDay(dateKey);
+        },
+        getTimeZone: () => 'Europe/Oslo',
+        getNowMs: () => NOW_MS,
+        readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => hasSolarCandidate,
+        isLearnedActive: () => true,
+        logger,
+      });
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+      await controller.refresh();
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(2);
+      expect(onRefreshed).toHaveBeenCalledTimes(1);
+
+      shouldWait = true;
+      const inFlight = controller.refresh();
+      await fetchStarted;
+      hasSolarCandidate = false;
+      const eligibilityRefresh = controller.refreshEligibility();
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(0);
+      expect(onRefreshed).toHaveBeenCalledTimes(2);
+      releaseFetch?.();
+      await Promise.all([inFlight, eligibilityRefresh]);
+
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(0);
+      expect(loggedEvents(logger)).toEqual(['pv_forecast_homey']);
+      expect(onRefreshed).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects an in-flight response that crosses a false-to-true eligibility transition', async () => {
+      let hasSolarCandidate = true;
+      let releaseFetch: (() => void) | undefined;
+      let markFetchStarted: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { releaseFetch = resolve; });
+      const fetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve; });
+      let calls = 0;
+      const controller = createController({
+        fetchForecastDay: async (dateKey) => {
+          calls += 1;
+          if (calls <= 2) {
+            markFetchStarted?.();
+            await gate;
+            return resolvedDay(dateKey);
+          }
+          return { kind: 'unavailable' };
+        },
+        getTimeZone: () => 'Europe/Oslo',
+        getNowMs: () => NOW_MS,
+        readSourceSetting: () => 'auto',
+        hasSolarProductionCandidate: () => hasSolarCandidate,
+        isLearnedActive: () => false,
+        logger: createLogger(),
+      });
+
+      const inFlight = controller.refresh();
+      await fetchStarted;
+      hasSolarCandidate = false;
+      const removal = controller.refreshEligibility();
+      hasSolarCandidate = true;
+      const addition = controller.refreshEligibility();
+      releaseFetch?.();
+      await Promise.all([inFlight, removal, addition]);
+
+      expect(calls).toBe(4);
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(0);
+    });
+
     it('fires the hook when ONE day is dropped while the other is retained', async () => {
       // The cache stays non-empty, so an emptied-cache predicate would miss it —
       // yet tomorrow's solar adjustment is gone and the planning price must
@@ -304,8 +481,8 @@ describe('HomeySolarForecastController', () => {
       let releaseFirst: (() => void) | undefined;
       const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
       let calls = 0;
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const controller = new HomeySolarForecastController({
+      const logger = createLogger();
+      const controller = createController({
         fetchForecastDay: async (dateKey) => {
           calls += 1;
           if (calls <= 2) {
@@ -317,6 +494,7 @@ describe('HomeySolarForecastController', () => {
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => 'homey_energy',
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => true,
         logger,
       });
@@ -331,8 +509,8 @@ describe('HomeySolarForecastController', () => {
     it('drops a completion that lands after stop()', async () => {
       let releaseFetch: (() => void) | undefined;
       const gate = new Promise<void>((resolve) => { releaseFetch = resolve; });
-      const logger = { info: vi.fn(), warn: vi.fn() };
-      const controller = new HomeySolarForecastController({
+      const logger = createLogger();
+      const controller = createController({
         fetchForecastDay: async (dateKey) => {
           await gate;
           return resolvedDay(dateKey);
@@ -340,6 +518,7 @@ describe('HomeySolarForecastController', () => {
         getTimeZone: () => 'Europe/Oslo',
         getNowMs: () => NOW_MS,
         readSourceSetting: () => 'homey_energy',
+        hasSolarProductionCandidate: () => true,
         isLearnedActive: () => true,
         logger,
       });

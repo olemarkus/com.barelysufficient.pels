@@ -12,7 +12,8 @@
 // seams (`setup/appInit/createHomeySolarForecastController.ts`) and hands it over.
 //
 // SDK-free: every outward seam — the classified per-day fetch, the clock, the
-// timezone, the setting read, the learned lane's arm signal — is injected.
+// timezone, the setting read, solar-device eligibility, and the learned lane's
+// arm signal — is injected.
 //
 // No persistence on purpose: Homey caches yesterday/today/tomorrow locally and
 // a boot refetch is one cheap local GET, so an in-memory last-good cache is the
@@ -30,19 +31,6 @@ const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000;
 export type HomeySolarForecastLogger = {
   info: (obj: Record<string, unknown>) => void;
   warn: (obj: Record<string, unknown>) => void;
-};
-
-export type HomeySolarForecastControllerCtx = {
-  fetchForecastDay: (localDateKey: string) => Promise<SolarForecastDayRead>;
-  getTimeZone: () => string;
-  getNowMs: () => number;
-  /** Resolve the persisted source. Called ONCE at construction and again on the
-   *  settings-change event — never per consumer read; see
-   *  `setup/pvForecastSourceSetting.ts` for why this key is held, not polled. */
-  readSourceSetting: () => PvForecastSourceSetting;
-  /** Whether the learned PV lane has seen solar production (the auto-probe arm signal). */
-  isLearnedActive: () => boolean;
-  logger: HomeySolarForecastLogger;
 };
 
 /**
@@ -69,8 +57,9 @@ export class HomeySolarForecastController {
   // outcome must not permanently silence the source (a transient external
   // failure is a no-op, root AGENTS.md).
   private hasSucceeded = false;
-  // Whether a CONCLUSIVE probe has run yet; the first auto probe is
-  // unconditional. Set on 'ok'/'unavailable' only — see shouldProbe().
+  // Whether a CONCLUSIVE probe has run yet; the first auto probe for an
+  // eligible home is unconditional. Set on 'ok'/'unavailable' only — see
+  // shouldProbe().
   private hasProbed = false;
   // The HELD source setting: resolved once here and re-resolved only when the
   // owner changes it. This controller is the holder because it already
@@ -83,13 +72,29 @@ export class HomeySolarForecastController {
   private onRefreshed?: () => void;
   // Serializes overlapping refresh() calls; see the method's note.
   private queue: Promise<void> = Promise.resolve();
+  // Last eligibility observed from a committed device snapshot. This is the
+  // transition latch for `refreshEligibility`: ordinary five-minute device
+  // refreshes must not turn into five-minute forecast fetches.
+  private solarProductionCandidate?: boolean;
+  // Advances on every observed eligibility transition. A response whose fetch
+  // crossed a transition belongs to the old Homey solar-device configuration,
+  // even when eligibility changed false -> true before the response arrived.
+  private eligibilityGeneration = 0;
 
-  constructor(private readonly ctx: HomeySolarForecastControllerCtx) {
-    this.sourceSetting = ctx.readSourceSetting();
+  constructor(
+    fetchForecastDay: (localDateKey: string) => Promise<SolarForecastDayRead>,
+    getTimeZone: () => string,
+    private readonly getNowMs: () => number,
+    private readonly readSourceSetting: () => PvForecastSourceSetting,
+    private readonly hasSolarProductionCandidate: () => boolean,
+    private readonly isLearnedActive: () => boolean,
+    private readonly logger: HomeySolarForecastLogger,
+  ) {
+    this.sourceSetting = readSourceSetting();
     this.source = new HomeyEnergySolarForecastSource({
-      fetchForecastDay: ctx.fetchForecastDay,
-      getTimeZone: ctx.getTimeZone,
-      getNowMs: ctx.getNowMs,
+      fetchForecastDay,
+      getTimeZone,
+      getNowMs,
     });
   }
 
@@ -104,7 +109,7 @@ export class HomeySolarForecastController {
    *  `[PV_FORECAST_SOURCE]` settings handler, which is the only way this value
    *  changes; the handler kicks `refresh()` straight after. */
   refreshSourceSetting(): void {
-    this.sourceSetting = this.ctx.readSourceSetting();
+    this.sourceSetting = this.readSourceSetting();
   }
 
   /** Register the refresh-completion hook (invoked only after the cache changed). */
@@ -113,14 +118,15 @@ export class HomeySolarForecastController {
   }
 
   /**
-   * Probe policy: an explicit `homey_energy` always fetches; `learned` never
-   * does (the source is pinned off, so probing would be waste); `auto` probes
-   * unconditionally ONCE (a home whose panels only Homey Energy knows about —
-   * no generation feed reaches PELS — must still discover the forecast), then
-   * keeps probing while the home shows solar production (the learned lane's
-   * arm signal) or a probe has EVER succeeded. The success latch is sticky on
-   * purpose — one transient failure must not permanently disarm it. The read
-   * is local either way; this gate is a courtesy, not a cost control.
+   * Probe policy after device eligibility has been established: an explicit
+   * `homey_energy` always fetches; `learned` never does (the source is pinned
+   * off, so probing would be waste); `auto` probes unconditionally ONCE (a home
+   * whose panels only Homey Energy knows about — no generation feed reaches
+   * PELS — must still discover the forecast), then keeps probing while the home
+   * shows solar production (the learned lane's arm signal) or a probe has EVER
+   * succeeded. The success latch is sticky on purpose — one transient failure
+   * must not permanently disarm it. The read is local either way; this gate is
+   * a courtesy, not a cost control.
    *
    * The unconditional allowance is spent by a CONCLUSIVE probe (`ok` or
    * `unavailable`), never by a `failed` one. A transient external failure is a
@@ -134,7 +140,24 @@ export class HomeySolarForecastController {
     if (setting === 'homey_energy') return true;
     if (setting === 'learned') return false;
     if (!this.hasProbed) return true;
-    return this.ctx.isLearnedActive() || this.hasSucceeded;
+    return this.isLearnedActive() || this.hasSucceeded;
+  }
+
+  /**
+   * Re-evaluate applicability after a committed device snapshot. Only an
+   * eligibility transition schedules controller work; an unchanged snapshot
+   * leaves Homey's normal three-hour forecast cadence untouched.
+   */
+  async refreshEligibility(): Promise<void> {
+    if (this.stopped) return;
+    const previousCandidate = this.solarProductionCandidate;
+    const candidate = this.observeSolarProductionCandidate();
+    if (candidate === previousCandidate) return;
+    // Do not queue invalidation behind a fetch based on the removed device.
+    // Planning must stop consuming the forecast as soon as the committed
+    // snapshot says that Homey's solar forecast is inapplicable.
+    if (!candidate && this.discardInapplicableForecast()) this.onRefreshed?.();
+    await this.refresh();
   }
 
   /** Never rejects: every caller is fire-and-forget (start(), the 3 h tick,
@@ -161,16 +184,36 @@ export class HomeySolarForecastController {
     try {
       await this.refreshInner();
     } catch (error) {
-      this.ctx.logger.warn({ event: 'pv_forecast_homey_refresh_failed', err: normalizeError(error) });
+      this.logger.warn({ event: 'pv_forecast_homey_refresh_failed', err: normalizeError(error) });
     }
   }
 
   private async refreshInner(): Promise<void> {
-    if (this.stopped || !this.shouldProbe()) return;
-    const nowMs = this.ctx.getNowMs();
+    if (this.stopped) return;
+    const candidate = this.observeSolarProductionCandidate();
+    if (!candidate) {
+      // Homey's forecast is derived from its configured solar devices. With no
+      // eligible device there is nothing to ask the Energy API for. Reset the
+      // discovery latches too: if a panel is paired later, auto gets a fresh
+      // unconditional first probe rather than inheriting the prior device's
+      // conclusion.
+      if (this.discardInapplicableForecast()) this.onRefreshed?.();
+      return;
+    }
+    if (!this.shouldProbe()) return;
+    const eligibilityGeneration = this.eligibilityGeneration;
+    const nowMs = this.getNowMs();
     const hourCountBefore = summaryHourCount(this.source.summarize(nowMs));
     const outcome = await this.source.refresh(nowMs);
     if (this.stopped) return;
+    // Eligibility is observed state and may change while the local requests are
+    // in flight. Re-check after the await so a removed device cannot repopulate
+    // the cache or publish a success from an obsolete forecast basis.
+    const candidateAfterRefresh = this.observeSolarProductionCandidate();
+    if (this.isEligibilityResponseObsolete(candidateAfterRefresh, eligibilityGeneration)) {
+      if (this.discardInapplicableForecast()) this.onRefreshed?.();
+      return;
+    }
     if (outcome === 'ok') this.hasSucceeded = true;
     // Spent by a conclusive answer only — a transient failure is a no-op.
     if (outcome !== 'failed') this.hasProbed = true;
@@ -183,6 +226,24 @@ export class HomeySolarForecastController {
     // so the planning price kept the vanished day's solar adjustment.
     const hourCountAfter = summaryHourCount(this.source.summarize(nowMs));
     if (outcome === 'ok' || hourCountAfter !== hourCountBefore) this.onRefreshed?.();
+  }
+
+  private discardInapplicableForecast(): boolean {
+    this.hasSucceeded = false;
+    this.hasProbed = false;
+    this.lastOutcome = undefined;
+    return this.source.clear();
+  }
+
+  private observeSolarProductionCandidate(): boolean {
+    const candidate = this.hasSolarProductionCandidate();
+    if (candidate !== this.solarProductionCandidate) this.eligibilityGeneration += 1;
+    this.solarProductionCandidate = candidate;
+    return candidate;
+  }
+
+  private isEligibilityResponseObsolete(candidate: boolean, generation: number): boolean {
+    return !candidate || generation !== this.eligibilityGeneration;
   }
 
   start(): void {
@@ -201,17 +262,18 @@ export class HomeySolarForecastController {
     if (outcome === 'ok') {
       // The externally-observable forecast seam — diffable against
       // `pv_forecast_learned` in prod logs to qualify Homey's data.
-      this.ctx.logger.info({ event: 'pv_forecast_homey', ...this.source.summarize(nowMs) });
+      this.logger.info({ event: 'pv_forecast_homey', ...this.source.summarize(nowMs) });
       return;
     }
     if (outcome === 'unavailable' && this.lastOutcome !== 'unavailable') {
       // Transition-latched: 'unavailable' is the steady state on pre-13.4.0
-      // firmware and non-solar homes — one line per transition, not 8/day.
-      this.ctx.logger.info({ event: 'pv_forecast_homey_unavailable' });
+      // firmware and eligible homes for which Homey has no forecast basis —
+      // one line per transition, not 8/day.
+      this.logger.info({ event: 'pv_forecast_homey_unavailable' });
       return;
     }
     if (outcome === 'failed') {
-      this.ctx.logger.warn({ event: 'pv_forecast_homey_refresh_failed' });
+      this.logger.warn({ event: 'pv_forecast_homey_refresh_failed' });
     }
   }
 }

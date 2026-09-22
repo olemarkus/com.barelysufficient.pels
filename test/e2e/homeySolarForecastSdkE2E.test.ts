@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { drainPending } from '../utils/asyncDrain';
+import { drainPending, drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_LIMIT_KW,
   OPERATING_MODE_SETTING,
@@ -110,7 +110,12 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
       ok: true,
       json: async () => ({ hourly: { time: [], shortwave_radiation: [] } }),
     })));
-    setMockDrivers({ d: new MockDriver('d', [new MockDevice('h', 'Heater', ['onoff', 'measure_power'])]) });
+    setMockDrivers({
+      d: new MockDriver('d', [
+        new MockDevice('h', 'Heater', ['onoff', 'measure_power']),
+        new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel'),
+      ]),
+    });
     setEnergyPrices();
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
@@ -145,6 +150,45 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
       sourceId: 'homey_energy',
       setting: 'auto',
     }));
+  });
+
+  it('tracks solar-forecast applicability from committed device snapshots', async () => {
+    const heater = new MockDevice('h', 'Heater', ['onoff', 'measure_power']);
+    const solar = new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel');
+    // Model a boot whose first full device read had no trustworthy devices.
+    // With no known ids, the production targeted poll falls back to a full read.
+    setMockDrivers({});
+    mockHomeyInstance.api._solarForecastByDate = {
+      [TODAY]: forecastDay(TODAY, 2000),
+      [TOMORROW]: forecastDay(TOMORROW, 1000),
+    };
+    const apiGet = vi.spyOn(mockHomeyInstance.api, 'get');
+    const { events } = await bootApp();
+    await drainPending();
+
+    const solarForecastRequestCount = (): number => apiGet.mock.calls.filter(
+      ([path]) => typeof path === 'string' && path.startsWith('manager/energy/forecast/solar?'),
+    ).length;
+    expect(solarForecastRequestCount()).toBe(0);
+    expect(events.some((event) => event.event?.startsWith('pv_forecast_homey'))).toBe(false);
+
+    // The committed snapshot event, not the 3 h forecast timer, discovers a
+    // newly eligible solar device and probes immediately.
+    setMockDrivers({ d: new MockDriver('d', [heater, solar]) });
+    await vi.advanceTimersByTimeAsync(5 * 60_000); // production device-poll cadence
+    await drainUntil(() => solarForecastRequestCount() === 2);
+    expect(solarForecastRequestCount()).toBe(2);
+    expect(events.some((event) => event.event === 'pv_forecast_homey')).toBe(true);
+
+    // The reverse transition immediately drops the cached Homey forecast. A
+    // later source read therefore falls back to learned without another API
+    // request.
+    const formerSolar = new MockDevice('pv', 'Former solar', ['onoff'], 'heater');
+    setMockDrivers({ d: new MockDriver('d', [heater, formerSolar]) });
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await drainUntil(() => selections(events).at(-1)?.sourceId === 'learned');
+    expect(solarForecastRequestCount()).toBe(2);
+    expect(selections(events).at(-1)).toMatchObject({ sourceId: 'learned', setting: 'auto' });
   });
 
   it('stays on the learned model when the route is missing (pre-13.4.0 firmware)', async () => {

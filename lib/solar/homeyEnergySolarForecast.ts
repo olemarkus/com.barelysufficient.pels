@@ -123,6 +123,17 @@ export class HomeyEnergySolarForecastSource {
   constructor(private readonly deps: HomeyEnergySolarForecastDeps) {}
 
   /**
+   * Discard every cached Homey forecast when the home no longer has a solar
+   * production candidate. Returns whether this changed the source, so the
+   * controller can recompute consumers only when their input actually changed.
+   */
+  clear(): boolean {
+    if (Object.keys(this.cacheByDate).length === 0) return false;
+    this.cacheByDate = {};
+    return true;
+  }
+
+  /**
    * Refetch today + tomorrow (local calendar dates in the Homey's timezone; the
    * two dates cover every hour of a 23/25 h DST day because points are
    * UTC-stamped and bucketed on UTC hour-starts — only the query key is local).

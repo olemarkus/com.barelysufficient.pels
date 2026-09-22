@@ -307,7 +307,13 @@ export class AppServiceWiring {
   startPostStartupBackgroundTasks(): void {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
-    startPostStartupBackgroundTasks({ ...this.deps, ctx });
+    startPostStartupBackgroundTasks({
+      ...this.deps,
+      ctx,
+      subscribeDeviceSnapshotCommitted: (listener) => {
+        this.deps.getObservedStateEmitter().onObservedStateRefresh(listener);
+      },
+    });
   }
 
   async initPriceCoordinator(): Promise<void> {

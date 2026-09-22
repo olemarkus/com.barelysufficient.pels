@@ -23,6 +23,7 @@ export type PostStartupBackgroundDeps = {
   setWeatherCollector: (collector: WeatherCollector | undefined) => void;
   setPvForecast: (pvForecast: PvForecastController | undefined) => void;
   setHomeySolarForecast: (controller: HomeySolarForecastController) => void;
+  subscribeDeviceSnapshotCommitted: (listener: () => void) => void;
   runNativeWiringDetectionBestEffort: () => void;
 };
 
@@ -42,6 +43,12 @@ export const startPostStartupBackgroundTasks = (
   deps.setWeatherCollector(collectors.weatherCollector);
   deps.setPvForecast(collectors.pvForecast);
   deps.setHomeySolarForecast(collectors.homeySolarForecast);
+  // A committed snapshot can make Homey's solar forecast applicable or
+  // inapplicable. The controller owns the transition latch, so routine device
+  // polls do not fetch forecasts; wiring only connects the snapshot fact.
+  deps.subscribeDeviceSnapshotCommitted(
+    () => { void collectors.homeySolarForecast.refreshEligibility(); },
+  );
   // ONE selector closure feeds both forecast consumers, so the budget price and
   // the curtailment potential always read the same selected source.
   // Both controllers are in hand HERE, so the selector takes them by value and

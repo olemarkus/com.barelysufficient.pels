@@ -1,7 +1,7 @@
 // Wiring for Homey Energy's solar production forecast (firmware 13.4.0+):
 // binds the controller's outward seams — the classifying fetch adapter, the
-// clock, the Homey timezone, the persisted source setting, and the learned
-// lane's arm signal — and starts it.
+// clock, the Homey timezone, the persisted source setting, solar-device
+// eligibility, and the learned lane's arm signal — and starts it.
 //
 // The controller itself lives in `lib/solar/homeySolarForecastController.ts`
 // because it remembers (probe latches, last outcome); setup constructs and
@@ -23,14 +23,15 @@ export function createHomeySolarForecastController(
   ctx: AppContext,
   isLearnedActive: () => boolean,
 ): HomeySolarForecastController {
-  const controller = new HomeySolarForecastController({
-    fetchForecastDay: fetchSolarForecastDay,
-    getTimeZone: () => ctx.getTimeZone(),
-    getNowMs: () => Date.now(),
-    readSourceSetting: () => resolvePvForecastSourceSetting(ctx.homey.settings),
+  const controller = new HomeySolarForecastController(
+    fetchSolarForecastDay,
+    () => ctx.getTimeZone(),
+    () => Date.now(),
+    () => resolvePvForecastSourceSetting(ctx.homey.settings),
+    () => ctx.deviceReads.hasProductionCandidate(),
     isLearnedActive,
-    logger: getLogger('solar'),
-  });
+    getLogger('solar'),
+  );
   controller.start();
   return controller;
 }
