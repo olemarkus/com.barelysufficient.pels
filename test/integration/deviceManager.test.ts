@@ -23,6 +23,7 @@ import {
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { MeteredDeviceReading } from '../../lib/ports/meteredSnapshots';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -1772,6 +1773,56 @@ describe('DeviceTransport', () => {
             vi.useRealTimers();
         });
 
+        it('starts a new cumulative interval after returning from direct power', async () => {
+            vi.useFakeTimers();
+            const startMs = Date.parse('2026-01-01T00:00:00.000Z');
+            vi.setSystemTime(startMs);
+            const meterDevice = (minute: number) => ({
+                id: 'dev1', name: 'Heater', class: 'heater',
+                capabilities: ['meter_power', 'onoff'],
+                capabilitiesObj: {
+                    meter_power: {
+                        value: 100 + minute / 60, id: 'meter_power',
+                        lastUpdated: new Date(startMs + minute * 60_000).toISOString(),
+                    },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({ dev1: meterDevice(0) });
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            const meteredReadings = vi.fn<(reading: MeteredDeviceReading) => void>();
+            deviceManager.onMeteredPowerReading(meteredReadings);
+            for (const minute of [1, 2]) {
+                vi.setSystemTime(startMs + minute * 60_000);
+                const device = meterDevice(minute);
+                mockApiGet.mockResolvedValue({ dev1: {
+                    ...device,
+                    capabilities: [...device.capabilities, 'measure_power'],
+                    capabilitiesObj: {
+                        ...device.capabilitiesObj,
+                        measure_power: {
+                            value: 1000, id: 'measure_power', lastUpdated: new Date(Date.now()).toISOString(),
+                        },
+                    },
+                } });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            }
+            meteredReadings.mockClear();
+            for (const minute of [3, 4]) {
+                vi.setSystemTime(startMs + minute * 60_000);
+                mockApiGet.mockResolvedValue({ dev1: meterDevice(minute) });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            }
+            const intervalReadings = meteredReadings.mock.calls.map(([reading]) => reading)
+                .filter((reading) => reading.kind === 'interval_average');
+            expect(intervalReadings).toEqual([{
+                deviceId: 'dev1', kind: 'interval_average', powerKw: expect.closeTo(1, 6),
+                startMs: startMs + 3 * 60_000, endMs: startMs + 4 * 60_000,
+            }]);
+            vi.useRealTimers();
+        });
+
         it('handles meter_power resets by ignoring negative deltas', async () => {
             vi.useFakeTimers();
             vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
@@ -1853,6 +1904,11 @@ describe('DeviceTransport', () => {
             mockApiGet.mockResolvedValue({ dev1: buildAc(101, '2026-01-01T01:00:30.000Z', 21) });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
+            expect(deviceManager.getSnapshotByDeviceId('dev1')?.measuredPowerReading).toEqual({
+                kind: 'interval_average', powerKw: 1,
+                startMs: Date.parse('2026-01-01T00:00:30.000Z'),
+                endMs: Date.parse('2026-01-01T01:00:30.000Z'),
+            });
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -5247,12 +5303,10 @@ describe('DeviceTransport', () => {
                     measuredPowerKw: 2.865,
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
-                expect(loggerMock.debug).toHaveBeenCalledWith(expect.objectContaining({
-                    event: 'snapshot_refresh_preserved_newer',
-                    source: 'device_update',
-                    capabilityId: 'measure_power',
-                    deviceId: 'dev1',
-                }));
+                expect(deviceManager.getSnapshotByDeviceId('dev1')?.measuredPowerReading).toEqual({
+                    kind: 'instantaneous', powerKw: 2.865,
+                    observedAtMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
+                });
             } finally {
                 vi.useRealTimers();
             }

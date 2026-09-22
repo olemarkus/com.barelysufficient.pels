@@ -32,6 +32,7 @@ import {
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
   requirePlanService,
+  requireDeviceManager,
   resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
@@ -456,7 +457,9 @@ export class AppServiceWiring {
   initPlanRuntime(): void {
     const { ctx } = this.deps;
     if (!ctx.deferredObjectivePlanHistoryRecorder) {
-      ctx.deferredObjectivePlanHistoryRecorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+      const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+      ctx.deferredObjectivePlanHistoryRecorder = recorder;
+      requireDeviceManager(ctx).onMeteredPowerReading(recorder.observeMeteredReading.bind(recorder));
     }
     if (!ctx.deferredObjectiveActivePlanRecorder) {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);

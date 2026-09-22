@@ -52,6 +52,7 @@ describe('planHistoryStore', () => {
   it('round-trips and removes in-progress metered delivery independently of finalized history', () => {
     const { db, store } = open();
     const state: PersistedMeteredDeliveryState = {
+      commitment: { kind: 'known', kwh: 5 },
       deviceId: 'dev',
       deadlineAtMs: 10_000,
       startedAtMs: 1_000,
@@ -69,6 +70,18 @@ describe('planHistoryStore', () => {
     expect(row.n).toBe(1);
     store.writeMeteredDelivery([]);
     expect(store.readMeteredDelivery()).toEqual([]);
+  });
+
+  it('preserves legacy delivery with an explicitly unknown original commitment', () => {
+    const { db, store } = open();
+    const legacy = {
+      deviceId: 'dev', deadlineAtMs: 10_000, startedAtMs: 1_000,
+      deliveredKWh: 6, totalCost: 0, costDisplay: null,
+      deliveryPriceComplete: false, hourlyContributions: [],
+    };
+    db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
+      .run('dev|10000', JSON.stringify(legacy));
+    expect(store.readMeteredDelivery()).toEqual([{ ...legacy, commitment: { kind: 'unknown' } }]);
   });
 
   it('answers null while empty, and round-trips a history one row per entry, oldest first', () => {

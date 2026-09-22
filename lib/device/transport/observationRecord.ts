@@ -76,21 +76,13 @@ export function recordSnapshotCapabilityObservations(params: {
     const observedAt = Date.now();
     const capabilityIdSet: ReadonlySet<string> = new Set(capabilityIds);
     const recordedFreshData = [
+        capabilityIdSet.has('measure_power') && snapshot.measuredPowerReading !== undefined,
         recordSnapshotControlObservation({ state, deviceId, snapshot, source, observedAt, capabilityIdSet }),
         recordSnapshotTargetObservations({ state, deviceId, snapshot, source, observedAt, capabilityIdSet }),
         recordSnapshotScalarObservation(state, snapshot, {
             deviceId,
             capabilityId: 'measure_temperature',
             value: snapshot.temperature?.currentTemperature,
-            source,
-            observedAt,
-            capabilityIdSet,
-            countsTowardDeviceFreshness: true,
-        }),
-        recordSnapshotScalarObservation(state, snapshot, {
-            deviceId,
-            capabilityId: 'measure_power',
-            value: snapshot.measuredPowerKw,
             source,
             observedAt,
             capabilityIdSet,
@@ -106,7 +98,6 @@ export function recordSnapshotCapabilityObservations(params: {
             countsTowardDeviceFreshness: true,
         }),
     ].some(Boolean);
-    forgetSupersededMeasuredPower(state, snapshot, capabilityIdSet);
     const stateOfChargeCapabilityId = snapshot.stateOfCharge?.capabilityId;
     const observedStateOfChargeCapabilityId = stateOfChargeCapabilityId
         && isStateOfChargeCapabilityId(stateOfChargeCapabilityId)
@@ -149,12 +140,15 @@ export function recordCapabilityObservation(params: {
         snapshot,
         countsTowardDeviceFreshness,
     } = params;
-    state.capabilityObservations.set(buildCapabilityObservationKey(deviceId, capabilityId), {
-        value,
-        observedAt,
-        source,
-        countsTowardDeviceFreshness,
-    });
+    // Power retains its typed source interval on the snapshot, never a scalar receipt-time echo.
+    if (capabilityId !== 'measure_power') {
+        state.capabilityObservations.set(buildCapabilityObservationKey(deviceId, capabilityId), {
+            value,
+            observedAt,
+            source,
+            countsTowardDeviceFreshness,
+        });
+    }
     const resolvedSnapshot = snapshot ?? latestSnapshot.find((entry) => entry.id === deviceId);
     if (!resolvedSnapshot) return;
     if (source === 'local_write') {
@@ -241,7 +235,7 @@ function recordSnapshotScalarObservation(
     snapshot: TransportDeviceSnapshot,
     params: {
         deviceId: string;
-        capabilityId: 'measure_temperature' | 'measure_power' | 'evcharger_charging_state'
+        capabilityId: 'measure_temperature' | 'evcharger_charging_state'
             | (typeof EV_SOC_NATIVE_CAPABILITY_IDS)[number];
         value: number | string | undefined;
         source: CapabilityObservationSource;
@@ -273,25 +267,6 @@ function recordSnapshotScalarObservation(
         countsTowardDeviceFreshness,
     });
     return true;
-}
-
-/**
- * Before a device has produced a trusted power sample, an observation that
- * resolves no reading must not leave a synthetic retained observation behind.
- *
- * Once a real sample exists, `managerParseDeviceFields` carries it across a
- * refresh with no newer sample. Absence is a no-op, not evidence of zero draw;
- * a cumulative meter reports a true zero only when its observation timestamp
- * advances without an energy delta.
- */
-function forgetSupersededMeasuredPower(
-    state: DeviceTransportObservationState,
-    snapshot: TransportDeviceSnapshot,
-    capabilityIdSet: ReadonlySet<string>,
-): void {
-    if (!capabilityIdSet.has('measure_power')) return;
-    if (typeof snapshot.measuredPowerKw === 'number') return;
-    state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, 'measure_power'));
 }
 
 function updateLocalWriteTimestamps(

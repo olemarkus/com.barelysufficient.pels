@@ -11,7 +11,6 @@ import {
     type DeviceTransportObservationState,
 } from './observationState';
 import { resolveEvTargetPowerExactStep } from '../targetPowerReachability';
-import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import {
     removeTemperatureObservation,
     TARGET_TEMPERATURE_CAPABILITY_ID,
@@ -29,9 +28,6 @@ export function applyCapabilityObservation(
     }
     if (capabilityId === 'evcharger_charging_state') {
         return applyEvChargingStateObservation(nextSnapshot, observation);
-    }
-    if (capabilityId === 'measure_power') {
-        return applyMeasuredPowerObservation(nextSnapshot, observation);
     }
     if (capabilityId === 'measure_temperature') {
         return applyMeasuredTemperatureObservation(nextSnapshot, observation);
@@ -107,25 +103,6 @@ function applyEvChargingStateObservation(
         evChargingState: normalized,
         observedAtMs: observation.observedAt,
     });
-    snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
-    snapshot.lastUpdated = snapshot.lastFreshDataMs;
-    return true;
-}
-
-function applyMeasuredPowerObservation(
-    nextSnapshot: TransportDeviceSnapshot,
-    observation: CapabilityObservation,
-): boolean {
-    const snapshot = nextSnapshot;
-    // Same single rule as every other write seam; a rejected reading is absent.
-    const kw = normalizeMeasuredPowerKw(observation.value);
-    if (kw === null) return false;
-    snapshot.measuredPowerObservedAtMs = observation.observedAt;
-    snapshot.measuredPowerReading = {
-      kind: 'instantaneous', powerKw: kw, observedAtMs: observation.observedAt,
-    };
-    if (Object.is(snapshot.measuredPowerKw, kw)) return false;
-    snapshot.measuredPowerKw = kw;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -280,9 +257,6 @@ function doesCapabilityObservationMatchSnapshot(
 ): boolean {
     if (capabilityId === snapshot.binaryCapabilityId) {
         return matchesCurrentControlObservation(snapshot, observationValue);
-    }
-    if (capabilityId === 'measure_power') {
-        return snapshot.measuredPowerKw === observationValue;
     }
     if (capabilityId === 'measure_temperature') {
         return typeof observationValue === 'number'

@@ -1,3 +1,4 @@
+import { preserveNewerMeteredPowerReading } from './meteredPowerObservation';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -141,6 +142,7 @@ function mergeSnapshotObservationsForDevice(params: {
         snapshot,
     });
     preserveNewerReportedStepObservation(previous, snapshot);
+    preserveNewerMeteredPowerReading(previous, snapshot);
 
     if (snapshot.binaryCapabilityId) {
         mergeCapabilityObservation({
@@ -168,7 +170,6 @@ function mergeSnapshotObservationsForDevice(params: {
     }
 
     for (const capabilityId of [
-        'measure_power',
         'measure_temperature',
         'evcharger_charging_state',
     ]) {
@@ -262,7 +263,6 @@ function getMaxRetainedObservationTimeMs(
     snapshot: TransportDeviceSnapshot,
 ): number {
     const capabilityIds = [
-        'measure_power',
         'measure_temperature',
         'evcharger_charging_state',
         ...(snapshot.binaryCapabilityId ? [snapshot.binaryCapabilityId] : []),

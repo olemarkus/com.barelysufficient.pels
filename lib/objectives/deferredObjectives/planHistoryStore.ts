@@ -38,6 +38,7 @@ import {
 } from './planHistorySettings';
 import {
   isPersistedMeteredDeliveryState,
+  migrateMeteredDeliveryCommitment,
   type PersistedMeteredDeliveryState,
 } from './planHistoryMeteredState';
 
@@ -167,7 +168,7 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
   const loadMetered = (): PersistedMeteredDeliveryState[] => {
     const rows = s.loadMetered.all() as Array<{ run_key: string; state_json: string }>;
     return rows.flatMap((row) => {
-      const parsed = parseRow(row.state_json);
+      const parsed = migrateMeteredDeliveryCommitment(parseRow(row.state_json));
       if (isPersistedMeteredDeliveryState(parsed) && meteredKey(parsed) === row.run_key) return [parsed];
       storeLogger.error({ event: 'deferred_objective_metered_delivery_row_quarantined', key: row.run_key });
       s.removeMetered.run(row.run_key);

@@ -19,17 +19,3 @@ export const selectMeteredSnapshots = <T extends MeasuredPowerObservedProbe>(
 ): Array<T & MeasuredPowerObservedFields> => snapshots.filter(hasObservedMeasuredPower);
 
 export type MeteredDeviceReading = MeteredPowerReading & { deviceId: string };
-
-/**
- * Resolve the trusted, time-bearing meter records used for delivery accounting.
- * A retained snapshot repeats the same record verbatim; consumers deduplicate by
- * its source timestamp rather than mistaking a lifecycle tick for a new sample.
- */
-export const selectMeteredDeviceReadings = <T extends {
-  id: string;
-  measuredPowerReading?: MeteredPowerReading;
-}>(snapshots: readonly T[]): MeteredDeviceReading[] => snapshots.flatMap((snapshot) => (
-    snapshot.measuredPowerReading === undefined
-      ? []
-      : [{ deviceId: snapshot.id, ...snapshot.measuredPowerReading }]
-));

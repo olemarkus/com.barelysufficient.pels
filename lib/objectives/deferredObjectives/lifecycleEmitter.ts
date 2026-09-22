@@ -23,7 +23,6 @@ import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCro
 import type { DeferredObjectiveSettingsV1 } from './settings';
 import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { PriorityAllocationTracker } from './priorityAllocation';
-import type { MeteredDeviceReading } from '../../ports/meteredSnapshots';
 
 type StallClassification = StallEvidence | undefined;
 
@@ -64,8 +63,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getTimeZone: () => string;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
   getDevices: () => ObjectiveDeviceInput[];
-  /** Trusted meter records with their source timestamps/covered intervals. */
-  getMeteredDeviceReadings: () => readonly MeteredDeviceReading[];
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -111,7 +108,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
-    meteredReadings: readonly MeteredDeviceReading[],
     getStallClassification?: (deviceId: string) => StallClassification,
   ) => void;
   /**
@@ -189,7 +185,6 @@ export class DeferredObjectiveLifecycleEmitter {
       diagnostics,
       nowMs,
       activePlans,
-      this.deps.getMeteredDeviceReadings(),
       this.deps.getStallClassification,
     );
 

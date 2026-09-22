@@ -20,6 +20,7 @@
  * `notes/state-management/observer-transport-split.md`.
  */
 import type Homey from 'homey';
+import type { MeteredDeviceReading } from '../ports/meteredSnapshots';
 import type {
   AssociatedCarSnapshot,
   BinaryControlObservation,
@@ -35,10 +36,7 @@ import type { LiveDevicePowerWatts } from './managerEnergy';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import type { RecentLocalCapabilityWrites } from './transport/managerRealtimeSupport';
-import {
-  initHomeyHttpClient,
-  resolveHomeyInstance,
-} from './transport/managerHomeyApi';
+import { initHomeyHttpClient, resolveHomeyInstance } from './transport/managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
@@ -74,15 +72,12 @@ import {
 } from './transport/transportTypes';
 import { reconcileBinarySettleEvidenceWithSnapshot } from './transport/binarySettleEvidence';
 import {
-    buildBinaryCommandConfirmationSnapshot,
-    resolveTemperatureTarget,
+    buildBinaryCommandConfirmationSnapshot, resolveTemperatureTarget,
 } from './transport/semanticControlResolution';
 import {
   handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
-import {
-  handleRealtimeDeviceUpdateEvent,
-} from './transport/deviceUpdateHandling';
+import { handleRealtimeDeviceUpdateEvent } from './transport/deviceUpdateHandling';
 import {
   requestSteppedLoadStep as runRequestSteppedLoadStep,
   setCapability as runSetCapability,
@@ -216,19 +211,22 @@ export class DeviceTransport {
     // once so the extracted free functions mutate the SAME snapshot / evidence
     // maps this class owns (object identity preserved).
     private readonly ctx: TransportContext;
+    private readonly meteredPowerListeners = new Set<(reading: MeteredDeviceReading) => void>();
 
     private readonly handleRealtimeCapabilityUpdate = (
-        deviceId: string,
-        capabilityId: string,
-        value: unknown,
-    ): void => runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
+        deviceId: string, capabilityId: string, value: unknown,
+    ): void => {
+        runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
+        this.publishMeteredPower(deviceId);
+    };
 
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
     tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
-    private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => (
-        handleRealtimeDeviceUpdateEvent(this.ctx, device)
-    );
+    private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
+        handleRealtimeDeviceUpdateEvent(this.ctx, device);
+        this.publishMeteredPower(device.id);
+    };
 
     constructor(
         homey: Homey.App,
@@ -454,6 +452,7 @@ export class DeviceTransport {
         this.latestSnapshot = s;
         this.syncLatestSnapshotIndex();
         reconcileBinarySettleEvidenceWithSnapshot(this.ctx, s);
+        for (const snapshot of s) this.publishMeteredPower(snapshot.id);
     }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
@@ -632,6 +631,7 @@ export class DeviceTransport {
     }
 
     public destroy(): void {
+        this.meteredPowerListeners.clear();
         this.observationProducers.destroy();
         void this.liveFeed?.stop();
         this.liveFeed = null;
@@ -734,6 +734,18 @@ export class DeviceTransport {
             this.observedStateDispatcher.externalTemperatureAdjusted(adjustment);
         }
         this.observedStateDispatcher.observedControlStateChanged(event);
+    }
+
+    /** Delivery observes every committed source record, independently of control changes. */
+    onMeteredPowerReading(listener: (reading: MeteredDeviceReading) => void): void {
+        this.meteredPowerListeners.add(listener);
+    }
+
+    private publishMeteredPower(deviceId: string): void {
+        const reading = this.latestSnapshotById.get(deviceId)?.measuredPowerReading;
+        if (reading === undefined) return;
+        const observed: MeteredDeviceReading = { deviceId, ...reading };
+        for (const listener of this.meteredPowerListeners) listener(observed);
     }
 
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById

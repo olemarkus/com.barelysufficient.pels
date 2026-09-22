@@ -102,22 +102,27 @@ card → `Choose temperature device` → Settings, Weather insight section.
   - **raise-lean** — recent suppression widens the headroom q80→q90. Not gated on
     a cold forecast (it used to be, which made the correction wait for the weather
     to cross the heating knee instead of acting on the evidence).
-  - **budget pressure** — a leaky integral term that grows on days the budget
-    DAMAGED the home by the energy it denied — energy still withheld from devices
-    at midnight, or energy a deadline-bound smart task never got before its
-    deadline went by, whichever is larger — plus any measured overshoot, and
-    leaks on days that ended in no denial. Bounded to half the prediction, and named in
-    the reason line when it is ≥ 1 kWh so the owner can see how big the
-    correction is. Design of record: `notes/starvation/README.md`.
-    It accumulates whether or not auto-apply is on, so an owner who opts in after
-    a stretch of suppression gets the whole (bounded) term on the first write.
-  Auto-apply is **asymmetric**: it may raise freely, but may only lower the
-  budget when the pressure term is idle — i.e. no recent day actually ran past
-  its budget while being held back (`weather_advisor_budget_auto_apply_skipped`
-  with `reason: would_lower_while_limiting`). Deliberately NOT gated on
-  `budgetMayBeLimiting`: devices being held back is the ordinary state of a home
-  whose daily budget is doing its job, and gating there would make auto-apply a
-  one-way ratchet that overrides a deliberately tight budget.
+  - **budget pressure** — a leaky integral term fed by continuously observed
+    unmet-demand spans while the daily budget is below sustainable capacity
+    (`hard cap − safety margin`, multiplied by the actual local day's
+    23/24/25 hours). Demand includes a Smart task's booked hour. The immediate
+    planner reason does not gate this evidence: capacity and cooldown holds
+    can contribute, and admission before midnight does not erase accrued denial.
+    The daily step uses the larger of integrated denial and priced terminal
+    Smart-task denial, plus measured budget overshoot, adding at most 10 kWh.
+    Days without damage decay the term by 0.75; it snaps to zero below 0.25 kWh.
+    There is no prediction-relative ceiling. The accumulator is bounded by
+    sustainable daily capacity; the final suggestion also respects the setting
+    bounds, with physical capacity taking precedence over the minimum.
+    The reason line names the term when its contribution after clamping is
+    ≥ 1 kWh. Design of record: `notes/starvation/README.md`.
+    It accumulates whether or not auto-apply is on; changing the budget still
+    requires the owner's auto-apply opt-in.
+  Auto-apply is **asymmetric**: it may raise the budget, but a nonzero pressure
+  accumulator prevents lowering it (`weather_advisor_budget_auto_apply_skipped`
+  with `reason: would_lower_while_limiting`). This checks the accumulator,
+  not `budgetMayBeLimiting` or the displayed contribution: a floor or ceiling
+  can absorb the contribution without clearing the accumulated evidence.
 - The reason line under a raised suggestion (`composeBudgetLimitingReason`):
   `Your budget has recently been limiting your devices — the suggestion is raised
   to match.` plus, when the pressure term contributed ≥ 1 kWh after clamping,

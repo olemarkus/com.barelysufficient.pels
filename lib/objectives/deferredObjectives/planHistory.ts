@@ -386,29 +386,21 @@ export class DeferredObjectivePlanHistoryRecorder {
    * therefore a no-op. Direct watt readings close the prior sample's forward
    * interval; cumulative-meter averages book their own already-covered interval.
    */
-  observeMeteredDelivery(readings: readonly MeteredDeviceReading[]): void {
-    const previousByDeviceId = this.lastMeteredDeliveryByDeviceId;
-    this.lastMeteredDeliveryByDeviceId = new Map(readings.map((reading) => [reading.deviceId, reading]));
-    const readingByDeviceId = new Map(readings.map((reading) => [reading.deviceId, reading]));
+  observeMeteredReading(reading: MeteredDeviceReading): void {
+    const previous = this.lastMeteredDeliveryByDeviceId.get(reading.deviceId);
+    if (previous !== undefined && readingEndMs(reading) <= readingEndMs(previous)) return;
+    this.lastMeteredDeliveryByDeviceId.set(reading.deviceId, reading);
+    const interval = resolveDeliveryInterval(reading, previous);
+    if (interval === null) return;
+    if (reading.kind === 'instantaneous'
+      && interval.endMs - interval.startMs > MAX_METERED_DELIVERY_SAMPLE_GAP_MS) return;
     for (const [key, record] of this.inProgress) {
-      const reading = readingByDeviceId.get(record.deviceId);
-      if (reading === undefined) continue;
-      const previous = previousByDeviceId.get(record.deviceId);
-      let next = record;
-      const interval = resolveDeliveryInterval(reading, previous);
-      const intervalIsTrustworthy = interval !== null && (
-        reading.kind === 'interval_average'
-        || interval.endMs - interval.startMs <= MAX_METERED_DELIVERY_SAMPLE_GAP_MS
-      );
-      if (intervalIsTrustworthy) {
-        const startMs = Math.max(interval.startMs, record.startedAtMs);
-        const endMs = Math.min(interval.endMs, record.deadlineAtMs);
-        if (endMs > startMs) {
-          next = this.integrateMeteredDelivery(next, startMs, endMs, interval.powerKw);
-          this.dirty = true;
-        }
-      }
-      this.inProgress.set(key, next);
+      if (record.deviceId !== reading.deviceId) continue;
+      const startMs = Math.max(interval.startMs, record.startedAtMs);
+      const endMs = Math.min(interval.endMs, record.deadlineAtMs);
+      if (endMs <= startMs) continue;
+      this.inProgress.set(key, this.integrateMeteredDelivery(record, startMs, endMs, interval.powerKw));
+      this.dirty = true;
     }
   }
 
@@ -560,6 +552,9 @@ export class DeferredObjectivePlanHistoryRecorder {
           deviceId: record.deviceId,
           deadlineAtMs: record.deadlineAtMs,
           startedAtMs: record.startedAtMs,
+          commitment: record.commitment.kind === 'learning'
+            ? { kind: 'unknown' as const }
+            : record.commitment,
           deliveredKWh: record.deliveredKWh,
           totalCost: record.totalCost,
           costDisplay: record.costDisplay,
@@ -594,6 +589,7 @@ const mergeMeteredDelivery = (
   return {
     ...record,
     startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
+    commitment: state.commitment,
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,
     costDisplay: state.costDisplay ?? record.costDisplay,

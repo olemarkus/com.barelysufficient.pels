@@ -1876,13 +1876,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         ...(params.resolveHourPrice ? { resolveHourPrice: params.resolveHourPrice } : {}),
       });
       const deadlineAtMs = 10 * 60_000;
-      recorder.observeMeteredDelivery([instantReading(params.drawKw, 0)]);
+      recorder.observeMeteredReading(instantReading(params.drawKw, 0));
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      recorder.observeMeteredDelivery([instantReading(params.drawKw, 5 * 60_000)]);
+      recorder.observeMeteredReading(instantReading(params.drawKw, 5 * 60_000));
       recorder.observe([
         makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: params.progressAtEnd ?? 50 }),
       ], 5 * 60_000);
-      recorder.observeMeteredDelivery([instantReading(params.drawKw, deadlineAtMs)]);
+      recorder.observeMeteredReading(instantReading(params.drawKw, deadlineAtMs));
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
       return persisted.saved()!.entries[0]!;
@@ -1925,9 +1925,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const persisted = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       const deadlineAtMs = 5 * 60_000;
-      recorder.observeMeteredDelivery([instantReading(2, 0)]);
+      recorder.observeMeteredReading(instantReading(2, 0));
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      recorder.observeMeteredDelivery([instantReading(2, 10 * 60_000)]);
+      recorder.observeMeteredReading(instantReading(2, 10 * 60_000));
       recorder.observe([], 10 * 60_000);
       recorder.flushIfDirty();
 
@@ -1937,12 +1937,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     it('does not turn one returning sample after a gap into an exact zero-delivery result', () => {
       const persisted = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      const deadlineAtMs = 10 * 60_000;
-      recorder.observeMeteredDelivery([instantReading(2, 0)]);
+      const deadlineAtMs = 20 * 60_000;
+      recorder.observeMeteredReading(instantReading(2, 0));
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      recorder.observeMeteredDelivery([]);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
-      recorder.observeMeteredDelivery([instantReading(0, deadlineAtMs)]);
+      recorder.observeMeteredReading(instantReading(0, deadlineAtMs));
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -1954,11 +1953,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       const deadlineAtMs = 20 * 60_000;
       const retained = instantReading(2, 0);
-      recorder.observeMeteredDelivery([retained]);
+      recorder.observeMeteredReading(retained);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      recorder.observeMeteredDelivery([retained]);
+      recorder.observeMeteredReading(retained);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
-      recorder.observeMeteredDelivery([retained]);
+      recorder.observeMeteredReading(retained);
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -1970,26 +1969,77 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       const deadlineAtMs = 5 * 60_000;
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      recorder.observeMeteredDelivery([{
+      recorder.observeMeteredReading({
         deviceId: 'dev',
         kind: 'interval_average',
         powerKw: 2,
         startMs: 0,
         endMs: 60 * 60_000,
-      }]);
+      });
       recorder.observe([], 60 * 60_000);
       recorder.flushIfDirty();
 
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
     });
 
+    it('ignores delayed and replayed readings without moving the delivery watermark backwards', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = 10 * 60_000;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
+      recorder.observeMeteredReading(instantReading(6, 0));
+      recorder.observeMeteredReading(instantReading(6, 5 * 60_000));
+      recorder.observeMeteredReading(instantReading(6, 2 * 60_000));
+      recorder.observeMeteredReading(instantReading(6, 5 * 60_000));
+      recorder.observeMeteredReading(instantReading(6, deadlineAtMs));
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1, 6);
+    });
+
+    it('restores the original commitment rather than the remaining need after restart', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = 20 * 60_000;
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      beforeRestart.observeMeteredReading(instantReading(36, 0));
+      beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 10 })], 0);
+      beforeRestart.observeMeteredReading(instantReading(36, 10 * 60_000));
+      beforeRestart.flushIfDirty();
+
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      afterRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 11 * 60_000);
+      afterRestart.observe([], deadlineAtMs);
+      afterRestart.flushIfDirty();
+      expect(persisted.saved()!.entries[0]).toMatchObject({
+        initialEnergyExpectedKWh: 10, deliveredKWh: 6, outcome: 'missed',
+      });
+    });
+
+    it('keeps a restored unknown commitment unknown after zero delivery and later ticks', () => {
+      const deadlineAtMs = 20 * 60_000;
+      const persisted = buildPersistDeps(undefined, [{
+        deviceId: 'dev', deadlineAtMs, startedAtMs: 0,
+        commitment: { kind: 'unknown' }, deliveredKWh: 0, totalCost: 0,
+        costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [],
+      }]);
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 10 * 60_000);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 3 })], 11 * 60_000);
+      recorder.flushIfDirty();
+      expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'unknown' });
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+      expect(persisted.saved()!.entries[0]!.initialEnergyExpectedKWh).toBeUndefined();
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBe(0);
+    });
+
     it('restores accumulated metered delivery after a restart without filling the restart gap', () => {
       const persisted = buildPersistDeps();
       const deadlineAtMs = 15 * 60_000;
       const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      beforeRestart.observeMeteredDelivery([instantReading(2, 0)]);
+      beforeRestart.observeMeteredReading(instantReading(2, 0));
       beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      beforeRestart.observeMeteredDelivery([instantReading(2, 5 * 60_000)]);
+      beforeRestart.observeMeteredReading(instantReading(2, 5 * 60_000));
       beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
       expect(beforeRestart.flushIfDirty()).toBe(true);
       expect(persisted.savedMeteredDelivery()[0]?.deliveredKWh).toBeCloseTo(1 / 6, 6);
@@ -1998,9 +2048,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       afterRestart.observe([], 6 * 60_000);
       expect(afterRestart.flushIfDirty()).toBe(false);
       expect(persisted.savedMeteredDelivery()[0]?.deliveredKWh).toBeCloseTo(1 / 6, 6);
-      afterRestart.observeMeteredDelivery([instantReading(2, 10 * 60_000)]);
+      afterRestart.observeMeteredReading(instantReading(2, 10 * 60_000));
       afterRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 10 * 60_000);
-      afterRestart.observeMeteredDelivery([instantReading(2, deadlineAtMs)]);
+      afterRestart.observeMeteredReading(instantReading(2, deadlineAtMs));
       afterRestart.observe([], deadlineAtMs);
       afterRestart.flushIfDirty();
 
@@ -2012,9 +2062,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const persisted = buildPersistDeps();
       const deadlineAtMs = 10 * 60_000;
       const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      beforeRestart.observeMeteredDelivery([instantReading(2, 0)]);
+      beforeRestart.observeMeteredReading(instantReading(2, 0));
       beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0);
-      beforeRestart.observeMeteredDelivery([instantReading(2, 5 * 60_000)]);
+      beforeRestart.observeMeteredReading(instantReading(2, 5 * 60_000));
       beforeRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 5 * 60_000);
       expect(beforeRestart.flushIfDirty()).toBe(true);
 
@@ -2832,7 +2882,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // delivered-vs-committed comparison reads. A revision's own
       // `energyExpectedKWh` is the energy still outstanding at that moment and
       // shrinks as the run delivers, so it cannot serve as the commitment.
-      recorder.observeMeteredDelivery([instantReading(18, 0)]);
+      recorder.observeMeteredReading(instantReading(18, 0));
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -2849,7 +2899,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         plans,
       );
       // The real meter attributes 3.0 kWh before the next diagnostic.
-      recorder.observeMeteredDelivery([instantReading(18, 10 * 60_000)]);
+      recorder.observeMeteredReading(instantReading(18, 10 * 60_000));
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -2952,11 +3002,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observeMeteredDelivery([instantReading(0, 0)]);
+      recorder.observeMeteredReading(instantReading(0, 0));
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, energyNeededKWh: null, energyExpectedKWh: null,
       })], 0);
-      recorder.observeMeteredDelivery([instantReading(0, 5 * 60_000)]);
+      recorder.observeMeteredReading(instantReading(0, 5 * 60_000));
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, energyNeededKWh: 5, energyExpectedKWh: 3,
       })], 5 * 60_000);
@@ -2984,7 +3034,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
 
       // Cycle 1: still learning — no requirement to state.
-      recorder.observeMeteredDelivery([instantReading(1.5, 0)]);
+      recorder.observeMeteredReading(instantReading(1.5, 0));
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -2997,7 +3047,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       );
       // The real meter records delivery while the profile is still unresolved,
       // before any commitment could be stated.
-      recorder.observeMeteredDelivery([instantReading(1.5, 5 * 60_000)]);
+      recorder.observeMeteredReading(instantReading(1.5, 5 * 60_000));
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',

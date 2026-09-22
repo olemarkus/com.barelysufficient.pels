@@ -41,8 +41,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
 }): FreshnessOnlyCapabilityUpdateResult {
   const { snapshot, capabilityId, value } = params;
   // `normalizeMeasuredPowerKw` is the shared rule every `measuredPowerKw` write
-  // seam applies (`resolveMeasuredPowerKw` at parse, `applyMeasuredPowerObservation`
-  // at snapshot-refresh, `getCurrentDrawKw` at the plan producer), so a realtime
+  // seam applies (`resolveMeasuredPowerKw` at parse, `getCurrentDrawKw` at the plan producer), so a realtime
   // `NaN`/`Infinity`/negative power event from the Homey live feed is DROPPED
   // rather than polluting the snapshot. Junk is validated out at the boundary,
   // not propagated to the power sum / shed decisions downstream.

@@ -61,7 +61,6 @@ const buildDeps = (
   getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
   getTimeZone: () => 'UTC',
   getDevices: () => [],
-  getMeteredDeviceReadings: () => [],
   getPowerTracker: () => ({ lastTimestamp: Date.now() } as PowerTrackerState),
   getDailyBudgetSnapshot: () => null,
   buildPriceHorizon: () => [],

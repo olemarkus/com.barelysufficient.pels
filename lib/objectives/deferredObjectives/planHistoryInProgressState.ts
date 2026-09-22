@@ -1,4 +1,5 @@
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import type { MeteredRunCommitment } from './planHistoryMeteredState';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -37,6 +38,10 @@ import { randomUUID } from 'node:crypto';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
 
+// Only a newly observed run may learn its original requirement before delivery.
+// Restored unknown requirements stay unknown: a later estimate is not the original.
+type InProgressCommitment = MeteredRunCommitment | { kind: 'learning' };
+
 export type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
 // Two consecutive observations closer than this are merged into one observed interval. A larger
@@ -61,7 +66,9 @@ export type InProgressRecord = Omit<
   | 'revisions'
   | 'hourlyContributions'
   | 'metReason'
+  | 'initialEnergyExpectedKWh'
 > & {
+  commitment: InProgressCommitment;
   satisfied: boolean;
   // `null` for target-reached / in-flight; `'stalled'` once the idle
   // classifier promoted the run. Sticky, reset only by clearSatisfiedWithProgress.
@@ -266,12 +273,13 @@ const pickRicherSnapshot = (
 // One reading of "what does this run need?", shared by the initial seed and the
 // per-cycle backfill so the two cannot drift. Absence stays absent rather than
 // becoming a fabricated zero.
-const resolveCommitmentKWh = (
-  diag: DeferredObjectiveDiagnostic,
-): number | undefined => resolveRemainingEnergyKWh({
-  energyExpectedKWh: diag.energyExpectedKWh ?? undefined,
-  energyNeededKWh: diag.energyNeededKWh ?? 0,
-}) ?? undefined;
+const resolveCommitment = (diag: DeferredObjectiveDiagnostic): InProgressCommitment => {
+  const kwh = resolveRemainingEnergyKWh({
+    energyExpectedKWh: diag.energyExpectedKWh ?? undefined,
+    energyNeededKWh: diag.energyNeededKWh ?? 0,
+  });
+  return kwh === null ? { kind: 'learning' } : { kind: 'known', kwh };
+};
 
 export const startRecord = (
   diag: DeferredObjectiveDiagnostic,
@@ -302,7 +310,7 @@ export const startRecord = (
     // revision snapshot — `originalPlan` is the richest schedule the planner
     // ever achieved (freely replaced mid-run) and every revision's own figure
     // is a shrinking remainder.
-    initialEnergyExpectedKWh: resolveCommitmentKWh(diag),
+    commitment: resolveCommitment(diag),
     metAtMs: currentlySatisfied ? nowMs : null,
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
@@ -419,13 +427,14 @@ const backfillStartProgress = (
 // power to be valid, so it produces credible samples, learns a rate, and
 // resolves a requirement — the question is only when, not whether.
 //
-// `??` on the record, so the first answer wins: this is the energy the run set
+// Only learning runs can capture a requirement; known and restored unknown values stay fixed.
+// The first answer wins: this is the energy the run set
 // out to need, not a later remainder.
 //
 // Gated on no positive energy having been delivered yet, and that gate is
 // load-bearing. A trusted 0 kW interval is still an exact delivery observation,
 // but it does not turn a later resolved requirement into a remainder.
-// `resolveCommitmentKWh` reads `remainingUnits` as of the cycle it is asked, so
+// `resolveCommitment` reads `remainingUnits` as of the cycle it is asked, so
 // once the device has already made progress the answer is a REMAINDER, not the
 // run's total requirement — while `deliveredKWh` keeps accumulating from the
 // run's start. Comparing the two would inflate the ratio and mislabel a run that
@@ -442,10 +451,10 @@ const backfillStartProgress = (
 const backfillCommitment = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
-): Partial<Pick<InProgressRecord, 'initialEnergyExpectedKWh'>> => {
-  if (record.initialEnergyExpectedKWh !== undefined) return {};
-  if (record.deliveredKWh > 0) return {};
-  return { initialEnergyExpectedKWh: resolveCommitmentKWh(diag) };
+): InProgressCommitment => {
+  if (record.commitment.kind !== 'learning') return record.commitment;
+  if (record.deliveredKWh > 0) return { kind: 'unknown' };
+  return resolveCommitment(diag);
 };
 
 
@@ -500,7 +509,7 @@ export const mergeRecord = (
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
     ...backfillStartProgress(record, diag),
-    ...backfillCommitment(record, diag),
+    commitment: backfillCommitment(record, diag),
     finalProgressC: merged.finalProgressC,
     finalProgressPercent: merged.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
@@ -656,8 +665,8 @@ export const finalizeRecord = (
     finalProgressC: record.finalProgressC,
     finalProgressPercent: record.finalProgressPercent,
     initialEnergyNeededKWh: record.initialEnergyNeededKWh,
-    ...(record.initialEnergyExpectedKWh !== undefined
-      ? { initialEnergyExpectedKWh: record.initialEnergyExpectedKWh }
+    ...(record.commitment.kind === 'known'
+      ? { initialEnergyExpectedKWh: record.commitment.kwh }
       : {}),
     outcome,
     metAtMs: record.metAtMs,

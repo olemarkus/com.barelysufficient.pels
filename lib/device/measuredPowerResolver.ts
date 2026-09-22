@@ -101,6 +101,10 @@ export class DeviceMeasuredPowerResolver {
     // indistinguishable from "has no `measure_power`" — and absence is what sends
     // a consumer to a RATED-power fallback, so a 3 W standby draw could be booked
     // as kilowatts. The reading is the answer; report it.
+    // A real direct reading starts a new source period. A later cumulative
+    // reading must anchor afresh, or its interval overlaps this direct period.
+    // Missing or rejected readings return above and leave the anchor untouched.
+    delete this.lastMeterEnergy[deviceId];
     const measuredPowerKw = normalized;
     const retainedUnstamped = this.unstampedDirectReadingByDevice.get(deviceId);
     const resolvedObservedAtMs = observedAtMs ?? (
@@ -144,10 +148,9 @@ export class DeviceMeasuredPowerResolver {
    * device was credited a measured `0 kW` while running — a positive claim that
    * it draws nothing, for most of every poll interval. On one clock that pair
    * spans no window at all, so it resolves to ABSENCE: no reading, rather than a
-   * measured claim either way. Once a `device.update` observes the reading drop
-   * to that absence, it deletes a rate an earlier push retained
-   * (`forgetSupersededMeasuredPower`), so the refresh cannot bring the last
-   * running power back. A device whose app re-publishes an unchanged meter still
+   * measured claim either way. The parser retains the last trusted draw and
+   * its source interval; no new interval means no new delivery contribution.
+   * A device whose app re-publishes an unchanged meter still
    * resolves a true `0` there, because its observation time moves while its
    * energy does not.
    *

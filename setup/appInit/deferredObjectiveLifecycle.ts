@@ -23,7 +23,6 @@ import {
 import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
 import { projectLifecycleFallbackCommandState } from '../lifecycleFallbackDeviceProjection';
 import { requirePlanService } from './contextGuards';
-import { selectMeteredDeviceReadings } from '../../lib/ports/meteredSnapshots';
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
 // deadline (the diagnostic survives because the task stays enabled) before giving
@@ -224,7 +223,6 @@ export function createDeferredObjectiveLifecycleEmitter(
     },
     getTimeZone: () => ctx.getTimeZone(),
     getDevices: () => requirePlanService(ctx).getPlanDevices(),
-    getMeteredDeviceReadings: () => selectMeteredDeviceReadings(ctx.latestTargetSnapshot),
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     // Allocation-horizon price source, resolved from the price layer; shared
@@ -260,7 +258,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       diagnostics,
       nowMs,
       activePlans,
-      meteredReadings,
       getStallClassification,
     ) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
@@ -271,7 +268,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       // before the watermark-advance below jumps it to `now` and silently skips the migrated
       // legacy task's elapsed deadline. No-op once back-fill completed for this session.
       runPendingDeferredObjectiveBackfill(ctx, recorder);
-      recorder.observeMeteredDelivery(meteredReadings);
       recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
       // Persist the watermark when we flushed new history (recorder is clean and the save
       // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
