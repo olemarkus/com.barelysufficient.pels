@@ -5,7 +5,9 @@ import {
 } from '../../shared-domain/src/homeScopeCopy.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
+import type { SettingsUiHomesPayload } from '../../contracts/src/settingsUiHomes.ts';
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
+import type { SettingsUiDeviceView } from '../src/ui/state.ts';
 import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 /* -------------------------------------------------------------------------- *
@@ -38,6 +40,10 @@ const ROSTER_PAYLOAD = {
   runtimeActive: true,
   configDegraded: false,
 };
+
+const RENTAL_MEMBERSHIP = {
+  rental: { homeId: AREA, source: 'zone' },
+} satisfies SettingsUiHomesPayload['membershipByDeviceId'];
 
 const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: string; plannedState?: string }) => ({
   meta: buildPlanMeta({
@@ -207,6 +213,10 @@ const surfaceText = (): string => (
   document.getElementById('plan-redesign-surface')?.textContent ?? ''
 );
 
+const unavailableDevice = (id: string, name: string): SettingsUiDeviceView => ({
+  id, name, managed: true, available: false, targets: [], expectedPowerKw: 1, expectedPowerSource: 'default',
+});
+
 beforeEach(() => {
   vi.resetModules();
   buildOverviewDom();
@@ -284,6 +294,98 @@ describe('readOverviewPlan', () => {
 
     expect(read.state).toBe('unavailable');
     expect('payload' in read).toBe(false);
+  });
+});
+
+describe('Overview device ownership without plan decisions', () => {
+  it('keeps Main devices and excludes meter-area devices with an empty or absent plan', async () => {
+    const api: Record<string, unknown> = {
+      '/ui_homes': { ...ROSTER_PAYLOAD, membershipByDeviceId: RENTAL_MEMBERSHIP },
+      '/settings_ui_log': { ok: true },
+    };
+    await installClient({ api });
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [unavailableDevice('main', 'Main heater'), unavailableDevice('rental', 'Rental heater')];
+    state.devicesLoaded = true;
+    const { renderPlan, bumpPlanSurface } = await import('../src/ui/planRedesign.ts');
+
+    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+
+    expect(document.querySelector('#plan-cards')?.textContent).toContain('Main heater');
+    expect(document.querySelector('#plan-cards')?.textContent).not.toContain('Rental heater');
+    expect(document.querySelector('#plan-empty')).toBeNull();
+
+    renderPlan(null);
+
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards')?.textContent).toContain('Main heater');
+
+    // A failed membership refresh carries the owner's last-good assignment.
+    api['/ui_homes'] = null;
+    await refreshHomeScope();
+    bumpPlanSurface();
+
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards')?.textContent).not.toContain('Rental heater');
+    expect(document.querySelector('#plan-devices-unavailable')).toBeNull();
+  });
+
+  it('waits for membership, reports an unavailable first read, and admits a later resolved roster', async () => {
+    const api: Record<string, unknown> = { '/ui_homes': null, '/settings_ui_log': { ok: true } };
+    await installClient({ api });
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [unavailableDevice('main', 'Main heater'), unavailableDevice('rental', 'Rental heater')];
+    state.devicesLoaded = true;
+    const { renderPlan, bumpPlanSurface } = await import('../src/ui/planRedesign.ts');
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+
+    expect(document.querySelector('#plan-empty')).toBeNull();
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(0);
+    expect(document.querySelector('#plan-devices-unavailable')).toBeNull();
+    expect(heroPowerValue()).toBe('2.0');
+
+    await refreshHomeScope();
+    bumpPlanSurface();
+
+    expect(document.querySelector('#plan-devices-unavailable')?.textContent).toContain('Devices couldn’t be loaded.');
+    expect(document.querySelector('#plan-empty')).toBeNull();
+    expect(heroPowerValue()).toBe('2.0');
+
+    api['/ui_homes'] = { ...ROSTER_PAYLOAD, membershipByDeviceId: RENTAL_MEMBERSHIP };
+    await refreshHomeScope();
+    bumpPlanSurface();
+
+    expect(document.querySelector('#plan-devices-unavailable')).toBeNull();
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards')?.textContent).toContain('Main heater');
+    expect(document.querySelector('#plan-cards')?.textContent).not.toContain('Rental heater');
+  });
+
+  it('keeps an area’s managed devices when its scoped plan has no decisions', async () => {
+    await installClient({ api: {
+      '/ui_homes': ROSTER_PAYLOAD,
+      '/ui_prices': null,
+      [SCOPED_PLAN_URI]: {
+        plan: { ...AREA_PLAN, devices: [] }, homeScope: { state: 'resolved', homeId: AREA },
+      },
+      [SCOPED_POWER_URI]: SERVED_AREA_POWER,
+      [`/ui_devices?homeId=${AREA}`]: {
+        devices: [unavailableDevice('rental', 'Rental heater')],
+        homeScope: { state: 'resolved', homeId: AREA },
+      },
+    } });
+    await selectArea();
+    const { refreshPlan } = await import('../src/ui/plan.ts');
+
+    await refreshPlan();
+
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards')?.textContent).toContain('Rental heater');
+    expect(document.querySelector('#plan-cards')?.textContent).toContain('Unavailable in Homey.');
+    expect(document.querySelector('#plan-empty')).toBeNull();
   });
 });
 

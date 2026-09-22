@@ -1,5 +1,5 @@
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
-import { SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
 import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
 
@@ -24,6 +24,14 @@ describe('Redesign plan UI', () => {
   };
   
   const DEFAULT_REASON = { code: 'status_ok', message: '' };
+
+  const admitMainHomeMembership = async () => {
+    const homey = installHomeyMock();
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(homey);
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+  };
   
   const normalizePlanSnapshot = (plan: unknown): unknown => {
     if (!plan || typeof plan !== 'object') return plan;
@@ -49,6 +57,7 @@ describe('Redesign plan UI', () => {
   const renderPlanSnapshot = async (plan: unknown) => {
     vi.resetModules();
     setupPlanDom();
+    await admitMainHomeMembership();
     const normalized = normalizePlanSnapshot(plan) as { devices?: Array<Record<string, unknown>> };
     // The Overview renders the DEVICE list joined to the plan, so a plan
     // fixture alone no longer draws cards. Seed the device payload these
@@ -1074,6 +1083,44 @@ describe('Redesign plan UI', () => {
       expect(row.getAttribute('aria-label')).toBe('Open device details for Overview Device');
     });
   
+    it('keeps unavailable managed devices visible when a present plan has no device decisions', async () => {
+      vi.resetModules();
+      setupPlanDom();
+      const homey = installHomeyMock();
+      const { setHomeyClient } = await import('../src/ui/homey.ts');
+      setHomeyClient(homey);
+      const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+      await refreshHomeScope();
+      const { state } = await import('../src/ui/state.ts');
+      // The device response is independent of the empty plan: an unavailable
+      // device has not become unmanaged just because PELS has no decision for it.
+      state.latestDevices = Array.from({ length: 5 }, (_, index) => ({
+        id: `unavailable-${index}`,
+        name: `Unavailable heater ${index + 1}`,
+        managed: true,
+        priority: index + 1,
+        available: false,
+        targets: [],
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default',
+      }));
+      state.devicesLoaded = true;
+      const { renderPlan } = await import('../src/ui/plan.ts');
+
+      renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+
+      expect(document.querySelector('#plan-empty')).toBeNull();
+      const cards = Array.from(document.querySelectorAll('#plan-cards .plan-card'));
+      expect(cards).toHaveLength(5);
+      expect(cards.map((card) => card.querySelector('.plan-card__title')?.textContent))
+        .toEqual(state.latestDevices.map((device) => device.name));
+      cards.forEach((card) => {
+        expect(card.textContent).toContain('Unavailable in Homey.');
+        expect(card.textContent).not.toContain('Waiting for the first power reading');
+        expect(card.querySelector('.plan-card__state-power')).toBeNull();
+      });
+    });
+
     it('shows the empty state only when the home genuinely manages no devices', async () => {
       // There is ONE empty state now, and it is a device-list verdict. A
       // missing plan used to produce its own "No plan available yet" blank
@@ -1099,6 +1146,7 @@ describe('Redesign plan UI', () => {
       // waiting on — not a blank page.
       vi.resetModules();
       setupPlanDom();
+      await admitMainHomeMembership();
       const { state } = await import('../src/ui/state.ts');
       state.latestDevices = [
         { id: 'dev-1', name: 'Heater', targets: [], available: true },
@@ -1111,12 +1159,13 @@ describe('Redesign plan UI', () => {
       expect(document.querySelector('#plan-empty')).toBeNull();
       expect(document.querySelector('#plan-cards')?.textContent).toContain('Heater');
       expect(document.querySelector('#plan-cards')?.textContent)
-        .toContain('Waiting for the first power reading');
+        .toContain('Waiting for an update.');
     });
 
     it('keeps the device but drops its decision when the plan later becomes unavailable', async () => {
       vi.resetModules();
       setupPlanDom();
+      await admitMainHomeMembership();
       // The Overview's cards are device rows, so seed the device list this
       // fixture implies.
       const { state } = await import('../src/ui/state.ts');
@@ -1141,7 +1190,68 @@ describe('Redesign plan UI', () => {
       expect(document.querySelector('#plan-empty')).toBeNull();
       expect(document.querySelector('#plan-cards')?.textContent).toContain('Device to clear');
       expect(document.querySelector('#plan-cards')?.textContent)
-        .toContain('Waiting for the first power reading');
+        .toContain('Waiting for an update.');
+    });
+
+    it.each([
+      ['loadDevicesForOverview', 'reject'],
+      ['loadDevicesOnce', 'malformed list'],
+      ['loadDevicesForOverview', 'malformed entry'],
+    ] as const)('shows an unavailable device roster and recovers after %s %s', async (loader, failure) => {
+      vi.resetModules();
+      setupPlanDom();
+      let failRead = true;
+      const devices = [{
+        id: 'recovered', name: 'Recovered heater', managed: true, available: true, targets: [],
+        expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+      }];
+      const plan = { meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] };
+      const homey = installHomeyMock({
+        uiState: { plan },
+        apiHandlers: {
+          [`GET ${SETTINGS_UI_DEVICES_PATH}`]: async () => {
+            if (failRead && failure === 'reject') throw new Error('device read failed');
+            if (failRead && failure === 'malformed list') return { devices: null };
+            if (failRead && failure === 'malformed entry') return { devices: [{ available: true, managed: true }] };
+            return { devices };
+          },
+        },
+      });
+      const { setHomeyClient, invalidateApiCache } = await import('../src/ui/homey.ts');
+      setHomeyClient(homey);
+      const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+      await refreshHomeScope();
+      const { state } = await import('../src/ui/state.ts');
+      const { renderPlan } = await import('../src/ui/plan.ts');
+      const loaders = await import('../src/ui/uiRefreshTasks.ts');
+      renderPlan(plan);
+
+      loaders[loader]();
+      await vi.waitFor(() => expect(state.devicesLoading).toBe(false));
+
+      expect(state.devicesReadState).toBe('unavailable');
+      expect(document.querySelector('#plan-devices-unavailable')?.textContent).toContain('Devices couldn’t be loaded.');
+      expect(document.querySelector('#plan-empty')).toBeNull();
+      expect(document.querySelector('.plan-hero__metric-value')?.textContent).toBe('2.0');
+
+      failRead = false;
+      loaders[loader]();
+      await vi.waitFor(() => expect(document.querySelector('#plan-cards')?.textContent).toContain('Recovered heater'));
+      await vi.waitFor(() => expect(state.devicesLoading).toBe(false));
+
+      expect(state.devicesReadState).toBe('resolved');
+      expect(state.devicesLoaded).toBe(true);
+      expect(document.querySelector('#plan-devices-unavailable')).toBeNull();
+
+      // A later device-panel read may fail; the admitted list stays usable.
+      failRead = true;
+      invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+      loaders.loadDevicesOnce();
+      await vi.waitFor(() => expect(state.devicesLoading).toBe(false));
+      expect(state.devicesReadState).toBe('resolved');
+      expect(state.latestDevices).toEqual(devices);
+      expect(document.querySelector('#plan-cards')?.textContent).toContain('Recovered heater');
+      expect(document.querySelector('#plan-devices-unavailable')).toBeNull();
     });
 
     it('refreshes the plan when the power endpoint fails', async () => {
@@ -1168,6 +1278,8 @@ describe('Redesign plan UI', () => {
       const { setHomeyClient } = await import('../src/ui/homey.ts');
       const { refreshPlan } = await import('../src/ui/plan.ts');
       setHomeyClient(homey);
+      const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+      await refreshHomeScope();
 
       await refreshPlan();
 

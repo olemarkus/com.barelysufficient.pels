@@ -1369,6 +1369,22 @@ nobody took. Canonical copy (source: `HOME_SCOPE_OVERVIEW_UNAVAILABLE_*` in
 read the current status for this part of the home right now. Check back in a
 moment, or pick another part of the home above.`
 
+The device roster determines which managed devices belong on the Overview;
+the plan only supplies their decisions. A present plan with no device rows
+does not mean there are no managed devices. Main uses the admitted home
+membership roster to exclude meter-area devices, even before a plan exists.
+`No managed devices` is shown only for a resolved, empty managed roster.
+Until membership is known, make no empty-home claim; a failed first read says
+`Devices couldn’t be loaded. Reopen this page to try again.` and leaves a valid
+hero visible. Transient failures retain the last admitted roster.
+
+A managed device without a current decision still has a card. A device Homey
+reports unavailable says `Unavailable in Homey.`; otherwise it says `Waiting
+for an update.` Neither invents a power reading, an on/off state, or a reason
+PELS would limit it. A missing decision alone does not establish that the home
+is waiting for its first power reading; the meter banner/setup step owns that
+explanation when the readings fact supports it.
+
 Under a meter area the Main-only elements are OMITTED as not-applicable, never
 zeroed: the smart-task row (smart tasks are a Main-home feature) and every
 daily-budget-derived hero element (the daily budget is a Main-home constraint,

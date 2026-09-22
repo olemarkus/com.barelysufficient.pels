@@ -69,6 +69,8 @@ const hasValidFlowConflict = (value: unknown): boolean => {
 const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListItem => (
   typeof value === 'object'
   && value !== null
+  && typeof (value as { id?: unknown }).id === 'string'
+  && typeof (value as { name?: unknown }).name === 'string'
   && typeof (value as { available?: unknown }).available === 'boolean'
   && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)
 );

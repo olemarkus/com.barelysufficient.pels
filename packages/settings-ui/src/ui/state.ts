@@ -48,6 +48,8 @@ export type SettingsUiDeviceView = DecoratedDeviceSnapshot & MeasuredPowerObserv
 export type UiState = {
   isBusy: boolean;
   initialLoadComplete: boolean;
+  devicesReadState: 'loading' | 'unavailable' | 'resolved';
+  // Compatibility view for panels whose only question is whether a good list exists.
   devicesLoaded: boolean;
   devicesLoading: boolean;
   dryRun: boolean;
@@ -145,7 +147,9 @@ export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
 export const state: UiState = {
   isBusy: false,
   initialLoadComplete: false,
-  devicesLoaded: false,
+  devicesReadState: 'loading',
+  get devicesLoaded() { return this.devicesReadState === 'resolved'; },
+  set devicesLoaded(value) { this.devicesReadState = value ? 'resolved' : 'loading'; },
   devicesLoading: false,
   dryRun: false,
   activePanel: 'overview',

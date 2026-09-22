@@ -375,12 +375,12 @@ test.describe('Onboarding links', () => {
     ]);
   });
 
-  test('overview empty state links to the Devices settings page', async ({ page }) => {
+  test('overview keeps managed devices when an empty plan arrives', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
+    const deviceNames = await page.locator('#plan-cards .plan-card__title').allTextContents();
 
-    // Push a device-less plan over the realtime seam (the boot fixture always
-    // ships plan devices, so the zero-managed state is only reachable live).
+    // The plan has no decisions, but the independently loaded roster is still managed.
     await page.evaluate(() => {
       const homey = (window as unknown as {
         Homey: { __stub: { emitHomeyEvent: (event: string, payload: unknown) => void } };
@@ -411,10 +411,33 @@ test.describe('Onboarding links', () => {
       });
     });
 
-    // Two #plan-empty nodes exist (static first-paint placeholder + the Preact
-    // render); assert against the visible one.
-    await expect(page.locator('#plan-empty').filter({ visible: true })).toContainText('No managed devices');
-    await page.locator('#plan-empty-manage-devices').click();
+    await expect(page.locator('#plan-cards .plan-card--undecided')).toHaveCount(deviceNames.length);
+    await expect(page.locator('#plan-cards .plan-card__title')).toHaveText(deviceNames);
+    await expect(page.locator('#plan-empty').filter({ visible: true })).toHaveCount(0);
+  });
+
+  test('overview empty device roster links to the Devices settings page', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { managed_devices: {}, controllable_devices: {} },
+        // Override the actual adapters: the baseline stub adds its EV device
+        // even when target_devices_snapshot is seeded empty.
+        apiHandlers: {
+          'GET /ui_devices': () => ({ devices: [] }),
+          'GET /ui_homes': () => ({
+            homes: [], membershipByDeviceId: {}, runtimeActive: false, configDegraded: false,
+          }),
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // The open Devices setup step owns the empty-roster action, suppressing
+    // the duplicate standalone empty message on a fresh/unmanaged home.
+    const devicesStep = page.locator('#overview-setup-path [data-setup-step="devices"]');
+    await expect(devicesStep).toBeVisible();
+    await expect(page.locator('#plan-cards .plan-card')).toHaveCount(0);
+    await devicesStep.click();
     await expect(page.locator('#devices-panel')).toBeVisible();
   });
 });

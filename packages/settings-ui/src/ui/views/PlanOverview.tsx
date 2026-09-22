@@ -12,8 +12,7 @@ import {
 import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
-import type { OverviewDeviceRow } from '../overviewDeviceRows.ts';
-import { DEVICE_OVERVIEW_AWAITING_FIRST_READING } from '../../../../shared-domain/src/deviceOverviewStrings.ts';
+import type { OverviewDeviceRow, OverviewDeviceRowsRead } from '../overviewDeviceRows.ts';
 import type {
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
@@ -27,12 +26,8 @@ type OverviewProps = {
   // cycle's plan (`buildOverviewDeviceRows`). The device list is the list: a
   // row can be `undecided`, which is a device without a decision rather than a
   // missing device.
-  rows: readonly OverviewDeviceRow[];
-  // True once the DEVICE payload has been delivered. The empty state is a
-  // device-list verdict now, so it must wait for the device list — otherwise a
-  // session that opens on the Overview renders "No managed devices" for the
-  // moment before the first `/ui_devices` response.
-  devicesResolved: boolean;
+  // A missing membership/device read is distinct from a resolved empty roster.
+  devices: OverviewDeviceRowsRead;
   plan: PlanSnapshot | null;
   // True once a plan payload has been delivered (even a null one). While
   // false the overview is still loading: keep showing the hero skeleton and
@@ -134,11 +129,11 @@ const PlanCard = ({
  * It deliberately shows no state chip and no reason line: there is no decision
  * to describe, and a placeholder one would be a decision the planner never made.
  */
-const PlanUndecidedCard = ({ name }: { name: string }) => (
+const PlanUndecidedCard = ({ row }: { row: Extract<OverviewDeviceRow, { kind: 'undecided' }> }) => (
   <section class="pels-surface-card plan-card plan-card--undecided">
     <MdElevation aria-hidden="true" />
-    <p class="plan-card__title">{name}</p>
-    <p class="pels-card-supporting">{DEVICE_OVERVIEW_AWAITING_FIRST_READING}</p>
+    <p class="plan-card__title">{row.device.name}</p>
+    <p class="pels-card-supporting">{row.statusText}</p>
   </section>
 );
 
@@ -159,7 +154,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  rows, devicesResolved, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, setupPath,
+  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, setupPath,
   context, renderedAtMs, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
@@ -182,7 +177,7 @@ const PlanOverviewRoot = ({
   // drawn yet. With a plan it does not wait — the hero is drawn, the page is past
   // loading, and facts that never arrive (a failed capacity read) must not cost
   // an owner with nothing managed the one line telling them so.
-  const emptyMessage = planResolved && devicesResolved && rows.length === 0
+  const emptyMessage = planResolved && devices.state === 'resolved' && devices.rows.length === 0
     && (plan !== null || setupPath.state !== 'loading')
     && (setupPath.state !== 'open' || !isSetupStepOpen(setupPath, 'devices'))
     // No "yet" — a returning user who unmanages their last device reaches
@@ -217,6 +212,12 @@ const PlanOverviewRoot = ({
       )}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
+      {devices.state === 'unavailable' && (
+        <section class="pels-surface-card" id="plan-devices-unavailable">
+          <MdElevation aria-hidden="true" />
+          <p class="pels-card-supporting">Devices couldn’t be loaded. Reopen this page to try again.</p>
+        </section>
+      )}
       {emptyMessage && (
         // Same carded "empty → go configure" treatment as the Price-aware
         // devices zero state; on-surface text, not .muted — this line is the
@@ -234,7 +235,7 @@ const PlanOverviewRoot = ({
         </div>
       )}
       <div id="plan-cards" class="plan-cards">
-        {rows.map((row) => (
+        {devices.state === 'resolved' && devices.rows.map((row) => (
           row.kind === 'decided' ? (
             <PlanCard
               key={row.device.id}
@@ -245,7 +246,7 @@ const PlanOverviewRoot = ({
               nowMs={nowMs}
             />
           ) : (
-            <PlanUndecidedCard key={row.device.id} name={row.device.name} />
+            <PlanUndecidedCard key={row.device.id} row={row} />
           )
         ))}
       </div>

@@ -22,7 +22,12 @@ export type SettingsUiOverviewDevice = SettingsUiDeviceListItem
  */
 export type OverviewDeviceRow =
   | { kind: 'decided'; device: SettingsUiOverviewDevice; plan: PlanDeviceSnapshot }
-  | { kind: 'undecided'; device: SettingsUiOverviewDevice };
+  | { kind: 'undecided'; device: SettingsUiOverviewDevice; statusText: string };
+
+/** A roster read cannot claim an empty home before its membership is known. */
+export type OverviewDeviceRowsRead =
+  | { state: 'loading' | 'unavailable' }
+  | { state: 'resolved'; rows: readonly OverviewDeviceRow[] };
 
 /**
  * Membership mirrors the runtime's own planned-device filter
@@ -42,21 +47,10 @@ const byPriority = (a: SettingsUiOverviewDevice, b: SettingsUiOverviewDevice): n
 );
 
 /**
- * Joins the device list to this cycle's plan on device id.
- *
- * With NO plan, every managed device is `undecided`: the plan is a decision
- * ABOUT devices and is legitimately absent — before the first power reading,
- * after a restart — while the device list is known as soon as the app has
- * parsed its devices. Rendering nothing in that window is what made a missing
- * CONTROL artefact look like a missing device.
- *
- * With a plan, the plan also answers MEMBERSHIP for the home on screen, and a
- * device it does not name is dropped. `undecided` means PELS has not decided
- * anything YET — not "this device is not mine". The distinction is load-bearing
- * under multi-home: Main's device payload is the whole home's and includes
- * devices belonging to a meter area, while Main's plan correctly excludes them.
- * Treating those as undecided would park another home's devices on Main's
- * Overview forever, waiting for a reading that is never coming for them.
+ * Joins the owning home's resolved device roster to this cycle's decisions.
+ * The caller resolves home membership before this seam: plan inclusion is not
+ * ownership. An unavailable device or a newly discovered device can belong to
+ * this home without having a decision in the latest non-null plan.
  *
  * A plan row with no matching device is dropped either way — the two payloads
  * refresh independently, and a decision about a device this scope cannot show
@@ -69,14 +63,17 @@ export const buildOverviewDeviceRows = (params: {
   const planById = new Map<string, PlanDeviceSnapshot>(
     (params.plan?.devices ?? []).map((device) => [device.id, device]),
   );
-  const planExists = params.plan !== null;
   return params.devices
     .filter(isOverviewMember)
     .slice()
     .sort(byPriority)
-    .flatMap((device): OverviewDeviceRow[] => {
+    .map((device): OverviewDeviceRow => {
       const plan = planById.get(device.id);
-      if (plan) return [{ kind: 'decided', device, plan }];
-      return planExists ? [] : [{ kind: 'undecided', device }];
+      if (plan) return { kind: 'decided', device, plan };
+      return {
+        kind: 'undecided',
+        device,
+        statusText: device.available === false ? 'Unavailable in Homey.' : 'Waiting for an update.',
+      };
     });
 };

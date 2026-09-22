@@ -10,11 +10,11 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
-import { getHomeScope } from './homeScope.ts';
+import { getHomeScope, readHomeMembership } from './homeScope.ts';
 import { setPlanUnmeasured } from './planMeasurementSignal.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
 import { readOverviewDevices } from './overviewDevicesRead.ts';
-import type { SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
+import type { OverviewDeviceRowsRead, SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
@@ -101,18 +101,27 @@ let overviewScope: OverviewScope = { kind: 'main' };
 // A cache for a home that is not the one on screen is simply not used.
 let scopedDevices: { homeId: string; devices: readonly SettingsUiOverviewDevice[] } | null = null;
 
-// The device list the surface is currently about, resolved by scope.
-const overviewDevices = (): readonly SettingsUiOverviewDevice[] => {
-  if (overviewScope.kind === 'main') return state.latestDevices;
-  return scopedDevices?.homeId === overviewScope.homeId ? scopedDevices.devices : [];
+// Resolve ownership before joining decisions. Main's bare device response also
+// carries meter-area devices; absence from its plan says nothing about ownership.
+// The existing roster/scoped-device owners retain their last-good reads.
+const overviewDeviceRows = (): OverviewDeviceRowsRead => {
+  if (overviewScope.kind === 'area') {
+    if (scopedDevices?.homeId !== overviewScope.homeId) {
+      return { state: overviewScope.read === 'pending' ? 'loading' : 'unavailable' };
+    }
+    return {
+      state: 'resolved',
+      rows: buildOverviewDeviceRows({ devices: scopedDevices.devices, plan: currentPlan }),
+    };
+  }
+  if (state.devicesReadState !== 'resolved') return { state: state.devicesReadState };
+  const membership = readHomeMembership();
+  if (membership.state !== 'resolved') return { state: membership.state };
+  const devices = state.latestDevices.filter((device) => (
+    !membership.runtimeActive || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID
+  ));
+  return { state: 'resolved', rows: buildOverviewDeviceRows({ devices, plan: currentPlan }) };
 };
-
-// Whether that list has been DELIVERED. The empty state is a device-list
-// verdict, so it must wait for the device list or it renders "No managed
-// devices" for the moment before the first response.
-const overviewDevicesResolved = (): boolean => (
-  overviewScope.kind === 'main' ? state.devicesLoaded : scopedDevices?.homeId === overviewScope.homeId
-);
 
 const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowInput | null => (
   tracker && typeof tracker === 'object'
@@ -176,8 +185,7 @@ const doRender = () => {
   renderPlanOverview(surface, {
     // Membership and order come from the DEVICE list; the decision comes from
     // the plan. Resolved here so the view stays props-in.
-    rows: buildOverviewDeviceRows({ devices: overviewDevices(), plan: currentPlan }),
-    devicesResolved: overviewDevicesResolved(),
+    devices: overviewDeviceRows(),
     plan: currentPlan,
     planResolved: planPayloadReceived,
     scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',

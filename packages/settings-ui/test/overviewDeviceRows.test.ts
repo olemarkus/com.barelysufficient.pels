@@ -36,7 +36,11 @@ describe('buildOverviewDeviceRows', () => {
     // artefact look like a missing device.
     const rows = buildOverviewDeviceRows({ devices: [device({ id: 'heater' })], plan: null });
 
-    expect(rows).toEqual([{ kind: 'undecided', device: expect.objectContaining({ id: 'heater' }) }]);
+    expect(rows).toEqual([{
+      kind: 'undecided',
+      device: expect.objectContaining({ id: 'heater' }),
+      statusText: 'Waiting for an update.',
+    }]);
   });
 
   it('carries no plan fields at all on an undecided row', () => {
@@ -54,6 +58,25 @@ describe('buildOverviewDeviceRows', () => {
     });
 
     expect(rows.map((row) => row.kind === 'decided' && row.plan.id)).toEqual(['a', 'b']);
+  });
+
+  it('keeps managed devices absent from a partial plan without inventing decisions', () => {
+    const rows = buildOverviewDeviceRows({
+      devices: [
+        device({ id: 'decided', managed: true }),
+        device({ id: 'unavailable', managed: true, available: false }),
+        device({ id: 'new', managed: true }),
+        device({ id: 'opted-out', managed: false }),
+      ],
+      plan: plan(['decided']),
+    });
+
+    expect(rows.map((row) => row.device.id)).toEqual(['decided', 'unavailable', 'new']);
+    expect(rows[0].kind).toBe('decided');
+    expect(rows[1]).toMatchObject({ kind: 'undecided', statusText: 'Unavailable in Homey.' });
+    expect(rows[2]).toMatchObject({ kind: 'undecided', statusText: 'Waiting for an update.' });
+    expect(rows[1]).not.toHaveProperty('plan');
+    expect(rows[2]).not.toHaveProperty('plan');
   });
 
   it('includes an implicitly-managed device, matching the runtime planned set', () => {

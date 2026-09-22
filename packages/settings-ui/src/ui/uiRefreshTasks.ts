@@ -24,6 +24,7 @@ import {
 import { readUsagePower } from './usagePowerRead.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
+import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { logSettingsError } from './logging.ts';
 
 /**
@@ -173,6 +174,15 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
   document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
 };
 
+const publishDeviceLoadFailure = (): void => {
+  if (state.devicesLoaded) return;
+  state.devicesReadState = 'unavailable';
+  // A malformed response may have reached the transport cache before the
+  // device adapter rejected it. A later page activation must read again.
+  invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  refreshPlanSurface();
+};
+
 /**
  * Loads the device payload for the OVERVIEW without repainting anything else.
  *
@@ -186,6 +196,7 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
 export const loadDevicesForOverview = () => {
   if (state.devicesLoaded || state.devicesLoading) return;
   state.devicesLoading = true;
+  state.devicesReadState = 'loading';
   getTargetDevices()
     .then((devices) => {
       state.devicesLoaded = true;
@@ -194,6 +205,7 @@ export const loadDevicesForOverview = () => {
       refreshOverviewPlanIfVisible('overviewDeviceLoad');
     })
     .catch((error) => {
+      publishDeviceLoadFailure();
       void logSettingsError('Failed to load devices', error, 'loadDevicesForOverview');
     })
     .finally(() => {
@@ -214,6 +226,7 @@ export const ensureDevicePanelsPainted = () => {
 
 export const loadDevicesOnce = () => {
   state.devicesLoading = true;
+  if (!state.devicesLoaded) state.devicesReadState = 'loading';
   getTargetDevices()
     .then((devices) => {
       state.devicesLoaded = true;
@@ -223,6 +236,7 @@ export const loadDevicesOnce = () => {
       notifySetupPathChange();
     })
     .catch((error) => {
+      publishDeviceLoadFailure();
       void logSettingsError('Failed to load devices', error, 'loadDevicesOnce');
     })
     .finally(() => {
