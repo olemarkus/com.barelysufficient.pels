@@ -82,13 +82,10 @@ export const supportsTemperatureControlDevice = (
   device?: SettingsUiDeviceListItem | null,
 ): boolean => (
   supportsTemperatureDevice(device)
+  && supportsPowerDevice(device)
   && device !== undefined
   && device !== null
   && state.temperatureControlDisabledMap[device.id] !== true
-);
-
-export const supportsManagedDevice = (supportsPower: boolean, supportsTemperature: boolean): boolean => (
-  supportsPower || supportsTemperature
 );
 
 export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListItem | null): boolean => (

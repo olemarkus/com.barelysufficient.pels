@@ -1,6 +1,5 @@
 import { setTooltip } from './tooltips.ts';
 import {
-  supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
   isGrayStateDevice,
@@ -96,7 +95,7 @@ export const appendRedesignDisabledReasons = (
 export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
+  const supportsManage = supportsPower;
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   const canManage = supportsManage && !nativeWiringRequired;
   return {

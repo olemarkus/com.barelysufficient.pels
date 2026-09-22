@@ -127,34 +127,18 @@ function applyPriceDisableOverrides(params: {
   return true;
 }
 
-function logUnsupportedChanges(params: {
-  unsupported: TargetDeviceSnapshot[];
-  changedPriceOnly: TargetDeviceSnapshot[];
-  managedChanged: boolean;
-  controllableChanged: boolean;
-  priceChanged: boolean;
-  debugStructured: StructuredEventEmitter;
-}): void {
-  const {
-    unsupported,
-    changedPriceOnly,
-    managedChanged,
-    controllableChanged,
-    priceChanged,
-    debugStructured,
-  } = params;
+function logUnsupportedChanges(
+  unsupported: TargetDeviceSnapshot[],
+  managedChanged: boolean,
+  controllableChanged: boolean,
+  priceChanged: boolean,
+  debugStructured: StructuredEventEmitter,
+): void {
   if (managedChanged || controllableChanged || priceChanged) {
     debugStructured({
       event: 'unsupported_controls_disabled',
       deviceIds: unsupported.map((device) => device.id),
       deviceNames: unsupported.map((device) => device.name),
-    });
-  }
-  if (changedPriceOnly.length > 0) {
-    debugStructured({
-      event: 'price_only_support_enabled',
-      deviceIds: changedPriceOnly.map((device) => device.id),
-      deviceNames: changedPriceOnly.map((device) => device.name),
     });
   }
 }
@@ -172,28 +156,16 @@ export function disableUnsupportedDevices(params: {
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
 }): void {
   const { snapshot, settings, debugStructured, resolveOperatingModeForDevice } = params;
-  const {
-    unsupported,
-    unsupportedIds,
-    fullyUnsupportedIds,
-    priceOnly,
-  } = classifyUnsupportedDevices(snapshot);
+  const { unsupported, unsupportedIds } = classifyUnsupportedDevices(snapshot);
 
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
-  // Edge-trigger the price-only log: only emit when capacity was previously
-  // enabled (`true`) and we're demoting it to `false`. Absent keys are not a
-  // transition — they were already effectively unmanaged — so they must not
-  // re-fire the log on every snapshot refresh. This matches the demotion
-  // condition in `applyFalseOverrides`.
-  const changedPriceOnly = priceOnly.filter((device) => controllable[device.id] === true);
-
   const managedChanged = applyFalseOverrides({
     settings,
     key: MANAGED_DEVICES,
     current: managed,
-    ids: fullyUnsupportedIds,
+    ids: unsupportedIds,
   });
   const controllableChanged = applyFalseOverrides({
     settings,
@@ -204,7 +176,7 @@ export function disableUnsupportedDevices(params: {
   const priceChanged = applyPriceDisableOverrides({
     settings,
     priceSettings,
-    ids: fullyUnsupportedIds,
+    ids: unsupportedIds,
   });
 
   const shedBehaviorUpdated = enforceTemperatureWithoutOnOffOvershootBehaviors({
@@ -216,14 +188,13 @@ export function disableUnsupportedDevices(params: {
   });
 
   if (unsupported.length > 0) {
-    logUnsupportedChanges({
+    logUnsupportedChanges(
       unsupported,
-      changedPriceOnly,
       managedChanged,
       controllableChanged,
       priceChanged,
       debugStructured,
-    });
+    );
   }
   if (shedBehaviorUpdated > 0) {
     debugStructured({ event: 'temperature_shedding_enforced', deviceCount: shedBehaviorUpdated });
@@ -421,4 +392,3 @@ function readModeTargetsCatalog(
   }
   return keys.includes(key) ? { state: 'unavailable' } : { state: 'resolved', catalog: {} };
 }
-

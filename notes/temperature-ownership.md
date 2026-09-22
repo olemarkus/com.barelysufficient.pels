@@ -122,18 +122,13 @@ the problem, not the safety net.
 - **Seed candidacy is the planned set, not the opted-in set.** Narrowing it to
   `managed === true` excluded every implicitly-managed device; narrowing it to
   `controllable === true` — the merged flag now spelled
-  `control.commandAuthority` on a plan device — additionally excluded price-only
-  thermostats, which silently disabled price optimization for them (a price
-  delta modulates a configured mode target and nothing else).
-- **A temperature device with no power reading is planned for its setpoints and
-  nothing else** (owner ruling 2026-09-23). It enters the plan without a power
-  axis (`MeteredPlanInputKind` absent, `lib/plan/planMeteredDevice.ts`): mode
-  targets, the price shift and the rest of the setpoint logic apply to it, while
-  power limiting, resuming, swaps, reserves, surplus absorption, usage sums and
-  budget-pressure denial reach only devices with a real per-device reading.
-  Nameplate/load estimates may size an action for a metered device; they never
-  give a device a power axis. Do not "fix" the missing axis with a `0` draw —
-  that is the placeholder this split exists to remove.
+  `control.commandAuthority` on a plan device — additionally excluded devices
+  whose only possible control was a setpoint. Every device needs a trusted
+  per-device power reading before PELS plans it, including when it is used for
+  mode or price behavior. Temperature capability does not create a price-only
+  control path. Nameplate/load estimates may size an action for a metered device;
+  they never admit a device without a reading. An unmetered device stays outside
+  the plan until it reports.
 - **A reviewer report shaped "the owner changed the setpoint mid-shed, so PELS
   later restores a stale value" depends on the selected policy.** Under the
   default it is drift. Under Save as current mode target, an admitted external

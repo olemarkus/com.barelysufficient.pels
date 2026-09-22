@@ -44,9 +44,9 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
 });
 
 const THREE_DEVICES = [
-  buildDevice({ id: 'dev-rental', name: 'Rental panel' }),
-  buildDevice({ id: 'dev-annex', name: 'Annex panel' }),
-  buildDevice({ id: 'dev-main', name: 'Hall heater' }),
+  buildDevice({ id: 'dev-rental', name: 'Rental panel', powerCapable: true }),
+  buildDevice({ id: 'dev-annex', name: 'Annex panel', powerCapable: true }),
+  buildDevice({ id: 'dev-main', name: 'Hall heater', powerCapable: true }),
 ];
 
 const setupDevicesDom = () => {

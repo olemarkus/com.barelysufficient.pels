@@ -9,7 +9,8 @@ import {
   type TemperatureControlModes,
 } from '../../../../shared-domain/src/settings/temperatureControl.ts';
 import { state, hasActiveDeadlineObjective } from '../state.ts';
-import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { supportsPowerDevice, supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { DEVICE_POWER_SUPPORT_REASON } from '../deviceControlAvailability.ts';
 import type { MdFilledSelectElement } from '../dom.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
@@ -51,13 +52,14 @@ export const syncTemperatureControlDisabledRow = (params: {
   const selected = pendingSelections.get(id)
     ?? resolveTemperatureControlMode(state.temperatureControlModes, state.temperatureControlDisabledMap, id);
   selectEl.value = selected;
-  selectEl.disabled = pendingSelections.has(id);
+  const supportsPower = supportsPowerDevice(device);
+  selectEl.disabled = !supportsPower || pendingSelections.has(id);
   const hasTask = hasActiveDeadlineObjective(id);
   for (const value of ['external', 'update_mode']) {
     selectEl.querySelector(`[value="${value}"]`)?.toggleAttribute('disabled', hasTask && selected !== value);
   }
   syncPowerHint(device, selected);
-  if (hintEl) hintEl.textContent = HINTS[selected];
+  if (hintEl) hintEl.textContent = supportsPower ? HINTS[selected] : DEVICE_POWER_SUPPORT_REASON;
   if (smartTaskHintEl) smartTaskHintEl.hidden = !hasTask || selected === 'external';
 };
 

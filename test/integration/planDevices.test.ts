@@ -1456,8 +1456,8 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       // that value is PELS's target like any other — price optimization is
       // per-device opt-in, so a device with it enabled asked for exactly this.
       // The old split (modulate a stored target, hold a filled one unmodulated)
-      // silently disabled price optimization for every device with no stored
-      // entry, price-only thermostats included.
+      // silently disabled price optimization for every metered device with no
+      // stored entry.
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice()], {
           getPriceOptimizationEnabled: () => true,

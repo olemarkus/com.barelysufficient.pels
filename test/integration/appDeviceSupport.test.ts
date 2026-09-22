@@ -39,7 +39,7 @@ const makeSettings = (initial: Record<string, unknown>) => {
   };
 };
 
-const buildPriceOnlyDevice = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildUnsupportedThermostat = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'vt-1',
   name: 'VThermo',
   deviceType: 'temperature',
@@ -56,18 +56,18 @@ const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ available: tr
 });
 
 describe('disableUnsupportedDevices', () => {
-  it('does not emit price-only log when settings are already aligned', () => {
+  it('does not emit an unsupported-device log when settings are already aligned', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': false },
       [CONTROLLABLE_DEVICES]: { 'vt-1': false },
       [PRICE_OPTIMIZATION_SETTINGS]: {
-        'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
+        'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
     const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
-      snapshot: [buildPriceOnlyDevice()],
+      snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
@@ -110,7 +110,7 @@ describe('disableUnsupportedDevices', () => {
     }));
   });
 
-  it('emits price-only log when unsupported settings are adjusted', () => {
+  it('disables every control setting when a thermostat has no power support', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': true },
       [CONTROLLABLE_DEVICES]: { 'vt-1': true },
@@ -121,20 +121,21 @@ describe('disableUnsupportedDevices', () => {
     const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
-      snapshot: [buildPriceOnlyDevice()],
+      snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
 
-    // The price-only split: Power-limit control goes, Managed and Price stay.
+    // Temperature capability does not bypass power admission.
+    expect(settings.set).toHaveBeenCalledWith(MANAGED_DEVICES, { 'vt-1': false });
     expect(settings.set).toHaveBeenCalledWith(CONTROLLABLE_DEVICES, { 'vt-1': false });
-    expect(settings.set).not.toHaveBeenCalledWith(MANAGED_DEVICES, expect.anything());
-    expect(settings.set).not.toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, expect.anything());
+    expect(settings.set).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, {
+      'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+    });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo'] }));
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'price_only_support_enabled', deviceNames: ['VThermo'] }));
   });
 
-  it('does not emit price-only log when only fully unsupported devices changed', () => {
+  it('disables unsupported controls for thermostats and other devices alike', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': false, 'socket-1': true },
       [CONTROLLABLE_DEVICES]: { 'vt-1': false, 'socket-1': true },
@@ -146,15 +147,18 @@ describe('disableUnsupportedDevices', () => {
     const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
-      snapshot: [buildPriceOnlyDevice(), buildFullyUnsupportedDevice()],
+      snapshot: [buildUnsupportedThermostat(), buildFullyUnsupportedDevice()],
       settings: asAppSettings(settings),
       debugStructured,
     });
 
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo', 'Garage Socket'] }));
-    expect(debugStructured.mock.calls.flat().some(
-      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
-    )).toBe(false);
+    expect(settings.set).toHaveBeenCalledWith(MANAGED_DEVICES, { 'vt-1': false, 'socket-1': false });
+    expect(settings.set).toHaveBeenCalledWith(CONTROLLABLE_DEVICES, { 'vt-1': false, 'socket-1': false });
+    expect(settings.set).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, {
+      'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+      'socket-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+    });
   });
 
   it('does not write managed/controllable settings when unsupported IDs were never user-managed', () => {
@@ -174,28 +178,21 @@ describe('disableUnsupportedDevices', () => {
     expect(debugStructured).not.toHaveBeenCalled();
   });
 
-  it('does not re-emit the price-only log on repeated refreshes for fresh-install price-only devices', () => {
-    // Regression: when `controllable_devices[id]` is absent (fresh install),
-    // the demotion path correctly skips the no-op write — but the
-    // `changedPriceOnly` log must still be edge-triggered. Otherwise the
-    // "Price-only support enabled..." line fires on every snapshot refresh,
-    // creating persistent operational log noise.
+  it('does not emit changes on repeated refreshes for fresh-install unsupported devices', () => {
     const settings = makeSettings({});
     const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
-      snapshot: [buildPriceOnlyDevice()],
+      snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
-    expect(debugStructured.mock.calls.flat().some(
-      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
-    )).toBe(false);
+    expect(debugStructured).not.toHaveBeenCalled();
 
     // Second refresh with the same (still-absent) settings: still no log.
     debugStructured.mockClear();
     disableUnsupportedDevices({
-      snapshot: [buildPriceOnlyDevice()],
+      snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
@@ -282,6 +279,7 @@ describe('persistFilledModeTargets', () => {
     currentTarget: 21,
     currentTemperature: 21,
     targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
+    currentDrawKw: 1,
     ...overrides,
   });
 
@@ -440,11 +438,9 @@ describe('persistFilledModeTargets', () => {
   });
 
   it('seeds a device whose capacity control is off', () => {
-    // Capacity control is about SHEDDING. A price-only thermostat (no power
-    // metering) has it force-disabled and is still driven by price — and a
-    // price delta modulates a configured mode target, nothing else. The switch
-    // that stops PELS writing setpoints is the temperature-control flag, which
-    // removes the target axis at `toPlanDevice`.
+    // A metered thermostat remains eligible for mode-target seeding even when
+    // its power-limit switch is off. That switch governs shedding; it does not
+    // remove the temperature target axis.
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 't-1': true },
       [CONTROLLABLE_DEVICES]: { 't-1': false },

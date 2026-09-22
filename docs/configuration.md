@@ -134,8 +134,8 @@ connection, PELS resumes the association automatically; no physical replug is ne
 
 Notes:
 
-- Devices without a usable power estimate cannot use power-limit control.
-- Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
+- Managed devices need power readings from a device meter or Homey Energy. This applies to temperature devices used for mode and price behavior too; a temperature target alone is not enough.
+- A supported device can be configured before its first reading arrives, but PELS starts controlling it only after a reading. Homey's Energy settings can provide a reporting path; a configured power estimate alone does not replace the reading. Turning **Limit** off still allows mode and price behavior on a supported temperature device.
 - Turn on **Disable temperature control** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and — for a device with power levels, such as a compatible water heater — lowering it a level at a time. Saved temperature settings remain available when temperature control is enabled again.
 - **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and Easee chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, then turn on **Use built-in device control**. A Flow that only reads the device, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.

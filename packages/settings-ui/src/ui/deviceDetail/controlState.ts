@@ -1,7 +1,6 @@
 import { supportsTemperatureAdjustments, supportsPowerLimiting } from './temperaturePolicy.ts';
 import {
   requiresNativeWiringForActivation,
-  supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
@@ -15,9 +14,8 @@ export const resolveDeviceDetailControlState = (
   const supportsTemperature = supportsTemperatureDevice(device);
   const canControlTemperature = supportsTemperatureAdjustments(device);
   const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
-  const canManageDevice = supportsManage && !nativeWiringRequired;
+  const canManageDevice = supportsPower && !nativeWiringRequired;
   return {
     supportsTemperature,
     canControlTemperature,

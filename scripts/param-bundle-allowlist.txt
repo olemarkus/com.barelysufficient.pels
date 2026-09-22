@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-23: 364 files, 924 bundles.
+# Seeded 2026-09-23: 364 files, 921 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -263,7 +263,7 @@ packages/settings-ui/src/ui/deadlinePlanRevisionPanelFeed.ts 1
 packages/settings-ui/src/ui/deadlinePlanTimeline.ts 2
 packages/settings-ui/src/ui/deadlinePlanTrajectory.ts 3
 packages/settings-ui/src/ui/deadlinesList.ts 2
-packages/settings-ui/src/ui/deviceControlAvailability.ts 3
+packages/settings-ui/src/ui/deviceControlAvailability.ts 2
 packages/settings-ui/src/ui/deviceDetail/activityLog.ts 1
 packages/settings-ui/src/ui/deviceDetail/controlState.ts 1
 packages/settings-ui/src/ui/deviceDetail/diagnostics.ts 1
@@ -277,7 +277,7 @@ packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts 6
 packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts 2
 packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts 3
 packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts 1
-packages/settings-ui/src/ui/devices.ts 3
+packages/settings-ui/src/ui/devices.ts 2
 packages/settings-ui/src/ui/echartsRegistry.ts 1
 packages/settings-ui/src/ui/exportPriceSettings.ts 2
 packages/settings-ui/src/ui/homeLimits.ts 2
@@ -336,7 +336,7 @@ setup/appDebugHelpers.ts 4
 setup/appDeviceControlFeedback.ts 5
 setup/appDeviceControlHelpers.ts 5
 setup/appDeviceControlSteppedState.ts 2
-setup/appDeviceSupport.ts 5
+setup/appDeviceSupport.ts 4
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/calibrationViews.ts 1

@@ -72,11 +72,9 @@ is limited or resumed.
 
 ### Per-device energy reporting
 
-Homey Energy is also the source of per-device energy reporting. Some devices report their own power directly; others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS reads from the same place Homey does — fix a wrong Energy value in Homey once and both surfaces update.
+Homey Energy is also a source of per-device power readings. Some devices report their own power directly; others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS can use the live device readings Homey produces from those values. Configured Energy metadata alone does not start control: PELS waits for a device reading. This requirement also applies to temperature devices used only for mode and price behavior.
 
-An Energy value lets PELS support the device and estimate what it draws. Limiting it for power needs a reading for that device: its own power meter, or the live value Homey Energy shows for it. A temperature device without one still follows its mode targets and price shift.
-
-If a device's energy data looks off, the canonical fix is in Homey's **Energy** settings. PELS picks the corrected values up on the next planning cycle.
+If a device's energy data looks off, check Homey's **Energy** settings. PELS uses corrected values when Homey reports them. A temporary gap preserves the last trusted reading and your device settings.
 
 ### Requirements
 

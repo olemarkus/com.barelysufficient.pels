@@ -144,9 +144,9 @@ describe('devices render — redesign shell', () => {
     state.priceOptimizationSettings = {};
     state.budgetExemptMap = {};
     state.latestDevices = [
-      buildDevice({ id: 'heater-1', name: 'Hall heater', deviceClass: 'heater' }),
-      buildDevice({ id: 'heater-2', name: 'Bath heater', deviceClass: 'heater' }),
-      buildDevice({ id: 'evcharger-1', name: 'EV', deviceClass: 'evcharger' }),
+      buildDevice({ id: 'heater-1', name: 'Hall heater', deviceClass: 'heater', powerCapable: true }),
+      buildDevice({ id: 'heater-2', name: 'Bath heater', deviceClass: 'heater', powerCapable: true }),
+      buildDevice({ id: 'evcharger-1', name: 'EV', deviceClass: 'evcharger', powerCapable: true }),
     ];
 
     renderDevices(state.latestDevices);

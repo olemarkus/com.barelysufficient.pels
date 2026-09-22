@@ -20,8 +20,7 @@ export const LEGEND_ONLY_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The one way an owner makes a device limitable, named once so every surface
- * that turns power-limit control away says the same thing. A configured load
+ * Power support applies to management as well as limiting. A configured load
  * (`settings.load`) is deliberately NOT offered: it refines the expected-power
  * estimate but is not an eligibility source (`isDevicePowerCapable` in
  * `lib/device/transport/managerParseDevice.ts`), and a hint that named it sent
@@ -29,9 +28,15 @@ export const LEGEND_ONLY_REASONS: ReadonlySet<string> = new Set([
  * own label for the field, as an owner read it off the device's Advanced
  * settings; the Energy section is named too, so the hint still finds the field
  * if Homey words that label differently (it matches `docs/configuration.md`).
+ * Metadata can establish support, but control waits for the first device reading.
  */
-export const POWER_READING_REMEDY = 'a power meter, or "Energy used when on" under Energy in the device’s'
-  + ' Advanced settings in Homey';
+export const POWER_READING_REMEDY = 'device readings from a power meter or Homey Energy';
+
+export const DEVICE_POWER_SUPPORT_REASON = 'PELS needs power readings from this device to manage it.';
+
+export const DEVICE_POWER_SUPPORT_HINT = `${DEVICE_POWER_SUPPORT_REASON} `
+  + 'Use a power meter or configure "Energy used when on" under Energy in the device’s Advanced settings in Homey. '
+  + 'Control starts when readings arrive.';
 
 export type RowDisabledReasons = {
   managed: string | null;
@@ -59,8 +64,8 @@ export const getManagedDisabledReason = (
   nativeWiringRequired: boolean,
 ): string | null => {
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
+  if (!supportsManage) return DEVICE_POWER_SUPPORT_HINT;
   if (nativeWiringRequired) return 'Managed requires built-in device control to be enabled in Homey.';
-  if (!supportsManage) return 'Managed requires a temperature target or power capability.';
   return null;
 };
 
@@ -76,15 +81,14 @@ export const getLimitDisabledReason = (params: {
   return null;
 };
 
-export const getPriceDisabledReason = (params: {
-  isLoadingComplete: boolean;
-  supportsTemperature: boolean;
-  isManaged: boolean;
-}): string | null => {
-  const { isLoadingComplete, supportsTemperature, isManaged } = params;
+export const getPriceDisabledReason = (
+  isLoadingComplete: boolean,
+  manageability: DeviceControlAvailabilityState,
+): string | null => {
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
-  if (!supportsTemperature) return PRICE_TEMPERATURE_ONLY_REASON;
-  if (!isManaged) return PRICE_NEEDS_MANAGED_REASON;
+  if (!manageability.supportsTemperature) return PRICE_TEMPERATURE_ONLY_REASON;
+  if (!manageability.supportsPower) return DEVICE_POWER_SUPPORT_HINT;
+  if (!manageability.isManaged) return PRICE_NEEDS_MANAGED_REASON;
   return null;
 };
 
@@ -110,11 +114,7 @@ export const getRowDisabledReasons = (params: {
       })
       : null,
     price: disabled.price
-      ? getPriceDisabledReason({
-        isLoadingComplete,
-        supportsTemperature: manageability.supportsTemperature,
-        isManaged: manageability.isManaged,
-      })
+      ? getPriceDisabledReason(isLoadingComplete, manageability)
       : null,
   };
 };

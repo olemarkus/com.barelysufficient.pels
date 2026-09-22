@@ -127,6 +127,7 @@ import {
   noteDeviceDetailOpened,
 } from './overlayHandlers.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { DEVICE_POWER_SUPPORT_HINT } from '../deviceControlAvailability.ts';
 
 let currentDetailDeviceId: string | null = null;
 const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
@@ -198,16 +199,26 @@ const syncSwitchRowDisabledStyling = () => {
   });
 };
 
+const renderManagedControl = (controlState: ReturnType<typeof resolveDeviceDetailControlState>): void => {
+  if (deviceDetailManaged) {
+    deviceDetailManaged.selected = controlState.isManaged;
+    deviceDetailManaged.disabled = !controlState.canManageDevice;
+  }
+  const managedHint = document.getElementById('device-detail-managed-hint');
+  if (managedHint) {
+    managedHint.textContent = controlState.supportsPower
+      ? 'Include this device in modes and optimization plans.'
+      : DEVICE_POWER_SUPPORT_HINT;
+  }
+};
+
 const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
   setDeviceDetailNativeWiringState(device);
+  renderManagedControl(controlState);
 
-  if (deviceDetailManaged) {
-    deviceDetailManaged.selected = controlState.isManaged;
-    deviceDetailManaged.disabled = !controlState.canManageDevice;
-  }
   if (deviceDetailControllable) {
     deviceDetailControllable.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;
     deviceDetailControllable.disabled = !controlState.canLimitPower || !controlState.isManaged;

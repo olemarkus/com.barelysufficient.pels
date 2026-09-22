@@ -1,4 +1,3 @@
-import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { MeteredPlanInputKind, PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import type { DevicePlanDevice, MeteredKind } from './planTypes';
 
@@ -25,16 +24,4 @@ export function isMeteredPlanDevice<T extends object>(
 ): device is T & (T extends PlanInputDevice ? MeteredPlanInputKind : MeteredKind);
 export function isMeteredPlanDevice(device: object): boolean {
   return 'currentDrawKw' in device && typeof device.currentDrawKw === 'number';
-}
-
-/**
- * Can the plan do anything for this device? It can when the device has a power
- * axis (it can be limited and resumed for power) or a temperature axis (its mode
- * target and price shift can be set). A temperature device without a power
- * reading therefore enters the plan for its setpoints only; a device with
- * neither — a plug that has not reported power yet — has nothing the plan could
- * decide, and waits outside it for its first reading.
- */
-export function isPlannableDevice(device: { deviceType?: string }): boolean {
-  return isMeteredPlanDevice(device) || isTemperaturePlanDevice(device);
 }

@@ -1,5 +1,5 @@
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
-import { POWER_READING_REMEDY } from './deviceControlAvailability.ts';
+import { DEVICE_POWER_SUPPORT_HINT, POWER_READING_REMEDY } from './deviceControlAvailability.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -25,6 +25,7 @@ import { debouncedSetSetting } from './utils.ts';
 import { prefersTouch, setTooltip } from './tooltips.ts';
 import {
   getRowDisabledReasons,
+  type DeviceControlAvailabilityState,
   type RowSwitchTitles,
 } from './deviceControlAvailability.ts';
 import {
@@ -107,10 +108,10 @@ const getManagedTitle = (
   nativeWiringRequired: boolean,
 ): string => {
   if (!isLoadingComplete) return 'Loading...';
+  if (!supportsManage) return DEVICE_POWER_SUPPORT_HINT;
   if (nativeWiringRequired) {
     return 'Managed by PELS (open the device page and enable built-in device control first)';
   }
-  if (!supportsManage) return 'Managed by PELS (requires a temperature target or power capability)';
   return 'Managed by PELS';
 };
 
@@ -126,19 +127,11 @@ const getCapacityTitle = (params: {
   return 'Power-limit control (requires Managed by PELS)';
 };
 
-const getPriceTitle = (params: {
-  isLoadingComplete: boolean;
-  supportsTemperature: boolean;
-  isManaged: boolean;
-}): string => {
-  const {
-    isLoadingComplete,
-    supportsTemperature,
-    isManaged,
-  } = params;
+const getPriceTitle = (isLoadingComplete: boolean, manageability: DeviceControlAvailabilityState): string => {
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsTemperature) return 'Price-based control (temperature devices only)';
-  if (isManaged) return 'Price-based control';
+  if (!manageability.supportsTemperature) return 'Price-based control (temperature devices only)';
+  if (!manageability.supportsPower) return DEVICE_POWER_SUPPORT_HINT;
+  if (manageability.isManaged) return 'Price-based control';
   return 'Price-based control (requires Managed by PELS)';
 };
 
@@ -348,11 +341,7 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
       supportsPower: manageability.supportsPower,
       isManaged: manageability.isManaged,
     }),
-    price: getPriceTitle({
-      isLoadingComplete,
-      supportsTemperature: manageability.supportsTemperature,
-      isManaged: manageability.isManaged,
-    }),
+    price: getPriceTitle(isLoadingComplete, manageability),
   };
 
   const nameCell = buildRedesignNameCell(device);

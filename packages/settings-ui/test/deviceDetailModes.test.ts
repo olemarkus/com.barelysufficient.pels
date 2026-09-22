@@ -14,6 +14,7 @@ const buildDevice = (): TargetDeviceSnapshot => ({ available: true, expectedPowe
   id: 'heater-1',
   name: 'Hall Heater',
   deviceType: 'temperature',
+  powerCapable: true,
   binaryControl: { on: true },
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
 });

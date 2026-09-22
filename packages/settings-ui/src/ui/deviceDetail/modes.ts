@@ -10,6 +10,7 @@ import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
 import {
   supportsTemperatureControlDevice,
+  supportsPowerDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -29,6 +30,7 @@ import {
   readModeDeviceTargetsSetting,
 } from '../modeCatalogMaps.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
+import { DEVICE_POWER_SUPPORT_REASON } from '../deviceControlAvailability.ts';
 
 const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-help');
 const MODES_HELP_ACTIVE = 'Set the target temperature for each mode. PELS will set this when the mode is active. '
@@ -324,9 +326,10 @@ export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
   if (deviceDetailModesSection) deviceDetailModesSection.hidden = !supports;
   if (!supports) return;
   if (modesHelpEl) {
-    modesHelpEl.textContent = supportsTemperatureControlDevice(device)
-      ? MODES_HELP_ACTIVE
+    modesHelpEl.textContent = !supportsPowerDevice(device)
+      ? DEVICE_POWER_SUPPORT_REASON
       : MODES_HELP_DISABLED;
+    if (supportsTemperatureControlDevice(device)) modesHelpEl.textContent = MODES_HELP_ACTIVE;
   }
 
   detailModeGeneration += 1;

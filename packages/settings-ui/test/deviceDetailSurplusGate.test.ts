@@ -22,6 +22,15 @@ const buildDom = () => {
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <md-switch id="device-detail-managed"></md-switch>
+        <small id="device-detail-managed-hint"></small>
+        <div id="device-detail-temperature-control-disabled-row">
+          <select id="device-detail-temperature-control-disabled">
+            <option value="mode">Return to mode target</option>
+            <option value="external">Keep the new temperature</option>
+            <option value="update_mode">Save as current mode target</option>
+          </select>
+          <small id="device-detail-temperature-control-hint"></small>
+        </div>
         <md-switch id="device-detail-controllable"></md-switch>
         <md-switch id="device-detail-price-opt"></md-switch>
         <div class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
@@ -36,7 +45,9 @@ const buildDom = () => {
           <select id="device-detail-control-model"></select>
         </div>
         <div id="device-detail-modes"></div>
+        <p id="device-detail-modes-help"></p>
         <div id="device-detail-delta-section"></div>
+        <p id="device-detail-delta-gate-hint"></p>
         <input id="device-detail-cheap-delta">
         <input id="device-detail-expensive-delta">
         <select id="device-detail-overshoot">
@@ -114,6 +125,7 @@ const openPanel = async (params: {
   state.modeTargets = { Home: { 'heater-1': 20 } };
   state.activeMode = 'Home';
   state.editingMode = 'Home';
+  state.loadedModeHomeId = 'main';
 
   initDeviceDetailHandlers();
   openDeviceDetail('heater-1');
@@ -142,6 +154,35 @@ describe('device detail "Use solar surplus" gating', () => {
   it('shows the surplus row on a managed temperature device when solar is present', async () => {
     await openPanel({ hasManagedSolarDevice: true, device: buildDevice() });
     expect(surplusRow()?.hidden).toBe(false);
+  });
+
+  it('explains unsupported thermostat control without offering an unusable Managed switch', async () => {
+    await openPanel({ hasManagedSolarDevice: true, device: buildDevice({ powerCapable: false }), surplusWilling: true });
+    for (const id of ['managed', 'price-opt', 'surplus-opt']) {
+      const control = document.getElementById(`device-detail-${id}`) as HTMLElement & { disabled: boolean; selected: boolean };
+      expect(control.disabled).toBe(true);
+      expect(control.selected).toBe(false);
+    }
+    expect(document.getElementById('device-detail-managed-hint')?.textContent).toContain('power readings');
+    const hint = document.getElementById('device-detail-surplus-gate-hint');
+    expect(hint?.textContent).toContain('power readings');
+    expect(hint?.textContent).not.toContain('Turn on Managed');
+    expect(hint?.textContent).not.toContain('keeps the new temperature');
+    expect(document.getElementById('device-detail-delta-gate-hint')?.textContent).toContain('power readings');
+    expect(document.getElementById('device-detail-modes-help')?.textContent).toContain('power readings');
+    const target = document.querySelector('.detail-mode-temp') as HTMLElement & { disabled: boolean };
+    expect(target.disabled).toBe(true);
+    const temperaturePolicy = document.getElementById('device-detail-temperature-control-disabled') as HTMLSelectElement;
+    expect(temperaturePolicy.disabled).toBe(true);
+    expect(document.getElementById('device-detail-temperature-control-hint')?.textContent).toContain('power readings');
+  });
+
+  it('keeps supported controls usable before a current device reading arrives', async () => {
+    await openPanel({ hasManagedSolarDevice: true, device: buildDevice(), surplusWilling: true });
+    for (const id of ['managed', 'price-opt', 'surplus-opt']) {
+      const control = document.getElementById(`device-detail-${id}`) as HTMLElement & { disabled: boolean };
+      expect(control.disabled).toBe(false);
+    }
   });
 
   it('shows the surplus row for a meter-only PV home (exhibited export, no solar device)', async () => {

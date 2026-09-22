@@ -306,6 +306,56 @@ describe('recoverFromSchemeChangeFailure', () => {
   });
 });
 
+describe('Price-aware devices power support (via priceConfig)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('omits unsupported thermostats with stale Managed flags but keeps supported devices without samples', async () => {
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [
+      {
+        id: 'unsupported',
+        name: 'Unsupported thermostat',
+        available: true,
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default',
+        powerCapable: false,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+      {
+        id: 'supported',
+        name: 'Supported thermostat without sample',
+        available: true,
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default',
+        powerCapable: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ];
+    state.managedMap = { unsupported: true, supported: true };
+    const stored: Record<string, unknown> = {
+      price_optimization_settings: {
+        unsupported: { enabled: true, cheapDelta: 2, expensiveDelta: -1 },
+        supported: { enabled: true, cheapDelta: 2, expensiveDelta: -1 },
+      },
+    };
+    getSettingMock.mockImplementation(async (key: string) => stored[key]);
+    const { initPriceAwareDevicesView } = await import('../src/ui/priceConfig.ts');
+    const surface = document.createElement('div');
+    document.body.appendChild(surface);
+
+    await initPriceAwareDevicesView(surface);
+
+    const names = Array.from(surface.querySelectorAll('.price-aware-grid__name'));
+    expect(names.map((name) => name.textContent)).toEqual(['Supported thermostat without sample']);
+    expect(surface.querySelectorAll('.price-aware-grid__row .value-adjuster__btn')).toHaveLength(4);
+  });
+});
+
 describe('handleSchemeChange export transition (via priceConfig)', () => {
   beforeEach(() => {
     // Fresh priceConfig module per test: its config state, surface pointer,

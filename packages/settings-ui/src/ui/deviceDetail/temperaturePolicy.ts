@@ -6,7 +6,7 @@ import {
   supportsPowerDevice, supportsTemperatureControlDevice, supportsTemperatureDevice, type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import { isSteppedLoadControlModel } from '../deviceKind.ts';
-import { POWER_READING_REMEDY } from '../deviceControlAvailability.ts';
+import { DEVICE_POWER_SUPPORT_REASON, POWER_READING_REMEDY } from '../deviceControlAvailability.ts';
 
 export function followsDeviceTemperature(device: SettingsUiDeviceDetailItem | null): boolean {
   return device !== null && resolveTemperatureControlMode(
@@ -32,6 +32,7 @@ export function supportsPowerLimiting(device: SettingsUiDeviceDetailItem | null)
 }
 
 export function temperatureAdjustmentGateHint(device: SettingsUiDeviceDetailItem | null): string {
+  if (!supportsPowerDevice(device)) return DEVICE_POWER_SUPPORT_REASON;
   return followsDeviceTemperature(device)
     ? 'Not applied while PELS saves temperature changes as the current mode target. Your saved settings are kept.'
     : 'Not applied while PELS keeps the new temperature. Your saved settings are kept.';
