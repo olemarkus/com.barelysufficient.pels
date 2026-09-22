@@ -76,10 +76,11 @@ from outside PELS.
 
 Keys with owners so far: `mode_device_targets`, `pv_forecast_source`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`.
-`capacity_priorities` has the same shape and the same two parsers and is the
-obvious next one — until then it keeps the older reject-the-whole-map policy,
-which is why `parseModeNumberMap` still exists alongside
-`readModeDeviceTargetsSetting`.
+`capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
+Its reader rejects an invalid catalog and retains the last good preferences.
+`ModePriorityCatalog` keeps those preferences private and publishes complete orders
+for every known device and mode, including new devices and target-only modes.
+Consumers receive numeric priorities; they do not distinguish saved and filled ranks.
 
 `pv_forecast_source` is the cheap case the rule still earns: a flat three-value
 union with nothing to sanitize partially, but two callers from day one (the

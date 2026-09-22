@@ -130,24 +130,3 @@ export function resolveHomeOperatingMode(params: {
     fault: { requestedMode: requested, reason: 'unconfigured_mode' },
   };
 }
-
-/**
- * Read the stored priority for a device under a mode (empty mode falls into the
- * historical 'Home' bucket). `undefined` means the owner has never ranked it —
- * NOT a low rank.
- *
- * This is a stored-state read, not an answer: priority is a property of a SET,
- * so the rank a consumer acts on comes from the mode catalog owner
- * (`packages/shared-domain/src/modeCatalogResolution.ts`), which ranks the whole
- * set strictly. There used to be a `resolveDevicePriority` here that applied a
- * `?? 100` default tier so a caller could ask about one device in isolation;
- * every device nobody had ranked then shared rank 100, which is the tie the
- * owner exists to make impossible.
- */
-export function resolveConfiguredDevicePriority(
-  capacityPriorities: Record<string, Record<string, number>>,
-  operatingMode: string,
-  deviceId: string,
-): number | undefined {
-  return capacityPriorities[operatingMode || 'Home']?.[deviceId];
-}

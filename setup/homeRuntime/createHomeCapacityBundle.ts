@@ -71,7 +71,6 @@ import {
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
 import {
   createHomeModeCatalog,
-  getConfiguredPriorityFromHomeModeCatalog,
   type HomeModeCatalog,
 } from './homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
@@ -292,9 +291,7 @@ function buildSubHomeScope(params: {
       // engine (not MAIN's via `ctx.planEngine`).
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: false,
-        getBasePriorityForDevice: (id) => (
-          getConfiguredPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), id)
-        ),
+        getPrioritiesForDevices: modeCatalog.getPrioritiesForDevices,
         clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForCommandProvenance()
           ?.clearRecentBinaryOffCommand(id, observedOnAtMs),
         projectCommandability: binaryCommandReachability.project,

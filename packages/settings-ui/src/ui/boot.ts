@@ -110,7 +110,6 @@ import {
 } from './advanced.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
-import { initModePriorityConfirm } from './modePriorityConfirm.ts';
 import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging.ts';
 import {
   markSettingsUi,
@@ -498,7 +497,6 @@ const initializeBootHandlers = () => {
   initCurrentModes();
   initDeviceDetailHandlers();
   initModeHandlers();
-  initModePriorityConfirm();
   initLimitsAndSimulationHandlers();
   initDailyBudgetHandlers();
   if (electricityPricesSurface) {

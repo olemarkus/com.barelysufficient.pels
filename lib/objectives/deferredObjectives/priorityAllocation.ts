@@ -1,3 +1,4 @@
+import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanReservationSegmentV1,
@@ -15,7 +16,6 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
-import { rankModeDevices } from '../../../packages/shared-domain/src/modeCatalogResolution';
 import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
@@ -24,7 +24,6 @@ import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
-const DEFAULT_PRIORITY = 100;
 
 // Survive one full cooldown window of transient SDK misses before a device
 // stops holding a reservation. Without this window, a single Homey SDK
@@ -128,15 +127,6 @@ export type OrderedDeferredObjective = {
   reservationEligible: boolean;
 };
 
-const resolvedPriority = (
-  device: ObjectiveDeviceInput | undefined,
-  fallback = DEFAULT_PRIORITY,
-): number => (
-  typeof device?.priority === 'number' && Number.isFinite(device.priority)
-    ? device.priority
-    : fallback
-);
-
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without
 // importing across the objectives→plan boundary.
 const compareDeviceIdAsc = (left: string, right: string): number => {
@@ -153,10 +143,9 @@ export const orderDeferredObjectives = (params: {
   tracker?: PriorityAllocationTracker;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   nowMs: number;
-  // Live mode-catalog read. Production callers provide this so the full
-  // visible-plus-grace roster is ordered from the user's current saved mode,
-  // never from a runtime-persisted rank. Optional for isolated legacy callers.
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  // The catalog owner orders the complete visible-plus-grace roster; callers
+  // receive only resolved ranks, including temporarily missing devices.
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
 }): OrderedDeferredObjective[] => {
   params.tracker?.retainObjectiveDeviceIds(new Set(Object.keys(params.settings.objectivesByDeviceId)));
   const entries = Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
@@ -188,22 +177,16 @@ export const orderDeferredObjectives = (params: {
   // competing for allocation, and separately the ones held out of it. Ranks are
   // unique within each set by construction — no two devices can tie, which is
   // what makes the allocation order total.
-  const activePriorityByDeviceId = rankModeDevices(activeDeviceIds, (deviceId) => (
-    params.getBasePriorityForDevice
-      ? params.getBasePriorityForDevice(deviceId)
-      : resolvedPriority(params.deviceById.get(deviceId))
-  ));
-  const inactivePriorityByDeviceId = rankModeDevices(
+  const activePriorities = params.getPrioritiesForDevices(activeDeviceIds);
+  const inactivePriorities = params.getPrioritiesForDevices(
     entries.flatMap((entry) => entry.reservationEligible ? [] : [entry.deviceId]),
-    (deviceId) => (params.getBasePriorityForDevice
-      ? params.getBasePriorityForDevice(deviceId)
-      : DEFAULT_PRIORITY),
   );
-  const activeDeviceCount = Object.keys(activePriorityByDeviceId).length;
+  const activeDeviceCount = new Set(activeDeviceIds).size;
   return entries
     .map((entry) => {
-      const priority = activePriorityByDeviceId[entry.deviceId]
-        ?? activeDeviceCount + (inactivePriorityByDeviceId[entry.deviceId] ?? DEFAULT_PRIORITY);
+      const priority = entry.reservationEligible
+        ? activePriorities.getPriority(entry.deviceId)
+        : activeDeviceCount + inactivePriorities.getPriority(entry.deviceId);
       return {
         ...entry,
         priority,

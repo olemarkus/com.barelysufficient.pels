@@ -1,3 +1,4 @@
+import { homeScopeMembership, getHomeIdForUiDevice } from './homeScopeMembership.ts';
 import {
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
@@ -68,8 +69,6 @@ export type HomeScopeState = {
 };
 
 let areas: HomeScopeArea[] = [];
-let runtimeActive = false;
-let membershipByDeviceId: Record<string, string> = {};
 type RosterState = 'loading' | 'unavailable' | 'resolved';
 let rosterState: RosterState = 'loading';
 let selectedHomeId: string = MAIN_HOME_ID;
@@ -122,12 +121,10 @@ const writePersistedScope = (homeId: string): void => {
 };
 
 export const getHomeScope = (): HomeScopeState => ({
-  selectedHomeId, areas, runtimeActive, membershipByDeviceId,
+  selectedHomeId, areas, ...homeScopeMembership,
 });
 
-export const getHomeIdForUiDevice = (deviceId: string): string => (
-  runtimeActive ? membershipByDeviceId[deviceId] ?? MAIN_HOME_ID : MAIN_HOME_ID
-);
+export { getHomeIdForUiDevice };
 
 export type HomeMembershipRead =
   | { state: 'loading' }
@@ -145,7 +142,7 @@ export type HomeMembershipRead =
  */
 export const readHomeMembership = (): HomeMembershipRead => (
   rosterState === 'resolved'
-    ? { state: 'resolved', runtimeActive, membershipByDeviceId }
+    ? { state: 'resolved', ...homeScopeMembership }
     : { state: rosterState }
 );
 
@@ -157,7 +154,7 @@ export const readHomeMembership = (): HomeMembershipRead => (
  * "Main home only" claim there would describe a split the runtime is not
  * doing. Same predicate the home badges resolve (`resolveHomeBadgeRead`).
  */
-export const areMeterAreasInUse = (): boolean => runtimeActive && areas.length > 0;
+export const areMeterAreasInUse = (): boolean => homeScopeMembership.runtimeActive && areas.length > 0;
 
 
 /** Register a consumer of the selected home. There is no unsubscribe: every
@@ -416,16 +413,16 @@ export const refreshHomeScope = async (): Promise<void> => {
   if (generation !== rosterGeneration) return;
   const previousState = rosterState;
   const previousAreas = areas;
-  const previousRuntimeActive = runtimeActive;
-  const previousMembership = membershipByDeviceId;
+  const previousRuntimeActive = homeScopeMembership.runtimeActive;
+  const previousMembership = homeScopeMembership.membershipByDeviceId;
   const previousSelectedHomeId = selectedHomeId;
   if (read.status === 'resolved') {
     // Only a vouched-for response reshapes the roster — an empty `homes` here is
     // a real "no meter areas" state and correctly clears it. Anything else keeps
     // the last-good roster and the still-armed persisted candidate.
     areas = read.areas;
-    runtimeActive = read.runtimeActive;
-    membershipByDeviceId = read.membershipByDeviceId;
+    homeScopeMembership.runtimeActive = read.runtimeActive;
+    homeScopeMembership.membershipByDeviceId = read.membershipByDeviceId;
     rosterState = 'resolved';
     reconcileSelection();
   } else if (rosterState !== 'resolved') {
@@ -437,10 +434,10 @@ export const refreshHomeScope = async (): Promise<void> => {
   // An identical tab-activation refresh stays silent so it cannot restart the
   // panel work that caused the refresh in the first place.
   const scopeChanged = previousState !== rosterState
-    || previousRuntimeActive !== runtimeActive
+    || previousRuntimeActive !== homeScopeMembership.runtimeActive
     || previousSelectedHomeId !== selectedHomeId
     || !sameAreas(previousAreas, areas)
-    || !sameMembership(previousMembership, membershipByDeviceId);
+    || !sameMembership(previousMembership, homeScopeMembership.membershipByDeviceId);
   if (scopeChanged) notifyListeners();
 };
 

@@ -17,6 +17,7 @@
 // A cold tank during the evening peak (Connected 300, the prod replay WI-4 targeted):
 // 18:00/19:00 expensive, 20:00→05:00 cheap, deadline 06:00. The booked floor step is
 // 1.25 kW; the real element is 5 kW.
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeDeferredObjectiveSettings,
@@ -202,6 +203,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
     const [diag] = buildDeferredObjectiveDiagnostics({
+      getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs,
       timeZone: 'UTC',

@@ -1,3 +1,4 @@
+import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import { selectObjectiveDevices } from '../types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
@@ -36,8 +37,8 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // in the domain, rather than in the wiring layer that reads the settings:
   // `lib/power` owns the subtraction, and `setup/` answers no power question.
   getCapacitySettings: () => CapacitySettings;
-  /** Live priority from the user's current saved mode; runtime order is derived on read. */
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  /** Complete priority order from the current mode's catalog owner. */
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
   // daily-budget snapshot (threaded via `decorate(input)`) is now only the
   // budget overlay.
@@ -115,7 +116,7 @@ export class DeferredObjectiveDecorationController {
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
         sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
         priorityAllocationTracker: this.priorityAllocationTracker,
-        getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
+        getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       });
     } finally {

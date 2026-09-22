@@ -3,7 +3,6 @@ import {
   isFiniteNumber,
   isNumberMap,
   isPlausiblePowerTrackerState,
-  isPrioritySettings,
   isStringMap,
   sanitizePowerTrackerSolarFields,
   salvagePowerTrackerState,
@@ -45,20 +44,6 @@ describe('appTypeGuards plain-object handling', () => {
     });
   });
 
-
-  describe('isPrioritySettings', () => {
-    it('accepts a nested record of numeric priorities', () => {
-      expect(isPrioritySettings({ Home: { dev: 1 }, Away: { dev: 2 } })).toBe(true);
-    });
-
-    it('rejects arrays nested inside the value', () => {
-      expect(isPrioritySettings({ Home: ['dev'] })).toBe(false);
-    });
-
-    it('rejects non-numeric leaf values', () => {
-      expect(isPrioritySettings({ Home: { dev: 'high' } })).toBe(false);
-    });
-  });
 
   describe('isFiniteNumber', () => {
     it('matches finite numbers only', () => {

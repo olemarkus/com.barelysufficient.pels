@@ -65,7 +65,7 @@ import {
   getAssociatedCarForUiFromApp,
   getPlanStatusForUiFromApp,
   getLatestDevicesForUiFromApp,
-  getModeCatalogForUiFromApp,
+  getPrioritiesForUiFromApp,
   getObservedStateForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getSurplusPoolReachableForUiFromApp,
@@ -76,7 +76,6 @@ import {
   refreshSettingsUiPricesForApp,
   resetSettingsUiPowerStatsForApp,
 } from './settingsUiAppRuntime';
-import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolution';
 
 type SettingsUiApiApp = Homey.App & {
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
@@ -290,11 +289,8 @@ const buildSettingsUiDeviceList = (
   homey: ApiContext['homey'],
   devices: readonly (DecoratedDeviceSnapshot & StateOfChargeObservedProbe)[],
 ): SettingsUiDeviceSnapshot[] => {
-  const catalog = getModeCatalogForUiFromApp(homey);
-  const priorities = rankModeDevices(
-    devices.map((device) => device.id),
-    (deviceId) => catalog.priorities[catalog.operatingMode]?.[deviceId],
-  );
+  if (devices.length === 0) return [];
+  const priorities = getPrioritiesForUiFromApp(homey, devices.map((device) => device.id));
   return devices.map((device) => {
     const observed = getObservedStateForUiFromApp(homey, device.id);
     const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
@@ -309,7 +305,7 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
-      priority: priorities[device.id],
+      priority: priorities.getPriority(device.id),
     };
   });
 };

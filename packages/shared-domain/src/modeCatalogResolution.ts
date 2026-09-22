@@ -1,53 +1,12 @@
 /**
- * The one owner of what a mode says about the devices in a home: the order it
- * puts them in, and the setpoint it holds each temperature device at.
- *
- * Two questions, because callers genuinely ask two:
- *
- * - `rankModeDevices` — the mode's ORDER over a set of devices. Needs nothing
- *   but their ids and the stored ranks.
- * - `resolveModeTargets` — the mode's SETPOINT for the devices that have one.
- *   Needs each device's own setpoint, and whether PELS currently owes it one.
- *
- * Neither answer is ever partial. Every device handed to `rankModeDevices` comes
- * back with a unique, gap-free rank; every device handed to `resolveModeTargets`
- * comes back with a target. "The temperature if applicable" is expressed by WHICH
- * devices reach the second question — a device with no `target_temperature` axis
- * simply is not one of them — rather than by a null answer every consumer has to
- * branch on. Applicability is already resolved upstream (`isTemperaturePlanDevice`,
- * and the per-device temperature-control flag, which strips the target axis at
- * `projectTemperatureDeniedDevice`); this module does not re-derive it.
- *
- * Why one module rather than a convention: the gap-filling used to be re-derived
- * at every call site, and the copies disagreed. `resolveDevicePriority` answered
- * `100` for anything unranked, so two unranked devices tied — while
- * `rankActiveDevicePriorities`, one layer up in the same repo, resolved a strict
- * order for the same devices. Temperature was worse: nothing filled it on read at
- * all, so a device with no stored target was planned, shed, and left with no
- * setpoint to be restored to.
- *
- * Browser-safe and free of capability metadata: it takes numbers and returns
- * numbers. Normalizing a setpoint to a device's min/max/step is the binding
- * layer's job, done to the values it passes IN, so what comes back out is
- * already in the device's own terms.
+ * Resolves each temperature device's mode target before it reaches a consumer.
+ * Priority orders belong to settings/modePriorities; this module owns setpoints.
+ * Browser and runtime callers provide normalized held setpoints, so every answer
+ * is already in the device's own temperature terms.
  */
-import { rankActiveDevicePriorities } from './modePriorities';
-
 const finiteOrUndefined = (value: unknown): number | undefined => (
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 );
-
-/**
- * The mode's order over these devices: unique, gap-free `1..N`, lower wins.
- *
- * `priorityFor` is the STORED rank, untrusted — absent, duplicated and non-finite
- * entries all resolve into the strict order rather than out of it, which is what
- * makes a tie unrepresentable in the answer.
- */
-export const rankModeDevices = (
-  deviceIds: readonly string[],
-  priorityFor: (deviceId: string) => unknown,
-): Readonly<Record<string, number>> => rankActiveDevicePriorities(deviceIds, priorityFor);
 
 /**
  * A device that HAS a setpoint, and the setpoint PELS holds it at when the mode

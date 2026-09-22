@@ -34,6 +34,7 @@
 // plan through a live step-ladder gap (protections hold, `expectedStepId`
 // degrades to null, the cycle is marked `liveStepsUnavailable`), while a task
 // with no commitment to serve still resolves `unknown`.
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { describe, expect, it } from 'vitest';
 import {
@@ -268,6 +269,7 @@ const buildDiagnostic = (
   device: MeteredPlanInputDevice,
   activePlans: DeferredObjectiveActivePlansV1 | null,
 ): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
+  getPrioritiesForDevices: createFixturePriorityQuery([device]),
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
   nowMs,
   timeZone: 'UTC',

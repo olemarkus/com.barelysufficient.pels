@@ -1,3 +1,4 @@
+import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { PowerTrackerState } from '../../power/tracker';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
@@ -74,8 +75,8 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   // in the domain, rather than in the wiring layer that reads the settings:
   // `lib/power` owns the subtraction, and `setup/` answers no power question.
   getCapacitySettings: () => CapacitySettings;
-  /** Live priority from the user's current saved mode; runtime order is derived on read. */
-  getBasePriorityForDevice: (deviceId: string) => unknown;
+  /** Complete priority order from the current mode's catalog owner. */
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
@@ -171,7 +172,7 @@ export class DeferredObjectiveLifecycleEmitter {
       activePlans,
       sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
       priorityAllocationTracker: this.priorityAllocationTracker,
-      getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
+      getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
       resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       // Resolve the user-facing status to `satisfied` for parked/stalled devices
       // so the status chip, notifications, Flows (active-plan recorder) and the

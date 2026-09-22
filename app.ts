@@ -1,3 +1,4 @@
+import { ModePriorityCatalog } from './packages/shared-domain/src/settings/modePriorities';
 import Homey from 'homey';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
@@ -150,7 +151,18 @@ class PelsApp extends PelsAppBase implements AppContext {
   );
   public operatingMode = 'Home';
   public modeAliases: Record<string, string> = {};
-  public capacityPriorities: Record<string, Record<string, number>> = {};
+  public modePriorityCatalog = new ModePriorityCatalog();
+  public get capacityPriorities(): Record<string, Record<string, number>> {
+    return this.modePriorityCatalog.resolveHomeConfiguration(
+      this.managedDevices, this.modeDeviceTargets, this.operatingMode, MAIN_HOME_ID, this.context.homeMembership,
+    );
+  }
+  public set capacityPriorities(value: Record<string, Record<string, number>>) {
+    this.modePriorityCatalog = new ModePriorityCatalog(value);
+  }
+  public getPrioritiesForDevices = (deviceIds: readonly string[]) => (
+    this.modePriorityCatalog.getOrder(this.operatingMode, deviceIds)
+  );
   public modeDeviceTargets: Record<string, Record<string, number>> = {};
   public controllableDevices: Record<string, boolean> = {};
   public managedDevices: Record<string, boolean> = {};

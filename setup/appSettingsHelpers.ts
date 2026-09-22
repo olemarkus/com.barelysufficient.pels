@@ -18,7 +18,6 @@ import { createSettingsHandler } from '../lib/utils/settingsHandlers';
 import {
   isDeviceControlProfiles,
   isBooleanMap,
-  isPrioritySettings,
   isStringMap,
   normalizeEvBoostSettings,
   normalizeTemperatureBoostSettings,
@@ -32,7 +31,9 @@ import {
   type DeviceTargetPowerConfigsWithReachability,
   resolveValidTargetPowerReachability,
 } from '../lib/device/targetPowerReachability';
-import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
+import {
+  type ModePriorityCatalog, readModePriorityCatalog,
+} from '../packages/shared-domain/src/settings/modePriorities';
 import {
   isDeviceStartPolicyMap,
   type DeviceStartPolicy,
@@ -72,6 +73,7 @@ export type CapacitySettingsSnapshot = {
   modeAliases: Record<string, string>;
   operatingMode: string;
   capacityPriorities: Record<string, Record<string, number>>;
+  modePriorityCatalog: ModePriorityCatalog;
   modeDeviceTargets: Record<string, Record<string, number>>;
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
@@ -143,16 +145,14 @@ export function buildCapacitySettingsSnapshot(params: {
     )
     : current.modeAliases;
 
-  // Resolution-in-producer: the persisted payload may carry duplicate or gapped
-  // priorities, so normalize to a strict 1..N order here. Every runtime consumer
-  // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
-  // they all inherit the strict order without branching on stored shape.
+  // The key owner admits stored preferences once. Published snapshots are
+  // complete; planning/objective queries use the same opaque owner so a read
+  // never promotes a filled rank into a preference for a later device roster.
   // Resolve aliases against the mode records that actually survived a rename.
   // Do this before the active-mode read so a retained chain can skip a removed
   // intermediate name, while a name swap stops at its still-configured target.
-  const nextPriorities = normalizeModePriorities(
-    isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
-  );
+  const priorityCatalog = readModePriorityCatalog(priorities) ?? current.modePriorityCatalog;
+  const nextPriorities = priorityCatalog.resolve([], []);
   // Sanitize-and-keep, per the key's owner: a catalog carrying one malformed
   // mode is adopted with that mode emptied, not discarded in favour of the last
   // good snapshot. Only a blob that is not a catalog at all falls back.
@@ -178,7 +178,8 @@ export function buildCapacitySettingsSnapshot(params: {
     capacitySettings: current.capacitySettings,
     modeAliases: nextAliases,
     operatingMode: nextMode,
-    capacityPriorities: nextPriorities,
+    capacityPriorities: priorityCatalog.resolveConfiguration(deviceFlags.managedDevices, nextTargets, nextMode),
+    modePriorityCatalog: priorityCatalog,
     modeDeviceTargets: nextTargets,
     capacityDryRun: current.capacityDryRun,
     controllableDevices: deviceFlags.controllableDevices,

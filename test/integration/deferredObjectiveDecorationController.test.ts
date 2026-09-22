@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -29,6 +30,7 @@ describe('DeferredObjectiveDecorationController', () => {
       objectivesByDeviceId: {},
     } as const));
     const controller = new DeferredObjectiveDecorationController({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings,
       getTimeZone: () => 'UTC',
       getPowerTracker: buildPowerTracker,
@@ -44,6 +46,7 @@ describe('DeferredObjectiveDecorationController', () => {
 
   it('returns the identity bundle (devices untouched) when no settings provider is configured', () => {
     const controller = new DeferredObjectiveDecorationController({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],

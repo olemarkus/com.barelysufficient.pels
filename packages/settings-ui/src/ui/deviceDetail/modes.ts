@@ -1,3 +1,4 @@
+import { ModePriorityCatalog, readModePriorityCatalog } from '../../../../shared-domain/src/settings/modePriorities.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
@@ -23,10 +24,8 @@ import {
 } from '../../../../contracts/src/settingsKeys.ts';
 import { getSetting } from '../homey.ts';
 import { getHomeIdForUiDevice } from '../homeScope.ts';
-import { hasPlaceInOrder } from '../modePriorityPlace.ts';
 import {
   assertWritableModeDeviceTargets,
-  parseModeNumberMap,
   readModeDeviceTargetsSetting,
 } from '../modeCatalogMaps.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
@@ -40,7 +39,7 @@ const MODES_HELP_DISABLED = 'Saved target temperatures. '
 
 type DetailModeCatalog = {
   activeMode: string;
-  priorities: Record<string, Record<string, number>>;
+  priorities: ModePriorityCatalog;
   targets: Record<string, Record<string, number>>;
 };
 type DetailModeDraft = { current: DetailModeCatalog };
@@ -118,22 +117,19 @@ const persistPendingTargetPatches = (homeId: string): Promise<void> => {
 
 const getAllModes = (catalog: DetailModeCatalog) => {
   const modes = new Set([catalog.activeMode]);
-  Object.keys(catalog.priorities).forEach((mode) => modes.add(mode));
+  catalog.priorities.modes().forEach((mode) => modes.add(mode));
   Object.keys(catalog.targets).forEach((mode) => modes.add(mode));
   if (modes.size === 0) modes.add('Home');
   return Array.from(modes).sort();
 };
 
 const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, deviceId: string) => {
-  // The map only carries a rank once the owner has ordered devices for that mode
-  // (the Modes screen assigns 1..N). A device nobody placed has no entry; say so
-  // in words, and drop the "#" jargon on the real ranks.
-  //
-  // "Not set" alone hid the consequence: an unplaced device is not outside the
-  // order, it is at the END of it, so it is the first to be limited.
-  const priority = catalog.priorities[mode]?.[deviceId];
-  if (!hasPlaceInOrder(priority)) return 'Priority not set, so limited first';
-  return `Priority ${priority}`;
+  const homeId = getHomeIdForUiDevice(deviceId);
+  const deviceIds = state.latestDevices
+    .filter((entry) => state.managedMap[entry.id] === true && getHomeIdForUiDevice(entry.id) === homeId)
+    .map((entry) => entry.id);
+  const order = catalog.priorities.getOrder(mode, [...deviceIds, deviceId]);
+  return `Priority ${order.getPriority(deviceId)}`;
 };
 
 const getTargetInputValue = (
@@ -292,7 +288,9 @@ const loadDetailCatalog = async (homeId: string): Promise<DetailModeCatalog> => 
     getSetting(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
   ]);
   const allowAbsent = homeId === MAIN_HOME_ID;
-  const priorities = parseModeNumberMap(prioritiesRaw, allowAbsent);
+  const priorities = (prioritiesRaw === null || prioritiesRaw === undefined) && allowAbsent
+    ? new ModePriorityCatalog()
+    : readModePriorityCatalog(prioritiesRaw);
   const targets = readModeDeviceTargetsSetting(targetsRaw, allowAbsent);
   if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
   return {
@@ -337,7 +335,7 @@ export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
   if (state.loadedModeHomeId === homeId) {
     paintDetailCatalog({
       activeMode: state.activeMode,
-      priorities: state.capacityPriorities,
+      priorities: state.modePriorityCatalog,
       targets: state.modeTargets,
     }, device, homeId);
     return;

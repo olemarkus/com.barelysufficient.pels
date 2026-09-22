@@ -25,13 +25,12 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
-import { rankModeDevices } from '../../packages/shared-domain/src/modeCatalogResolution';
-import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
+import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
-  /** This home's stored priority source; absence must remain distinguishable from rank 100. */
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  /** This home's catalog owner returns a complete order for the planned set. */
+  getPrioritiesForDevices?: (deviceIds: readonly string[]) => ModePriorityOrder;
 };
 
 /**
@@ -114,28 +113,10 @@ export const buildHomePlanDevices = (
     .map((device) => toPlanDevice(ctx, device, options))
     .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));
   // The mode catalog owner puts the home's planned set in order: unique,
-  // gap-free, no ties (`packages/shared-domain/src/modeCatalogResolution.ts`).
-  const priorityByDeviceId = rankModeDevices(
-    devices.map((device) => device.id),
-    options?.getBasePriorityForDevice ?? ((deviceId) => (
-      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
-    )),
-  );
-  // A device with no rank is one PELS cannot order against its neighbours, so it
-  // drops out of the planned set and stays background usage. That is a broken
-  // producer contract, not an ordinary state -- but this runs once per meter
-  // reading, so it is logged and survived rather than thrown.
-  return devices.flatMap((device): PlanInputDevice[] => {
-    const priority = priorityByDeviceId[device.id];
-    if (priority === undefined) {
-      ctx.getStructuredLogger('plan')?.error({
-        event: 'plan_device_rank_missing',
-        homeId,
-        deviceId: device.id,
-        detail: 'rankModeDevices omitted the device; excluded from the planned set',
-      });
-      return [];
-    }
-    return [{ ...device, priority }];
-  });
+  // gap-free, no ties (`packages/shared-domain/src/settings/modePriorities.ts`).
+  const deviceIds = devices.map((device) => device.id);
+  const priorities = options?.getPrioritiesForDevices
+    ? options.getPrioritiesForDevices(deviceIds)
+    : ctx.getPrioritiesForDevices(deviceIds);
+  return devices.map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
 };

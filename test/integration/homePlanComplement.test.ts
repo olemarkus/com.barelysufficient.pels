@@ -9,6 +9,7 @@
 // - a pin-to-main device inside a sub-home zone included again.
 // Only outward seams are mocked: the membership service runs real over the
 // shared mock settings store; the pipeline runs the real sample ingest.
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { createTestPlanRebuildScheduler, unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -343,7 +344,9 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     });
 
     const devices = buildHomePlanDevices(ctx, SUB_HOME.homeId, {
-      getBasePriorityForDevice: (deviceId) => deviceId === 'device-sub' ? 4 : 8,
+      getPrioritiesForDevices: createFixturePriorityQuery([
+        { id: 'device-sub', priority: 4 }, { id: 'device-main', priority: 8 },
+      ]),
     });
 
     expect(devices.map(({ id, priority }) => ({ id, priority }))).toEqual([

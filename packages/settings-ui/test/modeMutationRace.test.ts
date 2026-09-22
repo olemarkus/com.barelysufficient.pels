@@ -2,6 +2,7 @@ import { createHomeyMock } from './helpers/homeyApiMock';
 
 const AREA_A = 'h_11111111';
 const AREA_B = 'h_22222222';
+const MEMBERSHIP: Record<string, string> = { 'device-a': AREA_A, 'device-two': AREA_A, 'device-b': AREA_B };
 
 let selectedHomeId = AREA_A;
 
@@ -25,8 +26,8 @@ const setupDom = (): void => {
 const install = async () => {
   vi.doMock('../src/ui/homeScope.ts', () => ({
     getHomeScope: () => ({ selectedHomeId }),
-    getHomeIdForUiDevice: () => selectedHomeId,
-    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId: {} }),
+    getHomeIdForUiDevice: (id: string) => MEMBERSHIP[id] ?? 'main',
+    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId: MEMBERSHIP }),
     subscribeToHomeScope: () => undefined,
   }));
   const homey = createHomeyMock({
@@ -45,6 +46,9 @@ const install = async () => {
   const { setHomeyClient } = await import('../src/ui/homey.ts');
   setHomeyClient(homey);
   const { state } = await import('../src/ui/state.ts');
+  const { homeScopeMembership } = await import('../src/ui/homeScopeMembership.ts');
+  homeScopeMembership.runtimeActive = true;
+  homeScopeMembership.membershipByDeviceId = MEMBERSHIP;
   state.loadedModeHomeId = AREA_A;
   state.activeMode = 'Home';
   state.editingMode = 'Home';
@@ -114,7 +118,7 @@ describe('mode mutations stay bound to their starting meter area', () => {
     if (!firstRow || !secondRow) throw new Error('priority rows not installed');
     firstRow.dataset.deviceId = 'device-two';
     secondRow.dataset.deviceId = 'device-a';
-    state.capacityPriorities.Home = { 'device-a': 1, 'device-two': 2 };
+    state.capacityPriorities = { ...state.capacityPriorities, Home: { 'device-a': 1, 'device-two': 2 } };
 
     let finishWrite!: () => void;
     homey.set.mockImplementation((_key, _value, callback) => {
@@ -145,6 +149,28 @@ describe('mode mutations stay bound to their starting meter area', () => {
     expect(state.capacityPriorities).toEqual({ Sleep: { 'device-b': 1 } });
   });
 
+  it('keeps a loaded Main catalog when a priority save encounters a transient missing read', async () => {
+    const { homey, state } = await install();
+    selectedHomeId = 'main';
+    state.loadedModeHomeId = 'main';
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    row.dataset.deviceId = 'device-main';
+    document.querySelector('#priority-list')?.replaceChildren(row);
+    state.capacityPriorities = {
+      Home: { 'device-main': 1 },
+      Away: { 'device-main': 1 },
+    };
+    const source = state.modePriorityCatalog;
+    homey.get.mockImplementation((_key, callback) => callback?.(null, null));
+    const { savePriorities } = await import('../src/ui/modes.ts');
+
+    await expect(savePriorities()).resolves.toEqual({ status: 'not-saved' });
+
+    expect(homey.set).not.toHaveBeenCalled();
+    expect(state.modePriorityCatalog).toBe(source);
+  });
+
   it('rebases queued mode-priority saves onto the latest persisted catalog', async () => {
     const { homey, state } = await install();
     const installRows = (deviceIds: readonly string[]): void => {
@@ -158,8 +184,8 @@ describe('mode mutations stay bound to their starting meter area', () => {
       );
     };
     installRows(['device-two', 'device-a']);
-    state.capacityPriorities.Home = { 'device-a': 1, 'device-two': 2 };
-    state.capacityPriorities.Away = { 'device-a': 1, 'device-two': 2 };
+    state.capacityPriorities = { ...state.capacityPriorities, Home: { 'device-a': 1, 'device-two': 2 } };
+    state.capacityPriorities = { ...state.capacityPriorities, Away: { 'device-a': 1, 'device-two': 2 } };
 
     let releaseFirstWrite!: () => void;
     let writeCount = 0;

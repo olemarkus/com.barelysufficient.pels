@@ -1,3 +1,4 @@
+import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacityLimitSettings } from '../../power/capacityModel';
@@ -54,7 +55,7 @@ export type PreviewDeferredObjectivePlanParams = {
   devices?: ObjectiveDeviceSource[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
@@ -125,7 +126,7 @@ export const previewDeferredObjectivePlan = (
       priceOptimizationEnabled: params.priceOptimizationEnabled,
       activePlans: params.activePlans ?? null,
       sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
-      getBasePriorityForDevice: params.getBasePriorityForDevice,
+      getPrioritiesForDevices: params.getPrioritiesForDevices,
       resolveDeviceExclusion: params.resolveDeviceExclusion,
       forceFreshDeviceId: params.deviceId,
     }).find((diagnostic) => diagnostic.deviceId === params.deviceId)

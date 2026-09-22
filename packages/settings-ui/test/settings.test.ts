@@ -1384,7 +1384,7 @@ describe('settings script', () => {
       // The configured active device remains rank 100 after normalizing the 99
       // stale entries. Newly managed devices have no entry and stay behind it.
       capacity_priorities: { Home: { ...stalePriorities, configured: 100 } },
-      mode_device_targets: { Home: {} },
+      mode_device_targets: { Home: {}, Eco: {} },
       managed_devices: { configured: true, 'z-new': true, 'a-new': true },
     });
 
@@ -1392,12 +1392,33 @@ describe('settings script', () => {
 
     const { renderPriorities } = await import('../src/ui/modes.ts');
     const { state } = await import('../src/ui/state.ts');
-    expect(state.capacityPriorities.Home.configured).toBe(100);
+    expect(state.capacityPriorities.Home['a-new']).toBeGreaterThan(state.capacityPriorities.Home.configured);
+    expect(state.capacityPriorities.Home['z-new']).toBeGreaterThan(state.capacityPriorities.Home['a-new']);
+    expect(state.capacityPriorities.Eco['configured']).toBeTypeOf('number');
+    expect(state.capacityPriorities.Eco['a-new']).toBeTypeOf('number');
+    expect(state.capacityPriorities.Eco['z-new']).toBeTypeOf('number');
     renderPriorities(state.latestDevices);
 
     const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .device-row'));
     expect(rows.map((row) => row.dataset.deviceId)).toEqual(['configured', 'a-new', 'z-new']);
     expect(rows.map((row) => row.querySelector('.priority-badge')?.textContent)).toEqual(['#1', '#2', '#3']);
+
+    // The detail surface reads the same compact home order, not retained rank 100.
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
+    const configured = state.latestDevices.find((device) => device.id === 'configured');
+    if (!configured) throw new Error('Configured fixture device missing');
+    renderDeviceDetailModes(configured);
+    const priorityLabel = (mode: string) => document.querySelector(
+      `#device-detail-modes [data-mode="${mode}"] .detail-mode-row__priority`,
+    )?.textContent;
+    expect(priorityLabel('Home')).toBe('Priority 1');
+    expect(priorityLabel('Eco')).toBe('Priority 2');
+
+    // A later device/mode arrival is complete before any rendering or user save.
+    state.managedMap['later'] = true;
+    state.modeTargets.Later = {};
+    expect(state.capacityPriorities.Home.later).toBeTypeOf('number');
+    expect(state.capacityPriorities.Later.later).toBeTypeOf('number');
   });
 
   it('renames a mode and updates settings', async () => {

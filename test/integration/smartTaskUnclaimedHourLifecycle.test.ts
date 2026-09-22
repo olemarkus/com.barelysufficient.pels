@@ -33,6 +33,7 @@
 // it heats it becomes coverable. Two hours are given a zero controlled share — one
 // on each side of that transition — so the same cause (no budget share) is observed
 // while the task is short and again once it is covered.
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
 import {
   normalizeDeferredObjectiveSettings,
@@ -250,6 +251,7 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
     const [diag] = buildDeferredObjectiveDiagnostics({
+      getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs,
       timeZone: 'UTC',

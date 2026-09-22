@@ -28,8 +28,7 @@ import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
-import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
-import { rankModeDevices } from '../../../shared-domain/src/modeCatalogResolution.ts';
+import { ModePriorityCatalog, readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { getHomeIdForUiDevice, getHomeScope } from './homeScope.ts';
@@ -50,7 +49,6 @@ import {
   readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
-import { notifySetupPathChange } from './setupPathFacts.ts';
 import {
   isPriorityContextCurrent,
   savePriorities,
@@ -107,14 +105,15 @@ const selectedModeSettingKey = (baseKey: string, homeId = getHomeScope().selecte
 );
 
 const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
-  const [priorities, targets] = readModeCatalogPair(read.priorities, read.targets, homeId === MAIN_HOME_ID);
+  const [, targets] = readModeCatalogPair(read.priorities, read.targets, homeId === MAIN_HOME_ID);
+  state.modePriorityCatalog = readModePriorityCatalog(read.priorities)
+    ?? (state.loadedModeHomeId === homeId ? state.modePriorityCatalog : new ModePriorityCatalog());
   state.loadedModeHomeId = homeId;
   if (modeSelect) modeSelect.disabled = false;
   state.activeMode = typeof read.mode === 'string' && read.mode.trim()
     ? read.mode
     : DEFAULT_MODE_NAME;
   state.editingMode = state.activeMode;
-  state.capacityPriorities = normalizeModePriorities(priorities);
   state.modeTargets = targets;
   state.controllableMap = readBooleanSettingMap(read.controllables);
   state.managedMap = readBooleanSettingMap(read.managed);
@@ -260,15 +259,9 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   }
   priorityEmpty.hidden = true;
 
-  // Ranked through the same owner the runtime asks, so the order shown here is
-  // the order PELS plans by — including for devices nobody has ranked yet, which
-  // the strict 1..N resolution orders deterministically rather than tying.
   const editingMode = state.editingMode || DEFAULT_MODE_NAME;
-  const ranks = rankModeDevices(
-    managedDevices.map(({ id }) => id),
-    (id) => state.capacityPriorities[editingMode]?.[id],
-  );
-  [...managedDevices].sort((a, b) => (ranks[a.id] ?? 0) - (ranks[b.id] ?? 0))
+  const order = state.modePriorityCatalog.getOrder(editingMode, managedDevices.map(({ id }) => id));
+  [...managedDevices].sort((a, b) => order.getPriority(a.id) - order.getPriority(b.id))
     .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
 
   initSortable();
@@ -343,7 +336,6 @@ const initSortable = () => {
       }
       if (!isPriorityContextCurrent(outcome.homeId, outcome.mode, outcome.deviceIds)) return;
       renderPriorities(state.latestDevices);
-      notifySetupPathChange();
     },
   });
 };

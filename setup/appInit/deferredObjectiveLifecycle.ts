@@ -1,5 +1,4 @@
 import type { AppContext } from '../../lib/app/appContext';
-import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
@@ -233,9 +232,7 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getCapacitySettings: () => ctx.capacitySettings,
-    getBasePriorityForDevice: (deviceId) => (
-      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
-    ),
+    getPrioritiesForDevices: (deviceIds) => ctx.getPrioritiesForDevices(deviceIds),
     // An excluded task's lifecycle diagnostics carry the dedicated code for
     // their exclusion (relocated → `objective_device_in_sub_home`, unmanaged →
     // `objective_device_unmanaged`), and the eligible-count denominator

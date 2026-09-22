@@ -6,11 +6,9 @@ import {
   isSetupStepOpen,
   resolveSetupPath,
   type SetupHardCap,
-  type SetupPathFacts,
   type SetupPathState,
   type SetupPowerReadings,
 } from './setupPathModel.ts';
-import { countUnplacedDevices } from './modePriorityPlace.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import { state } from './state.ts';
 
@@ -125,18 +123,6 @@ export type SetupPathRead =
   | { state: 'unavailable' }
   | SetupPathState;
 
-// `state.capacityPriorities` belongs to whichever home's mode catalog is
-// loaded. Setup configures the Main home, so anything else is `unknown`: the
-// catalog has not arrived yet, or a meter area's is on screen.
-const resolvePriorityOrder = (limitableIds: readonly string[]): SetupPathFacts['priorityOrder'] => {
-  if (state.loadedModeHomeId !== MAIN_HOME_ID) return { state: 'unknown' };
-  return {
-    state: 'known',
-    mode: state.activeMode,
-    unplacedCount: countUnplacedDevices(limitableIds, state.activeMode),
-  };
-};
-
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 export const readSetupPath = (): SetupPathRead => {
   const membership = readHomeMembership();
@@ -156,7 +142,6 @@ export const readSetupPath = (): SetupPathRead => {
     market,
     managedDeviceCount: managedIds.length,
     limitableDeviceCount: limitableIds.length,
-    priorityOrder: resolvePriorityOrder(limitableIds),
     simulating: state.dryRun,
   });
 };

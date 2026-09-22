@@ -1,3 +1,4 @@
+import type { ModePriorityCatalog, ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
@@ -264,6 +265,8 @@ export type AppContext = {
   set operatingMode(value: string);
   get modeAliases(): Record<string, string>;
   set modeAliases(value: Record<string, string>);
+  modePriorityCatalog: ModePriorityCatalog;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   get capacityPriorities(): Record<string, Record<string, number>>;
   set capacityPriorities(value: Record<string, Record<string, number>>);
   get modeDeviceTargets(): Record<string, Record<string, number>>;

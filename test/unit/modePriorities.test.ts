@@ -1,3 +1,4 @@
+import { ModePriorityCatalog, readModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import {
   normalizeModePriorities,
   normalizeModePriorityMap,
@@ -119,5 +120,61 @@ describe('rankActiveDevicePriorities', () => {
       ['heater', 'heater'],
       () => 100,
     )).toEqual({ heater: 1 });
+  });
+});
+
+
+describe('mode priority catalog boundary', () => {
+  it('does not invent a mode when reading an empty preference catalog for an edit', () => {
+    const catalog = readModePriorityCatalog({});
+    expect(catalog?.resolve([], [])).toEqual({});
+    expect(catalog?.resolveConfiguration({}, { Away: {} }, 'Away')).toEqual({ Away: {} });
+  });
+
+  it('fills new devices and target-only modes without changing the stored preference source', () => {
+    const catalog = new ModePriorityCatalog({ Home: { configured: 100 } });
+    expect(catalog.resolve(['configured', 'z-new'], ['Home', 'Eco'])).toEqual({
+      Home: { configured: 1, 'z-new': 2 },
+      Eco: { configured: 1, 'z-new': 2 },
+    });
+    // Reading first must not promote z-new into a preference over a device
+    // returning through the objective reservation grace roster later.
+    const order = catalog.getOrder('Home', ['z-new', 'a-returned', 'configured']);
+    expect(order.getPriority('configured')).toBe(1);
+    expect(order.getPriority('a-returned')).toBe(2);
+    expect(order.getPriority('z-new')).toBe(3);
+  });
+
+  it('ranks the current roster independently of retained ghosts and other homes', () => {
+    const catalog = new ModePriorityCatalog({ Home: { ghost: 1, otherHome: 2, heater: 100 } });
+    const snapshot = catalog.resolve(['new'], ['Home', 'Eco'], (id) => id !== 'otherHome');
+    expect(snapshot.Home).toEqual({ ghost: 1, heater: 2, new: 3 });
+    const order = catalog.getOrder('Home', ['heater', 'new']);
+    expect(order.getPriority('heater')).toBe(1);
+    expect(order.getPriority('new')).toBe(2);
+  });
+
+  it('completes managed and target-only configuration inside the owning home', () => {
+    const catalog = new ModePriorityCatalog({ Home: { heater: 3 } });
+    const managed = { heater: true, otherHome: true, disabled: false };
+    const targets = { Eco: { targetOnly: 21 } };
+    const membership = { getHomeIdForDevice: (id: string) => id === 'otherHome' ? 'area' : 'main' };
+    expect(catalog.resolveHomeConfiguration(managed, targets, 'Home', 'main', membership)).toEqual({
+      Home: { heater: 1, targetOnly: 2 },
+      Eco: { heater: 1, targetOnly: 2 },
+    });
+    expect(catalog.resolveHomeConfiguration(managed, targets, 'Home', 'area', membership)).toEqual({
+      Home: { otherHome: 1 }, Eco: { otherHome: 1 },
+    });
+  });
+
+  it('rejects a malformed external catalog without publishing a partial one', () => {
+    expect(readModePriorityCatalog({ Home: { heater: Number.NaN } })).toBeNull();
+    expect(readModePriorityCatalog({ Home: { heater: 1 }, Broken: null })).toBeNull();
+    expect(readModePriorityCatalog(null)).toBeNull();
+    expect(readModePriorityCatalog(new Date())).toBeNull();
+    expect(readModePriorityCatalog({ Home: new Date() })).toBeNull();
+    expect(readModePriorityCatalog({ Home: ['heater'] })).toBeNull();
+    expect(readModePriorityCatalog({ Home: { heater: 'first' } })).toBeNull();
   });
 });

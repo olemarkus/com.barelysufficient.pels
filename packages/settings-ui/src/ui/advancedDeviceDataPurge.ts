@@ -1,3 +1,4 @@
+import { readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { readTemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
@@ -206,16 +207,12 @@ const purgeModeCatalogDeviceIds = async (
     // guard on the way out — which would abort the purge, possibly after its
     // sibling writes had already landed.
     const targets = readModeDeviceTargetsSetting(targetsRaw, false);
-    if (
-      !prioritiesRaw
-      || typeof prioritiesRaw !== 'object'
-      || Array.isArray(prioritiesRaw)
-      || targets === null
-    ) return null;
+    const priorities = readModePriorityCatalog(prioritiesRaw);
+    if (priorities === null || targets === null) return null;
     return {
       prioritiesKey,
       targetsKey,
-      priorities: prioritiesRaw as Record<string, Record<string, number>>,
+      priorities: priorities.resolve([], Object.keys(targets)),
       targets,
     };
   }));
@@ -304,10 +301,7 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
     }))),
     Promise.all(homeIds.map(async (homeId) => ({
       homeId,
-      priorities: readReconciledRecordSetting(
-        await getSettingFresh(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId)),
-        homeId === state.loadedModeHomeId ? state.capacityPriorities : {},
-      ),
+      priorities: readModePriorityCatalog(await getSettingFresh(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId))),
       targets: readReconciledRecordSetting(
         await getSettingFresh(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
         homeId === state.loadedModeHomeId ? state.modeTargets : {},
@@ -317,7 +311,7 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
   simpleReads.forEach(({ binding, value }) => binding.apply(value));
   const loadedModes = modeReads.find(({ homeId }) => homeId === state.loadedModeHomeId);
   if (loadedModes) {
-    state.capacityPriorities = loadedModes.priorities;
+    if (loadedModes.priorities !== null) state.modePriorityCatalog = loadedModes.priorities;
     state.modeTargets = loadedModes.targets;
   }
 };

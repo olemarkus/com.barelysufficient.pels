@@ -7,7 +7,6 @@
 // device-priority formula.
 import { describe, expect, it } from 'vitest';
 import {
-  resolveConfiguredDevicePriority,
   resolveHomeOperatingMode,
   resolveModeName,
 } from '../../lib/utils/capacityHelpers';
@@ -166,30 +165,5 @@ describe('resolveHomeOperatingMode', () => {
       source: 'global',
       fault: { requestedMode: 'cooler', reason: 'unconfigured_mode' },
     });
-  });
-});
-
-describe('resolveConfiguredDevicePriority', () => {
-  const priorities = {
-    Home: { 'dev-1': 1, 'dev-2': 5 },
-    Cooler: { 'dev-1': 7 },
-  };
-
-  it('reads the stored rank for the given mode', () => {
-    expect(resolveConfiguredDevicePriority(priorities, 'Home', 'dev-1')).toBe(1);
-    expect(resolveConfiguredDevicePriority(priorities, 'Cooler', 'dev-1')).toBe(7);
-  });
-
-  it('reports an unranked device as absent, not as a low rank', () => {
-    // The `?? 100` default this used to carry gave every unranked device the
-    // same rank. Ranking is the mode catalog owner's job, over a whole set
-    // (`packages/shared-domain/src/modeCatalogResolution.ts`); absence here has
-    // to stay distinguishable for it to break the tie deterministically.
-    expect(resolveConfiguredDevicePriority(priorities, 'Cooler', 'dev-2')).toBeUndefined();
-    expect(resolveConfiguredDevicePriority(priorities, 'Ghost', 'dev-1')).toBeUndefined();
-  });
-
-  it("falls into the historical 'Home' bucket for an empty mode (main's formula)", () => {
-    expect(resolveConfiguredDevicePriority(priorities, '', 'dev-2')).toBe(5);
   });
 });

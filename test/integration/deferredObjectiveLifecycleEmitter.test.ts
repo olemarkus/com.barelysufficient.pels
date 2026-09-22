@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -69,7 +70,7 @@ const buildDeps = (
   getPriceOptimizationEnabled: () => false,
   getDeferredObjectiveActivePlans: () => null,
   getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
-  getBasePriorityForDevice: () => 100,
+  getPrioritiesForDevices: createFixturePriorityQuery(),
   ...overrides,
 });
 

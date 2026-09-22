@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 // Integration coverage for the multi-home v1 smart-task scope gate
 // (`device_in_sub_home` / `objective_device_in_sub_home`):
 // - the device-scoped write op refuses an UPSERT for a sub-home device with the
@@ -232,6 +233,7 @@ const buildDiagnosticsParams = (overrides: {
   nowMs: NOW_MS,
   timeZone: 'UTC',
   devices: overrides.devices,
+  getPrioritiesForDevices: createFixturePriorityQuery(overrides.devices),
   settings: normalizeDeferredObjectiveSettings({
     version: 1,
     objectivesByDeviceId: { 'heater-sub': heaterEntry },
@@ -790,6 +792,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
     );
     const controller = new DeferredObjectiveDecorationController({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
         version: 1,
         objectivesByDeviceId: { 'heater-sub': heaterEntry },

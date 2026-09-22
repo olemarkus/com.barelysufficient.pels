@@ -1,3 +1,5 @@
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -202,6 +204,8 @@ const buildBuilder = (
   const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0, periodMinutes: 60 };
   const deferredController = new DeferredObjectiveDecorationController({
+    getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
+      .getOrder(overrides.modeRef?.current ?? 'Home', deviceIds),
     getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTrackerRef.current,
@@ -346,6 +350,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
     const deferredController = new DeferredObjectiveDecorationController({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => buildSettings(),
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTrackerRef.current,
@@ -597,6 +602,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
 
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const deferredController = new DeferredObjectiveDecorationController({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => ({
         version: 1,
         objectivesByDeviceId: {

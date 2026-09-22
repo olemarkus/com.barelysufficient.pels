@@ -1,3 +1,4 @@
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createInertPlanRebuildThrottle } from '../helpers/powerRebuildScheduler';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -35,6 +36,7 @@ const buildCapacitySnapshot = (
   modeAliases: {},
   operatingMode: 'Home',
   capacityPriorities: {},
+  modePriorityCatalog: new ModePriorityCatalog(overrides.capacityPriorities),
   modeDeviceTargets: {},
   capacityDryRun: false,
   controllableDevices: {},
@@ -507,7 +509,7 @@ describe('buildCapacitySettingsSnapshot', () => {
       get: vi.fn((key: string) => (
         key === 'capacity_priorities'
           ? { Home: { b: 5, a: 5, c: 9, d: 1 } }
-          : undefined
+          : ({ managed_devices: { new: true }, mode_device_targets: { Eco: {} } } as Record<string, unknown>)[key]
       )),
     };
 
@@ -517,7 +519,10 @@ describe('buildCapacitySettingsSnapshot', () => {
     });
 
     // Strict 1..N order; ties (a/b) break by deviceId; gaps closed.
-    expect(next.capacityPriorities).toEqual({ Home: { d: 1, a: 2, b: 3, c: 4 } });
+    expect(next.capacityPriorities).toEqual({
+      Home: { d: 1, a: 2, b: 3, c: 4, new: 5 },
+      Eco: { a: 1, b: 2, c: 3, d: 4, new: 5 },
+    });
     const ranks = Object.values(next.capacityPriorities.Home);
     expect(new Set(ranks).size).toBe(ranks.length);
   });

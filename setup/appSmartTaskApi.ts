@@ -10,7 +10,6 @@ import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
-import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolution';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import {
   hasOpenDeferredObjective,
@@ -42,7 +41,6 @@ import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjecti
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
 import { getLogger } from '../lib/logging/logger';
-import { resolveConfiguredDevicePriority } from '../lib/utils/capacityHelpers';
 
 const logger = getLogger('setup/smart-task-api');
 
@@ -357,13 +355,10 @@ export class AppSmartTaskApi {
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
-    const previewPriorityByDeviceId = rankModeDevices(
-      previewDevices.map((device) => device.id),
-      (id) => resolveConfiguredDevicePriority(this.ctx.capacityPriorities, this.ctx.operatingMode, id),
-    );
+    const previewPriorities = this.ctx.getPrioritiesForDevices(previewDevices.map((device) => device.id));
     const devices = previewDevices.map((device) => ({
       ...device,
-      priority: previewPriorityByDeviceId[device.id],
+      priority: previewPriorities.getPriority(device.id),
     }));
     const previewDevice = devices.find((device) => device.id === deviceId);
     return previewDeferredObjectivePlan({
@@ -380,11 +375,7 @@ export class AppSmartTaskApi {
       devices,
       settings: roster.settings,
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
-      getBasePriorityForDevice: (id) => resolveConfiguredDevicePriority(
-        this.ctx.capacityPriorities,
-        this.ctx.operatingMode,
-        id,
-      ),
+      getPrioritiesForDevices: (deviceIds) => this.ctx.getPrioritiesForDevices(deviceIds),
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
       powerTracker: this.ctx.powerTracker,
       dailyBudgetSnapshot,

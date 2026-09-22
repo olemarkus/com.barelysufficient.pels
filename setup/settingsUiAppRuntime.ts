@@ -26,7 +26,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
-import { DEFAULT_MODE_NAME } from '../packages/shared-domain/src/modeLabels';
+import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart
 // window and keep the panel in a bounded loading/retry state instead of
@@ -43,8 +43,7 @@ const appNotReadyError = (capability: string): Error => (
 type SettingsUiRuntimeApp = Homey.App & {
   /** Every home's live status (`AppContext.planStatuses`). */
   planStatuses?: AppContext['planStatuses'];
-  operatingMode?: string;
-  capacityPriorities?: Record<string, Record<string, number>>;
+  getPrioritiesForDevices?: AppContext['getPrioritiesForDevices'];
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: {
@@ -153,26 +152,15 @@ const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null =
   return app && typeof app === 'object' ? app : null;
 };
 
-/**
- * The stored mode catalog the device payload ranks against. Falls back to an
- * empty catalog with the default mode: the owner ranks a device with no stored
- * entry deterministically anyway, so an unreadable catalog costs the owner's
- * PREFERRED order, never the strictness of the order.
- */
-export const getModeCatalogForUiFromApp = (homey: Homey.App['homey']): {
-  operatingMode: string;
-  priorities: Record<string, Record<string, number>>;
-} => {
+/** The app's priority owner resolves the payload roster before it crosses the UI API. */
+export const getPrioritiesForUiFromApp = (
+  homey: Homey.App['homey'],
+  deviceIds: readonly string[],
+): ModePriorityOrder => {
   const app = getRuntimeApp(homey);
-  return {
-    operatingMode: typeof app?.operatingMode === 'string' ? app.operatingMode : DEFAULT_MODE_NAME,
-    priorities: isNestedNumberMap(app?.capacityPriorities) ? app.capacityPriorities : {},
-  };
+  if (typeof app?.getPrioritiesForDevices !== 'function') throw appNotReadyError('mode priorities');
+  return app.getPrioritiesForDevices(deviceIds);
 };
-
-const isNestedNumberMap = (value: unknown): value is Record<string, Record<string, number>> => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
 
 export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] | null => {
   const app = getRuntimeApp(homey);

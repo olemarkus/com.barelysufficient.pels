@@ -1,3 +1,4 @@
+import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { CAPACITY_PRIORITIES, MAIN_HOME_ID, homeScopedSettingsKey } from '../../../contracts/src/settingsKeys.ts';
 import { resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { priorityList } from './dom.ts';
@@ -63,18 +64,22 @@ export const savePriorities = async (): Promise<PrioritySaveOutcome> => {
   if (shown.status === 'invalid') return NOT_SAVED;
   const { deviceIds } = shown;
   const priorityUpdates = Object.fromEntries(deviceIds.map((deviceId, index) => [deviceId, index + 1]));
+  let savedCatalog = state.modePriorityCatalog;
   try {
     await serializeModeCatalogWrite(homeId, async () => {
       const key = homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId);
-      const latest = classifyModeNumberMap(await getSetting(key), homeId === MAIN_HOME_ID);
+      const allowAbsent = homeId === MAIN_HOME_ID && savedCatalog.modes().length === 0;
+      const latest = classifyModeNumberMap(await getSetting(key), allowAbsent);
       if (latest.state === 'unavailable') throw new Error('Priority catalog unavailable');
-      await setSetting(key, {
+      const priorities = {
         ...latest.value,
         [mode]: {
           ...(latest.value[mode] ?? {}),
           ...priorityUpdates,
         },
-      });
+      };
+      await setSetting(key, priorities);
+      savedCatalog = new ModePriorityCatalog(priorities);
     });
   } catch (error) {
     await logSettingsError('Failed to save priorities', error, 'savePriorities');
@@ -85,13 +90,7 @@ export const savePriorities = async (): Promise<PrioritySaveOutcome> => {
     status: 'saved', homeId, mode, deviceIds,
   };
   if (!isPriorityContextCurrent(homeId, mode, deviceIds)) return outcome;
-  state.capacityPriorities = {
-    ...state.capacityPriorities,
-    [mode]: {
-      ...(state.capacityPriorities[mode] ?? {}),
-      ...priorityUpdates,
-    },
-  };
+  state.modePriorityCatalog = savedCatalog;
   void showToast(`Priorities saved for ${mode}.`, 'ok');
   return outcome;
 };

@@ -9,6 +9,8 @@
 //   to restore — the objective was never touched;
 // - the wiring predicate answers on the OWNER's explicit opt-out only, so a
 //   device that left Homey still reports honestly as missing.
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { describe, expect, it, vi } from 'vitest';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
 import type { AppContext } from '../../lib/app/appContext';
@@ -18,6 +20,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
+  ELIGIBILITY_ABANDON_GRACE_MS,
   orderDeferredObjectives,
   PriorityAllocationTracker,
 } from '../../lib/objectives/deferredObjectives/priorityAllocation';
@@ -88,6 +91,7 @@ const buildDiagnosticsParams = (overrides: {
   nowMs: NOW_MS,
   timeZone: 'UTC',
   devices: overrides.devices,
+  getPrioritiesForDevices: createFixturePriorityQuery(overrides.devices),
   settings: normalizeDeferredObjectiveSettings({
     version: 1,
     objectivesByDeviceId: Object.fromEntries(
@@ -149,6 +153,35 @@ describe('smart task on an un-managed device', () => {
     expect(diagnostics[0].reasonCode).not.toBe('objective_missing_device');
   });
 
+  it('keeps an automatically ordered missing task ahead of a compacted survivor during grace', () => {
+    const catalog = new ModePriorityCatalog();
+    const missing = buildHeaterDevice('a-missing');
+    const survivor = { ...buildHeaterDevice('z-survivor'), priority: 1 };
+    const tracker = new PriorityAllocationTracker();
+    tracker.observe({ devices: [missing, survivor], nowMs: NOW_MS });
+    tracker.observe({ devices: [survivor], nowMs: NOW_MS + 30_000 });
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: { [missing.id]: heaterEntry, [survivor.id]: heaterEntry },
+    });
+    const orderAt = (nowMs: number) => orderDeferredObjectives({
+      settings,
+      deviceById: new Map([[survivor.id, survivor]]),
+      tracker,
+      nowMs,
+      getPrioritiesForDevices: (deviceIds) => catalog.getOrder('Home', deviceIds),
+    }).map(({ deviceId, priority, reservationEligible }) => ({ deviceId, priority, reservationEligible }));
+
+    expect(orderAt(NOW_MS + 30_000)).toEqual([
+      { deviceId: 'a-missing', priority: 1, reservationEligible: true },
+      { deviceId: 'z-survivor', priority: 2, reservationEligible: true },
+    ]);
+    expect(orderAt(NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS + 30_001)).toEqual([
+      { deviceId: 'z-survivor', priority: 1, reservationEligible: true },
+      { deviceId: 'a-missing', priority: 2, reservationEligible: false },
+    ]);
+  });
+
   it('takes no allocation share while paused, so a sibling task is not under-booked', () => {
     const tracker = new PriorityAllocationTracker();
     const running = buildHeaterDevice('heater-running');
@@ -158,6 +191,7 @@ describe('smart task on an un-managed device', () => {
     // it is purged from the roster outright instead of holding its share
     // through the missing-device grace window.
     const ordered = orderDeferredObjectives({
+      getPrioritiesForDevices: createFixturePriorityQuery(),
       settings: normalizeDeferredObjectiveSettings({
         version: 1,
         objectivesByDeviceId: { 'heater-1': heaterEntry, 'heater-running': heaterEntry },

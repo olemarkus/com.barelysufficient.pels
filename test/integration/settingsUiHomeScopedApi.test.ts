@@ -13,6 +13,7 @@
 //  2. a REFUSED `homeId` performs no settings read and no scoped-key build.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   getSettingsUiDevicesPayload,
@@ -88,6 +89,7 @@ const createMembershipPort = (options: {
 
 // The app surfaces the three endpoints consume, typed against the real ports.
 type ScopedApiApp = {
+  getPrioritiesForDevices: ReturnType<typeof createFixturePriorityQuery>;
   settingsUiDeviceReads: SettingsUiDeviceReads;
   latestTargetSnapshot: Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
@@ -140,6 +142,7 @@ const installBoundary = (options: {
     readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
   });
   const app: ScopedApiApp = {
+    getPrioritiesForDevices: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [
       { id: 'dev-main', name: 'Main heater', deviceClass: 'heater' },

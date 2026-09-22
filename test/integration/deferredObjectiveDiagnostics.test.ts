@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
 import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
 import {
@@ -378,11 +379,13 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
 // Wrapper: inject the price-layer `combinedPrices` derived from the same snapshot
 // the test already supplies, so existing budget-overlay assertions stay intact.
 const buildDeferredObjectiveDiagnostics = (
-  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon'>,
+  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon' | 'getPrioritiesForDevices'>
+    & Partial<Pick<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'getPrioritiesForDevices'>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => {
   const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
   return buildDeferredObjectiveDiagnosticsRaw({
     ...params,
+    getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs),
   });
 };
@@ -1235,7 +1238,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       sustainableRateKw: 1.5,
       priorityAllocationTracker: tracker,
-      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+      getPrioritiesForDevices: createFixturePriorityQuery([
+        { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
+      ]),
     });
     const lowDiagnostic = diagnostics.find((diagnostic) => diagnostic.deviceId === 'a-low');
     const lowHours = lowDiagnostic
@@ -1266,7 +1271,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       sustainableRateKw: 1.5,
       priorityAllocationTracker: tracker,
-      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+      getPrioritiesForDevices: createFixturePriorityQuery([
+        { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
+      ]),
     });
     const releasedLow = afterGrace.find((diagnostic) => diagnostic.deviceId === 'a-low');
     const releasedLowHours = releasedLow

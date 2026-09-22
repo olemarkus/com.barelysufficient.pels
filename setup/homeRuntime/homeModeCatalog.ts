@@ -24,25 +24,27 @@ import {
   type HomeId,
 } from '../../lib/utils/settingsKeys';
 import {
-  resolveConfiguredDevicePriority,
   resolveModeName,
 } from '../../lib/utils/capacityHelpers';
 import {
-  isPrioritySettings,
   isStringMap,
 } from '../../lib/utils/appTypeGuards';
-import { normalizeModePriorities } from '../../packages/shared-domain/src/modePriorities';
+import {
+  ModePriorityCatalog, readModePriorityCatalog, type ModePriorityOrder,
+} from '../../packages/shared-domain/src/settings/modePriorities';
 import { sanitizeModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
 
 export type HomeModeCatalogSnapshot = {
   operatingMode: string;
   aliases: Record<string, string>;
   priorities: Record<string, Record<string, number>>;
+  modePriorityCatalog: ModePriorityCatalog;
   targets: Record<string, Record<string, number>>;
 };
 
 export type HomeModeCatalog = {
   getSnapshot: () => HomeModeCatalogSnapshot;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   isInitialized: () => boolean;
   reload: (allowPendingOwnershipGeneration?: boolean) => void;
 };
@@ -63,7 +65,10 @@ const cloneNestedNumberMap = (
 const mainSnapshot = (ctx: AppContext): HomeModeCatalogSnapshot => ({
   operatingMode: ctx.operatingMode,
   aliases: { ...ctx.modeAliases },
-  priorities: cloneNestedNumberMap(ctx.capacityPriorities),
+  priorities: ctx.modePriorityCatalog.resolveConfiguration(
+    ctx.managedDevices, ctx.modeDeviceTargets, ctx.operatingMode,
+  ),
+  modePriorityCatalog: ctx.modePriorityCatalog,
   targets: cloneNestedNumberMap(ctx.modeDeviceTargets),
 });
 
@@ -99,7 +104,7 @@ const configuredModes = (snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode'
 
 const removeModeShadowingAliases = (
   aliases: Record<string, string>,
-  snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases'>,
+  snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'modePriorityCatalog'>,
 ): Record<string, string> => {
   const modeByLowerName = new Map(
     [...Object.keys(snapshot.priorities), ...Object.keys(snapshot.targets)]
@@ -175,18 +180,22 @@ const readCatalog = (
   );
   if (modeRead.state === 'unavailable') return null;
   const targets = sanitizeModeDeviceTargets(targetsRaw);
-  if (!isStringMap(aliasesRaw) || !isPrioritySettings(prioritiesRaw) || targets === null) {
+  const modePriorityCatalog = readModePriorityCatalog(prioritiesRaw);
+  if (!isStringMap(aliasesRaw) || modePriorityCatalog === null || targets === null) {
     return null;
   }
   const catalog = {
     aliases: normalizeAliases(aliasesRaw),
-    priorities: normalizeModePriorities(prioritiesRaw),
+    priorities: modePriorityCatalog.resolve([], []),
+    modePriorityCatalog,
     // Already sanitized by the owner of this key, so the clone copies rather than repairs.
     targets: cloneNestedNumberMap(targets),
   };
+  const operatingMode = resolveActiveMode(modeRead.value, DEFAULT_MODE, catalog);
   return {
     ...catalog,
-    operatingMode: resolveActiveMode(modeRead.value, DEFAULT_MODE, catalog),
+    operatingMode,
+    priorities: modePriorityCatalog.resolveConfiguration({}, targets, operatingMode),
   };
 };
 
@@ -207,13 +216,14 @@ const writeInitialCatalog = (
   const ownsDevice = (deviceId: string): boolean => (
     membership ? membership.getHomeIdForDevice(deviceId) === homeId : true
   );
-  const priorities = normalizeModePriorities(ensureDefaultMode(
-      filterDeviceEntries(main.priorities, ownsDevice),
-  ));
+  const priorities = new ModePriorityCatalog(filterDeviceEntries(main.priorities, ownsDevice)).resolveHomeConfiguration(
+    ctx.managedDevices, main.targets, DEFAULT_MODE, homeId, membership,
+  );
   const targets = ensureDefaultMode(filterDeviceEntries(main.targets, ownsDevice));
   const catalog = {
     aliases: removeModeShadowingAliases(main.aliases, { priorities, targets }),
     priorities,
+    modePriorityCatalog: new ModePriorityCatalog(priorities),
     targets,
   };
   const existingMode = readOptionalSetting(
@@ -306,16 +316,19 @@ export const createHomeModeCatalog = (ctx: AppContext, homeId: HomeId): HomeMode
     // The legacy Main snapshot remains the safe compatibility fallback.
   }
   return {
-    getSnapshot: () => lastGood,
+    getSnapshot: () => ({
+      ...lastGood,
+      priorities: lastGood.modePriorityCatalog.resolveHomeConfiguration(
+        ctx.managedDevices, lastGood.targets, lastGood.operatingMode, homeId, ctx.homeMembership,
+      ),
+    }),
+    getPrioritiesForDevices: (deviceIds) => (
+      lastGood.modePriorityCatalog.getOrder(lastGood.operatingMode, deviceIds)
+    ),
     isInitialized: () => initialized,
     reload,
   };
 };
-
-export const getConfiguredPriorityFromHomeModeCatalog = (
-  catalog: HomeModeCatalogSnapshot,
-  deviceId: string,
-): number | undefined => resolveConfiguredDevicePriority(catalog.priorities, catalog.operatingMode, deviceId);
 
 // Declared with the component that produces the moves and consumes the result
 // (`lib/home/modeOwnershipTransfer.ts`); re-exported for existing import sites.
@@ -409,7 +422,15 @@ export const readPersistedHomeModeCatalog = (
     if (initializationState === 'unavailable') return { state: 'unavailable' };
     if (initializationState === 'legacy') return { state: 'legacy' };
     const snapshot = readCatalog(ctx.homey.settings, homeId);
-    return snapshot === null ? { state: 'unavailable' } : { state: 'resolved', snapshot };
+    return snapshot === null ? { state: 'unavailable' } : {
+      state: 'resolved',
+      snapshot: {
+        ...snapshot,
+        priorities: snapshot.modePriorityCatalog.resolveHomeConfiguration(
+          ctx.managedDevices, snapshot.targets, snapshot.operatingMode, homeId, ctx.homeMembership,
+        ),
+      },
+    };
   } catch {
     return { state: 'unavailable' };
   }

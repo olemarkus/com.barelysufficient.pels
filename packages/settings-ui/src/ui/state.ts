@@ -1,3 +1,5 @@
+import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
+import { uiHomeMembership } from './homeScopeMembership.ts';
 import type { DeviceStartPolicy } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import type { TemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import type {
@@ -59,6 +61,7 @@ export type UiState = {
   // settings page, whose own toggle is the single control there.
   activePanel: string;
   capacityPriorities: Record<string, Record<string, number>>;
+  modePriorityCatalog: ModePriorityCatalog;
   // The home whose complete mode catalog currently backs the shared mode maps.
   // `null` while a scope change is loading, so no consumer can mistake stale
   // maps for the newly selected area's catalog.
@@ -153,7 +156,13 @@ export const state: UiState = {
   devicesLoading: false,
   dryRun: false,
   activePanel: 'overview',
-  capacityPriorities: {},
+  modePriorityCatalog: new ModePriorityCatalog(),
+  get capacityPriorities() {
+    return this.modePriorityCatalog.resolveHomeConfiguration(
+      this.managedMap, this.modeTargets, this.activeMode, this.loadedModeHomeId ?? 'main', uiHomeMembership,
+    );
+  },
+  set capacityPriorities(value) { this.modePriorityCatalog = new ModePriorityCatalog(value); },
   loadedModeHomeId: null,
   activeMode: DEFAULT_MODE_NAME,
   editingMode: DEFAULT_MODE_NAME,

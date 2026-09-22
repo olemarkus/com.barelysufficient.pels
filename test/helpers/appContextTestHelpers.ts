@@ -1,3 +1,4 @@
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
@@ -118,7 +119,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let capacityDryRun = false;
   let operatingMode = 'Home';
   let modeAliases: Record<string, string> = {};
-  let capacityPriorities: Record<string, Record<string, number>> = {};
+  let modePriorityCatalog = new ModePriorityCatalog();
   let modeDeviceTargets: Record<string, Record<string, number>> = {};
   let controllableDevices: Record<string, boolean> = {};
   let managedDevices: Record<string, boolean> = {};
@@ -323,8 +324,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set operatingMode(value) { operatingMode = value; },
     get modeAliases() { return modeAliases; },
     set modeAliases(value) { modeAliases = value; },
-    get capacityPriorities() { return capacityPriorities; },
-    set capacityPriorities(value) { capacityPriorities = value; },
+    get modePriorityCatalog() { return modePriorityCatalog; },
+    set modePriorityCatalog(value) { modePriorityCatalog = value; },
+    getPrioritiesForDevices: (deviceIds) => modePriorityCatalog.getOrder(operatingMode, deviceIds),
+    get capacityPriorities() {
+      return modePriorityCatalog.resolveConfiguration(managedDevices, modeDeviceTargets, operatingMode);
+    },
+    set capacityPriorities(value) { modePriorityCatalog = new ModePriorityCatalog(value); },
     get modeDeviceTargets() { return modeDeviceTargets; },
     set modeDeviceTargets(value) { modeDeviceTargets = value; },
     get controllableDevices() { return controllableDevices; },

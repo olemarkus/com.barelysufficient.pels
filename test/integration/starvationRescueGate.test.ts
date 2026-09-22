@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -196,6 +197,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
+    getPrioritiesForDevices: createFixturePriorityQuery(),
     getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),

@@ -41,14 +41,6 @@ export function isNumberMap(value: unknown): value is Record<string, number> {
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && isFiniteNumber(entry));
 }
 
-export function isPrioritySettings(value: unknown): value is Record<string, Record<string, number>> {
-  if (!isPlainObjectRecord(value)) return false;
-  return Object.values(value).every((mode) => {
-    if (!isPlainObjectRecord(mode)) return false;
-    return Object.values(mode).every((entry) => isFiniteNumber(entry));
-  });
-}
-
 export function isDeviceControlProfiles(value: unknown): value is DeviceControlProfiles {
   if (!value || typeof value !== 'object') return false;
   const normalized = normalizeDeviceControlProfiles(value);

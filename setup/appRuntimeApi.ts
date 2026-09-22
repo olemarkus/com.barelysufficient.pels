@@ -369,6 +369,7 @@ abstract class AppRuntimeApi extends Base {
         modeAliases: this.context.modeAliases,
         operatingMode: this.context.operatingMode,
         capacityPriorities: this.context.capacityPriorities,
+        modePriorityCatalog: this.context.modePriorityCatalog,
         modeDeviceTargets: this.context.modeDeviceTargets,
         capacityDryRun,
         controllableDevices: this.context.controllableDevices,

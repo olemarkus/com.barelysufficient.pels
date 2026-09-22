@@ -773,13 +773,16 @@ export default tseslint.config(
   // constructed here: its
   // SDK-backed port is classified by the lib/power owner, while setup receives
   // only the already-owned component. Public/runtime behavior now lives behind
-  // AppHostApi and AppRuntimeApi; this exact-current 33 ceiling is the single
-  // backend exception over 20.
+  // AppHostApi and AppRuntimeApi. Raised 33 -> 34 for ModePriorityCatalog:
+  // device/UI reads need its complete-order query from field initialization,
+  // before settings and device discovery finish; its immutable preference source
+  // is replaced by admitted reads. Setup must not hold this state. This
+  // exact-current 34 ceiling is the single backend exception over 20.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 33, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 34, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

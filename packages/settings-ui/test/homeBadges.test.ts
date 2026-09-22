@@ -639,7 +639,7 @@ describe('modes list meter-area filtering', () => {
 
     expect(empty.hidden).toBe(false);
     expect(empty.textContent).toBe(
-      'No managed devices. Turn on Managed for a device under Devices to set its priority here.',
+      'No managed devices. Turn on Managed for a device under Devices to see it here.',
     );
   });
 

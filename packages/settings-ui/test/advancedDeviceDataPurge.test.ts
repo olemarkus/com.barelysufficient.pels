@@ -97,11 +97,15 @@ describe('advanced device data purge', () => {
     expect(state.evBoostSettings).toEqual({ [KEEP_ID]: { enabled: true } });
     expect(state.priceOptimizationSettings).toEqual({ [KEEP_ID]: PRICE_CONFIG });
     expect(state.temperatureControlDisabledMap).toEqual(perDeviceMap(true));
-    expect(state.capacityPriorities).toEqual({ Home: { [KEEP_ID]: 2 } });
+    // The persisted preference was removed, but a transient managed-map read
+    // must retain the live device and give it a resolved rank until retry succeeds.
+    expect(homey.__settingsStore[CAPACITY_PRIORITIES]).toEqual({ Home: { [KEEP_ID]: 2 } });
+    expect(state.capacityPriorities).toEqual({ Home: { [KEEP_ID]: 1, [DEVICE_ID]: 2 } });
     expect(state.modeTargets).toEqual({ Home: { [KEEP_ID]: 21 } });
 
     await clearMultipleDeviceSettings([DEVICE_ID]);
     expect(state.managedMap).toEqual({ [KEEP_ID]: true });
+    expect(state.capacityPriorities).toEqual({ Home: { [KEEP_ID]: 1 } });
     expect(state.temperatureControlDisabledMap).toEqual({ [KEEP_ID]: true });
     expect(homey.__settingsStore[TEMPERATURE_CONTROL_DISABLED_DEVICES]).toEqual({ [KEEP_ID]: true });
   });

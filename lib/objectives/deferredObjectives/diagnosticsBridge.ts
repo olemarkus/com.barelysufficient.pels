@@ -1,3 +1,4 @@
+import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { PowerTrackerState } from '../../power/tracker';
 import type {
   DeferredObjectiveEnergyResolution,
@@ -98,7 +99,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   priorityAllocationTracker?: PriorityAllocationTracker;
   // Current mode-catalog priority producer. The batch allocator projects its
   // complete visible-plus-grace roster to unique relative ranks on every read.
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   // Preview-only override: solve the candidate fresh while allowing tasks
   // ahead of it to keep their settled commitments.
   forceFreshDeviceId?: string;
@@ -131,7 +132,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
     tracker: params.priorityAllocationTracker,
     activePlans: params.activePlans,
     nowMs: params.nowMs,
-    getBasePriorityForDevice: params.getBasePriorityForDevice,
+    getPrioritiesForDevices: params.getPrioritiesForDevices,
   });
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;

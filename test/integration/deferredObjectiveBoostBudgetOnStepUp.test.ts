@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 // Integration proof: with the daily budget ON, the per-hour DAILY-BUDGET slice is
 // the binding soft constraint (not the hard cap), and a smart task's
 // limit-lower-priority "boost" permission still lets a priority-1 stepped device
@@ -260,6 +261,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
   const deferredController = new DeferredObjectiveDecorationController({
+    getPrioritiesForDevices: createFixturePriorityQuery(),
     getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTracker,

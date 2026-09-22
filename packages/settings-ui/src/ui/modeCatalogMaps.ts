@@ -1,3 +1,4 @@
+import { ModePriorityCatalog, readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import {
   isWritableModeDeviceTargets,
   sanitizeModeDeviceTargets,
@@ -16,17 +17,10 @@ export const classifyModeNumberMap = (
   if (value === undefined || value === null) {
     return allowAbsent ? { state: 'resolved', value: {} } : { state: 'unavailable' };
   }
-  if (typeof value !== 'object' || Array.isArray(value)) return { state: 'unavailable' };
-  const modes = Object.entries(value as Record<string, unknown>);
-  if (!modes.every(([, entries]) => (
-    entries
-    && typeof entries === 'object'
-    && !Array.isArray(entries)
-    && Object.values(entries).every((entry) => (
-      typeof entry === 'number' && Number.isFinite(entry)
-    ))
-  ))) return { state: 'unavailable' };
-  return { state: 'resolved', value: value as ModeNumberMap };
+  const priorities = readModePriorityCatalog(value);
+  return priorities === null
+    ? { state: 'unavailable' }
+    : { state: 'resolved', value: priorities.resolve([], []) };
 };
 
 /** Validate a complete persisted mode map before any UI edit can rewrite it. */
@@ -49,8 +43,7 @@ export const parseModeNumberMap = (
  * "never written" from "read failed", and this surface, reading over the Homey
  * API bridge, cannot. `null` means "do not proceed", never "empty catalog".
  *
- * `parseModeNumberMap` above still serves `capacity_priorities`, which has not
- * been moved to a key owner yet and keeps the older reject-the-whole-map policy.
+ * `parseModeNumberMap` delegates priority policy to its shared key owner.
  */
 export const readModeDeviceTargetsSetting = (
   value: unknown,
@@ -76,8 +69,8 @@ export const assertWritableModeDeviceTargets = (catalog: unknown): ModeNumberMap
 
 /**
  * The catalog pair a mode screen edits: priorities and targets, each through its
- * own key's policy. Priorities still use the older reject-the-whole-map parser
- * (`capacity_priorities` has no owner module yet); targets go through theirs.
+ * own shared key owner's policy. The priority map is complete across known
+ * catalog devices; the live roster is resolved by the owning ModePriorityCatalog.
  * Throws when either is unusable, which is the callers' existing error path.
  */
 export const readModeCatalogPair = (
@@ -88,5 +81,7 @@ export const readModeCatalogPair = (
   const priorities = parseModeNumberMap(prioritiesRaw, allowAbsent);
   const targets = readModeDeviceTargetsSetting(targetsRaw, allowAbsent);
   if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
-  return [priorities, targets];
+  return [new ModePriorityCatalog(priorities).resolve(
+    Object.values(targets).flatMap(Object.keys), Object.keys(targets),
+  ), targets];
 };

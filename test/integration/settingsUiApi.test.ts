@@ -1,3 +1,5 @@
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildSettingsUiBootstrap,
@@ -212,6 +214,7 @@ describe('settingsUiApi', () => {
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
     });
     const app = {
+      getPrioritiesForDevices: createFixturePriorityQuery(),
           // A fixture that configures neither seam leaves the boot-window shape.
       ...(options.capacitySettings && typeof options.capacityDryRun === 'boolean'
         ? {
@@ -550,6 +553,19 @@ describe('settingsUiApi', () => {
       .resolves.toEqual({ kind: 'inactive' });
     expect(() => previewSettingsUiDailyBudgetModel({ homey: homey as never, body: {} })).toThrow();
     expect(() => applySettingsUiDailyBudgetModel({ homey: homey as never, body: {} })).toThrow();
+  });
+
+  it('uses the app priority owner for newly discovered devices without saved ranks', () => {
+    const homey = createHomey();
+    const catalog = new ModePriorityCatalog({ Home: { 'ev-1': 100 } });
+    homey.app.getPrioritiesForDevices = (deviceIds) => catalog.getOrder('Home', deviceIds);
+
+    const payload = getSettingsUiDevicesPayload({ homey: homey as never });
+
+    expect(payload.devices.map(({ id, priority }) => ({ id, priority }))).toEqual([
+      { id: 'dev-1', priority: 2 },
+      { id: 'ev-1', priority: 1 },
+    ]);
   });
 
   it('builds dedicated read payloads for the remaining volatile UI models', () => {

@@ -1,3 +1,4 @@
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import {
@@ -239,9 +240,11 @@ const previewDeferredObjectivePlan = (
 });
 
 const buildDeferredObjectiveDiagnostics = (
-  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon'>,
+  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon' | 'getPrioritiesForDevices'>
+    & Partial<Pick<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'getPrioritiesForDevices'>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildDeferredObjectiveDiagnosticsRaw({
   ...params,
+  getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
 });
 
@@ -273,7 +276,7 @@ type PreviewContext = {
   devices?: MeteredPlanInputDevice[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  getBasePriorityForDevice?: (deviceId: string) => unknown;
+  getPrioritiesForDevices?: ReturnType<typeof createFixturePriorityQuery>;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
@@ -300,7 +303,8 @@ const runPreview = (params: {
   devices: params.ctx.devices,
   settings: params.ctx.settings,
   activePlans: params.ctx.activePlans,
-  getBasePriorityForDevice: params.ctx.getBasePriorityForDevice,
+  getPrioritiesForDevices: params.ctx.getPrioritiesForDevices
+    ?? createFixturePriorityQuery(params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : [])),
   powerTracker: params.ctx.powerTracker,
   dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
   priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
@@ -393,7 +397,9 @@ describe('previewDeferredObjectivePlan', () => {
       dailyBudgetSnapshot,
       priceOptimizationEnabled: true,
       sustainableRateKw: 1.5,
-      getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+      getPrioritiesForDevices: createFixturePriorityQuery([
+        { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
+      ]),
     });
     const { recorder } = buildRecorder();
     recorder.observe([highDiagnostic!], NOW_MS);
@@ -410,7 +416,9 @@ describe('previewDeferredObjectivePlan', () => {
         devices: [compactedLow],
         settings,
         activePlans,
-        getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
+        getPrioritiesForDevices: createFixturePriorityQuery([
+          { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
+        ]),
         powerTracker,
         dailyBudgetSnapshot,
         priceOptimizationEnabled: true,

@@ -1,3 +1,4 @@
+import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 // Integration coverage for the per-home operating mode (multi-home):
 // - the settings→bundle seam: an `operating_mode:<homeId>` write routes
 //   through the REAL settings handler to ONE bundle's mode rebuild — never to
@@ -67,7 +68,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import {
   createHomeModeCatalog,
-  getConfiguredPriorityFromHomeModeCatalog,
   readPersistedHomeModeCatalog,
   transferModeTargetsForOwnershipMoves,
 } from '../../setup/homeRuntime/homeModeCatalog';
@@ -177,6 +177,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     expect(catalog.isInitialized()).toBe(true);
     expect(catalog.getSnapshot()).toEqual({
+      modePriorityCatalog: expect.any(ModePriorityCatalog),
       operatingMode: 'Home',
       aliases: { cooler: 'Cooler' },
       priorities: {
@@ -587,7 +588,8 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       const persisted = readPersistedHomeModeCatalog(rig.ctx, 'h_a');
       expect(persisted.state).toBe('resolved');
       if (persisted.state === 'resolved') {
-        expect(getConfiguredPriorityFromHomeModeCatalog(persisted.snapshot, 'dev-1')).toBe(2);
+        expect(persisted.snapshot.modePriorityCatalog
+          .getOrder(persisted.snapshot.operatingMode, ['dev-1', 'dev-2']).getPriority('dev-1')).toBe(2);
       }
     } finally {
       settingsHandler.stop();

@@ -40,7 +40,6 @@ import type { PelsStatus } from '../../lib/plan/pelsStatus';
 import type { PlanEngineWiring } from '../appInit/planEngineWiring';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
-import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
@@ -219,9 +218,7 @@ export function buildMainHomeScope(
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCapacitySettings: () => ctx.capacitySettings,
-    getBasePriorityForDevice: (deviceId) => (
-      resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
-    ),
+    getPrioritiesForDevices: (deviceIds) => ctx.getPrioritiesForDevices(deviceIds),
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
