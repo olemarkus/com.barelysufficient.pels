@@ -13,6 +13,7 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
+import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
@@ -433,14 +434,15 @@ function buildParseDeviceDeps(ctx: TransportContext) {
         providers: ctx.providers,
         debugStructured: ctx.debugStructured,
         powerState: ctx.powerState,
-        measuredPowerResolver: ctx.measuredPowerResolver,
+        measuredPowerResolver: ctx.retainedPower.resolver,
         getCapabilityObj: (device: HomeyDeviceLike) => getCapabilityObj(device),
         isPowerCapable: (
             device: HomeyDeviceLike,
             capsStatus: { hasPower: boolean },
             measuredPower: { measuredPowerKw?: number },
-            previousSnapshot: TransportDeviceSnapshot | undefined,
-        ) => isDevicePowerCapable({ device, capsStatus, measuredPower, previousSnapshot }),
+            retainedReading: RetainedPowerReading | undefined,
+        ) => isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading }),
+        getRestoredPowerReading: (deviceId: string) => ctx.retainedPower.restoredReading(deviceId),
         resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(ctx.observationState, deviceId),
     };
 }

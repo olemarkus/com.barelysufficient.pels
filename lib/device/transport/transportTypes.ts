@@ -1,3 +1,4 @@
+import type { RetainedPowerStore } from '../retainedPowerStore';
 import type { ExternalTemperatureAdjustment } from '../../../packages/contracts/src/temperatureAdjustment';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
@@ -115,6 +116,14 @@ export type DeviceTransportOptions = {
      * it through `test/helpers/deviceTransportHarness.ts`.
      */
     observedStateDispatcher: TransportObservedStateDispatcher;
+    /**
+     * Where the transport keeps its last trusted power readings and meter
+     * anchors across a restart (`retainedPowerStore.ts`). REQUIRED: without it a
+     * restart erases what the transport retains, and a device PELS had switched
+     * off can lose its power reading for good. Wiring builds it on the userdata
+     * database; specs build it on an in-memory one through the harness.
+     */
+    retainedPowerStore: RetainedPowerStore;
 };
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();

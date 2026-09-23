@@ -1,3 +1,5 @@
+import type { RetainedPowerReading } from '../retainedPowerStore';
+import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
@@ -144,19 +146,45 @@ function readReportedThermostatMode(
     return isReportedThermostatMode(value) ? normalizeReportedThermostatMode(value) : previousSnapshot?.thermostatMode;
 }
 
+/**
+ * The last trusted reading this read can fall back on: the previous snapshot's,
+ * or — when the transport has no previous entry for the device, which after a
+ * restart is every device on the first read — the one the retained-power store
+ * restored (`retainedPowerPersistence.ts`). A device that already has an entry
+ * this run and no reading in it has nothing retained; the store is not asked.
+ */
+// What a parse carries forward: the previous snapshot's reading keeps its
+// delivery-interval record (already booked this run); a restored one has none.
+type RetainedMeasurement = RetainedPowerReading & { reading?: MeteredPowerReading };
+
+function resolveRetainedReading(
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+    restored: RetainedPowerReading | undefined,
+): RetainedMeasurement | undefined {
+    if (previousSnapshot === undefined) return restored;
+    if (!hasObservedMeasuredPower(previousSnapshot)) return undefined;
+    return {
+        measuredPowerKw: previousSnapshot.measuredPowerKw,
+        ...(previousSnapshot.measuredPowerObservedAtMs !== undefined
+            ? { observedAtMs: previousSnapshot.measuredPowerObservedAtMs } : {}),
+        ...(previousSnapshot.measuredPowerReading !== undefined
+            ? { reading: previousSnapshot.measuredPowerReading } : {}),
+    };
+}
+
 function resolveRetainedMeasuredPower(
     device: HomeyDeviceLike,
     capsStatus: DeviceCapabilityProfile['capsStatus'],
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>,
-    previousSnapshot: TransportDeviceSnapshot | undefined,
+    retained: RetainedMeasurement | undefined,
 ): ReturnType<typeof resolveMeasuredPowerKw> {
     if (measuredPower.measuredPowerKw !== undefined) return measuredPower;
     if (!capsStatus.hasPower && !hasPotentialHomeyEnergyEstimate(device)) return measuredPower;
-    if (previousSnapshot?.measuredPowerKw === undefined) return measuredPower;
+    if (retained === undefined) return measuredPower;
     return {
-        measuredPowerKw: previousSnapshot.measuredPowerKw,
-        observedAtMs: previousSnapshot.measuredPowerObservedAtMs,
-        reading: previousSnapshot.measuredPowerReading,
+        measuredPowerKw: retained.measuredPowerKw,
+        observedAtMs: retained.observedAtMs,
+        reading: retained.reading,
     };
 }
 
@@ -168,12 +196,13 @@ function resolveDeviceControlBundle(params: {
     binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
     previousSnapshot?: TransportDeviceSnapshot;
+    retainedReading: RetainedMeasurement | undefined;
     purpose: ParseDevicePurpose;
     managedDecision: ManagedFilterDecision;
 }): DeviceControlBundle | null {
     const {
         identity, deps, overlay, capsStatus, binaryCapabilityId, measuredPower,
-        previousSnapshot, purpose, managedDecision,
+        previousSnapshot, retainedReading, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { logger, debugStructured, isPowerCapable } = deps;
@@ -215,7 +244,7 @@ function resolveDeviceControlBundle(params: {
     const available = resolveAvail(
         binaryCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
     );
-    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, previousSnapshot);
+    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, retainedReading);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType: overlay.flowAugmentedDeviceType,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
@@ -270,8 +299,9 @@ export function assembleDeviceSnapshot(params: {
     });
     // Keep the last trusted measurement when a refresh has no newer sample.
     // In particular, re-reading one `meter_power` sample must not drop admission.
+    const retainedReading = resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
     const resolvedMeasuredPower = resolveRetainedMeasuredPower(
-        effectiveDevice, capsStatus, measuredPower, previousSnapshot,
+        effectiveDevice, capsStatus, measuredPower, retainedReading,
     );
     const candidateTargets = buildTargets({
         targetCaps: capsStatus.targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
@@ -283,7 +313,7 @@ export function assembleDeviceSnapshot(params: {
     const control = resolveDeviceControlBundle({
         identity, deps, overlay, capsStatus, binaryCapabilityId,
         measuredPower: resolvedMeasuredPower,
-        previousSnapshot, purpose, managedDecision,
+        previousSnapshot, retainedReading, purpose, managedDecision,
     });
     if (!control) return null;
     if (

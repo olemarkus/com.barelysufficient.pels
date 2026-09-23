@@ -19,6 +19,7 @@
  * that operate over the shared `TransportContext` this class builds. See
  * `notes/state-management/observer-transport-split.md`.
  */
+import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { MeteredDeviceReading } from '../ports/meteredSnapshots';
 import type {
@@ -34,7 +35,6 @@ import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { TargetedMissState } from './transport/targetedSnapshotMerge';
 import type { LiveDevicePowerWatts } from './managerEnergy';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
-import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import type { RecentLocalCapabilityWrites } from './transport/managerRealtimeSupport';
 import { initHomeyHttpClient, resolveHomeyInstance } from './transport/managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
@@ -176,7 +176,7 @@ export class DeviceTransport {
     // `zoneId`; invoked contained in `deviceUpdateHandling.ts`.
     private onDeviceZoneChanged?: () => void;
     private powerState: ResolvedTransportPowerState;
-    private measuredPowerResolver: DeviceMeasuredPowerResolver;
+    private readonly retainedPower: RetainedPowerPersistence;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
     private observationState: DeviceTransportObservationState = createObservationState();
@@ -260,10 +260,11 @@ export class DeviceTransport {
             lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? createPeakPowerLogState(),
             onLearnedPeakChanged: powerState?.onLearnedPeakChanged,
         };
-        this.measuredPowerResolver = new DeviceMeasuredPowerResolver({
-            logger: this.logger,
-            lastPositiveMeasuredPowerKw: powerState?.lastPositiveMeasuredPowerKw ?? {},
-        });
+        // The measured-power resolver, built with what it retains restored from the
+        // store before the first read (`retainedPowerPersistence.ts`).
+        this.retainedPower = new RetainedPowerPersistence(
+            options.retainedPowerStore, this.logger, powerState?.lastPositiveMeasuredPowerKw ?? {},
+        );
         this.ctx = this.createContext();
     }
 
@@ -310,7 +311,7 @@ export class DeviceTransport {
             providers: t.providers,
             resolveMainMeterSelection: () => t.providers.getHomeyEnergyMeterSelection(),
             powerState: t.powerState,
-            measuredPowerResolver: t.measuredPowerResolver,
+            retainedPower: t.retainedPower,
             observedStateDispatcher: t.observedStateDispatcher,
             temperatureAdjustments: t.observationProducers.temperature,
             targetedMissByDeviceId: t.targetedMissByDeviceId,
@@ -453,6 +454,7 @@ export class DeviceTransport {
         this.syncLatestSnapshotIndex();
         reconcileBinarySettleEvidenceWithSnapshot(this.ctx, s);
         for (const snapshot of s) this.publishMeteredPower(snapshot.id);
+        this.retainedPower.persist(s, Date.now());
     }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {

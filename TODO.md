@@ -1062,6 +1062,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       include `dailyBudgetService`. Persona: an owner who just changed their budget and reloads the Budget page;
       hypothesis: "Your daily budget" reads the old value for one refresh. [P2]
 
+- [ ] **P2 — an off `meter_power`-only device keeps its last interval average as its draw.**
+      A cumulative meter resolves a draw only when it moves, and an app republishes it only on
+      change, so a meter-only device switched off keeps the last interval average it resolved
+      while running (`resolveRetainedMeasuredPower`, `lib/device/transport/managerParseDeviceFields.ts`;
+      `resolveMeterDelta`, `lib/device/measuredPowerResolver.ts`). The plan then counts that draw
+      as managed usage while the device is off; the whole-home meter is unaffected, so the error
+      is in the managed/background split and in anything priced off `currentDrawKw`. Retained
+      across restarts since the retained-power store (`lib/device/retainedPowerStore.ts`).
+      Change: at the SDK boundary, resolve a meter-only device whose binary axis is observed off
+      and whose meter has not moved to a measured `0` (the observation is the off state plus the
+      unmoved meter, not an absent reading), or rule that the retained value stands. Done when a
+      `deviceManager` integration case with a meter-only device switched off resolves the ruled
+      value and the plan's managed usage follows it. Persona: an owner with meter-only relay
+      heaters; hypothesis: "managed usage" on the Usage page stays high after PELS turns them off.
+
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
       *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
       hub's location, so the forecast silently runs on recent days.

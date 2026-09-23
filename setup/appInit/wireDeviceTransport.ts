@@ -9,6 +9,7 @@
  *
  * The projection subscriptions retain their load-bearing registration order.
  */
+import { createRetainedPowerStore } from '../../lib/device/retainedPowerStore';
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
@@ -163,6 +164,7 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     },
     observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
     evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey, deps.timers),
+    retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
   });
   // Subscribe the projection BEFORE the transport is reachable through `ctx`:
   // past that assignment any consumer can read `latestTargetSnapshot`, which is

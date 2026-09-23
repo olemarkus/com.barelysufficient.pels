@@ -155,7 +155,10 @@ through the same code, not because a fresh cache was judged to belong in
   day), the smart-task plan history (`lib/objectives/deferredObjectives/planHistoryStore.ts`,
   one row per run) and the device diagnostics
   (`lib/diagnostics/deviceDiagnosticsStateStore.ts`, one row per device-day)
-  after them; calibration and the price/tariff caches follow.
+  after them, and the device transport's retained power readings and meter
+  anchors (`lib/device/retainedPowerStore.ts`, one row per device, diffed and
+  saved at most once a minute) so a restart does not erase the last reading;
+  calibration and the price/tariff caches follow.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`
   keys) is held in memory by `lib/plan/planStatusRegistry.ts`: every reader —

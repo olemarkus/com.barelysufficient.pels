@@ -105,9 +105,11 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
     lastPositiveMeasuredPowerKw: {},
   }),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
-  isPowerCapable: (device, capsStatus, measuredPower, previousSnapshot) => (
-    isDevicePowerCapable({ device, capsStatus, measuredPower, previousSnapshot })
+  isPowerCapable: (device, capsStatus, measuredPower, retainedReading) => (
+    isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading })
   ),
+  // No restart in these specs: nothing was restored.
+  getRestoredPowerReading: () => undefined,
   resolveLatestLocalWriteMs: () => undefined,
 });
 

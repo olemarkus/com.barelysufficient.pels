@@ -1,3 +1,4 @@
+import type { RetainedPowerPersistence } from '../retainedPowerPersistence';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
 /**
  * Shared runtime context handed to the homey-free transport collaborator
@@ -25,7 +26,6 @@ import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
 import type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import type { ZoneTreeCache } from './zoneTreeCache';
-import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { DeviceTransportObservationState } from './managerObservation';
 import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
 import type { DeviceTransportParseProviders } from './managerParseDevice';
@@ -152,7 +152,11 @@ export type TransportContext = {
   // Parse-binding inputs (stable references built once in the constructor).
   readonly providers: DeviceTransportParseProviders;
   readonly powerState: ResolvedTransportPowerState;
-  readonly measuredPowerResolver: DeviceMeasuredPowerResolver;
+  /**
+   * The measured-power resolver, and the readings a restart restores with the
+   * throttled saves that keep them (`retainedPowerPersistence.ts`).
+   */
+  readonly retainedPower: RetainedPowerPersistence;
   readonly observedStateDispatcher: TransportObservedStateDispatcher;
   // Per-device targeted-miss grace state — stable Map, mutated in place.
   readonly targetedMissByDeviceId: Map<string, TargetedMissState>;

@@ -47,6 +47,22 @@ export class DeviceMeasuredPowerResolver {
     getNow?: () => number;
   }) {}
 
+  /**
+   * The meter anchors a restart would otherwise lose, restored from the
+   * retained-power store (`retainedPowerPersistence.ts`) before the first read.
+   * Without them a `meter_power`-only device needs two dated observations after
+   * boot to resolve any draw, and a device whose meter is not moving never
+   * gets the second.
+   */
+  seedMeterAnchors(anchors: ReadonlyMap<string, MeterEnergyReading>): void {
+    for (const [deviceId, anchor] of anchors) this.lastMeterEnergy[deviceId] = anchor;
+  }
+
+  /** The anchors held now, for the retained-power store to persist. */
+  getMeterAnchors(): ReadonlyMap<string, MeterEnergyReading> {
+    return new Map(Object.entries(this.lastMeterEnergy));
+  }
+
   resolve(params: {
     deviceId: string;
     deviceLabel: string;

@@ -1,4 +1,4 @@
-import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
+import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   DeviceControlProfile,
   TargetDeviceSnapshot,
@@ -83,8 +83,10 @@ export type DeviceTransportParseDeps = {
         device: HomeyDeviceLike,
         capsStatus: { hasPower: boolean },
         measuredPower: { measuredPowerKw?: number },
-        previousSnapshot: TransportDeviceSnapshot | undefined,
+        retainedReading: RetainedPowerReading | undefined,
     ) => boolean;
+    /** The reading the retained-power store restored for a device (`retainedPowerPersistence.ts`). */
+    getRestoredPowerReading: (deviceId: string) => RetainedPowerReading | undefined;
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
 
@@ -184,9 +186,10 @@ export function parseDevice(params: {
  * A device with no power capability and no Energy metadata or settings can
  * still be supported by what Homey Energy reports for it: its live value is a
  * real reading of that device, and once seen it is retained with the snapshot.
- * Those two terms depend on the reading reaching the transport, so they are the
- * ones a restart can hide until the first reading arrives; the structural terms
- * above do not.
+ * Those two terms depend on the reading reaching the transport. The retained
+ * one survives a restart (`retainedPowerPersistence.ts`), so the first read
+ * after boot — which has no previous snapshot and, on the fast boot refresh, no
+ * live report — still answers as the last run did.
  *
  * See `notes/persisted-settings-state.md`: transient external failures get a grace
  * window, never a destructive reset of persisted state.
@@ -195,11 +198,11 @@ export function isDevicePowerCapable(params: {
     device: HomeyDeviceLike;
     capsStatus: { hasPower: boolean };
     measuredPower: { measuredPowerKw?: number };
-    previousSnapshot: TransportDeviceSnapshot | undefined;
+    retainedReading: RetainedPowerReading | undefined;
 }): boolean {
-    const { device, capsStatus, measuredPower, previousSnapshot } = params;
+    const { device, capsStatus, measuredPower, retainedReading } = params;
     return capsStatus.hasPower
         || hasPotentialHomeyEnergyEstimate(device)
         || typeof measuredPower.measuredPowerKw === 'number'
-        || (previousSnapshot !== undefined && hasObservedMeasuredPower(previousSnapshot));
+        || retainedReading !== undefined;
 }
