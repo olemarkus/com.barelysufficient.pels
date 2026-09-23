@@ -1,5 +1,6 @@
 import type { DevicePlan, PlanInputDevice, SteppedClusterFields, TemperatureClusterFields } from './planTypes';
-import { withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
+import { withMeteredDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
@@ -171,7 +172,7 @@ export function buildLiveStatePlan(
       // read only during plan build, on freshly built devices, never off a
       // merged snapshot, so restore admission cannot see the stale value. Do
       // not read it from here without re-resolving it first.
-      return withSteppedDiscriminant(withTemperatureDiscriminant({
+      return withSteppedDiscriminant(withTemperatureDiscriminant(withMeteredDiscriminant({
         ...device,
         commandableNow: live.commandableNow,
         deviceType: live.deviceType,
@@ -190,7 +191,10 @@ export function buildLiveStatePlan(
         reportedStepId: mergedStepped.reportedStepId,
         expectedPowerKw: live.expectedPowerKw,
         expectedPowerSource: live.expectedPowerSource,
-        currentDrawKw: live.currentDrawKw,
+        // The power axis re-sourced from live as well, and stripped (by
+        // `withMeteredDiscriminant`) when the live device has no reading, so a
+        // stale draw carried by the spread cannot outlive the reading it was.
+        currentDrawKw: isMeteredPlanDevice(live) ? live.currentDrawKw : undefined,
         // Re-read from the command store through the SAME predicate the builder
         // uses (`planDevices.ts` → `hasActiveTurnOn`). Refreshing it here is the
         // point of this path — a confirmed command must stop reading as pending
@@ -216,7 +220,7 @@ export function buildLiveStatePlan(
         // so recombining it with the preserved profile keeps `currentState`/
         // `currentOn` consistent with the merged device.
         ...liveBinaryFields,
-      }));
+      })));
     }),
   };
 }

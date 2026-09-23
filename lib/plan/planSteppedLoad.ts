@@ -21,6 +21,7 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type {
   DevicePlanDevice,
+  MeteredKind,
   PlanInputDevice,
   PlannedShedTargetKind,
   SteppedDiscriminantProbe,
@@ -48,7 +49,6 @@ type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice | DevicePlanDevice,
   | 'reportedStepId'
   | 'desiredStepId'
-  | 'currentDrawKw'
   | 'stepPowerCalibration'
 >;
 type StepIdentityFields = Pick<StepCapableDevice, 'reportedStepId' | 'selectedStepId' | 'desiredStepId'>;
@@ -542,11 +542,15 @@ export const resolveSteppedLoadPlanningKw = (
   return resolveSteppedLoadPlanningPowerKw(profile, stepId) ?? 0;
 };
 
+// Pricing a step change reads the meter (`resolveStepChangeBeforeKw`), so only a
+// device with a power axis can be priced: `MeteredKind`, reached through
+// `isMeteredPlanDevice`.
 type StepChangeDevice =
   & Pick<
     StepCapableDevice,
-    'steppedLoadProfile' | 'currentDrawKw' | 'stepPowerCalibration'
+    'steppedLoadProfile' | 'stepPowerCalibration'
   >
+  & MeteredKind
   & StepIdentityFields
   & { currentOn?: boolean };
 

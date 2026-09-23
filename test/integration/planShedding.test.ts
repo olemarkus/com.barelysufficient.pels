@@ -11,7 +11,8 @@ import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
-  BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
+  BinaryControlDiscriminantProbe, MeteredDiscriminantProbe, MeteredPlanInputDevice, PlanInputDevice,
+  TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
@@ -44,14 +45,14 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
-    & TemperatureDiscriminantProbe
+    & TemperatureDiscriminantProbe & MeteredDiscriminantProbe
     & {
       binaryCapabilityId?: string; shedBehavior?: FixtureShedBehavior;
       // Fixture shorthands for the control posture, resolved by the shared
       // resolver exactly as `toPlanDevice` does.
       controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
     } = {},
-): PlanInputDevice => {
+): MeteredPlanInputDevice => {
   const merged = {
     id: 'dev',
     name: 'Device',
@@ -76,7 +77,7 @@ const buildDevice = (
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
     control: fixtureControlPosture(merged),
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
+  }) as MeteredPlanInputDevice;
 };
 
 // The frame and the measurement are two objects now (`PlanContext` carries no
@@ -4952,12 +4953,13 @@ describe('buildSheddingPlan', () => {
     expect(result.sheddingActive).toBe(false);
     expect(state.sheddingActive).toBe(false);
   });
-  it('sheds an unmetered relay heater on its declared load', async () => {
-    // The producer answers for a device with no metering hardware with its
-    // DECLARED load, not 0. Answering 0 made every unmetered relay heater
-    // unsheddable — `buildBinaryCandidate` rejects `power <= 0` — so a home whose
-    // heaters are unmetered relays silently lost hard-cap protection. Shedding
-    // one frees real power, so it must be a candidate.
+  it('never sheds a device without a power reading', async () => {
+    // Shedding is priced on the meter: what limiting a device releases is what
+    // it is measured to draw. A device without a reading has no power axis
+    // (owner ruling 2026-09-23) — the plan still sets its temperature, but it is
+    // not a shed candidate, however far over the limit the house is. (This used
+    // to shed an unmetered relay on its DECLARED load; a declared load is a
+    // constant, not a reading, and no longer stands in for one.)
     const state = createPlanEngineState();
     const capacityGuard = {
       recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
@@ -4966,20 +4968,18 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const unmetered = buildDevice({
+    const { currentDrawKw: _noReading, ...unmetered } = buildDevice({
       id: 'relay-heater',
       name: 'Unmetered panel heater',
-      // No `currentDrawKw` and no measurement: exactly what `toPlanDevice`
-      // resolves for a relay with a declared load and no meter.
-      currentDrawKw: 1.5, expectedPowerKw: 1.5,
+      expectedPowerKw: 1.5,
       binaryControl: { on: true },
       controllable: true,
     });
-    expect(unmetered.currentDrawKw).toBeCloseTo(1.5, 6);
+    const unmeteredDevice: PlanInputDevice = unmetered;
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
-        devices: [unmetered],
+        devices: [unmeteredDevice],
         total: 3,
         softLimit: 2,
         capacitySoftLimit: 2,
@@ -4999,6 +4999,6 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(result.shedSet.has('relay-heater')).toBe(true);
+    expect(result.shedSet.has('relay-heater')).toBe(false);
   });
 });

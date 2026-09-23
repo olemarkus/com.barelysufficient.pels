@@ -263,8 +263,9 @@ export function buildExecutableObservedDeviceState(
   // probes the base type omits, which the stepped-load projection
   // (`buildObservedSteppedLoadState`) reads.
   //
-  // `currentDrawKw` is REQUIRED: a plan device carries it, and a raw snapshot
-  // gets it from `buildExecutableObservedDeviceStateFromSnapshot` above. Making
+  // `currentDrawKw` is REQUIRED: the drift path resolves it from the observed
+  // state (`driftObservedDevice.ts`), and a raw snapshot gets it from
+  // `buildExecutableObservedDeviceStateFromSnapshot` above. Making
   // it optional here would let a caller drop it without a compile error, which
   // reads as "not drawing" and silently un-prices every unknown-step shed.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>

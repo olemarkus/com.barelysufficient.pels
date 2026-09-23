@@ -5,6 +5,10 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type {
   DevicePlan,
   DevicePlanDevice,
+  MeteredDevicePlanDevice,
+  MeteredDiscriminantProbe,
+  MeteredKind,
+  MeteredPlanInputDevice,
   PlanInputDevice,
   SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
@@ -686,51 +690,67 @@ export const withFixtureResidualKw = <T extends object>(
   };
 };
 
-export const buildPlanDevice = (
-  // `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
-  // (not on the `Partial<DevicePlanDevice>` base), so accept them here: the builder
-  // resolves the producer-owned `currentOn`/`currentState` from whichever the
-  // fixture supplies (mirroring `toPlanDevice`).
-  overrides: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
-    reason?: DevicePlanDevice['reason'] | string;
-    evChargingState?: string;
-    deviceType?: 'temperature' | 'onoff';
-    currentOn?: boolean;
-    binaryControl?: { on: boolean };
-    binaryControllable?: boolean;
-    binaryCapabilityId?: string;
-    deviceRole?: 'ev_charger';
-    /**
-     * Fixture shorthands for the control posture, resolved exactly as on the
-     * input builder: a spec that only cares whether the device is power-limited
-     * says so, and `fixtureControlPosture` resolves the rest the way the
-     * producer does.
-     */
-    controllable?: boolean;
-    managed?: boolean;
-    commandAuthority?: boolean;
-    // An observation, not plan state: it reaches the fixture through the snapshot
-    // spread in `toPlanDevice`, and the settings UI reads the real thing via
-    // `getObservedStateOfCharge`. There is no EV cluster on the plan types.
-    stateOfCharge?: DeviceStateOfChargeSnapshot;
-    /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
-    measuredPowerKw?: number;
-    /**
-     * The shed behaviour the owner configured for this device. CONSUMED by the
-     * residual resolution and never stamped — a plan device carries the residual,
-     * not the behaviour behind it. Spell it when the spec's plan deps configure
-     * something other than `turn_off`; see `FixtureShedBehavior`.
-     */
-    shedBehavior?: FixtureShedBehavior;
-  } = {},
-):
-DevicePlanDevice => {
+// `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
+// (not on the `Partial<DevicePlanDevice>` base), so accept them here: the builder
+// resolves the producer-owned `currentOn`/`currentState` from whichever the
+// fixture supplies (mirroring `toPlanDevice`).
+export type PlanDeviceFixtureOverrides = Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
+  reason?: DevicePlanDevice['reason'] | string;
+  evChargingState?: string;
+  deviceType?: 'temperature' | 'onoff';
+  currentOn?: boolean;
+  binaryControl?: { on: boolean };
+  binaryControllable?: boolean;
+  binaryCapabilityId?: string;
+  deviceRole?: 'ev_charger';
+  /**
+   * Fixture shorthands for the control posture, resolved exactly as on the
+   * input builder: a spec that only cares whether the device is power-limited
+   * says so, and `fixtureControlPosture` resolves the rest the way the
+   * producer does.
+   */
+  controllable?: boolean;
+  managed?: boolean;
+  commandAuthority?: boolean;
+  // An observation, not plan state: it reaches the fixture through the snapshot
+  // spread in `toPlanDevice`, and the settings UI reads the real thing via
+  // `getObservedStateOfCharge`. There is no EV cluster on the plan types.
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
+  measuredPowerKw?: number;
+  /** The power axis (`MeteredPlanInputKind`); defaulted by `fixtureCurrentDrawKw`. */
+  currentDrawKw?: number;
+  /**
+   * A device with no power reading: the builder stamps no `currentDrawKw`, as
+   * `toPlanDevice` does for a temperature device planned for its setpoints only.
+   */
+  unmetered?: boolean;
+  /**
+   * The shed behaviour the owner configured for this device. CONSUMED by the
+   * residual resolution and never stamped — a plan device carries the residual,
+   * not the behaviour behind it. Spell it when the spec's plan deps configure
+   * something other than `turn_off`; see `FixtureShedBehavior`.
+   */
+  shedBehavior?: FixtureShedBehavior;
+};
+
+/** A fixture with no power reading: no `currentDrawKw` is stamped. */
+export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides & { unmetered: true }): DevicePlanDevice;
+/**
+ * A fixture with a power reading (the default): the builder stamps `currentDrawKw`.
+ * Declared last so the builder passed as a callback (`.map(buildPlanDevice)`)
+ * resolves to the metered signature, which is what every such fixture is.
+ */
+export function buildPlanDevice(
+  overrides?: PlanDeviceFixtureOverrides & { unmetered?: false },
+): MeteredDevicePlanDevice;
+export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): DevicePlanDevice {
   const {
     reason, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
     shedBehavior: _shedBehavior,
-    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
+    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, unmetered: _unmetered, ...rest
   } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
@@ -757,9 +777,10 @@ DevicePlanDevice => {
     // Spread (not a direct property) so the `as DevicePlanDevice` cast accepts it:
     // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
-    // AFTER the caller spread, and destructured out of `rest` above: a required
-    // field must not be settable to `undefined` by an explicit override.
-    currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // AFTER the caller spread, and destructured out of `rest` above: the power
+    // axis is present with a number, or absent for an `unmetered` fixture — never
+    // an explicit `undefined`.
+    ...(overrides.unmetered === true ? {} : { currentDrawKw: fixtureCurrentDrawKw(overrides) }),
     // Required since the dual-read collapse: the producer always stamps a
     // residual, so a fixture without one is a shape production never emits and
     // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved
@@ -812,7 +833,7 @@ DevicePlanDevice => {
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
   } as DevicePlanDevice;
-};
+}
 
 /**
  * The boost EVIDENCE a fixture may spell — a configured threshold, a battery
@@ -898,39 +919,56 @@ export const fixtureControlPosture = (loose: {
   };
 };
 
-export const buildPlanInputDevice = (
-  // `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
-  // (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder
-  // resolves the producer-owned `currentOn`/`currentState` from whichever the
-  // fixture supplies (mirroring `toPlanDevice`).
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & FixtureBoostFields & {
-    /**
-     * Fixture shorthands for the control posture. Production resolves all three
-     * in `toPlanDevice`; a spec that only cares whether the device is
-     * power-limited says so, and the builder resolves the rest the way the
-     * producer does.
-     */
-    controllable?: boolean;
-    managed?: boolean;
-    commandAuthority?: boolean;
-    evChargingState?: string;
-    deviceType?: 'temperature' | 'onoff';
-    currentOn?: boolean;
-    binaryControl?: { on: boolean };
-    binaryControllable?: boolean;
-    binaryCapabilityId?: string;
-    deviceRole?: 'ev_charger';
-    /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
-    measuredPowerKw?: number;
-    /**
-     * The shed behaviour the owner configured for this device. CONSUMED by the
-     * residual resolution and never stamped — a plan device carries the residual,
-     * not the behaviour behind it. Spell it when the spec's plan deps configure
-     * something other than `turn_off`; see `FixtureShedBehavior`.
-     */
-    shedBehavior?: FixtureShedBehavior;
-  } = {},
-): PlanInputDevice => {
+// `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
+// (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder
+// resolves the producer-owned `currentOn`/`currentState` from whichever the
+// fixture supplies (mirroring `toPlanDevice`).
+export type PlanInputDeviceFixtureOverrides = Partial<PlanInputDevice> & TemperatureDiscriminantProbe & FixtureBoostFields & {
+  /**
+   * Fixture shorthands for the control posture. Production resolves all three
+   * in `toPlanDevice`; a spec that only cares whether the device is
+   * power-limited says so, and the builder resolves the rest the way the
+   * producer does.
+   */
+  controllable?: boolean;
+  managed?: boolean;
+  commandAuthority?: boolean;
+  evChargingState?: string;
+  deviceType?: 'temperature' | 'onoff';
+  currentOn?: boolean;
+  binaryControl?: { on: boolean };
+  binaryControllable?: boolean;
+  binaryCapabilityId?: string;
+  deviceRole?: 'ev_charger';
+  /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
+  measuredPowerKw?: number;
+  /** The power axis (`MeteredPlanInputKind`); defaulted by `fixtureCurrentDrawKw`. */
+  currentDrawKw?: number;
+  /**
+   * A device with no power reading: the builder stamps no `currentDrawKw`, as
+   * `toPlanDevice` does for a temperature device planned for its setpoints only.
+   */
+  unmetered?: boolean;
+  /**
+   * The shed behaviour the owner configured for this device. CONSUMED by the
+   * residual resolution and never stamped — a plan device carries the residual,
+   * not the behaviour behind it. Spell it when the spec's plan deps configure
+   * something other than `turn_off`; see `FixtureShedBehavior`.
+   */
+  shedBehavior?: FixtureShedBehavior;
+};
+
+/** A fixture with no power reading: no `currentDrawKw` is stamped. */
+export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides & { unmetered: true }): PlanInputDevice;
+/**
+ * A fixture with a power reading (the default): the builder stamps `currentDrawKw`.
+ * Declared last so the builder passed as a callback resolves to the metered
+ * signature, which is what every such fixture is.
+ */
+export function buildPlanInputDevice(
+  overrides?: PlanInputDeviceFixtureOverrides & { unmetered?: false },
+): MeteredPlanInputDevice;
+export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides = {}): PlanInputDevice {
   const {
     // `controllable` is no longer destructured: it is a fixture shorthand now,
     // consumed by `fixtureControlPosture(overrides)` rather than stamped flat.
@@ -942,7 +980,7 @@ export const buildPlanInputDevice = (
     // producer strips them: a plan device carries the boost DECISION, never the
     // configuration or the reading behind it.
     evBoost: _evBoost, stateOfCharge: _stateOfCharge, temperatureBoost: _temperatureBoost,
-    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
+    measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, unmetered: _unmetered, ...rest
   } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
@@ -969,9 +1007,10 @@ export const buildPlanInputDevice = (
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     })),
     ...(!binaryExplicitlyDisabled ? { currentOn } : {}),
-    // AFTER the caller spread, and destructured out of `rest` above: a required
-    // field must not be settable to `undefined` by an explicit override.
-    currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // AFTER the caller spread, and destructured out of `rest` above: the power
+    // axis is present with a number, or absent for an `unmetered` fixture — never
+    // an explicit `undefined`.
+    ...(overrides.unmetered === true ? {} : { currentDrawKw: fixtureCurrentDrawKw(overrides) }),
     // The setpoint capability the facet was admitted from. Production co-emits
     // the two (`managerParseDeviceFields`: `targets = temperature ? [temperature.target] : []`),
     // and the planner's own shed-candidate selection reads the LIST, not the
@@ -1019,17 +1058,17 @@ export const buildPlanInputDevice = (
     // arm that leaves boost untouched.
     confirmedNotDrawing: overrides.confirmedNotDrawing ?? false,
   }) as PlanInputDevice;
-};
+}
 
 export const steppedPlanDevice = (
-  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe
+  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe & MeteredDiscriminantProbe
     & {
       binaryControl?: { on: boolean }; currentOn?: boolean; binaryCapabilityId?: string;
       // Fixture shorthands for the control posture, forwarded to the base
       // builder which resolves them the way `toPlanDevice` does.
       controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
     } = {},
-): SteppedPlanDevice => {
+): SteppedPlanDevice & MeteredKind => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
   const step = profile.steps.find((s) => s.id === selectedStepId);
@@ -1042,11 +1081,11 @@ export const steppedPlanDevice = (
     selectedStepId,
     planningPowerKw: defaultPlanningKw,
     ...overrides,
-  }) as SteppedPlanDevice;
+  }) as SteppedPlanDevice & MeteredKind;
 };
 
 export const steppedInputDevice = (
-  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe & FixtureBoostFields
+  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe & MeteredDiscriminantProbe & FixtureBoostFields
     & {
       evChargingState?: string;
       binaryControl?: { on: boolean };
@@ -1056,7 +1095,7 @@ export const steppedInputDevice = (
       // builder which resolves them the way `toPlanDevice` does.
       controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
     } = {},
-): PlanInputDevice => {
+): MeteredPlanInputDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
   const step = profile?.steps.find((s) => s.id === selectedStepId);

@@ -51,6 +51,9 @@ const buildChargerSnapshot = (
       { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
     ],
   },
+  // Chargers and dump loads report their draw; PELS switches a device only
+  // with a power reading (`resolveDeviceControlPosture`).
+  measuredPowerKw: 0,
   ...overrides,
 }) as TargetDeviceSnapshot;
 
@@ -63,6 +66,7 @@ const buildSocketSnapshot = (
   deviceClass: 'socket',
   binaryCapabilityId: 'onoff',
   binaryControl: { on: false },
+  measuredPowerKw: 0,
   ...overrides,
 }) as TargetDeviceSnapshot;
 

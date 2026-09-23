@@ -31,6 +31,9 @@ const buildLiveDevice = (
   binaryCapabilityId: 'onoff',
   controllable: true,
   expectedPowerKw: 1.8,
+  // Observed off and measured drawing nothing: a device PELS may resume has a
+  // power reading.
+  currentDrawKw: 0,
   ...overrides,
 })) as PlanInputDevice;
 

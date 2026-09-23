@@ -22,6 +22,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   type BinaryControlDiscriminantProbe,
   type DevicePlan,
+  type MeteredKind,
+  type MeteredPlanInputDevice,
   type PlanInputDevice,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -55,8 +57,8 @@ const PUMP_DRAW_KW = 1;
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
-  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string; name: string },
-): PlanInputDevice => {
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredKind & { id: string; name: string },
+): MeteredPlanInputDevice => {
   const merged = {
     targets: [] as PlanInputDevice['targets'],
     binaryCapabilityId: 'onoff' as const,
@@ -68,10 +70,10 @@ const buildInputDevice = (
   return withBinaryDiscriminant(withFixtureResidualKw({
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
-  })) as PlanInputDevice;
+  })) as MeteredPlanInputDevice;
 };
 
-const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boolean } = { on: false }): PlanInputDevice => (
+const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boolean } = { on: false }): MeteredPlanInputDevice => (
   buildInputDevice({
     id: PUMP,
     name: 'Pool pump',
@@ -734,6 +736,9 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     deviceClass: 'socket',
     binaryCapabilityId: 'onoff',
     binaryControl: { on: false },
+    // A real dump-load plug reports its draw; PELS switches a device only when
+    // it has a power reading (`resolveDeviceControlPosture`), off or not.
+    measuredPowerKw: 0,
     ...overrides,
   }) as TargetDeviceSnapshot;
 

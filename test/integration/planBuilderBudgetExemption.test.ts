@@ -5,6 +5,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import {
   type BinaryControlDiscriminantProbe,
+  type MeteredKind,
+  type MeteredPlanInputDevice,
   type PlanInputDevice,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -19,12 +21,12 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 // Route a loose fixture (with `binaryCapabilityId` so the device stays binary)
 // through the discriminant regrouper to reattach it.
 const buildInputDevice = (
-  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredKind & {
     id: string;
     name: string;
     targets: PlanInputDevice['targets'];
   },
-): PlanInputDevice => {
+): MeteredPlanInputDevice => {
   const merged = {
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
@@ -33,7 +35,7 @@ const buildInputDevice = (
   return withBinaryDiscriminant(withFixtureResidualKw({
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
-  })) as PlanInputDevice;
+  })) as MeteredPlanInputDevice;
 };
 
 const buildDailyBudgetSnapshot = (params: {

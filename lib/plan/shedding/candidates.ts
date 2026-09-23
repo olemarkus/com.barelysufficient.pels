@@ -1,6 +1,7 @@
 import type { PlanEngineState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
-import type { PlanInputDevice } from '../planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../planTypes';
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { compareDeviceIdAsc } from '../planSort';
 import { resolveRecentRestoreState } from './overshoot';
@@ -119,7 +120,10 @@ function collectSheddingCandidates(
   let blockedReducibleControlledKw = 0;
 
   for (const device of devices) {
-    if (device.control.commandAuthority === false) continue;
+    // Out of scope, and not recorded: a device PELS may not command, and a device
+    // without a power reading — the plan still sets its temperature, but nothing
+    // measures what limiting it would release.
+    if (device.control.commandAuthority === false || !isMeteredPlanDevice(device)) continue;
     if (!isEligibleForShedding(device)) {
       recorder.record({ device, reasonCode: 'binary_confirmed_off' });
       continue;
@@ -169,7 +173,7 @@ function collectSheddingCandidates(
 }
 
 function addCandidatePower(params: {
-  device: PlanInputDevice;
+  device: MeteredPlanInputDevice;
   devices: PlanInputDevice[];
   temperatureSetpoints: TemperatureSetpointsByDevice;
   state: PlanEngineState;

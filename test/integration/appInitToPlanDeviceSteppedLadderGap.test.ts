@@ -29,7 +29,12 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
-import type { DecoratedDeviceSnapshot, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { type ObjectiveDeviceInput, type ObjectiveDeviceSource, selectObjectiveDevices } from '../../lib/objectives/types';
+import type {
+  DecoratedDeviceSnapshot,
+  MeasuredPowerObservedProbe,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 
 // `toPlanDevice` is the per-device half of a two-stage producer: ranking needs
 // the SET, so `buildHomePlanDevices` stamps `priority` right after. These specs
@@ -45,7 +50,9 @@ const USABLE_LADDER: SteppedLoadProfile = {
   ],
 };
 
-const buildSnapshot = (overrides: Partial<DecoratedDeviceSnapshot>): DecoratedDeviceSnapshot => ({
+const buildSnapshot = (
+  overrides: Partial<DecoratedDeviceSnapshot & MeasuredPowerObservedProbe>,
+): DecoratedDeviceSnapshot & MeasuredPowerObservedProbe => ({
   id: 'tank',
   name: 'Water heater',
   expectedPowerKw: 1,
@@ -156,13 +163,24 @@ describe('toPlanDevice step-ladder gap', () => {
  * regression fails a consumer-side assertion — the only arrangement that actually
  * guards the gap end to end.
  */
+// The smart-task consumers only ever see a device with a power reading:
+// production narrows the plan's devices through `selectObjectiveDevices` before
+// either consumer is asked, so the join does the same, and its snapshots carry
+// an idle reading.
+const asObjectiveDevice = (device: ObjectiveDeviceSource): ObjectiveDeviceInput => {
+  const [selected] = selectObjectiveDevices([device]);
+  if (!selected) throw new Error('fixture: the reading must make the device an objective device');
+  return selected;
+};
+
 describe('step-ladder gap: producer output through the consumers', () => {
   it('makes both consumers withhold for the restart shape', () => {
-    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = asObjectiveDevice(ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
+      measuredPowerKw: 0,
       controlModel: 'stepped_load',
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
-    })));
+    }))));
 
     // Not asserted as a precondition — read back so a failure here names the
     // producer rather than blaming the consumers for its omission.
@@ -175,13 +193,14 @@ describe('step-ladder gap: producer output through the consumers', () => {
     // The negative control. Same device, ladder present: the gap is not stamped
     // and neither consumer withholds — so the case above is proving the gap, not
     // some unrelated reason these two return empty.
-    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = asObjectiveDevice(ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
+      measuredPowerKw: 0,
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
       selectedStepId: 'low',
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
-    })));
+    }))));
 
     expect('steppedLadderMissing' in planDevice).toBe(false);
     expect(resolveObjectiveSteps(planDevice).length).toBeGreaterThan(0);

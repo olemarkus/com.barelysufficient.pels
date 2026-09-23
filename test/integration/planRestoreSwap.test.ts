@@ -10,14 +10,14 @@ import {
   resolveRestorePowerSource,
 } from '../../lib/plan/restore/accounting';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
 // Fixture shape: the shared output builders resolve the producer-owned `currentOn`
 // (the on/off truth the restore path reads) from the fixture's `binaryControl`,
 // mirroring `toPlanDevice`.
-type BinaryFixture = DevicePlanDevice & { binaryControl?: { on: boolean } };
+type BinaryFixture = MeteredDevicePlanDevice & { binaryControl?: { on: boolean } };
 
 const binaryDevice = (
   overrides: Parameters<typeof buildPlanDevice>[0] = {},

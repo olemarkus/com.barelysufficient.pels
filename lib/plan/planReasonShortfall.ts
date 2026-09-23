@@ -50,7 +50,7 @@
  *    swap-victim / carry-forward stepped corner; producer-resolved stepped
  *    admission numbers are refreshed whenever that lane actually runs.
  */
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { resolveReserveAdmission, type HeadroomReserve } from './admission';
@@ -74,7 +74,7 @@ export type CeilingShortfallInputs = {
   // thermostats at their shed floor, uncommandable devices), and folding their
   // draw would UNDERSTATE the gap — the one error direction this module must
   // never take.
-  onDevices: readonly DevicePlanDevice[];
+  onDevices: readonly MeteredDevicePlanDevice[];
   swapLedger: SwapLedger;
   restoredThisCycle: ReadonlySet<string>;
   // Shed timestamps + this cycle's clock, so the need matches the restore gate's
@@ -88,7 +88,7 @@ export type CeilingShortfallInputs = {
 export function buildCeilingShortfallInputs(params: {
   ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
   headroomReserves: readonly HeadroomReserve[];
-  onDevices: readonly DevicePlanDevice[];
+  onDevices: readonly MeteredDevicePlanDevice[];
   swapLedger: SwapLedger;
   restoredThisCycle: ReadonlySet<string>;
   lastDeviceShedMsById: Readonly<Record<string, number>>;

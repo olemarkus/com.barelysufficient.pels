@@ -10,6 +10,7 @@ import {
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { isBinaryDrivenIntent } from '../../lib/executor/executableDesiredState';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { steppedPlanDevice } from '../utils/planTestUtils';
@@ -38,7 +39,7 @@ const buildObservedState = (
     steppedLoadProfile,
     selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
     reportedStepId: device.reportedStepId,
-    measuredPowerKw: device.currentDrawKw,
+    measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
     ...overrides,
     available: overrides.available ?? true,
   });

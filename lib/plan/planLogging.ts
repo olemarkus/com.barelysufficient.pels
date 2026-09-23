@@ -1,3 +1,4 @@
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import {
   buildEmptyCapacityStateSummary,
   type CapacityStateSummarySource,
@@ -207,6 +208,8 @@ function sumPlanRemainingSheddableLoadKw(
 ): number {
   let totalKw = 0;
   for (const sourceDevice of devices) {
+    // Only a device with a power axis has sheddable load to count.
+    if (!isMeteredPlanDevice(sourceDevice)) continue;
     const power = resolveRemainingSheddableLoadKw({
       device: toPlanRemainingSheddableDevice(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
@@ -226,7 +229,7 @@ function sumActionableControlledLoadKw(
 ): number {
   let totalKw = 0;
   for (const sourceDevice of devices) {
-    if (!isActionableShortfallCandidate(sourceDevice)) continue;
+    if (!isMeteredPlanDevice(sourceDevice) || !isActionableShortfallCandidate(sourceDevice)) continue;
     const power = resolveRemainingSheddableLoadKw({
       device: toPlanRemainingSheddableDevice(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
@@ -297,12 +300,14 @@ function isActiveInputDevice(device: PlanInputDevice): boolean {
   return isPlanDeviceObservedOn(device);
 }
 
+// "Zero draw" is a measured fact: a device without a power reading is not
+// counted here, because nothing says what it draws.
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
-  return isActiveControlledDevice(device) && device.currentDrawKw <= 0;
+  return isMeteredPlanDevice(device) && isActiveControlledDevice(device) && device.currentDrawKw <= 0;
 }
 
 function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
-  return isActiveInputDevice(device) && device.currentDrawKw <= 0;
+  return isMeteredPlanDevice(device) && isActiveInputDevice(device) && device.currentDrawKw <= 0;
 }
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {

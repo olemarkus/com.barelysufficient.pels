@@ -48,6 +48,7 @@ import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskH
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
+  type MeteredPlanInputDevice,
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -204,7 +205,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
+const buildHeaterDevice = (): MeteredPlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -221,10 +222,10 @@ const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(wit
   controlCapabilityId: 'onoff' as const,
   currentTemperature: 40,
   lastFreshDataMs: NOW_MS,
-}))) as PlanInputDevice;
+}))) as MeteredPlanInputDevice;
 
 const buildDiagnosticsParams = (overrides: {
-  devices: PlanInputDevice[];
+  devices: MeteredPlanInputDevice[];
   isDeviceInSubHome?: (deviceId: string) => boolean;
 }) => ({
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,

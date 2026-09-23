@@ -1,5 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
@@ -77,7 +77,7 @@ export function toInputRemainingSheddableDevice(device: PlanInputDevice): Remain
   return toRemainingSheddableDevice(device);
 }
 
-export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): RemainingSheddableDevice {
+export function toPlanRemainingSheddableDevice(device: MeteredDevicePlanDevice): RemainingSheddableDevice {
   return toRemainingSheddableDevice({
     ...device,
     residualKw: { shed: residualKwAfterSnapshot(device) },
@@ -97,7 +97,7 @@ export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): Remain
  * action, treat it as `turn_off` (the legacy default) so non-shed devices still
  * get an honest residual instead of a structural 0.
  */
-function residualKwAfterSnapshot(device: DevicePlanDevice): number {
+function residualKwAfterSnapshot(device: MeteredDevicePlanDevice): number {
   const shedBehavior = toPlanResidualShedBehavior(device);
   const drawKw = device.currentDrawKw;
   const steppedLoad = toPlanResidualSteppedLoad(device);
@@ -121,7 +121,7 @@ function toPlanResidualShedBehavior(device: DevicePlanDevice): ResidualKwShedBeh
   return { action: 'turn_off' };
 }
 
-function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedSteppedDevice | undefined {
+function toPlanResidualSteppedLoad(device: MeteredDevicePlanDevice): ResidualKwShedSteppedDevice | undefined {
   if (!isSteppedLoadDevice(device)) {
     return undefined;
   }

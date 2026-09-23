@@ -17,6 +17,7 @@ const buildVThermoApiDevice = (overrides?: Partial<{
   class: string;
   capabilities: string[];
   load: number;
+  energyValueOn: number;
 }>) => ({
   id: overrides?.id ?? 'vthermo-1',
   name: overrides?.name ?? 'Virtual Thermostat',
@@ -45,6 +46,7 @@ const buildVThermoApiDevice = (overrides?: Partial<{
   },
   settings: {
     load: overrides?.load ?? 0,
+    ...(overrides?.energyValueOn !== undefined ? { energy_value_on: overrides.energyValueOn } : {}),
   },
 });
 
@@ -66,7 +68,7 @@ describe('VThermo device integration', () => {
     vi.clearAllTimers();
   });
 
-  it('disables every control mode when VThermo has no real power meter', async () => {
+  it('keeps VThermo managed for price-only control but disables capacity control when no power capability exists', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'vthermo-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'vthermo-1': true });
@@ -94,12 +96,12 @@ describe('VThermo device integration', () => {
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
     const priceSettings = mockHomeyInstance.settings.get('price_optimization_settings') as Record<string, { enabled?: boolean }>;
 
-    expect(managed['vthermo-1']).toBe(false);
+    expect(managed['vthermo-1']).toBe(true);
     expect(controllable['vthermo-1']).toBe(false);
-    expect(priceSettings['vthermo-1']?.enabled).toBe(false);
+    expect(priceSettings['vthermo-1']?.enabled).toBe(true);
   });
 
-  it('does not apply mode targets when VThermo lacks a real power meter', async () => {
+  it('applies mode targets for VThermo even when it lacks power capabilities', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'vthermo-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
@@ -121,6 +123,44 @@ describe('VThermo device integration', () => {
 
     await app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
-    expect(setCapSpy).not.toHaveBeenCalled();
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/vthermo-1/capability/target_temperature',
+      { value: 19 },
+    );
+  });
+
+  it('never switches on a supported thermostat that has no power reading, but still applies its mode target', async () => {
+    // "Energy used when on" keeps it supported, so Power-limit control stays on,
+    // but nothing measures its draw. Turning it on is a power decision, which
+    // takes a reading; its setpoint is temperature logic and still applies.
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'vthermo-1': 19 } });
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'vthermo-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'vthermo-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'vthermo-1': buildVThermoApiDevice({ onoff: false, targetTemperature: 22, energyValueOn: 1500 }),
+    });
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    await app.refreshTargetDevicesSnapshot();
+
+    const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
+    expect(controllable['vthermo-1']).toBe(true);
+
+    await app.planService.rebuildPlanFromCache('unknown');
+    await flushPromises();
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/vthermo-1/capability/target_temperature',
+      { value: 19 },
+    );
+    expect(setCapSpy).not.toHaveBeenCalledWith(
+      'manager/devices/device/vthermo-1/capability/onoff',
+      { value: true },
+    );
   });
 });

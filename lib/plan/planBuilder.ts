@@ -46,7 +46,7 @@ import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
 import { runStandingPostureHolds, withHeldOffOnRelease, type PriceOptDeviceConfig } from './planBuilderSurplus';
-import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from './planUsage';
+import { sumBudgetExemptProjectedUsageKw, toMeteredUsageDevices } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
@@ -422,9 +422,10 @@ export class PlanBuilder {
     // No `?? 0` here any more. The sum used to return `null` when exempt devices
     // existed but none reported power, and defaulting that to 0 shortened the
     // daily threshold by the exempt draw — non-exempt devices were shed for a
-    // missing reading rather than for real budget pressure. Every plan device now
-    // carries a resolved draw, so the unresolved state is gone.
-    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices.map(toUsageDevice)));
+    // missing reading rather than for real budget pressure. Every metered plan
+    // device carries a resolved draw, and a device without a reading has no
+    // power axis to sum, so the unresolved state is gone.
+    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(toMeteredUsageDevices(devices)));
     const budgetPaceKw = computeDailyUsageSoftLimit(bucket, nowTs);
     // Budget-exempt load should not trigger daily-budget shedding of other devices.
     // Remove exempt energy already metered this hour, then add back the exempt live

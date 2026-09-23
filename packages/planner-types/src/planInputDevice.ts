@@ -130,6 +130,38 @@ export type BinaryPlanInputKind = {
   currentOn: boolean;
 };
 
+/**
+ * Power-axis field cluster for the plan-input contract. Like
+ * `TemperaturePlanInputKind` and `BinaryPlanInputKind`, it is ORTHOGONAL to the
+ * stepped axis, so it is the intersection the `isMeteredPlanDevice` type-guard
+ * (`lib/plan/planMeteredDevice.ts`) adds onto whichever variant the device is.
+ * `currentDrawKw` is OMITTED from `PlanInputDeviceBase`, so an un-narrowed
+ * `device.currentDrawKw` read is a hard compile error: only a device with a
+ * power axis can reach the power-limiting logic.
+ *
+ * Present IFF the device has a real per-device power reading this cycle
+ * (`measure_power`, a `meter_power` window, or its Homey Energy live value).
+ * A temperature device with no power reading still reaches the plan — mode
+ * targets, the price shift and the rest of the temperature logic apply to it —
+ * but without this cluster, so it is never limited for power, never counted in
+ * managed usage (the whole-home meter counts its draw as background usage), and
+ * never priced as denied demand. A device with neither a power reading nor a
+ * temperature axis has nothing the plan can do for it and is not planned.
+ *
+ * The raw `measuredPowerKw` deliberately does NOT reach this contract. It stays
+ * on the transport snapshot, where absence is real and the producer reads it;
+ * carrying it here as well would leave two competing answers to "what is this
+ * device drawing".
+ *
+ * Trust it implicitly. Do not re-validate it, do not substitute for it, do not
+ * ask where it came from. `0` means the device is drawing nothing; it is never
+ * "unknown" and never a placeholder — a device without a reading does not carry
+ * the field at all.
+ */
+export type MeteredPlanInputKind = {
+  currentDrawKw: number;
+};
+
 export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
@@ -369,28 +401,10 @@ export type PlanInputDeviceBase = {
   // `SteppedPlanInputKind`, reached through `isSteppedLoadDevice`.
   /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
   expectedPowerSource: ExpectedPowerSource;
-  /**
-   * The device's current draw in kW, as the producer resolved it. REQUIRED —
-   * never null, never undefined, never absent.
-   *
-   * The raw `measuredPowerKw` deliberately does NOT reach this contract. It
-   * stays on the transport snapshot, where absence is real and the producer
-   * reads it; carrying it here as well would leave two competing answers to
-   * "what is this device drawing", which is the whole defect this replaces.
-   *
-   * The producer ALWAYS resolves a number, so there is no hole to handle: the
-   * meter's reading, or `0`. There is no configured-demand rung and no fallback
-   * constant — every managed device is metered (verified across a 124-device
-   * fleet), and a configured load is a CONSTANT that would not fall to zero when
-   * the device switches off, so reading one would cost `currentDrawKw > 0` its
-   * meaning.
-   *
-   * Trust it implicitly. Do not re-validate it, do not substitute for it, do not
-   * ask where it came from. `0` means the device is drawing nothing; it is never
-   * "unknown" and never a placeholder the producer emitted for lack of an
-   * answer.
-   */
-  currentDrawKw: number;
+  // `currentDrawKw` is split off onto the orthogonal `MeteredPlanInputKind`
+  // cluster; reach it through the `isMeteredPlanDevice` guard
+  // (`lib/plan/planMeteredDevice.ts`), present IFF the device has a real
+  // per-device power reading this cycle.
   // `currentTemperature` is split off onto the orthogonal `TemperaturePlanInputKind`
   // cluster; reach it through the `isTemperaturePlanDevice` guard
   // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` is NOT on the base

@@ -12,7 +12,7 @@ import type {
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
-import type { ObjectiveDeviceInput } from '../../objectives/types';
+import { selectObjectiveDevices, type ObjectiveDeviceSource } from '../../objectives/types';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
@@ -36,7 +36,7 @@ export type PreviewDeferredObjectivePlanParams = {
   // The live plan-input device (already produced by `toPlanDevice`). Undefined
   // when the device is not in the current snapshot — the projection then comes
   // back `unavailable`, matching the planner's `objective_missing_device` path.
-  device: ObjectiveDeviceInput | undefined;
+  device: ObjectiveDeviceSource | undefined;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -51,7 +51,7 @@ export type PreviewDeferredObjectivePlanParams = {
   capacitySettings: CapacityLimitSettings;
   // Existing main-home planning inputs and objectives make the preview
   // priority-aware. Optional for backward-compatible isolated callers.
-  devices?: ObjectiveDeviceInput[];
+  devices?: ObjectiveDeviceSource[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   getBasePriorityForDevice?: (deviceId: string) => unknown;
@@ -89,7 +89,9 @@ export const previewDeferredObjectivePlan = (
     // The diagnostic pipeline reads an enabled `DeferredObjectiveSettingsEntry`;
     // a preview is implicitly enabled, so seed `enabled: true`.
     objective,
-    device: params.device,
+    // Only a device with a power reading can be planned for; without one the
+    // diagnostic resolves as it does for a device in neither snapshot.
+    device: params.device && selectObjectiveDevices([params.device])[0],
     powerTracker: params.powerTracker,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
     buildPriceHorizon: params.buildPriceHorizon,
@@ -109,7 +111,7 @@ export const previewDeferredObjectivePlan = (
     ? buildDeferredObjectiveDiagnostics({
       nowMs: params.nowMs,
       timeZone: params.timeZone,
-      devices: params.devices,
+      devices: selectObjectiveDevices(params.devices),
       settings: {
         ...settings,
         objectivesByDeviceId: {

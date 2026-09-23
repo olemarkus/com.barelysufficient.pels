@@ -28,7 +28,6 @@ import {
   overlayRetainedTrackedDevices,
 } from './targetedSnapshotMerge';
 import { addPerfDuration } from '../../utils/perfCounters';
-import { estimatePower } from '../devicePowerEstimate';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
 import { logEvSnapshotChanges, type DeviceCapabilityMap } from '../managerControl';
 import { type LiveDevicePowerWatts } from '../managerEnergy';
@@ -440,15 +439,8 @@ function buildParseDeviceDeps(ctx: TransportContext) {
             device: HomeyDeviceLike,
             capsStatus: { hasPower: boolean },
             measuredPower: { measuredPowerKw?: number },
-            powerEstimate: ReturnType<typeof estimatePower>,
-            previousSnapshot?: TransportDeviceSnapshot,
-        ) => isDevicePowerCapable({
-            device,
-            capsStatus,
-            measuredPower,
-            powerEstimate,
-            previousSnapshot,
-        }),
+            previousSnapshot: TransportDeviceSnapshot | undefined,
+        ) => isDevicePowerCapable({ device, capsStatus, measuredPower, previousSnapshot }),
         resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(ctx.observationState, deviceId),
     };
 }

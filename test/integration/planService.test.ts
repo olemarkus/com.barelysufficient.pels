@@ -15,6 +15,7 @@ import type {
   DevicePlan,
   PlanInputDevice,
   BinaryControlDiscriminantProbe,
+  MeteredDiscriminantProbe,
   TemperatureDiscriminantProbe,
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
@@ -65,7 +66,8 @@ const buildPlan = (
   deviceOverrides: Partial<DevicePlan['devices'][number]>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
-    & SteppedDiscriminantProbe = {},
+    & SteppedDiscriminantProbe
+    & MeteredDiscriminantProbe = {},
 ): DevicePlan => {
   const normalizedReason = typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason;
   return {

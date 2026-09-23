@@ -36,9 +36,10 @@ type RawHeadroomDevice = {
 export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
   device: T,
 ): T & { currentOn?: boolean; currentDrawKw: number; countsAsManagedUsage: boolean } {
-  // The sample path's producer boundary — the twin of `toPlanDevice` for devices
-  // that reach the usage math straight off the transport. Resolve the draw here
-  // so nothing below has to look at the raw reading.
+  // The sample path's producer boundary for devices that reach the usage math
+  // straight off the transport. Resolve the draw here so nothing below has to
+  // look at the raw reading. Unlike `toPlanDevice`, which leaves a device without
+  // a reading without a power axis, this path still resolves absence to `0`.
   //
   const currentDrawKw = getCurrentDrawKw(device);
   // Resolved to a required answer, and to the SAME answer the optional used to

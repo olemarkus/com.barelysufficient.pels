@@ -1,8 +1,8 @@
+import { resolvePlanPowerAxis } from '../../lib/observer/observedPower';
 import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
-import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
   type BoostResolveInput,
   resolveBoostRequested,
@@ -25,7 +25,6 @@ import type {
   DeviceControlModel,
   EvBoostConfig,
   EvObservedProbe,
-  MeasuredPowerObservedFields,
   MeasuredPowerObservedProbe,
   StateOfChargeObservedProbe,
   SteppedLoadDecoration,
@@ -497,34 +496,12 @@ export type ToPlanDeviceInput = DeviceSurfaces & SteppedLoadDecoration & Associa
 
 export function toPlanDevice(
   ctx: AppContext,
-  rawDevice: ToPlanDeviceInput,
-  opts?: ToPlanDeviceOptions,
-): UnrankedPlanInputDevice {
-  return projectPlanDevice(ctx, rawDevice, getCurrentDrawKw(rawDevice), opts);
-}
-
-/**
- * Runtime-control projection for an already-admitted metered device. Unlike the
- * broad projection used by settings maintenance, this path has no missing-read
- * fallback: admission proved the measured value and the planner trusts it.
- */
-export function toMeteredPlanDevice(
-  ctx: AppContext,
-  rawDevice: ToPlanDeviceInput & MeasuredPowerObservedFields,
-  opts?: ToPlanDeviceOptions,
-): UnrankedPlanInputDevice {
-  return projectPlanDevice(ctx, rawDevice, rawDevice.measuredPowerKw, opts);
-}
-
-function projectPlanDevice(
-  ctx: AppContext,
   // `ToPlanDeviceInput`, not a restatement of it: the key-set assertion below is
   // computed from THIS type, so declaring the parameter separately would let the
   // two drift — add a probe to the parameter, `keyof` the alias does not move, the
   // assertion still passes, and the new field rides the rest-spread anyway. Which
   // is the case the assertion exists to catch.
   rawDevice: ToPlanDeviceInput,
-  currentDrawKw: number,
   opts?: ToPlanDeviceOptions,
 ): UnrankedPlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -747,11 +724,12 @@ function projectPlanDevice(
     ...objective,
     canSetControlResolved,
     residualKw,
-    // The caller resolves the draw before entering this shared projection. The
-    // runtime-control caller supplies the required meter value directly; the
-    // settings-maintenance caller may use the broad observer projection because
-    // it never admits or controls a device.
-    currentDrawKw,
+    // The power axis (`MeteredPlanInputKind`): the device's own reading, and
+    // only when it has one. A device without a reading carries no draw at all —
+    // never a `0` standing in for one — so the power-limiting lanes, which reach
+    // the field through `isMeteredPlanDevice`, cannot see it, while the
+    // temperature lanes still plan its setpoints.
+    ...resolvePlanPowerAxis(rawDevice),
     ...resolveTemperatureInputFields(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     // Two-state by contract — see `resolveConfirmedNotDrawing`. Always stamped,

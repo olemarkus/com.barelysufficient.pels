@@ -104,8 +104,9 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
     lastPositiveMeasuredPowerKw: {},
   }),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
-  isPowerCapable: (device, capsStatus, measuredPower, powerEstimate) =>
-        isDevicePowerCapable({ device, capsStatus, measuredPower, powerEstimate }),
+  isPowerCapable: (device, capsStatus, measuredPower, previousSnapshot) => (
+    isDevicePowerCapable({ device, capsStatus, measuredPower, previousSnapshot })
+  ),
   resolveLatestLocalWriteMs: () => undefined,
 });
 

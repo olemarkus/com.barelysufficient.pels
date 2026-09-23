@@ -8,6 +8,7 @@ import { SwapLedger } from './swap';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
+  MeteredKind,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
 } from './planTypes';
@@ -170,12 +171,14 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'control'
   | 'plannedState'
   | 'currentState'
-  | 'currentDrawKw'
   | 'expectedPowerKw'
   | 'binaryCommandPending'
   | 'stepCommandPending'
   | 'reason'
 >
+  // Overshoot attribution compares measured draw between plans, so only a device
+  // with a power axis is tracked.
+  & MeteredKind
   // `binaryControl` is OMITTED from `DevicePlanDeviceBase` (orthogonal
   // `BinaryControlKind`), so it can't be Pick'd off the base — carry it as the
   // optional probe shape, sourced by the producer via `isBinaryPlanDevice`.

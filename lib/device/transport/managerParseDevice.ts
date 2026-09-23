@@ -1,3 +1,4 @@
+import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
   DeviceControlProfile,
   TargetDeviceSnapshot,
@@ -7,7 +8,6 @@ import type { MainMeterSelection } from '../../../packages/contracts/src/mainMet
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
-import { estimatePower } from '../devicePowerEstimate';
 import type { ResolvedTransportPowerState } from './transportTypes';
 import { type FlowReportedCapabilitiesForDevice } from './flowReportedCapabilities';
 import { type DeviceCapabilityMap } from '../managerControl';
@@ -26,7 +26,6 @@ import {
     assembleDeviceSnapshot,
     resolveDeviceCapabilityProfile,
 } from './managerParseDeviceFields';
-import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 
 export type DeviceTransportParseProviders = {
     /**
@@ -84,8 +83,7 @@ export type DeviceTransportParseDeps = {
         device: HomeyDeviceLike,
         capsStatus: { hasPower: boolean },
         measuredPower: { measuredPowerKw?: number },
-        powerEstimate: ReturnType<typeof estimatePower>,
-        previousSnapshot?: TransportDeviceSnapshot,
+        previousSnapshot: TransportDeviceSnapshot | undefined,
     ) => boolean;
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
@@ -175,11 +173,20 @@ export function parseDevice(params: {
  * a whole fleet — so `capsStatus.hasPower` admits them and dropping the term
  * demoted nothing.
  *
- * Homey Energy metadata is a structural support signal, not a reading. It keeps
- * an owner's persisted opt-in intact while a live-report sample is temporarily
- * missing; the metered-snapshot gate still excludes the device from planning
- * until an actual Homey Energy value arrives. A load-only device has no such
- * support signal and remains unsupported.
+ * Homey Energy metadata and the owner's Energy settings ("Energy used when
+ * on") are structural support signals, not readings. They keep the owner's
+ * managed and price choices for the device. Admission to power limiting is a
+ * different question with a different answer: it takes a real per-device power
+ * reading, and the plan projection only gives a device a power axis when it has
+ * one (`isMeteredPlanDevice`). A device with neither a power capability nor
+ * Energy metadata or settings is unsupported.
+ *
+ * A device with no power capability and no Energy metadata or settings can
+ * still be supported by what Homey Energy reports for it: its live value is a
+ * real reading of that device, and once seen it is retained with the snapshot.
+ * Those two terms depend on the reading reaching the transport, so they are the
+ * ones a restart can hide until the first reading arrives; the structural terms
+ * above do not.
  *
  * See `notes/persisted-settings-state.md`: transient external failures get a grace
  * window, never a destructive reset of persisted state.
@@ -188,15 +195,11 @@ export function isDevicePowerCapable(params: {
     device: HomeyDeviceLike;
     capsStatus: { hasPower: boolean };
     measuredPower: { measuredPowerKw?: number };
-    powerEstimate: ReturnType<typeof estimatePower>;
-    previousSnapshot?: TransportDeviceSnapshot;
+    previousSnapshot: TransportDeviceSnapshot | undefined;
 }): boolean {
-    const { capsStatus, measuredPower, previousSnapshot } = params;
-    // `powerCapable` answers durable support, not admission. Direct meter
-    // capabilities and Homey Energy metadata preserve the owner's settings;
-    // only an actual/retained trusted sample passes the separate planning gate.
+    const { device, capsStatus, measuredPower, previousSnapshot } = params;
     return capsStatus.hasPower
-        || hasPotentialHomeyEnergyEstimate(params.device)
+        || hasPotentialHomeyEnergyEstimate(device)
         || typeof measuredPower.measuredPowerKw === 'number'
         || (previousSnapshot !== undefined && hasObservedMeasuredPower(previousSnapshot));
 }

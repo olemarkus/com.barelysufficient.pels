@@ -1,5 +1,6 @@
 import type {
   BinaryControlDiscriminantProbe,
+  MeteredPlanInputDevice,
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
@@ -90,7 +91,7 @@ describe('buildPlanInputDevice', () => {
     expect(device.name).toBe('Living room heater');
     // The raw observed axis is resolved into `currentOn` and stripped, the way
     // the producer resolves and strips it.
-    expect((device as PlanInputDevice & { currentOn: boolean }).currentOn).toBe(false);
+    expect((device as MeteredPlanInputDevice & { currentOn: boolean }).currentOn).toBe(false);
     expect(device).not.toHaveProperty('binaryControl');
     expect(device.targets).toEqual([]);
   });
@@ -117,7 +118,7 @@ describe('buildPlanInputDevice', () => {
     });
 
     expect(device.deviceClass).toBe('evcharger');
-    expect((device as PlanInputDevice & { currentOn: boolean }).currentOn).toBe(true);
+    expect((device as MeteredPlanInputDevice & { currentOn: boolean }).currentOn).toBe(true);
     expect(device.priority).toBe(4);
     expect(device.expectedPowerKw).toBe(7.2);
     expect(device.objectiveKind).toBe('ev_soc');

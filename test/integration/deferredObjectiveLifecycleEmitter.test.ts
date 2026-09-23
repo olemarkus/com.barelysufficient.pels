@@ -39,6 +39,8 @@ const buildEvDevice = (
     ],
   },
   lastFreshDataMs: NOW_MS,
+  // A smart task plans energy, so its device has a power reading (paused: 0 kW).
+  currentDrawKw: 0,
   ...overrides,
 }) as ObjectiveDeviceInput;
 

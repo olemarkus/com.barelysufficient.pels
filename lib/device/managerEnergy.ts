@@ -27,11 +27,33 @@ const hasUsableEnergyMetadata = (value: unknown): boolean => {
   return energyW !== null && energyW >= 0;
 };
 
-// Structural support only: this says Homey can describe the device's load so a
-// temporary live-report gap must not erase the owner's settings. It is never a
-// measured reading and therefore never admits the device to a plan by itself.
+/**
+ * The owner's "Energy used when on" / "Energy used when off" from the device's
+ * Advanced settings in Homey, as the watts PELS can control: the on/off delta
+ * when both are set and the delta is positive, otherwise the on value. `null`
+ * when neither describes a draw.
+ */
+export const resolveSettingsEnergyWatts = (device: HomeyDeviceLike): number | null => {
+  const settings = asRecord(device.settings);
+  if (settings === null) return null;
+  const usageOnW = toFiniteNumber(settings.energy_value_on);
+  const usageOffW = toFiniteNumber(settings.energy_value_off);
+  if (usageOnW !== null && usageOffW !== null) {
+    const controllableDeltaW = Math.max(0, usageOnW - usageOffW);
+    if (controllableDeltaW > 0) return controllableDeltaW;
+  }
+  return usageOnW !== null && usageOnW > 0 ? usageOnW : null;
+};
+
+// Structural support only: Homey can describe the device's load, from its
+// Energy metadata or from the owner's Energy settings. This is what keeps an
+// owner's managed/price choices for the device; it is never a measured reading
+// and never admits the device to power limiting by itself — that takes a real
+// per-device power reading.
 export const hasPotentialHomeyEnergyEstimate = (device: HomeyDeviceLike): boolean => (
-  hasUsableEnergyMetadata(device.energyObj) || hasUsableEnergyMetadata(device.energy)
+  hasUsableEnergyMetadata(device.energyObj)
+  || hasUsableEnergyMetadata(device.energy)
+  || resolveSettingsEnergyWatts(device) !== null
 );
 
 /**

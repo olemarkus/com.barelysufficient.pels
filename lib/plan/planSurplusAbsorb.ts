@@ -1,7 +1,8 @@
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { PlanInputDevice } from './planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from './planTypes';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
   SteppedLoadProfile,
@@ -215,7 +216,7 @@ const isHardOffCondition = (signedNetKw: number): boolean => (
  * surplus it should have. `claimForTrackingDevice` reserves the same draw, so it
  * is subtracted once and lower-priority devices are still never offered it.
  */
-const addsBackOwnDraw = (state: PlanEngineState, dev: PlanInputDevice): boolean => {
+const addsBackOwnDraw = (state: PlanEngineState, dev: MeteredPlanInputDevice): boolean => {
   if (!dev.surplusTracking) return state.surplusEligibilityByDevice[dev.id]?.eligible === true;
   // ...but only the draw this posture actually governs. A device PELS cannot
   // command, and one a boost has taken over, both keep drawing whatever the pool
@@ -228,7 +229,7 @@ const addsBackOwnDraw = (state: PlanEngineState, dev: PlanInputDevice): boolean 
 };
 
 function composeSurplusPool(params: {
-  willing: PlanInputDevice[];
+  willing: MeteredPlanInputDevice[];
   state: PlanEngineState;
   signedNetKw: number;
   inferredSurplusKw: number;
@@ -296,7 +297,7 @@ function pruneNonCandidateSurplusState(
  * surplus that is already gone.
  */
 function paceCeilingClimb(params: {
-  dev: PlanInputDevice;
+  dev: MeteredPlanInputDevice;
   state: PlanEngineState;
   target: SteppedLoadStep;
   nowTs: number;
@@ -364,7 +365,7 @@ function paceCeilingClimb(params: {
  * with the add-back in {@link addsBackOwnDraw} so the draw is counted once.
  */
 function claimForTrackingDevice(params: {
-  dev: PlanInputDevice;
+  dev: MeteredPlanInputDevice;
   state: PlanEngineState;
   poolKw: number;
   nowTs: number;
@@ -460,7 +461,7 @@ function claimForTrackingDevice(params: {
  * every build.
  */
 function resolveTrackingRung(params: {
-  dev: PlanInputDevice;
+  dev: MeteredPlanInputDevice;
   state: PlanEngineState;
   poolKw: number;
   floorStep: SteppedLoadStep;
@@ -484,7 +485,7 @@ function resolveTrackingRung(params: {
 }
 
 const resolveHeldStep = (
-  dev: PlanInputDevice,
+  dev: MeteredPlanInputDevice,
   state: PlanEngineState,
 ): SteppedLoadStep | undefined => {
   const heldId = resolveSurplusCeilingStepId(state, dev.id);
@@ -543,8 +544,11 @@ export function withdrawSurplusEligibility(
   excludeIds: ReadonlySet<string>,
   nowTs: number,
 ): void {
+  // Absorbing surplus is spending measured export, so only a device with a power
+  // reading can take part; a temperature device without one keeps its setpoint
+  // logic and never claims from the pool.
   const willing = devices.filter(
-    (dev) => !excludeIds.has(dev.id)
+    (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev) && !excludeIds.has(dev.id)
       && (dev.surplusOnly === true
         || dev.surplusTracking
         || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
@@ -591,8 +595,10 @@ export function resolveSurplusEligibility(params: {
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
   const nowTs = params.nowTs ?? Date.now();
+  // See the twin filter above: the pool is measured power, so only metered devices take part.
   const willing = params.devices.filter(
-    (dev) => (excludeIds === undefined || !excludeIds.has(dev.id))
+    (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev)
+      && (excludeIds === undefined || !excludeIds.has(dev.id))
       && (dev.surplusOnly === true
         || dev.surplusTracking
         || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),

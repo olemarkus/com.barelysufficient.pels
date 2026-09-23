@@ -25,6 +25,16 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   Usage history, and smart-task allocation remain hourly. A partial first/reset quarter is not
   a complete period and must never be treated as favourable capacity evidence. Design of record:
   `notes/capacity-periods.md`.
+- **The power axis is a cluster, and only power logic reads it** (owner ruling 2026-09-23).
+  `currentDrawKw` lives on `MeteredPlanInputKind` / `MeteredKind`, reached through
+  `isMeteredPlanDevice` (`planMeteredDevice.ts`), and is present iff the device has a real
+  per-device power reading. A temperature device without one is still planned
+  (`isPlannableDevice`): mode targets and the price shift apply, but shedding, restore, swaps,
+  reserves, surplus absorption, usage sums, overshoot tracking, idle classification and
+  budget-pressure denial take metered devices only. That includes the shed-floor hold: a device
+  without a reading follows its temperature logic (`planReasonsHoldDecisions.ts`), as it does on the
+  first plan after a restart. Never stamp a `0`
+  draw on a device without a reading: that is the placeholder the split removed.
 - **No EV cluster on the plan device, and there is not going to be one** (owner ruling
   2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
   `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost threshold
@@ -32,8 +42,8 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   decision (`planBoost.ts`) resolved from the producer's `boostSupported`/`boostRequested`, and the
   settings UI reads the battery level from the seam that owns it (`getObservedStateOfCharge` in
   `createPlanService`) and the configured thresholds straight from the settings store — those never
-  cross the plan wire at all. The three clusters the planner discriminates are temperature, stepped,
-  and binary — do not add a fourth for EV. (`EvObservedFields` on the OBSERVER snapshot is a
+  cross the plan wire at all. The clusters the planner discriminates are temperature, stepped,
+  binary, and the power axis — do not add one for EV. (`EvObservedFields` on the OBSERVER snapshot is a
   different thing and stays.)
   **Scope: this is about the EV CLUSTER and the output `DevicePlanDevice`.** It is not licence to
   strip `stateOfCharge` from `PlanInputDevice`. That field rides the input device undeclared —

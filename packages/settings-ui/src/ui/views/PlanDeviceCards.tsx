@@ -689,7 +689,11 @@ export const PlanTemperatureCard = ({
           held card. */}
       <div class="plan-card__state-row">
         <span class="plan-card__state-label">{presentation.label}</span>
-        <span class="plan-card__state-power">{formatKw(displayDev.currentDrawKw)} kW</span>
+        {/* No power reading, no figure: a thermostat PELS plans for its
+            setpoints alone shows nothing rather than a placeholder. */}
+        {displayDev.currentDrawKw !== undefined && (
+          <span class="plan-card__state-power">{formatKw(displayDev.currentDrawKw)} kW</span>
+        )}
       </div>
 
       {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}

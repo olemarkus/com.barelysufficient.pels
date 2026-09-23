@@ -3,7 +3,7 @@ import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
 import type { PlanEngineState, SheddingOutcome } from '../planState';
-import type { PlanInputDevice, ShedBehavior } from '../planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
@@ -130,7 +130,7 @@ export type ShedCandidateParams = {
   deps: SheddingDeps;
 };
 
-export type BaseShedCandidate = PlanInputDevice & {
+export type BaseShedCandidate = MeteredPlanInputDevice & {
   priority: number;
   /**
    * Everything limiting this device can release — for a stepped device its

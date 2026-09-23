@@ -38,6 +38,8 @@ const buildSurplusWillingSnapshot = (): TargetDeviceSnapshot & EvObservedProbe =
   deviceClass: 'socket',
   binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
+  // A metered dump load: PELS switches a device only with a power reading.
+  measuredPowerKw: 1,
 }) as unknown as TargetDeviceSnapshot & EvObservedProbe;
 
 // A ctx whose readers make the surplus posture RESOLVE TRUE on the default path:
@@ -295,6 +297,6 @@ describe('toPlanDevice — R7b per-home options', () => {
     // The producer-resolved answers survive in their place.
     expect('currentOn' in result && result.currentOn).toBe(true);
     expect(result.currentState).toBe('on');
-    expect(result.currentDrawKw).toBe(0.7);
+    expect('currentDrawKw' in result && result.currentDrawKw).toBe(0.7);
   });
 });

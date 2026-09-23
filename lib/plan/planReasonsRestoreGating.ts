@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import {
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -204,7 +204,7 @@ export function resolveRestoreGateHold(
 
 export function resolveRestoreDecision(
   pass: HoldPass,
-  dev: DevicePlanDevice,
+  dev: MeteredDevicePlanDevice,
   loop: HoldLoopState,
   /**
    * Whether the DEVICE currently reports the shed-floor target. A reserve block

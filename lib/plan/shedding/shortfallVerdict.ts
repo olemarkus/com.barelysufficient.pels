@@ -9,7 +9,8 @@ import {
   toInputRemainingSheddableDevice,
 } from '../planRemainingSheddableLoad';
 import type { PlanEngineState } from '../planState';
-import { toUsageDevice } from '../planUsage';
+import { toMeteredUsageDevices } from '../planUsage';
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { buildShedCandidateParams, buildSheddingCandidates } from './candidates';
 import type { PlanSheddingResult, ShedCandidate, SheddingDeps } from './types';
 
@@ -60,11 +61,12 @@ function buildShortfallCapacityStateSummary(
   // The published split, bounded by the total, so the incident record cannot
   // claim more managed usage than the house drew.
   const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
-    devices: devices.map(toUsageDevice),
+    devices: toMeteredUsageDevices(devices),
     totalKw: power.drawKw,
   });
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw({
-    devices: devices.map(toInputRemainingSheddableDevice),
+    // Only a device with a power axis has reducible load to count.
+    devices: devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
     isAlreadyShed: (device) => shedSet.has(device.id),
     limitSource: state.hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
     capacityBreached: power.capacityBreached,

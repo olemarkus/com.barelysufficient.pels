@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -210,7 +210,7 @@ function resolveSteppedRestorePowerSettleRemainingSec(params: {
 }
 
 export function resolveSteppedRestoreObservedGapKw(
-  dev: DevicePlanDevice,
+  dev: MeteredDevicePlanDevice,
   reservation: Pick<SteppedRestoreAttemptState, 'baselinePowerKw' | 'deltaKw'>,
 ): number {
   const actualKw = dev.currentDrawKw;

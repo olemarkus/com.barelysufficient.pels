@@ -4,7 +4,7 @@ export function sortByPriorityAsc<T extends DevicePlanDevice>(devices: T[]): T[]
   return stableSort(devices, compareByPriorityAsc);
 }
 
-export function sortByPriorityDesc(devices: DevicePlanDevice[]): DevicePlanDevice[] {
+export function sortByPriorityDesc<T extends DevicePlanDevice>(devices: T[]): T[] {
   return stableSort(devices, compareByPriorityDesc);
 }
 

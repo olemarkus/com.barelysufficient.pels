@@ -5,7 +5,7 @@ import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { ObjectiveDeviceInput } from '../types';
+import { selectObjectiveDevices, type ObjectiveDeviceSource } from '../types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   buildDeferredObjectiveDiagnostics,
@@ -62,7 +62,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
   getTimeZone: () => string;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
-  getDevices: () => ObjectiveDeviceInput[];
+  getDevices: () => ObjectiveDeviceSource[];
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -158,7 +158,7 @@ export class DeferredObjectiveLifecycleEmitter {
     // history record). The read itself is in-memory (no SDK call).
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
-    const devices = this.deps.getDevices();
+    const devices = selectObjectiveDevices(this.deps.getDevices());
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),

@@ -10,7 +10,7 @@ import {
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
-import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
+import type { PlanInputDevice, BinaryControlDiscriminantProbe, MeteredDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
@@ -34,7 +34,7 @@ const readingFor = (
 });
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredDiscriminantProbe & {
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;

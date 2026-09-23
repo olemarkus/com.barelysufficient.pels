@@ -21,7 +21,7 @@ import {
   RESTORE_COOLDOWN_MS,
   SHED_COOLDOWN_MS,
 } from '../../lib/plan/planConstants';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice as baseBuildPlanDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { applyRestorePlan } from '../../lib/plan/restore';
@@ -66,7 +66,7 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
 // per-axis ledger.
 const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => buildContextFields(overrides);
 
-const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice =>
+const buildPlanDevice = (overrides: Partial<MeteredDevicePlanDevice> = {}): MeteredDevicePlanDevice =>
   baseBuildPlanDevice({ currentState: 'off', ...overrides });
 
 const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({

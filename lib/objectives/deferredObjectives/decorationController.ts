@@ -1,4 +1,5 @@
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import { selectObjectiveDevices } from '../types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
@@ -105,7 +106,7 @@ export class DeferredObjectiveDecorationController {
       return buildDeferredObjectiveDiagnostics({
         nowMs: nowTs,
         timeZone: this.deps.getTimeZone?.() ?? 'UTC',
-        devices,
+        devices: selectObjectiveDevices(devices),
         settings,
         powerTracker: this.deps.getPowerTracker(),
         dailyBudgetSnapshot,

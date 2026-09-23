@@ -1,6 +1,6 @@
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { HeadroomReserve, resolveRestoreDecisionPhase } from '../admission';
-import type { DevicePlanDevice, ShedBehavior } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, ShedBehavior } from '../planTypes';
 import type { SwapLedger } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
@@ -71,7 +71,7 @@ export type RestoreCycle = {
  * over them. Rebuilt per lane because restoring a device changes both.
  */
 export type RestoreLane = {
-  readonly onDevices: DevicePlanDevice[];
+  readonly onDevices: MeteredDevicePlanDevice[];
   readonly steppedSwapExecutor: SteppedSwapExecutor;
 };
 

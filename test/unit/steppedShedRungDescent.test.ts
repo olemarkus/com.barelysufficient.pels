@@ -3,7 +3,7 @@ import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { getSteppedLoadShedTargetStep } from '../../lib/plan/planSteppedLoad';
 import { steppedInputDevice } from '../utils/planTestUtils';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice } from '../../lib/plan/planTypes';
 
 // The production profile from incident `inc_26449fb9` (Høiax "Connected 300").
 const waterHeaterProfile: SteppedLoadProfile = {
@@ -24,7 +24,7 @@ const waterHeaterCalibration = {
   max: 3,
 };
 
-const heater = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => steppedInputDevice({
+const heater = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice => steppedInputDevice({
   steppedLoadProfile: waterHeaterProfile,
   stepPowerCalibration: waterHeaterCalibration,
   selectedStepId: 'max',
@@ -50,7 +50,7 @@ const chargerProfile: SteppedLoadProfile = {
   ],
 };
 
-const charger = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => steppedInputDevice({
+const charger = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice => steppedInputDevice({
   steppedLoadProfile: chargerProfile,
   selectedStepId: '28a',
   currentDrawKw: 6.44,
@@ -70,14 +70,14 @@ const misnamedOffProfile: SteppedLoadProfile = {
   ],
 };
 
-const misnamedOffHeater = (): PlanInputDevice => steppedInputDevice({
+const misnamedOffHeater = (): MeteredPlanInputDevice => steppedInputDevice({
   steppedLoadProfile: misnamedOffProfile,
   selectedStepId: 'max',
   currentDrawKw: 3,
 });
 
 const initialTargetFor = (
-  device: PlanInputDevice,
+  device: MeteredPlanInputDevice,
   shedAction: 'turn_off' | 'set_step',
 ) => getSteppedLoadShedTargetStep({
   device,
@@ -86,7 +86,7 @@ const initialTargetFor = (
 });
 
 const ladderFor = (
-  device: PlanInputDevice,
+  device: MeteredPlanInputDevice,
   profile: SteppedLoadProfile,
   shedAction: 'turn_off' | 'set_step',
 ) => resolveSteppedShedLadder({

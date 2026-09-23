@@ -1601,6 +1601,37 @@ describe('DeviceTransport', () => {
                 .toBeUndefined();
         });
 
+        it('keeps a device whose only power evidence is its Energy settings supported on the first read', async () => {
+            // The first read after a restart: no previous snapshot, no live
+            // report, nothing retained. Support is read off the device itself,
+            // so "Energy used when on" alone keeps the owner's choices instead
+            // of the boot read demoting the device.
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Garage heater plug',
+                    class: 'socket',
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                    settings: { energy_value_on: 1200, load: 1500 },
+                },
+            });
+
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            // The declared load wins the estimate ladder, and that must not mask the
+            // Energy setting underneath it.
+            expect(snapshot[0].expectedPowerSource).toBe('load-setting');
+            expect(snapshot[0].powerCapable).toBe(true);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw)
+                .toBeUndefined();
+        });
+
         it('does not treat empty Homey Energy metadata as structural power support', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({

@@ -34,7 +34,6 @@ export { registerAppFlowCards } from './appInit/registerAppFlowCards';
 export {
   evictMissingDeviceCacheEntries,
   isExternalOffHeldForDevice,
-  toMeteredPlanDevice,
   toPlanDevice,
 } from './appInit/toPlanDevice';
 export { buildDeviceParseProviders } from './appInit/buildDeviceParseProviders';

@@ -3,13 +3,13 @@ import {
   prunePendingTargetCommandsForPlan,
   syncPendingTargetCommands,
 } from '../../lib/plan/planTargetControl';
-import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DevicePlan, MeteredPlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
-const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
+const buildLiveDevice = (deviceId: string, name: string, target: number): MeteredPlanInputDevice =>
   // `planTargetControl` reads only `targets`; the device has no control
   // capability, so the binary regrouper drops the (inert) `binaryControl` —
   // behaviourally identical, since the field is never read on this path.
@@ -26,7 +26,7 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
     binaryControl: { on: true },
     currentTemperature: 21,
     targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
-  }))) as PlanInputDevice;
+  }))) as MeteredPlanInputDevice;
 
 const buildPlanDevice = (
   deviceId: string,

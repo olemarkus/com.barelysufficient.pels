@@ -49,10 +49,15 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import type { DecoratedDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  MeasuredPowerObservedProbe,
+  TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -104,12 +109,16 @@ const buildDeviceReading = (
   tempC: number,
   nowMs: number,
   opts: { withSteps: boolean },
-): DecoratedDeviceSnapshot & TemperatureObservedProbe => ({
+): DecoratedDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
   available: true,
   id: DEVICE_ID,
   name: 'Connected 300',
   expectedPowerKw: 1,
   expectedPowerSource: 'default',
+  // The element is idle: a real reading of 0 kW. A smart task plans only for a
+  // device with a power reading (`selectObjectiveDevices`), and 0 is the draw the
+  // producer resolved for this fixture before the power axis became optional.
+  measuredPowerKw: 0,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
   deviceType: 'temperature',
@@ -146,13 +155,17 @@ const buildDeviceReading = (
 // `priority` is stamped here because `toPlanDevice` is only the per-device half
 // of the producer: `buildHomePlanDevices` ranks the whole planned set right
 // after it, and this spec drives the projection on its own.
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => ({
-  ...toPlanDevice(
-    createAppContextMock({ getNow: () => new Date(nowMs) }),
-    buildDeviceReading(tempC, nowMs, opts),
-  ),
-  priority: 1,
-});
+const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): MeteredPlanInputDevice => {
+  const device: PlanInputDevice = {
+    ...toPlanDevice(
+      createAppContextMock({ getNow: () => new Date(nowMs) }),
+      buildDeviceReading(tempC, nowMs, opts),
+    ),
+    priority: 1,
+  };
+  if (!isMeteredPlanDevice(device)) throw new Error('fixture: the reading must give the device a power axis');
+  return device;
+};
 
 // The learned kWh/°C rate is present and confident throughout — in prod it never
 // degraded; only the step ladder did.
@@ -252,7 +265,7 @@ const buildSettings = () => normalizeDeferredObjectiveSettings({
 
 const buildDiagnostic = (
   nowMs: number,
-  device: PlanInputDevice,
+  device: MeteredPlanInputDevice,
   activePlans: DeferredObjectiveActivePlansV1 | null,
 ): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,

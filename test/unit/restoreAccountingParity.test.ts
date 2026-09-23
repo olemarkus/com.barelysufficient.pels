@@ -40,6 +40,8 @@ import {
 import type {
   DevicePlanDevice,
   BinaryControlDiscriminantProbe,
+  MeteredDevicePlanDevice,
+  MeteredDiscriminantProbe,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
@@ -54,7 +56,7 @@ import { fixtureControlPosture, steppedProfile, buildPlanDevice } from '../utils
 // are read by the restore-accounting cascade (`isBinaryObservedOff` and
 // `getHighestKnownPowerKw`) even though neither rides on the bare `DevicePlanDevice`
 // union, so the fixtures carry them explicitly.
-type RestoreFixture = DevicePlanDevice & {
+type RestoreFixture = MeteredDevicePlanDevice & {
   binaryControl?: { on: boolean };
   controlModel?: DeviceControlModel;
   // `steppedLoadProfile` rides on the stepped variant of the `DevicePlanDevice`
@@ -76,6 +78,7 @@ const buildRestoreFixture = (
   overrides: Partial<DevicePlanDevice>
     & TemperatureDiscriminantProbe
     & BinaryControlDiscriminantProbe
+    & MeteredDiscriminantProbe
     & {
       evChargingState?: string;
       binaryCapabilityId?: string;

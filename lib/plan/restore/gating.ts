@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
@@ -35,7 +35,7 @@ restore gating stays together to keep direct-vs-swap flow readable */
 export function planRestoreForDevice(
   cycle: RestoreCycle,
   lane: RestoreLane,
-  dev: DevicePlanDevice,
+  dev: MeteredDevicePlanDevice,
   loop: RestoreLoopState,
 ): RestoreLoopState {
   const {

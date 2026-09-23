@@ -17,7 +17,8 @@
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -458,7 +459,7 @@ function buildOvershootContributor(
 }
 
 function trackPlanDeviceForOvershoot(
-  device: DevicePlanDevice,
+  device: MeteredDevicePlanDevice,
   state: PlanEngineState,
   pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): OvershootTrackedPlanDevice {
@@ -494,8 +495,10 @@ function trackPlanDevicesForOvershoot(
   state: PlanEngineState,
   pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): Record<string, OvershootTrackedPlanDevice> {
+  // Attribution compares measured draw between plans; a device without a power
+  // reading has nothing to compare and is not tracked.
   return Object.fromEntries(
-    planDevices.map((device) => [
+    planDevices.filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device)).map((device) => [
       device.id,
       trackPlanDeviceForOvershoot(device, state, pendingBinaryCommandStore),
     ]),

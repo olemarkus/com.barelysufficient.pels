@@ -35,7 +35,7 @@ import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestU
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
-  type PlanInputDevice,
+  type MeteredPlanInputDevice,
 } from '../../lib/plan/planTypes';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
@@ -54,7 +54,7 @@ const heaterEntry: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: DEADLINE_MS,
 };
 
-const buildHeaterDevice = (id: string): PlanInputDevice => withTemperatureDiscriminant(
+const buildHeaterDevice = (id: string): MeteredPlanInputDevice => withTemperatureDiscriminant(
   withBinaryDiscriminant(withFixtureResidualKw({
     control: fixtureControlPosture({ controllable: true }),
     available: true,
@@ -77,10 +77,10 @@ const buildHeaterDevice = (id: string): PlanInputDevice => withTemperatureDiscri
     currentTemperature: 40,
     lastFreshDataMs: NOW_MS,
   })),
-) as PlanInputDevice;
+) as MeteredPlanInputDevice;
 
 const buildDiagnosticsParams = (overrides: {
-  devices: PlanInputDevice[];
+  devices: MeteredPlanInputDevice[];
   deviceIds?: string[];
   resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 }) => ({

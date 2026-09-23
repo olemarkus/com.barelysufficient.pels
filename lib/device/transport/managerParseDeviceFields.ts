@@ -166,14 +166,13 @@ function resolveDeviceControlBundle(params: {
     overlay: DeviceCapabilityProfile['overlay'];
     capsStatus: DeviceCapabilityProfile['capsStatus'];
     binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    powerEstimate: ReturnType<typeof estimatePower>;
     measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
     previousSnapshot?: TransportDeviceSnapshot;
     purpose: ParseDevicePurpose;
     managedDecision: ManagedFilterDecision;
 }): DeviceControlBundle | null {
     const {
-        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate, measuredPower,
+        identity, deps, overlay, capsStatus, binaryCapabilityId, measuredPower,
         previousSnapshot, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
@@ -216,13 +215,7 @@ function resolveDeviceControlBundle(params: {
     const available = resolveAvail(
         binaryCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
     );
-    const powerCapable = isPowerCapable(
-        effectiveDevice,
-        capsStatus,
-        measuredPower,
-        powerEstimate,
-        previousSnapshot,
-    );
+    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, previousSnapshot);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType: overlay.flowAugmentedDeviceType,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
@@ -288,7 +281,7 @@ export function assembleDeviceSnapshot(params: {
     const thermostatMode = readReportedThermostatMode(overlay, previousSnapshot);
     const targets = temperature ? [temperature.target] : [];
     const control = resolveDeviceControlBundle({
-        identity, deps, overlay, capsStatus, binaryCapabilityId, powerEstimate,
+        identity, deps, overlay, capsStatus, binaryCapabilityId,
         measuredPower: resolvedMeasuredPower,
         previousSnapshot, purpose, managedDecision,
     });

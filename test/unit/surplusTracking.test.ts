@@ -18,7 +18,7 @@ import {
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 
 const CHARGER_ID = 'charger';
 // steppedProfile rungs: off 0 W, low 1250 W, medium 2000 W, max 3000 W — so the
@@ -33,7 +33,7 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusTrac
   ...overrides,
 });
 
-const buildTracker = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => (
+const buildTracker = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice => (
   buildPlanInputDevice({
     id: CHARGER_ID,
     name: CHARGER_ID,

@@ -261,6 +261,31 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
   });
 
+  it('plans a temperature device without a power reading for its setpoints, with no power axis', () => {
+    // Owner ruling 2026-09-23: the temperature logic applies, the power logic
+    // does not. The same device without a temperature axis is excluded above.
+    const { measuredPowerKw: _measuredPowerKw, ...unmetered } = mainDevice as TargetDeviceSnapshot & {
+      measuredPowerKw: number;
+    };
+    const thermostat = {
+      ...unmetered,
+      deviceType: 'temperature',
+      temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 21, unit: '°C' } },
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      capabilities: ['target_temperature', 'measure_temperature'],
+    } as unknown as TargetDeviceSnapshot;
+    const ctx = createAppContextMock({
+      latestTargetSnapshot: [thermostat],
+      homeMembership: makeMembershipService([{ deviceId: 'device-main', zoneId: 'z1' }]),
+      resolveManagedState: vi.fn(() => true),
+    });
+
+    const planned = buildHomePlanDevices(ctx, MAIN_HOME_ID);
+    expect(planned.map((device) => device.id)).toEqual(['device-main']);
+    expect('currentDrawKw' in planned[0]!).toBe(false);
+    expect(planned[0]!.control.commandAuthority).toBe(false);
+  });
+
   it('excludes a sub-home zone member from the main plan devices', () => {
     createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
     const ctx = makeCtx(makeMembershipService(membershipInputs));

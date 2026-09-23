@@ -23,7 +23,13 @@
  * case, a meter that died mid-run, ruled on 2026-08-31: shed, don't hold. And
  * a shed is to the FLOOR, not to off — a stepped device lands on its lowest
  * step, a thermostat on its shed setpoint (`feedback_step_only_stepper_valid`).
+ *
+ * "Every candidate" means every device with a power reading. A temperature
+ * device planned without one takes no power logic at all (owner ruling
+ * 2026-09-23), this pass included: it keeps following its mode target. It was
+ * not planned at all before that ruling, so it was never shed here either.
  */
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { SilentMeterReading } from '../power/powerCycleReading';
 import { computeShortfallThreshold } from './planBudget';
 import type { PlanBuilderDeps } from './planBuilderDeps';
@@ -138,7 +144,9 @@ export class SilentMeterPlanBuilder {
     this.deps.structuredLog?.info({
       event: 'plan_silent_meter_pass',
       shedDeviceCount: sheddingPlan.shedSet.size,
-      candidateDeviceCount: context.devices.filter((dev) => dev.control.commandAuthority).length,
+      // Counted as the candidate walk counts: commandable AND with a power reading.
+      candidateDeviceCount: context.devices
+        .filter((dev) => dev.control.commandAuthority && isMeteredPlanDevice(dev)).length,
       lastPowerUpdateMs: reading.lastPowerUpdateMs,
     });
 

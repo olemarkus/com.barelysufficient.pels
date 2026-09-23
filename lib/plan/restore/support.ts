@@ -1,5 +1,5 @@
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
-import type { DevicePlanDevice } from '../planTypes';
+import type { MeteredDevicePlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
 import {
   applyActivationPenalty,
@@ -24,7 +24,7 @@ export type RestoreNeed = {
 };
 
 export function getRestoreNeed(
-  dev: DevicePlanDevice,
+  dev: MeteredDevicePlanDevice,
   state: PlanEngineState,
   nowTs: number,
   diagnostics: DeviceDiagnosticsRecorder | undefined,

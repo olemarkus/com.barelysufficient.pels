@@ -5,7 +5,10 @@ import {
 } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
-import type { DevicePlanDevice, ShedBehavior, SteppedPlanDevice } from '../planTypes';
+import type {
+  DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, ShedBehavior, SteppedPlanDevice,
+} from '../planTypes';
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
@@ -35,11 +38,16 @@ export type OffDeviceReasonTiming = {
 
 export type RestoreCandidate = {
   kind: 'binary' | 'stepped';
-  device: DevicePlanDevice;
+  device: MeteredDevicePlanDevice;
 };
 
-export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
-  return device.control.commandAuthority
+export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
+  // Resuming a device is admitting its draw into available power, which only a
+  // device with a power reading can be priced for. A temperature device planned
+  // without one keeps its setpoint logic and is never a restore, swap or
+  // reservation candidate — this is the gate all of those funnel through.
+  return isMeteredPlanDevice(device)
+    && device.control.commandAuthority
     && device.plannedState !== 'shed'
     && device.plannedState !== 'inactive'
     // "Leave off until turned on again": the single gate every restore-candidate
@@ -76,11 +84,13 @@ function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedS
   return device.currentState === 'not_applicable' ? 'target_only' : 'unknown';
 }
 
-export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
+export function isBinaryRestoreCandidate(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
 }
 
-export function isSteppedRestoreCandidate(device: DevicePlanDevice): device is SteppedPlanDevice {
+export function isSteppedRestoreCandidate(
+  device: DevicePlanDevice,
+): device is SteppedPlanDevice & MeteredKind {
   if (!isSteppedLoadDevice(device) || device.steppedLoadProfile.steps.length === 0) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   const observedState = resolveRestoreObservedState(device);
@@ -107,30 +117,36 @@ export function isActiveSteppedRestoreCandidate(device: DevicePlanDevice): boole
   return resolveRestoreObservedState(device) === 'on';
 }
 
-export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {
+export function isSwapRestoreCandidate(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   const observedState = resolveRestoreObservedState(device);
   return isRestoreLiveEligibleDevice(device) && (observedState === 'on' || observedState === 'target_only');
 }
 
-export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
+export function getOffDevices(planDevices: DevicePlanDevice[]): MeteredDevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device));
+    .filter((device): device is MeteredDevicePlanDevice => (
+      !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device)
+    ));
   return sortByPriorityAsc(filtered);
 }
 
-export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): SteppedPlanDevice[] {
+export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): Array<SteppedPlanDevice & MeteredKind> {
   const filtered = planDevices
-    .filter((device): device is SteppedPlanDevice => isSteppedRestoreCandidate(device));
+    .filter((device): device is SteppedPlanDevice & MeteredKind => isSteppedRestoreCandidate(device));
   return sortByPriorityAsc(filtered);
 }
 
 export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCandidate[] {
   const candidates: RestoreCandidate[] = [
     ...planDevices
-      .filter((device) => !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device))
+      .filter((device): device is MeteredDevicePlanDevice => (
+        !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device)
+      ))
       .map((device) => ({ kind: 'binary' as const, device })),
     ...planDevices
-      .filter((device) => isOffSteppedRestoreCandidate(device))
+      // `isOffSteppedRestoreCandidate` funnels through `isRestoreLiveEligibleDevice`,
+      // which is what proves the power axis.
+      .filter((device): device is MeteredDevicePlanDevice => isOffSteppedRestoreCandidate(device))
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];
   return candidates.slice().sort((a, b) => {
@@ -146,9 +162,9 @@ export function getOnDevices(
   planDevices: DevicePlanDevice[],
   getShedBehavior: (deviceId: string) => ShedBehavior,
   temperatureSetpoints: TemperatureSetpointsByDevice,
-): DevicePlanDevice[] {
+): MeteredDevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => {
+    .filter((device): device is MeteredDevicePlanDevice => {
       if (!isSwapRestoreCandidate(device)) return false;
       const behavior = getShedBehavior(device.id);
       if (isSteppedLoadDevice(device)) {

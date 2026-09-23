@@ -1,4 +1,5 @@
-import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import {
   getSteppedRestoreCandidates,
@@ -47,7 +48,7 @@ export function applyRestoreCandidates(
 export function planSteppedRestoreThroughSourceHold(
   cycle: RestoreCycle,
   lane: RestoreLane,
-  dev: SteppedPlanDevice,
+  dev: SteppedPlanDevice & MeteredKind,
   loop: RestoreLoopState,
 ): RestoreLoopState {
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
@@ -93,7 +94,9 @@ function applyRestoreCandidate(
   loop: RestoreLoopState,
 ): RestoreLoopState {
   const dev = cycle.deviceMap.get(candidate.device.id);
-  if (!dev) return loop;
+  // The candidate was chosen with a power axis (`isRestoreLiveEligibleDevice`);
+  // the map entry is the same device this cycle, re-read for its latest updates.
+  if (!dev || !isMeteredPlanDevice(dev)) return loop;
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
   if (candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
     return planRestoreForDevice(cycle, lane, dev, loop);
@@ -106,7 +109,7 @@ function applyRestoreCandidate(
 
 export function buildSteppedSwapExecutor(
   cycle: RestoreCycle,
-  onDevices: DevicePlanDevice[],
+  onDevices: MeteredDevicePlanDevice[],
 ): SteppedSwapExecutor {
   return ({
     dev, needed, devPower, availableHeadroom, restoreDebugKey,

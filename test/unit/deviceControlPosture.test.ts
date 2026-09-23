@@ -24,6 +24,8 @@ const snapshot = (fields: Partial<DecoratedDeviceSnapshot>): DecoratedDeviceSnap
     id: 'dev-1',
     name: 'Device',
     binaryControl: { on: true },
+    // A device PELS may switch has a power reading.
+    measuredPowerKw: 0.5,
     ...fields,
   })
 );
@@ -38,6 +40,16 @@ describe('resolveDeviceControlPosture', () => {
       snapshot({ deviceClass: 'evcharger' }), true, false, 'pels_only',
     );
     expect(posture).toEqual({ managed: true, commandAuthority: true });
+  });
+
+  it('refuses authority to a device without a power reading, whatever the settings say', () => {
+    // Switching, limiting and resuming are power decisions, which take a
+    // measured draw (owner ruling 2026-09-23). A supported thermostat with no
+    // reading still gets its setpoints; those never needed this authority.
+    const { measuredPowerKw: _noReading, ...unmetered } = snapshot({ deviceClass: 'thermostat' }) as
+      DecoratedDeviceSnapshot & { measuredPowerKw?: number };
+    expect(resolveDeviceControlPosture(unmetered, true, true, 'unrestricted').commandAuthority).toBe(false);
+    expect(resolveDeviceControlPosture(unmetered, true, false, 'pels_only').commandAuthority).toBe(false);
   });
 
   it('refuses the pels_only grant to an UNMANAGED device', () => {

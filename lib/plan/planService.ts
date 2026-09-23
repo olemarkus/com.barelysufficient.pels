@@ -40,6 +40,7 @@
  * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
  */
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { normalizeError } from '../utils/errorUtils';
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
@@ -62,6 +63,7 @@ import { PlanStatusWriter } from './planStatusWriter';
 import { buildLiveStatePlan } from './planLiveStateMerge';
 import type {
   DevicePlan,
+  MeteredDevicePlanDevice,
   PendingTargetObservationSource,
   PlanChangeSet,
   PlanRebuildOutcome,
@@ -491,7 +493,11 @@ export class PlanService {
     // The temperature cluster rides as ONE optional object on the classifier
     // input (mirroring the observer's atomic facet): stamped together for a
     // temperature device, omitted otherwise — no nullable fields synthesized.
-    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => ({
+    // Idle and unresponsive are judged from measured draw, so only a device with
+    // a power reading is classified; one without is never called idle.
+    const idleInputs = plan.devices
+      .filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device))
+      .map((device): IdleClassifierDeviceInput => ({
       id: device.id,
       name: device.name,
       currentState: device.currentState,

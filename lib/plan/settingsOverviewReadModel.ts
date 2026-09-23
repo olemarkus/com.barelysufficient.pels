@@ -1,3 +1,4 @@
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import {
   resolvePlanStateKind,
@@ -238,7 +239,8 @@ export function buildSettingsOverviewDeviceReadModel(
     evChargingState: resolveOverviewEvChargingState(device.id, deps),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
     ...temperatureFields,
-    currentDrawKw: device.currentDrawKw,
+    // Present only for a device with a power reading: see `DeviceOverviewSnapshot.currentDrawKw`.
+    ...(isMeteredPlanDevice(device) ? { currentDrawKw: device.currentDrawKw } : {}),
     expectedPowerKw: device.expectedPowerKw,
 
     budgetExempt: device.budgetExempt,
@@ -261,11 +263,8 @@ export function buildSettingsOverviewDeviceReadModel(
     binaryCommandPending: device.binaryCommandPending,
     pendingTargetCommand: device.pendingTargetCommand,
     // These read the draw off a `DeviceOverviewSnapshot`, where `currentDrawKw`
-    // is REQUIRED — a carrier that does not populate it no longer compiles. It
-    // used to be optional, and a carrier that forgot it silently read
-    // `undefined`, which `isSatisfiedTargetOnlyDevice` treats as `0 kW` and
-    // labels a drawing target-only device "Idle". Since both sides now name the
-    // producer-resolved `currentDrawKw`, the plan device satisfies the shape
+    // is present exactly when the plan device has a power axis. Both sides name
+    // the producer-resolved field, so the plan device satisfies the shape
     // directly and there is no adapter left to forget.
     stateKind: resolvePlanStateKind(overviewShape),
     stateTone: resolvePlanStateTone(overviewShape),

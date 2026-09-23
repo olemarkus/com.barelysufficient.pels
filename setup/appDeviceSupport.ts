@@ -12,6 +12,7 @@ import {
 } from '../lib/utils/settingsKeys';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
+import { classifyUnsupportedDevices } from '../lib/plan/planDeviceSupport';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import {
   enforceTemperatureWithoutOnOffOvershootBehaviors,
@@ -126,19 +127,9 @@ function applyPriceDisableOverrides(params: {
   return true;
 }
 
-function getUnsupportedBuckets(snapshot: TargetDeviceSnapshot[]): {
-  unsupported: TargetDeviceSnapshot[];
-  unsupportedIds: string[];
-} {
-  const unsupported = snapshot.filter((device) => device.powerCapable === false);
-  return {
-    unsupported,
-    unsupportedIds: unsupported.map((device) => device.id),
-  };
-}
-
 function logUnsupportedChanges(params: {
   unsupported: TargetDeviceSnapshot[];
+  changedPriceOnly: TargetDeviceSnapshot[];
   managedChanged: boolean;
   controllableChanged: boolean;
   priceChanged: boolean;
@@ -146,6 +137,7 @@ function logUnsupportedChanges(params: {
 }): void {
   const {
     unsupported,
+    changedPriceOnly,
     managedChanged,
     controllableChanged,
     priceChanged,
@@ -156,6 +148,13 @@ function logUnsupportedChanges(params: {
       event: 'unsupported_controls_disabled',
       deviceIds: unsupported.map((device) => device.id),
       deviceNames: unsupported.map((device) => device.name),
+    });
+  }
+  if (changedPriceOnly.length > 0) {
+    debugStructured({
+      event: 'price_only_support_enabled',
+      deviceIds: changedPriceOnly.map((device) => device.id),
+      deviceNames: changedPriceOnly.map((device) => device.name),
     });
   }
 }
@@ -176,16 +175,25 @@ export function disableUnsupportedDevices(params: {
   const {
     unsupported,
     unsupportedIds,
-  } = getUnsupportedBuckets(snapshot);
+    fullyUnsupportedIds,
+    priceOnly,
+  } = classifyUnsupportedDevices(snapshot);
 
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
+  // Edge-trigger the price-only log: only emit when capacity was previously
+  // enabled (`true`) and we're demoting it to `false`. Absent keys are not a
+  // transition — they were already effectively unmanaged — so they must not
+  // re-fire the log on every snapshot refresh. This matches the demotion
+  // condition in `applyFalseOverrides`.
+  const changedPriceOnly = priceOnly.filter((device) => controllable[device.id] === true);
+
   const managedChanged = applyFalseOverrides({
     settings,
     key: MANAGED_DEVICES,
     current: managed,
-    ids: unsupportedIds,
+    ids: fullyUnsupportedIds,
   });
   const controllableChanged = applyFalseOverrides({
     settings,
@@ -196,7 +204,7 @@ export function disableUnsupportedDevices(params: {
   const priceChanged = applyPriceDisableOverrides({
     settings,
     priceSettings,
-    ids: unsupportedIds,
+    ids: fullyUnsupportedIds,
   });
 
   const shedBehaviorUpdated = enforceTemperatureWithoutOnOffOvershootBehaviors({
@@ -210,6 +218,7 @@ export function disableUnsupportedDevices(params: {
   if (unsupported.length > 0) {
     logUnsupportedChanges({
       unsupported,
+      changedPriceOnly,
       managedChanged,
       controllableChanged,
       priceChanged,
@@ -412,3 +421,4 @@ function readModeTargetsCatalog(
   }
   return keys.includes(key) ? { state: 'unavailable' } : { state: 'resolved', catalog: {} };
 }
+

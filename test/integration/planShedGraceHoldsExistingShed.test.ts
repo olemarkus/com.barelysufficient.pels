@@ -3,7 +3,9 @@ import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
+import type {
+  BinaryControlDiscriminantProbe, DevicePlan, MeteredDiscriminantProbe, MeteredPlanInputDevice, PlanInputDevice,
+} from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import {
   fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn,
@@ -15,8 +17,8 @@ import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixt
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => {
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredDiscriminantProbe = {},
+): MeteredPlanInputDevice => {
   const merged = {
     id: 'dev',
     name: 'Device',
@@ -32,7 +34,7 @@ const buildDevice = (
     currentDrawKw: fixtureCurrentDrawKw(merged),
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
+  }) as MeteredPlanInputDevice;
 };
 
 /**

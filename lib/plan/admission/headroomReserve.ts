@@ -1,4 +1,5 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import type { PlanEngineState } from '../planState';
 import {
   PLAN_REASON_CODES,
@@ -91,7 +92,9 @@ export function resolveHeadroomReserves(params: {
   const reserves: HeadroomReserve[] = [];
 
   for (const device of devices) {
-    if (device.reservesStartupPower !== true) continue;
+    // A reserve is a block of available power held for a start, which only a
+    // device with a power reading can be priced for or seen to satisfy.
+    if (device.reservesStartupPower !== true || !isMeteredPlanDevice(device)) continue;
     const decision = resolveReserveForDevice({
       device, armedMs: previousArmedMs[device.id] ?? null, nowTs,
     });
@@ -121,7 +124,7 @@ type ReserveDecision = {
 };
 
 function resolveReserveForDevice(params: {
-  device: DevicePlanDevice;
+  device: MeteredDevicePlanDevice;
   armedMs: number | null;
   nowTs: number;
 }): ReserveDecision {
@@ -358,7 +361,7 @@ function isStartable(device: DevicePlanDevice): boolean {
  * The draw test remains as a second, independent release path: it is the only signal a non-stepped
  * device has, and for a stepped device it can only release EARLIER than the step evidence would.
  */
-function isStartupSatisfied(device: DevicePlanDevice, startupKw: number): boolean {
+function isStartupSatisfied(device: MeteredDevicePlanDevice, startupKw: number): boolean {
   if (isReportedAtOrAboveLowestActiveStep(device)) return true;
   // A device whose binary control is confirmed ON has started, full stop — whether or not it
   // happens to be drawing this instant. Without this the draw test alone loops forever on any

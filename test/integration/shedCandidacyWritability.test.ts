@@ -76,6 +76,7 @@ const capLessTargetBearing: PlanInputDevice = withFixtureResidualKw({
   expectedPowerKw: 2,
   // Both devices carry real load; the test is about which one PELS can
   // actually act on, so neither may resolve to zero relief.
+  currentDrawKw: 2,
   residualKw: { shed: 2 },
 }) as unknown as PlanInputDevice;
 
@@ -90,6 +91,7 @@ const writableBinary: PlanInputDevice = withFixtureResidualKw({
   expectedPowerKw: 2,
   // Both devices carry real load; the test is about which one PELS can
   // actually act on, so neither may resolve to zero relief.
+  currentDrawKw: 2,
   residualKw: { shed: 2 },
 }) as unknown as PlanInputDevice;
 

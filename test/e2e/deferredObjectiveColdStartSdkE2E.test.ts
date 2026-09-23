@@ -29,7 +29,7 @@ import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferr
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
@@ -64,7 +64,7 @@ const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
-const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
+const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: DEVICE_ID,
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
@@ -92,7 +92,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
       { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
     ],
   },
-})) as PlanInputDevice;
+})) as MeteredPlanInputDevice;
 
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   objectiveProfiles: {

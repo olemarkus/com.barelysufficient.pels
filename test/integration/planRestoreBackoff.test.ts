@@ -38,7 +38,9 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import type { DevicePlanDevice , SteppedPlanDevice } from '../../lib/plan/planTypes';
+import type {
+  DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice,
+} from '../../lib/plan/planTypes';
 import {
   type BinaryControlDiscriminantProbe,
   withBinaryDiscriminant,
@@ -56,12 +58,12 @@ const FIXTURE_TOTAL_KW = 3;
 // cluster via `withBinaryDiscriminant` (regroup, not mutate).
 const buildBinaryPlanDevice = (
   overrides: Parameters<typeof buildPlanDevice>[0] & BinaryControlDiscriminantProbe,
-): DevicePlanDevice => {
+): MeteredDevicePlanDevice => {
   const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as DevicePlanDevice;
+  return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as MeteredDevicePlanDevice;
 };
 
-const steppedDevOf = (deviceMap: Map<string, DevicePlanDevice>): SteppedPlanDevice => {
+const steppedDevOf = (deviceMap: Map<string, MeteredDevicePlanDevice>): SteppedPlanDevice & MeteredKind => {
   const dev = deviceMap.get('dev-step');
   if (!dev || !isSteppedLoadDevice(dev)) throw new Error('fixture: dev-step must be a stepped plan device');
   return dev;
@@ -71,9 +73,9 @@ const buildBinarySteppedPlanDevice = (
   overrides: Parameters<typeof steppedPlanDevice>[0]
     & BinaryControlDiscriminantProbe
     & { evChargingState?: string },
-): SteppedPlanDevice => {
+): SteppedPlanDevice & MeteredKind => {
   const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as SteppedPlanDevice;
+  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as SteppedPlanDevice & MeteredKind;
 };
 
 // The frame and the measurement are two objects now; the spec keeps spelling

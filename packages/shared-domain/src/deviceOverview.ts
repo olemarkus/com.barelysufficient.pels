@@ -110,21 +110,20 @@ export type DeviceOverviewSnapshot = {
   deviceRole?: 'ev_charger';
   evChargingState?: EvChargingState;
   /**
-   * The PRODUCER-RESOLVED current draw (`getCurrentDrawKw`), never the raw
-   * `measure_power` observation. REQUIRED: every carrier of this shape — the
-   * plan read model, the overview log seam, the settings-UI plan snapshot — is
-   * fed from a plan device, which resolves the draw once at `toPlanDevice` and
-   * carries it as a required field. An unmetered device resolves to `0`, so
-   * there is no absent case for a consumer to invent an answer for.
+   * The PRODUCER-RESOLVED current draw, never the raw `measure_power`
+   * observation. Present IFF the device has a real power reading this cycle —
+   * the plan device's power axis (`MeteredPlanInputKind`, `packages/planner-types`).
+   * ABSENT for a device the plan runs without one (a temperature device that
+   * gets mode and price setpoints but has nothing measuring its draw): that is
+   * genuine domain absence, and it is never filled with `0`, which would label a
+   * device nobody measured as drawing nothing.
    *
-   * It was an OPTIONAL `measuredPowerKw` carrying exactly this value, and both
-   * halves of that were hazards: the name invited consumers to treat it as raw
-   * telemetry, and the optionality meant a carrier that forgot to populate it
-   * compiled clean and silently read `undefined` — which
-   * `isSatisfiedTargetOnlyDevice` scores as `0 kW` and labels a drawing device
-   * "Idle".
+   * It was once an OPTIONAL `measuredPowerKw` that carriers forgot to populate,
+   * which read as `0 kW` and labelled a drawing device "Idle". The name is now
+   * the producer's, and every carrier forwards the plan device's field as is —
+   * absent only where the plan device has no power axis.
    */
-  currentDrawKw: number;
+  currentDrawKw?: number;
   /**
    * Draw when running, REQUIRED — the producer's answer for every device, from
    * a rung ladder that ends in a device-class default, so there is no device it
@@ -424,11 +423,10 @@ const formatEvSocStatus = (
 };
 
 const formatUsageText = (params: {
-  // Required, mirroring `DeviceOverviewSnapshot.currentDrawKw`: the only caller
-  // reads that field, and an unmetered device resolves to `0` rather than to
-  // absence. The `Number.isFinite` gate below still stands as the wire-boundary
-  // guard.
-  measuredKw: number;
+  // Mirrors `DeviceOverviewSnapshot.currentDrawKw`: absent for a device with no
+  // power reading, which then shows no measured figure. The `Number.isFinite`
+  // gate below still stands as the wire-boundary guard.
+  measuredKw: number | undefined;
   expectedKw?: number;
   // Stepped devices report PLANNING power (the capacity the selected step
   // reserves), which tracked the reported step one moment and the target step

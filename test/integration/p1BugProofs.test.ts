@@ -2,7 +2,8 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
@@ -291,7 +292,7 @@ describe('P1 bug proofs', () => {
       }),
       binaryControl: { on: false },
       currentOn: false,
-    }) as PlanInputDevice;
+    }) as MeteredPlanInputDevice;
 
     const planState = createPlanEngineState();
     const [planDevice] = buildInitialPlanDevices({
@@ -307,6 +308,7 @@ describe('P1 bug proofs', () => {
       },
     });
 
+    if (!isMeteredPlanDevice(planDevice)) throw new Error('fixture: the stepped device has a power reading');
     const plannerControlledKw = sumControlledUsageKw([toUsageDevice(planDevice)]);
     await recordPowerSampleForApp({
       generationSegments: [],

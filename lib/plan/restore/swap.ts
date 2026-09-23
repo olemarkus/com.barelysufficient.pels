@@ -1,5 +1,5 @@
 import { getDebugEmitter } from '../../logging/logger';
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildSwapCandidates,
@@ -50,7 +50,7 @@ export function attemptSwapRestore(
   cycle: RestoreCycle,
   /** Only the on-devices half of the lane: taking the whole lane would make the
    *  stepped-swap executor depend on a lane that contains itself. */
-  onDevices: DevicePlanDevice[],
+  onDevices: MeteredDevicePlanDevice[],
   dev: DevicePlanDevice,
   availableHeadroom: number,
   restoreNeed: RestoreNeed,

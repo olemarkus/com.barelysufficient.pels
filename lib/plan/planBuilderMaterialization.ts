@@ -16,7 +16,8 @@
  * membership into per-device `plannedState`/shed actions, or decline to lift an
  * existing shed.
  */
-import type { DevicePlanDevice, ShedBehavior } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, ShedBehavior } from './planTypes';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState } from './planState';
 import type { MeasuredPower, PlanContext } from './planContext';
@@ -234,7 +235,14 @@ export class PlanMaterializationStages {
 
   syncHeadroomCardState(planDevices: DevicePlanDevice[], nowTs: number): void {
     return trackPlanStage('plan_headroom_cooldown_ms', () => {
-      syncHeadroomCardState(this.state, planDevices, nowTs, this.deps.deviceDiagnostics);
+      // The card tracks drops in measured usage, which only a device with a power
+      // reading has.
+      syncHeadroomCardState(
+        this.state,
+        planDevices.filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device)),
+        nowTs,
+        this.deps.deviceDiagnostics,
+      );
     });
   }
 

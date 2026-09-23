@@ -1,5 +1,5 @@
 import type {
-  DevicePlanDevice, TemperatureKind,
+  DevicePlanDevice, MeteredDevicePlanDevice, TemperatureKind,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveNormalizedShedFloors, shedFloorCFor } from './normalizedShedFloor';
@@ -27,6 +27,7 @@ import {
   resolveRestoreDecision,
   type HoldDecision,
 } from './planReasonsRestoreGating';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 
 
 // The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
@@ -256,6 +257,13 @@ function resolveHoldDecision(
   if (dev.control.commandAuthority === false) {
     return { type: 'skip' };
   }
+  // Holding at the floor and resuming from it are power logic, and a device
+  // without a power reading takes none (owner ruling 2026-09-23): it follows its
+  // temperature logic, the same as on the first plan after a restart, where no
+  // shed is remembered. Holding it here instead would make the outcome depend on
+  // whether a restart happened, and could keep it at its floor for as long as
+  // the reading stays away.
+  if (!isMeteredPlanDevice(dev)) return { type: 'skip' };
 
   // ONE floor per device per build: every comparison below reads the
   // capability-normalized floor (`normalizedShedFloor.ts`), never raw config.
@@ -298,7 +306,7 @@ function resolveHoldDecision(
 
 function resolvePostHoldRestoreDecision(
   pass: HoldPass,
-  dev: DevicePlanDevice,
+  dev: MeteredDevicePlanDevice,
   loop: HoldLoopState,
   observedAtShedFloor: boolean,
   baseShedReason: PlanReasonDecision | undefined,

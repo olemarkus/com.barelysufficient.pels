@@ -13,7 +13,7 @@
 // resolver. This boundary also projects each home's current planned set to
 // unique relative ranks before either the planner or smart-task clock reads it.
 
-import { evictMissingDeviceCacheEntries, toMeteredPlanDevice } from '../appInit/toPlanDevice';
+import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
 import {
   isAffirmativelyOn,
   releaseExternalOffHoldsForObservedOn,
@@ -27,7 +27,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import { rankModeDevices } from '../../packages/shared-domain/src/modeCatalogResolution';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
-import { selectMeteredSnapshots } from '../../lib/ports/meteredSnapshots';
+import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** This home's stored priority source; absence must remain distinguishable from rank 100. */
@@ -99,7 +99,10 @@ const runSnapshotPrePass = (
  *
  * `isRuntimePlannedDevice` is the SAME predicate the create-smart-task candidate
  * list and create-time validation use, so a `managed: false` device can never be
- * offered or persisted but left unplanned.
+ * offered or persisted but left unplanned. `isPlannableDevice` (`lib/plan`) says
+ * which of those the plan can act on: a device with a power reading, or a
+ * temperature device, which without a reading gets its setpoints and no power
+ * limiting.
  */
 export const buildHomePlanDevices = (
   ctx: AppContext,
@@ -107,9 +110,9 @@ export const buildHomePlanDevices = (
   options?: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
   const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
-  const devices = selectMeteredSnapshots(homeDevices)
-    .map((device) => toMeteredPlanDevice(ctx, device, options))
-    .filter(isRuntimePlannedPlanDevice);
+  const devices = homeDevices
+    .map((device) => toPlanDevice(ctx, device, options))
+    .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/modeCatalogResolution.ts`).
   const priorityByDeviceId = rankModeDevices(

@@ -5,6 +5,7 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
 import type {
+  MeteredPlanInputKind,
   PlanInputDevice,
   PlanInputDeviceBase,
 } from '../../packages/planner-types/src/planInputDevice';
@@ -188,7 +189,21 @@ export type BinaryControlKind = {
 };
 
 /**
- * The shape a producer builds BEFORE the three discriminant wrappers re-tie the
+ * Power-axis field cluster: the output twin of `MeteredPlanInputKind`
+ * (`packages/planner-types`) — read that docblock for what the field means and
+ * when it is present. Like `BinaryControlKind` it is ORTHOGONAL to the stepped
+ * axis, so it is the intersection the `isMeteredPlanDevice` type-guard
+ * (`lib/plan/planMeteredDevice.ts`) adds onto whichever stepped variant the
+ * device is. `currentDrawKw` is OMITTED from `DevicePlanDeviceBase`, so an
+ * un-narrowed read is a hard compile error: a device without a power reading
+ * cannot reach the power-limiting logic, and does not pretend to draw 0.
+ */
+export type MeteredKind = {
+  currentDrawKw: number;
+};
+
+/**
+ * The shape a producer builds BEFORE the four discriminant wrappers re-tie the
  * orthogonal clusters: the base plus all three probes, every cluster field a
  * plain optional. Named so a producer can fill one object and set the cluster
  * fields the device actually has, rather than spreading a literal per cluster
@@ -211,6 +226,7 @@ export type BinaryControlKind = {
  * `satisfies TemperatureKind`), because the optionals here prove nothing.
  */
 export type LooseDevicePlanDevice = DevicePlanDeviceBase
+  & MeteredDiscriminantProbe
   & BinaryControlDiscriminantProbe
   & TemperatureDiscriminantProbe
   & SteppedDiscriminantProbe;
@@ -436,6 +452,35 @@ export function withBinaryDiscriminant<TBase>(
   return { ...base };
 }
 
+/**
+ * The power-axis field as a plain optional: the "might be metered" loose shape a
+ * construction/merge site carries before the field is regrouped onto the
+ * orthogonal `MeteredKind` intersection. Used by `withMeteredDiscriminant`.
+ */
+export type MeteredDiscriminantProbe = {
+  currentDrawKw?: number;
+};
+
+/**
+ * Regroup the power-axis field off a loose bag onto the `MeteredKind`
+ * intersection, or strip it when the device has no power reading.
+ *
+ * Like the other regroupers it keys on the producer-resolved field alone
+ * (`toPlanDevice` stamps `currentDrawKw` only for a device with a real reading),
+ * and it strips a key present with `undefined` — a spread can never remove a
+ * key, so a merge would otherwise hand a device without a reading a
+ * `currentDrawKw` the guard reports as present.
+ */
+export function withMeteredDiscriminant<TBase>(
+  loose: TBase & MeteredDiscriminantProbe,
+):
+  | (Omit<TBase, keyof MeteredDiscriminantProbe> & MeteredKind)
+  | Omit<TBase, keyof MeteredDiscriminantProbe> {
+  if (!('currentDrawKw' in loose) || loose.currentDrawKw !== undefined) return loose;
+  const { currentDrawKw: _strippedCurrentDrawKw, ...base } = loose;
+  return { ...base };
+}
+
 export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
 
 type DevicePlanDeviceBase = {
@@ -514,8 +559,9 @@ type DevicePlanDeviceBase = {
   // `SteppedLoadKind`, reached through `isSteppedLoadDevice`.
   /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
   expectedPowerSource: ExpectedPowerSource;
-  /** Current draw in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
-  currentDrawKw: number;
+  // `currentDrawKw` is split off onto the orthogonal `MeteredKind` cluster;
+  // reach it through the `isMeteredPlanDevice` guard (`lib/plan/planMeteredDevice.ts`).
+  // Present iff the device has a real per-device power reading this cycle.
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
   zone?: string;
@@ -865,3 +911,13 @@ export type PlanRebuildOutcome = {
 // it downward without inverting the peer DAG.
 // See notes/state-management/deferred-objective-lifecycle-carveout.md.
 export type { PlanInputDevice };
+
+/**
+ * A plan input device with a power axis — the only kind the power-limiting logic
+ * (shedding, restore, swaps, overshoot, headroom, usage) accepts. Narrow through
+ * `isMeteredPlanDevice` (`lib/plan/planMeteredDevice.ts`).
+ */
+export type MeteredPlanInputDevice = PlanInputDevice & MeteredPlanInputKind;
+
+/** The output twin of `MeteredPlanInputDevice`. */
+export type MeteredDevicePlanDevice = DevicePlanDevice & MeteredKind;

@@ -1,11 +1,12 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type {
-  DevicePlanDevice, LooseDevicePlanDevice, PlanInputDevice, ShedAction, ShedBehavior,
+  DevicePlanDevice, LooseDevicePlanDevice, MeteredDiscriminantProbe, PlanInputDevice, ShedAction, ShedBehavior,
   SteppedLoadKind, TemperatureKind,
 } from './planTypes';
 import {
-  withBinaryDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
+  withBinaryDiscriminant, withMeteredDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
 } from './planTypes';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
@@ -40,7 +41,9 @@ function resolveExpectedPowerKw(
 ): number {
   const steppedExpectedPowerKw = resolveSteppedExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId);
   if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
-  return getHighestKnownPowerKw(dev).kw;
+  // A reading can only raise the figure; without one, the producer's expected
+  // draw is the whole answer.
+  return isMeteredPlanDevice(dev) ? getHighestKnownPowerKw(dev).kw : dev.expectedPowerKw;
 }
 function resolveSteppedExpectedPowerKw(
   dev: PlanInputDevice,
@@ -218,7 +221,6 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     priority,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     expectedPowerSource: dev.expectedPowerSource,
-    currentDrawKw: dev.currentDrawKw,
     controlAdapter: dev.controlAdapter,
     // `commandableNow` MUST be carried. Dropping it is what forced consumers
     // back onto raw-field re-derivation against fields the plan device does not
@@ -247,6 +249,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   // whether the policy is holding this device, and only the shared predicate
   // knows the smart-task lift. See `DevicePlanDeviceBase.startPolicyHoldActive`.
   if (isStartPolicyHeldDevice(dev)) loose.startPolicyHoldActive = true;
+  // The power axis, only when the input device has a reading this cycle.
+  Object.assign(loose, meteredCluster(dev));
   // The binary on/off truth, only when the input device is binary this cycle.
   // Forwarded unchanged — resolved once at `toPlanDevice`, never recomputed.
   if (isBinaryPlanDevice(dev)) loose.currentOn = dev.currentOn;
@@ -295,7 +299,14 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
 
-  return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(loose)));
+  return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));
+}
+
+// A helper rather than a twelfth conditional in the builder above (its
+// complexity budget is spent): the draw is forwarded unchanged, resolved once at
+// `toPlanDevice`, and only for a device that has one.
+function meteredCluster(dev: PlanInputDevice): MeteredDiscriminantProbe {
+  return isMeteredPlanDevice(dev) ? { currentDrawKw: dev.currentDrawKw } : {};
 }
 
 /**

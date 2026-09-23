@@ -64,14 +64,15 @@ const isMeasuredOnlyCard = (dev: PlanDeviceSnapshot): boolean => (
 // variant), plain live measured draw, `≈ … kW when active` for the expected
 // projection (generic cards only), nothing when no finite figure is known.
 const resolvePowerText = (dev: PlanDeviceSnapshot, intentHeld: boolean): string => {
-  const drawing = isFiniteKw(dev.currentDrawKw) && dev.currentDrawKw > 0.05;
-  if (drawing) {
+  // Absent for a device with no power reading: no measured figure to show.
+  const drawKw = dev.currentDrawKw;
+  if (drawKw !== undefined && isFiniteKw(drawKw) && drawKw > 0.05) {
     // The `Reported` conflict qualifier is the GENERIC card's grammar;
     // temperature/stepped cards render plain measured kW even while held.
     const reportedConflict = intentHeld && !isMeasuredOnlyCard(dev);
     return reportedConflict
-      ? `Reported ${formatKw(dev.currentDrawKw)}`
-      : formatKw(dev.currentDrawKw);
+      ? `Reported ${formatKw(drawKw)}`
+      : formatKw(drawKw);
   }
   if (!isMeasuredOnlyCard(dev)) {
     // Off the stepped cluster: a non-stepped device has no selected step and

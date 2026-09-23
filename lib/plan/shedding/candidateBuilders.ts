@@ -11,7 +11,7 @@
  * a device may only be selected when limiting it releases power.
  */
 import type { PlanEngineState } from '../planState';
-import type { PlanInputDevice } from '../planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
@@ -26,7 +26,7 @@ import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export function buildBinaryCandidate(
-  device: PlanInputDevice,
+  device: MeteredPlanInputDevice,
   priority: number,
   recentlyRestored: boolean,
   pendingBinaryCommandStore: PendingBinaryCommandStore,
@@ -68,7 +68,7 @@ export function isEligibleForShedding(device: PlanInputDevice): boolean {
 }
 
 export function buildTemperatureCandidate(params: {
-  device: PlanInputDevice;
+  device: MeteredPlanInputDevice;
   priority: number;
   recentlyRestored: boolean;
   /** The capability-normalized limit, resolved before the planner (`ResolvedShedBehavior`). */
@@ -132,7 +132,7 @@ function limitWouldAddDemand(device: ShedCandidate, temperatureSetpoints: Temper
  */
 export function recordSetpointShedSkip(
   candidate: ShedCandidate,
-  device: PlanInputDevice,
+  device: MeteredPlanInputDevice,
   temperatureSetpoints: TemperatureSetpointsByDevice,
   recorder: ShedCandidateSkipRecorder,
 ): boolean {

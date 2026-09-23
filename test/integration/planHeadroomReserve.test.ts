@@ -5,6 +5,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import {
   type BinaryControlDiscriminantProbe,
+  type MeteredKind,
+  type MeteredPlanInputDevice,
   type PlanInputDevice,
   type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
@@ -25,8 +27,8 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
   loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
-    & { id: string; name: string },
-): PlanInputDevice => {
+    & MeteredKind & { id: string; name: string },
+): MeteredPlanInputDevice => {
   const merged = {
     available: true,
     targets: [] as PlanInputDevice['targets'],
@@ -44,7 +46,7 @@ const buildInputDevice = (
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
-  }) as PlanInputDevice;
+  }) as MeteredPlanInputDevice;
 };
 
 const makeBuilder = (params: {
@@ -110,7 +112,7 @@ describe('PlanBuilder startup power reservation', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  type DeviceOverride = Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe;
+  type DeviceOverride = Partial<MeteredPlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe;
 
   // Off and waiting to start — the only state a reservation exists for. A device whose binary
   // control is confirmed ON has started, so it never reserves (see the duty-cycle regression in

@@ -2,6 +2,7 @@ import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import { resolveSettingsEnergyWatts } from './managerEnergy';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('device/power-estimate');
@@ -46,7 +47,6 @@ export type PowerEstimateState = {
 export type PowerEstimateResult = {
   expectedPowerKw: number;
   expectedPowerSource: ExpectedPowerSource;
-  hasEnergyEstimate?: boolean;
 };
 
 export function estimatePower(params: {
@@ -120,7 +120,7 @@ function resolveExpectedPower(params: {
   peakKw: number | null;
   energyEstimateW: number | null;
   binaryCapabilityId?: BinaryControlCapabilityId;
-}): Pick<PowerEstimateResult, 'expectedPowerKw' | 'expectedPowerSource' | 'hasEnergyEstimate'> {
+}): PowerEstimateResult {
   const { override, loadW, peakKw, energyEstimateW, binaryCapabilityId } = params;
 
   // Gated like every other rung. The two writers of the override map validate
@@ -141,7 +141,6 @@ function resolveExpectedPower(params: {
     return {
       expectedPowerKw: energyEstimateW / 1000,
       expectedPowerSource: 'homey-energy',
-      hasEnergyEstimate: true,
     };
   }
   return {
@@ -168,22 +167,6 @@ function resolveCurrentOnState(device: HomeyDeviceLike): boolean | null {
 function resolveEnergyContainer(device: HomeyDeviceLike): Record<string, unknown> | null {
   if (isRecord(device.energyObj)) return device.energyObj;
   if (isRecord(device.energy)) return device.energy;
-  return null;
-}
-
-function resolveSettingsEnergyWatts(device: HomeyDeviceLike): number | null {
-  const settings = isRecord(device.settings) ? device.settings : null;
-  if (!settings) return null;
-
-  const usageOnW = toFiniteNumber(settings.energy_value_on);
-  const usageOffW = toFiniteNumber(settings.energy_value_off);
-
-  if (usageOnW !== null && usageOffW !== null) {
-    const controllableDeltaW = Math.max(0, usageOnW - usageOffW);
-    if (controllableDeltaW > 0) return controllableDeltaW;
-  }
-
-  if (usageOnW !== null && usageOnW > 0) return usageOnW;
   return null;
 }
 
@@ -243,7 +226,7 @@ function emitEstimateDecisionLog(params: {
   logger: Logger;
   now: number;
 }): void {
-  const { deviceId, deviceLabel, result, state, logger, now } = params;
+  const { deviceId, deviceLabel, state, logger, now } = params;
   const decision = buildEstimateDecisionLogFields(params);
   const signature = JSON.stringify({
     source: decision.source,
@@ -251,7 +234,6 @@ function emitEstimateDecisionLog(params: {
     measuredPowerKw: decision.measuredPowerKw,
     loadKw: decision.loadKw,
     peakMeasuredKw: decision.peakMeasuredKw,
-    hasEnergyEstimate: result.hasEnergyEstimate === true,
   });
   if (!shouldEmitOnChange({
     state: state.lastEstimateDecisionLogByDevice,
@@ -270,7 +252,6 @@ function emitEstimateDecisionLog(params: {
     measuredPowerKw: decision.measuredPowerKw ?? undefined,
     loadKw: decision.loadKw ?? undefined,
     peakMeasuredKw: decision.peakMeasuredKw ?? undefined,
-    hasEnergyEstimate: result.hasEnergyEstimate === true ? true : undefined,
   });
 }
 

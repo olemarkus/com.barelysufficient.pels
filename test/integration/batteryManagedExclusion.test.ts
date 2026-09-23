@@ -27,7 +27,7 @@ import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnosti
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { RestorePlanResult } from '../../lib/plan/restore';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -43,7 +43,7 @@ const HEATER_ID = 'heater';
 // NON-controllable, class:'battery', and NO temperature target / control capability
 // (a battery is not a temperature device). `measure_battery`/`measure_power` are
 // device telemetry, not plan inputs, so they don't appear here.
-const batteryInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice =>
+const batteryInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: BATTERY_ID,
     expectedPowerKw: 1,
@@ -63,7 +63,7 @@ const batteryInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInput
 
 // A normal managed + controllable temperature heater, to prove the same harness
 // DOES exercise control for a real device (so the battery exclusion isn't vacuous).
-const heaterInputDevice = (): PlanInputDevice =>
+const heaterInputDevice = (): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: HEATER_ID,
     name: 'Heater',

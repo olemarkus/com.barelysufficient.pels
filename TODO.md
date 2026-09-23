@@ -1062,12 +1062,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       include `dailyBudgetService`. Persona: an owner who just changed their budget and reloads the Budget page;
       hypothesis: "Your daily budget" reads the old value for one refresh. [P2]
 
-- [ ] **Post-release docs: require a real per-device power reading for managed loads.**
-      Update `docs/technical.md` and `docs/homey-energy.md`: Energy settings and
-      Homey metadata still refine expected draw, but they do not admit a device
-      for control. Admission requires a trusted `measure_power`, derived
-      `meter_power`, or Homey Energy live device reading. [docs]
-
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
       *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
       hub's location, so the forecast silently runs on recent days.

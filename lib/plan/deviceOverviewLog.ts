@@ -1,3 +1,4 @@
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import {
   resolvePlanStateKind,
   resolvePlanStateTone,
@@ -108,7 +109,8 @@ export function buildOverviewEventForDevice(
     // the opposite of what this field is for. `null` when the card renders no
     // reason line.
     cardReasonText: resolveCardReasonTextForLog(device),
-    currentDrawKw: device.currentDrawKw,
+    // Omitted for a device without a power reading, as on the card.
+    ...(isMeteredPlanDevice(device) ? { currentDrawKw: device.currentDrawKw } : {}),
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device),
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     // The step id the CARD shows — off the cluster, so it carries

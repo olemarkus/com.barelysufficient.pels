@@ -1,3 +1,4 @@
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { ResidualKwShedBehavior } from './deviceResidualKw';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import type {
@@ -57,11 +58,16 @@ export function resolveDeviceControlPosture(
     // `managed` because an unmanaged device is ignored entirely, whatever else
     // the owner configured.
     //
-    // The last term is the device's own axis: a thermostat whose temperature
-    // control the owner switched off, with no binary or stepped handle left, has
-    // nothing PELS could command.
+    // The last two terms are the device's own axes. A thermostat whose
+    // temperature control the owner switched off, with no binary or stepped
+    // handle left, has nothing PELS could command. And a device with no power
+    // reading has no power axis: limiting it, resuming it, starting it or
+    // turning it on are all power decisions, which take a measured draw (owner
+    // ruling 2026-09-23). Its setpoints still follow the temperature logic —
+    // those writes never needed this authority — but PELS never switches it.
     commandAuthority: (capacityControlEnabled || (managed && startPolicy === 'pels_only'))
-      && hasTemperaturePolicyPowerControl(device),
+      && hasTemperaturePolicyPowerControl(device)
+      && hasObservedMeasuredPower(device),
   };
 }
 

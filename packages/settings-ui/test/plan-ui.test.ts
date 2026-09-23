@@ -899,6 +899,32 @@ describe('Redesign plan UI', () => {
       expect(card?.querySelector('.plan-card__state-row')).toBeTruthy();
       expect((card?.querySelector('.plan-card__state-label') as HTMLElement | null)?.textContent?.trim()).toBe('Running');
     });
+
+    it('shows no power figure on a thermostat that has no power reading', async () => {
+      // PELS plans such a thermostat for its setpoints alone; the snapshot omits
+      // `currentDrawKw`, and the card shows nothing rather than a placeholder.
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6 }),
+        devices: [
+          {
+            id: 'dev-vthermo',
+            name: 'Hallway thermostat',
+            currentState: 'on',
+            plannedState: 'keep',
+            expectedPowerKw: 1,
+            temperature: { currentTemperature: 20, currentTarget: 21, plannedTarget: 21 },
+            reason: { code: 'keep' },
+            stateKind: 'active',
+            stateTone: 'active',
+          },
+        ],
+      });
+
+      const card = document.querySelector('[data-device-id="dev-vthermo"]');
+      expect(card?.querySelector('.plan-card__state-row')).toBeTruthy();
+      expect(card?.querySelector('.plan-card__state-power')).toBeNull();
+      expect(card?.textContent ?? '').not.toContain('kW');
+    });
   
     it('prefers structured state presentation from the snapshot payload', async () => {
       await renderPlanSnapshot({

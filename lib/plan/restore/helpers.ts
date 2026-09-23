@@ -1,4 +1,4 @@
-import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
 import {
@@ -186,7 +186,7 @@ function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: nu
  * lane to admit.
  */
 function resolveSteppedRestoreCommitmentKw(
-  dev: SteppedPlanDevice,
+  dev: SteppedPlanDevice & MeteredKind,
   toStepId: string,
 ): number {
   const change = resolveStepChangeKw(dev, dev.selectedStepId, toStepId);
@@ -194,7 +194,7 @@ function resolveSteppedRestoreCommitmentKw(
 }
 
 export function planRestoreForSteppedDevice(params: {
-  dev: SteppedPlanDevice;
+  dev: SteppedPlanDevice & MeteredKind;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
   timing: RestoreDeviceTiming;

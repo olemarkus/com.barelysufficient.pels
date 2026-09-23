@@ -5,6 +5,7 @@
  * draw (for restore admission) — instead of branching on which raw source
  * carried the value.
  */
+import type { MeteredPlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import type {
   RestorePowerSource,
 } from '../../packages/contracts/src/types';
@@ -21,7 +22,8 @@ export type ObservedPowerInput = {
   /**
    * The producer-resolved current draw. REQUIRED: the raw `measuredPowerKw` no
    * longer travels past a producer boundary, so the one number every caller
-   * here has in hand is the resolved one. A producer-side caller that starts
+   * here has in hand is the resolved one. A plan device has it only when it has
+   * a power axis (`isMeteredPlanDevice`); a producer-side caller that starts
    * from a snapshot resolves it with `getCurrentDrawKw` first.
    */
   currentDrawKw: number;
@@ -147,6 +149,19 @@ export function getCurrentDrawKw(device: CurrentDrawInput): number {
   // A rejected reading is absence, and absence resolves to 0 here for the same
   // reason a device with no meter does — nothing is known to be drawn.
   return normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0;
+}
+
+/**
+ * The plan device's power axis (`MeteredPlanInputKind`): the device's own
+ * reading as `currentDrawKw`, or nothing at all when it has none. Unlike
+ * `getCurrentDrawKw` above, absence stays absence — the plan keeps a device
+ * without a reading out of every power lane rather than reading it as `0`, and
+ * still plans its temperature. Uses the same normalization as every snapshot
+ * write seam, so a junk value is absence here too.
+ */
+export function resolvePlanPowerAxis(device: CurrentDrawInput): MeteredPlanInputKind | Record<never, never> {
+  const currentDrawKw = normalizeMeasuredPowerKw(device.measuredPowerKw);
+  return currentDrawKw === null ? {} : { currentDrawKw };
 }
 
 /**

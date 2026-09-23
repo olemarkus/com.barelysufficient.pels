@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import {
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
@@ -13,7 +13,7 @@ import type { SwapLedger } from './swapLedger';
  * come from the same predicate the search uses, or the two drift apart.
  */
 function canReleaseDrawForSwap(
-  onDev: DevicePlanDevice,
+  onDev: MeteredDevicePlanDevice,
   ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
@@ -35,7 +35,7 @@ function canReleaseDrawForSwap(
  * verdict cached before the first admission would be stale by the second.
  */
 export function hasSwappableDraw(
-  onDevices: readonly DevicePlanDevice[],
+  onDevices: readonly MeteredDevicePlanDevice[],
   ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
@@ -43,7 +43,7 @@ export function hasSwappableDraw(
 }
 
 function isViableSwapCandidate(
-  onDev: DevicePlanDevice,
+  onDev: MeteredDevicePlanDevice,
   dev: DevicePlanDevice,
   ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
@@ -67,14 +67,14 @@ function isViableSwapCandidate(
 
 export function buildSwapCandidates(
   dev: DevicePlanDevice,
-  onDevices: DevicePlanDevice[],
+  onDevices: MeteredDevicePlanDevice[],
   ledger: SwapLedger,
   availableHeadroom: number,
   needed: number,
   restoredThisCycle: ReadonlySet<string>,
 ): {
   ready: boolean;
-  toShed: DevicePlanDevice[];
+  toShed: MeteredDevicePlanDevice[];
   shedNames: string;
   shedPower: string;
   potentialHeadroom: number;
@@ -86,7 +86,7 @@ export function buildSwapCandidates(
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
 } {
-  const toShed: DevicePlanDevice[] = [];
+  const toShed: MeteredDevicePlanDevice[] = [];
   let currentPotential = availableHeadroom;
   let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
   let admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });

@@ -11,6 +11,8 @@ import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
+  MeteredDiscriminantProbe,
+  MeteredPlanInputDevice,
   PlanInputDevice,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
@@ -40,6 +42,7 @@ const inputDevice = (
   o: Partial<PlanInputDevice>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
+    & MeteredDiscriminantProbe
     & FixtureBoostFields
     & {
       evChargingState?: string;
@@ -53,12 +56,13 @@ const inputDevice = (
       managed?: boolean;
       commandAuthority?: boolean;
     } = {},
-): PlanInputDevice => buildPlanInputDevice(o as Parameters<typeof buildPlanInputDevice>[0]);
+): MeteredPlanInputDevice => buildPlanInputDevice(o as Parameters<typeof buildPlanInputDevice>[0]);
 
 const steppedInput = (
   o: Partial<PlanInputDevice>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
+    & MeteredDiscriminantProbe
     & FixtureBoostFields
     & {
       evChargingState?: string;
@@ -70,7 +74,7 @@ const steppedInput = (
       managed?: boolean;
       commandAuthority?: boolean;
     } = {},
-): PlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
+): MeteredPlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
 
 /** Build a `shedReasons` map from string reason codes (test convenience). */
 const shedReasonMap = (entries: [string, string][]): Map<string, NonNullable<ReturnType<typeof fixtureDeviceReason>>> =>

@@ -22,8 +22,8 @@ import {
 } from '../utils/planTestUtils';
 import {
   type BinaryControlDiscriminantProbe,
-  type DevicePlanDevice,
-  type PlanInputDevice,
+  type MeteredDevicePlanDevice,
+  type MeteredPlanInputDevice,
   type SteppedDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -35,22 +35,22 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 // orthogonal binary cluster, so the shared builders no longer accept it flat.
 const buildPlanDevice = (
   overrides: Parameters<typeof baseBuildPlanDevice>[0] & BinaryControlDiscriminantProbe = {},
-): DevicePlanDevice => {
+): MeteredDevicePlanDevice => {
   const { binaryControl, ...rest } = overrides;
   return withBinaryDiscriminant({
     ...baseBuildPlanDevice(rest),
     ...(binaryControl !== undefined ? { binaryControl } : {}),
-  }) as DevicePlanDevice;
+  }) as MeteredDevicePlanDevice;
 };
 
 const buildPlanInputDevice = (
   overrides: Parameters<typeof baseBuildPlanInputDevice>[0] & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => {
+): MeteredPlanInputDevice => {
   const { binaryControl, ...rest } = overrides;
   return withBinaryDiscriminant({
     ...baseBuildPlanInputDevice(rest),
     ...(binaryControl !== undefined ? { binaryControl } : {}),
-  }) as PlanInputDevice;
+  }) as MeteredPlanInputDevice;
 };
 
 describe('resolveRemainingSheddableLoadKw — stale observation handling', () => {
@@ -225,10 +225,10 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
     // resolver wired by `setup/appInit/residualKwForPlanDevice.ts`. We
     // compute it inline rather than importing the wiring helper because the
     // helper takes a `TargetDeviceSnapshot`, not a `PlanInputDevice`.
-    const producerDevices = fixtures.map((device): PlanInputDevice => {
+    const producerDevices = fixtures.map((device): MeteredPlanInputDevice => {
       // `steppedLoadProfile` lives on the stepped discriminant cluster; widen a
       // local probe view to read it without re-adding the field to the base type.
-      const steppedDevice = device as PlanInputDevice & SteppedDiscriminantProbe;
+      const steppedDevice = device as MeteredPlanInputDevice & SteppedDiscriminantProbe;
       const shedBehavior: ResidualKwShedBehavior = device.id === temperatureNoopShed.id
         ? { action: 'set_temperature', temperature: 18 }
         : { action: 'turn_off' };
@@ -353,7 +353,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
 describe('resolveResidualShedBehavior — a configured set_temperature shed without a sensor', () => {
   const heater = (
     overrides: Parameters<typeof buildPlanInputDevice>[0],
-  ): PlanInputDevice => buildPlanInputDevice({
+  ): MeteredPlanInputDevice => buildPlanInputDevice({
     id: 'heater',
     controllable: true,
     binaryControl: { on: true },
@@ -362,7 +362,7 @@ describe('resolveResidualShedBehavior — a configured set_temperature shed with
     ...overrides,
   });
 
-  const remainingKw = (device: PlanInputDevice): number => resolveRemainingSheddableLoadKw({
+  const remainingKw = (device: MeteredPlanInputDevice): number => resolveRemainingSheddableLoadKw({
     device: toInputRemainingSheddableDevice(device),
     alreadyShed: false,
     limitSource: 'capacity',

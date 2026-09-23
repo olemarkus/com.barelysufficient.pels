@@ -51,8 +51,11 @@ export function buildResidualKwForPlanDevice(params: {
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
   const { device, hasBinaryControl, shedBehavior } = params;
-  // The same producer answer `toPlanDevice` stamps as `currentDrawKw`: the
-  // meter's reading, with no on/off or configured-demand ladder behind it.
+  // The meter's reading, with no on/off or configured-demand ladder behind it.
+  // For a device without a reading this resolves to `0`, but the residual is
+  // read only by the shed and remaining-load lanes, which take a device only
+  // when `toPlanDevice` gave it a power axis (`isMeteredPlanDevice`) — so the
+  // `0` never reaches a decision.
   const currentDrawKw = getCurrentDrawKw(device);
   const shed = resolveResidualKwShed({
     device: {

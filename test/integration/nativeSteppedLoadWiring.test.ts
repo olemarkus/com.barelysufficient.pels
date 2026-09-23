@@ -7,6 +7,7 @@ import {
 import { snapshotById } from '../helpers/snapshotById';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   resolveNativeSteppedLoadCommand,
@@ -101,7 +102,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       controlModel: 'stepped_load',
       selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
       reportedStepId: device.reportedStepId,
-      measuredPowerKw: device.currentDrawKw,
+      measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe),
   );
 };

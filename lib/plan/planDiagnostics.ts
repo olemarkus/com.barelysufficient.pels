@@ -1,3 +1,4 @@
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import type {
   DeviceDiagnosticsBlockCause,
   DeviceDiagnosticsPlanObservation,
@@ -374,7 +375,11 @@ const buildDiagnosticsObservation = (params: {
     pelsCommandsTurnOffShed,
     pelsHoldsBelowTarget,
     expectedPowerKw: device.expectedPowerKw,
-    budgetPressureDenied: budgetPressureEligible && unmetDemand,
+    // Denied demand is priced as energy the budget kept from the device, which
+    // takes a device PELS could have powered: one with a power reading. A
+    // temperature device planned for its setpoints alone was never offered power
+    // to deny, so holding it below target is not budget pressure.
+    budgetPressureDenied: budgetPressureEligible && unmetDemand && isMeteredPlanDevice(device),
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

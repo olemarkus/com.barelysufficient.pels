@@ -12,7 +12,7 @@ import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import { buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
@@ -536,7 +536,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   });
 
   const normalize = (params: {
-    devices: DevicePlanDevice[];
+    devices: MeteredDevicePlanDevice[];
     capacityAvailableKw: number;
     budgetAvailableKw?: number | null;
     headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];

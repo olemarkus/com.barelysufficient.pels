@@ -19,11 +19,16 @@ import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredO
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type {
-  PlanInputDevice,
+  MeteredPlanInputDevice,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import { type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import {
+  fixtureCurrentDrawKw,
+  type FixtureBoostFields,
+  withFixtureResidualKw,
+  withMaterializedEvPlugState,
+} from '../utils/planTestUtils';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -36,7 +41,7 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // the live diagnostic path uses) ────────────────────────────────────────────
 
 const buildEvDevice = (
-  overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
+  overrides: Partial<MeteredPlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
 // `withMaterializedEvPlugState` is the fixture boundary here: the preview never
 // reads a raw plug-state. It runs the same diagnostic pipeline the live cycle
 // does, and that pipeline reads the producer-resolved `objectiveSessionInactive`
@@ -46,7 +51,7 @@ const buildEvDevice = (
 // so its return type is `Omit<T, 'evChargingState'>`. Setting `evChargingState` on
 // a fixture without it would leave the resolved bits unset and hand these tests a
 // plan device the producer would never build.
-): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
+): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -63,16 +68,19 @@ const buildEvDevice = (
     ],
   },
   ...overrides,
-})) as unknown as PlanInputDevice;
+  // The power axis: a smart task plans only for a device with a reading, so
+  // every fixture here has one, resolved the way the shared builders resolve it.
+  currentDrawKw: fixtureCurrentDrawKw(overrides),
+})) as unknown as MeteredPlanInputDevice;
 
 const buildTemperatureDevice = (
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+  overrides: Partial<MeteredPlanInputDevice> & TemperatureDiscriminantProbe = {},
 // This fixture carries `binaryControl` WITHOUT a `binaryCapabilityId`, so it must
 // NOT route through `withBinaryDiscriminant` (whose runtime stripping drops
 // `binaryControl` when the capability id is absent). Keep the additive
 // `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the
 // `binaryControl` + `controlModel` survive verbatim, matching the original literal.
-): PlanInputDevice => withTemperatureDiscriminant(withFixtureResidualKw({
+): MeteredPlanInputDevice => withTemperatureDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
@@ -88,7 +96,10 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
-})) as unknown as PlanInputDevice;
+  // The power axis: a smart task plans only for a device with a reading, so
+  // every fixture here has one, resolved the way the shared builders resolve it.
+  currentDrawKw: fixtureCurrentDrawKw(overrides),
+})) as unknown as MeteredPlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });
@@ -258,8 +269,8 @@ const buildSettings = (params: {
 });
 
 type PreviewContext = {
-  device: PlanInputDevice | undefined;
-  devices?: PlanInputDevice[];
+  device: MeteredPlanInputDevice | undefined;
+  devices?: MeteredPlanInputDevice[];
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   getBasePriorityForDevice?: (deviceId: string) => unknown;
@@ -846,7 +857,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
   const fidelityCases: ReadonlyArray<{
     name: string;
     deviceId: string;
-    device: PlanInputDevice;
+    device: MeteredPlanInputDevice;
     powerTracker: PowerTrackerState;
     candidate: DeferredObjectivePlanPreviewCandidate;
   }> = [

@@ -26,7 +26,7 @@ import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnosti
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { RestorePlanResult } from '../../lib/plan/restore';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
@@ -49,7 +49,7 @@ const HEATER_ID = 'heater';
 
 // A managed observe-only solar device, exactly as the producer stamps it: managed,
 // NON-controllable, class:'solarpanel', NO temperature target / control capability.
-const solarInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice =>
+const solarInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: SOLAR_ID,
     expectedPowerKw: 1,
@@ -64,7 +64,7 @@ const solarInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDe
     ...overrides,
   });
 
-const heaterInputDevice = (): PlanInputDevice =>
+const heaterInputDevice = (): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: HEATER_ID,
     name: 'Heater',

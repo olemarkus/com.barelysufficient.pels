@@ -2,6 +2,7 @@ import type {
   DevicePlan,
   PlanInputDevice,
   BinaryControlDiscriminantProbe,
+  MeteredDiscriminantProbe,
   SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
@@ -22,6 +23,7 @@ import type { BinaryControlObservation } from '../../packages/contracts/src/type
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & TemperatureDiscriminantProbe
   & BinaryControlDiscriminantProbe
+  & MeteredDiscriminantProbe
   & {
     binaryCapabilityId?: string; evChargingState?: string;
     /**
@@ -83,6 +85,7 @@ export const asOutputDevice = (
 
 export type LooseInputDevice = Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
+  & MeteredDiscriminantProbe
   & {
     /**
      * Fixture shorthands for the control posture. Production resolves all three

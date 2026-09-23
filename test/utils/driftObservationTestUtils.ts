@@ -5,6 +5,7 @@ import type {
 } from '../../lib/executor/driftObservedDevice';
 import type {
   BinaryControlDiscriminantProbe,
+  MeteredDiscriminantProbe,
   PlanInputDevice,
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
@@ -21,7 +22,8 @@ type PlanInputDeviceFixture = PlanInputDevice
   // Fixtures still carry the RAW `binaryControl` that `toPlanDevice` strips in
   // production. Here that is the point: it is the observer's axis, and reading
   // it back out is what reconstitutes the observation the fixture describes.
-  & BinaryControlDiscriminantProbe;
+  & BinaryControlDiscriminantProbe
+  & MeteredDiscriminantProbe;
 
 /**
  * Split a `PlanInputDevice` fixture into the two things the drift path actually

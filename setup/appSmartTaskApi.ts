@@ -28,7 +28,7 @@ import {
 import {
   buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,
-  toMeteredPlanDevice,
+  toPlanDevice,
   type CancelDeferredObjectiveOutcome,
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
@@ -352,7 +352,7 @@ export class AppSmartTaskApi {
     const planDevices = planService.getPlanDevices();
     const meteredSnapshotDevice = snapshotDevice && asMeteredSnapshot(snapshotDevice);
     const candidateDevice = meteredSnapshotDevice
-      ? toMeteredPlanDevice(this.ctx, meteredSnapshotDevice)
+      ? toPlanDevice(this.ctx, meteredSnapshotDevice)
       : undefined;
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]

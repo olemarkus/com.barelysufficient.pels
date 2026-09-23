@@ -30,7 +30,8 @@
  */
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../../packages/contracts/src/types';
 import type { PlanEngineState } from '../planState';
-import type { PlanInputDevice, ShedAction, SteppedPlanInputDevice } from '../planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice, ShedAction, SteppedPlanInputDevice } from '../planTypes';
+import type { MeteredPlanInputKind } from '../../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import {
   getSteppedLoadShedTargetStep,
@@ -160,7 +161,7 @@ function buildSteppedShedDescentTargets(params: {
  * See `chooseShedRung`.
  */
 export function resolveSteppedShedLadder(params: {
-  device: PlanInputDevice;
+  device: MeteredPlanInputDevice;
   profile: SteppedLoadProfile;
   initialTargetStep: SteppedLoadStep | null;
   shedAction: 'turn_off' | 'set_step';
@@ -237,7 +238,7 @@ export function chooseShedRung(
 }
 
 type SteppedCandidateParams = {
-  device: PlanInputDevice;
+  device: MeteredPlanInputDevice;
   devices: PlanInputDevice[];
   priority: number;
   recentlyRestored: boolean;
@@ -421,7 +422,7 @@ function resolveEffectiveCurrentStepIdForSteppedShedding(device: SteppedPlanInpu
 }
 
 function buildPreparedSteppedBinaryOffCandidate(params: {
-  device: SteppedPlanInputDevice;
+  device: SteppedPlanInputDevice & MeteredPlanInputKind;
   steppedProfile: SteppedLoadProfile;
   targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
   priority: number;

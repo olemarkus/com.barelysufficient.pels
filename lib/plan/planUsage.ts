@@ -1,6 +1,8 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { isPlanDeviceObservedOff } from './planSteppedLoad';
+import { isMeteredPlanDevice } from './planMeteredDevice';
+import type { MeteredKind } from './planTypes';
 
 type UsageDevice = {
   /**
@@ -42,6 +44,19 @@ export const toUsageDevice = <T extends { control: { commandAuthority: boolean }
   device: T,
 ): T & { countsAsManagedUsage: boolean } => (
   { ...device, countsAsManagedUsage: device.control.commandAuthority }
+);
+
+/**
+ * The usage view of a plan's devices: only devices with a power axis. A device
+ * planned without a power reading (a temperature device the plan still sets for
+ * mode and price) has no draw to attribute, so it is left out of every usage sum
+ * and the whole-home meter counts what it draws as background usage — the
+ * honest split, since nothing measured it on its own.
+ */
+export const toMeteredUsageDevices = <T extends { control: { commandAuthority: boolean } }>(
+  devices: readonly T[],
+): Array<T & MeteredKind & { countsAsManagedUsage: boolean }> => (
+  devices.filter((device): device is T & MeteredKind => isMeteredPlanDevice(device)).map(toUsageDevice)
 );
 
 export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number => {

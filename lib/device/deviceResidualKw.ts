@@ -85,7 +85,7 @@ export type ResidualKwShedSteppedDevice = {
    * known at all.
    */
   hasKnownEffectiveStep: boolean;
-  /** Producer-resolved current draw (see `getCurrentDrawKw`). */
+  /** Producer-resolved current draw (see `getCurrentDrawKw`); read only for a device with a power axis. */
   currentDrawKw: number;
   hasBinaryControl: boolean;
 };

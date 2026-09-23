@@ -5,7 +5,13 @@ import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import type { PlanInputDevice, BinaryControlDiscriminantProbe, TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
+import type {
+  BinaryControlDiscriminantProbe,
+  MeteredDiscriminantProbe,
+  MeteredPlanInputDevice,
+  PlanInputDevice,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -15,12 +21,13 @@ import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixt
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe & {
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
+    & MeteredDiscriminantProbe & {
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): PlanInputDevice => {
+): MeteredPlanInputDevice => {
   const merged = {
     id: 'dev',
     name: 'Device',
@@ -38,7 +45,7 @@ const buildDevice = (
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
     control: fixtureControlPosture(merged),
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
+  }) as MeteredPlanInputDevice;
 };
 
 describe('PlanBuilder overshoot diagnostics', () => {

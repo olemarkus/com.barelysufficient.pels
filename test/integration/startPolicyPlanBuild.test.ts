@@ -16,7 +16,7 @@ import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshn
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
-  BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
+  BinaryControlDiscriminantProbe, MeteredDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
@@ -149,6 +149,7 @@ const steppedCharger = (startPolicy: 'unrestricted' | 'pels_only'): PlanInputDev
 const thermostat = (startPolicy: 'unrestricted' | 'pels_only'): PlanInputDevice => {
   const loose: Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
+  & MeteredDiscriminantProbe
   & TemperatureDiscriminantProbe & {
     deviceType?: 'temperature' | 'onoff';
     binaryCapabilityId?: string;

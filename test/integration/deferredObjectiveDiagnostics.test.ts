@@ -29,12 +29,20 @@ import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/defer
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
+  type MeteredDiscriminantProbe,
+  type MeteredPlanInputDevice,
   type PlanInputDevice,
   type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
-import { fixtureControlPosture, type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import {
+  fixtureControlPosture,
+  fixtureCurrentDrawKw,
+  type FixtureBoostFields,
+  withFixtureResidualKw,
+  withMaterializedEvPlugState,
+} from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -70,13 +78,13 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
 };
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & FixtureBoostFields & {
+  overrides: Partial<PlanInputDevice> & MeteredDiscriminantProbe & FixtureBoostFields & {
     evChargingState?: string;
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
+): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   expectedPowerKw: 1,
   name: 'Driveway EV',
@@ -94,17 +102,20 @@ const buildDevice = (
     ],
   },
   ...overrides,
+  // The power axis: every fixture here has a reading, resolved the way the
+  // shared builders resolve it when the spec does not spell one.
+  currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-})) as PlanInputDevice;
+})) as MeteredPlanInputDevice;
 
 const buildTemperatureDevice = (
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & MeteredDiscriminantProbe & {
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+): MeteredPlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -121,9 +132,10 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
+  currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-}))) as PlanInputDevice;
+}))) as MeteredPlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -2925,7 +2937,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentDrawKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
-    }))) as PlanInputDevice;
+    }))) as MeteredPlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3018,7 +3030,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
       expectedPowerKw: 2.0, expectedPowerSource: 'default',
-    }))) as PlanInputDevice;
+    }))) as MeteredPlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3092,7 +3104,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceType: 'temperature' as const,
       currentTemperature: 19,
       // No power fields populated at all.
-    }))) as PlanInputDevice;
+    }))) as MeteredPlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3161,7 +3173,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentTemperature: 19,
       // No `steppedLoadProfile`: configured stepped, but the ladder is missing —
       // which is what the producer stamped `steppedLadderMissing` for.
-    }))) as PlanInputDevice;
+    }))) as MeteredPlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -3360,7 +3372,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+    const buildPromotableDevice = (id: string): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
       surplusTracking: false,
       id,
       name: id,
@@ -3381,7 +3393,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       control: fixtureControlPosture({ controllable: true }),
       available: true,
-    })) as PlanInputDevice;
+    })) as MeteredPlanInputDevice;
 
     // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.
     const buildPromotableSettings = (

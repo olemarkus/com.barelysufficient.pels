@@ -1,6 +1,6 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { incPerfCounter } from '../utils/perfCounters';
-import type { DevicePlanDevice, SteppedPlanDevice } from './planTypes';
+import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeRestoreBufferKw } from './restore/accounting';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
@@ -11,7 +11,7 @@ import {
 } from './planSteppedRestorePending';
 
 export function applySteppedRestoreAttemptHold(params: {
-  dev: SteppedPlanDevice;
+  dev: SteppedPlanDevice & MeteredKind;
   nextStepId: string;
   nextStepPowerKw: number;
   lastRestoreMs?: number;

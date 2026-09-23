@@ -1,3 +1,4 @@
+import { isMeteredPlanDevice } from '../planMeteredDevice';
 import type { PlanInputDevice } from '../planTypes';
 import type { PlanEngineState, SurplusTrackingDecision } from '../planState';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
@@ -94,6 +95,11 @@ export const isSurplusHeldDevice = (
   device: PlanInputDevice,
   state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingByDevice'>,
 ): boolean => {
+  // A surplus posture holds a device off until measured export can carry its
+  // measured draw, which is power logic: a device without a power reading takes
+  // none (owner ruling 2026-09-23), and it is never made eligible by the
+  // allocator either, so holding it here would hold it for good.
+  if (!isMeteredPlanDevice(device)) return false;
   if (device.surplusOnly === true) {
     return !isEligibleAndRunnable(device, state.surplusEligibilityByDevice[device.id]);
   }

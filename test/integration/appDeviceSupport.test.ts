@@ -56,12 +56,12 @@ const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ available: tr
 });
 
 describe('disableUnsupportedDevices', () => {
-  it('does not write or log when unsupported settings are already disabled', () => {
+  it('does not emit price-only log when settings are already aligned', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': false },
       [CONTROLLABLE_DEVICES]: { 'vt-1': false },
       [PRICE_OPTIMIZATION_SETTINGS]: {
-        'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+        'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
     const debugStructured = vi.fn();
@@ -110,7 +110,7 @@ describe('disableUnsupportedDevices', () => {
     }));
   });
 
-  it('disables every control mode for an unmetered temperature device', () => {
+  it('emits price-only log when unsupported settings are adjusted', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': true },
       [CONTROLLABLE_DEVICES]: { 'vt-1': true },
@@ -126,17 +126,15 @@ describe('disableUnsupportedDevices', () => {
       debugStructured,
     });
 
-    expect(settings.set).toHaveBeenCalledWith(MANAGED_DEVICES, { 'vt-1': false });
+    // The price-only split: Power-limit control goes, Managed and Price stay.
     expect(settings.set).toHaveBeenCalledWith(CONTROLLABLE_DEVICES, { 'vt-1': false });
-    expect(settings.set).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, {
-      'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
-    });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'unsupported_controls_disabled', deviceNames: ['VThermo'],
-    }));
+    expect(settings.set).not.toHaveBeenCalledWith(MANAGED_DEVICES, expect.anything());
+    expect(settings.set).not.toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, expect.anything());
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo'] }));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'price_only_support_enabled', deviceNames: ['VThermo'] }));
   });
 
-  it('reports all unsupported devices through the single disable event', () => {
+  it('does not emit price-only log when only fully unsupported devices changed', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': false, 'socket-1': true },
       [CONTROLLABLE_DEVICES]: { 'vt-1': false, 'socket-1': true },
@@ -154,6 +152,9 @@ describe('disableUnsupportedDevices', () => {
     });
 
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo', 'Garage Socket'] }));
+    expect(debugStructured.mock.calls.flat().some(
+      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
+    )).toBe(false);
   });
 
   it('does not write managed/controllable settings when unsupported IDs were never user-managed', () => {
@@ -173,7 +174,12 @@ describe('disableUnsupportedDevices', () => {
     expect(debugStructured).not.toHaveBeenCalled();
   });
 
-  it('does not log on repeated refreshes for a never-enabled unmetered device', () => {
+  it('does not re-emit the price-only log on repeated refreshes for fresh-install price-only devices', () => {
+    // Regression: when `controllable_devices[id]` is absent (fresh install),
+    // the demotion path correctly skips the no-op write — but the
+    // `changedPriceOnly` log must still be edge-triggered. Otherwise the
+    // "Price-only support enabled..." line fires on every snapshot refresh,
+    // creating persistent operational log noise.
     const settings = makeSettings({});
     const debugStructured = vi.fn();
 
@@ -182,7 +188,9 @@ describe('disableUnsupportedDevices', () => {
       settings: asAppSettings(settings),
       debugStructured,
     });
-    expect(debugStructured).not.toHaveBeenCalled();
+    expect(debugStructured.mock.calls.flat().some(
+      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
+    )).toBe(false);
 
     // Second refresh with the same (still-absent) settings: still no log.
     debugStructured.mockClear();

@@ -93,9 +93,10 @@ export type ObjectiveDeviceInput = {
   expectedPowerKw: number;
   planningPowerKw?: number;
   /**
-   * Producer-resolved current draw, structurally assignable from
-   * `PlanInputDevice`. Required, like it is there: the raw `measuredPowerKw`
-   * does not travel past the producer, so there is nothing here to be absent.
+   * Producer-resolved current draw, structurally assignable from the plan
+   * input's power axis (`MeteredPlanInputKind`). Required: a smart task plans
+   * energy, so only a device with a power reading is an objective device —
+   * `selectObjectiveDevices` below is where a plan's devices are narrowed to it.
    */
   currentDrawKw: number;
   currentTemperature?: number;
@@ -110,3 +111,25 @@ export type ObjectiveDeviceInput = {
   // `ObjectiveSampleDevice`, a different input on a different path.
   stepPowerCalibration?: Record<string, number>;
 };
+
+/** A plan device as it reaches this layer: with or without a power axis. */
+export type ObjectiveDeviceSource = Omit<ObjectiveDeviceInput, 'currentDrawKw'>;
+
+/**
+ * The devices a smart task can plan for: those with a power reading. A
+ * temperature device planned without one still gets its mode and price
+ * setpoints from the planner, but there is no measured draw to plan energy
+ * against, so it is not an objective device.
+ *
+ * The predicate duplicates `isMeteredPlanDevice` (`lib/plan/planMeteredDevice.ts`)
+ * because this layer may not import `lib/plan` (`no-objectives-to-peer-except-power`
+ * in `.dependency-cruiser.cjs`). Both key on the presence of the producer-resolved
+ * `currentDrawKw`, so they cannot disagree.
+ */
+export const selectObjectiveDevices = <T extends ObjectiveDeviceSource>(
+  devices: readonly T[],
+): Array<T & Pick<ObjectiveDeviceInput, 'currentDrawKw'>> => (
+  devices.filter((device): device is T & Pick<ObjectiveDeviceInput, 'currentDrawKw'> => (
+    'currentDrawKw' in device && typeof device.currentDrawKw === 'number'
+  ))
+);
