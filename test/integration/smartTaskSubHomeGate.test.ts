@@ -564,10 +564,11 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         available: true,
         binaryControl: { on: deviceOn },
         targets: [],
+        measuredPowerKw: 0,
       }),
-      // Present, available, ON binary device — the exact fixture that WOULD
-      // actuate a binary-off terminal release without the sub-home gate (the
-      // control test below proves it).
+      // Present, available, metered, ON binary device — the exact fixture that
+      // WOULD actuate a binary-off terminal release without the sub-home gate
+      // (the control test below proves it).
       planService: {
         getPlanDevices: () => [withBinaryDiscriminant(withFixtureResidualKw({ currentDrawKw: 0,
           id: 'd1',

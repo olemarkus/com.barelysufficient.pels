@@ -98,9 +98,9 @@ const runSnapshotPrePass = (
  *
  * `isRuntimePlannedDevice` is the SAME predicate the create-smart-task candidate
  * list and create-time validation use, so a `managed: false` device can never be
- * offered or persisted but left unplanned. `isMeteredPlanDevice` (`lib/plan`)
- * admits only devices with a trusted per-device power reading. Temperature
- * capability does not bypass power admission.
+ * offered or persisted but left unplanned. `filterMeteredPlanDevices`
+ * (`lib/plan`) admits only devices with a trusted per-device power reading.
+ * Temperature capability does not bypass power admission.
  */
 export const buildHomePlanDevices = (
   ctx: AppContext,

@@ -345,6 +345,7 @@ const buildTerminalFallbackCtx = (managedDevices: Record<string, boolean>) => {
       available: true,
       binaryControl: { on: true },
       targets: [],
+      measuredPowerKw: 0,
     }),
     deferredObjectiveStatusBus: { forgetDevice: vi.fn() } as unknown as AppContext['deferredObjectiveStatusBus'],
     deferredObjectiveActivePlanRecorder: {
