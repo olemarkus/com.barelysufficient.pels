@@ -38,9 +38,11 @@ const adversarialProviders = {
   isManagedFilterActive: () => true,
 };
 
+// Homey dates every capability value it reports.
+const lastUpdated = new Date().toISOString();
 const batteryCaps = {
-  measure_battery: { value: 62, id: 'measure_battery' },
-  measure_power: { value: 1200, id: 'measure_power' },
+  measure_battery: { value: 62, id: 'measure_battery', lastUpdated },
+  measure_power: { value: 1200, id: 'measure_power', lastUpdated },
 } as HomeyDeviceLike['capabilitiesObj'];
 
 describe('structural battery-role resolution at parse', () => {

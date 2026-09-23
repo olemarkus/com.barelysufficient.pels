@@ -64,6 +64,7 @@ import type {
     DeviceTransportParseDeps,
     DeviceTransportParseProviders,
     ParseDevicePurpose,
+    RetainedMeasurement,
 } from './managerParseDevice';
 import { resolveDevicePowerState } from './managerParsePowerState';
 import { resolveParsedLastFreshDataMs } from './managerParseFreshness';
@@ -146,9 +147,6 @@ function readReportedThermostatMode(overlay: DeviceCapabilityProfile['overlay'])
  * restored (`retainedPowerPersistence.ts`). A device that already has an entry
  * this run and no reading in it has nothing retained; the store is not asked.
  */
-// What a parse carries forward: the previous snapshot's reading keeps its
-// delivery-interval record (already booked this run); a restored one has none.
-type RetainedMeasurement = RetainedPowerReading & { reading?: MeteredPowerReading };
 
 function resolveRetainedReading(
     previousSnapshot: TransportDeviceSnapshot | undefined,
@@ -339,7 +337,6 @@ export function assembleDeviceSnapshot(params: {
         thermostatMode,
         stateOfCharge: resolveParsedSoc({
             deviceClassKey,
-            nowMs: now,
             capabilityObj: overlay.capabilityObj,
             reportedCapabilities: overlay.reportedCapabilities,
             retainedStateOfCharge: previousSnapshot?.stateOfCharge,
@@ -378,7 +375,6 @@ export function assembleDeviceSnapshot(params: {
 // realtime observation" (`lib/device/AGENTS.md`).
 function resolveParsedSoc(params: {
     deviceClassKey: string;
-    nowMs: number;
     capabilityObj: DeviceCapabilityMap;
     reportedCapabilities: FlowReportedCapabilitiesForDevice;
     retainedStateOfCharge: DeviceStateOfChargeSnapshot | undefined;

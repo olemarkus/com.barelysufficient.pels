@@ -32,17 +32,21 @@ const loggerMock: Logger = {
   structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
 };
 
-const heaterDevice = (overrides: Partial<HomeyDeviceLike>): HomeyDeviceLike => ({
-  id: 'dev1',
-  name: 'Heater',
-  class: 'heater',
-  capabilities: ['measure_power', 'onoff'],
-  capabilitiesObj: {
-    measure_power: { value: 1000, id: 'measure_power' },
-    onoff: { value: true, id: 'onoff' },
-  } as HomeyDeviceLike['capabilitiesObj'],
-  ...overrides,
-});
+const heaterDevice = (overrides: Partial<HomeyDeviceLike>): HomeyDeviceLike => {
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date().toISOString();
+  return {
+    id: 'dev1',
+    name: 'Heater',
+    class: 'heater',
+    capabilities: ['measure_power', 'onoff'],
+    capabilitiesObj: {
+      measure_power: { value: 1000, id: 'measure_power', lastUpdated },
+      onoff: { value: true, id: 'onoff', lastUpdated },
+    } as HomeyDeviceLike['capabilitiesObj'],
+    ...overrides,
+  };
+};
 
 beforeEach(() => {
   setMockZones({});

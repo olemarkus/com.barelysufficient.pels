@@ -334,6 +334,7 @@ describe('device manager support helpers', () => {
       { lastKnownPowerKw, onLearnedPeakChanged },
     );
 
+    const lastUpdated = new Date().toISOString();
     deviceManager.parseDeviceListForTests([{
       id: 'heater-1',
       name: 'Heater',
@@ -342,8 +343,8 @@ describe('device manager support helpers', () => {
       available: true,
       ready: true,
       capabilitiesObj: {
-        onoff: { value: true },
-        measure_power: { value: 1800 },
+        onoff: { value: true, lastUpdated },
+        measure_power: { value: 1800, lastUpdated },
       },
     } as unknown as HomeyDeviceLike]);
 

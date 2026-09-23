@@ -209,12 +209,7 @@ function applyExplicitControlObservationFromUpdate(params: {
     previous,
     observation,
   });
-  const evidence = resolveExplicitBinaryEvidence({
-    device,
-    previous,
-    observation,
-    receivedAtMs: Date.now(),
-  });
+  const evidence = resolveExplicitBinaryEvidence({ device, previous, observation });
   if (evidence.accepted) {
     applyExplicitBinaryObservation({
       parsed,
@@ -266,10 +261,10 @@ function getPreservedBinaryControlObservation(
   parsed: TransportDeviceSnapshot,
 ): TransportDeviceSnapshot['binaryControlObservation'] {
   if (!previous?.binaryControlObservation) return undefined;
-  if (
-    parsed.binaryCapabilityId !== undefined
-    && previous.binaryControlObservation.capabilityId !== parsed.binaryCapabilityId
-  ) return undefined;
+  // A `device.update` carries the device's whole capability list (the
+  // device-read contract), so an update with no binary capability says the
+  // device no longer has one: nothing binary is carried over.
+  if (previous.binaryControlObservation.capabilityId !== parsed.binaryCapabilityId) return undefined;
   const nextObservation = parsed.binaryControlObservation;
   if (
     !nextObservation

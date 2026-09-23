@@ -90,13 +90,17 @@ async function buildHarness(): Promise<Harness> {
     return { transport, projection };
 }
 
+// Homey dates every capability value it reports; a fixture without a
+// `lastUpdated` is a read the device-read contract ignores.
+const READ_AT = '2026-03-20T06:00:00.000Z';
+
 const device = (id: string, overrides: Record<string, unknown> = {}) => ({
     id,
     name: id,
     class: 'heater',
     capabilities: ['measure_power', 'onoff'],
     capabilitiesObj: {
-        measure_power: { value: 1000, id: 'measure_power' },
+        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:00:00.000Z' },
         onoff: { value: false, id: 'onoff', lastUpdated: '2026-03-20T05:00:00.000Z' },
         ...(overrides.capabilitiesObj as Record<string, unknown> ?? {}),
     },
@@ -106,7 +110,7 @@ const device = (id: string, overrides: Record<string, unknown> = {}) => ({
 function onoffDevice(id: string, value: boolean, lastUpdated: string) {
     return device(id, {
         capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power' },
+            measure_power: { value: 1000, id: 'measure_power', lastUpdated },
             onoff: { value, id: 'onoff', lastUpdated },
         },
     });
@@ -116,24 +120,24 @@ function temperatureDevice(id: string) {
     return device(id, {
         capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature'],
         capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power' },
-            onoff: { value: true, id: 'onoff' },
-            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C' },
-            target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+            measure_power: { value: 1000, id: 'measure_power', lastUpdated: READ_AT },
+            onoff: { value: true, id: 'onoff', lastUpdated: READ_AT },
+            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: READ_AT },
+            target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: READ_AT },
         },
     });
 }
 
 /** A reversible unit, whose `thermostat_mode` says which way its setpoint moves demand. */
-function heatPumpDevice(id: string, thermostatMode: string) {
+function heatPumpDevice(id: string, thermostatMode: string, modeLastUpdated: string = READ_AT) {
     return device(id, {
         capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
         capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power' },
-            onoff: { value: true, id: 'onoff' },
-            measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
-            target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
-            thermostat_mode: { value: thermostatMode, id: 'thermostat_mode' },
+            measure_power: { value: 1000, id: 'measure_power', lastUpdated: READ_AT },
+            onoff: { value: true, id: 'onoff', lastUpdated: READ_AT },
+            measure_temperature: { value: 25, id: 'measure_temperature', units: '°C', lastUpdated: READ_AT },
+            target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: READ_AT },
+            thermostat_mode: { value: thermostatMode, id: 'thermostat_mode', lastUpdated: modeLastUpdated },
         },
     });
 }
@@ -234,7 +238,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         })).toBe('cooling');
 
         // Only the mode moves. Every other capability reports its held value.
-        h.transport.injectDeviceUpdateForTest(heatPumpDevice('dev1', 'heat'));
+        h.transport.injectDeviceUpdateForTest(heatPumpDevice('dev1', 'heat', '2026-03-20T06:05:00.000Z'));
 
         expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('heat');
         expect(resolveThermalDirection({
@@ -539,8 +543,8 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
                 capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T06:00:00.000Z' },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: READ_AT },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: READ_AT },
                 },
             }),
         });

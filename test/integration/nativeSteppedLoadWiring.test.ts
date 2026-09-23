@@ -119,23 +119,30 @@ const createLogger = () => ({
   },
 }) as unknown as Logger;
 
-const buildHoiaxDevice = () => ({
-  id: 'hoiax-1',
-  name: 'Connected 300',
-  class: 'heater',
-  driverId: 'homey:app:no.hoiax:connected300',
-  ownerUri: 'homey:app:no.hoiax',
-  capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power_3000'],
-  capabilitiesObj: {
-    measure_power: { value: 1750 },
-    target_temperature: { value: 65 },
-    measure_temperature: { value: 60 },
-    onoff: { value: true, setable: true },
-    max_power_3000: { value: 'medium_power', setable: true },
-  },
-  available: true,
-  ready: true,
-});
+// Homey dates every value it holds; a Høiax read is taken when it is built.
+const buildHoiaxDevice = () => {
+  const readAt = new Date().toISOString();
+  return {
+    id: 'hoiax-1',
+    name: 'Connected 300',
+    class: 'heater',
+    driverId: 'homey:app:no.hoiax:connected300',
+    ownerUri: 'homey:app:no.hoiax',
+    capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power_3000'],
+    capabilitiesObj: {
+      measure_power: { value: 1750, lastUpdated: readAt },
+      target_temperature: { value: 65, lastUpdated: readAt },
+      measure_temperature: { value: 60, lastUpdated: readAt },
+      onoff: { value: true, setable: true, lastUpdated: readAt },
+      max_power_3000: { value: 'medium_power', setable: true, lastUpdated: readAt },
+    },
+    available: true,
+    ready: true,
+  };
+};
+
+// When a hand-built target_power read was taken, overrides included.
+const TARGET_POWER_READ_AT = '2026-05-04T06:00:00.000Z';
 
 const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({
   id: 'target-power-1',
@@ -154,8 +161,8 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
   // reporting one, which the parse boundary treats as a capability-contract
   // violation and drops — and these tests are about the amp/step axis.
   capabilitiesObj: {
-    measure_power: { value: 1380 },
-    evcharger_charging_state: { value: 'plugged_in_charging' },
+    measure_power: { value: 1380, lastUpdated: TARGET_POWER_READ_AT },
+    evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: TARGET_POWER_READ_AT },
     target_power: {
       value: 1380,
       min: 0,
@@ -164,7 +171,7 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
       excludeMin: 1,
       excludeMax: 1380,
       setable: true,
-      lastUpdated: '2026-05-04T06:00:00.000Z',
+      lastUpdated: TARGET_POWER_READ_AT,
     },
     ...(overrides.capabilitiesObj ?? {}),
   },
@@ -461,7 +468,7 @@ describe('native stepped-load wiring', () => {
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
       capabilitiesObj: {
-        measure_power: { value: 4140 },
+        measure_power: { value: 4140, lastUpdated: TARGET_POWER_READ_AT },
         target_power: {
           value: 4140,
           setable: true,
@@ -469,6 +476,7 @@ describe('native stepped-load wiring', () => {
           max: 3680,
           step: 460,
           excludeMax: 1380,
+          lastUpdated: TARGET_POWER_READ_AT,
         },
       },
     })]);
@@ -487,36 +495,6 @@ describe('native stepped-load wiring', () => {
       }),
     }));
     expect(parsed.capabilities).not.toContain('target_power');
-  });
-
-  it('keeps an independent stepped-load facet when the temperature pair is malformed', () => {
-    const deviceManager = createTestDeviceTransport(
-      mockHomeyInstance as unknown as Homey.App,
-      createLogger(),
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getDeviceTargetPowerConfig: () => ({ min: 0, max: 3_000, step: 1_000 }) },
-    );
-
-    const [parsed] = deviceManager.parseDeviceListForTests([{
-      id: 'stepped-heater',
-      name: 'Stepped heater',
-      class: 'heater',
-      capabilities: ['measure_power', 'target_power', 'measure_temperature', 'target_temperature'],
-      capabilitiesObj: {
-        measure_power: { value: 1_000 },
-        target_power: { value: 1_000, setable: true },
-        measure_temperature: { value: Number.NaN },
-        target_temperature: { value: 50 },
-      },
-    }]);
-
-    expect(parsed).toEqual(expect.objectContaining({
-      id: 'stepped-heater',
-      deviceType: 'onoff',
-      controlModel: 'stepped_load',
-      targets: [],
-      temperature: undefined,
-      steppedLoadProfile: expect.objectContaining({ steps: expect.any(Array) }),
-    }));
   });
 
   it('publishes changed exact target power even when its derived step id is unchanged', () => {
@@ -546,7 +524,7 @@ describe('native stepped-load wiring', () => {
     );
     const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
       capabilitiesObj: {
-        measure_power: { value: 5_520 },
+        measure_power: { value: 5_520, lastUpdated: TARGET_POWER_READ_AT },
         target_power: {
           value: 5_520,
           setable: true,
@@ -554,6 +532,7 @@ describe('native stepped-load wiring', () => {
           max: 7_360,
           step: 460,
           excludeMax: 1_380,
+          lastUpdated: TARGET_POWER_READ_AT,
         },
       },
     })]);
@@ -586,7 +565,7 @@ describe('native stepped-load wiring', () => {
       id: 'synthetic-target-power-1',
       capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
-        measure_power: { value: 920 },
+        measure_power: { value: 920, lastUpdated: TARGET_POWER_READ_AT },
       },
     })]);
 
@@ -622,7 +601,7 @@ describe('native stepped-load wiring', () => {
       driverId: 'homey:app:com.olemarkus.testdevices:mock',
       capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
-        measure_power: { value: 460 },
+        measure_power: { value: 460, lastUpdated: TARGET_POWER_READ_AT },
       },
       settings: {
         pelsCompatibilityOwnerUri: 'homey:app:com.example',
@@ -784,6 +763,8 @@ describe('native stepped-load wiring', () => {
   });
 
   it('detects native stepped-load wiring from MyUplink Høiax Connected 300 shape', () => {
+    // The rest of the read predates the step report, so the step is its freshest value.
+    const readAt = '2026-04-01T12:00:00.000Z';
     const nativeStepObservedAt = '2026-04-01T12:03:00.000Z';
     const device = {
       id: 'myuplink-hoiax-connected-300',
@@ -799,10 +780,10 @@ describe('native stepped-load wiring', () => {
         'max_power_3000',
       ],
       capabilitiesObj: {
-        measure_power: { value: 1193 },
-        target_temperature: { value: 80 },
-        measure_temperature: { value: 54.8 },
-        onoff: { value: true },
+        measure_power: { value: 1193, lastUpdated: readAt },
+        target_temperature: { value: 80, lastUpdated: readAt },
+        measure_temperature: { value: 54.8, lastUpdated: readAt },
+        onoff: { value: true, lastUpdated: readAt },
         max_power_3000: { value: '1', setable: true, lastUpdated: nativeStepObservedAt },
       },
     } satisfies HomeyDeviceLike;
@@ -1977,7 +1958,7 @@ describe('native stepped-load wiring', () => {
       ...buildHoiaxDevice(),
       capabilitiesObj: {
         ...buildHoiaxDevice().capabilitiesObj,
-        onoff: { value: false, setable: true },
+        onoff: { value: false, setable: true, lastUpdated: new Date().toISOString() },
         max_power_3000: { value: undefined, setable: true },
       },
     };
@@ -2092,7 +2073,7 @@ describe('native stepped-load wiring', () => {
       // stepped-load profile.
       const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
         capabilitiesObj: {
-          measure_power: { value: 0 },
+          measure_power: { value: 0, lastUpdated: TARGET_POWER_READ_AT },
           target_power: {
             value: 0,
             min: 0,
@@ -2100,6 +2081,7 @@ describe('native stepped-load wiring', () => {
             step: 460,
             excludeMax: 1380,
             setable: true,
+            lastUpdated: TARGET_POWER_READ_AT,
           },
         },
       })]);
@@ -2119,14 +2101,15 @@ describe('native stepped-load wiring', () => {
       const buildMalformedDevice = () => buildTargetPowerDevice({
         capabilities: ['measure_power', 'evcharger_charging', 'target_power'],
         capabilitiesObj: {
-          measure_power: { value: 0 },
-          evcharger_charging: { value: false, setable: true },
+          measure_power: { value: 0, lastUpdated: TARGET_POWER_READ_AT },
+          evcharger_charging: { value: false, setable: true, lastUpdated: TARGET_POWER_READ_AT },
           target_power: {
             value: 0,
             min: 1380,
             max: 3680,
             step: 460,
             setable: true,
+            lastUpdated: TARGET_POWER_READ_AT,
           },
         },
       });

@@ -31,16 +31,21 @@ const buildTemperatureApiDevice = (overrides?: Partial<{
     'fan_mode',
   ];
 
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date().toISOString();
   const capabilitiesObj: Record<string, {
     id: string;
     value: unknown;
+    lastUpdated: string;
     units?: string;
     min?: number;
     max?: number;
     step?: number;
   }> = {
-    measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 245.73 },
-    measure_temperature: { id: 'measure_temperature', value: overrides?.measureTemperature ?? 18, units: '°C' },
+    measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 245.73, lastUpdated },
+    measure_temperature: {
+      id: 'measure_temperature', value: overrides?.measureTemperature ?? 18, units: '°C', lastUpdated,
+    },
     target_temperature: {
       id: 'target_temperature',
       value: overrides?.targetTemperature ?? 19,
@@ -48,12 +53,13 @@ const buildTemperatureApiDevice = (overrides?: Partial<{
       min: 10,
       max: 30,
       step: 0.5,
+      lastUpdated,
     },
-    fan_mode: { id: 'fan_mode', value: 'home' },
+    fan_mode: { id: 'fan_mode', value: 'home', lastUpdated },
   };
 
   if (capabilities.includes('onoff')) {
-    capabilitiesObj.onoff = { id: 'onoff', value: overrides?.onoff ?? true };
+    capabilitiesObj.onoff = { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated };
   }
 
   return {

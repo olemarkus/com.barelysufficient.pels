@@ -1,4 +1,5 @@
 import { preserveNewerMeteredPowerReading } from './meteredPowerObservation';
+import { toCapabilityTimestampMs } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -525,12 +526,5 @@ function getCapabilityLastUpdatedMs(
     device: HomeyDeviceLike,
     capabilityId: string,
 ): number | undefined {
-    const rawValue = device.capabilitiesObj?.[capabilityId]?.lastUpdated;
-    if (rawValue instanceof Date) return rawValue.getTime();
-    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
-    if (typeof rawValue === 'string') {
-        const parsed = Date.parse(rawValue);
-        if (Number.isFinite(parsed)) return parsed;
-    }
-    return undefined;
+    return toCapabilityTimestampMs(device.capabilitiesObj?.[capabilityId]?.lastUpdated);
 }

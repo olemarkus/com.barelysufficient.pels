@@ -7,15 +7,20 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 
 const deviceId = 'heater-1';
 const capabilities = ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'];
-const update = (temperature: number) => ({
-  id: deviceId, name: 'Heat pump', class: 'heater', capabilities,
-  capabilitiesObj: {
-    onoff: { id: 'onoff', value: true },
-    measure_power: { id: 'measure_power', value: 1000 },
-    measure_temperature: { id: 'measure_temperature', value: 20 },
-    target_temperature: { id: 'target_temperature', value: temperature, units: '°C' },
-  },
-});
+// A realtime `device.update` as Homey sends it: every value dated, here at the
+// moment of the update.
+const update = (temperature: number) => {
+  const lastUpdated = new Date().toISOString();
+  return {
+    id: deviceId, name: 'Heat pump', class: 'heater', capabilities,
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: true, lastUpdated },
+      measure_power: { id: 'measure_power', value: 1000, lastUpdated },
+      measure_temperature: { id: 'measure_temperature', value: 20, lastUpdated },
+      target_temperature: { id: 'target_temperature', value: temperature, units: '°C', lastUpdated },
+    },
+  };
+};
 
 async function start(policy: string, hasBinary = true, seedOperatingMode = true) {
   const device = new MockDevice(deviceId, 'Heat pump', hasBinary ? capabilities : capabilities.filter((id) => id !== 'onoff'), 'heater');

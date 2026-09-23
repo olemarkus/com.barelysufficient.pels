@@ -142,12 +142,34 @@ export function getEvCharging(capabilityObj: DeviceCapabilityMap): boolean | und
   return typeof value === 'boolean' ? value : undefined;
 }
 
-export function toCapabilityTimestampMs(rawValue: string | number | Date | null | undefined): number | undefined {
+// The ECMAScript time-value range: a `Date` can represent |t| <= 8.64e15 ms and
+// nothing beyond it. A number outside that range is not a date, so it is not a
+// stamp — and bounding it HERE, at the boundary, is what lets every consumer
+// subtract two accepted stamps without the difference overflowing to Infinity.
+// The `Date` and string branches are in range by construction (`getTime` and
+// `Date.parse` answer NaN otherwise); only a raw number needs the check.
+const MAX_TIME_VALUE_MS = 8.64e15;
+
+/**
+ * A capability's `lastUpdated` as epoch ms, or `undefined` when it is not a
+ * time. The one parser for a Homey capability stamp: the device-read contract
+ * requires every model capability's stamp to pass it.
+ */
+export function toCapabilityTimestampMs(rawValue: unknown): number | undefined {
+  const parsed = parseTimeValueMs(rawValue);
+  // Homey dates an observation in the present era; the epoch or earlier is an
+  // unset field, not a time anything was observed.
+  return parsed !== undefined && parsed > 0 ? parsed : undefined;
+}
+
+function parseTimeValueMs(rawValue: unknown): number | undefined {
   if (rawValue instanceof Date) {
     const timestampMs = rawValue.getTime();
     return Number.isFinite(timestampMs) ? timestampMs : undefined;
   }
-  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+  if (typeof rawValue === 'number') {
+    return Number.isFinite(rawValue) && Math.abs(rawValue) <= MAX_TIME_VALUE_MS ? rawValue : undefined;
+  }
   if (typeof rawValue === 'string') {
     const parsed = Date.parse(rawValue);
     if (Number.isFinite(parsed)) return parsed;

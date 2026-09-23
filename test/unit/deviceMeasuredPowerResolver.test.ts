@@ -27,10 +27,8 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: {
-        measurePowerW: 80,
-        measurePowerObservedAtMs: 900,
-        homeyEnergyLiveW: 125,
-        homeyEnergyObservedAtMs: 950,
+        measurePower: { watts: 80, observedAtMs: 900 },
+        homeyEnergyLive: { watts: 125, observedAtMs: 950 },
       },
     });
 
@@ -57,8 +55,7 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceLabel: 'Device 1',
       observation: {
         meterEnergy: { kwh: 100, observedAtMs: anchorMs },
-        homeyEnergyLiveW: 125,
-        homeyEnergyObservedAtMs: anchorMs,
+        homeyEnergyLive: { watts: 125, observedAtMs: anchorMs },
       },
     })).toEqual({ observedAtMs: anchorMs });
 
@@ -71,8 +68,7 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceLabel: 'Device 1',
       observation: {
         meterEnergy: { kwh: 101, observedAtMs: oneHourLaterMs },
-        homeyEnergyLiveW: 125,
-        homeyEnergyObservedAtMs: oneHourLaterMs,
+        homeyEnergyLive: { watts: 125, observedAtMs: oneHourLaterMs },
       },
     })).toEqual({
       measuredPowerKw: 1,
@@ -276,8 +272,7 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: {
-        homeyEnergyLiveW: 125,
-        homeyEnergyObservedAtMs: 1500,
+        homeyEnergyLive: { watts: 125, observedAtMs: 1500 },
       },
     });
 
@@ -298,10 +293,8 @@ describe('DeviceMeasuredPowerResolver', () => {
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
       observation: {
-        measurePowerW: 3,
-        measurePowerObservedAtMs: 1234,
-        homeyEnergyLiveW: 125,
-        homeyEnergyObservedAtMs: 2345,
+        measurePower: { watts: 3, observedAtMs: 1234 },
+        homeyEnergyLive: { watts: 125, observedAtMs: 2345 },
       },
     });
 
@@ -323,7 +316,7 @@ describe('DeviceMeasuredPowerResolver', () => {
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      observation: { measurePowerW: 0, measurePowerObservedAtMs: 1234 },
+      observation: { measurePower: { watts: 0, observedAtMs: 1234  }},
     });
 
     expect(measuredPower).toEqual({
@@ -342,7 +335,7 @@ describe('DeviceMeasuredPowerResolver', () => {
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      observation: { measurePowerW: -250, measurePowerObservedAtMs: 1234 },
+      observation: { measurePower: { watts: -250, observedAtMs: 1234  }},
     });
 
     // Negative is generation, not consumption. The producer states "not a draw"

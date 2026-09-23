@@ -73,16 +73,18 @@ function reportHomePower(getTotalW: () => number): void {
  * load back.
  */
 const announceTurnedItselfOn = (app: AppLike, measuredW: number): void => {
+  // Observed now: after PELS's own off write.
+  const lastUpdated = new Date().toISOString();
   app.deviceManager?.injectDeviceUpdateForTest({
     id: HEATER_ID,
     name: 'Heater',
     class: 'heater',
     capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'],
     capabilitiesObj: {
-      onoff: { id: 'onoff', value: true },
-      measure_power: { id: 'measure_power', value: measuredW },
-      measure_temperature: { id: 'measure_temperature', value: 20 },
-      target_temperature: { id: 'target_temperature', value: 22, units: '°C' },
+      onoff: { id: 'onoff', value: true, lastUpdated },
+      measure_power: { id: 'measure_power', value: measuredW, lastUpdated },
+      measure_temperature: { id: 'measure_temperature', value: 20, lastUpdated },
+      target_temperature: { id: 'target_temperature', value: 22, units: '°C', lastUpdated },
     },
   });
 };

@@ -8,7 +8,6 @@
 import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import { getDeviceId } from './managerHelpers';
 import { resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
 import { recordSnapshotCapabilityObservations } from './managerObservation';
 import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
@@ -64,13 +63,6 @@ export function resolveBinaryControlPayload(
         observedCapabilityId,
         ...readCapabilityValue(device, observedCapabilityId),
     };
-}
-
-export function hasInvalidBinaryControlPayload(snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike): boolean {
-    if (!snapshot.binaryCapabilityId) return false;
-    const observedCapabilityId = snapshot.binaryObservationCapabilityId ?? snapshot.binaryCapabilityId;
-    const payload = readCapabilityValue(device, observedCapabilityId);
-    return payload.present && typeof payload.value !== 'boolean';
 }
 
 export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: string): boolean {
@@ -155,57 +147,6 @@ export function applyCachedBinarySettleEvidenceToSnapshot(
     applyBinarySettleEvidenceToSnapshot(ctx, snapshot, cached);
 }
 
-export function clearContradictoryBinarySettleEvidence(ctx: TransportContext, params: {
-    deviceId: string;
-    snapshot: TransportDeviceSnapshot;
-    capabilityId: BinaryControlObservation['capabilityId'];
-    observedValue: boolean;
-    // The transport seam the contradicting read came in on. A `pull`
-    // (snapshot refresh) value with no timestamp may be Homey serving a
-    // cached capability, so it must not erase a fresher pushed observation.
-    // A `push` (device.update) is the device actively reporting its current
-    // state, so it stays authoritative even without a timestamp.
-    incomingSeam: 'pull' | 'push';
-}): void {
-    const {
-        deviceId,
-        snapshot,
-        capabilityId,
-        observedValue,
-        incomingSeam,
-    } = params;
-    const existing = ctx.latestBinarySettleEvidenceByDeviceId.get(deviceId);
-    if (!existing || existing.capabilityId !== capabilityId || existing.observedValue === observedValue) return;
-    // A timestamp-less PULL read carries no evidence it is newer than a
-    // pushed observation, so it must not erase a realtime/device_update
-    // observation (lib/device/AGENTS.md "Never let an older full
-    // fetch erase a fresher local or realtime observation without evidence
-    // it is newer"). A genuine state change arrives via a push (realtime
-    // listener / device.update), so the retained evidence stays supersedable
-    // by any newer stamped read or push. The trusted observation wins and
-    // currentOn reconciles to it. A timestamp-less PUSH is not held: it is
-    // the device reporting its current state and stays authoritative.
-    if (
-        incomingSeam === 'pull'
-        && (existing.source === 'realtime_capability' || existing.source === 'device_update')
-    ) {
-        applyBinarySettleEvidenceToSnapshot(ctx, snapshot, existing);
-        return;
-    }
-    const snapshotObservation = snapshot.binaryControlObservation;
-    clearBinarySettleEvidence(ctx, deviceId);
-    if (
-        incomingSeam === 'push'
-        && snapshotObservation?.capabilityId === capabilityId
-        && snapshotObservation.observedValue === observedValue
-        && snapshotObservation.source === 'device_update'
-    ) {
-        snapshot.binaryControlObservation = snapshotObservation;
-        return;
-    }
-    delete snapshot.binaryControlObservation;
-}
-
 export function shouldClearBinarySettleEvidenceForSnapshot(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
@@ -236,51 +177,6 @@ export function reconcileBinarySettleEvidenceWithSnapshot(
     }
 }
 
-export function reconcileBinarySettleEvidenceAfterSnapshotRefresh(
-    ctx: TransportContext,
-    snapshot: TransportDeviceSnapshot[],
-    devices: HomeyDeviceLike[],
-): void {
-    const devicesById = new Map<string, HomeyDeviceLike>();
-    for (const device of devices) {
-        const deviceId = getDeviceId(device);
-        if (deviceId) devicesById.set(deviceId, device);
-    }
-
-    for (const deviceSnapshot of snapshot) {
-        const sourceDevice = devicesById.get(deviceSnapshot.id);
-        if (!sourceDevice) continue;
-        if (sourceDevice && hasInvalidBinaryControlPayload(deviceSnapshot, sourceDevice)) {
-            clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
-                deviceId: deviceSnapshot.id,
-                deviceName: deviceSnapshot.name,
-                capabilityId: deviceSnapshot.binaryCapabilityId,
-                source: 'snapshot_refresh',
-                value: readCapabilityValue(
-                    sourceDevice,
-                    deviceSnapshot.binaryObservationCapabilityId ?? deviceSnapshot.binaryCapabilityId,
-                ).value,
-            });
-            continue;
-        }
-        const payload = resolveBinaryControlPayload(sourceDevice, deviceSnapshot, deviceSnapshot);
-        if (
-            payload.present
-            && payload.observedAtMs === undefined
-            && typeof payload.value === 'boolean'
-            && payload.capabilityId
-        ) {
-            clearContradictoryBinarySettleEvidence(ctx, {
-                deviceId: deviceSnapshot.id,
-                snapshot: deviceSnapshot,
-                capabilityId: payload.capabilityId,
-                observedValue: payload.value,
-                incomingSeam: 'pull',
-            });
-        }
-    }
-}
-
 export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext, params: {
     deviceId: string;
     device: HomeyDeviceLike;
@@ -294,50 +190,20 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         previousSnapshot,
     } = params;
     if (!snapshot) {
-        if (previousSnapshot) {
-            const payload = resolveBinaryControlPayload(device, previousSnapshot, previousSnapshot);
-            if (payload.present && typeof payload.value !== 'boolean') {
-                clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
-                    deviceId,
-                    deviceName: previousSnapshot.name,
-                    capabilityId: payload.capabilityId,
-                    source: 'device_update',
-                    value: payload.value,
-                });
-                return;
-            }
-        }
         clearBinarySettleEvidence(ctx, deviceId);
         return;
     }
     const payload = resolveBinaryControlPayload(device, snapshot, previousSnapshot);
-    if (!payload.present) {
-        applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
-        return;
-    }
-    if (typeof payload.value !== 'boolean') {
-        clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
-            deviceId,
-            deviceName: snapshot.name,
-            capabilityId: payload.capabilityId,
-            source: 'device_update',
-            value: payload.value,
-        });
-        return;
-    }
     if (!payload.capabilityId) return;
-    if (isOlderEvCommandObservation(payload, previousSnapshot)) {
-        applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
-        return;
-    }
-    if (payload.observedAtMs === undefined) {
-        clearContradictoryBinarySettleEvidence(ctx, {
-            deviceId,
-            snapshot,
-            capabilityId: payload.capabilityId,
-            observedValue: payload.value,
-            incomingSeam: 'push',
-        });
+    // A conforming `device.update` carries a boolean with its stamp for the
+    // binary capability it declares (the device-read contract); the guard is
+    // for the type. Anything less is no new evidence.
+    if (
+        !payload.present
+        || typeof payload.value !== 'boolean'
+        || payload.observedAtMs === undefined
+        || isOlderEvCommandObservation(payload, previousSnapshot)
+    ) {
         applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
         return;
     }

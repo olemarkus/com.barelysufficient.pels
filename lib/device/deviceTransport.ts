@@ -94,10 +94,9 @@ import {
   fetchDevicesForSnapshot as runFetchDevicesForSnapshot,
   getSnapshotUiPickerDevices,
   parseSnapshotDevice,
-  parseSnapshotDeviceList,
+  parseConformingDeviceListForTests,
   pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
   refreshSnapshot as runRefreshSnapshot,
-  syncTrackedDevices as runSyncTrackedDevices,
 } from './transport/snapshotRefresh';
 import {
     resolveCarAssociationCandidatesRead,
@@ -465,9 +464,10 @@ export class DeviceTransport {
     // stepped-descriptor + reported-step probe fields the base type omits.
     parseDeviceListForTests(list: HomeyDeviceLike[]): TransportDeviceSnapshot[] {
         const resolveOverride = this.providers.getDeviceDriverIdOverride;
-        const effectiveList = list.map((device) => applyDeviceDriverOverride(device, resolveOverride));
-        runSyncTrackedDevices(this.ctx, effectiveList);
-        return parseSnapshotDeviceList(this.ctx, effectiveList, {}, 'unfiltered');
+        return parseConformingDeviceListForTests(
+            this.ctx,
+            list.map((device) => applyDeviceDriverOverride(device, resolveOverride)),
+        );
     }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return fetchDevicesForDebug(this.ctx); }
     // Thin fetch seams: the snapshot pipeline calls these via `TransportContext`

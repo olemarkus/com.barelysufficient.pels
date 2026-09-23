@@ -13,17 +13,16 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
+import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
 import {
     partitionConformingDeviceReads,
     withIgnoredReadEntries,
     withIgnoredReadRawDevices,
 } from './ignoredDeviceReads';
-import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { DeviceListRead } from '../deviceListRead';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
 import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
@@ -65,12 +64,12 @@ import {
   parseDevice,
   parseDeviceList,
   type ParseDevicePurpose,
+  type RetainedMeasurement,
 } from './managerParseDevice';
 import {
   summarizeSnapshotRefreshMetrics,
   type SnapshotRefreshMetrics,
 } from './transportTypes';
-import { reconcileBinarySettleEvidenceAfterSnapshotRefresh } from './binarySettleEvidence';
 import { fireSnapshotMutatedForRefresh } from './deviceUpdateHandling';
 import {
     completePendingTemperatureRecoveriesAfterRefresh,
@@ -91,59 +90,6 @@ const moduleLogger = getLogger('device/transport');
 // truth in `targetedSnapshotMerge`).
 const EMPTY_SNAPSHOT_ABANDON_GRACE_MS = SNAPSHOT_ABANDON_GRACE_MS;
 const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
-
-// Detect observe-only devices (home batteries + solar) from the RAW fetched devices
-// BEFORE parse, then pass the list through unchanged. Ordering matters: parse routes
-// `getManaged`/`getControllable` (→ the app's observe-only-aware resolve functions)
-// which consult these same id sets, so they must be current first. This makes
-// role-detected batteries/solar resolve managed + non-controllable, so they ride the
-// managed snapshot as observe-only devices; it also emits the read-only
-// `battery_state_observed` / `solar_production_observed` events. A FULL read
-// (`raw_manager_devices`) re-derives the sets; a targeted by-id read re-reads the
-// SAME known ids and must not narrow them.
-/**
- * Run the EV car-link probe after the snapshot commit, then re-sync the realtime
- * subscription set.
- *
- * Both halves have to happen here. The probe resolves charger state from the
- * COMMITTED snapshot, so it cannot run pre-parse with the battery/solar
- * producers. And the commit built the subscription list before the probe had
- * learned which cars exist — per-device capability subscriptions are the only
- * realtime source of capability VALUE changes, and a class `car` device never
- * survives parse, so without this re-sync a newly-seen car stays unsubscribed
- * until the next fetch: half an hour of blindness at every boot.
- */
-function observeEvCarLinkAndResubscribe(
-    ctx: TransportContext,
-    read: DeviceListRead,
-    fetchSource: DeviceFetchSource,
-    snapshot: readonly TargetDeviceSnapshot[],
-): void {
-    ctx.observationProducers.evCarLink.observe(read, {
-        fullRefresh: fetchSource === 'raw_manager_devices',
-        nowMs: Date.now(),
-    });
-    ctx.updateLiveFeedTrackedDevices([
-        ...snapshot.map((device) => device.id),
-        ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
-    ]);
-}
-
-function observeBatteryStateFromList(
-    ctx: TransportContext,
-    read: DeviceListRead,
-    fetchSource: DeviceFetchSource,
-): HomeyDeviceLike[] {
-    const fullRefresh = fetchSource === 'raw_manager_devices';
-    ctx.observationProducers.battery.observe(read, { fullRefresh });
-    ctx.observationProducers.solar.observe(read, { fullRefresh });
-    // The EV car-link probe is deliberately NOT observed here — it runs after the
-    // snapshot commit (see `refreshSnapshot`), because it resolves charger state
-    // from the committed snapshot. Observing it here as well would give it one
-    // pass against the PREVIOUS charger state, which can emit and persist a false
-    // self-stop on the very refresh where the dwell expires.
-    return read.devices;
-}
 
 /**
  * Guards against a transient empty SDK read clobbering a populated snapshot.
@@ -446,7 +392,7 @@ function buildParseDeviceDeps(ctx: TransportContext) {
             device: HomeyDeviceLike,
             capsStatus: { hasPower: boolean },
             measuredPower: { measuredPowerKw?: number },
-            retainedReading: RetainedPowerReading | undefined,
+            retainedReading: RetainedMeasurement | undefined,
         ) => isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading }),
         getRestoredPowerReading: (deviceId: string) => ctx.retainedPower.restoredReading(deviceId),
         resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(ctx.observationState, deviceId),
@@ -490,6 +436,20 @@ export function parseSnapshotDevice(
         previousSnapshot: ctx.latestSnapshotById.get(getDeviceId(device)),
         deps: buildParseDeviceDeps(ctx),
     });
+}
+
+/**
+ * The test seam's parse, through the device-read contract like every
+ * production read: no test can pin what a parse does with a payload production
+ * never parses.
+ */
+export function parseConformingDeviceListForTests(
+    ctx: TransportContext,
+    list: readonly HomeyDeviceLike[],
+): TransportDeviceSnapshot[] {
+    const { devices } = partitionConformingDeviceReads(ctx, list);
+    syncTrackedDevices(ctx, devices);
+    return parseSnapshotDeviceList(ctx, devices, {}, 'unfiltered');
 }
 
 export function getSnapshotUiPickerDevices(ctx: TransportContext): TransportDeviceSnapshot[] {
@@ -587,26 +547,6 @@ async function resolveLivePowerForRefresh(
     };
 }
 
-// Carry the observations the realtime path made since the last refresh over a
-// read that may be older than them, then settle binary-control evidence
-// against what the refresh saw.
-function reconcileObservationsWithRefresh(
-    ctx: TransportContext,
-    previousSnapshot: TransportDeviceSnapshot[],
-    presentSnapshot: TransportDeviceSnapshot[],
-    effectiveList: HomeyDeviceLike[],
-): void {
-    mergeFresherCapabilityObservations({
-        state: ctx.observationState,
-        previousSnapshot,
-        nextSnapshot: presentSnapshot,
-        devices: effectiveList,
-        logger: ctx.logger,
-        debugStructured: ctx.debugStructured,
-    });
-    reconcileBinarySettleEvidenceAfterSnapshotRefresh(ctx, presentSnapshot, effectiveList);
-}
-
 export async function refreshSnapshot(
     ctx: TransportContext,
     options: SnapshotRefreshOptions,
@@ -638,7 +578,16 @@ export async function refreshSnapshot(
             previousSnapshot,
             read.ignoredIds,
         );
-        reconcileObservationsWithRefresh(ctx, previousSnapshot, presentSnapshot, effectiveList);
+        // Carry the observations the realtime path made since the last refresh
+        // over a read that may be older than them.
+        mergeFresherCapabilityObservations({
+            state: ctx.observationState,
+            previousSnapshot,
+            nextSnapshot: presentSnapshot,
+            devices: effectiveList,
+            logger: ctx.logger,
+            debugStructured: ctx.debugStructured,
+        });
         // `fetchSource` resolves whether this committed read is a targeted
         // overlay or a full read — a targeted refresh that fell back to full
         // (every id failed) reports `raw_manager_devices`, so it is treated as

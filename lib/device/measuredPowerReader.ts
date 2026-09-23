@@ -1,4 +1,4 @@
-import type { DeviceCapabilityMap } from './managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 import type { LiveDevicePowerWatts } from './managerEnergy';
 import {
   getExactPowerCapabilityValue,
@@ -16,12 +16,16 @@ export type MeterEnergyReading = {
   observedAtMs: number;
 };
 
+/** One direct watt reading, placed on the clock of the source that reported it. */
+export type DirectPowerReading = {
+  watts: number;
+  observedAtMs: number;
+};
+
 export type DeviceMeasuredPowerObservation = {
-  measurePowerW?: number;
-  measurePowerObservedAtMs?: number;
+  measurePower?: DirectPowerReading;
   meterEnergy?: MeterEnergyReading;
-  homeyEnergyLiveW?: number;
-  homeyEnergyObservedAtMs?: number;
+  homeyEnergyLive?: DirectPowerReading;
 };
 
 export function readDeviceMeasuredPowerObservation(params: {
@@ -29,7 +33,7 @@ export function readDeviceMeasuredPowerObservation(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   livePowerWByDeviceId?: LiveDevicePowerWatts;
-  homeyEnergyObservedAtMs?: number;
+  homeyEnergyObservedAtMs: number;
 }): DeviceMeasuredPowerObservation {
   const {
     deviceId,
@@ -42,12 +46,22 @@ export function readDeviceMeasuredPowerObservation(params: {
   const meterPower = readFinitePowerCapability(capabilities, capabilityObj, 'meter_power');
   const homeyEnergyLiveW = toFiniteNumber(livePowerWByDeviceId[deviceId]);
   return {
-    measurePowerW: measurePower.value,
-    measurePowerObservedAtMs: measurePower.observedAtMs,
+    measurePower: toDirectPowerReading(measurePower),
     meterEnergy: toMeterEnergyReading(meterPower),
-    homeyEnergyLiveW,
-    homeyEnergyObservedAtMs: homeyEnergyLiveW !== undefined ? homeyEnergyObservedAtMs : undefined,
+    homeyEnergyLive: homeyEnergyLiveW === undefined
+      ? undefined
+      : { watts: homeyEnergyLiveW, observedAtMs: homeyEnergyObservedAtMs },
   };
+}
+
+// A watt value is a reading only with the stamp that places it; the device-read
+// contract guarantees a conforming read carries both.
+function toDirectPowerReading(
+  read: { value?: number; observedAtMs?: number },
+): DirectPowerReading | undefined {
+  return read.value !== undefined && read.observedAtMs !== undefined
+    ? { watts: read.value, observedAtMs: read.observedAtMs }
+    : undefined;
 }
 
 // The producer-side classification: a finite, non-negative value AND a
@@ -79,29 +93,8 @@ function readFinitePowerCapability(
   return {
     value,
     observedAtMs: capabilities.includes(capabilityId)
-      ? toTimestampMs(capabilityObj[capabilityId]?.lastUpdated)
+      ? toCapabilityTimestampMs(capabilityObj[capabilityId]?.lastUpdated)
       : undefined,
   };
 }
 
-// The ECMAScript time-value range: a `Date` can represent |t| <= 8.64e15 ms and
-// nothing beyond it. A number outside that range is not a date, so it is not a
-// stamp — and bounding it HERE, at the boundary, is what lets every consumer
-// subtract two accepted stamps without the difference overflowing to Infinity.
-// The `Date` and string branches are in range by construction (`getTime` and
-// `Date.parse` answer NaN otherwise); only a raw number needs the check.
-const MAX_TIME_VALUE_MS = 8.64e15;
-
-const isTimeValue = (value: number): boolean => (
-  Number.isFinite(value) && Math.abs(value) <= MAX_TIME_VALUE_MS
-);
-
-function toTimestampMs(value: unknown): number | undefined {
-  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : undefined;
-  if (typeof value === 'number' && isTimeValue(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}

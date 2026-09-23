@@ -37,7 +37,7 @@ describe('retained power store', () => {
 
   it('round-trips readings and meter anchors to a fresh store on the same database', () => {
     createRetainedPowerStore(db).save(
-      state([['plug-1', reading], ['heater-1', { measuredPowerKw: 0 }]], [['plug-1', anchor]]),
+      state([['plug-1', reading], ['heater-1', { measuredPowerKw: 0, observedAtMs: T0 }]], [['plug-1', anchor]]),
       present('plug-1', 'heater-1'),
       T0,
     );
@@ -45,7 +45,7 @@ describe('retained power store', () => {
     const restored = createRetainedPowerStore(db).load(T0 + DAY_MS);
 
     expect(restored.readings.get('plug-1')).toEqual(reading);
-    expect(restored.readings.get('heater-1')).toEqual({ measuredPowerKw: 0 });
+    expect(restored.readings.get('heater-1')).toEqual({ measuredPowerKw: 0, observedAtMs: T0 });
     expect(restored.meterAnchors.get('plug-1')).toEqual(anchor);
   });
 
@@ -85,12 +85,12 @@ describe('retained power store', () => {
   it('keeps a device whose reading never changes, and prunes one not seen for a month', () => {
     const store = createRetainedPowerStore(db);
     store.save(
-      state([['idle-heater', { measuredPowerKw: 0 }], ['removed-plug', reading]], [['removed-plug', anchor]]),
+      state([['idle-heater', { measuredPowerKw: 0, observedAtMs: T0 }], ['removed-plug', reading]], [['removed-plug', anchor]]),
       present('idle-heater', 'removed-plug'),
       T0,
     );
     for (let day = 1; day <= 35; day += 1) {
-      store.save(state([['idle-heater', { measuredPowerKw: 0 }]]), present('idle-heater'), T0 + day * DAY_MS);
+      store.save(state([['idle-heater', { measuredPowerKw: 0, observedAtMs: T0 }]]), present('idle-heater'), T0 + day * DAY_MS);
     }
 
     const restored = createRetainedPowerStore(db).load(T0 + RETAINED_POWER_MAX_AGE_MS + 5 * DAY_MS);
@@ -117,6 +117,8 @@ describe('retained power store', () => {
     createRetainedPowerStore(db).save(state([['plug-1', reading]]), present('plug-1'), T0);
     db.prepare('INSERT INTO device_power_reading (device_id, reading_json, saved_at_ms) VALUES (?, ?, ?)')
       .run('broken', '{"measuredPowerKw":-1}', T0);
+    db.prepare('INSERT INTO device_power_reading (device_id, reading_json, saved_at_ms) VALUES (?, ?, ?)')
+      .run('undated', '{"measuredPowerKw":1}', T0);
     db.prepare('INSERT INTO device_power_reading (device_id, reading_json, saved_at_ms) VALUES (?, ?, ?)')
       .run('garbage', 'not json', T0);
 

@@ -5,7 +5,9 @@
  * Owner ruling (2026-09-23): PELS never uses partial data from the SDK. A device
  * read — a full `manager/devices` fetch or a realtime `device.update` — must
  * carry the device's capability list and, for every capability of PELS's device
- * model it declares, a value of the model's type.
+ * model it declares, a value of the model's type and the time Homey observed it
+ * (`lastUpdated`). Every observation PELS keeps is dated by its source; a value
+ * with no date cannot be ordered against the others, so it is not a reading.
  * A read that does not is IGNORED: nothing is parsed, nothing is emitted, and
  * the device's previous entry stands exactly as if the read had not happened.
  * There is no "incomplete" state downstream; a non-conforming read is a no-op,
@@ -29,7 +31,7 @@
  * routine `null` values are none of this contract's business.
  */
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
 import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
 import { resolveDeviceClassKey } from './managerHelpers';
@@ -127,7 +129,8 @@ export type DeviceReadContractViolation =
     | { reason: 'missing_capability_list' }
     | { reason: 'missing_capability_values' }
     | { reason: 'missing_capability_entry'; capabilityId: string }
-    | { reason: 'unexpected_value'; capabilityId: string };
+    | { reason: 'unexpected_value'; capabilityId: string }
+    | { reason: 'missing_stamp'; capabilityId: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
     typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -164,6 +167,7 @@ export function findDeviceReadContractViolation(device: HomeyDeviceLike): Device
         const entry: unknown = model.capabilityObj[capabilityId];
         if (!isRecord(entry)) return { reason: 'missing_capability_entry', capabilityId };
         if (!isModelValue(capabilityId, entry.value, type)) return { reason: 'unexpected_value', capabilityId };
+        if (toCapabilityTimestampMs(entry.lastUpdated) === undefined) return { reason: 'missing_stamp', capabilityId };
     }
     return null;
 }

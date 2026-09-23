@@ -1,4 +1,4 @@
-import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { isEvChargingState, isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import type {
   FlowReportedCapabilitiesForDevice,
@@ -28,7 +28,7 @@ export const EV_SOC_NATIVE_CAPABILITY_IDS = [
 
 type StateOfChargeCandidate = {
   percent: number;
-  observedAtMs?: number;
+  observedAtMs: number;
   capabilityId: string;
   source: DeviceStateOfChargeSnapshot['source'];
 };
@@ -43,7 +43,6 @@ export type RetainedStateOfChargeSession = Pick<
 
 export function resolveStateOfChargeSnapshot(params: {
   deviceClassKey: string;
-  nowMs: number;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   retainedSession?: RetainedStateOfChargeSession;
@@ -62,7 +61,6 @@ export function resolveStateOfChargeSnapshot(params: {
 }): DeviceStateOfChargeSnapshot | undefined {
   const {
     deviceClassKey,
-    nowMs,
     capabilityObj,
     reportedCapabilities,
     retainedSession,
@@ -85,7 +83,6 @@ export function resolveStateOfChargeSnapshot(params: {
     capabilityId: candidate.capabilityId,
     capabilityObj,
     reportedCapabilities,
-    nowMs,
     retainedSession,
     source: candidate.source,
   });
@@ -133,9 +130,8 @@ export function updateStateOfChargeFromCarObservation(params: {
   percent: number;
   observedAtMs: number;
   carId: string;
-  nowMs: number;
 }): boolean {
-  const { snapshot, percent, observedAtMs, carId, nowMs } = params;
+  const { snapshot, percent, observedAtMs, carId } = params;
   if (snapshot.deviceClass !== 'evcharger') return false;
   const normalized = normalizeStateOfChargePercent(percent);
   if (normalized === undefined) return false;
@@ -153,7 +149,6 @@ export function updateStateOfChargeFromCarObservation(params: {
       },
     },
     reportedCapabilities: {},
-    nowMs,
     retainedSession: previous,
     source,
   });
@@ -184,7 +179,7 @@ export function updateStateOfChargeObservationFreshness(params: {
   const { snapshot, reportedAt } = params;
   if (!snapshot.stateOfCharge) return false;
   const previous = snapshot.stateOfCharge;
-  const observedAtMs = Math.max(previous.report.observedAtMs ?? 0, reportedAt);
+  const observedAtMs = Math.max(previous.report.observedAtMs, reportedAt);
   snapshot.stateOfCharge = {
     ...previous,
     report: { ...previous.report, observedAtMs },
@@ -236,7 +231,6 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
       },
     },
     reportedCapabilities: {},
-    nowMs: observedAtMs,
     retainedSession: snapshot.stateOfCharge,
     source,
   });
@@ -357,10 +351,12 @@ function resolveStateOfChargeCandidate(params: {
   for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
     const capability = capabilityObj[capabilityId];
     const percent = normalizeStateOfChargePercent(capability?.value);
-    if (percent === undefined) continue;
+    // The device-read contract guarantees the stamp; the guard is for the type.
+    const observedAtMs = getCapabilityLastUpdatedMs(capabilityObj, capabilityId);
+    if (percent === undefined || observedAtMs === undefined) continue;
     return {
       percent,
-      observedAtMs: getCapabilityLastUpdatedMs(capabilityObj, capabilityId),
+      observedAtMs,
       capabilityId,
       source: CHARGER_SOURCE,
     };
@@ -370,11 +366,10 @@ function resolveStateOfChargeCandidate(params: {
 
 function buildStateOfChargeSnapshot(params: {
   percent: number;
-  observedAtMs?: number;
+  observedAtMs: number;
   capabilityId: string;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
-  nowMs: number;
   retainedSession?: RetainedStateOfChargeSession;
   source: DeviceStateOfChargeSnapshot['source'];
 }): DeviceStateOfChargeSnapshot {
@@ -384,14 +379,12 @@ function buildStateOfChargeSnapshot(params: {
     capabilityId,
     capabilityObj,
     reportedCapabilities,
-    nowMs,
     retainedSession,
     source,
   } = params;
   const session = resolveEvSessionBoundary({
     capabilityObj,
     reportedCapabilities,
-    nowMs,
     retainedSession,
   });
   const levelFields = resolveLevelFields({
@@ -402,10 +395,7 @@ function buildStateOfChargeSnapshot(params: {
     source,
   });
   return {
-    report: {
-      percent,
-      ...(observedAtMs ? { observedAtMs } : {}),
-    },
+    report: { percent, observedAtMs },
     ...levelFields,
     capabilityId,
     source,
@@ -433,7 +423,7 @@ function buildStateOfChargeSnapshot(params: {
  */
 function resolveStateOfChargeLevel(params: {
   percent: number;
-  observedAtMs?: number;
+  observedAtMs: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
   source: DeviceStateOfChargeSnapshot['source'];
@@ -441,10 +431,6 @@ function resolveStateOfChargeLevel(params: {
   const {
     percent, observedAtMs, invalidatedAtMs, sessionStartedAtMs, source,
   } = params;
-  // Nothing has been reported at all. This gate is why `observedAtMs` lives
-  // inside the known arm below and nowhere else: past it, a level always has a
-  // timestamp, so there is no such thing as a known level without one.
-  if (!observedAtMs) return { kind: 'unavailable', reasonCode: 'not_reported' };
   // A disconnect is recorded and no reconnect has been observed since, so there
   // is no session for a level to belong to.
   if (hasPendingReconnect({ sessionStartedAtMs, invalidatedAtMs })) {
@@ -477,7 +463,7 @@ function resolveStateOfChargeLevel(params: {
 
 function resolveLevelFields(params: {
   percent: number;
-  observedAtMs?: number;
+  observedAtMs: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
   source: DeviceStateOfChargeSnapshot['source'];
@@ -488,21 +474,18 @@ function resolveLevelFields(params: {
 function resolveEvSessionBoundary(params: {
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
-  nowMs: number;
   retainedSession?: RetainedStateOfChargeSession;
 }): {
   sessionStartedAtMs?: number;
   invalidatedAtMs?: number;
 } {
-  const {
-    capabilityObj, reportedCapabilities, nowMs, retainedSession,
-  } = params;
+  const { capabilityObj, reportedCapabilities, retainedSession } = params;
   const chargingState = getStringCapabilityValue(capabilityObj.evcharger_charging_state?.value);
   const chargingStateObservedAt = getCapabilityLastUpdatedMs(capabilityObj, 'evcharger_charging_state');
   const flowConnected = getBooleanFlowEntry(reportedCapabilities['alarm_generic.car_connected']);
 
   const invalidatedAtCandidates = [
-    isDisconnectedEvState(chargingState) ? chargingStateObservedAt ?? nowMs : undefined,
+    isDisconnectedEvState(chargingState) ? chargingStateObservedAt : undefined,
     flowConnected?.value === false ? flowConnected.reportedAt : undefined,
     retainedSession?.invalidatedAtMs,
   ].filter(isFinitePositiveNumber);
@@ -533,18 +516,13 @@ function resolveEvSessionBoundary(params: {
 /**
  * When the car reconnected, given a disconnect is already pending.
  *
- * Deliberately requires REAL evidence: a connected observation with no
- * `lastUpdated` anchors nothing. Substituting the refresh time was tried and
- * reverted — a full refresh can carry a cached connected state that predates a
- * newer realtime plug-out (`snapshotRefresh.ts` parses the pull before merging
+ * Anchored on the connected observation's own stamp, never the refresh time: a
+ * full refresh can carry a cached connected state that predates a newer
+ * realtime plug-out (`snapshotRefresh.ts` parses the pull before merging
  * retained fresher observations), and a fabricated `sessionStartedAtMs` in the
- * future cannot be undone by reapplying that plug-out, so the next genuine
- * reconnect goes unrecognised and a same-value SoC report stays trusted for a
- * different car. Requiring real evidence is therefore the safer half of a gap
- * that is still open, not a settled trade: a timestamp-less reconnect leaves
- * the reading stale, and because `measure_battery` is change-only a later
- * timestamped observation is not guaranteed to arrive, which can leave an EV
- * smart task unable to plan. The refresh path is where that gets fixed.
+ * future cannot be undone by reapplying that plug-out. The device-read contract
+ * guarantees a conforming read dates its plug state, so the timestamp-less
+ * reconnect this once had to leave unanchored no longer reaches here.
  */
 function resolveReconnectAtMs(params: {
   chargingState?: string;
@@ -594,14 +572,7 @@ function getCapabilityLastUpdatedMs(
   capabilityObj: DeviceCapabilityMap,
   capabilityId: string,
 ): number | undefined {
-  const raw = capabilityObj[capabilityId]?.lastUpdated;
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return undefined;
+  return toCapabilityTimestampMs(capabilityObj[capabilityId]?.lastUpdated);
 }
 
 function maxPositive(values: readonly number[]): number | undefined {

@@ -61,6 +61,15 @@ const findSnapshotDevice = <T extends { id: string }>(
     return undefined;
 };
 
+// Homey dates every capability value it reports (`lastUpdated`), and PELS
+// ignores a read that carries a model value without one. A fixture with no
+// time of its own reads as observed when the payload is built. A read only
+// supersedes an earlier one when its stamp is newer, so a test whose reads
+// follow each other within the same millisecond orders them by offset:
+// a baseline read a minute back, a later push a second ahead.
+const stampedNow = (offsetMs = 0): string => new Date(Date.now() + offsetMs).toISOString();
+const BASELINE_OFFSET_MS = -60_000;
+
 const buildRealtimeDevices = () => ({
     dev1: {
         id: 'dev1',
@@ -68,8 +77,8 @@ const buildRealtimeDevices = () => ({
         capabilities: ['measure_power', 'onoff'],
         class: 'heater',
         capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power' },
-            onoff: { value: true, id: 'onoff' },
+            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
         },
     },
 });
@@ -81,8 +90,8 @@ const GRACE_POPULATED_PAYLOAD = {
         id: 'dev1', name: 'Heater', class: 'heater',
         capabilities: ['measure_power', 'onoff'],
         capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power' },
-            onoff: { value: true, id: 'onoff' },
+            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
         },
     },
 };
@@ -289,10 +298,10 @@ describe('DeviceTransport', () => {
                 class: 'heatpump',
                 capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
                 capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
-                    thermostat_mode: { value: mode, id: 'thermostat_mode' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 25, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    thermostat_mode: { value: mode, id: 'thermostat_mode', lastUpdated: stampedNow() },
                 },
             }]);
 
@@ -309,9 +318,9 @@ describe('DeviceTransport', () => {
                 class: 'thermostat',
                 capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                 },
                 ...availability,
             }]);
@@ -319,60 +328,48 @@ describe('DeviceTransport', () => {
             expect(parsed.available).toBe(true);
         });
 
-        it('drops devices with invalid onoff telemetry when no previous observation can be preserved', () => {
+        // The read is ignored whole: the parse never sees it, so no facet of it
+        // (a binary facet beside a malformed target included) is kept.
+        it.each([
+            {
+                label: 'a non-boolean onoff',
+                entries: { onoff: { value: 'unexpected' as unknown as boolean, id: 'onoff', lastUpdated: stampedNow() } },
+                violation: { reason: 'unexpected_value', capabilityId: 'onoff' },
+            },
+            {
+                label: 'an onoff stamped with an invalid Date',
+                entries: { onoff: { value: false, id: 'onoff', lastUpdated: new Date('bad timestamp') } },
+                violation: { reason: 'missing_stamp', capabilityId: 'onoff' },
+            },
+            {
+                label: 'a malformed target beside a valid onoff',
+                entries: {
+                    target_temperature: {
+                        value: '21' as unknown as number, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(),
+                    },
+                },
+                violation: { reason: 'unexpected_value', capabilityId: 'target_temperature' },
+            },
+        ])('ignores a read carrying $label, so a device never seen conforming stays out', ({ entries, violation }) => {
             const parsed = deviceManager.parseDeviceListForTests([{
                 id: 'thermo-2',
                 name: 'Bedroom Thermostat',
                 class: 'thermostat',
                 capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
-                    onoff: { value: 'unexpected' as unknown as boolean, id: 'onoff' },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    ...entries,
                 },
             }]);
 
             expect(parsed).toEqual([]);
-            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_snapshot_control_state_dropped',
-                reasonCode: 'missing_boolean_onoff',
-                source: 'snapshot_parse',
+            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_read_ignored',
                 deviceId: 'thermo-2',
-                deviceName: 'Bedroom Thermostat',
-                capabilityId: 'onoff',
-                rawValue: 'unexpected',
-                rawValueType: 'string',
-            }));
-            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_snapshot_control_state_fallback',
-                reasonCode: 'missing_boolean_onoff',
-                deviceId: 'thermo-2',
-                deviceName: 'Bedroom Thermostat',
-                capabilityId: 'onoff',
-                rawValue: 'unexpected',
-                rawValueType: 'string',
-                fallbackCurrentOn: undefined,
-            }));
-        });
-
-        it('does not create binary settlement evidence from an invalid Date lastUpdated', () => {
-            const [parsed] = deviceManager.parseDeviceListForTests([{
-                id: 'thermo-invalid-date',
-                name: 'Invalid Date Thermostat',
-                class: 'thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: new Date('bad timestamp') },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
-                },
-            }]);
-
-            expect(parsed).toEqual(expect.objectContaining({
-                id: 'thermo-invalid-date',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: undefined,
+                source: 'device_fetch',
+                ...violation,
             }));
         });
 
@@ -396,7 +393,7 @@ describe('DeviceTransport', () => {
                 class: 'socket',
                 capabilities: ['onoff', 'measure_power', 'measure_power.leak'],
                 capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:53:00.000Z' },
                     measure_power: {
                         value: 730,
                         id: 'measure_power',
@@ -421,35 +418,6 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('drops only the temperature facet when a binary device reports a malformed target', () => {
-            const [parsed] = deviceManager.parseDeviceListForTests([{
-                id: 'thermo-invalid-target',
-                name: 'Broken Thermostat',
-                class: 'thermostat',
-                capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: '21' as unknown as number, id: 'target_temperature', units: '°C', min: 5, max: 35, step: 0.5 },
-                },
-            }]);
-
-            expect(parsed).toEqual(expect.objectContaining({
-                id: 'thermo-invalid-target',
-                deviceType: 'onoff',
-                targets: [],
-                binaryControl: { on: true },
-            }));
-            expect(hasObservedTemperature(parsed)).toBe(false);
-            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'target_capability_value_malformed',
-                deviceId: 'thermo-invalid-target',
-                deviceName: 'Broken Thermostat (thermo-invalid-target)',
-                capabilityId: 'target_temperature',
-                rawValue: '21',
-            }));
-        });
-
         it('keeps the binary facet when exact temperature measurement support is missing', () => {
             const [parsed] = deviceManager.parseDeviceListForTests([{
                 id: 'bad-thermo',
@@ -457,8 +425,8 @@ describe('DeviceTransport', () => {
                 class: 'thermostat',
                 capabilities: ['onoff', 'target_temperature'],
                 capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                 },
             }]);
 
@@ -509,8 +477,8 @@ describe('DeviceTransport', () => {
                     driverId: 'homey:app:com.example:mock',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 50, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 50, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
                 {
@@ -520,8 +488,8 @@ describe('DeviceTransport', () => {
                     driverId: 'homey:app:com.example:mock',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 80, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 80, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             ]);
@@ -539,8 +507,8 @@ describe('DeviceTransport', () => {
             class: 'heater',
             capabilities: ['measure_power', 'onoff'],
             capabilitiesObj: {
-                measure_power: { value: 1000, id: 'measure_power' },
-                onoff: { value: capValue, id: 'onoff' },
+                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                onoff: { value: capValue, id: 'onoff', lastUpdated: stampedNow() },
             },
         });
 
@@ -605,8 +573,8 @@ describe('DeviceTransport', () => {
             class: 'heater',
             capabilities: ['measure_power', 'onoff'],
             capabilitiesObj: {
-                measure_power: { value: 1000, id: 'measure_power' },
-                onoff: { value: capValue, id: 'onoff' },
+                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                onoff: { value: capValue, id: 'onoff', lastUpdated: stampedNow() },
             },
         });
 
@@ -623,7 +591,10 @@ describe('DeviceTransport', () => {
                 neverConformingManaged: buildDevice('neverConformingManaged', null),
                 neverConformingUnmanaged: {
                     ...buildDevice('neverConformingUnmanaged', true),
-                    capabilitiesObj: { measure_power: { value: 1000, id: 'measure_power' }, onoff: { id: 'onoff' } },
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { id: 'onoff' },
+                    },
                 },
             });
             loggerMock.structuredLog.error.mockClear();
@@ -803,7 +774,9 @@ describe('DeviceTransport', () => {
          */
         describe('reported thermostat mode across device.update', () => {
             const HEAT_PUMP_CAPABILITIES = ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'];
-            const heatPump = (capabilitiesObj: Record<string, { value: unknown; id: string; units?: string }>) => ({
+            const heatPump = (
+                capabilitiesObj: Record<string, { value: unknown; id: string; units?: string; lastUpdated: string }>,
+            ) => ({
                 id: 'dev1',
                 name: 'Living Room Heat Pump',
                 class: 'heatpump',
@@ -811,10 +784,10 @@ describe('DeviceTransport', () => {
                 capabilitiesObj,
             });
             const fullRead = (thermostatMode: string) => heatPump({
-                onoff: { value: true, id: 'onoff' },
-                measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
-                target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
-                thermostat_mode: { value: thermostatMode, id: 'thermostat_mode' },
+                onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                measure_temperature: { value: 25, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                thermostat_mode: { value: thermostatMode, id: 'thermostat_mode', lastUpdated: stampedNow() },
             });
             // `getSnapshot()` is base-typed; the probe is what carries the raw mode.
             const observedMode = (): string | undefined => (
@@ -832,7 +805,7 @@ describe('DeviceTransport', () => {
                 await seedCooling();
 
                 deviceManager.injectDeviceUpdateForTest(heatPump({
-                    measure_temperature: { value: 26, id: 'measure_temperature', units: '°C' },
+                    measure_temperature: { value: 26, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                 }));
 
                 expect(observedMode()).toBe('cooling');
@@ -899,10 +872,10 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
                 dev2: {
@@ -911,8 +884,8 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 120, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 120, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1182,9 +1155,9 @@ describe('DeviceTransport', () => {
                     class: 'airtreatment',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 250, id: 'measure_power' },
-                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                        measure_power: { value: 250, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 19, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1213,9 +1186,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                        measure_power: { value: 7200, id: 'measure_power' },
+                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                        measure_power: { value: 7200, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1242,7 +1215,7 @@ describe('DeviceTransport', () => {
                     class: { value: 'heater' },
                     capabilities: ['onoff'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true },
+                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
                     },
                 },
                 heater1: {
@@ -1251,8 +1224,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true },
-                        measure_power: { value: 750, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
+                        measure_power: { value: 750, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1279,10 +1252,10 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['onoff', 'evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true },
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1324,7 +1297,7 @@ describe('DeviceTransport', () => {
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 7100, id: 'measure_power' },
+                        measure_power: { value: 7100, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                     },
                 },
             });
@@ -1365,9 +1338,9 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             const capabilitiesObj = {
-                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                measure_power: { value: 0, id: 'measure_power' },
+                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                 [valuelessCapabilityId]: { id: valuelessCapabilityId },
             };
             mockApiGet.mockResolvedValue({
@@ -1399,9 +1372,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_complete', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging_state: { value: 'plugged_in_complete', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1426,8 +1399,8 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 1200, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 1200, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1458,8 +1431,8 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging' },
-                        measure_power: { value: 1200, id: 'measure_power' },
+                        evcharger_charging: { value: true, id: 'evcharger_charging', lastUpdated: stampedNow() },
+                        measure_power: { value: 1200, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1484,9 +1457,9 @@ describe('DeviceTransport', () => {
                     available: false,
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 250, id: 'measure_power' },
-                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                        measure_power: { value: 250, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 19, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1507,9 +1480,9 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                     settings: { load: 600 },
                 },
@@ -1532,9 +1505,9 @@ describe('DeviceTransport', () => {
                     class: 'thermostat',
                     capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                     settings: { load: 0 },
                 },
@@ -1558,7 +1531,7 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['onoff'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                     energyObj: {
                         approximation: {
@@ -1591,7 +1564,7 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['onoff'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                     settings: { energy_value_on: 1200, load: 1500 },
                 },
@@ -1618,7 +1591,7 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['onoff'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                     energyObj: {},
                     energy: {},
@@ -1642,7 +1615,7 @@ describe('DeviceTransport', () => {
                         class: 'socket',
                         capabilities: ['onoff'],
                         capabilitiesObj: {
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -1681,7 +1654,7 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['onoff'],
                     capabilitiesObj: {
-                        onoff: { value: false, id: 'onoff' },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                     },
                     energyObj: {
                         W: 125,
@@ -1711,9 +1684,9 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 20, id: 'target_temperature', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1741,8 +1714,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
                         meter_power: { value: 100, id: 'meter_power', lastUpdated: '2026-01-01T00:00:30.000Z' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: '2026-01-01T00:00:30.000Z' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: '2026-01-01T00:00:30.000Z' },
                     },
                 },
             });
@@ -1758,8 +1731,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
                         meter_power: { value: 101, id: 'meter_power', lastUpdated: '2026-01-01T01:00:30.000Z' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: '2026-01-01T01:00:30.000Z' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: '2026-01-01T01:00:30.000Z' },
                     },
                 },
             });
@@ -1793,7 +1766,7 @@ describe('DeviceTransport', () => {
                         value: 100 + minute / 60, id: 'meter_power',
                         lastUpdated: new Date(startMs + minute * 60_000).toISOString(),
                     },
-                    onoff: { value: true, id: 'onoff' },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
             await deviceManager.init();
@@ -1843,9 +1816,9 @@ describe('DeviceTransport', () => {
                     class: 'airconditioning',
                     capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        meter_power: { value: 100, id: 'meter_power' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                        meter_power: { value: 100, id: 'meter_power', lastUpdated: stampedNow() },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1860,9 +1833,9 @@ describe('DeviceTransport', () => {
                     class: 'airconditioning',
                     capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        meter_power: { value: 99, id: 'meter_power' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                        meter_power: { value: 99, id: 'meter_power', lastUpdated: stampedNow() },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1889,8 +1862,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                 capabilitiesObj: {
                     meter_power: { value: meterKwh, id: 'meter_power', lastUpdated: meterAt },
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                    measure_temperature: { value: temperature, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    measure_temperature: { value: temperature, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                 },
             });
             const readMeasuredPowerKw = () => (
@@ -1924,8 +1897,8 @@ describe('DeviceTransport', () => {
                 class: 'airconditioning',
                 capabilities: ['target_temperature', 'measure_temperature'],
                 capabilitiesObj: {
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                 },
             });
             const withoutMeter = deviceManager.getSnapshot()[0] as (
@@ -1957,8 +1930,8 @@ describe('DeviceTransport', () => {
                     driverId: 'homey:app:com.example:mock',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 50, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 50, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
                 'dev-b': {
@@ -1968,8 +1941,8 @@ describe('DeviceTransport', () => {
                     driverId: 'homey:app:com.example:mock',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 80, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 80, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -1993,9 +1966,9 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 20, id: 'target_temperature', lastUpdated: stampedNow() },
                     },
                     targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 },
@@ -2038,8 +2011,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
                 dev2: {
@@ -2048,8 +2021,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 900, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 900, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -2065,8 +2038,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2096,8 +2069,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
             expect(realtimeListener).not.toHaveBeenCalled();
@@ -2112,8 +2085,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 3000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+                    measure_power: { value: 3000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2144,8 +2117,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2169,9 +2142,9 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_temperature: { value: 20, id: 'measure_temperature' },
-                        target_temperature: { value: 21, id: 'target_temperature' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', lastUpdated: stampedNow() },
+                        target_temperature: { value: 21, id: 'target_temperature', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             };
@@ -2186,7 +2159,7 @@ describe('DeviceTransport', () => {
                 ...validDevice.dev1,
                 capabilitiesObj: {
                     ...validDevice.dev1.capabilitiesObj,
-                    measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
+                    measure_temperature: { value: Number.NaN, id: 'measure_temperature', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2213,8 +2186,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2237,9 +2210,8 @@ describe('DeviceTransport', () => {
         });
 
         it('tracks snapshot refresh and device.update sources for debug dumps', async () => {
-            // Seed a real timestamped onoff:true baseline so the injected
-            // onoff:false below is a genuine on→off change (the shared fixture's
-            // onoff carries no timestamp).
+            // Seed an onoff:true baseline stamped before the injected
+            // onoff:false below, so that update is a genuine on→off change.
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -2247,7 +2219,7 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                         onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                     },
                 },
@@ -2270,8 +2242,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 500, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -2523,12 +2495,12 @@ describe('DeviceTransport', () => {
             expect(dev1?.binaryControl?.on).toBe(false);
         });
 
-        it('keeps a realtime-off observation when a later pull reports onoff=true with no timestamp', async () => {
+        it('ignores a later pull whose onoff=true carries no stamp, keeping the realtime-off observation', async () => {
             // The morning two-source divergence: a realtime push said OFF, then
-            // Homey serves a cached device object on the next pull whose onoff is
-            // boolean `true` but carries NO lastUpdated. An unstamped read has no
-            // evidence it is newer than the realtime push, so it must not clear
-            // the trusted observation — currentOn must stay reconciled to OFF.
+            // Homey serves a device object on the next pull whose onoff is
+            // boolean `true` but carries NO lastUpdated. A value with no date
+            // cannot be ordered against the push, so the read breaks the
+            // device-read contract and is ignored whole: currentOn stays OFF.
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1', name: 'Heater', class: 'heater',
@@ -2555,13 +2527,20 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
+            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_read_ignored',
+                deviceId: 'dev1',
+                source: 'device_fetch',
+                reason: 'missing_stamp',
+                capabilityId: 'onoff',
+            }));
             const heldDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(heldDev1?.binaryControl?.on).toBe(false);
             expect(heldDev1?.binaryControlObservation?.observedValue).toBe(false);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')?.observedValue).toBe(false);
 
-            // The hold is not permanent: a newer trusted observation still
-            // supersedes it. A realtime push (stamped fresh) observing onoff=true
+            // The ignored read holds nothing: a newer trusted observation still
+            // supersedes the OFF. A realtime push (stamped fresh) observing onoff=true
             // reconciles currentOn back to ON.
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
 
@@ -2570,11 +2549,18 @@ describe('DeviceTransport', () => {
             expect(recoveredDev1?.binaryControlObservation?.observedValue).toBe(true);
         });
 
-        it('honours a timestamp-less device.update push that contradicts prior realtime evidence', async () => {
-            // A device.update is a PUSH: the device actively reporting its state.
-            // Unlike a cached pull, a timestamp-less push stays authoritative, so a
-            // physical toggle delivered as a device.update must still flip currentOn
-            // even when it carries no lastUpdated and contradicts prior evidence.
+        it('ignores an unstamped device.update push that contradicts prior realtime evidence; a stamped one flips it', async () => {
+            // A physical toggle delivered as a device.update flips currentOn only
+            // with the time Homey observed it. The same push without a stamp
+            // cannot be ordered against the realtime OFF, so it is ignored whole.
+            const realtimeOff = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: false,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
             deviceManager.setSnapshotForTests([{
                 available: true,
                 id: 'dev1',
@@ -2585,121 +2571,50 @@ describe('DeviceTransport', () => {
                 deviceType: 'onoff',
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: false },
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'onoff',
-                    observedValue: false,
-                    observedCapabilityIds: ['onoff'],
-                    observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
-                    source: 'realtime_capability',
-                },
+                binaryControlObservation: realtimeOff,
             }]);
+            const pushOn = (onoff: { value: boolean; id: string; lastUpdated?: string }) => {
+                deviceManager.injectDeviceUpdateForTest({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        onoff,
+                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
+                    },
+                });
+            };
 
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_power: { value: 500, id: 'measure_power' },
-                },
-            });
+            pushOn({ value: true, id: 'onoff' });
 
-            const pushedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(pushedDevice).toEqual(expect.objectContaining({
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
+                binaryControl: { on: false },
+                binaryControlObservation: realtimeOff,
+            }));
+
+            const pushedAt = '2026-06-03T06:05:00.000Z';
+            pushOn({ value: true, id: 'onoff', lastUpdated: pushedAt });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
                 binaryControlObservation: expect.objectContaining({
                     source: 'device_update',
                     observedValue: true,
                     observedCapabilityIds: ['onoff'],
-                    observedAtMs: expect.any(Number),
+                    observedAtMs: Date.parse(pushedAt),
                 }),
             }));
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
-
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 600, id: 'measure_power' },
-                },
-            });
-
-            const omittedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(omittedDevice).toEqual(expect.objectContaining({
-                binaryControl: { on: true },
-                available: true,
-                binaryControlObservation: expect.objectContaining({
-                    source: 'device_update',
-                    observedValue: true,
-                    observedCapabilityIds: ['onoff'],
-                }),
-            }));
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
-        it('records equal timestamp-less device.update binary pushes before stale pulls', async () => {
-            mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: {
-                            value: 1000,
-                            id: 'measure_power',
-                            lastUpdated: '2026-06-03T06:00:00.000Z',
-                        },
-                        onoff: {
-                            value: true,
-                            id: 'onoff',
-                            lastUpdated: '2026-06-03T06:00:00.000Z',
-                        },
-                    },
-                },
-            });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_power: { value: 1000, id: 'measure_power' },
-                },
-            });
-
-            mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: {
-                            value: 1000,
-                            id: 'measure_power',
-                            lastUpdated: '2026-06-03T06:05:00.000Z',
-                        },
-                        onoff: { value: false, id: 'onoff' },
-                    },
-                },
-            });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
-        });
-
-        it('does not refresh unchanged ON evidence from device.update receipt time', () => {
+        it('does not let a delayed onoff device.update stamped before the held evidence replace it', () => {
+            // A value is newer evidence only when its own stamp is newer: an
+            // update received five minutes later but stamped before the held ON
+            // is stale, however late it arrives.
             vi.useFakeTimers();
             try {
-                const originalObservedAtMs = new Date('2026-06-03T06:00:00.000Z').getTime();
+                const originalObservedAt = '2026-06-03T06:00:00.000Z';
+                const originalObservedAtMs = new Date(originalObservedAt).getTime();
                 deviceManager.setSnapshotForTests([{
                     available: true,
                     id: 'dev1',
@@ -2708,7 +2623,7 @@ describe('DeviceTransport', () => {
                     targets: [],
                     deviceClass: 'heater',
                     deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
+                    binaryCapabilityId: 'onoff',
                     binaryControl: { on: true },
                     binaryControlObservation: {
                         valid: true,
@@ -2727,16 +2642,17 @@ describe('DeviceTransport', () => {
                     capabilities: ['onoff', 'measure_power'],
                     class: 'heater',
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 750, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff', lastUpdated: '2026-06-03T05:59:00.000Z' },
+                        measure_power: { value: 750, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
                     },
                 });
 
-                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
-                    .toEqual(expect.objectContaining({
-                        observedValue: true,
-                        observedAtMs: originalObservedAtMs,
-                    }));
+                const device = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+                expect(device?.binaryControl).toEqual({ on: true });
+                expect(device?.binaryControlObservation).toEqual(expect.objectContaining({
+                    observedValue: true,
+                    observedAtMs: originalObservedAtMs,
+                }));
             } finally {
                 vi.useRealTimers();
             }
@@ -2778,7 +2694,7 @@ describe('DeviceTransport', () => {
                         id: 'evcharger_charging_state',
                         lastUpdated: '2026-06-03T06:05:00.000Z',
                     },
-                    measure_power: { value: 0, id: 'measure_power' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
                 },
             });
 
@@ -2834,7 +2750,7 @@ describe('DeviceTransport', () => {
                         id: 'evcharger_charging_state',
                         lastUpdated: '2026-06-03T06:04:00.000Z',
                     },
-                    measure_power: { value: 0, id: 'measure_power' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:04:00.000Z' },
                 },
             });
 
@@ -2897,7 +2813,7 @@ describe('DeviceTransport', () => {
                         id: 'evcharger_charging_state',
                         lastUpdated: '2026-06-03T06:05:00.000Z',
                     },
-                    measure_power: { value: 0, id: 'measure_power' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:06:00.000Z' },
                 },
             });
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
@@ -2925,7 +2841,7 @@ describe('DeviceTransport', () => {
                         id: 'evcharger_charging_state',
                         lastUpdated: '2026-06-03T06:04:30.000Z',
                     },
-                    measure_power: { value: 0, id: 'measure_power' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:06:00.000Z' },
                 },
             });
 
@@ -2934,131 +2850,6 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_charging',
                 evChargingStateObservedAtMs: stateObservedAtMs,
-            }));
-            expect(reconcileListener).not.toHaveBeenCalled();
-        });
-
-        it('preserves EV state when stale raw OFF is bundled with timestamp-less paused state', () => {
-            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
-                available: true,
-                id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
-                name: 'Charger',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingObservedAtMs: newerObservedAtMs,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: newerObservedAtMs,
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'evcharger_charging',
-                    observedValue: true,
-                    observedCapabilityIds: ['evcharger_charging'],
-                    observedAtMs: newerObservedAtMs,
-                    source: 'snapshot_refresh',
-                },
-            }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
-            const reconcileListener = vi.fn();
-            onObservedControlState(deviceManager, reconcileListener);
-
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:04:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused',
-                        id: 'evcharger_charging_state',
-                    },
-                    measure_power: { value: 0, id: 'measure_power' },
-                },
-            });
-
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: newerObservedAtMs,
-            }));
-            expect(reconcileListener).not.toHaveBeenCalled();
-        });
-
-        it('preserves the EV state clock after stale raw evidence bundles unchanged timestamp-less state', () => {
-            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
-                available: true,
-                id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
-                name: 'Charger',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingObservedAtMs: newerObservedAtMs,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: newerObservedAtMs,
-            }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
-            const reconcileListener = vi.fn();
-            onObservedControlState(deviceManager, reconcileListener);
-
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:04:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_charging',
-                        id: 'evcharger_charging_state',
-                    },
-                    measure_power: { value: 0, id: 'measure_power' },
-                },
-            });
-            deviceManager.injectDeviceUpdateForTest({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: true,
-                        id: 'evcharger_charging',
-                        setable: true,
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused',
-                        id: 'evcharger_charging_state',
-                        lastUpdated: '2026-06-03T06:04:30.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power' },
-                },
-            });
-
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: newerObservedAtMs,
             }));
             expect(reconcileListener).not.toHaveBeenCalled();
         });
@@ -3149,7 +2940,7 @@ describe('DeviceTransport', () => {
                         id: 'onoff',
                         lastUpdated: new Date(observedAtMs).toISOString(),
                     },
-                    measure_power: { value: 500, id: 'measure_power' },
+                    measure_power: { value: 500, id: 'measure_power', lastUpdated: new Date(observedAtMs).toISOString() },
                 },
             });
 
@@ -3160,7 +2951,27 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('does not reattach cached evidence when an explicit timestamp-less boolean contradicts it', async () => {
+        it.each([
+            {
+                seam: 'device.update',
+                deliver: async (device: HomeyDeviceLike) => { deviceManager.injectDeviceUpdateForTest(device); },
+            },
+            {
+                seam: 'snapshot refresh',
+                deliver: async (device: HomeyDeviceLike) => {
+                    mockApiGet.mockResolvedValue({ dev1: device });
+                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                },
+            },
+        ])('ignores a $seam whose contradicting onoff carries no stamp: state and evidence stand', async ({ deliver }) => {
+            const cachedEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: false,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                source: 'snapshot_refresh' as const,
+            };
             deviceManager.setSnapshotForTests([{
                 available: true,
                 id: 'dev1',
@@ -3171,34 +2982,24 @@ describe('DeviceTransport', () => {
                 deviceType: 'onoff',
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: false },
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'onoff',
-                    observedValue: false,
-                    observedCapabilityIds: ['onoff'],
-                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
-                    source: 'snapshot_refresh',
-                },
+                binaryControlObservation: cachedEvidence,
             }]);
 
-            deviceManager.injectDeviceUpdateForTest({
+            await deliver({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['onoff', 'measure_power'],
                 class: 'heater',
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff' },
-                    measure_power: { value: 500, id: 'measure_power' },
+                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
                 },
             });
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
-                .toEqual(expect.objectContaining({
-                    source: 'device_update',
-                    observedValue: true,
-                }));
+            const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(dev1?.binaryControl?.on).toBe(false);
+            expect(dev1?.binaryControlObservation).toEqual(cachedEvidence);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(cachedEvidence);
         });
 
         it('keeps currentOn aligned with newer cached evidence when device.update carries stale binary evidence', async () => {
@@ -3234,7 +3035,7 @@ describe('DeviceTransport', () => {
                         id: 'onoff',
                         lastUpdated: '2026-04-01T11:59:00.000Z',
                     },
-                    measure_power: { value: 500, id: 'measure_power' },
+                    measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
                 },
             });
 
@@ -3277,7 +3078,7 @@ describe('DeviceTransport', () => {
                             id: 'onoff',
                             lastUpdated: '2026-04-01T11:59:00.000Z',
                         },
-                        measure_power: { value: 500, id: 'measure_power' },
+                        measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
                     },
                 },
             });
@@ -3288,46 +3089,6 @@ describe('DeviceTransport', () => {
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
             expect(snapshotDevice?.binaryControlObservation).toEqual(newerEvidence);
             expect(snapshotDevice?.binaryControl?.on).toBe(true);
-        });
-
-        it('does not reattach cached evidence when snapshot refresh has a contradictory timestamp-less boolean', async () => {
-            deviceManager.setSnapshotForTests([{
-                available: true,
-                id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
-                name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'onoff',
-                    observedValue: false,
-                    observedCapabilityIds: ['onoff'],
-                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
-                    source: 'snapshot_refresh',
-                },
-            }]);
-            mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 500, id: 'measure_power' },
-                    },
-                },
-            });
-
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
         });
 
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
@@ -3388,7 +3149,7 @@ describe('DeviceTransport', () => {
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
-        it('uses a newer raw EV command observation even when charging state has no timestamp', async () => {
+        it('uses a newer raw EV command observation from a snapshot refresh', async () => {
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
@@ -3431,8 +3192,9 @@ describe('DeviceTransport', () => {
                         evcharger_charging_state: {
                             value: 'plugged_in_paused',
                             id: 'evcharger_charging_state',
+                            lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                     },
                 },
             });
@@ -3498,7 +3260,7 @@ describe('DeviceTransport', () => {
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T11:59:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
                     },
                 },
             });
@@ -3556,7 +3318,7 @@ describe('DeviceTransport', () => {
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 7100, id: 'measure_power' },
+                        measure_power: { value: 7100, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                     },
                 },
             });
@@ -3709,8 +3471,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -3718,9 +3480,8 @@ describe('DeviceTransport', () => {
         });
 
         it('emits reconcile event when onoff changes via device.update', async () => {
-            // Seed a real timestamped onoff:true baseline so the injected
-            // onoff:false below is a genuine true→false change (the shared
-            // fixture's onoff carries no timestamp).
+            // Seed an onoff:true baseline stamped before the injected
+            // onoff:false below, so that update is a genuine true→false change.
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -3728,7 +3489,7 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                         onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                     },
                 },
@@ -3744,8 +3505,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -3786,8 +3547,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -3804,8 +3565,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -3823,8 +3584,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -3846,8 +3607,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -3868,8 +3629,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -3889,8 +3650,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -3915,8 +3676,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -3950,8 +3711,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -3980,10 +3741,10 @@ describe('DeviceTransport', () => {
                         class: 'thermostat',
                         capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
                         capabilitiesObj: {
-                            onoff: { value: true, id: 'onoff' },
-                            target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5 },
-                            measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                            measure_power: { value: 360, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                            target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow() },
+                            measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                            measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -4004,9 +3765,9 @@ describe('DeviceTransport', () => {
                     class: 'thermostat',
                     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
                     capabilitiesObj: {
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5 },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                        measure_power: { value: 360, id: 'measure_power' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow() },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -4040,8 +3801,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -4059,8 +3820,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
             expect(realtimeListener).toHaveBeenCalledOnce();
@@ -4073,8 +3834,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(1000) },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(1000) },
                 },
             });
 
@@ -4094,8 +3855,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -4113,8 +3874,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -4134,8 +3895,8 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -4165,8 +3926,8 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -4181,8 +3942,8 @@ describe('DeviceTransport', () => {
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -4196,29 +3957,23 @@ describe('DeviceTransport', () => {
         });
 
         describe('binary settle — first observation decides', () => {
-            const heaterOnDevice = () => ({
+            // The baseline read is stamped a minute back; a device.update is
+            // stamped when it is built, so it is the newer read.
+            const heaterDevice = (on: boolean, offsetMs = 0) => ({
                 id: 'dev1',
                 name: 'Heater',
                 class: 'heater',
                 capabilities: ['measure_power', 'onoff'],
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(offsetMs) },
+                    onoff: { value: on, id: 'onoff', lastUpdated: stampedNow(offsetMs) },
                 },
             });
-            const heaterOffDevice = () => ({
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'onoff'],
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
-                },
-            });
+            const heaterOnDevice = (offsetMs?: number) => heaterDevice(true, offsetMs);
+            const heaterOffDevice = (offsetMs?: number) => heaterDevice(false, offsetMs);
 
             it('pending off write + capability event off => settles immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4231,7 +3986,7 @@ describe('DeviceTransport', () => {
             });
 
             it('pending off write + capability event on => drift immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4244,7 +3999,7 @@ describe('DeviceTransport', () => {
             });
 
             it('pending off write + device.update with off => settles immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4257,7 +4012,7 @@ describe('DeviceTransport', () => {
             });
 
             it('pending off write + device.update with on => drift immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4270,7 +4025,7 @@ describe('DeviceTransport', () => {
             });
 
             it('pending on write + capability event on => settles immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4283,7 +4038,7 @@ describe('DeviceTransport', () => {
             });
 
             it('pending on write + capability event off => drift immediately', async () => {
-                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
+                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -4309,13 +4064,13 @@ describe('DeviceTransport', () => {
                             class: 'evcharger',
                             capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                             capabilitiesObj: {
-                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
                                 evcharger_charging_state: {
                                     value: 'plugged_in_paused',
                                     id: 'evcharger_charging_state',
                                     lastUpdated: '2026-04-01T12:00:00.000Z',
                                 },
-                                measure_power: { value: 0, id: 'measure_power' },
+                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                             },
                         },
                     });
@@ -4358,13 +4113,14 @@ describe('DeviceTransport', () => {
                                 value: false,
                                 id: 'evcharger_charging',
                                 setable: true,
+                                lastUpdated: '2026-04-01T12:00:00.000Z',
                             },
                             evcharger_charging_state: {
                                 value: 'plugged_in_paused',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-04-01T12:00:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                         },
                     },
                 });
@@ -4394,7 +4150,7 @@ describe('DeviceTransport', () => {
             it('prefers bundled raw EV axis changes over simultaneous non-charging state changes', async () => {
                 const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) });
                 await evDeviceManager.init();
-                const evDevice = (charging: boolean, state: string) => ({
+                const evDevice = (charging: boolean, state: string, offsetMs: number) => ({
                     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
                     id: 'ev1',
                     name: 'Easee',
@@ -4405,16 +4161,17 @@ describe('DeviceTransport', () => {
                             value: charging,
                             id: 'evcharger_charging',
                             setable: true,
+                            lastUpdated: stampedNow(offsetMs),
                         },
                         evcharger_charging_state: {
                             value: state,
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(offsetMs) },
                     },
                 });
-                mockApiGet.mockResolvedValue({ ev1: evDevice(true, 'plugged_in') });
+                mockApiGet.mockResolvedValue({ ev1: evDevice(true, 'plugged_in', BASELINE_OFFSET_MS) });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 // Full refresh treats session state as effective binary evidence;
                 // seed the distinct raw control axis before exercising a bundled
@@ -4427,8 +4184,9 @@ describe('DeviceTransport', () => {
                 const realtimeListener = vi.fn();
                 onObservedControlState(evDeviceManager, realtimeListener);
 
-                evDeviceManager.injectDeviceUpdateForTest(evDevice(false, 'plugged_in_paused'));
-                evDeviceManager.injectDeviceUpdateForTest(evDevice(true, 'plugged_in'));
+                // Each raw axis report is stamped after the one before it.
+                evDeviceManager.injectDeviceUpdateForTest(evDevice(false, 'plugged_in_paused', 1_000));
+                evDeviceManager.injectDeviceUpdateForTest(evDevice(true, 'plugged_in', 2_000));
 
                 expect(realtimeListener).toHaveBeenNthCalledWith(1, expect.objectContaining({
                     deviceId: 'ev1',
@@ -4463,13 +4221,13 @@ describe('DeviceTransport', () => {
                             class: 'evcharger',
                             capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                             capabilitiesObj: {
-                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
                                 evcharger_charging_state: {
                                     value: 'plugged_in_paused',
                                     id: 'evcharger_charging_state',
                                     lastUpdated: '2026-04-01T12:00:00.000Z',
                                 },
-                                measure_power: { value: 0, id: 'measure_power' },
+                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                             },
                         },
                     });
@@ -4504,7 +4262,7 @@ describe('DeviceTransport', () => {
             it('pending binary write + no observation before timeout => timeout path runs, reconcile if state differs', async () => {
                 vi.useFakeTimers();
                 try {
-                    mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                    mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const realtimeListener = vi.fn();
                     onObservedControlState(deviceManager, realtimeListener);
@@ -4531,8 +4289,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -4568,10 +4326,10 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C' },
-                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -4608,11 +4366,11 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'target_temperature.zone1', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C' },
-                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
                         'target_temperature.zone1': { value: 20, id: 'target_temperature.zone1', units: '\u00B0C' },
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -4633,8 +4391,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -4656,7 +4414,7 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
                         onoff: {
                             value: true,
                             id: 'onoff',
@@ -4683,7 +4441,7 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
                     },
                 },
             });
@@ -4709,10 +4467,10 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -4727,10 +4485,10 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -4758,15 +4516,15 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                         target_temperature: {
                             value: 23,
                             id: 'target_temperature',
                             units: '°C',
                             lastUpdated: '2026-03-12T19:22:37.776Z',
                         },
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -4780,10 +4538,10 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 26.5, id: 'target_temperature', units: '°C' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 26.5, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -4798,14 +4556,15 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                         target_temperature: {
                             value: 26.5,
                             id: 'target_temperature',
                             units: '°C',
+                            lastUpdated: stampedNow(),
                         },
-                        onoff: { value: true, id: 'onoff' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 },
             });
@@ -4828,15 +4587,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
                             target_temperature: {
                                 value: 23,
                                 id: 'target_temperature',
                                 units: '°C',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -4849,10 +4608,10 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 23, id: 'target_temperature', units: '°C' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                        target_temperature: { value: 23, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -4866,15 +4625,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:30.000Z' },
                             target_temperature: {
                                 value: 16,
                                 id: 'target_temperature',
                                 units: '°C',
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
                         },
                     },
                 });
@@ -4900,15 +4659,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
                             target_temperature: {
                                 value: 23,
                                 id: 'target_temperature',
                                 units: '°C',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -4934,15 +4693,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:30.000Z' },
                             target_temperature: {
                                 value: 23,
                                 id: 'target_temperature',
                                 units: '°C',
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
                         },
                     },
                 });
@@ -4970,15 +4729,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
                             target_temperature: {
                                 value: 23,
                                 id: 'target_temperature',
                                 units: '°C',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -5002,14 +4761,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                             target_temperature: {
                                 value: 16,
                                 id: 'target_temperature',
                                 units: '°C',
+                                lastUpdated: stampedNow(),
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -5078,7 +4838,7 @@ describe('DeviceTransport', () => {
                                 id: 'measure_power',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -5092,8 +4852,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 2865, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 2865, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -5114,7 +4874,7 @@ describe('DeviceTransport', () => {
                                 id: 'measure_power',
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
                         },
                     },
                 });
@@ -5142,10 +4902,10 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -5161,10 +4921,10 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -5192,10 +4952,10 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(1000) },
+                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(1000) },
+                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(1000) },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(1000) },
                 },
             });
 
@@ -5212,7 +4972,7 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
                     },
                 },
@@ -5227,8 +4987,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 2865, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 2865, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -5280,8 +5040,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -5309,13 +5069,13 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -5329,9 +5089,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -5359,9 +5119,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -5376,9 +5136,9 @@ describe('DeviceTransport', () => {
                 class: 'evcharger',
                 capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                 capabilitiesObj: {
-                    evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                    evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                    measure_power: { value: 0, id: 'measure_power' },
+                    evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                    evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                 },
             });
 
@@ -5412,9 +5172,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -5446,9 +5206,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        evcharger_charging_state: { value: 'plugged_in', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -5488,7 +5248,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_paused',
                                 id: 'evcharger_charging_state',
@@ -5499,7 +5259,7 @@ describe('DeviceTransport', () => {
                                 value: 51,
                                 lastUpdated: '2026-03-20T06:00:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5537,9 +5297,9 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
+                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5579,17 +5339,18 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
                             },
                             measure_battery: {
                                 id: 'measure_battery',
                                 value: 51,
                                 lastUpdated: '2026-03-20T06:00:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5612,17 +5373,18 @@ describe('DeviceTransport', () => {
                         'measure_battery',
                     ],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:05:00.000Z' },
                         evcharger_charging_state: {
                             value: 'plugged_in_charging',
                             id: 'evcharger_charging_state',
+                            lastUpdated: '2026-03-20T06:05:00.000Z',
                         },
                         measure_battery: {
                             id: 'measure_battery',
                             value: 52,
                             lastUpdated: '2026-03-20T06:05:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:05:00.000Z' },
                     },
                 });
 
@@ -5676,9 +5438,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { id: 'evcharger_charging', value: false, setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { id: 'evcharger_charging', value: false, setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -5715,13 +5477,13 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
                         },
                     },
                 });
@@ -5735,9 +5497,9 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -5748,13 +5510,13 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:30.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in',
                                 id: 'evcharger_charging_state',
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
                         },
                     },
                 });
@@ -5795,7 +5557,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -5811,7 +5573,7 @@ describe('DeviceTransport', () => {
                                 value: 55,
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5834,7 +5596,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -5850,7 +5612,7 @@ describe('DeviceTransport', () => {
                                 value: 55,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5890,7 +5652,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -5901,7 +5663,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5919,7 +5681,7 @@ describe('DeviceTransport', () => {
                         'measure_battery',
                     ],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:01.000Z' },
                         evcharger_charging_state: {
                             value: 'plugged_in_charging',
                             id: 'evcharger_charging_state',
@@ -5930,7 +5692,7 @@ describe('DeviceTransport', () => {
                             value: 61,
                             lastUpdated: '2026-03-20T06:00:01.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:01.000Z' },
                     },
                 });
 
@@ -5946,7 +5708,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -5957,7 +5719,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -5996,7 +5758,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6007,7 +5769,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6025,7 +5787,7 @@ describe('DeviceTransport', () => {
                         'measure_soc_level',
                     ],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:01.000Z' },
                         evcharger_charging_state: {
                             value: 'plugged_in_charging',
                             id: 'evcharger_charging_state',
@@ -6036,7 +5798,7 @@ describe('DeviceTransport', () => {
                             value: 61,
                             lastUpdated: '2026-03-20T06:00:01.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:01.000Z' },
                     },
                 });
 
@@ -6052,7 +5814,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6063,7 +5825,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6102,7 +5864,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6113,7 +5875,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T06:00:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6138,7 +5900,7 @@ describe('DeviceTransport', () => {
                         'measure_battery',
                     ],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:44:00.000Z' },
                         evcharger_charging_state: {
                             value: 'plugged_out',
                             id: 'evcharger_charging_state',
@@ -6149,7 +5911,7 @@ describe('DeviceTransport', () => {
                             value: 50,
                             lastUpdated: '2026-03-20T06:00:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:44:00.000Z' },
                     },
                 });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
@@ -6192,7 +5954,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6208,7 +5970,7 @@ describe('DeviceTransport', () => {
                                 value: 55,
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6232,7 +5994,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:03.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6248,7 +6010,7 @@ describe('DeviceTransport', () => {
                                 value: 55,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:03.000Z' },
                         },
                     },
                 });
@@ -6271,7 +6033,7 @@ describe('DeviceTransport', () => {
                             'measure_soc_level',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6280,13 +6042,14 @@ describe('DeviceTransport', () => {
                             measure_battery: {
                                 id: 'measure_battery',
                                 value: 70,
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
                             },
                             measure_soc_level: {
                                 id: 'measure_soc_level',
                                 value: 55,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6324,7 +6087,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6335,7 +6098,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:00.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6356,7 +6119,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:02.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6367,7 +6130,7 @@ describe('DeviceTransport', () => {
                                 value: 61,
                                 lastUpdated: '2026-03-20T06:00:02.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:02.000Z' },
                         },
                     },
                 });
@@ -6385,7 +6148,7 @@ describe('DeviceTransport', () => {
                             'measure_battery',
                         ],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
                             evcharger_charging_state: {
                                 value: 'plugged_in_charging',
                                 id: 'evcharger_charging_state',
@@ -6396,7 +6159,7 @@ describe('DeviceTransport', () => {
                                 value: 50,
                                 lastUpdated: '2026-03-20T05:59:30.000Z',
                             },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
                         },
                     },
                 });
@@ -6445,7 +6208,7 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['measure_power'],
                         capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                         },
                     },
                 });
@@ -6462,7 +6225,7 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['measure_power'],
                     capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -6502,8 +6265,8 @@ describe('DeviceTransport', () => {
                     class: 'heater',
                     capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -6524,8 +6287,8 @@ describe('DeviceTransport', () => {
                 capabilities: ['measure_power', 'onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power' },
-                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                 },
             });
 
@@ -6545,8 +6308,8 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                         },
                     },
                 });
@@ -6563,8 +6326,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
                     capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
                     },
                 });
 
@@ -6601,12 +6364,13 @@ describe('DeviceTransport', () => {
                             'alarm_generic.car_connected',
                         ],
                         capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power' },
-                            charging_button: { value: true, id: 'charging_button', setable: true },
-                            charge_mode: { value: 'Charging', id: 'charge_mode' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                            charging_button: { value: true, id: 'charging_button', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                            charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                             'alarm_generic.car_connected': {
                                 value: true,
                                 id: 'alarm_generic.car_connected',
+                                lastUpdated: stampedNow(BASELINE_OFFSET_MS),
                             },
                         },
                     },
@@ -6636,12 +6400,13 @@ describe('DeviceTransport', () => {
                         'alarm_generic.car_connected',
                     ],
                     capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
-                        charging_button: { value: false, id: 'charging_button', setable: true },
-                        charge_mode: { value: 'Charging', id: 'charge_mode' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
+                        charging_button: { value: false, id: 'charging_button', setable: true, lastUpdated: stampedNow() },
+                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow() },
                         'alarm_generic.car_connected': {
                             value: true,
                             id: 'alarm_generic.car_connected',
+                            lastUpdated: stampedNow(),
                         },
                     },
                 });
@@ -6680,12 +6445,13 @@ describe('DeviceTransport', () => {
                         'alarm_generic.car_connected',
                     ],
                     capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
-                        charging_button: { value: chargingButton, id: 'charging_button', setable: true },
-                        charge_mode: { value: 'Charging', id: 'charge_mode' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
+                        charging_button: { value: chargingButton, id: 'charging_button', setable: true, lastUpdated: stampedNow() },
+                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow() },
                         'alarm_generic.car_connected': {
                             value: true,
                             id: 'alarm_generic.car_connected',
+                            lastUpdated: stampedNow(),
                         },
                     },
                 });
@@ -6728,9 +6494,9 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
-                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                            measure_power: { value: 7000, id: 'measure_power' },
+                            evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            measure_power: { value: 7000, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
                         },
                     },
                 });
@@ -6754,7 +6520,7 @@ describe('DeviceTransport', () => {
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 7000, id: 'measure_power' },
+                        measure_power: { value: 7000, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                     },
                 });
 
@@ -6785,68 +6551,6 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('records raw EV command evidence even when charging state lacks a timestamp', async () => {
-            vi.useFakeTimers();
-            try {
-                const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
-                getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-                });
-                await evDeviceManager.init();
-                mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
-                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
-                            measure_power: { value: 7000, id: 'measure_power' },
-                        },
-                    },
-                });
-
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-                vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
-                evDeviceManager.injectDeviceUpdateForTest({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_paused',
-                            id: 'evcharger_charging_state',
-                        },
-                        measure_power: { value: 0, id: 'measure_power' },
-                    },
-                });
-
-                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    binaryControl: { on: false },
-                    evChargingState: 'plugged_in_paused',
-                }));
-                expect(evDeviceManager.getSnapshot()[0].binaryControlObservation).toEqual(expect.objectContaining({
-                    observedValue: false,
-                    observedCapabilityIds: ['evcharger_charging'],
-                }));
-                expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expect.objectContaining({
-                    observedValue: false,
-                    observedCapabilityIds: ['evcharger_charging'],
-                }));
-
-                evDeviceManager.destroy();
-            } finally {
-                vi.useRealTimers();
-            }
-        });
-
         it('records idempotent raw EV pause confirmation from device.update', async () => {
             vi.useFakeTimers();
             try {
@@ -6859,9 +6563,9 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                         capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
-                            evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
-                            measure_power: { value: 0, id: 'measure_power' },
+                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
                         },
                     },
                 });
@@ -6879,13 +6583,13 @@ describe('DeviceTransport', () => {
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
                         evcharger_charging_state: {
                             value: 'plugged_in_paused',
                             id: 'evcharger_charging_state',
                             lastUpdated: '2026-04-01T12:00:00.000Z',
                         },
-                        measure_power: { value: 0, id: 'measure_power' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
                     },
                 });
 
@@ -6926,12 +6630,13 @@ describe('DeviceTransport', () => {
                         'alarm_generic.car_connected',
                     ],
                     capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
-                        charging_button: { value: true, id: 'charging_button', setable: true },
-                        charge_mode: { value: 'Charging', id: 'charge_mode' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        charging_button: { value: true, id: 'charging_button', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                         'alarm_generic.car_connected': {
                             value: true,
                             id: 'alarm_generic.car_connected',
+                            lastUpdated: stampedNow(BASELINE_OFFSET_MS),
                         },
                     },
                 },
@@ -7055,6 +6760,7 @@ describe('DeviceTransport', () => {
         });
 
         describe('per-capability realtime updates', () => {
+            // Baseline reads, stamped before the capability events a test sends.
             const buildOnoffDevice = () => ({
                 dev1: {
                     id: 'dev1',
@@ -7062,8 +6768,8 @@ describe('DeviceTransport', () => {
                     capabilities: ['onoff', 'measure_power'],
                     class: 'heater',
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 500, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -7074,10 +6780,10 @@ describe('DeviceTransport', () => {
                     capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
                     class: 'thermostat',
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5 },
-                        measure_temperature: { value: 20, id: 'measure_temperature' },
-                        measure_power: { value: 360, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_temperature: { value: 20, id: 'measure_temperature', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                        measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                     },
                 },
             });
@@ -7336,14 +7042,15 @@ describe('DeviceTransport', () => {
                             class: 'heater',
                             capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                             capabilitiesObj: {
-                                measure_power: { value: 1000, id: 'measure_power' },
-                                measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                                measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                                 target_temperature: {
                                     value: 23,
                                     id: 'target_temperature',
                                     units: '°C',
+                                    lastUpdated: stampedNow(),
                                 },
-                                onoff: { value: true, id: 'onoff' },
+                                onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                             },
                         },
                     });
@@ -7362,7 +7069,8 @@ describe('DeviceTransport', () => {
 
                     const snapshot = deviceManager.getSnapshot()[0];
                     expect(snapshot.targets.find((t) => t.id === 'target_temperature')?.value).toBe(23);
-                    expect(snapshot.lastFreshDataMs).toBeUndefined();
+                    // The suppressed echo is no observation: freshness stays at the refresh.
+                    expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:00:00.000Z').getTime());
                     expect(liveStateListener).not.toHaveBeenCalled();
                     expect(reconcileListener).not.toHaveBeenCalled();
 
@@ -7372,14 +7080,15 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
                         capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                             target_temperature: {
                                 value: 18,
                                 id: 'target_temperature',
                                 units: '°C',
+                                lastUpdated: stampedNow(),
                             },
-                            onoff: { value: true, id: 'onoff' },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                         },
                     });
 
@@ -7765,19 +7474,8 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 expect(deviceManager.getSnapshot()).toEqual([]);
 
-                const { lastUpdated: _lastUpdated, ...measurementWithoutFreshness } = temperatureCapabilities.measure_temperature;
-                mockApiGet.mockResolvedValue({
-                    dev1: {
-                        ...temperatureOnlyDevice.dev1,
-                        capabilitiesObj: {
-                            ...temperatureCapabilities,
-                            measure_temperature: measurementWithoutFreshness,
-                        },
-                    },
-                });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-                expect(deviceManager.getSnapshot()).toEqual([]);
-
+                // A newer finite realtime reading retires the rejection, and the
+                // recovery fetch's older cached pair does not overwrite it.
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
                 await vi.waitFor(() => {
                     expect(hasObservedTemperature(
@@ -7801,8 +7499,8 @@ describe('DeviceTransport', () => {
                     class: 'socket',
                     capabilities: ['onoff', 'measure_power'],
                     capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                        measure_power: { value: 500, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
                     },
                 };
                 mockApiGet.mockResolvedValue({ dev1: temperatureOnlyDevice, dev2: binarySurvivor });

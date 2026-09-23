@@ -99,7 +99,7 @@ describe('applyAssociatedCarStateOfCharge', () => {
 
   it('writes the level while the car reports a connected state', () => {
     const snapshot = charger();
-    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({
       report: { percent: 63 },
       source: { kind: 'car', carId: 'car-1' },
@@ -109,7 +109,7 @@ describe('applyAssociatedCarStateOfCharge', () => {
   it('keeps writing while the car is discharging — it is still attached', () => {
     matched = { ...ASSOCIATED, chargingState: 'plugged_in_discharging' };
     const snapshot = charger();
-    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({ report: { percent: 63 } });
   });
 
@@ -119,7 +119,7 @@ describe('applyAssociatedCarStateOfCharge', () => {
     // simply does not resolve for a car that has left.
     matched = undefined;
     const snapshot = charger();
-    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(false);
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(false);
     expect(snapshot.stateOfCharge).toBeUndefined();
   });
 });

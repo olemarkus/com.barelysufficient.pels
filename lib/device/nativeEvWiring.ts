@@ -2,7 +2,7 @@ import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
-import type { DeviceCapabilityMap } from './managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 
 const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
   'charging_button',
@@ -46,13 +46,13 @@ const normalizeText = (value: unknown): string => (
   typeof value === 'string' ? value.trim().toLowerCase() : ''
 );
 
+// A synthesized capability is as fresh as the freshest source it is built
+// from. Parsed with the one capability-stamp parser, so a stamp the contract
+// would reject is not a time here either (and cannot overflow `toISOString`).
 function resolveLatestLastUpdated(...values: Array<string | number | Date | null | undefined>) {
   const timestamps = values.flatMap((value) => {
-    if (value instanceof Date) return Number.isFinite(value.getTime()) ? [value.getTime()] : [];
-    if (typeof value === 'number') return Number.isFinite(value) ? [value] : [];
-    if (typeof value !== 'string') return [];
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? [parsed] : [];
+    const parsed = toCapabilityTimestampMs(value);
+    return parsed === undefined ? [] : [parsed];
   });
   if (timestamps.length === 0) return undefined;
   return new Date(Math.max(...timestamps)).toISOString();
@@ -130,14 +130,37 @@ function resolveZaptecChargingState(capabilityObj: DeviceCapabilityMap): string 
   return undefined;
 }
 
-function resolveZaptecChargingValue(capabilityObj: DeviceCapabilityMap): boolean | undefined {
-  const chargingButton = capabilityObj.charging_button?.value;
-  if (typeof chargingButton === 'boolean') return chargingButton;
-
+/**
+ * The synthetic `evcharger_charging`, dated by the capability that decided its
+ * value: the charging button when it reports one, otherwise the plug state it
+ * is derived from. Never the button's value on the mode's stamp — a plug-state
+ * change would then make a stale button value look newer than a fresher
+ * observation of the charger.
+ */
+function resolveZaptecCharging(capabilityObj: DeviceCapabilityMap): {
+  value: boolean | undefined;
+  lastUpdated: string | undefined;
+} {
+  const chargingButton = capabilityObj.charging_button;
+  if (typeof chargingButton?.value === 'boolean') {
+    return { value: chargingButton.value, lastUpdated: resolveLatestLastUpdated(chargingButton.lastUpdated) };
+  }
   const evChargingState = resolveZaptecChargingState(capabilityObj);
-  if (evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_paused') return true;
-  if (evChargingState === 'plugged_out') return false;
-  return undefined;
+  const stateLastUpdated = resolveZaptecChargingStateLastUpdated(capabilityObj);
+  if (evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_paused') {
+    return { value: true, lastUpdated: stateLastUpdated };
+  }
+  if (evChargingState === 'plugged_out') return { value: false, lastUpdated: stateLastUpdated };
+  return { value: undefined, lastUpdated: undefined };
+}
+
+// The plug state is derived from the mode and the car-connected alarm together,
+// so it is as fresh as the fresher of the two.
+function resolveZaptecChargingStateLastUpdated(capabilityObj: DeviceCapabilityMap): string | undefined {
+  return resolveLatestLastUpdated(
+    capabilityObj.charge_mode?.lastUpdated,
+    capabilityObj['alarm_generic.car_connected']?.lastUpdated,
+  );
 }
 
 export function applyNativeEvWiringOverlay(params: {
@@ -183,13 +206,11 @@ export function applyNativeEvWiringOverlay(params: {
 
   if (!hasCapability(nextCapabilities, 'evcharger_charging')) {
     nextCapabilities.push('evcharger_charging');
+    const charging = resolveZaptecCharging(nextCapabilityObj);
     nextCapabilityObj.evcharger_charging = {
-      value: resolveZaptecChargingValue(nextCapabilityObj),
+      value: charging.value,
       setable: true,
-      lastUpdated: resolveLatestLastUpdated(
-        nextCapabilityObj.charging_button?.lastUpdated,
-        nextCapabilityObj.charge_mode?.lastUpdated,
-      ),
+      lastUpdated: charging.lastUpdated,
     };
     binaryWriteCapabilityId = 'charging_button';
     binaryObservationCapabilityId = 'evcharger_charging';
@@ -199,10 +220,7 @@ export function applyNativeEvWiringOverlay(params: {
     nextCapabilities.push('evcharger_charging_state');
     nextCapabilityObj.evcharger_charging_state = {
       value: resolveZaptecChargingState(nextCapabilityObj),
-      lastUpdated: resolveLatestLastUpdated(
-        nextCapabilityObj.charge_mode?.lastUpdated,
-        nextCapabilityObj['alarm_generic.car_connected']?.lastUpdated,
-      ),
+      lastUpdated: resolveZaptecChargingStateLastUpdated(nextCapabilityObj),
     };
   }
 
@@ -296,10 +314,10 @@ export function buildNativeEvObservationCapabilityObj(params: {
     nextCapabilityObj.evcharger_charging === undefined
     && typeof nextCapabilityObj.charging_button?.value === 'boolean'
   ) {
-    nextCapabilityObj.evcharger_charging = {
-      value: nextCapabilityObj.charging_button.value,
-      lastUpdated: nextCapabilityObj.charging_button.lastUpdated,
-    };
+    // The same value and stamp the overlay gives it, which is the stamp the
+    // device-read contract validated.
+    const charging = resolveZaptecCharging(nextCapabilityObj);
+    nextCapabilityObj.evcharger_charging = { value: charging.value, lastUpdated: charging.lastUpdated };
   }
 
   if (nextCapabilityObj.evcharger_charging_state === undefined) {
@@ -307,10 +325,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
     if (evChargingState !== undefined) {
       nextCapabilityObj.evcharger_charging_state = {
         value: evChargingState,
-        lastUpdated: resolveLatestLastUpdated(
-          nextCapabilityObj.charge_mode?.lastUpdated,
-          nextCapabilityObj['alarm_generic.car_connected']?.lastUpdated,
-        ),
+        lastUpdated: resolveZaptecChargingStateLastUpdated(nextCapabilityObj),
       };
     }
   }

@@ -101,10 +101,14 @@ export class MockDevice {
     private deviceClass: string = 'heater',
   ) {
     if (capabilities.includes('target_temperature')) {
-      this.capabilityValues.set('target_temperature', 21);
-      this.actualCapabilityValues.set('target_temperature', 21);
-      this.capabilityValues.set('measure_temperature', 20);
-      this.actualCapabilityValues.set('measure_temperature', 20);
+      // Homey dates every value it holds, a default included.
+      const nowIso = new Date().toISOString();
+      for (const [capabilityId, value] of [['target_temperature', 21], ['measure_temperature', 20]] as const) {
+        this.capabilityValues.set(capabilityId, value);
+        this.actualCapabilityValues.set(capabilityId, value);
+        this.capabilityUpdatedAt.set(capabilityId, nowIso);
+        this.actualCapabilityUpdatedAt.set(capabilityId, nowIso);
+      }
     }
   }
 

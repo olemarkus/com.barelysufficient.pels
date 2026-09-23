@@ -215,8 +215,10 @@ events and a corrupted vote (`lib/device/AGENTS.md`). Two rules follow:
   at the payload boundary to an unavailable-car result, and the cached plug state and battery
   level do not enter the correlation domain.
 
-Where a device supplies no capability timestamp, arrival time stands in and cannot separate
-those cases. That is the honest limit of the data, not a guarantee.
+A car read that reaches the probe dates its plug state and battery level: the device-read
+contract ignores a read whose model value carries no `lastUpdated`. Arrival time stands in
+for a stamp more than a minute in the future, and for a capability the car does not
+declare, whose value is absent too.
 
 **A full refresh is authoritative on membership.** A car removed from Homey is dropped, so the
 affinity fallback cannot resolve a live session to a device that no longer exists and its id

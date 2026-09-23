@@ -7,6 +7,9 @@ vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearT
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
+// Homey dates every capability value it reports, at the time it observed it.
+const nowIso = () => new Date().toISOString();
+
 const buildBinaryApiDevice = (overrides?: Partial<{
   id: string;
   name: string;
@@ -26,15 +29,13 @@ const buildBinaryApiDevice = (overrides?: Partial<{
     onoff: {
       id: 'onoff',
       value: overrides?.onoff ?? true,
-      ...(typeof overrides?.onoffLastUpdated === 'string' ? { lastUpdated: overrides.onoffLastUpdated } : {}),
+      lastUpdated: overrides?.onoffLastUpdated ?? nowIso(),
     },
     ...(typeof overrides?.measurePower === 'number' ? {
       [overrides?.measurePowerCapabilityId ?? 'measure_power']: {
         id: overrides?.measurePowerCapabilityId ?? 'measure_power',
         value: overrides.measurePower,
-        ...(typeof overrides?.measurePowerLastUpdated === 'string'
-          ? { lastUpdated: overrides.measurePowerLastUpdated }
-          : {}),
+        lastUpdated: overrides?.measurePowerLastUpdated ?? nowIso(),
       },
     } : {}),
   },
@@ -55,17 +56,19 @@ const buildEvApiDevice = (overrides?: Partial<{
   virtualClass: null,
   capabilities: overrides?.capabilities ?? ['evcharger_charging'],
   capabilitiesObj: {
-    evcharger_charging: { id: 'evcharger_charging', value: overrides?.evchargerCharging ?? false },
+    evcharger_charging: { id: 'evcharger_charging', value: overrides?.evchargerCharging ?? false, lastUpdated: nowIso() },
     ...(typeof overrides?.evchargerChargingState === 'string' ? {
       evcharger_charging_state: {
         id: 'evcharger_charging_state',
         value: overrides.evchargerChargingState,
+        lastUpdated: nowIso(),
       },
     } : {}),
     ...(typeof overrides?.carConnected === 'boolean' ? {
       'alarm_generic.car_connected': {
         id: 'alarm_generic.car_connected',
         value: overrides.carConnected,
+        lastUpdated: nowIso(),
       },
     } : {}),
   },
@@ -197,7 +200,7 @@ describe('Flow-backed device support', () => {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
         capabilitiesObj: {
           ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
-          measure_power: { id: 'measure_power', value: 7200 },
+          measure_power: { id: 'measure_power', value: 7200, lastUpdated: nowIso() },
         },
       },
     });
@@ -238,7 +241,7 @@ describe('Flow-backed device support', () => {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
         capabilitiesObj: {
           ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
-          measure_power: { id: 'measure_power', value: 0 },
+          measure_power: { id: 'measure_power', value: 0, lastUpdated: nowIso() },
         },
       },
     });
@@ -263,7 +266,7 @@ describe('Flow-backed device support', () => {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
         capabilitiesObj: {
           ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
-          measure_power: { id: 'measure_power', value: 0 },
+          measure_power: { id: 'measure_power', value: 0, lastUpdated: nowIso() },
         },
       },
     });
@@ -294,7 +297,7 @@ describe('Flow-backed device support', () => {
             capabilities: ['measure_power', 'alarm_generic.car_connected'],
             carConnected: true,
           }).capabilitiesObj,
-          measure_power: { id: 'measure_power', value: 7200 },
+          measure_power: { id: 'measure_power', value: 7200, lastUpdated: nowIso() },
         },
       },
     });

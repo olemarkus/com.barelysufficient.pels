@@ -1953,6 +1953,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
+    const lastUpdated = new Date().toISOString();
     const sampleDevice = {
       id: 'thermostat-1',
       name: 'Room Thermostat',
@@ -1960,10 +1961,10 @@ describe('Device plan snapshot', () => {
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff', 'target_temperature', 'measure_power', 'measure_temperature'],
       capabilitiesObj: {
-        onoff: { value: false, id: 'onoff' },
-        target_temperature: { value: 22, units: '°C', id: 'target_temperature' },
-        measure_power: { value: 0, id: 'measure_power' },
-        measure_temperature: { value: 21, id: 'measure_temperature' },
+        onoff: { value: false, id: 'onoff', lastUpdated },
+        target_temperature: { value: 22, units: '°C', id: 'target_temperature', lastUpdated },
+        measure_power: { value: 0, id: 'measure_power', lastUpdated },
+        measure_temperature: { value: 21, id: 'measure_temperature', lastUpdated },
       },
       settings: { load: 450 },
     };

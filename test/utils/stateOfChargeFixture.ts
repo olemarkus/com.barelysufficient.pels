@@ -40,17 +40,12 @@ export const stateOfChargeFixture = (params: {
   const {
     percent, unavailable, observedAtMs, capabilityId, carId, ...session
   } = params;
-  // A known level needs a stamp and an unavailable one does not — the producer's
-  // rule, and now the type's: `observedAtMs` rides inside the known arm. So an
-  // un-timed caller asking for a known level gets the placeholder, while one
-  // asking for `unavailable` keeps the un-timed report the producer really emits.
-  const stamp = observedAtMs ?? (unavailable === undefined ? UNSTATED_OBSERVED_AT_MS : undefined);
+  // Every report is dated (the producer's rule, and the type's); a caller that
+  // does not care when gets the placeholder.
+  const stamp = observedAtMs ?? UNSTATED_OBSERVED_AT_MS;
   return {
     ...session,
-    report: {
-      percent,
-      ...(stamp === undefined ? {} : { observedAtMs: stamp }),
-    },
+    report: { percent, observedAtMs: stamp },
     capabilityId: capabilityId ?? 'measure_battery',
     source: carId === undefined ? { kind: 'charger' } : { kind: 'car', carId },
     level: unavailable === undefined

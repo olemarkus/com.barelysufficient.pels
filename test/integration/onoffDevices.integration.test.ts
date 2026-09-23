@@ -41,6 +41,8 @@ const buildOnOffApiDevice = (overrides?: Partial<{
   energy: Record<string, unknown> | null;
 }>) => {
   const capabilities = overrides?.capabilities ?? ['onoff', 'measure_power', 'meter_power', 'rms_voltage', 'rms_current'];
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date().toISOString();
   return {
     id: overrides?.id ?? 'device-a',
     name: overrides?.name ?? 'On/Off Socket',
@@ -48,10 +50,10 @@ const buildOnOffApiDevice = (overrides?: Partial<{
     virtualClass: overrides?.virtualClass ?? 'appliance',
     capabilities,
     capabilitiesObj: {
-      onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-      measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 0 },
+      onoff: { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated },
+      measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 0, lastUpdated },
       // A declared meter reports its cumulative kWh, as a real Homey device does.
-      ...(capabilities.includes('meter_power') ? { meter_power: { id: 'meter_power', value: 100 } } : {}),
+      ...(capabilities.includes('meter_power') ? { meter_power: { id: 'meter_power', value: 100, lastUpdated } } : {}),
     },
     settings: overrides?.settings ?? {},
     energyObj: overrides?.energyObj,
@@ -458,7 +460,7 @@ describe('On/off device integration', () => {
           onoff: false,
         }),
         capabilitiesObj: {
-          onoff: { id: 'onoff', value: false },
+          onoff: { id: 'onoff', value: false, lastUpdated: new Date().toISOString() },
           dim: { id: 'dim', value: 0.01 },
           light_temperature: { id: 'light_temperature', value: 1 },
           light_hue: { id: 'light_hue', value: 0.14 },

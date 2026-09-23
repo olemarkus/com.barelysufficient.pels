@@ -13,23 +13,27 @@ const buildVentilationApiDevice = (overrides?: Partial<{
     class: string;
     capabilities: string[];
     energyObj: Record<string, unknown> | null;
-}>) => ({
-    id: overrides?.id ?? 'vent-1',
-    name: overrides?.name ?? 'Ventilation Relay',
-    class: overrides?.class ?? 'socket',
-    virtualClass: null,
-    capabilities: overrides?.capabilities ?? [
-        'onoff',
-    ],
-    capabilitiesObj: {
-        onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-        ...(overrides?.capabilities?.includes('measure_power')
-            ? { measure_power: { id: 'measure_power', value: 0 } }
-            : {}),
-    },
-    settings: {},
-    energyObj: overrides?.energyObj,
-});
+}>) => {
+    // Homey dates every capability value it reports.
+    const lastUpdated = new Date().toISOString();
+    return {
+        id: overrides?.id ?? 'vent-1',
+        name: overrides?.name ?? 'Ventilation Relay',
+        class: overrides?.class ?? 'socket',
+        virtualClass: null,
+        capabilities: overrides?.capabilities ?? [
+            'onoff',
+        ],
+        capabilitiesObj: {
+            onoff: { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated },
+            ...(overrides?.capabilities?.includes('measure_power')
+                ? { measure_power: { id: 'measure_power', value: 0, lastUpdated } }
+                : {}),
+        },
+        settings: {},
+        energyObj: overrides?.energyObj,
+    };
+};
 
 describe('Unsupported device handling', () => {
     beforeEach(() => {
@@ -150,7 +154,7 @@ describe('Unsupported device handling', () => {
             'vent-1': {
                 ...buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
                 capabilitiesObj: {
-                    onoff: { id: 'onoff', value: true },
+                    onoff: { id: 'onoff', value: true, lastUpdated: new Date().toISOString() },
                     // Advertised, but no value carried this cycle.
                     measure_power: { id: 'measure_power' },
                 },
@@ -165,12 +169,13 @@ describe('Unsupported device handling', () => {
         // A conforming read with no usable reading (negative watts: what a home
         // battery reports while discharging) is parsed, and support is
         // structural: it does not follow the live reading.
+        const conformingAt = new Date().toISOString();
         getSpy.mockResolvedValue({
             'vent-1': {
                 ...buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
                 capabilitiesObj: {
-                    onoff: { id: 'onoff', value: true },
-                    measure_power: { id: 'measure_power', value: -2000 },
+                    onoff: { id: 'onoff', value: true, lastUpdated: conformingAt },
+                    measure_power: { id: 'measure_power', value: -2000, lastUpdated: conformingAt },
                 },
             },
         });

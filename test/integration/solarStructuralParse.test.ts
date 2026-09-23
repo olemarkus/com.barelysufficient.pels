@@ -38,9 +38,11 @@ const adversarialProviders = {
   isManagedFilterActive: () => true,
 };
 
+// Homey dates every capability value it reports.
+const lastUpdated = new Date().toISOString();
 const solarCaps = {
-  measure_power: { value: 3000, id: 'measure_power' },
-  meter_power: { value: 42, id: 'meter_power' },
+  measure_power: { value: 3000, id: 'measure_power', lastUpdated },
+  meter_power: { value: 42, id: 'meter_power', lastUpdated },
 } as HomeyDeviceLike['capabilitiesObj'];
 
 describe('structural solar-role resolution at parse', () => {

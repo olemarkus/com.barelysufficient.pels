@@ -10,7 +10,6 @@ describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {
     const snapshot = resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
-      nowMs: Date.parse('2026-03-20T06:00:02.000Z'),
       capabilityObj: {
         evcharger_charging_state: {
           value: 'plugged_in_charging',
@@ -43,12 +42,10 @@ describe('resolveStateOfChargeSnapshot', () => {
   const resolve = (params: {
     chargingState: string;
     chargingStateAt: number;
-    nowMs: number;
     charging?: boolean;
     retainedSession?: { sessionStartedAtMs?: number; invalidatedAtMs?: number };
   }) => resolveStateOfChargeSnapshot({
     deviceClassKey: 'evcharger',
-    nowMs: params.nowMs,
     capabilityObj: {
       evcharger_charging_state: {
         value: params.chargingState,
@@ -71,7 +68,6 @@ describe('resolveStateOfChargeSnapshot', () => {
     expect(resolve({
       chargingState: 'plugged_in',
       chargingStateAt: SOC_AT + 2 * 60_000,
-      nowMs: SOC_AT + 3 * 60_000,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
       level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
@@ -85,7 +81,6 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in_paused',
       chargingStateAt: SOC_AT,
       charging: false,
-      nowMs: SOC_AT + 6 * 60 * 60_000,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
       level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
@@ -99,7 +94,6 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in_paused',
       chargingStateAt: SOC_AT,
       charging: true,
-      nowMs: SOC_AT + 41 * 60_000,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
       level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
@@ -116,14 +110,12 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in_paused',
       chargingStateAt: SOC_AT,
       charging: false,
-      nowMs: SOC_AT + 3 * 60 * 60_000,
     });
 
     expect(resolve({
       chargingState: 'plugged_in_charging',
       chargingStateAt: SOC_AT + 3 * 60 * 60_000,
       charging: true,
-      nowMs: SOC_AT + 3 * 60 * 60_000 + 1_000,
       retainedSession: paused,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
@@ -141,7 +133,6 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in_charging',
       chargingStateAt: SOC_AT,
       charging: true,
-      nowMs: SOC_AT + 6 * 60 * 60_000,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
       level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
@@ -157,14 +148,12 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in_charging',
       chargingStateAt: SOC_AT,
       charging: true,
-      nowMs: SOC_AT + 6 * 60 * 60_000,
     });
 
     expect(resolve({
       chargingState: 'plugged_in_paused',
       chargingStateAt: SOC_AT + 6 * 60 * 60_000,
       charging: false,
-      nowMs: SOC_AT + 6 * 60 * 60_000 + 1_000,
       retainedSession: charging,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
@@ -178,13 +167,11 @@ describe('resolveStateOfChargeSnapshot', () => {
     const unplugged = resolve({
       chargingState: 'plugged_out',
       chargingStateAt: SOC_AT + 60_000,
-      nowMs: SOC_AT + 2 * 60_000,
     });
 
     expect(resolve({
       chargingState: 'plugged_in_discharging',
       chargingStateAt: SOC_AT + 3 * 60_000,
-      nowMs: SOC_AT + 4 * 60_000,
       retainedSession: unplugged,
     })?.sessionStartedAtMs).toBe(SOC_AT + 3 * 60_000);
   });
@@ -193,7 +180,6 @@ describe('resolveStateOfChargeSnapshot', () => {
     expect(resolve({
       chargingState: 'plugged_out',
       chargingStateAt: SOC_AT + 60_000,
-      nowMs: SOC_AT + 2 * 60_000,
     })?.level).toEqual({ kind: 'unavailable', reasonCode: 'not_connected' });
   });
 
@@ -204,13 +190,11 @@ describe('resolveStateOfChargeSnapshot', () => {
     const unplugged = resolve({
       chargingState: 'plugged_out',
       chargingStateAt: SOC_AT + 60_000,
-      nowMs: SOC_AT + 2 * 60_000,
     });
 
     expect(resolve({
       chargingState: 'plugged_in',
       chargingStateAt: SOC_AT + 3 * 60_000,
-      nowMs: SOC_AT + 4 * 60_000,
       retainedSession: unplugged,
     })).toEqual(expect.objectContaining({
       // A car is attached again, but this reading predates it — possibly a
@@ -218,32 +202,6 @@ describe('resolveStateOfChargeSnapshot', () => {
       level: { kind: 'unavailable', reasonCode: 'not_reported' },
       sessionStartedAtMs: SOC_AT + 3 * 60_000,
     }));
-  });
-
-  // A reconnect anchors only on REAL evidence. Substituting the refresh time was
-  // tried and reverted: a refresh can carry a cached connected state older than a
-  // newer realtime plug-out, and a fabricated future `sessionStartedAtMs` cannot
-  // be undone by reapplying that plug-out. Requiring real evidence is the safer
-  // half of a gap that is still open: the reading stays stale, and a later
-  // timestamped observation is not guaranteed because `measure_battery` is
-  // change-only.
-  it('does not anchor a reconnect from a connected state carrying no timestamp', () => {
-    const unplugged = resolve({
-      chargingState: 'plugged_out',
-      chargingStateAt: SOC_AT + 60_000,
-      nowMs: SOC_AT + 2 * 60_000,
-    });
-
-    expect(resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      nowMs: SOC_AT + 4 * 60_000,
-      capabilityObj: {
-        evcharger_charging_state: { value: 'plugged_in' },
-        measure_battery: { value: 34, lastUpdated: SOC_AT },
-      },
-      reportedCapabilities: {},
-      retainedSession: unplugged,
-    })?.sessionStartedAtMs).toBeUndefined();
   });
 });
 
@@ -260,7 +218,6 @@ describe('car-sourced state of charge', () => {
     // sources mid-session.
     expect(resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
-      nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
@@ -270,7 +227,6 @@ describe('car-sourced state of charge', () => {
   it('still reads the charger when no car is ticked', () => {
     expect(resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
-      nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
     })).toMatchObject({ report: { percent: 55 } });
@@ -279,7 +235,6 @@ describe('car-sourced state of charge', () => {
   it('carries a car-sourced level across a refresh, with its provenance', () => {
     const resolved = resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
-      nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
@@ -310,11 +265,11 @@ describe('car-sourced state of charge', () => {
 
     // A reading the car took BEFORE this charging session was anchored.
     updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1', nowMs: 5_000,
+      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1',
     });
     snapshot.stateOfCharge = { ...snapshot.stateOfCharge!, sessionStartedAtMs: 4_000 };
     updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1', nowMs: 5_000,
+      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1',
     });
 
     expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000 });
@@ -325,7 +280,6 @@ describe('car-sourced state of charge', () => {
     // readings was still present; adopting it would relabel someone else's data.
     expect(resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
-      nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
@@ -344,7 +298,7 @@ describe('car-sourced state of charge', () => {
     } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0]['snapshot'];
 
     expect(updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_500, carId: 'car-1', nowMs: 1_600,
+      snapshot, percent: 63, observedAtMs: 1_500, carId: 'car-1',
     })).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({
       report: { percent: 63 },

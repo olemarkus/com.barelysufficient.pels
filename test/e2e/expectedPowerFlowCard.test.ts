@@ -289,13 +289,17 @@ describe('Expected power flow card', () => {
     Object.keys(app.expectedPowerKwOverrides).forEach((k) => delete app.expectedPowerKwOverrides[k]);
     Object.keys(app.lastPositiveMeasuredPowerKw).forEach((k) => delete app.lastPositiveMeasuredPowerKw[k]);
     Object.keys(app.lastKnownPowerKw).forEach((k) => delete app.lastKnownPowerKw[k]);
+    // A conforming read: every declared capability dated and valued, the meter
+    // reading no draw, so no rung above the default has anything to offer.
+    const lastUpdated = new Date().toISOString();
     const snapshotFallback = app.deviceManager.parseDeviceListForTests([
       {
         id: 'dev-3',
         capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
         capabilitiesObj: {
-          measure_temperature: { value: 20 },
-          target_temperature: { value: 21 },
+          measure_power: { value: 0, lastUpdated },
+          measure_temperature: { value: 20, lastUpdated },
+          target_temperature: { value: 21, lastUpdated },
         },
         name: 'Heater',
         class: 'heater',

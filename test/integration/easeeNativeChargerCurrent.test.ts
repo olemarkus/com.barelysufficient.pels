@@ -45,21 +45,24 @@ const EASEE_CAPABILITIES = [
   'evcharger_charging_state',
 ];
 
+// When the production read was taken; Homey dates every value it holds.
+const READ_AT = '2026-09-15T04:41:52.000Z';
+
 const buildEaseeCapabilityObj = (
   capabilityOverrides: DeviceCapabilityMap = {},
 ): DeviceCapabilityMap => ({
-  onoff: { value: true, setable: true },
+  onoff: { value: true, setable: true, lastUpdated: READ_AT },
   target_circuit_current: { value: 32, setable: true, min: 0, max: 40 },
   target_charger_current: {
     value: 16,
     setable: true,
     min: 0,
     max: 40,
-    lastUpdated: '2026-09-15T04:41:52.000Z',
+    lastUpdated: READ_AT,
   },
-  measure_power: { value: 3_600 },
-  evcharger_charging: { value: true, setable: true },
-  evcharger_charging_state: { value: 'plugged_in_charging' },
+  measure_power: { value: 3_600, lastUpdated: READ_AT },
+  evcharger_charging: { value: true, setable: true, lastUpdated: READ_AT },
+  evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: READ_AT },
   ...capabilityOverrides,
 });
 

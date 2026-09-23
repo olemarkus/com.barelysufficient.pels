@@ -22,6 +22,9 @@ const createLogger = () => ({
   },
 }) as unknown as Logger;
 
+// When a hand-built full read below was taken; Homey dates every value it holds.
+const READ_AT = '2026-04-22T09:00:04.000Z';
+
 const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({
   id: 'zaptec-go-1',
   name: 'Zaptec Go',
@@ -36,7 +39,7 @@ const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDevic
     'alarm_generic.car_connected',
   ],
   capabilitiesObj: {
-    measure_power: { value: 7200 },
+    measure_power: { value: 7200, lastUpdated: '2026-04-22T09:00:00.000Z' },
     available_installation_current: { value: 16, lastUpdated: '2026-04-22T09:00:00.000Z' },
     charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
     charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:02.000Z' },
@@ -358,7 +361,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('uses the freshest source timestamps for synthesized EV capabilities', () => {
+  it('dates each synthesized EV capability by the sources that decided its value', () => {
     const device = buildZaptecDevice();
     const overlay = applyNativeEvWiringOverlay({
       device,
@@ -371,7 +374,10 @@ describe('native EV wiring shim', () => {
       },
     });
 
-    expect(overlay.capabilityObj.evcharger_charging?.lastUpdated).toBe('2026-04-22T09:00:05.000Z');
+    // The button decided `evcharger_charging`, so a later mode change does not
+    // make that button value look newer; the plug state comes from the mode and
+    // the car-connected alarm together, so it is as fresh as the fresher one.
+    expect(overlay.capabilityObj.evcharger_charging?.lastUpdated).toBe('2026-04-22T09:00:01.000Z');
     expect(overlay.capabilityObj.evcharger_charging_state?.lastUpdated).toBe('2026-04-22T09:00:07.000Z');
   });
 
@@ -411,11 +417,11 @@ describe('native EV wiring shim', () => {
         'evcharger_charging',
       ],
       capabilitiesObj: {
-        measure_power: { value: 7200 },
-        charging_button: { value: true, setable: true },
-        charge_mode: { value: 'Disconnected' },
-        'alarm_generic.car_connected': { value: false },
-        evcharger_charging: { value: true, setable: false },
+        measure_power: { value: 7200, lastUpdated: READ_AT },
+        charging_button: { value: true, setable: true, lastUpdated: READ_AT },
+        charge_mode: { value: 'Disconnected', lastUpdated: READ_AT },
+        'alarm_generic.car_connected': { value: false, lastUpdated: READ_AT },
+        evcharger_charging: { value: true, setable: false, lastUpdated: READ_AT },
       },
     })]);
 
@@ -442,12 +448,12 @@ describe('native EV wiring shim', () => {
         'evcharger_charging_state',
       ],
       capabilitiesObj: {
-        measure_power: { value: 7200 },
-        charging_button: { value: true, setable: true },
-        charge_mode: { value: 'Connecting to car' },
-        'alarm_generic.car_connected': { value: true },
-        evcharger_charging: { value: true, setable: false },
-        evcharger_charging_state: { value: 'plugged_in_charging' },
+        measure_power: { value: 7200, lastUpdated: READ_AT },
+        charging_button: { value: true, setable: true, lastUpdated: READ_AT },
+        charge_mode: { value: 'Connecting to car', lastUpdated: READ_AT },
+        'alarm_generic.car_connected': { value: true, lastUpdated: READ_AT },
+        evcharger_charging: { value: true, setable: false, lastUpdated: READ_AT },
+        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: READ_AT },
       },
     })]);
 
@@ -491,12 +497,12 @@ describe('native EV wiring shim', () => {
         'evcharger_charging_state',
       ],
       capabilitiesObj: {
-        measure_power: { value: 7200 },
-        charging_button: { value: false, setable: true },
-        charge_mode: { value: 'Connecting to car' },
-        'alarm_generic.car_connected': { value: true },
-        evcharger_charging: { value: true, setable: false },
-        evcharger_charging_state: { value: 'plugged_in_charging' },
+        measure_power: { value: 7200, lastUpdated: READ_AT },
+        charging_button: { value: false, setable: true, lastUpdated: READ_AT },
+        charge_mode: { value: 'Connecting to car', lastUpdated: READ_AT },
+        'alarm_generic.car_connected': { value: true, lastUpdated: READ_AT },
+        evcharger_charging: { value: true, setable: false, lastUpdated: READ_AT },
+        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: READ_AT },
       },
     })]);
 
@@ -797,6 +803,31 @@ describe('native EV wiring shim', () => {
     });
 
     expect(overlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
+  });
+
+  it('keeps a realtime button value on the button stamp when only the plug state moved', () => {
+    // The plug state changed after the button last did. The button value must
+    // not borrow the newer mode stamp, or a stale button value would read as
+    // newer evidence than a fresher observation of the charger.
+    const capabilityObj = {
+      measure_power: { value: 0 },
+      charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
+      charge_mode: { value: 'Charging', lastUpdated: '2026-04-22T09:10:00.000Z' },
+      'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:10:00.000Z' },
+    };
+    const device = buildZaptecDevice({ capabilitiesObj: capabilityObj });
+    const adapter = { kind: 'capability_adapter', activationRequired: true, activationEnabled: true } as const;
+
+    const observed = buildNativeEvObservationCapabilityObj({ device, previousSnapshot: { controlAdapter: adapter } });
+    const overlay = applyNativeEvWiringOverlay({
+      device,
+      capabilities: [...device.capabilities!],
+      capabilityObj,
+    });
+
+    expect(observed.evcharger_charging).toEqual({ value: false, lastUpdated: '2026-04-22T09:00:01.000Z' });
+    // The same stamp the contract validated on the overlay.
+    expect(overlay.capabilityObj.evcharger_charging?.lastUpdated).toBe(observed.evcharger_charging?.lastUpdated);
   });
 
   it('normalizes Zaptec proprietary observations into canonical EV capabilities', () => {

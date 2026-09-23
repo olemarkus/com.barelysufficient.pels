@@ -18,37 +18,43 @@ const buildVThermoApiDevice = (overrides?: Partial<{
   capabilities: string[];
   load: number;
   energyValueOn: number;
-}>) => ({
-  id: overrides?.id ?? 'vthermo-1',
-  name: overrides?.name ?? 'Virtual Thermostat',
-  class: overrides?.class ?? 'thermostat',
-  virtualClass: null,
-  capabilities: overrides?.capabilities ?? [
-    'onoff',
-    'vt_onoff',
-    'target_temperature',
-    'measure_temperature',
-  ],
-  capabilitiesObj: {
-    onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-    target_temperature: {
-      id: 'target_temperature',
-      value: overrides?.targetTemperature ?? 22,
-      units: '°C',
-      min: 10,
-      max: 30,
+}>) => {
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date().toISOString();
+  return {
+    id: overrides?.id ?? 'vthermo-1',
+    name: overrides?.name ?? 'Virtual Thermostat',
+    class: overrides?.class ?? 'thermostat',
+    virtualClass: null,
+    capabilities: overrides?.capabilities ?? [
+      'onoff',
+      'vt_onoff',
+      'target_temperature',
+      'measure_temperature',
+    ],
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated },
+      target_temperature: {
+        id: 'target_temperature',
+        value: overrides?.targetTemperature ?? 22,
+        units: '°C',
+        min: 10,
+        max: 30,
+        lastUpdated,
+      },
+      measure_temperature: {
+        id: 'measure_temperature',
+        value: overrides?.measureTemperature ?? 21,
+        units: '°C',
+        lastUpdated,
+      },
     },
-    measure_temperature: {
-      id: 'measure_temperature',
-      value: overrides?.measureTemperature ?? 21,
-      units: '°C',
+    settings: {
+      load: overrides?.load ?? 0,
+      ...(overrides?.energyValueOn !== undefined ? { energy_value_on: overrides.energyValueOn } : {}),
     },
-  },
-  settings: {
-    load: overrides?.load ?? 0,
-    ...(overrides?.energyValueOn !== undefined ? { energy_value_on: overrides.energyValueOn } : {}),
-  },
-});
+  };
+};
 
 describe('VThermo device integration', () => {
   beforeEach(() => {

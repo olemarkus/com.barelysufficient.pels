@@ -90,7 +90,6 @@ export const applyAssociatedCarStateOfCharge = (
     latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>;
   },
   reading: { chargerId: string; carId: string; socPct: number; socAtMs: number },
-  nowMs: number,
 ): boolean => {
   const associated = resolveAssociatedCar(ctx, reading.chargerId);
   if (associated?.carId !== reading.carId) return false;
@@ -101,7 +100,6 @@ export const applyAssociatedCarStateOfCharge = (
     percent: reading.socPct,
     observedAtMs: reading.socAtMs,
     carId: reading.carId,
-    nowMs,
   });
 };
 
@@ -119,13 +117,11 @@ export const createCarStateOfChargeAdoption = (params: {
    * plan-rebuild gate fires exactly as it does for a charger's own report.
    */
   dispatch: (chargerId: string, capabilityId: string) => void;
-  /** Injectable only so a test can pin it; the transport reads the wall clock. */
-  now?: () => number;
 }) => ({
   onAssociatedCarStateOfCharge: (reading: {
     chargerId: string; carId: string; socPct: number; socAtMs: number;
   }): void => {
-    if (!applyAssociatedCarStateOfCharge(params.getCtx(), reading, (params.now ?? Date.now)())) return;
+    if (!applyAssociatedCarStateOfCharge(params.getCtx(), reading)) return;
     params.dispatch(reading.chargerId, EV_SOC_CAPABILITY_ID);
   },
   onAssociationEnded: (chargerId: string): void => {

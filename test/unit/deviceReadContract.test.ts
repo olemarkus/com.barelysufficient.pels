@@ -64,6 +64,17 @@ describe('device-read contract', () => {
       .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_power' });
   });
 
+  it('ignores a read whose model value carries no stamp Homey observed it at', () => {
+    const unstamped = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: { value: 1200 } } });
+    expect(findDeviceReadContractViolation(unstamped))
+      .toEqual({ reason: 'missing_stamp', capabilityId: 'measure_power' });
+    const notATime = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: { value: true, lastUpdated: 'soon' } } });
+    expect(findDeviceReadContractViolation(notATime)).toEqual({ reason: 'missing_stamp', capabilityId: 'onoff' });
+    // A button outside the model is never read, stamped or not.
+    const unstampedButton = heater({ capabilitiesObj: { ...HEATER_VALUES, 'button.reset': { value: null } } });
+    expect(findDeviceReadContractViolation(unstampedButton)).toBeNull();
+  });
+
   it('requires a native plug state to be a member of the Homey enum', () => {
     const charger = (state: unknown): HomeyDeviceLike => asRead({
       id: 'easee-1',

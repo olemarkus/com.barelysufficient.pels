@@ -15,31 +15,38 @@ const buildAirconApiDevice = (overrides?: Partial<{
     measureTemperature: number;
     class: string;
     capabilities: string[];
-}>) => ({
-    id: overrides?.id ?? 'aircon-a',
-    name: overrides?.name ?? 'Living Room AC',
-    class: overrides?.class ?? 'airconditioning',
-    virtualClass: null,
-    capabilities: overrides?.capabilities ?? [
-        'onoff',
-        'target_temperature',
-        'measure_temperature',
-        'meter_power',
-    ],
-    capabilitiesObj: {
-        onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-        target_temperature: {
-            id: 'target_temperature',
-            value: overrides?.targetTemperature ?? 22,
-            units: '°C',
-            min: 10,
-            max: 30,
+}>) => {
+    // Homey dates every capability value it reports.
+    const lastUpdated = new Date().toISOString();
+    return {
+        id: overrides?.id ?? 'aircon-a',
+        name: overrides?.name ?? 'Living Room AC',
+        class: overrides?.class ?? 'airconditioning',
+        virtualClass: null,
+        capabilities: overrides?.capabilities ?? [
+            'onoff',
+            'target_temperature',
+            'measure_temperature',
+            'meter_power',
+        ],
+        capabilitiesObj: {
+            onoff: { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated },
+            target_temperature: {
+                id: 'target_temperature',
+                value: overrides?.targetTemperature ?? 22,
+                units: '°C',
+                min: 10,
+                max: 30,
+                lastUpdated,
+            },
+            measure_temperature: {
+                id: 'measure_temperature', value: overrides?.measureTemperature ?? 21, units: '°C', lastUpdated,
+            },
+            meter_power: { id: 'meter_power', value: overrides?.meterPower ?? 100, lastUpdated },
         },
-        measure_temperature: { id: 'measure_temperature', value: overrides?.measureTemperature ?? 21, units: '°C' },
-        meter_power: { id: 'meter_power', value: overrides?.meterPower ?? 100 },
-    },
-    settings: {},
-});
+        settings: {},
+    };
+};
 
 describe('Airconditioning device integration', () => {
     beforeEach(() => {

@@ -1,5 +1,9 @@
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { DeviceCapabilityMap, DeviceCapabilityValue } from '../managerControl';
+import {
+  toCapabilityTimestampMs,
+  type DeviceCapabilityMap,
+  type DeviceCapabilityValue,
+} from '../managerControl';
 import { getCapabilities, isObserveOnlyRoleClassKey, resolveDeviceClassKey } from './managerHelpers';
 
 export const FLOW_REPORTED_CAPABILITY_IDS = [
@@ -432,12 +436,8 @@ function resolveCapabilityLastUpdatedMs(
   rawLastUpdated: DeviceCapabilityValue['lastUpdated'],
   fallbackReportedAt?: number,
 ): number | undefined {
-  if (rawLastUpdated instanceof Date) return rawLastUpdated.getTime();
-  if (typeof rawLastUpdated === 'number' && Number.isFinite(rawLastUpdated)) return rawLastUpdated;
-  if (typeof rawLastUpdated === 'string') {
-    const parsed = Date.parse(rawLastUpdated);
-    if (Number.isFinite(parsed)) return parsed;
-  }
+  const parsed = toCapabilityTimestampMs(rawLastUpdated);
+  if (parsed !== undefined) return parsed;
   return typeof fallbackReportedAt === 'number' && Number.isFinite(fallbackReportedAt)
     ? fallbackReportedAt
     : undefined;

@@ -104,6 +104,11 @@ const CAPABILITY_CLOCK_SKEW_MS = 60_000;
  * disabling plug-edge and charge observation for that car indefinitely. Falling
  * back to arrival time keeps the reading usable and self-corrects on the next
  * report, which is the conservative direction.
+ *
+ * The device-read contract guarantees a conforming car read dates the plug
+ * state and battery level it reports, so besides the far-future clamp above,
+ * the arrival time stands in only for a capability the car does not declare —
+ * whose value is absent too.
  */
 const resolveObservedAtMs = (
     raw: string | number | Date | null | undefined,

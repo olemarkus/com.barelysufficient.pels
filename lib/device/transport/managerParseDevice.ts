@@ -1,6 +1,7 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   DeviceControlProfile,
+  MeteredPowerReading,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
@@ -26,6 +27,19 @@ import {
     assembleDeviceSnapshot,
     resolveDeviceCapabilityProfile,
 } from './managerParseDeviceFields';
+
+/**
+ * The power reading a parse carries forward for a device that reports none this
+ * read: the previous snapshot's (which keeps its delivery-interval record,
+ * already booked this run) or, on the first read after a restart, the one the
+ * retained-power store restored (which has none). Dated when the entry it came
+ * from was.
+ */
+export type RetainedMeasurement = {
+    measuredPowerKw: number;
+    observedAtMs?: number;
+    reading?: MeteredPowerReading;
+};
 
 export type DeviceTransportParseProviders = {
     /**
@@ -83,7 +97,7 @@ export type DeviceTransportParseDeps = {
         device: HomeyDeviceLike,
         capsStatus: { hasPower: boolean },
         measuredPower: { measuredPowerKw?: number },
-        retainedReading: RetainedPowerReading | undefined,
+        retainedReading: RetainedMeasurement | undefined,
     ) => boolean;
     /** The reading the retained-power store restored for a device (`retainedPowerPersistence.ts`). */
     getRestoredPowerReading: (deviceId: string) => RetainedPowerReading | undefined;
@@ -198,7 +212,7 @@ export function isDevicePowerCapable(params: {
     device: HomeyDeviceLike;
     capsStatus: { hasPower: boolean };
     measuredPower: { measuredPowerKw?: number };
-    retainedReading: RetainedPowerReading | undefined;
+    retainedReading: RetainedMeasurement | undefined;
 }): boolean {
     const { device, capsStatus, measuredPower, retainedReading } = params;
     return capsStatus.hasPower

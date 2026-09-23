@@ -90,9 +90,8 @@ export class RetainedPowerPersistence {
  */
 const toRetainedPowerReading = (device: TransportDeviceSnapshot): RetainedPowerReading | null => {
   if (!hasObservedMeasuredPower(device) || device.measuredPowerReading?.kind !== 'interval_average') return null;
-  return device.measuredPowerObservedAtMs === undefined
-    ? { measuredPowerKw: device.measuredPowerKw }
-    : { measuredPowerKw: device.measuredPowerKw, observedAtMs: device.measuredPowerObservedAtMs };
+  // The meter observation that closed the interval dates the reading.
+  return { measuredPowerKw: device.measuredPowerKw, observedAtMs: device.measuredPowerReading.endMs };
 };
 
 /**

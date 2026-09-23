@@ -9,6 +9,24 @@ import type { Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
 
+// A full read of the heater as Homey reports it: every value dated when read.
+const heaterRead = (deviceId: string, measuredPowerW: number) => {
+    const lastUpdated = new Date().toISOString();
+    return {
+        [deviceId]: {
+            id: deviceId,
+            name: 'Heater',
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+            capabilitiesObj: {
+                measure_power: { value: measuredPowerW, id: 'measure_power', lastUpdated },
+                measure_temperature: { value: 21, id: 'measure_temperature', lastUpdated },
+                target_temperature: { value: 20, id: 'target_temperature', lastUpdated },
+            },
+        },
+    };
+};
+
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
@@ -64,19 +82,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const deviceId = 'dev1';
 
         // 1. Initial state: Device is drawing 1.67 kW
-        apiGetSpy.mockResolvedValue({
-            [deviceId]: {
-                id: deviceId,
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_power: { value: 1670, id: 'measure_power' }, // 1.67 kW
-                    measure_temperature: { value: 21, id: 'measure_temperature' },
-                    target_temperature: { value: 20, id: 'target_temperature' },
-                },
-            },
-        });
+        apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // 1.67 kW
 
         // Refresh to populate measured power
         await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -88,19 +94,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const overrideTs = Date.now() - 10;
         expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
 
-        apiGetSpy.mockResolvedValue({
-            [deviceId]: {
-                id: deviceId,
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_power: { value: 1670, id: 'measure_power' }, // Still 1.67 kW
-                    measure_temperature: { value: 21, id: 'measure_temperature' },
-                    target_temperature: { value: 20, id: 'target_temperature' },
-                },
-            },
-        });
+        apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // Still 1.67 kW
 
         await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         snapshot = deviceManager.getSnapshot();
@@ -122,19 +116,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
 
         // Measured power jumps to 3.5 kW
-        apiGetSpy.mockResolvedValue({
-            [deviceId]: {
-                id: deviceId,
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_power: { value: 3500, id: 'measure_power' }, // 3.5 kW
-                    measure_temperature: { value: 21, id: 'measure_temperature' },
-                    target_temperature: { value: 20, id: 'target_temperature' },
-                },
-            },
-        });
+        apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3500)); // 3.5 kW
 
         await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         const snapshot = deviceManager.getSnapshot();
@@ -150,19 +132,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const deviceId = 'dev1';
 
         // Initial measured power is 3.0 kW.
-        apiGetSpy.mockResolvedValue({
-            [deviceId]: {
-                id: deviceId,
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_power: { value: 3000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature' },
-                    target_temperature: { value: 20, id: 'target_temperature' },
-                },
-            },
-        });
+        apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3000));
 
         await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         let snapshot = deviceManager.getSnapshot();
@@ -175,19 +145,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expect(snapshot[0].expectedPowerKw).toBe(2.0);
 
         // Measured power settles to 2.0 kW.
-        apiGetSpy.mockResolvedValue({
-            [deviceId]: {
-                id: deviceId,
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power' },
-                    measure_temperature: { value: 21, id: 'measure_temperature' },
-                    target_temperature: { value: 20, id: 'target_temperature' },
-                },
-            },
-        });
+        apiGetSpy.mockResolvedValue(heaterRead(deviceId, 2000));
 
         await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         snapshot = deviceManager.getSnapshot();

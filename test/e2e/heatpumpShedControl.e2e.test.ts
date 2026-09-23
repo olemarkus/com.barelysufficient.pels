@@ -286,18 +286,20 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     // The owner nudges the limited heater up. The live feed is off in tests, so
     // the change arrives the way it does in production: as a `device.update`
     // carrying the new target. Not saved; written back on the next cycle the
-    // limit cooldown allows (60 s between limit operations).
+    // limit cooldown allows (60 s between limit operations). Homey dates every
+    // value in the update; the nudge happens now.
     await device.setCapabilityValue('target_temperature', 20);
+    const lastUpdated = new Date().toISOString();
     app.deviceManager!.injectDeviceUpdateForTest({
       id: 'heatpump-a', name: 'Hallway Heatpump', class: 'heatpump',
       capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode'],
       capabilitiesObj: {
-        onoff: { id: 'onoff', value: true },
-        measure_power: { id: 'measure_power', value: 2000 },
-        measure_temperature: { id: 'measure_temperature', value: 21 },
-        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
-        meter_power: { id: 'meter_power', value: 100 },
-        thermostat_mode: { id: 'thermostat_mode', value: 'heat' },
+        onoff: { id: 'onoff', value: true, lastUpdated },
+        measure_power: { id: 'measure_power', value: 2000, lastUpdated },
+        measure_temperature: { id: 'measure_temperature', value: 21, lastUpdated },
+        target_temperature: { id: 'target_temperature', value: 20, lastUpdated, units: '°C' },
+        meter_power: { id: 'meter_power', value: 100, lastUpdated },
+        thermostat_mode: { id: 'thermostat_mode', value: 'heat', lastUpdated },
       },
     });
     await vi.advanceTimersByTimeAsync(70_000);

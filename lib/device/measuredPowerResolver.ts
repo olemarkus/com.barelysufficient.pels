@@ -1,6 +1,10 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { Logger } from '../utils/types';
-import type { DeviceMeasuredPowerObservation, MeterEnergyReading } from './measuredPowerReader';
+import type {
+  DeviceMeasuredPowerObservation,
+  DirectPowerReading,
+  MeterEnergyReading,
+} from './measuredPowerReader';
 import { getLogger } from '../logging/logger';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { MeteredPowerReading } from '../../packages/contracts/src/types';
@@ -27,7 +31,7 @@ type DeviceMeasuredPowerResolution = {
  * given.
  */
 type SelectedReading =
-  | { source: 'measure_power' | 'homey_energy'; watts: number; observedAtMs?: number }
+  | { source: 'measure_power' | 'homey_energy'; reading: DirectPowerReading }
   | { source: 'meter_power'; reading: MeterEnergyReading };
 
 export class DeviceMeasuredPowerResolver {
@@ -35,10 +39,6 @@ export class DeviceMeasuredPowerResolver {
   // Dated in OBSERVATION time (the capability's own `lastUpdated`), never in
   // resolve time — see `resolveMeterDelta`.
   private readonly lastMeterEnergy: Record<string, MeterEnergyReading> = {};
-  private readonly unstampedDirectReadingByDevice = new Map<string, {
-    watts: number;
-    observedAtMs: number;
-  }>();
   private readonly lastResolvedSourceByDevice = new Map<string, { signature: string; emittedAt: number }>();
 
   constructor(private readonly deps: {
@@ -82,7 +82,7 @@ export class DeviceMeasuredPowerResolver {
     if (selected.source === 'meter_power') {
       return this.resolveMeterDelta(deviceId, deviceLabel, selected.reading, now);
     }
-    return this.resolveDirectWatts(deviceId, selected.watts, selected.observedAtMs, now);
+    return this.resolveDirectWatts(deviceId, selected.reading, now);
   }
 
   // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
@@ -103,10 +103,10 @@ export class DeviceMeasuredPowerResolver {
   // freshness bookkeeping downstream relies on.
   private resolveDirectWatts(
     deviceId: string,
-    watts: number,
-    observedAtMs: number | undefined,
+    direct: DirectPowerReading,
     now: number,
   ): DeviceMeasuredPowerResolution {
+    const { watts, observedAtMs } = direct;
     const normalized = normalizeMeasuredPowerKw(watts / 1000);
     if (normalized === null) {
       return { observedAtMs };
@@ -122,24 +122,13 @@ export class DeviceMeasuredPowerResolver {
     // Missing or rejected readings return above and leave the anchor untouched.
     delete this.lastMeterEnergy[deviceId];
     const measuredPowerKw = normalized;
-    const retainedUnstamped = this.unstampedDirectReadingByDevice.get(deviceId);
-    const resolvedObservedAtMs = observedAtMs ?? (
-      retainedUnstamped !== undefined && Object.is(retainedUnstamped.watts, watts)
-        ? retainedUnstamped.observedAtMs
-        : now
-    );
-    if (observedAtMs === undefined) {
-      this.unstampedDirectReadingByDevice.set(deviceId, { watts, observedAtMs: resolvedObservedAtMs });
-    } else {
-      this.unstampedDirectReadingByDevice.delete(deviceId);
-    }
     if (measuredPowerKw > 0) {
       this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
     }
     return {
       measuredPowerKw,
       observedAtMs,
-      reading: { kind: 'instantaneous', powerKw: measuredPowerKw, observedAtMs: resolvedObservedAtMs },
+      reading: { kind: 'instantaneous', powerKw: measuredPowerKw, observedAtMs },
     };
   }
 
@@ -265,22 +254,14 @@ export class DeviceMeasuredPowerResolver {
 // The reader has already resolved every field to a finite value or absence, so
 // presence is the whole test here.
 function selectReading(observation: DeviceMeasuredPowerObservation): SelectedReading | null {
-  if (observation.measurePowerW !== undefined) {
-    return {
-      source: 'measure_power',
-      watts: observation.measurePowerW,
-      observedAtMs: observation.measurePowerObservedAtMs,
-    };
+  if (observation.measurePower !== undefined) {
+    return { source: 'measure_power', reading: observation.measurePower };
   }
   if (observation.meterEnergy !== undefined) {
     return { source: 'meter_power', reading: observation.meterEnergy };
   }
-  if (observation.homeyEnergyLiveW !== undefined) {
-    return {
-      source: 'homey_energy',
-      watts: observation.homeyEnergyLiveW,
-      observedAtMs: observation.homeyEnergyObservedAtMs,
-    };
+  if (observation.homeyEnergyLive !== undefined) {
+    return { source: 'homey_energy', reading: observation.homeyEnergyLive };
   }
   return null;
 }

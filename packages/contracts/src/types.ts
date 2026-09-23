@@ -223,8 +223,7 @@ export type DeviceStateOfChargeSnapshot = {
      * union exists to prevent.
      *
      * `observedAtMs` rides INSIDE the known arm because a level without a
-     * timestamp is not a level: `resolveStateOfChargeLevel` returns
-     * `not_reported` for an un-timed reading before it looks at anything else.
+     * timestamp is not a level, and every report is dated (`report` below).
      * Held alongside the union it was an optional no consumer could discharge,
      * and the one that needed it reached past `level` to the device-level stamp
      * to fill the gap.
@@ -250,16 +249,16 @@ export type DeviceStateOfChargeSnapshot = {
      * at every call site: `report.percent` cannot be mistaken for the resolved
      * figure the way a sibling `percent` was, and it was — by four consumers.
      *
-     * `observedAtMs` is the one honest absence here — a capability can carry a
-     * value with no parseable `lastUpdated`, which is precisely the reading that
-     * resolves to `not_reported` and that a later timestamped report promotes.
+     * `observedAtMs` is always there: every source dates what it reports (the
+     * device-read contract rejects a capability value with no `lastUpdated`,
+     * and a Flow report or realtime event is stamped on arrival).
      * When `level.kind === 'known'` the two stamps are equal by construction:
      * every mutator derives both from one variable, and the level's copy is a
      * projection of this one, never a second source of truth.
      */
     report: {
         percent: number;
-        observedAtMs?: number;
+        observedAtMs: number;
     };
     capabilityId: string;
     sessionStartedAtMs?: number;

@@ -8,6 +8,7 @@ const read = (capabilityObj: CapabilityObj) => readDeviceMeasuredPowerObservatio
   deviceId: 'dev-1',
   capabilities: Object.keys(capabilityObj),
   capabilityObj,
+  homeyEnergyObservedAtMs: Date.parse(STAMP),
 });
 
 // The reader is where "a meter reading" is decided. A rate is derived from two

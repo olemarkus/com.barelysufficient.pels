@@ -26,16 +26,20 @@ type AppLike = {
   externalOffHold?: { isHeld: (deviceId: string) => boolean };
 };
 
-const deviceUpdate = (on: boolean): Record<string, unknown> => ({
-  id: DEVICE,
-  name: 'Water heater',
-  class: 'socket',
-  capabilities: ['onoff', 'measure_power'],
-  capabilitiesObj: {
-    onoff: { id: 'onoff', value: on },
-    measure_power: { id: 'measure_power', value: on ? 2000 : 0 },
-  },
-});
+// Stamped when the update is sent: the device changed state just now.
+const deviceUpdate = (on: boolean): Record<string, unknown> => {
+  const lastUpdated = new Date().toISOString();
+  return {
+    id: DEVICE,
+    name: 'Water heater',
+    class: 'socket',
+    capabilities: ['onoff', 'measure_power'],
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: on, lastUpdated },
+      measure_power: { id: 'measure_power', value: on ? 2000 : 0, lastUpdated },
+    },
+  };
+};
 
 const seedSettings = (optedIn: boolean) => {
   mockHomeyInstance.settings.set('capacity_limit_kw', 10);

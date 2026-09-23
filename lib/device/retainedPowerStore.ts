@@ -58,7 +58,7 @@ export const RETAINED_POWER_TOUCH_INTERVAL_MS = 24 * 60 * 60 * 1000;
  */
 export type RetainedPowerReading = {
   measuredPowerKw: number;
-  observedAtMs?: number;
+  observedAtMs: number;
 };
 
 export type RetainedPowerState = {
@@ -132,11 +132,8 @@ const parseRetainedPowerReading = (json: string): RetainedPowerReading | null =>
   } catch {
     return null;
   }
-  if (!isRecord(raw) || !isNonNegativeFinite(raw.measuredPowerKw)) return null;
-  if (raw.observedAtMs !== undefined && !isFiniteNumber(raw.observedAtMs)) return null;
-  return raw.observedAtMs === undefined
-    ? { measuredPowerKw: raw.measuredPowerKw }
-    : { measuredPowerKw: raw.measuredPowerKw, observedAtMs: raw.observedAtMs };
+  if (!isRecord(raw) || !isNonNegativeFinite(raw.measuredPowerKw) || !isFiniteNumber(raw.observedAtMs)) return null;
+  return { measuredPowerKw: raw.measuredPowerKw, observedAtMs: raw.observedAtMs };
 };
 
 const sameReading = (a: RetainedPowerReading, b: RetainedPowerReading): boolean => (

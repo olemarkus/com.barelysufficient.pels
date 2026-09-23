@@ -23,20 +23,27 @@ import { drainUntilCalledWith } from '../utils/asyncDrain';
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
 
-const buildAirtreatmentApiDevice = () => ({
-  id: 'airtreatment-1',
-  name: 'Panel heater',
-  class: 'airtreatment',
-  virtualClass: null,
-  capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'],
-  capabilitiesObj: {
-    measure_power: { id: 'measure_power', value: 245.73 },
-    measure_temperature: { id: 'measure_temperature', value: 18, units: '°C' },
-    target_temperature: { id: 'target_temperature', value: 19, units: '°C', min: 10, max: 30, step: 0.5 },
-    fan_mode: { id: 'fan_mode', value: 'home' },
-  },
-  settings: {},
-});
+// Homey dates every capability value it reports; the fixture is built per GET,
+// under the fake clock, so "now" is the scenario's time.
+const buildAirtreatmentApiDevice = () => {
+  const lastUpdated = new Date().toISOString();
+  return {
+    id: 'airtreatment-1',
+    name: 'Panel heater',
+    class: 'airtreatment',
+    virtualClass: null,
+    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'],
+    capabilitiesObj: {
+      measure_power: { id: 'measure_power', value: 245.73, lastUpdated },
+      measure_temperature: { id: 'measure_temperature', value: 18, lastUpdated, units: '°C' },
+      target_temperature: {
+        id: 'target_temperature', value: 19, lastUpdated, units: '°C', min: 10, max: 30, step: 0.5,
+      },
+      fan_mode: { id: 'fan_mode', value: 'home', lastUpdated },
+    },
+    settings: {},
+  };
+};
 
 // Stub the SDK boundary on the two wire paths the app actually GETs — the
 // device list and the live energy report — and delegate every other path to the

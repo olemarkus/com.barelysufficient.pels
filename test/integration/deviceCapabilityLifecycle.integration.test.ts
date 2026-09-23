@@ -9,7 +9,12 @@ import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/a
 // timing deterministically.
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
-type ApiCapabilityObj = Record<string, { id: string; value?: unknown }>;
+type ApiCapabilityObj = Record<string, { id: string; value?: unknown; lastUpdated?: string }>;
+
+// A capability entry as Homey reports it: the value and the time it was observed.
+const stamped = (id: string, value: unknown): ApiCapabilityObj[string] => ({
+  id, value, lastUpdated: new Date().toISOString(),
+});
 type ApiDevice = {
   id: string;
   name: string;
@@ -89,7 +94,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
         class: 'socket',
         virtualClass: 'appliance',
         capabilities: ['measure_power'],
-        capabilitiesObj: { measure_power: { id: 'measure_power', value: 0 } },
+        capabilitiesObj: { measure_power: stamped('measure_power', 0) },
         settings: {},
       },
     };
@@ -106,8 +111,8 @@ describe('Device capability lifecycle across SDK pulls', () => {
         virtualClass: 'appliance',
         capabilities: ['onoff', 'measure_power'],
         capabilitiesObj: {
-          onoff: { id: 'onoff', value: true },
-          measure_power: { id: 'measure_power', value: 1500 },
+          onoff: stamped('onoff', true),
+          measure_power: stamped('measure_power', 1500),
         },
         settings: {},
       },
@@ -130,7 +135,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
         class: 'socket',
         virtualClass: 'appliance',
         capabilities: ['measure_power'],
-        capabilitiesObj: { measure_power: { id: 'measure_power', value: 1500 } },
+        capabilitiesObj: { measure_power: stamped('measure_power', 1500) },
         settings: {},
       },
     };
@@ -160,8 +165,8 @@ describe('Device capability lifecycle across SDK pulls', () => {
         virtualClass: 'appliance',
         capabilities: ['onoff', 'measure_power'],
         capabilitiesObj: {
-          onoff: { id: 'onoff', value: true },
-          measure_power: { id: 'measure_power', value: 1500 },
+          onoff: stamped('onoff', true),
+          measure_power: stamped('measure_power', 1500),
         },
         settings: {},
       },
@@ -193,9 +198,9 @@ describe('Device capability lifecycle across SDK pulls', () => {
         virtualClass: null,
         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
         capabilitiesObj: {
-          evcharger_charging: { id: 'evcharger_charging', value: true },
-          evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging' },
-          measure_power: { id: 'measure_power', value: 7000 },
+          evcharger_charging: stamped('evcharger_charging', true),
+          evcharger_charging_state: stamped('evcharger_charging_state', 'plugged_in_charging'),
+          measure_power: stamped('measure_power', 7000),
         },
         settings: {},
       },
@@ -216,8 +221,8 @@ describe('Device capability lifecycle across SDK pulls', () => {
         virtualClass: null,
         capabilities: ['evcharger_charging', 'measure_power'],
         capabilitiesObj: {
-          evcharger_charging: { id: 'evcharger_charging', value: true },
-          measure_power: { id: 'measure_power', value: 7000 },
+          evcharger_charging: stamped('evcharger_charging', true),
+          measure_power: stamped('measure_power', 7000),
         },
         settings: {},
       },
@@ -244,10 +249,10 @@ describe('Device capability lifecycle across SDK pulls', () => {
       capabilities: ['target_power', 'evcharger_charging_state', 'measure_power'],
       capabilitiesObj: {
         target_power: {
-          id: 'target_power', value: 3680, min: 0, max, step, setable: true,
+          id: 'target_power', value: 3680, min: 0, max, step, setable: true, lastUpdated: new Date().toISOString(),
         } as ApiCapabilityObj[string],
-        evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging' },
-        measure_power: { id: 'measure_power', value: 3600 },
+        evcharger_charging_state: stamped('evcharger_charging_state', 'plugged_in_charging'),
+        measure_power: stamped('measure_power', 3600),
       },
       settings: {},
     });

@@ -28,14 +28,27 @@ type DeviceOverrides = {
 
 const buildTemperatureApiDevice = (o: DeviceOverrides = {}) => {
   const capabilities = o.capabilities ?? ['measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'];
-  const capabilitiesObj: Record<string, { id: string; value: unknown; units?: string; min?: number; max?: number; step?: number }> = {
-    measure_power: { id: 'measure_power', value: o.measurePower ?? 245.73 },
-    measure_temperature: { id: 'measure_temperature', value: 18, units: '°C' },
-    target_temperature: { id: 'target_temperature', value: o.targetTemperature ?? 19, units: '°C', min: 10, max: 30, step: 0.5 },
-    fan_mode: { id: 'fan_mode', value: 'home' },
+  // Homey dates every capability value it reports; the fixture is built after
+  // the fake clock is set, so "now" is the scenario's time.
+  const lastUpdated = new Date().toISOString();
+  const capabilitiesObj: Record<string, {
+    id: string;
+    value: unknown;
+    lastUpdated: string;
+    units?: string;
+    min?: number;
+    max?: number;
+    step?: number;
+  }> = {
+    measure_power: { id: 'measure_power', value: o.measurePower ?? 245.73, lastUpdated },
+    measure_temperature: { id: 'measure_temperature', value: 18, lastUpdated, units: '°C' },
+    target_temperature: {
+      id: 'target_temperature', value: o.targetTemperature ?? 19, lastUpdated, units: '°C', min: 10, max: 30, step: 0.5,
+    },
+    fan_mode: { id: 'fan_mode', value: 'home', lastUpdated },
   };
   if (capabilities.includes('onoff')) {
-    capabilitiesObj.onoff = { id: 'onoff', value: o.onoff ?? true };
+    capabilitiesObj.onoff = { id: 'onoff', value: o.onoff ?? true, lastUpdated };
   }
   return {
     id: o.id ?? 'airtreatment-1',

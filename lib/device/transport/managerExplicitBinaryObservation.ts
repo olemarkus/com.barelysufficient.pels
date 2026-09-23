@@ -15,7 +15,7 @@ export type ExplicitControlObservation = {
 export function applyExplicitBinaryObservation(params: {
   parsed: TransportDeviceSnapshot;
   observation: ExplicitControlObservation;
-  observedAtMs?: number;
+  observedAtMs: number;
 }): void {
   const {
     parsed,
@@ -29,8 +29,8 @@ export function applyExplicitBinaryObservation(params: {
   if (binaryCapabilityId === 'evcharger_charging') {
     if (observedCapabilityId === 'evcharger_charging') {
       parsed.evCharging = value;
-      if (observedAtMs !== undefined) parsed.evChargingObservedAtMs = observedAtMs;
-    } else if (observedAtMs !== undefined) {
+      parsed.evChargingObservedAtMs = observedAtMs;
+    } else {
       parsed.evChargingStateObservedAtMs = observedAtMs;
     }
     parsed.binaryControl = {
@@ -41,7 +41,6 @@ export function applyExplicitBinaryObservation(params: {
   } else {
     parsed.binaryControl = { on: value };
   }
-  if (observedAtMs === undefined) return;
   parsed.binaryControlObservation = {
     valid: true,
     capabilityId: binaryCapabilityId,
@@ -52,42 +51,29 @@ export function applyExplicitBinaryObservation(params: {
   };
 }
 
+/**
+ * Whether a `device.update`'s explicit binary value is newer evidence than what
+ * the snapshot holds. The source's own stamp decides: the device-read contract
+ * guarantees a conforming update carries one, so a value is never placed on an
+ * arrival time instead.
+ */
 export function resolveExplicitBinaryEvidence(params: {
   device: HomeyDeviceLike;
   previous: TransportDeviceSnapshot | null;
   observation: ExplicitControlObservation;
-  receivedAtMs: number;
-}): { accepted: boolean; observedAtMs?: number } {
-  const {
-    device, previous, observation, receivedAtMs,
-  } = params;
+}): { accepted: true; observedAtMs: number } | { accepted: false } {
+  const { device, previous, observation } = params;
   const sourceObservedAtMs = toCapabilityTimestampMs(
     device.capabilitiesObj?.[observation.observedCapabilityId]?.lastUpdated,
   );
-  if (!previous) {
-    return {
-      accepted: true,
-      observedAtMs: sourceObservedAtMs ?? receivedAtMs,
-    };
-  }
-  const previousEvidence = resolvePreviousExplicitBinaryEvidence(previous, observation);
-  if (
-    sourceObservedAtMs !== undefined
-    && previousEvidence.observedAtMs !== undefined
-    && sourceObservedAtMs <= previousEvidence.observedAtMs
-  ) {
+  if (sourceObservedAtMs === undefined) return { accepted: false };
+  const previousObservedAtMs = previous === null
+    ? undefined
+    : resolvePreviousExplicitBinaryObservedAtMs(previous, observation);
+  if (previousObservedAtMs !== undefined && sourceObservedAtMs <= previousObservedAtMs) {
     return { accepted: false };
   }
-  if (sourceObservedAtMs !== undefined) {
-    return { accepted: true, observedAtMs: sourceObservedAtMs };
-  }
-  if (previousEvidence.value !== observation.value) {
-    return { accepted: true, observedAtMs: receivedAtMs };
-  }
-  return {
-    accepted: true,
-    observedAtMs: previousEvidence.observedAtMs ?? receivedAtMs,
-  };
+  return { accepted: true, observedAtMs: sourceObservedAtMs };
 }
 
 export function preserveStaleBundledEvState(params: {
@@ -117,39 +103,27 @@ export function preserveStaleBundledEvState(params: {
   parsed.evChargingStateObservedAtMs = previousStateObservedAtMs;
 }
 
-function resolvePreviousExplicitBinaryEvidence(
+function resolvePreviousExplicitBinaryObservedAtMs(
   previous: TransportDeviceSnapshot,
   observation: ExplicitControlObservation,
-): { value?: boolean; observedAtMs?: number } {
-  const rawEvAxis = (
+): number | undefined {
+  if (
     observation.binaryCapabilityId === 'evcharger_charging'
     && observation.observedCapabilityId === 'evcharger_charging'
-  );
-  if (rawEvAxis) {
-    return {
-      value: previous.evCharging,
-      observedAtMs: previous.evChargingObservedAtMs,
-    };
+  ) {
+    return previous.evChargingObservedAtMs;
+  }
+  if (observation.observedCapabilityId === 'evcharger_charging_state') {
+    return previous.evChargingStateObservedAtMs;
   }
   const previousObservation = previous.binaryControlObservation;
-  if (observation.observedCapabilityId === 'evcharger_charging_state') {
-    return {
-      value: previousObservation?.observedCapabilityIds.includes('evcharger_charging_state')
-        ? previousObservation.observedValue
-        : resolveBinaryOn(previous),
-      observedAtMs: previous.evChargingStateObservedAtMs,
-    };
-  }
   if (
     previousObservation?.capabilityId === observation.binaryCapabilityId
     && previousObservation.observedCapabilityIds.includes(observation.observedCapabilityId)
   ) {
-    return {
-      value: previousObservation.observedValue,
-      observedAtMs: previousObservation.observedAtMs,
-    };
+    return previousObservation.observedAtMs;
   }
-  return { value: resolveBinaryOn(previous) };
+  return undefined;
 }
 
 export function preserveRejectedExplicitBinaryObservation(params: {

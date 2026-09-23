@@ -44,37 +44,44 @@ const buildHeatpumpApiDevice = (overrides?: Partial<{
     class: string;
     virtualClass: string;
     capabilities: string[];
-}>) => ({
-    id: overrides?.id ?? 'heatpump-a',
-    name: overrides?.name ?? 'Hallway Heatpump',
-    class: overrides?.class ?? 'heatpump',
-    virtualClass: overrides?.virtualClass ?? null,
-    capabilities: overrides?.capabilities ?? [
-        'onoff',
-        'target_temperature',
-        'measure_temperature',
-        'measure_power',
-        'meter_power',
-        'thermostat_mode',
-        'fan_speed',
-    ],
-    capabilitiesObj: {
-        onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-        measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 2000 },
-        meter_power: { id: 'meter_power', value: 100 },
-        target_temperature: {
-            id: 'target_temperature',
-            value: overrides?.targetTemperature ?? 22,
-            units: '°C',
-            min: 10,
-            max: 31,
+}>) => {
+    // Homey dates every capability value it reports.
+    const lastUpdated = new Date().toISOString();
+    return {
+        id: overrides?.id ?? 'heatpump-a',
+        name: overrides?.name ?? 'Hallway Heatpump',
+        class: overrides?.class ?? 'heatpump',
+        virtualClass: overrides?.virtualClass ?? null,
+        capabilities: overrides?.capabilities ?? [
+            'onoff',
+            'target_temperature',
+            'measure_temperature',
+            'measure_power',
+            'meter_power',
+            'thermostat_mode',
+            'fan_speed',
+        ],
+        capabilitiesObj: {
+            onoff: { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated },
+            measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 2000, lastUpdated },
+            meter_power: { id: 'meter_power', value: 100, lastUpdated },
+            target_temperature: {
+                id: 'target_temperature',
+                value: overrides?.targetTemperature ?? 22,
+                units: '°C',
+                min: 10,
+                max: 31,
+                lastUpdated,
+            },
+            measure_temperature: {
+                id: 'measure_temperature', value: overrides?.measureTemperature ?? 21, units: '°C', lastUpdated,
+            },
+            thermostat_mode: { id: 'thermostat_mode', value: 'heat', lastUpdated },
+            fan_speed: { id: 'fan_speed', value: 5, lastUpdated },
         },
-        measure_temperature: { id: 'measure_temperature', value: overrides?.measureTemperature ?? 21, units: '°C' },
-        thermostat_mode: { id: 'thermostat_mode', value: 'heat' },
-        fan_speed: { id: 'fan_speed', value: 5 },
-    },
-    settings: {},
-});
+        settings: {},
+    };
+};
 
 describe('Heatpump device integration', () => {
     beforeEach(() => {

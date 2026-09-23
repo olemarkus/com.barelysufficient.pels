@@ -1408,16 +1408,17 @@ describe('MyApp initialization', () => {
     clearRecentLocalCapabilityWrites(app);
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
 
+    const lastUpdated = new Date().toISOString();
     app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
       capabilitiesObj: {
-        target_temperature: { id: 'target_temperature', value: 18, units: '°C' },
-        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
-        measure_power: { id: 'measure_power', value: 0 },
-        onoff: { id: 'onoff', value: true },
+        target_temperature: { id: 'target_temperature', value: 18, units: '°C', lastUpdated },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C', lastUpdated },
+        measure_power: { id: 'measure_power', value: 0, lastUpdated },
+        onoff: { id: 'onoff', value: true, lastUpdated },
       },
     });
 
@@ -1458,16 +1459,17 @@ describe('MyApp initialization', () => {
     ]);
     const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
+    const lastUpdated = new Date().toISOString();
     app.deviceManager.injectDeviceUpdateForTest({
       id: 'ev-1',
       name: 'Garage Charger',
       class: 'evcharger',
       capabilities: ['measure_battery', 'measure_power', 'evcharger_charging', 'evcharger_charging_state'],
       capabilitiesObj: {
-        measure_battery: { id: 'measure_battery', value: 35 },
-        measure_power: { id: 'measure_power', value: 0 },
-        evcharger_charging: { id: 'evcharger_charging', value: true },
-        evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging' },
+        measure_battery: { id: 'measure_battery', value: 35, lastUpdated },
+        measure_power: { id: 'measure_power', value: 0, lastUpdated },
+        evcharger_charging: { id: 'evcharger_charging', value: true, lastUpdated },
+        evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging', lastUpdated },
       },
     });
 
@@ -1603,16 +1605,17 @@ describe('MyApp initialization', () => {
     await initApp(app);
     const observation = vi.spyOn(app.planRebuildThrottle, 'onObservation');
 
+    const lastUpdated = new Date().toISOString();
     app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
       capabilitiesObj: {
-        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
-        measure_temperature: { id: 'measure_temperature', value: 23, units: '°C' },
-        measure_power: { id: 'measure_power', value: 1000 },
-        onoff: { id: 'onoff', value: true },
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C', lastUpdated },
+        measure_temperature: { id: 'measure_temperature', value: 23, units: '°C', lastUpdated },
+        measure_power: { id: 'measure_power', value: 1000, lastUpdated },
+        onoff: { id: 'onoff', value: true, lastUpdated },
       },
     });
 
