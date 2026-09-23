@@ -547,5 +547,8 @@
   },
   "3.7.0": {
     "en": "The Overview now guides you through first-time setup, showing what is complete and linking directly to power, device, hard-cap, and priority settings. Turning Managed on also enables Limit for devices with power readings, and setup guidance adapts to your location and configuration.\n\nAfter setup, PELS suggests relevant optional features such as price response, solar surplus, and Smart tasks. Flow-conflict recommendations can now be checked again on demand, and guidance is clearer for homes without capacity tariffs."
+  },
+  "3.8.0": {
+    "en": "PELS now turns a device down for capacity only when it can see what the device draws: a power meter, or 'Energy used when on' under Energy in the device's Homey settings. Devices without either stay managed and still follow your mode and price temperatures.\n\nA device PELS turned off before an app restart is now turned back on when there is room. Smart tasks count delivered energy from the device's own meter and keep their energy target across restarts.\n\nEV car suggestions are now optional tips, and PELS warns when a linked car has not reported its battery level. The Overview always lists your managed devices. PELS ignores incomplete device reports from Homey instead of acting on them.\n"
   }
 }
