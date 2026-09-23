@@ -71,6 +71,7 @@ function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
   });
   // Set realistic default values
   device.setCapabilityValue('measure_power', 0);
+  device.setCapabilityValue('meter_power', 100);
   device.setCapabilityValue('target_temperature', 65);
   device.setCapabilityValue('onoff', true);
   device.setCapabilityValue('max_power_3000', '3'); // Max power by default
@@ -1309,6 +1310,7 @@ describe('Device plan snapshot', () => {
 
   it('executes shedding action when plan says shed and dry run is off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -1343,6 +1345,7 @@ describe('Device plan snapshot', () => {
 
   it('applies shed temperature via actuator when configured to avoid turning off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     await dev1.setCapabilityValue('target_temperature', 20);
     await dev1.setCapabilityValue('onoff', true);
 
@@ -1427,6 +1430,7 @@ describe('Device plan snapshot', () => {
 
   it('excludes unmanaged devices from the plan snapshot', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -1542,6 +1546,7 @@ describe('Device plan snapshot', () => {
 
   it('restores devices when plan says keep even if headroom is below its power need', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 0);
     await dev1.setCapabilityValue('onoff', false);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -1809,6 +1814,7 @@ describe('Device plan snapshot', () => {
 
   it('throttles repeated shedding commands for the same device', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     await dev1.setCapabilityValue('onoff', true);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -2007,6 +2013,8 @@ describe('Device plan snapshot', () => {
     // At any point in the hour with no usage, threshold = hard_cap / remainingHours.
     // To ensure shortfall triggers regardless of when the test runs, use a low limit.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -2094,6 +2102,8 @@ describe('Device plan snapshot', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -2304,6 +2314,7 @@ describe('Device plan snapshot', () => {
 
   it('uses settings.load as fallback power when device is off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 0);
     dev1.setSettings({ load: 1200 }); // watts
     await dev1.setCapabilityValue('onoff', false);
 
@@ -3270,6 +3281,7 @@ describe('Dry run mode', () => {
 
   it('does not apply device targets for mode in dry run mode at startup', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 1000);
     await dev1.setCapabilityValue('target_temperature', 20);
     await dev1.setCapabilityValue('onoff', true);
 

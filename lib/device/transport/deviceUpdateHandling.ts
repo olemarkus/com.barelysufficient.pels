@@ -7,6 +7,7 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
+import { isIgnoredDeviceRead } from './deviceReadContract';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -14,7 +15,6 @@ import { getDeviceId } from './managerHelpers';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
-  recordCapabilityObservation,
   recordDeviceUpdateObservation,
   recordSnapshotCapabilityObservations,
 } from './managerObservation';
@@ -28,7 +28,6 @@ import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
 import {
   applyBinarySettleEvidenceFromDeviceUpdate,
   clearBinarySettleEvidence,
-  clearInvalidBinarySettleEvidenceFromDeviceUpdate,
 } from './binarySettleEvidence';
 import type { TransportContext } from './transportContext';
 
@@ -72,26 +71,12 @@ export function fireSnapshotMutatedForRefresh(
 function syncRealtimeDeviceUpdateSnapshot(ctx: TransportContext, params: {
     deviceId: string;
     currentSnapshot: TargetDeviceSnapshot | null | undefined;
-    previousSnapshot: TargetDeviceSnapshot | undefined;
-    preservePreviousSnapshot: boolean;
 }): TargetDeviceSnapshot | null {
-    const {
-        deviceId,
-        currentSnapshot,
-        previousSnapshot,
-        preservePreviousSnapshot,
-    } = params;
+    const { deviceId, currentSnapshot } = params;
     if (currentSnapshot === undefined) return null;
     if (currentSnapshot) {
         ctx.latestSnapshotById.set(deviceId, currentSnapshot);
         return currentSnapshot;
-    }
-    if (preservePreviousSnapshot && previousSnapshot) {
-        if (!ctx.latestSnapshot.some((snapshot) => snapshot.id === deviceId)) {
-            ctx.latestSnapshot.push(previousSnapshot);
-        }
-        ctx.latestSnapshotById.set(deviceId, previousSnapshot);
-        return previousSnapshot;
     }
     ctx.latestSnapshotById.delete(deviceId);
     return null;
@@ -127,6 +112,12 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
         ctx.deleteTrackedDevice(deviceId);
     }
     const effectiveDevice = ctx.applyDeviceDriverOverride(device);
+    // The read contract (`deviceReadContract.ts`), before anything reads the
+    // payload: an update that does not conform is ignored whole. No producer,
+    // tracking entry, parse or settle evidence sees it, and the device's entry
+    // stands as it was — a no-op, never a partial merge.
+    const contractEmitter = ctx.logger.structuredLog ?? moduleLogger;
+    if (isIgnoredDeviceRead(ctx.owner, effectiveDevice, 'device_update', contractEmitter)) return;
     // Keep the battery membership set non-empty for a present battery even before
     // the first full refresh — the realtime path parses the battery (stamped
     // managed observe-only structurally), so the deviceId-only resolve* consumers
@@ -138,17 +129,12 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // re-derives the set.
     ctx.observationProducers.solar.noteSolarDevice(effectiveDevice);
     const previousSnapshot = ctx.latestSnapshotById.get(deviceId);
-    const binarySafeUpdate = deviceId
-        ? clearInvalidBinarySettleEvidenceFromDeviceUpdate(ctx, deviceId, effectiveDevice, previousSnapshot)
-        : { device: effectiveDevice, hadInvalidBinaryControlPayload: false };
-    const { device: binarySafeDevice, hadInvalidBinaryControlPayload } = binarySafeUpdate;
     if (deviceId && ctx.shouldTrackRealtimeDevice(deviceId)) {
-        recordMalformedTemperatureEntries(ctx, deviceId, binarySafeDevice);
-        ctx.setTrackedDevice(deviceId, binarySafeDevice);
+        ctx.setTrackedDevice(deviceId, effectiveDevice);
         ctx.syncTrackedNativeSteppedLoadAdapters();
     }
     const observedDevice = buildNativeEvObservationDevice({
-        device: binarySafeDevice,
+        device: effectiveDevice,
         previousSnapshot,
     });
     // Defer the observed-state emission until AFTER the snapshot commit
@@ -187,8 +173,6 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
         ? syncRealtimeDeviceUpdateSnapshot(ctx, {
             deviceId,
             currentSnapshot: result.currentSnapshot,
-            previousSnapshot,
-            preservePreviousSnapshot: hadInvalidBinaryControlPayload,
         })
         : null;
     if (deviceId) {
@@ -197,7 +181,6 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
             device: observedDevice,
             snapshot: currentSnapshot,
             previousSnapshot,
-            skipInvalidControlPayload: hadInvalidBinaryControlPayload,
         });
     }
     if (deviceId && result.observedControlStateChanged) {
@@ -257,26 +240,3 @@ function flushDeferredObservedState(
     ctx.dispatchObservedStateForDevice(deviceId);
 }
 
-function recordMalformedTemperatureEntries(
-    ctx: TransportContext,
-    deviceId: string,
-    device: HomeyDeviceLike,
-): void {
-    for (const capabilityId of ['measure_temperature', 'target_temperature'] as const) {
-        const entry = device.capabilitiesObj?.[capabilityId];
-        if (!entry || isFiniteNumber(entry.value)) continue;
-        recordCapabilityObservation({
-            state: ctx.observationState,
-            latestSnapshot: ctx.latestSnapshot,
-            deviceId,
-            capabilityId,
-            value: entry.value,
-            source: 'device_update',
-            countsTowardDeviceFreshness: false,
-        });
-    }
-}
-
-function isFiniteNumber(value: unknown): value is number {
-    return typeof value === 'number' && Number.isFinite(value);
-}

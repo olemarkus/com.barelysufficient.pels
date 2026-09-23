@@ -33,9 +33,9 @@ export function shouldDropEarly(params: {
     return !decision.isManaged;
   }
   // ui_picker: drop only when there's nothing to pick from. Defer the
-  // managed/unmanaged split to the late gate (after control-state parse) so
-  // managed devices with a malformed `onoff` stay reachable through the
-  // picker — otherwise a user could not toggle them back off.
+  // managed/unmanaged split to the late gate (after control-state parse),
+  // which is where `currentOn` is known. (A malformed `onoff` never gets this
+  // far: the device-read contract ignores that read before any parse.)
   return !decision.hasOracle || !decision.filterActive;
 }
 
@@ -56,8 +56,8 @@ export function shouldDropAfterControlState(params: {
   //     renders exactly once in the settings UI (the managed list), never twice.
   if (isObserveOnlyRoleClassKey(deviceClassKey)) return purpose === 'ui_picker';
   if (purpose !== 'ui_picker') return currentOn === undefined;
-  // Drop well-formed managed devices in the picker — they are already in the
-  // runtime snapshot. Keep managed devices whose `currentOn` is undefined so
-  // the user can still toggle them back off through the picker.
+  // Drop managed devices with a resolved `currentOn` in the picker — they are
+  // already in the runtime snapshot. One whose `currentOn` is undefined is not
+  // (the runtime gate above drops it), so the picker keeps it reachable.
   return decision.isManaged && currentOn !== undefined;
 }

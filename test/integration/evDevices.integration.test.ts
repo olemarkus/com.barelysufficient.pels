@@ -609,6 +609,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     );
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);
+    await heater.setCapabilityValue('meter_power', 100);
 
     const charger = new EaseeMockCharger({ loadW: 1200 });
     await charger.seedState('plugged_in_paused');

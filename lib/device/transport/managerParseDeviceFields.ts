@@ -35,7 +35,6 @@ import {
 import {
     buildTargets,
     resolveDeviceCapabilities,
-    shouldDropForEvPlugStateContract,
 } from './managerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
@@ -126,24 +125,18 @@ export function resolveDeviceCapabilityProfile(params: {
 }
 
 /**
- * The device's raw reported `thermostat_mode`, retained across a partial update.
+ * The device's raw reported `thermostat_mode`.
  *
  * Reported, not interpreted: the vocabulary that turns this into a direction is
- * the observer's (`resolveThermalDirection`). Retention is the same treatment
- * `applyBinaryControlObservation` gives the binary axis — a `device.update`
- * carries only the capabilities that changed, so an absent entry is silence and
- * the held value stands. The DECLARED capability list is what says the device
- * has a mode axis at all; a partial update trims `capabilitiesObj`, never that
- * list, and one that trimmed the list would be dropped by
- * `resolveCandidateCapabilities` long before reaching here.
+ * the observer's (`resolveThermalDirection`). A read that reaches the parse
+ * conformed to the device-read contract (`deviceReadContract.ts`), so a declared
+ * mode came with a string value; nothing is carried over from the previous
+ * entry. A blank string is no mode at all.
  */
-function readReportedThermostatMode(
-    overlay: DeviceCapabilityProfile['overlay'],
-    previousSnapshot: TransportDeviceSnapshot | undefined,
-): string | undefined {
+function readReportedThermostatMode(overlay: DeviceCapabilityProfile['overlay']): string | undefined {
     if (!overlay.capabilities.includes(THERMOSTAT_MODE_CAPABILITY_ID)) return undefined;
     const value = overlay.capabilityObj[THERMOSTAT_MODE_CAPABILITY_ID]?.value;
-    return isReportedThermostatMode(value) ? normalizeReportedThermostatMode(value) : previousSnapshot?.thermostatMode;
+    return isReportedThermostatMode(value) ? normalizeReportedThermostatMode(value) : undefined;
 }
 
 /**
@@ -207,18 +200,10 @@ function resolveDeviceControlBundle(params: {
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { logger, debugStructured, isPowerCapable } = deps;
     const evCharging = getEvCharging(overlay.capabilityObj);
+    // A declared plug state is a member of the Homey enum by the time a read
+    // reaches the parse: the read contract (`deviceReadContract.ts`) ignored any
+    // read — native or converted — whose state was missing or out of the enum.
     const evChargingState = getEvChargingState(overlay.capabilityObj);
-    if (shouldDropForEvPlugStateContract({
-        deviceClassKey,
-        deviceId,
-        deviceLabel,
-        capabilities: overlay.capabilities,
-        stateReportedInPayload: overlay.capabilityObj.evcharger_charging_state !== undefined,
-        reportedStateValue: overlay.capabilityObj.evcharger_charging_state?.value,
-        evChargingState,
-        retainedEvChargingState: previousSnapshot?.evChargingState,
-        debugStructured,
-    })) return null;
     const {
         resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState,
     }
@@ -308,7 +293,7 @@ export function assembleDeviceSnapshot(params: {
         debugStructured,
     });
     const temperature = resolveTemperatureObservation(currentTemperature, candidateTargets);
-    const thermostatMode = readReportedThermostatMode(overlay, previousSnapshot);
+    const thermostatMode = readReportedThermostatMode(overlay);
     const targets = temperature ? [temperature.target] : [];
     const control = resolveDeviceControlBundle({
         identity, deps, overlay, capsStatus, binaryCapabilityId,

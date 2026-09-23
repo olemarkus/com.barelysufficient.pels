@@ -66,10 +66,12 @@ const seedFlowHome = async (params: { withSolarDevice: boolean }) => {
   const heater = new MockDevice('heater', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
   await heater.setCapabilityValue('onoff', true);
   await heater.setCapabilityValue('measure_power', 2000);
+  await heater.setCapabilityValue('meter_power', 100);
   const devices = [heater];
   if (params.withSolarDevice) {
     const pv = new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel');
     await pv.setCapabilityValue('measure_power', GENERATION_W);
+    await pv.setCapabilityValue('meter_power', 100);
     devices.push(pv);
   }
   setMockDrivers({ d: new MockDriver('d', devices) });

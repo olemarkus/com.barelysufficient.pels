@@ -33,7 +33,7 @@ describe('isEvObserved', () => {
     // The predicate is EV-ness alone: presence is a parse-boundary guarantee, not
     // something consumers re-check. Every `evcharger` must expose
     // `evcharger_charging_state` (`resolveCandidateCapabilities`) and report a
-    // member of the Homey enum for it (`shouldDropForEvPlugStateContract`), or it
+    // member of the Homey enum for it (the device-read contract, `deviceReadContract.ts`), or it
     // is dropped rather than managed — so "EV charger with no plug-state" is not a
     // device that reaches a consumer. A fixture that omits it is simply not a
     // device the producer could have built.

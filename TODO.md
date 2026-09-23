@@ -1165,8 +1165,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       temperature but no device-level stamp yields no sample and learns nothing. Change: give
       `TemperatureObservation` an `observedAtMs`, set at the two producer seams that admit and
       update the facet (`resolveTemperatureObservation` and `updateTemperatureMeasurement`,
-      `lib/device/transport/temperatureObservation.ts`) plus the partial-refresh preservation path
-      beside them (`preserveTemperatureAcrossPartialDeviceUpdate`), then drop the
+      `lib/device/transport/temperatureObservation.ts`), then drop the
       `deviceObservedAtMs` parameter. Done when `resolveObjectiveObservedQuantity` takes the device
       and nothing else, and both branches read a stamp that belongs to the reading rather than to
       the device.

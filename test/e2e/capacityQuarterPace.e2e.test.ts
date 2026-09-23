@@ -62,6 +62,7 @@ describe('Belgian quarter safe pace (SDK-boundary e2e)', () => {
     const device = new MockDevice('heater', 'Water heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', HEATER_W);
+    await device.setCapabilityValue('meter_power', 100);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');

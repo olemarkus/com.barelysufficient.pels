@@ -27,6 +27,8 @@ const buildHeatpumpDevice = async (options?: {
     );
     await device.setCapabilityValue('onoff', options?.on ?? true);
     await device.setCapabilityValue('measure_power', options?.powerW ?? 2000);
+    await device.setCapabilityValue('meter_power', 100);
+    await device.setCapabilityValue('thermostat_mode', 'heat');
     await device.setCapabilityValue('target_temperature', options?.targetTemperature ?? 22);
     await device.setCapabilityValue('measure_temperature', options?.measureTemperature ?? 21);
     return device;
@@ -59,6 +61,7 @@ const buildHeatpumpApiDevice = (overrides?: Partial<{
     capabilitiesObj: {
         onoff: { id: 'onoff', value: overrides?.onoff ?? true },
         measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 2000 },
+        meter_power: { id: 'meter_power', value: 100 },
         target_temperature: {
             id: 'target_temperature',
             value: overrides?.targetTemperature ?? 22,

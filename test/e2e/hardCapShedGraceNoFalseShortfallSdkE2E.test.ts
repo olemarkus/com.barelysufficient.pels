@@ -111,6 +111,7 @@ describe('Hard-cap alert during a shed grace (SDK-boundary e2e)', () => {
     const heater = new MockDevice(DEVICE_ID, 'Heater', ['onoff', 'measure_power', 'meter_power'], 'heater');
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 2000);
+    await heater.setCapabilityValue('meter_power', 100);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     configureHome(DEVICE_ID);
     homePowerW = 4600;
@@ -169,6 +170,7 @@ describe('Hard-cap alert during a shed grace (SDK-boundary e2e)', () => {
     socket.setCapabilityMetadata('onoff', { setable: false });
     await socket.setCapabilityValue('onoff', true);
     await socket.setCapabilityValue('measure_power', 2000);
+    await socket.setCapabilityValue('meter_power', 100);
     setMockDrivers({ driverA: new MockDriver('driverA', [socket]) });
     configureHome('socket');
     // Under the soft limit first, so the socket is in the plan before the breach

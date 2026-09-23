@@ -1,3 +1,4 @@
+import { conformingRead } from '../helpers/deviceListRead';
 import { describe, it, expect, vi } from 'vitest';
 import { BatteryStateProducer } from '../../lib/device/batteryStateProducer';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
@@ -27,7 +28,7 @@ describe('BatteryStateProducer', () => {
     it('emits battery_state_observed with concrete numbers when a battery is present', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: 62, measure_power: 1200 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 62, measure_power: 1200 })]), { fullRefresh: true });
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith({
         component: 'devices',
@@ -41,17 +42,17 @@ describe('BatteryStateProducer', () => {
     it('carries the negative sign of a discharging battery', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: 40, measure_power: -1500 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 40, measure_power: -1500 })]), { fullRefresh: true });
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ batterySoc: 40, batteryPowerW: -1500 }));
     });
 
     it('sums power and means SoC across multiple batteries', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([
+      producer.observe(conformingRead([
         battery('b1', { measure_battery: 60, measure_power: 1000 }),
         battery('b2', { measure_battery: 80, measure_power: -400 }),
-      ], { fullRefresh: true });
+      ]), { fullRefresh: true });
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({
         batterySoc: 70, batteryPowerW: 600, batteryDeviceCount: 2,
       }));
@@ -62,14 +63,14 @@ describe('BatteryStateProducer', () => {
     it('emits nothing when a successful fetch contains no battery', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([nonBattery('ev')], { fullRefresh: true });
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when the device list is empty', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([], { fullRefresh: true });
+      producer.observe(conformingRead([]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
@@ -86,38 +87,38 @@ describe('BatteryStateProducer', () => {
           measure_power: { value: 1200 },
         } as HomeyDeviceLike['capabilitiesObj'],
       };
-      producer.observe([offline], { fullRefresh: true });
+      producer.observe(conformingRead([offline]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when the only battery reports an out-of-range SoC (150)', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: 150, measure_power: 800 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 150, measure_power: 800 })]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when a present battery has an unreadable power cap (no null field crosses out)', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: 62, measure_power: null })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 62, measure_power: null })]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when a present battery has an unreadable SoC cap', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: null, measure_power: 800 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: null, measure_power: 800 })]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('does NOT emit a fabricated "cleared" event when a present battery is later removed', () => {
       const emit = vi.fn();
       const producer = new BatteryStateProducer(emit);
-      producer.observe([battery('b1', { measure_battery: 62, measure_power: 1200 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 62, measure_power: 1200 })]), { fullRefresh: true });
       emit.mockClear();
       // Battery gone on a later full refresh — nothing observed, so nothing emitted.
-      producer.observe([nonBattery('ev')], { fullRefresh: true });
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
   });
@@ -127,71 +128,95 @@ describe('BatteryStateProducer', () => {
 
     it('marks a detected battery id as a battery on a non-empty full refresh', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: true });
       expect(producer.isBatteryDevice('b1')).toBe(true);
       expect(producer.isBatteryDevice('ev')).toBe(false);
     });
 
-    it('re-derives (prunes) the membership set on the next non-empty full refresh', () => {
-      const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([
-        battery('b1', { measure_battery: 60, measure_power: 100 }),
-        battery('b2', { measure_battery: 70, measure_power: 200 }),
-      ], { fullRefresh: true });
+    it('keeps a battery whose read was ignored: present and unread, never pruned or emitted', () => {
+      const emit = vi.fn();
+      const producer = new BatteryStateProducer(emit);
+      producer.observe(conformingRead([
+        battery('b1', { measure_battery: 62, measure_power: 1200 }),
+        battery('b2', { measure_battery: 50, measure_power: 0 }),
+      ]), { fullRefresh: true });
+      emit.mockClear();
+
+      producer.observe({
+        devices: [battery('b2', { measure_battery: 51, measure_power: 0 })],
+        ignoredIds: new Set(['b1']),
+      }, { fullRefresh: true });
+      expect(producer.isBatteryDevice('b1')).toBe(true);
+      // The aggregate is what this read carried: b1's last values are not re-read.
+      expect(emit).toHaveBeenCalledWith(expect.objectContaining({ batterySoc: 51, batteryDeviceCount: 1 }));
+
+      for (let read = 0; read < 5; read += 1) {
+        producer.observe({ devices: [], ignoredIds: new Set(['b1', 'b2']) }, { fullRefresh: true });
+      }
       expect(producer.isBatteryDevice('b1')).toBe(true);
       expect(producer.isBatteryDevice('b2')).toBe(true);
-      producer.observe([battery('b1', { measure_battery: 61, measure_power: 110 })], { fullRefresh: true });
+    });
+
+    it('re-derives (prunes) the membership set on the next non-empty full refresh', () => {
+      const producer = new BatteryStateProducer(noopEmit);
+      producer.observe(conformingRead([
+        battery('b1', { measure_battery: 60, measure_power: 100 }),
+        battery('b2', { measure_battery: 70, measure_power: 200 }),
+      ]), { fullRefresh: true });
+      expect(producer.isBatteryDevice('b1')).toBe(true);
+      expect(producer.isBatteryDevice('b2')).toBe(true);
+      producer.observe(conformingRead([battery('b1', { measure_battery: 61, measure_power: 110 })]), { fullRefresh: true });
       expect(producer.isBatteryDevice('b1')).toBe(true);
       expect(producer.isBatteryDevice('b2')).toBe(false);
     });
 
     it('a TARGETED refresh never grows the membership set', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: false });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: false });
       expect(producer.isBatteryDevice('b1')).toBe(false);
     });
 
     it('an EMPTY full read leaves the membership set intact (benign — re-read next full refresh)', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
-      producer.observe([], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: true });
+      producer.observe(conformingRead([]), { fullRefresh: true });
       expect(producer.isBatteryDevice('b1')).toBe(true);
     });
 
     it('rides out a providing-app blip: battery-free full refreshes only narrow after the grace', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: true });
       // The battery's providing app restarts: full refreshes omit it entirely.
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 1
       expect(producer.hasBatteryDevices()).toBe(true);
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 2
       expect(producer.hasBatteryDevices()).toBe(true);
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 3 — grace exhausted
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 3 — grace exhausted
       expect(producer.hasBatteryDevices()).toBe(false);
       expect(producer.isBatteryDevice('b1')).toBe(false);
     });
 
     it('a battery re-appearing on a full refresh resets the narrowing grace', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
-      producer.observe([battery('b1', { measure_battery: 61, measure_power: 90 })], { fullRefresh: true });
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1 again
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2 again
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: true });
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 1
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 2
+      producer.observe(conformingRead([battery('b1', { measure_battery: 61, measure_power: 90 })]), { fullRefresh: true });
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 1 again
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 2 again
       expect(producer.hasBatteryDevices()).toBe(true);
     });
 
     it('a realtime battery event during the grace resets the miss counter', () => {
       const producer = new BatteryStateProducer(noopEmit);
-      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
+      producer.observe(conformingRead([battery('b1', { measure_battery: 60, measure_power: 100 })]), { fullRefresh: true });
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 1
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 2
       producer.noteBatteryDevice(battery('b1', { measure_battery: 62, measure_power: 80 }));
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1 again
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2 again
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 1 again
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 2 again
       expect(producer.hasBatteryDevices()).toBe(true);
-      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 3 — narrows
+      producer.observe(conformingRead([nonBattery('ev')]), { fullRefresh: true }); // miss 3 — narrows
       expect(producer.hasBatteryDevices()).toBe(false);
     });
 
@@ -208,7 +233,7 @@ describe('BatteryStateProducer', () => {
           measure_battery: { value: 62 }, measure_power: { value: 1200 },
         } as HomeyDeviceLike['capabilitiesObj'],
       };
-      producer.observe([offline], { fullRefresh: true });
+      producer.observe(conformingRead([offline]), { fullRefresh: true });
       expect(producer.isBatteryDevice('b1')).toBe(true);
     });
   });

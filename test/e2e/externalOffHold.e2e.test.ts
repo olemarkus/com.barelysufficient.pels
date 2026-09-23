@@ -38,6 +38,7 @@ const buildHeater = async () => {
   device.setSettings({ load: LOAD_W });
   await device.setCapabilityValue('onoff', false);
   await device.setCapabilityValue('measure_power', 0);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 

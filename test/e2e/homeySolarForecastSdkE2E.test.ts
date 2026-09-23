@@ -60,6 +60,23 @@ const seedSolarActiveHome = (): void => {
   });
 };
 
+// Conforming device reads: every declared capability PELS models reports a
+// value, as a real Homey device does. An idle heater, and a PV array that is
+// producing nothing at the moment of the read.
+const buildHeater = async (): Promise<MockDevice> => {
+  const heater = new MockDevice('h', 'Heater', ['onoff', 'measure_power']);
+  await heater.setCapabilityValue('onoff', false);
+  await heater.setCapabilityValue('measure_power', 0);
+  return heater;
+};
+
+const buildSolar = async (): Promise<MockDevice> => {
+  const solar = new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel');
+  await solar.setCapabilityValue('measure_power', 0);
+  await solar.setCapabilityValue('meter_power', 100);
+  return solar;
+};
+
 type Structured = Record<string, unknown> & { event?: string };
 
 // Boot the real app with structured-log capture (emitted as JSON through app.log).
@@ -94,7 +111,7 @@ const selections = (events: Structured[]): Structured[] => (
 );
 
 describe('PV-forecast source selection (SDK-boundary e2e)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // 'Date' and 'performance' MUST be faked: the plan-rebuild scheduler reads
     // the monotonic clock and the rest of the app reads Date. Either left real
     // runs on real time against the fake timers and strands the rebuild.
@@ -111,10 +128,7 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
       json: async () => ({ hourly: { time: [], shortwave_radiation: [] } }),
     })));
     setMockDrivers({
-      d: new MockDriver('d', [
-        new MockDevice('h', 'Heater', ['onoff', 'measure_power']),
-        new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel'),
-      ]),
+      d: new MockDriver('d', [await buildHeater(), await buildSolar()]),
     });
     setEnergyPrices();
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -153,8 +167,8 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
   });
 
   it('tracks solar-forecast applicability from committed device snapshots', async () => {
-    const heater = new MockDevice('h', 'Heater', ['onoff', 'measure_power']);
-    const solar = new MockDevice('pv', 'Solar roof', ['measure_power', 'meter_power'], 'solarpanel');
+    const heater = await buildHeater();
+    const solar = await buildSolar();
     // Model a boot whose first full device read had no trustworthy devices.
     // With no known ids, the production targeted poll falls back to a full read.
     setMockDrivers({});
@@ -184,6 +198,8 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
     // later source read therefore falls back to learned without another API
     // request.
     const formerSolar = new MockDevice('pv', 'Former solar', ['onoff'], 'heater');
+    await formerSolar.setCapabilityValue('onoff', false);
+    await formerSolar.setCapabilityValue('measure_power', 0);
     setMockDrivers({ d: new MockDriver('d', [heater, formerSolar]) });
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     await drainUntil(() => selections(events).at(-1)?.sourceId === 'learned');

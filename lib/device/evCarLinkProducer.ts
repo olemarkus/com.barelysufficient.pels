@@ -28,6 +28,7 @@ import type { AssociatedCarSnapshot, EvChargingState } from '../../packages/cont
 import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceListRead } from './deviceListRead';
 import {
     collectAssociatedCarLevels,
     resolveAssociatedCarSnapshot,
@@ -35,10 +36,7 @@ import {
 } from './evCarLinkReadModel';
 import { resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
-import {
-    hasSessionPowerEvidence,
-    type EvCarLinkChargerView,
-} from './evCarLinkChargerView';
+import { hasSessionPowerEvidence, type EvCarLinkChargerView } from './evCarLinkChargerView';
 import {
     applyCarCapability,
     mergeCarObservation,
@@ -298,9 +296,9 @@ export class EvCarLinkProducer {
      * be pruned at all. A targeted read re-reads only known ids and never
      * narrows, because `fullRefresh` is false for it.
      */
-    observe(devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean; nowMs: number }): void {
+    observe(read: DeviceListRead, options: { fullRefresh: boolean; nowMs: number }): void {
         const seen = new Set<string>();
-        for (const device of devices) {
+        for (const device of read.devices) {
             if (this.ingestCar(device, options.nowMs)) seen.add(device.id);
         }
         // Collect first, then delete: mutating the map mid-iteration needs a
@@ -311,6 +309,9 @@ export class EvCarLinkProducer {
                 this.targetedMissesByCarId.delete(carId);
                 continue;
             }
+            // Listed, but its read was ignored: present and unread. Not a miss, and
+            // not evidence of anything — the car's observation stands as it was.
+            if (read.ignoredIds.has(carId)) continue;
             if (options.fullRefresh) {
                 removed.push(carId);
                 continue;

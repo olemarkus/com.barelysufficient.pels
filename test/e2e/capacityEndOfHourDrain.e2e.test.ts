@@ -72,6 +72,7 @@ const buildDevice = async (spec: DeviceSpec): Promise<MockDevice> => {
     const device = new MockDevice(spec.id, spec.name, ['onoff', 'measure_power', 'meter_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', spec.watts);
+    await device.setCapabilityValue('meter_power', 100);
     return device;
   }
   const device = new MockDevice(
@@ -84,6 +85,8 @@ const buildDevice = async (spec: DeviceSpec): Promise<MockDevice> => {
   await device.setCapabilityValue('target_temperature', ON_TARGET);
   await device.setCapabilityValue('measure_temperature', MEASURE_TEMP);
   await device.setCapabilityValue('measure_power', spec.watts);
+  await device.setCapabilityValue('meter_power', 100);
+  await device.setCapabilityValue('thermostat_mode', 'heat');
   return device;
 };
 
@@ -297,6 +300,7 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     const device = new MockDevice('solo', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 8000);
+    await device.setCapabilityValue('meter_power', 100);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -355,6 +359,7 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     const device = new MockDevice('solo', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 8000);
+    await device.setCapabilityValue('meter_power', 100);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     mockHomeyInstance.settings.set('power_source', 'flow');

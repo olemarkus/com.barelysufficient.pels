@@ -80,6 +80,7 @@ const buildOnOffDevice = async (deviceId: string, zoneId: string) => {
   device.setZone(zoneId);
   await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', 2000);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 
@@ -97,6 +98,7 @@ const buildHeaterDevice = async (deviceId: string, zoneId: string, setpoint: num
   await device.setCapabilityValue('target_temperature', setpoint);
   await device.setCapabilityValue('measure_temperature', setpoint - 1);
   await device.setCapabilityValue('measure_power', 2000);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 

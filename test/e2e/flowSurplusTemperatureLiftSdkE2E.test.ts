@@ -46,6 +46,8 @@ const buildTank = async (targetTemperature: number) => {
   );
   await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', ELEMENT_W);
+  await device.setCapabilityValue('meter_power', 100);
+  await device.setCapabilityValue('thermostat_mode', 'heat');
   await device.setCapabilityValue('target_temperature', targetTemperature);
   await device.setCapabilityValue('measure_temperature', 50);
   return device;

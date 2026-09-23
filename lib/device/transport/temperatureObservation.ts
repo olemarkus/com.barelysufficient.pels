@@ -3,7 +3,6 @@ import type {
   TemperatureObservation,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { HomeyDeviceLike } from '../../utils/types';
 
 export const TARGET_TEMPERATURE_CAPABILITY_ID = 'target_temperature';
 
@@ -66,73 +65,6 @@ export function updateTemperatureTarget(
     entry.id === TARGET_TEMPERATURE_CAPABILITY_ID ? target : entry
   ));
   return { changed: true, previousValue };
-}
-
-export function preserveTemperatureAcrossPartialDeviceUpdate(params: {
-  device: HomeyDeviceLike;
-  previous: TransportDeviceSnapshot;
-  parsed: TransportDeviceSnapshot;
-}): TransportDeviceSnapshot {
-  const { device, previous, parsed } = params;
-  const temperature = resolvePreservedTemperature(device, previous, parsed);
-  if (!temperature) return parsed;
-  return {
-    ...parsed,
-    deviceType: 'temperature',
-    targets: [
-      ...parsed.targets.filter((target) => target.id !== TARGET_TEMPERATURE_CAPABILITY_ID),
-      temperature.target,
-    ],
-    temperature,
-  };
-}
-
-function resolvePreservedTemperature(
-  device: HomeyDeviceLike,
-  previous: TransportDeviceSnapshot,
-  parsed: TransportDeviceSnapshot,
-): TemperatureObservation | undefined {
-  const previousTemperature = previous.temperature;
-  if (!previousTemperature || parsed.temperature) return undefined;
-  const capabilities = device.capabilities ?? [];
-  if (!hasTemperatureCapabilityPair(capabilities)) return undefined;
-  const capabilityObj = device.capabilitiesObj ?? {};
-  const measureEntry = capabilityObj.measure_temperature;
-  const targetEntry = capabilityObj.target_temperature;
-  const measureValue = resolvePartialValue(
-    measureEntry?.value,
-    measureEntry !== undefined,
-    previousTemperature.currentTemperature,
-  );
-  const targetValue = resolvePartialValue(
-    targetEntry?.value,
-    targetEntry !== undefined,
-    previousTemperature.target.value,
-  );
-  if (measureValue === undefined || targetValue === undefined) return undefined;
-  const target = {
-    ...previousTemperature.target,
-    ...(targetEntry?.units ? { unit: targetEntry.units } : {}),
-    value: targetValue,
-  };
-  return {
-    currentTemperature: measureValue,
-    target,
-  };
-}
-
-function hasTemperatureCapabilityPair(capabilities: readonly string[]): boolean {
-  return capabilities.includes('measure_temperature')
-    && capabilities.includes(TARGET_TEMPERATURE_CAPABILITY_ID);
-}
-
-function resolvePartialValue(
-  value: unknown,
-  wasReported: boolean,
-  fallback: number,
-): number | undefined {
-  const candidate = wasReported ? value : fallback;
-  return isFiniteNumber(candidate) ? candidate : undefined;
 }
 
 function isFiniteNumber(value: unknown): value is number {

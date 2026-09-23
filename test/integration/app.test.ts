@@ -213,6 +213,8 @@ describe('MyApp initialization', () => {
 
   it('initializes and creates device snapshot', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -234,6 +236,8 @@ describe('MyApp initialization', () => {
     // The projection-apply listener must run first so the live-plan pass triggered
     // by an event sees that event's freshly-merged observed value, not the prior one.
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     const app = createApp();
     await initApp(app);
@@ -260,6 +264,8 @@ describe('MyApp initialization', () => {
 
   it('does not persist target snapshot when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -370,6 +376,7 @@ describe('MyApp initialization', () => {
 
   it('emits realtime UI invalidation when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -445,6 +452,8 @@ describe('MyApp initialization', () => {
 
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -463,6 +472,8 @@ describe('MyApp initialization', () => {
 
   it('adopts device profiles while capacity scalar recovery is pending', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     const app = createApp();
     await initApp(app);
@@ -623,6 +634,8 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_mode flow card changes mode and persists to settings', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -648,6 +661,8 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_mode flow card throws if mode is empty', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -663,6 +678,8 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_limit flow card writes the capacity limit setting', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -683,6 +700,8 @@ describe('MyApp initialization', () => {
 
   it('set_daily_budget_kwh flow card updates daily budget settings', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -702,6 +721,8 @@ describe('MyApp initialization', () => {
 
   it('set_daily_budget_kwh flow card disables daily budget when set to 0', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -721,6 +742,8 @@ describe('MyApp initialization', () => {
 
   it('set_daily_budget_kwh flow card skips rebuild when unchanged', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -741,6 +764,8 @@ describe('MyApp initialization', () => {
 
   it('set_daily_budget_kwh flow card leaves reconciliation to the settings pipeline', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -771,6 +796,8 @@ describe('MyApp initialization', () => {
 
   it('set_daily_budget_kwh flow card rejects invalid values', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -794,6 +821,8 @@ describe('MyApp initialization', () => {
     // through (`extractLiveMeterPowerWatts`); this card is the only place that
     // ever disagreed.
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     mockHomeyInstance.settings.set('power_source', 'flow');
 
@@ -825,6 +854,8 @@ describe('MyApp initialization', () => {
     vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -853,6 +884,8 @@ describe('MyApp initialization', () => {
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -871,6 +904,8 @@ describe('MyApp initialization', () => {
 
   it('disable_device_capacity_control flow card disables capacity control', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -890,6 +925,8 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_limit flow card rejects invalid values', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -967,6 +1004,8 @@ describe('MyApp initialization', () => {
 
   it('emits power_updated when power samples arrive', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -997,6 +1036,8 @@ describe('MyApp initialization', () => {
 
   it('taps the co-sampled generation + SIGNED net power into the PV forecast recorder', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1015,6 +1056,8 @@ describe('MyApp initialization', () => {
 
   it('does not schedule convergence rebuilds for passive recent restore history alone', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1041,6 +1084,7 @@ describe('MyApp initialization', () => {
   it('still schedules convergence rebuilds for active overshoot', async () => {
     vi.useFakeTimers({ toFake: ['performance'] });
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await heater.setCapabilityValue('onoff', true);
     heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -1093,6 +1137,8 @@ describe('MyApp initialization', () => {
   // max-interval cadence even while the overshoot incident is open.
   it('does not schedule convergence rebuilds for an overshoot the plan cannot act on', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1119,6 +1165,8 @@ describe('MyApp initialization', () => {
 
   it('only clears startup stabilization when a power sample advances the tracked timestamp', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1141,6 +1189,8 @@ describe('MyApp initialization', () => {
 
   it('hydrates persisted last-controlled state before the startup-gated plan rebuild', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     heater.setActualCapabilityValue('onoff', false, {
       emitCapabilityEvent: false,
       emitDeviceUpdate: false,
@@ -1340,6 +1390,7 @@ describe('MyApp initialization', () => {
 
   it('records an external target drift as observed state without asking for a re-plan', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_power', 1000);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
     await heater.setCapabilityValue('onoff', true);
@@ -1584,6 +1635,8 @@ describe('MyApp initialization', () => {
 
   it('emits power_updated when the power tracker is replaced for the settings UI reset flow', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1620,6 +1673,8 @@ describe('MyApp initialization', () => {
 
   it('classifies a power_updated push from a latch-less tracker as not measured, never last run\'s blob', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1656,6 +1711,8 @@ describe('MyApp initialization', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1696,6 +1753,8 @@ describe('MyApp initialization', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2026-03-03T10:59:58.000Z'));
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1725,6 +1784,8 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1745,6 +1806,8 @@ describe('MyApp initialization', () => {
 
   it('triggers operating_mode_changed when mode changes', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1762,6 +1825,8 @@ describe('MyApp initialization', () => {
 
   it('operating_mode_changed trigger filters by selected mode', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1811,6 +1876,8 @@ describe('MyApp initialization', () => {
 
   it('does not apply device targets when operating_mode changes in dry run', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1833,6 +1900,8 @@ describe('MyApp initialization', () => {
 
   it('does not reapply mode target when device is already at target', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     await heater.setCapabilityValue('target_temperature', 20);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2092,6 +2161,8 @@ describe('MyApp initialization', () => {
 
   it('does not reapply targets when set_capacity_mode is invoked with the current mode (not dry-run)', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     await heater.setCapabilityValue('target_temperature', 19);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2107,9 +2178,9 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    // Simulate drift away from the target
-    await heater.setCapabilityValue('target_temperature', 21);
-
+    // The device already sits on the mode's target. (A device that has drifted
+    // off it is converged back by the executor whatever the trigger, so drift
+    // cannot tell a forced re-apply from ordinary convergence.)
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -2175,6 +2246,8 @@ describe('MyApp initialization', () => {
 
   it('keeps existing flow arguments working after a rename via mode aliases', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2204,6 +2277,8 @@ describe('MyApp initialization', () => {
 
   it('keeps flow arguments working when two modes swap names via aliases', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2346,6 +2421,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('drains the soft limit toward sustainable near hour end even when burst is higher', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2391,6 +2468,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('allows lower soft limit when budget is exhausted', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2427,6 +2506,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('returns sustainable rate at start of hour with full budget', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2463,6 +2544,8 @@ describe('computeDynamicSoftLimit', () => {
     // Test: Halfway through the hour, if we've used less than expected,
     // the burst rate should be allowed to exceed sustainable rate.
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2501,6 +2584,8 @@ describe('computeDynamicSoftLimit', () => {
     // Test: At :52 (8 minutes left), the exponential drain ceiling is still far
     // above burst, so the budget-driven burst rate governs (no early cliff).
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2539,6 +2624,8 @@ describe('computeDynamicSoftLimit', () => {
   it('drains close to the sustainable rate at :59 to protect the next hour', async () => {
     // Test: At :59 (1 minute left), the drain ceiling pulls the pace down near sustainable
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2627,6 +2714,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('backfills managed devices from price optimization settings on first run', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2644,6 +2733,7 @@ describe('computeDynamicSoftLimit', () => {
 
   it('backfills capacity control when managed is true and no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await heater.setCapabilityValue('onoff', true);
     heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2660,6 +2750,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('does not enable capacity control when price optimization is enabled', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2678,6 +2770,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('does not override explicit unmanaged devices during migration', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2696,6 +2790,8 @@ describe('computeDynamicSoftLimit', () => {
 
   it('migration is idempotent - running twice produces same result', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -2724,6 +2820,7 @@ describe('computeDynamicSoftLimit', () => {
 
   it('backfills managed devices from capacity control settings', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await heater.setCapabilityValue('onoff', true);
     heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2765,6 +2862,8 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
@@ -2814,6 +2913,8 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
@@ -2840,6 +2941,8 @@ describe('periodic snapshot refresh scheduling', () => {
     const pollCountFor = async (lastDataAt: string): Promise<number> => {
       vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
       const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+      await heater.setCapabilityValue('onoff', true);
+      await heater.setCapabilityValue('measure_power', 1000);
       setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
       const app = createApp();
@@ -2901,6 +3004,8 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.setSystemTime(new Date('2026-03-21T10:56:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
@@ -2920,6 +3025,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('skips implicit Homey Energy sample recording when refresh opts out', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -2935,6 +3042,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('records implicit Homey Energy sample during refresh by default', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -3719,6 +3828,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('clears registered timers and flushes pending power tracker persistence on uninit', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
@@ -3751,6 +3862,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('keeps the final Main actuator fenced after membership teardown', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     const app = createApp();
     await initApp(app);

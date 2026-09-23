@@ -43,6 +43,7 @@ const buildPump = async (on: boolean) => {
   device.setSettings({ load: LOAD_W });
   await device.setCapabilityValue('onoff', on);
   await device.setCapabilityValue('measure_power', 0);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 

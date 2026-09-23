@@ -69,6 +69,11 @@ describe('Expected power flow card', () => {
     const heater = new MockDevice('dev-heater', 'Heater', ['target_temperature']);
     const battery = new MockDevice('dev-batt', 'Home Battery', ['measure_battery', 'measure_power'], 'battery');
     const solar = new MockDevice('dev-pv', 'Solar Roof', ['measure_power', 'meter_power'], 'solarpanel');
+    await heater.setCapabilityValue('measure_power', 0);
+    await battery.setCapabilityValue('measure_battery', 80);
+    await battery.setCapabilityValue('measure_power', 0);
+    await solar.setCapabilityValue('measure_power', 0);
+    await solar.setCapabilityValue('meter_power', 100);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [heater, battery, solar]) });
     // The user never opts the battery/PV into managed — they ride the snapshot purely
@@ -101,6 +106,7 @@ describe('Expected power flow card', () => {
   it('keeps the manual expected power when a real measurement arrives', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
@@ -127,6 +133,7 @@ describe('Expected power flow card', () => {
   it('does not rewrite override when requested expected power is unchanged', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
     const app = createApp();
@@ -167,8 +174,10 @@ describe('Expected power flow card', () => {
 
   it('rejects invalid payloads and stepped-load devices', async () => {
     const steppedDevice = new MockDevice('dev-step', 'Stepped Heater', ['onoff', 'measure_power']);
+    await steppedDevice.setCapabilityValue('onoff', true);
     await steppedDevice.setCapabilityValue('measure_power', 1000);
     const plainDevice = new MockDevice('dev-plain', 'Plain Heater', ['onoff', 'measure_power']);
+    await plainDevice.setCapabilityValue('onoff', true);
     await plainDevice.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [steppedDevice, plainDevice]) });
@@ -202,6 +211,7 @@ describe('Expected power flow card', () => {
 
   it('rejects expected-power overrides for snapshot-only stepped-load devices', async () => {
     const device = new MockDevice('dev-target-power', 'Target Power Heater', ['onoff', 'measure_power']);
+    await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
@@ -233,6 +243,7 @@ describe('Expected power flow card', () => {
     const device = new MockDevice('dev-3', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     device.setSettings({ load: 700 });
     await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 

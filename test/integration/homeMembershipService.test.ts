@@ -274,15 +274,16 @@ describe('post-refresh recompute through the transport seam', () => {
     return { transport, service: wiring.service, teardown: wiring.teardown };
   };
 
-  const addZonedHeater = (zoneId: string): MockDevice => {
+  const addZonedHeater = async (zoneId: string): Promise<MockDevice> => {
     const device = new MockDevice('dev1', 'Heater', ['target_temperature']);
+    await device.setCapabilityValue('measure_power', 0);
     device.setZone(zoneId);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     return device;
   };
 
   it('the FIRST refresh resolves zone membership once the detached tree fetch commits', async () => {
-    const device = addZonedHeater('z2');
+    const device = await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -314,7 +315,7 @@ describe('post-refresh recompute through the transport seam', () => {
   });
 
   it('the production wiring joins the RAW transport snapshot, never the decorated ctx path', async () => {
-    addZonedHeater('z2');
+    await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -358,7 +359,7 @@ describe('post-refresh recompute through the transport seam', () => {
   });
 
   it('a membership change firing before the plan service is wired warns and skips the rebuild, without throwing', async () => {
-    addZonedHeater('z2');
+    await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -408,7 +409,7 @@ describe('post-refresh recompute through the transport seam', () => {
   });
 
   it('a realtime device.update that moves the device across zones recomputes membership immediately', async () => {
-    const device = addZonedHeater('z2');
+    const device = await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -438,7 +439,7 @@ describe('post-refresh recompute through the transport seam', () => {
   });
 
   it('teardown detaches all three triggers: refresh dispatch, tree commit, and realtime zone move', async () => {
-    const device = addZonedHeater('z2');
+    const device = await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -466,7 +467,7 @@ describe('post-refresh recompute through the transport seam', () => {
   });
 
   it('a throwing recompute is contained + logged; the snapshot pipeline and detached chain are unharmed', async () => {
-    const device = addZonedHeater('z2');
+    const device = await addZonedHeater('z2');
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],

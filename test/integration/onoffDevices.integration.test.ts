@@ -24,6 +24,7 @@ const buildOnOffDevice = async (options?: { id?: string; name?: string; on?: boo
   );
   await device.setCapabilityValue('onoff', options?.on ?? true);
   await device.setCapabilityValue('measure_power', options?.powerW ?? 1200);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 
@@ -38,20 +39,25 @@ const buildOnOffApiDevice = (overrides?: Partial<{
   settings: Record<string, unknown>;
   energyObj: Record<string, unknown> | null;
   energy: Record<string, unknown> | null;
-}>) => ({
-  id: overrides?.id ?? 'device-a',
-  name: overrides?.name ?? 'On/Off Socket',
-  class: overrides?.class ?? 'socket',
-  virtualClass: overrides?.virtualClass ?? 'appliance',
-  capabilities: overrides?.capabilities ?? ['onoff', 'measure_power', 'meter_power', 'rms_voltage', 'rms_current'],
-  capabilitiesObj: {
-    onoff: { id: 'onoff', value: overrides?.onoff ?? true },
-    measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 0 },
-  },
-  settings: overrides?.settings ?? {},
-  energyObj: overrides?.energyObj,
-  energy: overrides?.energy,
-});
+}>) => {
+  const capabilities = overrides?.capabilities ?? ['onoff', 'measure_power', 'meter_power', 'rms_voltage', 'rms_current'];
+  return {
+    id: overrides?.id ?? 'device-a',
+    name: overrides?.name ?? 'On/Off Socket',
+    class: overrides?.class ?? 'socket',
+    virtualClass: overrides?.virtualClass ?? 'appliance',
+    capabilities,
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: overrides?.onoff ?? true },
+      measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 0 },
+      // A declared meter reports its cumulative kWh, as a real Homey device does.
+      ...(capabilities.includes('meter_power') ? { meter_power: { id: 'meter_power', value: 100 } } : {}),
+    },
+    settings: overrides?.settings ?? {},
+    energyObj: overrides?.energyObj,
+    energy: overrides?.energy,
+  };
+};
 
 describe('On/off device integration', () => {
   beforeEach(() => {

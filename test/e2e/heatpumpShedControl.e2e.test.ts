@@ -31,6 +31,8 @@ const buildHeatpumpDevice = async (targetTemperature: number, powerW: number) =>
   );
   await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', powerW);
+  await device.setCapabilityValue('meter_power', 100);
+  await device.setCapabilityValue('thermostat_mode', 'heat');
   await device.setCapabilityValue('target_temperature', targetTemperature);
   await device.setCapabilityValue('measure_temperature', 21);
   return device;
@@ -294,6 +296,8 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
         measure_power: { id: 'measure_power', value: 2000 },
         measure_temperature: { id: 'measure_temperature', value: 21 },
         target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        meter_power: { id: 'meter_power', value: 100 },
+        thermostat_mode: { id: 'thermostat_mode', value: 'heat' },
       },
     });
     await vi.advanceTimersByTimeAsync(70_000);

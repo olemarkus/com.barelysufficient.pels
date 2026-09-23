@@ -13,11 +13,17 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
+import {
+    partitionConformingDeviceReads,
+    withIgnoredReadEntries,
+    withIgnoredReadRawDevices,
+} from './ignoredDeviceReads';
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { DeviceListRead } from '../deviceListRead';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
 import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
@@ -109,11 +115,11 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
  */
 function observeEvCarLinkAndResubscribe(
     ctx: TransportContext,
-    effectiveList: HomeyDeviceLike[],
+    read: DeviceListRead,
     fetchSource: DeviceFetchSource,
     snapshot: readonly TargetDeviceSnapshot[],
 ): void {
-    ctx.observationProducers.evCarLink.observe(effectiveList, {
+    ctx.observationProducers.evCarLink.observe(read, {
         fullRefresh: fetchSource === 'raw_manager_devices',
         nowMs: Date.now(),
     });
@@ -125,18 +131,18 @@ function observeEvCarLinkAndResubscribe(
 
 function observeBatteryStateFromList(
     ctx: TransportContext,
-    effectiveList: HomeyDeviceLike[],
+    read: DeviceListRead,
     fetchSource: DeviceFetchSource,
 ): HomeyDeviceLike[] {
     const fullRefresh = fetchSource === 'raw_manager_devices';
-    ctx.observationProducers.battery.observe(effectiveList, { fullRefresh });
-    ctx.observationProducers.solar.observe(effectiveList, { fullRefresh });
+    ctx.observationProducers.battery.observe(read, { fullRefresh });
+    ctx.observationProducers.solar.observe(read, { fullRefresh });
     // The EV car-link probe is deliberately NOT observed here — it runs after the
     // snapshot commit (see `refreshSnapshot`), because it resolves charger state
     // from the committed snapshot. Observing it here as well would give it one
     // pass against the PREVIOUS charger state, which can emit and persist a false
     // self-stop on the very refresh where the dwell expires.
-    return effectiveList;
+    return read.devices;
 }
 
 /**
@@ -581,6 +587,26 @@ async function resolveLivePowerForRefresh(
     };
 }
 
+// Carry the observations the realtime path made since the last refresh over a
+// read that may be older than them, then settle binary-control evidence
+// against what the refresh saw.
+function reconcileObservationsWithRefresh(
+    ctx: TransportContext,
+    previousSnapshot: TransportDeviceSnapshot[],
+    presentSnapshot: TransportDeviceSnapshot[],
+    effectiveList: HomeyDeviceLike[],
+): void {
+    mergeFresherCapabilityObservations({
+        state: ctx.observationState,
+        previousSnapshot,
+        nextSnapshot: presentSnapshot,
+        devices: effectiveList,
+        logger: ctx.logger,
+        debugStructured: ctx.debugStructured,
+    });
+    reconcileBinarySettleEvidenceAfterSnapshotRefresh(ctx, presentSnapshot, effectiveList);
+}
+
 export async function refreshSnapshot(
     ctx: TransportContext,
     options: SnapshotRefreshOptions,
@@ -598,21 +624,21 @@ export async function refreshSnapshot(
             options.includeLivePower !== false,
             options.mainMeterSelection,
         );
-        const effectiveList = observeBatteryStateFromList(
+        // The read contract, before anything reads a payload: a device whose read
+        // does not conform is ignored — its previous snapshot entry and raw entry
+        // stand, none of its values reach a producer, the parse or tracking, and
+        // the producers see it as present but unread.
+        const read = partitionConformingDeviceReads(
             ctx,
             list.map((device) => ctx.applyDeviceDriverOverride(device)),
-            fetchSource,
         );
-        const presentSnapshot = parseSnapshotDeviceList(ctx, effectiveList, livePowerByDeviceId);
-        mergeFresherCapabilityObservations({
-            state: ctx.observationState,
+        const effectiveList = observeBatteryStateFromList(ctx, read, fetchSource);
+        const presentSnapshot = withIgnoredReadEntries(
+            parseSnapshotDeviceList(ctx, effectiveList, livePowerByDeviceId),
             previousSnapshot,
-            nextSnapshot: presentSnapshot,
-            devices: effectiveList,
-            logger: ctx.logger,
-            debugStructured: ctx.debugStructured,
-        });
-        reconcileBinarySettleEvidenceAfterSnapshotRefresh(ctx, presentSnapshot, effectiveList);
+            read.ignoredIds,
+        );
+        reconcileObservationsWithRefresh(ctx, previousSnapshot, presentSnapshot, effectiveList);
         // `fetchSource` resolves whether this committed read is a targeted
         // overlay or a full read — a targeted refresh that fell back to full
         // (every id failed) reports `raw_manager_devices`, so it is treated as
@@ -631,11 +657,11 @@ export async function refreshSnapshot(
         const committed = commitRefreshedSnapshot(ctx, {
             snapshot,
             previousSnapshot,
-            rawWasEmpty: effectiveList.length === 0,
+            rawWasEmpty: list.length === 0,
             nowMs: start,
         });
         if (!committed) return homePowerSample;
-        adoptCommittedDeviceList(ctx, effectiveList, fetchSource, snapshot);
+        adoptCommittedDeviceList(ctx, withIgnoredReadRawDevices(ctx, read), fetchSource, snapshot);
         // AFTER the commit, unlike the battery/solar producers above: the EV
         // car-link probe resolves charger state by reading the committed
         // snapshot, so running it pre-parse would pair a car transition read in
@@ -644,7 +670,7 @@ export async function refreshSnapshot(
         // coarse fetch-only cadence, outside the coincidence window entirely.
         // Class `car` devices are dropped by parse, so the probe still reads them
         // from the raw list.
-        observeEvCarLinkAndResubscribe(ctx, effectiveList, fetchSource, snapshot);
+        observeEvCarLinkAndResubscribe(ctx, read, fetchSource, snapshot);
         recordSnapshotRefreshObservations({
             state: ctx.observationState,
             snapshot,

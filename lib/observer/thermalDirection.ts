@@ -9,8 +9,8 @@
  * more.
  *
  * Same division of labour as `resolveCurrentOn` next door: the transport reports
- * the raw observation (`thermostatMode`) and retains it across a partial update,
- * and this module owns the vocabulary that turns it into truth. Nothing
+ * the raw observation (`thermostatMode`, from the device's last conforming
+ * read), and this module owns the vocabulary that turns it into truth. Nothing
  * downstream re-derives a direction from a capability value.
  */
 import type { ThermalDirection, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';

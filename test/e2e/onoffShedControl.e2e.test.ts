@@ -28,6 +28,7 @@ const buildOnOffDevice = async (powerW: number) => {
   );
   await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', powerW);
+  await device.setCapabilityValue('meter_power', 100);
   return device;
 };
 

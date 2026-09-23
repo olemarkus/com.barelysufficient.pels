@@ -150,8 +150,8 @@ the problem, not the safety net.
 - **A setpoint policy has a DIRECTION, and it is the device's, not the policy's.**
   "Raise = more load" holds for a water heater and a panel radiator and is exactly
   backwards for a reversible unit running in cooling. The transport reports the
-  device's raw `thermostat_mode` and retains it across a partial update, exactly
-  as it does `evChargingState`. A live capability event for the mode updates it too
+  device's raw `thermostat_mode` from every conforming read (a read that does not
+  conform is ignored whole, `lib/device/transport/deviceReadContract.ts`). A live capability event for the mode updates it too
   (`lib/device/transport/thermostatModeRealtime.ts`) and is published as a control
   change, but it is not freshness evidence; the observer owns the vocabulary that turns it
   into a `ThermalDirection` (`resolveThermalDirection`,

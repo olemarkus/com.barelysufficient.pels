@@ -145,10 +145,10 @@ started.
 plug-state axis, and PELS requires it of every `evcharger`
 (`managerNativeEv.resolveCandidateCapabilities`, ahead of both control-axis
 bypasses) — `target_power` / stepped-load is the amp/step axis and does not
-substitute for it. `evcharger_charging_state` is a closed Homey enum, so a device
-that claims the capability and reports outside it does not implement the
-contract, and the producer DROPS it
-(`managerParse.shouldDropForEvPlugStateContract`). Consumers therefore never see
+substitute for it. `evcharger_charging_state` is a closed Homey enum, so a read
+of a device that claims the capability and reports outside it does not conform,
+and the device-read contract IGNORES it
+(`lib/device/transport/deviceReadContract.ts`). Consumers therefore never see
 an EV device with an unreadable plug-state, `evChargingState` is REQUIRED on the
 narrowed shape (`isEvObserved` tests EV-ness alone), and no layer needs a policy
 for absence.
@@ -277,20 +277,19 @@ This applies only to Zaptec models that do NOT publish both official EV capabili
 publishes `evcharger_charging_state` itself, `applyNativeEvWiringOverlay` defers to it and the
 vendor owns the classification.
 
-Two absences are distinguished at that gate, and the distinction is load-bearing:
-a payload that REPORTS the capability with a non-enum value is a violation (drop,
-even if an older valid value is retained — keeping it would strand a stale
-plug-state), while a payload that OMITS the capability is an ordinary partial
-`device.update` (retain the last observation; drop only if there has never been
-one). Getting this wrong evicts healthy chargers on every partial update.
+The state is checked by the device-read contract (`lib/device/transport/deviceReadContract.ts`,
+owner ruling 2026-09-23), after the Zaptec conversion for a converted charger and as reported for
+a native one: a read whose plug state is missing or not a member of the enum is IGNORED whole. The
+charger keeps the entry its last conforming read gave it — never a partial merge of the new
+payload with that entry, and never a removal on a read that did not conform. A charger PELS has
+never read conformingly is not in the snapshot until it does.
 
-Blocking such a charger instead of dropping it was the earlier design, and it was
-a one-way door: shed selection does not consult commandability
-(`lib/plan/shedding/candidateBuilders.ts` gates on writability and observed draw)
-while both restore paths do, so PELS could turn the charger off and never turn it
-back on — parked `inactive`, which also pauses its starvation clock, leaving the
-owner no card, no "Let it run now", and no diagnostics entry. A dropped device is
-never shed in the first place, so the door never opens.
+Blocking such a charger instead was the design before the contract, and it was a one-way door:
+shed selection does not consult commandability (`lib/plan/shedding/candidateBuilders.ts` gates on
+writability and observed draw) while both restore paths do, so PELS could turn the charger off and
+never turn it back on — parked `inactive`, which also pauses its starvation clock, leaving the
+owner no card, no "Let it run now", and no diagnostics entry. Ignoring the read opens no such door:
+the charger's standing entry is one PELS already decided on.
 
 The control axis is what varies, not the state axis: an `evcharger` may be driven
 through `target_power` or a stepped-load profile and never expose

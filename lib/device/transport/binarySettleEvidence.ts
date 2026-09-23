@@ -286,14 +286,12 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
     device: HomeyDeviceLike;
     snapshot: TransportDeviceSnapshot | null;
     previousSnapshot: TransportDeviceSnapshot | undefined;
-    skipInvalidControlPayload?: boolean;
 }): void {
     const {
         deviceId,
         device,
         snapshot,
         previousSnapshot,
-        skipInvalidControlPayload = false,
     } = params;
     if (!snapshot) {
         if (previousSnapshot) {
@@ -312,7 +310,6 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         clearBinarySettleEvidence(ctx, deviceId);
         return;
     }
-    if (skipInvalidControlPayload) return;
     const payload = resolveBinaryControlPayload(device, snapshot, previousSnapshot);
     if (!payload.present) {
         applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
@@ -363,27 +360,6 @@ function isOlderEvCommandObservation(
         && payload.observedAtMs !== undefined
         && previousSnapshot?.evChargingObservedAtMs !== undefined
         && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs;
-}
-
-export function clearInvalidBinarySettleEvidenceFromDeviceUpdate(
-    ctx: TransportContext,
-    deviceId: string,
-    device: HomeyDeviceLike,
-    previousSnapshot: TransportDeviceSnapshot | undefined,
-): { device: HomeyDeviceLike; hadInvalidBinaryControlPayload: boolean } {
-    if (!previousSnapshot) return { device, hadInvalidBinaryControlPayload: false };
-    const payload = resolveBinaryControlPayload(device, previousSnapshot, previousSnapshot);
-    if (!payload.present || typeof payload.value === 'boolean') {
-        return { device, hadInvalidBinaryControlPayload: false };
-    }
-    clearBinarySettleEvidenceForInvalidControlPayload(ctx, {
-        deviceId,
-        deviceName: previousSnapshot.name,
-        capabilityId: payload.capabilityId,
-        source: 'device_update',
-        value: payload.value,
-    });
-    return { device, hadInvalidBinaryControlPayload: true };
 }
 
 export function applyBinaryObservationToSnapshot(

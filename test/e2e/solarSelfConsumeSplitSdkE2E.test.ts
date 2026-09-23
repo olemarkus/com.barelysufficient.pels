@@ -86,6 +86,7 @@ const buildEv = async (): Promise<MockDevice> => {
   const ev = new MockDevice('ev', 'EV charger', ['onoff', 'measure_power', 'meter_power'], 'socket');
   await ev.setCapabilityValue('onoff', true);
   await ev.setCapabilityValue('measure_power', EV_DRAW_W);
+  await ev.setCapabilityValue('meter_power', 100);
   return ev;
 };
 

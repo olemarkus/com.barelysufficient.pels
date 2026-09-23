@@ -171,9 +171,10 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   });
 
   it('a failed fetch leaves the cached tree AND the device snapshot untouched', async () => {
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [new MockDevice('dev1', 'Heater', ['target_temperature', 'onoff'])]),
-    });
+    const heater = new MockDevice('dev1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
     const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);

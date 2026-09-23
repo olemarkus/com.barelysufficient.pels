@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceListRead } from './deviceListRead';
 import { extractBatteryState, isHomeBatteryDevice } from './managerEnergy';
 
 /**
@@ -105,11 +106,15 @@ export class BatteryStateProducer {
      * `fullRefresh` (when the list is non-empty) re-derives the battery-id set so the
      * managed/controllable resolution knows which devices are batteries — a targeted
      * (by-known-id) refresh re-reads the SAME known ids and must not narrow the set.
+     * A battery whose read was ignored is present but unread: it stays a member and
+     * contributes nothing to the aggregate.
      */
-    observe(devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean }): void {
+    observe(read: DeviceListRead, options: { fullRefresh: boolean }): void {
+        const { devices, ignoredIds } = read;
         const { batterySoc, batteryPowerW, batteryDeviceCount, batteryDeviceIds } = extractBatteryState(devices);
-        if (options.fullRefresh && devices.length > 0) {
-            this.applyFullRefreshMembership(batteryDeviceIds);
+        if (options.fullRefresh && (devices.length > 0 || ignoredIds.size > 0)) {
+            const unreadMembers = [...this.batteryDeviceIds].filter((deviceId) => ignoredIds.has(deviceId));
+            this.applyFullRefreshMembership([...batteryDeviceIds, ...unreadMembers]);
         }
         // Emit only with concrete finite numbers for BOTH fields; otherwise drop so
         // nothing nullable crosses out of the device layer.

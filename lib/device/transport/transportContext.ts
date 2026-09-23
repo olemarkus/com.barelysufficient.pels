@@ -1,4 +1,5 @@
 import type { RetainedPowerPersistence } from '../retainedPowerPersistence';
+import type { DeviceListRead } from '../deviceListRead';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
 /**
  * Shared runtime context handed to the homey-free transport collaborator
@@ -47,12 +48,12 @@ import type {
  * classes (which would pull device-peer dependencies in).
  */
 export type TransportRoleProducer = {
-  observe: (devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean }) => void;
+  observe: (read: DeviceListRead, options: { fullRefresh: boolean }) => void;
   noteBatteryDevice: (device: HomeyDeviceLike) => void;
 };
 
 export type TransportSolarRoleProducer = {
-  observe: (devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean }) => void;
+  observe: (read: DeviceListRead, options: { fullRefresh: boolean }) => void;
   noteSolarDevice: (device: HomeyDeviceLike) => void;
 };
 
@@ -64,7 +65,7 @@ export type TransportSolarRoleProducer = {
  */
 export type TransportEvCarLinkProducer = {
   observe: (
-    devices: readonly HomeyDeviceLike[],
+    read: DeviceListRead,
     options: { fullRefresh: boolean; nowMs: number },
   ) => void;
   noteDeviceUpdate: (device: HomeyDeviceLike, nowMs: number) => void;

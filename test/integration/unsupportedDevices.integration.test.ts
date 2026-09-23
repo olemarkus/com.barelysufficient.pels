@@ -126,16 +126,12 @@ describe('Unsupported device handling', () => {
         // A device whose meter is momentarily silent must NOT reach
         // `disableUnsupportedDevices`' persisted `managed: false` / `controllable: false`
         // write: a transient Homey read failure would otherwise permanently un-manage
-        // the device and the owner would have to re-enable it by hand
-        // (AGENTS.md: "transient external failures get an abandon-grace window, never a
-        // destructive reset of persisted state").
+        // the device and the owner would have to re-enable it by hand.
         //
-        // It does not, because `powerCapable` is STRUCTURAL — it asks whether PELS
-        // can support the device at all, not whether it reported a number this
-        // cycle. The live question is asked separately, when the plan input is
-        // built. This test pins the separation: wire the live gate into
-        // `powerCapable` and a home battery is permanently unmanaged on its first
-        // discharge (negative watts read as "no reading").
+        // A read that advertises `measure_power` without a value breaks the
+        // device-read contract, so it is ignored outright: the entry the last
+        // conforming read produced stands, support included, and nothing about
+        // the device is re-decided from the partial payload.
         setMockDrivers({});
         mockHomeyInstance.settings.set('managed_devices', { 'vent-1': true });
         mockHomeyInstance.settings.set('controllable_devices', { 'vent-1': true });
@@ -143,8 +139,14 @@ describe('Unsupported device handling', () => {
         const app = createApp();
         await app.onInit();
 
-        // `measure_power` is advertised but carries no value this cycle.
-        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+        const getSpy = vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'vent-1': buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
+        });
+        await app.refreshTargetDevicesSnapshot();
+        expect(getLatestTargetSnapshotForTests().find((device) => device.id === 'vent-1')?.powerCapable)
+            .toBe(true);
+
+        getSpy.mockResolvedValue({
             'vent-1': {
                 ...buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
                 capabilitiesObj: {
@@ -154,10 +156,25 @@ describe('Unsupported device handling', () => {
                 },
             },
         });
-
         await app.refreshTargetDevicesSnapshot();
 
         // Still supported, still in the snapshot, still configurable.
+        expect(getLatestTargetSnapshotForTests().find((device) => device.id === 'vent-1')?.powerCapable)
+            .toBe(true);
+
+        // A conforming read with no usable reading (negative watts: what a home
+        // battery reports while discharging) is parsed, and support is
+        // structural: it does not follow the live reading.
+        getSpy.mockResolvedValue({
+            'vent-1': {
+                ...buildVentilationApiDevice({ capabilities: ['onoff', 'measure_power'] }),
+                capabilitiesObj: {
+                    onoff: { id: 'onoff', value: true },
+                    measure_power: { id: 'measure_power', value: -2000 },
+                },
+            },
+        });
+        await app.refreshTargetDevicesSnapshot();
         expect(getLatestTargetSnapshotForTests().find((device) => device.id === 'vent-1')?.powerCapable)
             .toBe(true);
 

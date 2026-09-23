@@ -1,10 +1,12 @@
 // SDK-boundary e2e for the onoff pull-gap case.
 //
 // The test keeps PELS internals real. The Homey API pull path is stubbed with a
-// device whose onoff capability is advertised but whose value is missing, the
-// realtime push enters through the real socket live-feed adapter, and the final
-// assertion is the SDK write PELS emits under capacity pressure after trusted
-// realtime evidence survives the next pull snapshot.
+// device whose onoff capability is advertised but whose value is missing — a
+// read that breaks the device-read contract and is ignored outright
+// (`lib/device/transport/deviceReadContract.ts`). The realtime push enters
+// through the real socket live-feed adapter, and the final assertion is the SDK
+// write PELS emits under capacity pressure after trusted realtime evidence
+// survives the ignored pull.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type FakeSocketListener = (...args: unknown[]) => void;
@@ -144,13 +146,13 @@ const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 const onoffCap = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 const deviceListPullPath = 'manager/devices/device';
 
-const buildPullDeviceWithMissingOnoff = () => ({
+const buildPullDevice = (onoff: boolean | undefined) => ({
   id: DEVICE_ID,
   name: 'On/Off Socket',
   class: 'socket',
   capabilities: ['onoff', 'measure_power'],
   capabilitiesObj: {
-    onoff: { id: 'onoff' },
+    onoff: onoff === undefined ? { id: 'onoff' } : { id: 'onoff', value: onoff, lastUpdated: FRESH_ISO },
     measure_power: { id: 'measure_power', value: 2000, lastUpdated: FRESH_ISO },
   },
   settings: {},
@@ -168,17 +170,17 @@ const configureCapacity = (limitKw: number) => {
   mockHomeyInstance.settings.set('controllable_devices', { [DEVICE_ID]: true });
 };
 
-const stubSdk = (params: { totalW: () => number }) => {
+const stubSdk = (totalW: () => number, pullOnoff: () => boolean | undefined = () => undefined) => {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   const getSpy = vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
-      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: params.totalW() } }] };
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: totalW() } }] };
     }
     if (path === deviceListPullPath) {
-      return { [DEVICE_ID]: buildPullDeviceWithMissingOnoff() };
+      return { [DEVICE_ID]: buildPullDevice(pullOnoff()) };
     }
     if (path === `manager/devices/device/${DEVICE_ID}`) {
-      return buildPullDeviceWithMissingOnoff();
+      return buildPullDevice(pullOnoff());
     }
     return originalGet(path);
   });
@@ -223,12 +225,14 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     vi.useRealTimers();
   });
 
+  // Every pull omits the onoff value, so every read is ignored and the device
+  // never enters the snapshot: nothing PELS could command.
   it('does not control a cold-start missing onoff value before realtime arrives', async () => {
     let totalW = 500;
     const device = new MockDevice(DEVICE_ID, 'On/Off Socket', ['onoff', 'measure_power'], 'socket');
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     configureCapacity(1);
-    stubSdk({ totalW: () => totalW });
+    stubSdk(() => totalW);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -251,12 +255,14 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     expect(putSpy).not.toHaveBeenCalledWith(onoffCap(DEVICE_ID), { value: false });
   });
 
-  it('preserves realtime onoff=true when the next pull still omits the onoff value', async () => {
+  it('preserves realtime onoff=true when a later pull omits the onoff value and is ignored', async () => {
     let totalW = 500;
+    // Seen off by a conforming pull at boot; every later pull omits the value.
+    let pullOnoff: boolean | undefined = false;
     const device = new MockDevice(DEVICE_ID, 'On/Off Socket', ['onoff', 'measure_power'], 'socket');
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     configureCapacity(1);
-    const getSpy = stubSdk({ totalW: () => totalW });
+    const getSpy = stubSdk(() => totalW, () => pullOnoff);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -264,6 +270,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     await app.onInit();
     await flushPromises();
 
+    pullOnoff = undefined;
     socketHarness.emitCapability(DEVICE_ID, 'onoff', true);
     await flushPromises();
 

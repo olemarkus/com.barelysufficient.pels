@@ -13,9 +13,9 @@ import { isEvDevice } from './evPlugState';
  * (`target_power`, stepped-load) is a different axis and does not replace it —
  * so the parse boundary requires the capability of every `evcharger`
  * (`managerNativeEv.resolveCandidateCapabilities`) and requires a member of the
- * Homey enum for its value (`managerParse.shouldDropForEvPlugStateContract`),
- * dropping the device otherwise. "EV charger with an unknown plug-state" is not
- * a state PELS represents; it is a device PELS does not manage. Same shape as
+ * Homey enum for its value (the device-read contract,
+ * `lib/device/transport/deviceReadContract.ts`), ignoring any read otherwise.
+ * "EV charger with an unknown plug-state" is not a state PELS represents. Same shape as
  * `currentOn`, which the parse boundary likewise makes contractually present.
  *
  * **That holds at the OBSERVED snapshot, and nowhere downstream of a producer

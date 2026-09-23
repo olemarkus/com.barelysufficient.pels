@@ -110,6 +110,8 @@ const buildTank = async (): Promise<MockDevice> => {
   );
   await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', ELEMENT_W);
+  await device.setCapabilityValue('meter_power', 100);
+  await device.setCapabilityValue('thermostat_mode', 'heat');
   await device.setCapabilityValue('target_temperature', MODE_C);
   await device.setCapabilityValue('measure_temperature', 50);
   return device;
@@ -280,6 +282,8 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
 
   it('battery home: the inferred term never arms — no raise, no verification', async () => {
     const battery = new MockDevice('bat-1', 'Home Battery', ['measure_battery', 'measure_power'], 'battery');
+    await battery.setCapabilityValue('measure_battery', 50);
+    await battery.setCapabilityValue('measure_power', 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [await buildTank(), battery]) });
     seedSettings();
     mockEnergyLive({ netW: 50, generationW: 500 });

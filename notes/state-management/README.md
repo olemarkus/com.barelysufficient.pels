@@ -389,20 +389,24 @@ Use it for:
 - fast drift detection
 - clearing pending state when the update is trustworthy and matches the requested result
 
+A `device.update` carries the whole device. One that does not conform to the
+device-read contract (`lib/device/transport/deviceReadContract.ts`) is ignored
+whole; PELS never merges a partial payload with retained values (owner ruling
+2026-09-23). Per-capability events (`homey:device:{id}`) carry one capability by
+design and are their own, narrower read.
+
 Do not assume:
 
-- the event includes every relevant capability
 - unchanged fields in the event are fresh
 - event ordering is perfect relative to local writes and snapshot refreshes
 
 Reliability:
 
 - usually the freshest source for the specific capability that changed
-- only partial, and can still race with local writes or later stale refreshes
+- can still race with local writes or later stale refreshes
 
 Known failure modes:
 
-- partial updates leave other capability fields stale
 - a later snapshot refresh can overwrite fresher realtime state
 - cloud/laggy devices may emit confirmation much later than local devices
 
@@ -538,9 +542,9 @@ end of this note.
 
 This is why "just compare live vs plan" is too naive.
 
-### Realtime is fresh but partial
+### A per-capability event is fresh for its one capability
 
-A realtime `onoff` update may be newer than the snapshot for `onoff`, while the target temperature or power field is still only known from the last full fetch.
+A realtime `onoff` capability event may be newer than the snapshot for `onoff`, while the target temperature or power field is still only known from the last full read. (A `device.update` is not partial: it carries the whole device, or it is ignored — see § 2.)
 
 ### Snapshot refresh is broad but can roll state backward
 

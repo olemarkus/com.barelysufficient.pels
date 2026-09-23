@@ -18,11 +18,13 @@ describe('Expected power written through the settings key', () => {
   };
 
   const startApp = async () => {
-    // No `measure_power` reading and no `settings.load`, so every rung below the
+    // No positive `measure_power` reading (a satisfied water heater reads 0 W,
+    // which teaches no peak) and no `settings.load`, so every rung below the
     // manual one is empty and the ladder lands on its 1 kW default. That is the
     // reported bug's shape: a figure PELS invented, which the owner corrects.
     const device = new MockDevice('dev-1', 'Water Heater', ['onoff']);
     await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });

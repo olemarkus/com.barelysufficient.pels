@@ -43,6 +43,8 @@ describe('allow_smart_task_rescue flow card', () => {
 
   const initApp = async (deviceId = 'dev-1') => {
     const device = new MockDevice(deviceId, 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     const app = createApp();
     await app.onInit();
@@ -184,6 +186,8 @@ describe('allow_smart_task_rescue flow card', () => {
     // Regression: the device dropdown filtered by current active tasks, so it was empty while
     // building the flow (before any task existed). It must list capable devices instead.
     const device = new MockDevice('therm-1', 'Heater', ['measure_power', 'onoff', 'target_temperature']);
+    await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 0);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     const app = createApp();
     await app.onInit();

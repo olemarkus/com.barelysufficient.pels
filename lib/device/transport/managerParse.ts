@@ -1,4 +1,4 @@
-import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeviceCapabilityMap } from '../managerControl';
 import { isObserveOnlyRoleClassKey } from './managerHelpers';
@@ -61,64 +61,6 @@ export function resolveDeviceCapabilities(params: {
   return { targetCaps, hasPower };
 }
 
-
-/**
- * Contract gate for the EV plug-state capability, sibling to the
- * missing-capability drops above: `evcharger_charging_state` is a closed Homey
- * enum, so a device that CLAIMS it must report a member of that enum. One that
- * does not is not implementing the capability, and is dropped from the snapshot
- * exactly as a device missing the capability is — which is what lets every layer
- * downstream treat a present `evChargingState` as valid, and never need a policy
- * for an unreadable one.
- *
- * Every EV charger reaches this gate: `resolveCandidateCapabilities` requires
- * `evcharger_charging_state` of every `evcharger` ahead of both control-axis
- * bypasses, because `target_power` / stepped-load is the amp/step axis and not a
- * substitute for the state axis. The capability check here is what keeps the gate
- * inert for the non-EV devices that also flow through this parse path.
- *
- * Two absences, deliberately treated differently, discriminated on whether the
- * payload carries the capability ENTRY — not on whether its value is non-null,
- * since `null` is itself an invalid report rather than a missing one:
- *  - the payload REPORTS the capability with a non-enum value (including `null`)
- *    → violation, drop even when an older valid value is retained (keeping it
- *    would strand a stale plug-state that no longer describes the charger);
- *  - the payload OMITS the capability entry → an ordinary partial `device.update`,
- *    not a violation. The retained observation stands; drop only if there has
- *    never been one. Dropping on the payload alone would evict a healthy charger
- *    on every partial update.
- */
-export function shouldDropForEvPlugStateContract(params: {
-  deviceClassKey: string;
-  deviceId: string;
-  deviceLabel: string;
-  capabilities: readonly string[];
-  /** True when the payload carries the capability entry at all — see the docblock. */
-  stateReportedInPayload: boolean;
-  reportedStateValue: unknown;
-  evChargingState: EvChargingState | undefined;
-  retainedEvChargingState: EvChargingState | undefined;
-  debugStructured?: StructuredDebugEmitter;
-}): boolean {
-  const {
-    deviceClassKey, deviceId, deviceLabel, capabilities, stateReportedInPayload,
-    reportedStateValue, evChargingState, retainedEvChargingState, debugStructured,
-  } = params;
-  if (!capabilities.includes('evcharger_charging_state')) return false;
-  const hasContractualState = stateReportedInPayload
-    ? evChargingState !== undefined
-    : retainedEvChargingState !== undefined;
-  if (hasContractualState) return false;
-  debugStructured?.({
-    event: 'device_skipped_invalid_capability_value',
-    deviceClass: deviceClassKey,
-    deviceId,
-    deviceName: deviceLabel,
-    capabilityId: 'evcharger_charging_state',
-    rawValue: reportedStateValue ?? null,
-  });
-  return true;
-}
 
 export function getExactPowerCapabilityValue(
   capabilities: readonly string[],

@@ -23,6 +23,7 @@ describe('Capacity control device condition', () => {
 
   it('returns true when the device is capacity controlled', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
@@ -41,6 +42,7 @@ describe('Capacity control device condition', () => {
 
   it('returns false when the device is not capacity controlled', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
@@ -59,6 +61,7 @@ describe('Capacity control device condition', () => {
 
   it('returns false for missing device args or unknown devices', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 
@@ -77,6 +80,7 @@ describe('Capacity control device condition', () => {
 
   it('returns false when controllable is undefined in the snapshot', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
 

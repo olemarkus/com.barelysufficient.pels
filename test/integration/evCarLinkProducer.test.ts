@@ -1,3 +1,4 @@
+import { conformingRead } from '../helpers/deviceListRead';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   EvCarLinkProducer,
@@ -664,7 +665,7 @@ describe('observation ordering and membership', () => {
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 40, observedAtMs: 60_000 }), 60_000);
     // Stale fetch result arrives afterwards carrying the PREVIOUS plug state.
     h.producer.observe(
-      [carDevice({ state: 'plugged_out', socPct: 40, observedAtMs: 30_000 })],
+      conformingRead([carDevice({ state: 'plugged_out', socPct: 40, observedAtMs: 30_000 })]),
       { fullRefresh: false, nowMs: 61_000 },
     );
     // The charger's own edge lands within the window of the genuine car edge.
@@ -681,14 +682,14 @@ describe('observation ordering and membership', () => {
   it('never tracks a car that has no readable plug state', () => {
     // An unknown must not be stored and handed inward. A car whose capability is
     // unreadable is simply not tracked until a valid reading arrives.
-    h.producer.observe([{
+    h.producer.observe(conformingRead([{
       id: 'car-1', name: 'Polestar', class: 'car',
       capabilities: ['ev_charging_state'], capabilitiesObj: {},
-    } as unknown as HomeyDeviceLike], { fullRefresh: true, nowMs: 0 });
+    } as unknown as HomeyDeviceLike]), { fullRefresh: true, nowMs: 0 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.producer.isCarDevice('car-1')).toBe(false);
 
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 1_000 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 1_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
   });
 
@@ -728,9 +729,9 @@ describe('observation ordering and membership', () => {
     const afterFresh = h.of('ev_car_link_soc_shadow').length;
 
     // Stale fetch: same (unchanged) plug timestamp, older battery reading.
-    h.producer.observe([carDevice({
+    h.producer.observe(conformingRead([carDevice({
       state: 'plugged_in_charging', socPct: 40, observedAtMs: 10_000, socObservedAtMs: 10_000,
-    })], { fullRefresh: false, nowMs: linkedAt + 5_000 });
+    })]), { fullRefresh: false, nowMs: linkedAt + 5_000 });
 
     expect(h.of('ev_car_link_soc_shadow')).toHaveLength(afterFresh);
     expect(h.of('ev_car_session_elsewhere')).toHaveLength(0);
@@ -767,10 +768,10 @@ describe('observation ordering and membership', () => {
     // The affinity fallback treats every tracked car as a candidate, so a
     // deleted car with persisted votes would otherwise own live sessions
     // forever — and its id would be re-requested on every targeted refresh.
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
     const other = { id: 'other', name: 'Ovn', class: 'heater', capabilities: [], capabilitiesObj: {} };
-    h.producer.observe([other as unknown as HomeyDeviceLike], { fullRefresh: true, nowMs: 2_000 });
+    h.producer.observe(conformingRead([other as unknown as HomeyDeviceLike]), { fullRefresh: true, nowMs: 2_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
   });
 
@@ -778,15 +779,34 @@ describe('observation ordering and membership', () => {
     // No second emptiness guard here: the refresh pipeline's abandon-grace has
     // already ruled that an empty COMMITTED full read is genuine. Re-gating would
     // stack two graces and leave the final car tracked forever.
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
-    h.producer.observe([], { fullRefresh: true, nowMs: 1_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: true, nowMs: 1_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
   });
 
+  it('keeps a linked car and its session through a full read that listed it but ignored its read', () => {
+    // The device-read contract ignored the car's read (say `measure_battery`
+    // came back null): the car was listed, so it is present, and unread, so
+    // nothing about it changes — least of all its removal.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const sessions = h.snapshot.sessions;
+    expect(sessions).toHaveProperty('charger-1');
+
+    h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: true, nowMs: 200_000 });
+    for (let read = 1; read <= 5; read += 1) {
+      h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: false, nowMs: 200_000 + read });
+    }
+
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+    expect(h.snapshot.sessions).toEqual(sessions);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+  });
+
   it('keeps membership additive on a targeted refresh', () => {
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 1_000 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 1_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
   });
 });
@@ -948,7 +968,7 @@ describe('realtime capability events', () => {
   // it was never wired to the path a real plug transition takes: on hardware it
   // saw nothing between fetches, so plug-edge correlation could not fire at all.
   it('links from capability events alone', () => {
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
 
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
     h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 10_000);
@@ -970,7 +990,7 @@ describe('realtime capability events', () => {
   });
 
   it('keeps the held value when a capability event is unreadable or stale', () => {
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
     h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 10_000);
     h.cap('car-1', 'ev_charging_state', 'nonsense', 11_000);
     h.cap('car-1', 'ev_charging_state', 'plugged_out', 5_000);
@@ -1058,55 +1078,55 @@ describe('round-seven findings', () => {
     // The periodic refresh is ALWAYS targeted, so a deleted car would otherwise
     // never be forgotten — it keeps being requested and stays an affinity
     // candidate. One miss is not proof, so it takes a few.
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe([], { fullRefresh: false, nowMs: 1_000 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 2_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 1_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 2_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe([], { fullRefresh: false, nowMs: 3_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 3_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
   });
 
   it('forgives an intermittent targeted miss', () => {
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: true, nowMs: 0 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 1_000 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 2_000 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 1_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 2_000 });
     // A successful read resets the count, so the car survives.
-    h.producer.observe([carDevice({ state: 'plugged_out', socPct: 40 })], { fullRefresh: false, nowMs: 3_000 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 4_000 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 5_000 });
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: false, nowMs: 3_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 4_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 5_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
   });
 
   it('keeps an unavailable car in targeted refreshes until it recovers', () => {
-    h.producer.observe([
+    h.producer.observe(conformingRead([
       carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
-    ], { fullRefresh: true, nowMs: 0 });
+    ]), { fullRefresh: true, nowMs: 0 });
 
     expect(h.producer.isCarDevice('car-1')).toBe(true);
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe([
+    h.producer.observe(conformingRead([
       carDevice({ state: 'plugged_in_charging', socPct: 41, available: true }),
-    ], { fullRefresh: false, nowMs: 1_000 });
+    ]), { fullRefresh: false, nowMs: 1_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
   });
 
   it('drops an unavailable car after repeated targeted misses', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000);
-    h.producer.observe([
+    h.producer.observe(conformingRead([
       carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
-    ], { fullRefresh: false, nowMs: 200_000 });
+    ]), { fullRefresh: false, nowMs: 200_000 });
     expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
 
-    h.producer.observe([], { fullRefresh: false, nowMs: 201_000 });
-    h.producer.observe([], { fullRefresh: false, nowMs: 202_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 201_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 202_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe([], { fullRefresh: false, nowMs: 203_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 203_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
   });

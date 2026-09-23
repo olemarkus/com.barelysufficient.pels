@@ -18,7 +18,6 @@ import {
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
-import { preserveTemperatureAcrossPartialDeviceUpdate } from './transport/temperatureObservation';
 
 const moduleLogger = getLogger('device/manager-runtime');
 
@@ -170,9 +169,11 @@ export function reconcileRealtimeDeviceUpdate(params: {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   if (previous) preserveNewerReportedStepObservation(previous, parsed);
-  const resolvedParsed = previous
-    ? preserveTemperatureAcrossPartialDeviceUpdate({ device, previous, parsed })
-    : parsed;
+  // No temperature is carried over from the previous entry: a read that reaches
+  // here conformed to the device-read contract (`deviceReadContract.ts`), so a
+  // declared temperature pair came with both values, and one that did not
+  // was ignored before parse.
+  const resolvedParsed = parsed;
 
   if (snapshotIndex >= 0) {
     latestSnapshot[snapshotIndex] = resolvedParsed;

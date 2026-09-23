@@ -75,6 +75,7 @@ describe('export accounting on the flow power source (SDK-boundary e2e)', () => 
     const heater = new MockDevice('heater', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', HEATER_DRAW_W);
+    await heater.setCapabilityValue('meter_power', 100);
     setMockDrivers({ d: new MockDriver('d', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'flow');
@@ -157,6 +158,7 @@ describe('export accounting on the flow power source (SDK-boundary e2e)', () => 
     const heater = new MockDevice('heater', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', HEATER_DRAW_W);
+    await heater.setCapabilityValue('meter_power', 100);
     setMockDrivers({ d: new MockDriver('d', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'flow');

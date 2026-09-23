@@ -629,8 +629,7 @@ export type ThermalDirection = 'heating' | 'cooling';
  * Deliberately the RAW string and not a direction: this is an observation, and
  * the vocabulary that maps `cool`/`cooling`/`heat`/`auto`/... onto a
  * `ThermalDirection` is the observer's (`resolveThermalDirection`). The
- * transport reports what the device said and retains it across a partial
- * update, exactly as it does for `evChargingState`.
+ * transport reports what the device said in its last conforming read.
  *
  * A plain probe with no companion guard, unlike `TemperatureObservedProbe`:
  * there is no cluster to keep whole and no narrowing to do, because absence is
