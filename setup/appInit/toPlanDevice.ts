@@ -727,8 +727,8 @@ export function toPlanDevice(
     // The power axis (`MeteredPlanInputKind`): the device's own reading, and
     // only when it has one. A device without a reading carries no draw at all —
     // never a `0` standing in for one — so the power-limiting lanes, which reach
-    // the field through `isMeteredPlanDevice`, cannot see it, while the
-    // temperature lanes still plan its setpoints.
+    // the field through `isMeteredPlanDevice`, cannot see it. The home-plan
+    // projection excludes the whole device until a trusted reading arrives.
     ...resolvePlanPowerAxis(rawDevice),
     ...resolveTemperatureInputFields(device),
     ...(calibration ? { stepPowerCalibration: calibration } : {}),

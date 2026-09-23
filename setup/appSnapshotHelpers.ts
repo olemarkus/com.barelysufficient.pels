@@ -120,7 +120,7 @@ export class AppSnapshotHelpers {
     getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
-    disableUnsupportedDevices: (
+    seedTemperatureShedFloorDefaults: (
       snapshot: TargetDeviceSnapshot[],
       resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
     ) => void;
@@ -350,7 +350,7 @@ export class AppSnapshotHelpers {
     this.scheduleTargetPowerProbe();
 
     const snapshot = this.deps.getLatestTargetSnapshot();
-    this.deps.disableUnsupportedDevices(snapshot);
+    this.deps.seedTemperatureShedFloorDefaults(snapshot);
     this.deps.persistFilledModeTargets(snapshot);
     const enforcedSnapshot = snapshot.map((device) => {
       // Enforced FIRST, then stamped: `withHeadroomCurrentOn` resolves its
@@ -388,7 +388,7 @@ export class AppSnapshotHelpers {
   public retryDeferredOvershootSeed(
     resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
   ): void {
-    this.deps.disableUnsupportedDevices(
+    this.deps.seedTemperatureShedFloorDefaults(
       this.deps.getLatestTargetSnapshot(),
       resolveOperatingModeForDevice,
     );

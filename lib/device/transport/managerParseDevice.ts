@@ -158,55 +158,22 @@ export function parseDevice(params: {
 }
 
 /**
- * Can PELS support this device at all? A STRUCTURAL question about the device's
- * capabilities and configuration, and deliberately NOT about whether it happens
- * to be reporting a number this cycle.
- *
- * This is the flag that reaches persisted settings. `disableUnsupportedDevices`
- * (`setup/appDeviceSupport.ts`) demotes `managed` / `controllable` /
- * `price_optimization_settings` to `false` for a `powerCapable: false` device,
- * and nothing in the runtime ever writes them back to `true` — the owner has to
- * re-enable the device by hand. So this predicate must only go false for a
- * durable fact about the device, never for a transient read.
- *
- * That is why it must stay structural. Making it a LIVE reading check turned one
- * missing reading into a permanent demotion: a home battery
- * reads NEGATIVE `measure_power` while discharging, the resolver drops a negative
- * as "not a draw", and an observe-only device stays in the snapshot (it is
- * force-managed by design, `managerManagedFilter.ts`) — so it reached the demotion
- * path and was permanently unmanaged on its first discharge. Ordinary devices were
- * spared only incidentally, by dropping out of the snapshot first. The live
- * question — what is this device drawing right now — is not asked here at all;
- * the producer answers it, from the meter.
- *
- * `powerEstimate.loadKw` is deliberately NOT a term, and reading the code as if
- * it were is an easy mistake to make — so, the provenance the code never
- * recorded: `settings.load` was added for ELKO devices specifically, and it was
- * never meant to be an eligibility source on its own. Its job is to refine the
- * expected-power ESTIMATE (`expectedPowerSource: 'load-setting'`), which it still
- * does. Those Elko devices report through plain `measure_power` and `meter_power`
- * — confirmed against real hardware (`no.elko:smart_plus_thermostat`) and across
- * a whole fleet — so `capsStatus.hasPower` admits them and dropping the term
- * demoted nothing.
+ * Does this read contain evidence that the device can expose power? Evidence may
+ * be structural (capability or Homey Energy metadata), live (a Homey Energy
+ * report), or retained from an earlier reading. Because live evidence can be
+ * missing on a fast boot refresh, `false` is not durable proof of unsupported
+ * hardware and must not overwrite saved owner choices. Plan admission asks the
+ * separate, stricter question: is a trusted per-device reading available now?
  *
  * Homey Energy metadata and the owner's Energy settings ("Energy used when
- * on") are structural support signals, not readings. They keep the owner's
- * managed and price choices for the device. Admission to power limiting is a
- * different question with a different answer: it takes a real per-device power
- * reading, and the plan projection only gives a device a power axis when it has
- * one (`isMeteredPlanDevice`). A device with neither a power capability nor
- * Energy metadata or settings is unsupported.
+ * on") are support signals, not readings. Admission to any plan control takes a
+ * real per-device power reading, and the plan projection only gives a device a
+ * power axis when it has one (`isMeteredPlanDevice`).
  *
- * A device with no power capability and no Energy metadata or settings can
- * still be supported by what Homey Energy reports for it: its live value is a
- * real reading of that device, and once seen it is retained with the snapshot.
- * Those two terms depend on the reading reaching the transport. The retained
- * one survives a restart (`retainedPowerPersistence.ts`), so the first read
- * after boot — which has no previous snapshot and, on the fast boot refresh, no
- * live report — still answers as the last run did.
- *
- * See `notes/persisted-settings-state.md`: transient external failures get a grace
- * window, never a destructive reset of persisted state.
+ * A device without structural support may still expose a real reading through
+ * the Homey Energy live report. The reading and its retained copy make the
+ * device usable after the transport receives it; until then the absence is an
+ * unresolved input and leaves saved owner choices untouched.
  */
 export function isDevicePowerCapable(params: {
     device: HomeyDeviceLike;

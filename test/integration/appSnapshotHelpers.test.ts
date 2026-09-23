@@ -4,7 +4,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { TargetDeviceSnapshot, MeasuredPowerObservedProbe } from '../../packages/contracts/src/types';
 import { partialDouble } from '../helpers/partialDouble';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
-import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
+import { seedTemperatureShedFloorDefaults } from '../../setup/appDeviceSupport';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   CONTROLLABLE_DEVICES,
@@ -53,7 +53,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -89,7 +89,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date(Date.now()),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -126,7 +126,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date(Date.now()),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -164,7 +164,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date(Date.now()),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -222,7 +222,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -249,7 +249,7 @@ describe('appSnapshotHelpers', () => {
     }]);
   });
 
-  it('enforces unsupported-device settings before syncing plan and headroom state', async () => {
+  it('runs snapshot settings defaults before syncing plan and headroom state', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const callOrder: string[] = [];
     const syncLivePlanState = vi.fn(async () => {
@@ -260,7 +260,7 @@ describe('appSnapshotHelpers', () => {
       callOrder.push('syncHeadroomCardState');
     }) as unknown as PlanService['syncHeadroomCardState'] & ReturnType<typeof vi.fn>;
     const disableUnsupported = vi.fn(() => {
-      callOrder.push('disableUnsupportedDevices');
+      callOrder.push('seedTemperatureShedFloorDefaults');
     });
     const emitSettingsUiDevicesUpdated = vi.fn(() => {
       callOrder.push('emitSettingsUiDevicesUpdated');
@@ -293,7 +293,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: disableUnsupported,
+      seedTemperatureShedFloorDefaults: disableUnsupported,
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -305,14 +305,14 @@ describe('appSnapshotHelpers', () => {
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     expect(callOrder).toEqual([
-      'disableUnsupportedDevices',
+      'seedTemperatureShedFloorDefaults',
       'syncLivePlanState',
       'syncHeadroomCardState',
       'emitSettingsUiDevicesUpdated',
     ]);
   });
 
-  it('lets snapshot sync collaborators observe settings after unsupported-device enforcement', async () => {
+  it('lets snapshot sync collaborators observe settings after defaults are applied', async () => {
     mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'socket-1': true });
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { 'socket-1': true });
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
@@ -358,7 +358,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
+      seedTemperatureShedFloorDefaults: (nextSnapshot) => seedTemperatureShedFloorDefaults({
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
@@ -373,15 +373,14 @@ describe('appSnapshotHelpers', () => {
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
-    expect(settingsSeenByLivePlan).toEqual([{ 'socket-1': false }]);
-    expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': false }]);
+    expect(settingsSeenByLivePlan).toEqual([{ 'socket-1': true }]);
+    expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': true }]);
     expect(syncHeadroomCardState).toHaveBeenCalledWith([{
       ...snapshot[0],
-      managed: false,
-      controllable: false,
-      // Resolved from the ENFORCED setting, not the parse-time one: enforcement
-      // is the whole point of this cycle, so authority has to follow it.
-      countsAsManagedUsage: false,
+      managed: true,
+      controllable: true,
+      // Missing power evidence does not alter the saved owner preference.
+      countsAsManagedUsage: true,
       // The producer answers for an unmetered device too. This fixture declares
       // no load either, so there is genuinely nothing to draw against.
       currentDrawKw: 0,
@@ -389,12 +388,8 @@ describe('appSnapshotHelpers', () => {
   });
 
   it('does not trigger a recursive snapshot refresh on fresh install when an unsupported device is present', async () => {
-    // Bug regression: on first boot, `disableUnsupportedDevices` used to write
-    // `{id: false}` for every unsupported device — even when the map had no
-    // existing key for that id. Each write fired the MANAGED_DEVICES settings
-    // handler, which queued another snapshot refresh, producing a recursive
-    // refresh on every fresh boot. Fix: only demote IDs whose current value
-    // is explicitly `true`.
+    // Missing power evidence is not a durable device verdict, so the snapshot
+    // settings pass must not overwrite the owner's managed choice here.
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const snapshot: TargetDeviceSnapshot[] = [{
       id: 'socket-1',
@@ -424,7 +419,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
+      seedTemperatureShedFloorDefaults: (nextSnapshot) => seedTemperatureShedFloorDefaults({
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
@@ -470,7 +465,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => ['dev-1']),
       emitFlowBackedRefreshRequests,
@@ -517,7 +512,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -569,7 +564,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
@@ -640,7 +635,7 @@ describe('appSnapshotHelpers', () => {
       getStructuredDebugEmitter: () => vi.fn(),
       getNow: () => new Date(),
       logPeriodicStatus: vi.fn(),
-      disableUnsupportedDevices: vi.fn(),
+      seedTemperatureShedFloorDefaults: vi.fn(),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),

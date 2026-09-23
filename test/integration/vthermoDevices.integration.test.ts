@@ -74,7 +74,7 @@ describe('VThermo device integration', () => {
     vi.clearAllTimers();
   });
 
-  it('disables all thermostat control when durable power support is unavailable', async () => {
+  it('preserves saved thermostat settings while power support evidence is unavailable', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'vthermo-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'vthermo-1': true });
@@ -102,12 +102,12 @@ describe('VThermo device integration', () => {
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
     const priceSettings = mockHomeyInstance.settings.get('price_optimization_settings') as Record<string, { enabled?: boolean }>;
 
-    expect(managed['vthermo-1']).toBe(false);
-    expect(controllable['vthermo-1']).toBe(false);
-    expect(priceSettings['vthermo-1']?.enabled).toBe(false);
+    expect(managed['vthermo-1']).toBe(true);
+    expect(controllable['vthermo-1']).toBe(true);
+    expect(priceSettings['vthermo-1']?.enabled).toBe(true);
   });
 
-  it('does not control a thermostat without durable power support', async () => {
+  it('does not control an unmetered thermostat with saved control enabled', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'vthermo-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
@@ -125,7 +125,7 @@ describe('VThermo device integration', () => {
     await app.refreshTargetDevicesSnapshot();
 
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
-    expect(controllable['vthermo-1']).toBe(false);
+    expect(controllable['vthermo-1']).toBe(true);
 
     await app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();

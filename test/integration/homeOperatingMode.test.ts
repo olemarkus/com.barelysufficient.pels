@@ -44,7 +44,7 @@ import {
 } from '../../lib/home/homeConfig';
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
-import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
+import { seedTemperatureShedFloorDefaults } from '../../setup/appDeviceSupport';
 import { HomeMembershipService } from '../../setup/homeMembership';
 import {
   createDeviceHomeAssignmentsStore,
@@ -786,7 +786,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
   );
 
   const runSeedPass = (): void => {
-    disableUnsupportedDevices({
+    seedTemperatureShedFloorDefaults({
       snapshot: [SUB_HOME_HEATER],
       settings: homeyLike.settings,
       resolveOperatingModeForDevice: (deviceId) => resolveOperatingModeForDevice(ctx, deviceId),

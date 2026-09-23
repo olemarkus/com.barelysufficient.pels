@@ -8,6 +8,7 @@ import type {
 } from '../packages/contracts/src/types';
 import { isCanSetControl } from '../lib/device/deviceActionProjection';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
+import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 
 /** Narrow the app-owned decorated carrier before it crosses into the executor. */
 export const projectLifecycleFallbackDevice = (
@@ -46,15 +47,20 @@ export type LifecycleFallbackCommandState =
 
 /**
  * App-owned clean projection for lifecycle fallback commandability. Descriptor
- * presence comes from the cached device snapshot while live availability and
- * control state come from the observer projection; no planner snapshot is
- * consulted.
+ * presence comes from the cached device snapshot while availability, control
+ * state, and the last trusted power reading come from the observer projection;
+ * no planner snapshot is consulted.
  */
 export const projectLifecycleFallbackCommandState = (params: {
   device: LifecycleFallbackDevice | undefined;
   observedState: ProjectedObservedDeviceState | undefined;
 }): LifecycleFallbackCommandState => {
-  if (!params.device || !params.observedState || params.observedState.available === false) {
+  if (
+    !params.device
+    || !params.observedState
+    || params.observedState.available === false
+    || !hasObservedMeasuredPower(params.observedState)
+  ) {
     return { state: 'unavailable' };
   }
   return {

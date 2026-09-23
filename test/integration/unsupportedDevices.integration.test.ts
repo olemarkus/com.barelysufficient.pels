@@ -127,10 +127,9 @@ describe('Unsupported device handling', () => {
         expect(priceSettings['vent-1']?.enabled).toBe(true);
     });
     it('never demotes persisted managed/controllable settings when a reading goes missing', async () => {
-        // A device whose meter is momentarily silent must NOT reach
-        // `disableUnsupportedDevices`' persisted `managed: false` / `controllable: false`
-        // write: a transient Homey read failure would otherwise permanently un-manage
-        // the device and the owner would have to re-enable it by hand.
+        // A device whose meter is momentarily silent must not lose its saved
+        // managed or controllable intent; its missing reading only blocks plan
+        // admission for this cycle.
         //
         // A read that advertises `measure_power` without a value breaks the
         // device-read contract, so it is ignored outright: the entry the last

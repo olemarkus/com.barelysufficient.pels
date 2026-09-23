@@ -6,13 +6,12 @@ import {
   MAIN_HOME_ID,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
-  PRICE_OPTIMIZATION_SETTINGS,
   homeScopedSettingsKey,
   type HomeId,
 } from '../lib/utils/settingsKeys';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
-import { classifyUnsupportedDevices } from '../lib/plan/planDeviceSupport';
+import { filterMeteredPlanDevices } from '../lib/plan/planMeteredDevice';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import {
   enforceTemperatureWithoutOnOffOvershootBehaviors,
@@ -34,28 +33,25 @@ import {
 type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 
 type BooleanMap = Record<string, boolean>;
-type PriceSettings = Record<string, { enabled?: boolean }>;
 
 function parseBooleanMap(value: unknown): BooleanMap {
   return isBooleanMap(value) ? value : {};
 }
 
 // Filter is active iff at least one device is explicitly opted-in (`true`).
-// Explicit `false` keys (written by `disableUnsupportedDevices`) must NOT
-// activate the filter on their own — otherwise a fresh-install user would
-// flip from "all devices visible" to "only the explicit-true devices visible"
-// the moment the first unsupported device is auto-disabled, silently dropping
-// every implicitly-managed device from the runtime snapshot.
+// Explicit `false` keys must NOT activate the filter on their own — otherwise a
+// fresh-install user would flip from "all devices visible" to "only the
+// explicit-true devices visible" merely because settings contain opt-outs.
 export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
   return Object.values(managedDevices).some((value) => value === true);
 }
 
 // The SINGLE definition of "is this device in the runtime-planned set" — the
-// set the plan cycle actually evaluates. The plan service builds its device
-// list as `snapshot.map(toPlanDevice).filter(isRuntimePlannedDevice)` (see
-// `createPlanService` in `appInit.ts`), so any consumer that needs to know
-// whether a device will be planned (the create-smart-task candidate list AND
-// create-time validation) MUST use this exact predicate. Otherwise a
+// set the plan cycle actually evaluates. The plan service projects the snapshot,
+// admits metered devices, then applies this predicate (see `buildHomePlanDevices`),
+// so any consumer that needs to know whether a device will be planned (the
+// create-smart-task candidate list AND create-time validation) MUST use this
+// exact predicate. Otherwise a
 // `managed: false` device can slip into the runtime snapshot when the managed
 // filter is inactive (no device explicitly opted-in) yet be dropped by the
 // planner — it would be offered/persisted but never planned or controlled.
@@ -82,68 +78,7 @@ export function isRuntimePlannedPlanDevice(device: { control: { managed: boolean
   return plannedFromManagedFlag(device.control.managed);
 }
 
-function parsePriceSettings(value: unknown): PriceSettings | null {
-  return value && typeof value === 'object' ? value as PriceSettings : null;
-}
-
-
-function applyFalseOverrides(params: {
-  settings: Homey.App['homey']['settings'];
-  key: string;
-  current: BooleanMap;
-  ids: string[];
-}): boolean {
-  const { settings, key, current, ids } = params;
-  // Only demote IDs whose current value is explicitly `true`. An absent key
-  // ("implicitly managed") and an explicit `false` are both treated as
-  // unmanaged downstream, so writing `undefined → false` would change nothing
-  // observably while still firing the settings handler — which then triggers
-  // a recursive snapshot refresh on first boot. See appSnapshotHelpers.
-  const idsToDemote = ids.filter((id) => current[id] === true);
-  if (idsToDemote.length === 0) return false;
-  const overrides = Object.fromEntries(idsToDemote.map((id) => [id, false] as const));
-  settings.set(key, { ...current, ...overrides });
-  return true;
-}
-
-function buildPriceDisableUpdates(priceSettings: PriceSettings, ids: string[]): PriceSettings {
-  return Object.fromEntries(ids.flatMap((id) => {
-    const entry = priceSettings[id];
-    return entry?.enabled === true ? [[id, { ...entry, enabled: false }]] : [];
-  }));
-}
-
-function applyPriceDisableOverrides(params: {
-  settings: Homey.App['homey']['settings'];
-  priceSettings: PriceSettings | null;
-  ids: string[];
-}): boolean {
-  const { settings, priceSettings, ids } = params;
-  if (!priceSettings) return false;
-  const updates = buildPriceDisableUpdates(priceSettings, ids);
-  const changed = Object.keys(updates).length > 0;
-  if (!changed) return false;
-  settings.set(PRICE_OPTIMIZATION_SETTINGS, { ...priceSettings, ...updates });
-  return true;
-}
-
-function logUnsupportedChanges(
-  unsupported: TargetDeviceSnapshot[],
-  managedChanged: boolean,
-  controllableChanged: boolean,
-  priceChanged: boolean,
-  debugStructured: StructuredEventEmitter,
-): void {
-  if (managedChanged || controllableChanged || priceChanged) {
-    debugStructured({
-      event: 'unsupported_controls_disabled',
-      deviceIds: unsupported.map((device) => device.id),
-      deviceNames: unsupported.map((device) => device.name),
-    });
-  }
-}
-
-export function disableUnsupportedDevices(params: {
+export function seedTemperatureShedFloorDefaults(params: {
   snapshot: TargetDeviceSnapshot[];
   settings: Homey.App['homey']['settings'];
   debugStructured: StructuredEventEmitter;
@@ -156,28 +91,8 @@ export function disableUnsupportedDevices(params: {
   resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
 }): void {
   const { snapshot, settings, debugStructured, resolveOperatingModeForDevice } = params;
-  const { unsupported, unsupportedIds } = classifyUnsupportedDevices(snapshot);
-
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
-  const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
-  const managedChanged = applyFalseOverrides({
-    settings,
-    key: MANAGED_DEVICES,
-    current: managed,
-    ids: unsupportedIds,
-  });
-  const controllableChanged = applyFalseOverrides({
-    settings,
-    key: CONTROLLABLE_DEVICES,
-    current: controllable,
-    ids: unsupportedIds,
-  });
-  const priceChanged = applyPriceDisableOverrides({
-    settings,
-    priceSettings,
-    ids: unsupportedIds,
-  });
 
   const shedBehaviorUpdated = enforceTemperatureWithoutOnOffOvershootBehaviors({
     settings,
@@ -187,15 +102,6 @@ export function disableUnsupportedDevices(params: {
     resolveOperatingModeForDevice,
   });
 
-  if (unsupported.length > 0) {
-    logUnsupportedChanges(
-      unsupported,
-      managedChanged,
-      controllableChanged,
-      priceChanged,
-      debugStructured,
-    );
-  }
   if (shedBehaviorUpdated > 0) {
     debugStructured({ event: 'temperature_shedding_enforced', deviceCount: shedBehaviorUpdated });
   }
@@ -204,13 +110,12 @@ export function disableUnsupportedDevices(params: {
 /**
  * Persist the per-mode targets `resolveModeTargets` had to fill.
  *
- * The resolver already answers completely, so nothing downstream depends on
- * this pass having run — a device that appeared a second ago is planned with a
- * resolved target either way. What this adds is durability: PELS owns a managed
- * thermostat's setpoint, and a setpoint that is re-derived from the device on
- * every boot is not owned, it is followed. Writing the first resolution down
- * makes it the owner's target from then on, editable on the Modes screen and
- * stable across a restart.
+ * The planner's resolver answers completely for every admitted device, so this
+ * pass only adds durability: PELS owns a metered thermostat's setpoint, and a
+ * setpoint re-derived from the device on every boot is followed rather than
+ * owned. Writing the first resolution down makes it the owner's target from
+ * then on, editable on the Modes screen and stable across a restart. An
+ * unmetered device is not in the planner's admitted set and must not be seeded.
  *
  * Runs on the snapshot refresh, before the plan cycle, so the write is a
  * deliberate act on the producer's pass rather than a side effect hiding inside
@@ -221,8 +126,8 @@ export function disableUnsupportedDevices(params: {
  * the two views answer differently on purpose: a device whose owner switched
  * temperature control off is still a temperature device to the UI (that is what
  * renders the toggle and the saved targets beneath it) and is NOT one to
- * control. Consuming the planner's type is what keeps this pass from having a
- * concept of the flag at all.
+ * control. The metered admission guard keeps this pass on the set that can
+ * actually receive plan controls.
  */
 export function persistFilledModeTargets(params: {
   devices: readonly UnrankedPlanInputDevice[];
@@ -235,7 +140,8 @@ export function persistFilledModeTargets(params: {
     devices: planDevices, settings, resolveHomeIdForDevice, structuredLog, debugStructured,
   } = params;
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
-  const candidates = planDevices.filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }));
+  const candidates = filterMeteredPlanDevices(planDevices)
+    .filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }));
   if (candidates.length === 0) return;
 
   const byHome = new Map<HomeId, UnrankedPlanInputDevice[]>();

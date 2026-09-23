@@ -25,9 +25,8 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
-<<<<<<< HEAD
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
-import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
+import { filterMeteredPlanDevices } from '../../lib/plan/planMeteredDevice';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** This home's catalog owner returns a complete order for the planned set. */
@@ -109,9 +108,8 @@ export const buildHomePlanDevices = (
   options?: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
   const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
-  const devices = homeDevices
-    .map((device) => toPlanDevice(ctx, device, options))
-    .filter((device) => isMeteredPlanDevice(device) && isRuntimePlannedPlanDevice(device));
+  const devices = filterMeteredPlanDevices(homeDevices.map((device) => toPlanDevice(ctx, device, options)))
+    .filter(isRuntimePlannedPlanDevice);
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/settings/modePriorities.ts`).
   const deviceIds = devices.map((device) => device.id);

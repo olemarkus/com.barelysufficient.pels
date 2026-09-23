@@ -2,24 +2,25 @@
  * The two settings-maintenance passes the snapshot refresh runs, wired.
  *
  * They live here rather than inline in `app.ts` because one of them needs a
- * control-resolution step — the mode-target pass takes the PLANNER's device
- * type, so the snapshot has to go through `toPlanDevice` first — and that is
- * not something the composition root should be doing beside a settings handle.
+ * control-resolution step — the mode-target pass takes the planner's device
+ * type and admitted set, so the snapshot goes through `toPlanDevice` first —
+ * and that is not something the composition root should be doing beside a
+ * settings handle.
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
-  disableUnsupportedDevices,
+  seedTemperatureShedFloorDefaults,
   persistFilledModeTargets,
   type ResolveOperatingModeForDevice,
 } from '../appDeviceSupport';
 import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '../homeRuntime/homeOperatingMode';
 import { toPlanDevice } from './toPlanDevice';
 
-export const createUnsupportedDeviceDemotion = (ctx: AppContext) => (
+export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
   snapshot: DecoratedDeviceSnapshot[],
   operatingModeResolver?: ResolveOperatingModeForDevice,
-): void => disableUnsupportedDevices({
+): void => seedTemperatureShedFloorDefaults({
   snapshot,
   settings: ctx.homey.settings,
   // Overshoot defaults follow the OWNING home's effective mode.

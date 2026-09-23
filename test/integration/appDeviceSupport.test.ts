@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
 import {
-  disableUnsupportedDevices,
+  seedTemperatureShedFloorDefaults,
   isManagedFilterActive,
   persistFilledModeTargets,
   __resetModeTargetFillDedupeForTests,
@@ -47,16 +47,8 @@ const buildUnsupportedThermostat = (): TargetDeviceSnapshot => ({ available: tru
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
 });
 
-const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-  id: 'socket-1',
-  name: 'Garage Socket',
-  deviceType: 'onoff',
-  powerCapable: false,
-  targets: [],
-});
-
-describe('disableUnsupportedDevices', () => {
-  it('does not emit an unsupported-device log when settings are already aligned', () => {
+describe('seedTemperatureShedFloorDefaults', () => {
+  it('does not write when the owner already opted out', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': false },
       [CONTROLLABLE_DEVICES]: { 'vt-1': false },
@@ -66,7 +58,7 @@ describe('disableUnsupportedDevices', () => {
     });
     const debugStructured = vi.fn();
 
-    disableUnsupportedDevices({
+    seedTemperatureShedFloorDefaults({
       snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
@@ -88,7 +80,7 @@ describe('disableUnsupportedDevices', () => {
       mode_device_targets: { Home: null },
     });
 
-    disableUnsupportedDevices({
+    seedTemperatureShedFloorDefaults({
       snapshot: [{
         available: true,
         expectedPowerKw: 1,
@@ -110,7 +102,7 @@ describe('disableUnsupportedDevices', () => {
     }));
   });
 
-  it('disables every control setting when a thermostat has no power support', () => {
+  it('preserves owner settings when a snapshot has no power evidence', () => {
     const settings = makeSettings({
       [MANAGED_DEVICES]: { 'vt-1': true },
       [CONTROLLABLE_DEVICES]: { 'vt-1': true },
@@ -120,123 +112,34 @@ describe('disableUnsupportedDevices', () => {
     });
     const debugStructured = vi.fn();
 
-    disableUnsupportedDevices({
+    seedTemperatureShedFloorDefaults({
       snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
 
-    // Temperature capability does not bypass power admission.
-    expect(settings.set).toHaveBeenCalledWith(MANAGED_DEVICES, { 'vt-1': false });
-    expect(settings.set).toHaveBeenCalledWith(CONTROLLABLE_DEVICES, { 'vt-1': false });
-    expect(settings.set).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, {
-      'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
-    });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo'] }));
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
-  it('disables unsupported controls for thermostats and other devices alike', () => {
+  it('keeps managed intent for a live-report-only device until its first reading', () => {
     const settings = makeSettings({
-      [MANAGED_DEVICES]: { 'vt-1': false, 'socket-1': true },
-      [CONTROLLABLE_DEVICES]: { 'vt-1': false, 'socket-1': true },
+      [MANAGED_DEVICES]: { 'vt-1': true },
+      [CONTROLLABLE_DEVICES]: { 'vt-1': true },
       [PRICE_OPTIMIZATION_SETTINGS]: {
         'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
-        'socket-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
     const debugStructured = vi.fn();
 
-    disableUnsupportedDevices({
-      snapshot: [buildUnsupportedThermostat(), buildFullyUnsupportedDevice()],
-      settings: asAppSettings(settings),
-      debugStructured,
-    });
-
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo', 'Garage Socket'] }));
-    expect(settings.set).toHaveBeenCalledWith(MANAGED_DEVICES, { 'vt-1': false, 'socket-1': false });
-    expect(settings.set).toHaveBeenCalledWith(CONTROLLABLE_DEVICES, { 'vt-1': false, 'socket-1': false });
-    expect(settings.set).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS, {
-      'vt-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
-      'socket-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
-    });
-  });
-
-  it('does not write managed/controllable settings when unsupported IDs were never user-managed', () => {
-    // Fresh-install scenario: managedDevices map is empty; an unsupported
-    // device shows up. Writing { id: false } would fire the settings handler
-    // and trigger a recursive snapshot refresh on first boot.
-    const settings = makeSettings({});
-    const debugStructured = vi.fn();
-
-    disableUnsupportedDevices({
-      snapshot: [buildFullyUnsupportedDevice()],
+    seedTemperatureShedFloorDefaults({
+      snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
     });
 
     expect(settings.set).not.toHaveBeenCalled();
     expect(debugStructured).not.toHaveBeenCalled();
-  });
-
-  it('does not emit changes on repeated refreshes for fresh-install unsupported devices', () => {
-    const settings = makeSettings({});
-    const debugStructured = vi.fn();
-
-    disableUnsupportedDevices({
-      snapshot: [buildUnsupportedThermostat()],
-      settings: asAppSettings(settings),
-      debugStructured,
-    });
-    expect(debugStructured).not.toHaveBeenCalled();
-
-    // Second refresh with the same (still-absent) settings: still no log.
-    debugStructured.mockClear();
-    disableUnsupportedDevices({
-      snapshot: [buildUnsupportedThermostat()],
-      settings: asAppSettings(settings),
-      debugStructured,
-    });
-    expect(debugStructured).not.toHaveBeenCalled();
-  });
-
-  it('writes managed/controllable false only when the user previously enabled the device', () => {
-    // EV-by-default migration set { ev1: true }; the device turns out to be
-    // unsupported. We must demote it to false. After that demotion, the next
-    // refresh sees the false key and produces no further writes.
-    const settings = makeSettings({
-      [MANAGED_DEVICES]: { 'ev1': true, 'socket-1': true },
-      [CONTROLLABLE_DEVICES]: { 'ev1': true, 'socket-1': true },
-    });
-    const debugStructured = vi.fn();
-    const evDevice: TargetDeviceSnapshot = { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev1',
-      name: 'EV Charger',
-      deviceType: 'onoff',
-      powerCapable: false,
-      targets: [],
-    };
-
-    disableUnsupportedDevices({
-      snapshot: [evDevice],
-      settings: asAppSettings(settings),
-      debugStructured,
-    });
-
-    const writtenManaged = settings.set.mock.calls.find(([key]) => key === MANAGED_DEVICES)?.[1];
-    const writtenControllable = settings.set.mock.calls.find(([key]) => key === CONTROLLABLE_DEVICES)?.[1];
-    expect(writtenManaged).toEqual({ 'ev1': false, 'socket-1': true });
-    expect(writtenControllable).toEqual({ 'ev1': false, 'socket-1': true });
-
-    // Idempotence: a second pass with the new (post-demote) settings produces
-    // no further writes — the recursive refresh therefore terminates after at
-    // most one extra cycle.
-    settings.set.mockClear();
-    disableUnsupportedDevices({
-      snapshot: [evDevice],
-      settings: asAppSettings(settings),
-      debugStructured,
-    });
-    expect(settings.set).not.toHaveBeenCalled();
   });
 });
 
@@ -246,10 +149,8 @@ describe('isManagedFilterActive', () => {
   });
 
   it('reports inactive for an all-false managed map', () => {
-    // Critical regression: `disableUnsupportedDevices` writes `{id: false}`
-    // entries on first boot. The filter must NOT activate from those writes —
-    // otherwise implicitly-managed (no-key) devices would suddenly disappear
-    // from the runtime snapshot mid-cycle.
+    // Explicit opt-outs alone must not switch the runtime to the explicit-only
+    // managed set; devices with no key remain implicitly managed.
     expect(isManagedFilterActive({ 'vt-1': false, 'socket-1': false })).toBe(false);
   });
 
@@ -268,20 +169,21 @@ describe('persistFilledModeTargets', () => {
   // has already run, so a device whose owner switched temperature control off
   // arrives here as a plain non-temperature device and this fixture cannot
   // express the flag at all.
-  const buildThermostat = (
-    overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
-      deviceType?: 'temperature' | 'onoff';
-    } = {},
-  ): PlanInputDevice => buildPlanInputDevice({
+  const thermostatDefaults = {
     id: 't-1',
     name: 'Stue',
-    deviceType: 'temperature',
+    deviceType: 'temperature' as const,
     currentTarget: 21,
     currentTemperature: 21,
     targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
     currentDrawKw: 1,
-    ...overrides,
-  });
+  };
+  const buildThermostat = (
+    overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+  ): PlanInputDevice => buildPlanInputDevice({ ...thermostatDefaults, ...overrides });
+  const buildUnmeteredThermostat = (): PlanInputDevice => (
+    buildPlanInputDevice({ ...thermostatDefaults, unmetered: true })
+  );
 
   const baseSettings = (modeTargets: Record<string, Record<string, number>>) => makeSettings({
     [MANAGED_DEVICES]: { 't-1': true },
@@ -312,6 +214,21 @@ describe('persistFilledModeTargets', () => {
       filledModes: ['Home', 'Away', 'Night'],
       targetC: 21,
     }));
+  });
+
+  it('does not seed a thermostat target until its per-device reading is trusted', () => {
+    const settings = baseSettings({ Home: {} });
+    const structuredLog = vi.fn();
+
+    persistFilledModeTargets({
+      devices: [buildUnmeteredThermostat()],
+      settings: asAppSettings(settings),
+      structuredLog,
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(structuredLog).not.toHaveBeenCalled();
   });
 
   it('is a no-op when every entry is already populated', () => {

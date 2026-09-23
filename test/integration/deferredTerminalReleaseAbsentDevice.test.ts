@@ -138,6 +138,7 @@ describe('handleDeferredDeadlineReached — observer availability is authoritati
       available: true,
       binaryControl: { on: false },
       targets: [],
+      measuredPowerKw: 0,
     });
     const converge = vi.fn(() => ({ settled: true }));
     ctx.lifecycleFallback = { converge, abandon: vi.fn() };

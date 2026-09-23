@@ -55,7 +55,7 @@ import type {
 } from './packages/contracts/src/settingsUiApi';
 import {
   createModeTargetPersistence,
-  createUnsupportedDeviceDemotion,
+  createTemperatureShedFloorDefaults,
 } from './setup/appInit/createSnapshotSettingsPasses';
 import * as homeMode from './setup/homeRuntime/homeOperatingMode';
 import type { Logger as PinoLogger } from './lib/logging/logger';
@@ -431,8 +431,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
-    disableUnsupportedDevices: (snapshot, operatingModeResolver) => (
-      createUnsupportedDeviceDemotion(this.ctx)(snapshot, operatingModeResolver)
+    seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
+      createTemperatureShedFloorDefaults(this.ctx)(snapshot, operatingModeResolver)
     ),
     persistFilledModeTargets: (snapshot) => createModeTargetPersistence(this.ctx)(snapshot),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),

@@ -39,18 +39,15 @@ const recordsForUntrackedDevice: DeviceWriteGate = (device) => (
 );
 
 // ENABLING capacity control grants control authority, so it requires a device PELS
-// can actually limit. `powerCapable === false` is the transport's durable
-// structural verdict (`isDevicePowerCapable`), and `disableUnsupportedDevices`
-// writes `controllable: false` for such a device on every snapshot refresh. A Flow
-// that wrote `true` here never won that fight — the next refresh reverted it — but
-// in the window between, the planner treated the device as controllable with an
-// invented expected power and resumed it (an owner reported PELS switching a
-// thermostat on while the home was in Away). Refusing the write turns a silent
-// fight into a logged `device_setting_toggle_skipped`.
+// can actually limit. The transport only admits devices with positive support
+// evidence; `powerCapable === false` refuses an enable while that evidence is
+// absent. The planner independently requires a real per-device reading before
+// any control decision, so a Flow setting never substitutes for meter admission.
+// Refusing the write turns a silent failure into a logged `device_setting_toggle_skipped`.
 //
 // An UNTRACKED device is refused too: its eligibility cannot be resolved, and a
 // grant written blind is exactly the write this gate exists to stop — an
-// unsupported device outside the managed filter would come back already
+// unsupported device outside the managed filter would come back marked
 // controllable. A Flow arg is untrusted input, so an unresolvable one is a no-op.
 // `getFlowSnapshot` refreshes an empty snapshot before answering, so this does not
 // turn the boot window into a refusal. `!== false`, not `=== true`: a descriptor

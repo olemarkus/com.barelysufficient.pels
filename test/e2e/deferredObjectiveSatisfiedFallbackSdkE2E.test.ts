@@ -13,6 +13,7 @@ import {
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
+  OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -20,6 +21,8 @@ import { drainPending } from '../utils/asyncDrain';
 
 const CHARGER_ID = 'cap-off-charger';
 const CHARGING_PATH = `manager/devices/device/${CHARGER_ID}/capability/evcharger_charging`;
+const THERMOSTAT_ID = 'unmetered-thermostat';
+const THERMOSTAT_TARGET_PATH = `manager/devices/device/${THERMOSTAT_ID}/capability/target_temperature`;
 const NOW_MS = Date.UTC(2026, 7, 12, 8, 0, 0);
 
 const buildCharger = async (
@@ -172,5 +175,57 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
     const pauseWrites = putSpy.mock.calls.filter(([path]) => path === CHARGING_PATH);
     expect(pauseWrites).toHaveLength(1);
     expect(pauseWrites[0]?.[1]).toMatchObject({ value: false });
+  });
+
+  it('does not run a thermostat deadline fallback before its first power reading', async () => {
+    const thermostat = new MockDevice(
+      THERMOSTAT_ID,
+      'Unmetered thermostat',
+      ['target_temperature', 'measure_temperature'],
+      'heater',
+    );
+    await thermostat.setCapabilityValue('target_temperature', 21);
+    await thermostat.setCapabilityValue('measure_temperature', 18);
+    setMockDrivers({ heater: new MockDriver('heater', [thermostat]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 20);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { [THERMOSTAT_ID]: true });
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [THERMOSTAT_ID]: false });
+    mockHomeyInstance.settings.set(OVERSHOOT_BEHAVIORS, {
+      [THERMOSTAT_ID]: { action: 'set_temperature', temperature: 16 },
+    });
+    mockHomeyInstance.settings.set(`deferred_objective.${THERMOSTAT_ID}`, {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 24,
+      deadlineAtMs: NOW_MS - 1,
+    });
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await drainPending();
+
+    expect(putSpy.mock.calls.filter(([path]) => path === THERMOSTAT_TARGET_PATH)).toHaveLength(0);
+    expect(mockHomeyInstance.settings.get(`deferred_objective.${THERMOSTAT_ID}`)).toMatchObject({
+      enabled: true,
+    });
+
+    // The same persisted task can use its terminal fallback after a real
+    // per-device meter observation reaches the SDK boundary.
+    await thermostat.setCapabilityValue('measure_power', 1_200);
+    await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await drainPending();
+
+    expect(putSpy).toHaveBeenCalledWith(THERMOSTAT_TARGET_PATH, { value: 16 });
   });
 });

@@ -158,7 +158,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getStructuredLogger: () => undefined,
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
-    disableUnsupportedDevices: vi.fn(),
+    seedTemperatureShedFloorDefaults: vi.fn(),
     getFlowReportedDeviceIds: vi.fn(() => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),

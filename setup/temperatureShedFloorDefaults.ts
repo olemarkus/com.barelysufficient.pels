@@ -4,8 +4,7 @@
  * A device PELS can only lower (no `onoff`) still has to be sheddable, so the
  * app assigns it a `set_temperature` shed behaviour without asking, and derives
  * the floor from the device's own mode target / setpoint. Split out of
- * `appDeviceSupport.ts`, which owns the unsupported-device demotions that call
- * this.
+ * `appDeviceSupport.ts`, which runs this when a device snapshot is refreshed.
  */
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -204,4 +203,3 @@ export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
   settings.set(OVERSHOOT_BEHAVIORS, { ...overshootSettings, ...updates });
   return updated;
 }
-

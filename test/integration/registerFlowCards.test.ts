@@ -361,11 +361,9 @@ describe('registerFlowCards', () => {
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
   });
 
-  // `powerCapable: false` is the transport's durable verdict that PELS cannot
-  // limit the device, and `disableUnsupportedDevices` demotes `controllable`
-  // for it on every refresh. A Flow writing `true` here never won that fight,
-  // but between the write and the next refresh the planner resumed the device
-  // on an invented expected power. The enable card refuses — and refuses a
+  // `powerCapable: false` means this read has no positive support evidence, so
+  // the enable card refuses while the status is unresolved. The planner also
+  // requires a real reading before any control decision. The card refuses a
   // device PELS does not track at all, whose eligibility cannot be resolved.
   // The disable card does neither, because taking control away must never
   // depend on a successful lookup.
