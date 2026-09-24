@@ -1,6 +1,4 @@
-import {
-  createObservedTemperatureModeUpdates, createTemperaturePriceShiftPolicy,
-} from './appInit/createObservedTemperatureModeUpdates';
+import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
@@ -32,6 +30,7 @@ import {
   createDeviceDiagnosticsService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
+  createTemperaturePriceShiftPolicy,
   persistDeferredObjectiveObservationWatermark,
   requirePlanService,
   resolvePlanService,
