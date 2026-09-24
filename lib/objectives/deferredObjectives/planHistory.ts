@@ -352,14 +352,18 @@ export class DeferredObjectivePlanHistoryRecorder {
    * Book each device's draw over this recorder's own tick clock. A watt reading
    * is a level that holds until the next report replaces it, so the draw seen
    * on the previous tick is what ran between that tick and this one — however
-   * long the gap. A tick where the device is missing books the last draw and
-   * carries it forward.
+   * long the gap. A tick where the device is missing from the device list books
+   * up to that tick and nothing after it: the device left the plan (unmanaged,
+   * moved to a sub-home, deleted, no power reading), so its last draw is not a
+   * reading of what it drew since. It re-anchors on the tick it returns.
    */
   private recordDeliveryTick(diag: DeferredObjectiveDiagnostic, nowMs: number): void {
-    const previous = this.lastDeliveryTickByDeviceId.get(diag.deviceId);
-    if (previous !== undefined) this.bookDelivery(diag.deviceId, previous, nowMs);
-    const drawKw = diag.currentDrawKw ?? previous?.drawKw;
-    if (drawKw !== undefined) this.lastDeliveryTickByDeviceId.set(diag.deviceId, { atMs: nowMs, drawKw });
+    this.bookHeldDraw(diag.deviceId, nowMs);
+    if (diag.currentDrawKw === null) {
+      this.lastDeliveryTickByDeviceId.delete(diag.deviceId);
+    } else {
+      this.lastDeliveryTickByDeviceId.set(diag.deviceId, { atMs: nowMs, drawKw: diag.currentDrawKw });
+    }
   }
 
   // A finalize the user triggers lands between ticks: the draw the last tick saw

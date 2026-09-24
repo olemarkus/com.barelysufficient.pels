@@ -1964,16 +1964,36 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(3 * (65 / 60), 6);
     });
 
-    it('carries the last draw forward through a tick where the device is missing', () => {
+    it('books up to a tick where the device is missing, then nothing until it returns', () => {
       const persisted = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      const deadlineAtMs = 10 * 60_000;
+      const deadlineAtMs = 15 * 60_000;
       tick(recorder, 0, deadlineAtMs, 2);
       tick(recorder, 5 * 60_000, deadlineAtMs, null);
+      tick(recorder, 10 * 60_000, deadlineAtMs, 2);
       tick(recorder, deadlineAtMs, deadlineAtMs, 2);
       recorder.flushIfDirty();
 
+      // 0–5 min at 2 kW, the absent 5–10 min booked as nothing, 10–15 min at 2 kW.
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 3, 6);
+    });
+
+    // A device leaves the lifecycle's device list for a lasting reason (the owner
+    // turned "Managed by PELS" off, moved it to a sub-home, deleted it) while its
+    // task stays open. Its last draw is not a reading of what it drew since.
+    it('does not book a device that stays out of the device list until the deadline', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = 8 * HOUR_MS;
+      tick(recorder, 0, deadlineAtMs, 3);
+      tick(recorder, 30_000, deadlineAtMs, null, { reasonCode: 'objective_device_unmanaged' });
+      for (let nowMs = HOUR_MS; nowMs < deadlineAtMs; nowMs += HOUR_MS) {
+        tick(recorder, nowMs, deadlineAtMs, null, { reasonCode: 'objective_device_unmanaged' });
+      }
+      tick(recorder, deadlineAtMs, deadlineAtMs, null, { reasonCode: 'objective_device_unmanaged' });
+      recorder.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(3 * (30 / 3600), 6);
     });
 
     it('books up to the moment a user replaces the task', () => {
