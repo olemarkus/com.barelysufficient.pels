@@ -192,7 +192,7 @@ const runTask = (energyNeededKWh: number): HourOutcome[] => {
     const diagnostic = diagnosticFor(plan, remainingKWh);
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     const decision = decisions.get(DEVICE_ID)!;
-    const applied = applyDeferredAdmissionToInput([device], decisions);
+    const applied = applyDeferredAdmissionToInput([device], decisions, {});
 
     const bookedKWh = plan.currentBucket?.plannedUsefulEnergyKWh ?? 0;
     // A claimed hour runs the device at its committed step for the whole hour; an

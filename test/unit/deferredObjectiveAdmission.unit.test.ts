@@ -271,7 +271,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    const applied = applyDeferredAdmissionToInput([device], decisions);
+    const applied = applyDeferredAdmissionToInput([device], decisions, {});
     // Managed, so it competes on its own priority in the normal shed/restore lane:
     // the task contributes the authority term the cap-off setting withheld.
     expect(applied.devices[0]?.control.commandAuthority).toBe(true);
@@ -457,7 +457,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
 
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
     expect(devices[0]?.budgetExempt).toBeUndefined();
   });
 
@@ -465,7 +465,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const capOnDevice = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions);
+    const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions, {});
     expect(devices[0]?.budgetExempt).toBe(true);
   });
 
@@ -490,7 +490,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
     // Admission only requests the boost (kind-agnostic); the boost resolvers decide whether
     // it resolves to temperatureBoost or evBoost by device kind.
     expect(devices[0]?.forceBoostActive).toBe(true);
@@ -517,7 +517,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', pauseLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
     expect(devices[0]?.reservesStartupPower).toBe(true);
     expect(devices[0]?.forceBoostActive).toBeUndefined();
   });
@@ -528,7 +528,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
     expect(devices[0]?.reservesStartupPower).toBe(true);
     expect(devices[0]?.forceBoostActive).toBe(true);
   });

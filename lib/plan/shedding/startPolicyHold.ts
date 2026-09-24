@@ -36,7 +36,10 @@ import {
  *
  * The lift is `PlanInputDevice.startPolicyHoldLifted`, stamped by deferred
  * admission on a `planned` decision — the task has booked energy into this hour
- * and wants the device running. That exclusion is not a detail: it is what makes
+ * and wants the device running — or an `unclaimed` one, where the task booked
+ * nothing only because a forecast left no room, yet cannot finish without the
+ * hour. A lift is not a start: the device then goes through ordinary admission,
+ * so it runs only when the house has room. That exclusion is not a detail: it is what makes
  * the policy mean "only PELS starts it" rather than "never runs", because a
  * smart task is the one thing in PELS that positively starts a device (the
  * restore lane only resumes what it shed, and boost only escalates a device
@@ -55,9 +58,9 @@ import {
  * uses (the `excludeIds` union built in `planBuilderSurplus.ts`), which also
  * contains `idle` and avoided devices — a
  * task that is on track with nothing booked this hour, or one deferring to a
- * cheaper one. Those devices are governed but NOT driven, and a baseline of off
- * must survive them: excluding them would let the ordinary restore lane start a
- * device its own task had just decided to leave alone. The blunter case is the
+ * cheaper one. Those tasks decided they can finish without the hour, and a
+ * baseline of off must survive that: excluding them would let the ordinary
+ * restore lane start a device its own task had just decided to leave alone. The blunter case is the
  * one the feature exists for — a task whose precondition failed (an EV that will
  * not report its state of charge) is `inactive`, so the device is held and a
  * manual start is turned back off.

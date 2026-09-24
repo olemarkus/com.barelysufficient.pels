@@ -1,4 +1,3 @@
-import type { DeviceControlPosture } from '../../../packages/planner-types/src/planInputDevice';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
@@ -194,26 +193,21 @@ const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } =
 
 // The per-device decoration spread. Hoisted out of the map callback so that callback's
 // cyclomatic complexity stays within budget; each flag is only ever added when set.
-const buildAdmissionDecoration = (params: {
-  override: boolean;
-  // The device's current posture, so the authority term is OR'd onto it rather
-  // than a fresh object being invented here.
-  control: DeviceControlPosture;
-  budgetExempt: boolean;
-  engageBoost: boolean;
-  reservesStartupPower: boolean;
-  liftsStartPolicyHold: boolean;
-  // Absent when this device has no deadline floor this cycle.
-  deadlineFloorTargetC: number | undefined;
-}): Partial<PlanInputDevice> => ({
-  // OR'd on, never assigned: the owner's two settings are untouched and only
-  // the derived per-cycle authority moves.
-  ...(params.override ? { control: { ...params.control, commandAuthority: true } } : {}),
-  ...(params.budgetExempt ? { budgetExempt: true } : {}),
-  ...resolveBoostFields(params.engageBoost),
-  ...(params.reservesStartupPower ? { reservesStartupPower: true } : {}),
-  ...(params.liftsStartPolicyHold ? { startPolicyHoldLifted: true } : {}),
-  ...(typeof params.deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
+// `deadlineFloorTargetC` is `undefined` when this device has no deadline floor this cycle.
+const buildAdmissionDecoration = (
+  device: PlanInputDevice,
+  override: boolean,
+  claims: DeferredHourClaims,
+  deadlineFloorTargetC: number | undefined,
+): Partial<PlanInputDevice> => ({
+  // OR'd onto the device's current posture, never assigned: the owner's two
+  // settings are untouched and only the derived per-cycle authority moves.
+  ...(override ? { control: { ...device.control, commandAuthority: true } } : {}),
+  ...(claims.budgetExempt ? { budgetExempt: true } : {}),
+  ...resolveBoostFields(claims.engageBoost),
+  ...(claims.reservesStartupPower ? { reservesStartupPower: true } : {}),
+  ...(claims.liftsStartPolicyHold ? { startPolicyHoldLifted: true } : {}),
+  ...(typeof deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC } : {}),
 });
 
 /**
@@ -238,6 +232,7 @@ const resolveHourClaims = (
 ): DeferredHourClaims => {
   const heldOff = rescueBlockedByExternalOffHold(device);
   const planned = !heldOff && decision.kind === 'planned';
+  const unclaimed = !heldOff && decision.kind === 'unclaimed';
   return {
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
@@ -254,15 +249,20 @@ const resolveHourClaims = (
     // as engageBoost); it never sets forceBoostActive and never sheds anyone.
     reservesStartupPower: planned && decision.reservesStartupPower,
     // "Only PELS starts this device" means a smart task and nothing else, so a
-    // task that has BOOKED energy into this hour is the one thing that lifts the
-    // baseline of off. Gated on `planned` alone: `idle` and `unclaimed` govern the
-    // device without driving it, and lifting there would let the ordinary restore
-    // lane start a device its own task had decided to leave alone.
+    // task that needs this hour is the one thing that lifts the baseline of off:
+    // `planned` (energy booked here), and `unclaimed` (nothing booked, yet the task
+    // cannot finish without the hour — a forecast left it no room). Lifting on
+    // `unclaimed` only hands the device to the live planner, which still admits it
+    // on real capacity, daily-budget pace and priority, so it runs only when the
+    // house has room (owner ruling, 2026-09-24; it reverses 2026-09-10's).
+    // `idle` / `released` stay held: the task decided it can finish without the
+    // hour, typically waiting for a cheaper one, and lifting there would let the
+    // ordinary restore lane start a device its own task chose to leave alone.
     // The literal, not a shared predicate: see the note on
     // `isStartPolicyHeldDevice` (`lib/plan/shedding/startPolicyHold.ts`) — the
     // boundary that separates these two readers is why the comparison is
     // duplicated, and shared-domain is not a legal home for it.
-    liftsStartPolicyHold: planned && device.startPolicy === 'pels_only',
+    liftsStartPolicyHold: (planned || unclaimed) && device.startPolicy === 'pels_only',
   };
 };
 
@@ -279,7 +279,7 @@ const claimsAnything = (claims: DeferredHourClaims): boolean => (
 export const applyDeferredAdmissionToInput = (
   devices: PlanInputDevice[],
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
-  targetOverrides: Readonly<Record<string, number>> = {},
+  targetOverrides: Readonly<Record<string, number>>,
 ): DeferredAdmissionInput => {
   if (decisions.size === 0 && Object.keys(targetOverrides).length === 0) {
     return { devices, forceShedSet: new Set() };
@@ -294,15 +294,7 @@ export const applyDeferredAdmissionToInput = (
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);
     if (!override && !hasDeadlineFloor && !claimsAnything(claims)) return device;
-    return {
-      ...device,
-      ...buildAdmissionDecoration({
-        override,
-        control: device.control,
-        ...claims,
-        deadlineFloorTargetC,
-      }),
-    };
+    return { ...device, ...buildAdmissionDecoration(device, override, claims, deadlineFloorTargetC) };
   });
   return { devices: transformed, forceShedSet };
 };

@@ -171,7 +171,7 @@ describe('external-off hold — no rescue claims for a device that will not star
   };
 
   const admit = (device: PlanInputDevice): PlanInputDevice => (
-    applyDeferredAdmissionToInput([device], new Map([[device.id, plannedRescue]])).devices[0]!
+    applyDeferredAdmissionToInput([device], new Map([[device.id, plannedRescue]]), {}).devices[0]!
   );
 
   it('drops every claim while the hold is active', () => {
