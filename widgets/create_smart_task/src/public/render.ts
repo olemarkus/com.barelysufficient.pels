@@ -1,6 +1,7 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   CREATE_SMART_TASK_READY_BY_PRESETS,
+  SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   formatEnergyEstimateKWh,
   formatDeadlineCostMetaLine,
@@ -40,9 +41,8 @@ export type ViewState =
     readyById: string;
     // Opt-in "Extra permissions", both default off and carried through
     // compose → preview → create so the user's choice survives a re-render and
-    // the preview/create reflect it. `limitLowerPriorityDevices` is forced off
-    // whenever `exemptFromBudget` is off (it is inert alone) or the device
-    // can't use it (`device.supportsLimitLowerPriority`).
+    // the preview/create reflect it. `limitLowerPriorityDevices` is only
+    // offered when the device can use it (`device.supportsLimitLowerPriority`).
     exemptFromBudget: boolean;
     limitLowerPriorityDevices: boolean;
   }
@@ -87,10 +87,11 @@ export type RenderTargets = {
   extraPermsHint: HTMLElement;
   permBudgetInput: HTMLInputElement;
   permBudgetLabel: HTMLElement;
+  permBudgetHint: HTMLElement;
   permLimitToggle: HTMLElement;
   permLimitInput: HTMLInputElement;
   permLimitLabel: HTMLElement;
-  permLimitNote: HTMLElement;
+  permLimitHint: HTMLElement;
   previewBtn: HTMLButtonElement;
   readyByTemplate: HTMLTemplateElement;
   // Preview — cost leads, the when-window pairs with it, energy is demoted.
@@ -262,28 +263,26 @@ const resolveReadyByEcho = (readyById: string): string | null => {
 
 // The collapsed "Extra permissions" disclosure. Both toggles reflect the view's
 // opt-in state; the limit-lower-priority toggle is only OFFERED for a device that
-// can use it (`supportsLimitLowerPriority`, gated on effect server-side) and only
-// ENABLED once budget exemption is on — inert alone, so a one-line note explains
-// the gate when it is disabled.
+// can use it (`supportsLimitLowerPriority`, gated on effect server-side).
 const renderExtraPermissions = (
   targets: RenderTargets,
   view: Extract<ViewState, { kind: 'compose' }>,
 ): void => {
   const {
     extraPermsTitle, extraPermsHint,
-    permBudgetInput, permBudgetLabel,
-    permLimitToggle, permLimitInput, permLimitLabel, permLimitNote,
+    permBudgetInput, permBudgetLabel, permBudgetHint,
+    permLimitToggle, permLimitInput, permLimitLabel, permLimitHint,
   } = targets;
   extraPermsTitle.textContent = C.extraPermissionsTitle;
   extraPermsHint.textContent = C.extraPermissionsHint;
   permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
+  permBudgetHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget;
   permBudgetInput.checked = view.exemptFromBudget;
   permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
+  permLimitHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices;
   const offerLimit = view.device.supportsLimitLowerPriority;
   setVisible(permLimitToggle, offerLimit);
   permLimitInput.checked = view.limitLowerPriorityDevices;
-  permLimitInput.disabled = !view.exemptFromBudget;
-  setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
 };
 
 const renderCompose = (

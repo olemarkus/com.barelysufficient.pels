@@ -190,11 +190,9 @@ test.describe('Smart task edit', () => {
 
     const rows = permissions.locator('.md-switch-row');
     await expect(rows).toHaveCount(3);
-    // Limit-lower-priority is inert without the budget exemption, so it starts
-    // disabled and only becomes settable once the exemption is on.
+    // Limit-lower-priority stands on its own: settable without the budget
+    // exemption, and saved without it.
     const limitSwitch = rows.nth(1).locator('md-switch');
-    await expect(limitSwitch).toHaveAttribute('disabled', '');
-    await rows.nth(0).locator('md-switch').click();
     await expect(limitSwitch).not.toHaveAttribute('disabled', '');
     await limitSwitch.click();
 
@@ -209,10 +207,10 @@ test.describe('Smart task edit', () => {
         .__LAST_SMART_TASK_UPDATE__
     ));
     expect(body).toMatchObject({
-      exemptFromBudget: true,
-      limitLowerPriorityDevices: true,
-      // Sent explicitly even though it is off, so an unchecked toggle can
+      // Sent explicitly even though they are off, so an unchecked toggle can
       // actually revoke instead of reading as "unchanged".
+      exemptFromBudget: false,
+      limitLowerPriorityDevices: true,
       pauseLowerPriorityDevices: false,
     });
   });

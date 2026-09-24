@@ -239,12 +239,9 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('STRIPS an established limit grant once its budget exemption is revoked', async () => {
-      // For an established grant, the exemption conjunct is enforced only as a
-      // revocation TRANSITION: this request takes the stored 'always' pairing
-      // away while keeping the limit toggle, so the pair-gated grant goes with
-      // it. A standing grant with no stored pairing is the different case the
-      // Flow-granted limit-only test below pins — it survives.
+    it('KEEPS a limit grant when its budget exemption is revoked', async () => {
+      // The two permissions are independent: the runtime honours the limit
+      // grant alone, so revoking the exemption must not take it along.
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater()]);
       app.createDeferredObjective(
@@ -261,7 +258,8 @@ describe('createDeferredObjective (app)', () => {
         'replace',
       );
       expect(result).toEqual({ ok: true });
-      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ limitLowerPriorityDevices: 'always' });
       await app.onUninit?.();
     });
 
@@ -269,9 +267,7 @@ describe('createDeferredObjective (app)', () => {
       // The Flow card is the authority on rescue and writes limit-only grants
       // verbatim; the runtime honours them (`limitLowerPriorityApplied` keys on
       // the grant alone). The editor names all three permissions on every save,
-      // so the gate must treat this as an established grant with no stored
-      // exemption pairing to revoke — not as a new pair-gated request. Pre-fix,
-      // any goal-only edit silently erased the working grant.
+      // so a goal-only edit must carry the grant through.
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater()]);
       app.createDeferredObjective('heater-1', tempCandidate(60));
@@ -311,12 +307,13 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('STRIPS limit-lower-priority when budget exemption is not also granted (inert alone)', async () => {
+    it('persists a new limit-only grant on a stepped device, without the budget exemption', async () => {
       const app = await initApp();
       app.setSnapshotForTests([steppedHeater()]);
       const result = app.createDeferredObjective('heater-1', withRescue({ limitLowerPriorityDevices: 'always' }));
       expect(result).toEqual({ ok: true });
-      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ limitLowerPriorityDevices: 'always' });
       await app.onUninit?.();
     });
 

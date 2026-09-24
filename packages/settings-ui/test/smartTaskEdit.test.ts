@@ -262,7 +262,7 @@ describe('smartTaskEdit controller', () => {
     expect(controller.getSmartTaskEditSnapshot()!.dirty).toBe(false);
   });
 
-  it('turning the budget exemption off forces limit-lower-priority off with it', async () => {
+  it('turning the budget exemption off leaves limit-lower-priority alone', async () => {
     await installHomey(() => okPreview);
     const controller = await loadController();
     controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
@@ -275,12 +275,33 @@ describe('smartTaskEdit controller', () => {
       },
     });
     controller.setSmartTaskEditPermission('exemptFromBudget', false);
-    // The server drops the limit grant when it isn't paired with the exemption,
-    // so leaving it visibly checked would show a state the save can't persist.
+    // The permissions are independent: the runtime honours the limit grant alone.
     expect(controller.getSmartTaskEditSnapshot()!.draft.permissions).toEqual({
       exemptFromBudget: false,
-      limitLowerPriorityDevices: false,
+      limitLowerPriorityDevices: true,
       pauseLowerPriorityDevices: false,
+    });
+  });
+
+  it('keeps a standing limit-only grant when another permission is toggled', async () => {
+    // A Flow card can grant limit-lower-priority alone. Toggling an unrelated
+    // permission used to force it off, and Save then revoked the grant.
+    await installHomey(() => okPreview);
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose: vi.fn(), refreshBoot: vi.fn() });
+    controller.openSmartTaskEditor({
+      ...CONTEXT,
+      baselinePermissions: {
+        exemptFromBudget: false,
+        limitLowerPriorityDevices: true,
+        pauseLowerPriorityDevices: false,
+      },
+    });
+    controller.setSmartTaskEditPermission('pauseLowerPriorityDevices', true);
+    expect(controller.getSmartTaskEditSnapshot()!.draft.permissions).toEqual({
+      exemptFromBudget: false,
+      limitLowerPriorityDevices: true,
+      pauseLowerPriorityDevices: true,
     });
   });
 

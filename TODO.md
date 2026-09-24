@@ -75,8 +75,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
-- **Smart tasks** — 2: editor revokes a standing limit-only grant; `on_track` while the planned
-  bucket goes undelivered
+- **Smart tasks** — 1: `on_track` while the planned bucket goes undelivered
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
@@ -473,25 +472,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `test/unit/deferredObjectiveActivePlanShape.test.ts`. Source: adversarial review of the
       budget-contributing-cause change, 2026-09-08. [P3]
 
-- [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
-      `applyPermissionGate` (`packages/settings-ui/src/ui/smartTaskEdit.ts:342-348`) forces
-      `limitLowerPriorityDevices: false` whenever `exemptFromBudget` is unchecked, on ANY
-      permission toggle — so with a Flow-granted limit-only task, toggling e.g. pause on flips
-      the limit toggle off (disabled, so it can't be re-checked), and Save sends an explicit
-      revoke that `buildCandidateRescue` applies before the server's standing-grant protection
-      (the 2026-08-02 P0 fix) can see it. Same user promise, adjacent journey (permission-edit
-      instead of goal-edit). The client gate's justification comment ("the server drops that
-      grant when it isn't paired") is no longer true for standing grants; drop the stale
-      justification with the fix, and update the checked-but-disabled
-      `SMART_TASK_LIMIT_NEEDS_BUDGET_HINT` copy (`DeadlinePlan.tsx:1379-1388`) that tells the
-      user a working grant is unusable. Source: 2026-08-02 release review, Fix-A adversarial
-      pass.
-      **Absorbed from the smart-task permission-presentation item: the gated-off row must not
-      replace its own description.** While "May limit lower-priority devices" is gated off, the
-      `SMART_TASK_LIMIT_NEEDS_BUDGET_HINT` ternary swaps the row's description for "Turn on 'May go
-      over daily budget' to use this.", so the owner cannot learn what the permission does before
-      granting the prerequisite. Both lines must render — the description AND the prerequisite hint
-      — not one in place of the other. Source: 2026-08-02 release review, pels-ux-fit. [P1]
+- [ ] **The smart-task preview blames time when the daily budget is what stops the task.**
+      `resolveSmartTaskPreviewStatusCopy` (`packages/shared-domain/src/deadlineLabels.ts`), used by
+      the editor (`packages/settings-ui/src/ui/smartTaskEdit.ts`) and the New smart task widget
+      (`widgets/create_smart_task/src/public/render.ts`), always explains "Cannot finish" as not
+      enough usable time before the ready-by time. The preview estimate carries no shortfall cause,
+      while the saved task's detail does (`floorShortfallCause` / `budgetContributedToShortfall`).
+      Since "May limit lower-priority devices" no longer requires "May go over daily budget", a
+      limit-only preview on a budget-bound task steers the owner to move the ready-by time instead of
+      granting the budget permission. Change: carry the shortfall cause on the preview estimate and
+      pick the existing budget "why" lines there. Done when a budget-bound, limit-only preview names
+      the daily budget, pinned by a settings-UI spec. Source: pels-ux-fit on the limit/budget
+      decoupling, 2026-09-24. [P2]
 
 - [ ] **A smart task reports `on_track` while its current planned bucket goes undelivered.**
       Prod 2026-08-01, water heater "Connected 300": the frozen horizon booked 1.183 kWh into the

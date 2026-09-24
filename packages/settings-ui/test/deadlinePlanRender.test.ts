@@ -12,6 +12,7 @@ import type {
 import {
   deadlineLabels,
   SMART_TASK_EDIT_COPY,
+  SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import type { SmartTaskEditSnapshot } from '../src/ui/smartTaskEdit.ts';
@@ -255,18 +256,13 @@ describe('DeadlinePlan pending branch', () => {
     expect(open.querySelector<HTMLDetailsElement>('.smart-task-edit__permissions')?.open).toBe(true);
   });
 
-  it('gates the limit toggle on the budget exemption and hides it on an ineligible device', () => {
-    // The server drops the limit grant unless it is paired with the budget
-    // exemption AND the device is stepped-load eligible, so the editor must
-    // never render it as a state the save would silently discard.
-    const gated = renderEditor(buildEditSnapshot());
-    const limitRow = Array.from(gated.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
-    expect(limitRow.querySelector('md-switch')?.hasAttribute('disabled')).toBe(true);
-    expect(limitRow.textContent).toContain('May go over daily budget');
-
-    const enabled = renderEditor(buildEditSnapshot({ exemptFromBudget: true }));
-    const enabledRow = Array.from(enabled.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
-    expect(enabledRow.querySelector('md-switch')?.hasAttribute('disabled')).toBe(false);
+  it('offers the limit toggle without the budget exemption and hides it on an ineligible device', () => {
+    // The two permissions are independent; only a device that is not
+    // stepped-load eligible cannot take a new limit grant.
+    const withoutBudget = renderEditor(buildEditSnapshot());
+    const limitRow = Array.from(withoutBudget.querySelectorAll('.smart-task-edit__permissions .md-switch-row'))[1]!;
+    expect(limitRow.querySelector('md-switch')?.hasAttribute('disabled')).toBe(false);
+    expect(limitRow.textContent).toContain(SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices);
 
     const ineligible = renderEditor(buildEditSnapshot({}, { supportsLimitLowerPriority: false }));
     expect(ineligible.textContent).not.toContain(

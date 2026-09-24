@@ -54,7 +54,6 @@ setup/appInit/priceServices.ts 2
 setup/appInit/wireDeviceTransport.ts 1
 setup/appRuntimeApi.ts 1
 setup/appServiceWiring.ts 1
-setup/appSmartTaskApi.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/backgroundTasksController.ts 1
 setup/homeMembership.ts 1

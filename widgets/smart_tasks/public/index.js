@@ -34,7 +34,6 @@
   var SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = "Scheduled";
   var formatSmartTaskWidgetOverflow = (count) => `+${count} in Smart tasks`;
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
-  var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
     pickDeviceTitle: "New smart task",
@@ -119,12 +118,11 @@
     // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
     // default; a user opts in per task. The section hint stays honest about scope
     // (only to hit THIS deadline) and never implies more total power or a raised
-    // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
-    // the surface-neutral constants below — the smart-task editor shows the same
-    // strings, so they must not live under a create-widget-scoped name.
+    // cap (`feedback_hard_cap_is_physical`). The title is an alias of the
+    // surface-neutral constant above — the smart-task editor shows the same
+    // string, so it must not live under a create-widget-scoped name.
     extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
-    limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
     // Shown in the preview when the coordinated projection returns a real planner
     // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
     // `at_risk` (might not). Surfaced as a prominent warning so a user never

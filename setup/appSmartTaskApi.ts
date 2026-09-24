@@ -1,16 +1,12 @@
 import type { AppContext } from '../lib/app/appContext';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
-import type {
-  SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
-} from '../packages/contracts/src/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
-import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import {
   hasOpenDeferredObjective,
   buildUnavailableDeferredObjectivePlanEstimate,
@@ -18,10 +14,8 @@ import {
   readDeferredObjectiveRoster,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
-  readObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
-  type DeferredObjectiveRescueMode,
   type DeferredObjectiveSettingsEntry,
 } from '../lib/objectives/deferredObjectives';
 import {
@@ -37,12 +31,12 @@ import {
   mapObjectiveWriteRefusalReason,
   resolveSmartTaskHomeScope,
 } from './appInit/smartTaskHomeScope';
-import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
+import {
+  gateCandidateExtraPermissions,
+  readStoredObjectiveState,
+} from '../lib/objectives/deferredObjectives/limitGrantGate';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
-import { getLogger } from '../lib/logging/logger';
-
-const logger = getLogger('setup/smart-task-api');
 
 /**
  * Outcome of a smart-task write (create, or the budget-exempt rescue that
@@ -61,11 +55,6 @@ export type SmartTaskWriteResult = WidgetObjectiveWriteResult;
  * from `setup/**` is an auto-import trap.
  */
 type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: false }>['reason'];
-
-type StoredObjectiveState = {
-  entry: DeferredObjectiveSettingsEntry | undefined;
-  absenceTrustworthy: boolean;
-};
 
 /**
  * The app's smart-task (deferred-objective) WRITE surface: preview, create,
@@ -125,163 +114,6 @@ export class AppSmartTaskApi {
     return recorder;
   }
 
-  // Only stepped-load devices (EV chargers + stepped thermal) can honour the
-  // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
-  // which the boost resolvers gate on the device's stepped-load profile
-  // (`resolveBoostSupported` → `hasSteppedLoadProfile`); a binary on/off device has
-  // no higher step to promote to. The rescue gates the grant on this so it never
-  // persists (nor surfaces) a permission the device can't use.
-  private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
-    return device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device);
-  }
-
-  // Which conjunct of the limit-lower-priority gate failed, for the withheld-grant
-  // log below. Only reached when the grant was requested and dropped.
-  private resolveLimitWithheldReason(
-    device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
-  ): 'device_unknown' | 'not_stepped_load' | 'budget_exemption_absent' {
-    if (device === undefined) return 'device_unknown';
-    if (!this.deviceSupportsLimitLowerPriority(device)) return 'not_stepped_load';
-    return 'budget_exemption_absent';
-  }
-
-  // A grant we can't rule out counts as established: an unreadable store is
-  // the same class of transient as a half-warmed device snapshot, so treating
-  // its silence as "nothing stands" would reintroduce the revocation this
-  // check exists to stop (`objectiveAbsenceIsTrustworthy` is the same guard
-  // the write ops use before acting on an absence). An established grant
-  // survives every request except the one that revokes the stored `'always'`
-  // exemption it was paired with at grant time (e2e-pinned). A standing grant
-  // with NO stored pairing — the Flow card writes limit-only verbatim, and the
-  // runtime honours it — has no pairing to revoke, so it survives a goal-only
-  // edit that names all three permissions.
-  private establishedLimitGrantSurvives(
-    storedState: StoredObjectiveState,
-    requestedExemptFromBudget: DeferredObjectiveRescueMode | undefined,
-  ): boolean {
-    const stored = storedState.entry;
-    const standsOrUnknown = stored === undefined
-      ? !storedState.absenceTrustworthy
-      : stored.rescue?.limitLowerPriorityDevices !== undefined;
-    if (!standsOrUnknown) return false;
-    const revokesStoredPairing = stored?.rescue?.exemptFromBudget === 'always'
-      && requestedExemptFromBudget !== 'always';
-    return !revokesStoredPairing;
-  }
-
-  // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
-  // device BEFORE it is previewed or persisted — defence-in-depth, since the
-  // widget's toggle visibility is client-side and not trusted. Only
-  // `limitLowerPriorityDevices` is gated; `exemptFromBudget` and
-  // `pauseLowerPriorityDevices` are ungated (any device can exceed the soft daily
-  // budget, and the startup reservation is priority-relative by construction).
-  // A NEW limit grant is dropped when the device is not stepped-load eligible
-  // (a binary device has no higher step to promote to, and the boost resolvers
-  // gate on `hasSteppedLoadProfile`), or when `exemptFromBudget` is not granted
-  // as `'always'` — the pairing every PELS-owned grant surface requires. The
-  // pairing is a contract rule for new grants, NOT an inertness fact: the Flow
-  // card writes limit-only grants verbatim (it is the authority on rescue), and
-  // the runtime honours them — `limitLowerPriorityApplied` keys on the grant
-  // alone (`lib/objectives/deferredObjectives/freshDiagnostic.ts`).
-  //
-  // NOT gated on `priority === 1`. That conjunct belongs to the planner's
-  // `fullyReserved` FLOOR PROMOTION (`rescueReplan.ts`), where it is load-bearing
-  // because the reserved-headroom forecast (`hardCap − uncontrolled`) assumes
-  // every controlled watt is displaceable — true only at the top. Persisting the
-  // permission is a different question: limiting lower-priority devices helps at
-  // any priority, because the two paths that actually take load off another
-  // device both compare priority STRICTLY, against the same priority source
-  // (`lib/plan/planDevices.ts`):
-  //   - swap selection — `lib/plan/swap/candidates.ts` refuses any candidate with
-  //     `onDevPriority <= devPriority`;
-  //   - startup-reserve admission — `lib/plan/admission/headroomReserve.ts` only
-  //     withholds power from devices with `reserve.priority < devPriority`.
-  // So a boosted priority-2 device can never command a priority-1 device or a
-  // peer off. (Narrower than "the planner is priority-safe": the boost bypasses
-  // in `lib/plan/restore/steppedRestoreAdmission.ts` and `planSteppedLoad.ts` are
-  // priority-BLIND, so a boosted low-priority device can out-compete a shed
-  // higher-priority one for headroom. That is pre-existing and equally reachable
-  // via any user-configured device boost — but do not read this comment as
-  // claiming otherwise.)
-  //
-  // Copying the floor's conjuncts here silently withheld the permission from
-  // every non-top device — while the `allow_smart_task_rescue` Flow card, which
-  // bypasses this gate, granted it on the same devices.
-  //
-  // Runs on BOTH lanes so preview ≡ persist. Returns the candidate unchanged when
-  // it carries no limit-lower-priority grant.
-  //
-  // The gate WITHHOLDS a grant the caller is newly asking for; it must never
-  // ERASE one the device already holds. The distinction is load-bearing now that
-  // the settings-UI edit lane writes with `rescue: 'replace'`: the eligibility
-  // test reads `controlModel`, which is re-derived from live device reads
-  // (`lib/device/managerNativeEv.ts`) and is absent for an auto-native-wired
-  // stepper during the post-restart window while `autoNativeWiringDecisions` —
-  // in-memory, populated by a background pass — is still filling in. Without the
-  // standing check, one degraded read during an unrelated goal edit would
-  // permanently revoke an effective permission: the destructive-reset-on-a-
-  // transient-read pattern `notes/persisted-settings-state.md` exists to prevent.
-  //
-  // Preview threads in the entry from its already-trusted whole-roster read;
-  // write lanes resolve the same classified state locally. That keeps a thrown
-  // preview read on the explicit settings-unavailable path.
-  //
-  // For an ESTABLISHED grant, the budget-exemption conjunct is enforced only as
-  // a revocation TRANSITION: a stored `'always'` pairing revoked by this request
-  // still strips the limit grant (e2e-pinned — revoking the exemption while
-  // keeping the limit toggle must not persist the pair-gated `{ limit }` this
-  // surface promises). A standing grant with NO stored pairing — the Flow card
-  // writes limit-only verbatim, and the runtime honours it — must survive: the
-  // editor names all three permissions on every save, so re-requiring the
-  // pairing here made any goal-only edit silently revoke a working grant.
-  private gateCandidateExtraPermissions(
-    deviceId: string,
-    device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-    storedState?: StoredObjectiveState,
-  ): DeferredObjectivePlanPreviewCandidate {
-    const rescue = candidate.rescue;
-    if (!rescue?.limitLowerPriorityDevices) return candidate;
-    const existing = storedState ?? this.readStoredObjectiveState(deviceId);
-    if (this.establishedLimitGrantSurvives(existing, rescue.exemptFromBudget)) return candidate;
-    const eligible = device !== undefined
-      && this.deviceSupportsLimitLowerPriority(device)
-      && rescue.exemptFromBudget === 'always';
-    if (eligible) return candidate;
-    // A withheld grant is otherwise invisible: the write succeeds, the task looks
-    // created, and the device simply never gets the priority it was promised.
-    // Name the failing conjunct so a log review can tell "binary device" from
-    // "no budget exemption to pair with" without re-deriving the gate.
-    //
-    // `debug`, not `info`: the rescue requests the grant for EVERY device, so on
-    // the binary devices that dominate the starved set this is the normal path,
-    // and it fires on both the preview and the persist lane (twice per tap).
-    logger.debug({
-      event: 'smart_task_permission_withheld',
-      permission: 'limitLowerPriorityDevices',
-      reason: this.resolveLimitWithheldReason(device),
-      deviceId: device?.id ?? null,
-      deviceName: device?.name ?? null,
-    });
-    const { limitLowerPriorityDevices: _dropped, ...keptRescue } = rescue;
-    return {
-      ...candidate,
-      rescue: Object.keys(keptRescue).length > 0 ? keptRescue : undefined,
-    };
-  }
-
-  private readStoredObjectiveState(deviceId: string): StoredObjectiveState {
-    try {
-      const entry = readObjectiveForDevice(this.ctx.homey.settings, deviceId);
-      return {
-        entry,
-        absenceTrustworthy: entry !== undefined
-          || objectiveAbsenceIsTrustworthy(this.ctx.homey.settings, deviceId),
-      };
-    } catch {
-      return { entry: undefined, absenceTrustworthy: false };
-    }
-  }
 
   // Preview the plan the starvation rescue would actually persist. A rescue only
   // ever runs on a device WITHOUT an existing smart task (`getStarvedRescueDevices`
@@ -343,7 +175,7 @@ export class AppSmartTaskApi {
       ?? this.ctx.getUiPickerDevices().find((device) => device.id === deviceId);
     // Gate opt-in extra permissions the same way the create lane does, so the
     // preview reflects exactly what would persist (preview ≡ persist).
-    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, snapshotDevice, candidate, {
+    const gatedCandidate = gateCandidateExtraPermissions(snapshotDevice, candidate, {
       entry: roster.settings.objectivesByDeviceId[deviceId],
       absenceTrustworthy: true,
     });
@@ -443,10 +275,14 @@ export class AppSmartTaskApi {
       return { ok: false, reason: 'invalid_candidate' };
     }
     // Gate opt-in extra permissions against the resolved device before the entry
-    // is normalised/persisted (drops an ineligible/inert limit-lower-priority
-    // grant), so a tampered or stale client can never persist a permission this
-    // device can't honour. Matches the gate the preview applies.
-    const gatedCandidate = this.gateCandidateExtraPermissions(deviceId, device, candidate);
+    // is normalised/persisted (drops an ineligible limit-lower-priority grant),
+    // so a tampered or stale client can never persist a permission this device
+    // can't honour. Matches the gate the preview applies.
+    const gatedCandidate = gateCandidateExtraPermissions(
+      device,
+      candidate,
+      readStoredObjectiveState(this.ctx.homey.settings, deviceId),
+    );
     // Re-validate via the canonical normalizer with `enabled: true`; a creation
     // is implicitly an enabled objective. This rejects malformed deadlines and
     // the generic target envelope exactly as the Flow-card / settings paths do.
@@ -538,8 +374,8 @@ export class AppSmartTaskApi {
   // `exemptFromBudget`, `limitLowerPriorityDevices` and `pauseLowerPriorityDevices`.
   // `createDeferredObjective`'s `gateCandidateExtraPermissions` keeps the budget
   // exemption and the startup reservation for any device — both are ungated — and
-  // the limit-lower-priority grant wherever it has effect (stepped-load, paired
-  // with the exemption; NOT gated on priority). So a rescue can persist any
+  // the limit-lower-priority grant wherever it has effect (stepped-load; NOT
+  // gated on priority). So a rescue can persist any
   // subset, and the surfaces derive what they show from the preview's
   // `grantedRescuePermissions` rather than from the request.
   //

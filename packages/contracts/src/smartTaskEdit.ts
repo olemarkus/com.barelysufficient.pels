@@ -31,12 +31,10 @@ export type SmartTaskCandidateRequest = {
   // devices; `pauseLowerPriorityDevices` lets it reserve the power it needs to
   // start. All are re-gated SERVER-side (the client's visibility is not
   // trusted): a NEW `limitLowerPriorityDevices` grant is dropped unless the
-  // device is stepped-load eligible AND `exemptFromBudget` is also granted; an
-  // ESTABLISHED limit grant survives every request except one that revokes the
-  // stored `'always'` exemption it was paired with (the Flow card writes
-  // limit-only grants verbatim and the runtime honours them, so an edit must
-  // not erase one). The server maps an opted-in permission to the `'always'`
-  // mode.
+  // device is stepped-load eligible; a STANDING (or unreadable) limit grant
+  // always survives, so a transient ineligible read during an edit cannot erase
+  // it. The permissions are independent of each other. The server maps an
+  // opted-in permission to the `'always'` mode.
   //
   // ABSENT vs `false` is load-bearing, and the difference is PER KEY:
   //   - ABSENT says nothing about that permission — it keeps whatever the task

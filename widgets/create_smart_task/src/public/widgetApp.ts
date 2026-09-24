@@ -163,9 +163,10 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     extraPermsTitle: '[data-extra-perms-title]',
     extraPermsHint: '[data-extra-perms-hint]',
     permBudgetLabel: '[data-perm-budget-label]',
+    permBudgetHint: '[data-perm-budget-hint]',
     permLimitToggle: '[data-perm-limit]',
     permLimitLabel: '[data-perm-limit-label]',
-    permLimitNote: '[data-perm-limit-note]',
+    permLimitHint: '[data-perm-limit-hint]',
     previewView: '[data-preview-view]',
     previewTitle: '[data-preview-title]',
     previewFeasibilityEl: '[data-preview-feasibility]',
@@ -245,11 +246,10 @@ const steppedGoalView = (view: ViewState, direction: 1 | -1): ViewState => {
   return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
 };
 
-// Budget is the gate: turning it off forces limit-lower-priority off too (it is
-// inert alone), keeping view state honest. Pure transition (mirrors steppedGoalView).
+// Pure transitions (mirror steppedGoalView). The two permissions are independent.
 const budgetToggledView = (view: ViewState, checked: boolean): ViewState => {
   if (view.kind !== 'compose') return view;
-  return { ...view, exemptFromBudget: checked, limitLowerPriorityDevices: checked && view.limitLowerPriorityDevices };
+  return { ...view, exemptFromBudget: checked };
 };
 
 const limitToggledView = (view: ViewState, checked: boolean): ViewState => {

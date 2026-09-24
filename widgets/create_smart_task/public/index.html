@@ -51,13 +51,18 @@
           <p class="extra-perms__hint" data-extra-perms-hint></p>
           <label class="perm-toggle">
             <input type="checkbox" class="perm-toggle__input" data-perm-budget-input>
-            <span class="perm-toggle__text" data-perm-budget-label></span>
+            <span class="perm-toggle__text">
+              <span data-perm-budget-label></span>
+              <span class="perm-toggle__hint" data-perm-budget-hint></span>
+            </span>
           </label>
           <label class="perm-toggle" data-perm-limit hidden>
             <input type="checkbox" class="perm-toggle__input" data-perm-limit-input>
-            <span class="perm-toggle__text" data-perm-limit-label></span>
+            <span class="perm-toggle__text">
+              <span data-perm-limit-label></span>
+              <span class="perm-toggle__hint" data-perm-limit-hint></span>
+            </span>
           </label>
-          <p class="perm-toggle__note" data-perm-limit-note hidden></p>
         </details>
         <button type="button" class="primary-btn" data-preview-btn>Preview</button>
       </section>

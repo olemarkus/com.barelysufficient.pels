@@ -25,7 +25,6 @@
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
-  var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
     pickDeviceTitle: "New smart task",
@@ -110,12 +109,11 @@
     // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
     // default; a user opts in per task. The section hint stays honest about scope
     // (only to hit THIS deadline) and never implies more total power or a raised
-    // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
-    // the surface-neutral constants below — the smart-task editor shows the same
-    // strings, so they must not live under a create-widget-scoped name.
+    // cap (`feedback_hard_cap_is_physical`). The title is an alias of the
+    // surface-neutral constant above — the smart-task editor shows the same
+    // string, so it must not live under a create-widget-scoped name.
     extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
-    limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
     // Shown in the preview when the coordinated projection returns a real planner
     // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
     // `at_risk` (might not). Surfaced as a prominent warning so a user never
@@ -214,6 +212,11 @@
     exemptFromBudget: "May go over daily budget",
     limitLowerPriorityDevices: "May limit lower-priority devices",
     pauseLowerPriorityDevices: "May pause lower-priority devices"
+  };
+  var SMART_TASK_EXTRA_PERMISSION_HINTS = {
+    exemptFromBudget: "Lets the task keep going once today\u2019s budget is spent. Still inside your hard cap.",
+    limitLowerPriorityDevices: "Lets the task turn down devices you ranked lower while it runs. Still keeps to today\u2019s budget.",
+    pauseLowerPriorityDevices: "Reserves the power the task needs to start, so it starts sooner. Nothing is switched off \u2014 lower-priority devices just wait longer to resume."
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
@@ -1115,21 +1118,22 @@
       extraPermsHint,
       permBudgetInput,
       permBudgetLabel,
+      permBudgetHint,
       permLimitToggle,
       permLimitInput,
       permLimitLabel,
-      permLimitNote
+      permLimitHint
     } = targets;
     extraPermsTitle.textContent = C.extraPermissionsTitle;
     extraPermsHint.textContent = C.extraPermissionsHint;
     permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
+    permBudgetHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget;
     permBudgetInput.checked = view.exemptFromBudget;
     permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
+    permLimitHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices;
     const offerLimit = view.device.supportsLimitLowerPriority;
     setVisible(permLimitToggle, offerLimit);
     permLimitInput.checked = view.limitLowerPriorityDevices;
-    permLimitInput.disabled = !view.exemptFromBudget;
-    setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
   };
   var renderCompose = (targets, view) => {
     const { device, goal, readyById } = view;
@@ -1330,9 +1334,10 @@
       extraPermsTitle: "[data-extra-perms-title]",
       extraPermsHint: "[data-extra-perms-hint]",
       permBudgetLabel: "[data-perm-budget-label]",
+      permBudgetHint: "[data-perm-budget-hint]",
       permLimitToggle: "[data-perm-limit]",
       permLimitLabel: "[data-perm-limit-label]",
-      permLimitNote: "[data-perm-limit-note]",
+      permLimitHint: "[data-perm-limit-hint]",
       previewView: "[data-preview-view]",
       previewTitle: "[data-preview-title]",
       previewFeasibilityEl: "[data-preview-feasibility]",
@@ -1399,7 +1404,7 @@
   };
   var budgetToggledView = (view, checked) => {
     if (view.kind !== "compose") return view;
-    return { ...view, exemptFromBudget: checked, limitLowerPriorityDevices: checked && view.limitLowerPriorityDevices };
+    return { ...view, exemptFromBudget: checked };
   };
   var limitToggledView = (view, checked) => {
     if (view.kind !== "compose") return view;

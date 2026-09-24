@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
+  SMART_TASK_EXTRA_PERMISSION_HINTS,
 } from '../../packages/shared-domain/src/deadlineLabels';
 import { installWidget } from '../../widgets/create_smart_task/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../../widgets/create_smart_task/src/public/widgetApp';
@@ -47,13 +48,18 @@ const WIDGET_MARKUP = `
         <p class="extra-perms__hint" data-extra-perms-hint></p>
         <label class="perm-toggle">
           <input type="checkbox" class="perm-toggle__input" data-perm-budget-input />
-          <span class="perm-toggle__text" data-perm-budget-label></span>
+          <span class="perm-toggle__text">
+            <span data-perm-budget-label></span>
+            <span class="perm-toggle__hint" data-perm-budget-hint></span>
+          </span>
         </label>
         <label class="perm-toggle" data-perm-limit hidden>
           <input type="checkbox" class="perm-toggle__input" data-perm-limit-input />
-          <span class="perm-toggle__text" data-perm-limit-label></span>
+          <span class="perm-toggle__text">
+            <span data-perm-limit-label></span>
+            <span class="perm-toggle__hint" data-perm-limit-hint></span>
+          </span>
         </label>
-        <p class="perm-toggle__note" data-perm-limit-note hidden></p>
       </details>
       <button type="button" class="primary-btn" data-preview-btn>Preview</button>
     </section>
@@ -651,19 +657,20 @@ describe('create smart task widget browser', () => {
     });
     const input = (sel: string): HTMLInputElement => document.querySelector(sel) as HTMLInputElement;
 
-    test('offers limit-lower-priority only for an eligible device, gated behind budget, and sends both on create', async () => {
+    test('offers limit-lower-priority for an eligible device on its own, and sends it without the budget exemption', async () => {
       const createCalls: unknown[] = [];
       installWidget(window as WidgetWindow, document);
       ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([steppedDevice], createCalls));
       await flushPromises();
       click('[data-device-button]');
 
-      // Offered (eligible) but DISABLED until budget exemption is on (inert alone).
       expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(false);
-      expect(input('[data-perm-limit-input]').disabled).toBe(true);
-
-      click('[data-perm-budget-input]');
       expect(input('[data-perm-limit-input]').disabled).toBe(false);
+      // Each toggle says what it does, including that limit keeps to the budget.
+      expect(document.querySelector('[data-perm-budget-hint]')?.textContent)
+        .toBe(SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget);
+      expect(document.querySelector('[data-perm-limit-hint]')?.textContent)
+        .toBe(SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices);
       click('[data-perm-limit-input]');
       click('[data-preview-btn]');
       await flushPromises();
@@ -671,7 +678,8 @@ describe('create smart task widget browser', () => {
       await flushPromises();
 
       expect(createCalls).toHaveLength(1);
-      expect(createCalls[0]).toMatchObject({ exemptFromBudget: true, limitLowerPriorityDevices: true });
+      expect(createCalls[0]).toMatchObject({ limitLowerPriorityDevices: true });
+      expect(createCalls[0]).not.toHaveProperty('exemptFromBudget');
     });
 
     test('hides limit-lower-priority for an ineligible device; a budget-only create omits it', async () => {
@@ -692,7 +700,7 @@ describe('create smart task widget browser', () => {
       expect(createCalls[0]).not.toHaveProperty('limitLowerPriorityDevices');
     });
 
-    test('turning budget exemption back off forces limit-lower-priority off too', async () => {
+    test('turning budget exemption back off leaves limit-lower-priority on', async () => {
       installWidget(window as WidgetWindow, document);
       ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([steppedDevice], []));
       await flushPromises();
@@ -700,11 +708,10 @@ describe('create smart task widget browser', () => {
 
       click('[data-perm-budget-input]');
       click('[data-perm-limit-input]');
+      click('[data-perm-budget-input]');
+      expect(input('[data-perm-budget-input]').checked).toBe(false);
       expect(input('[data-perm-limit-input]').checked).toBe(true);
-
-      click('[data-perm-budget-input]'); // budget off → limit must reset off + disable
-      expect(input('[data-perm-limit-input]').checked).toBe(false);
-      expect(input('[data-perm-limit-input]').disabled).toBe(true);
+      expect(input('[data-perm-limit-input]').disabled).toBe(false);
     });
   });
 

@@ -108,7 +108,7 @@ The Flow card also asks when the permission applies:
 
 The **Edit task** toggles and the **New smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
 
-**limit lower-priority devices** only does anything alongside **go over today's budget**, so the editor keeps it switched off until the budget permission is on, and it is offered only on devices that can actually be turned down a step. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
+**limit lower-priority devices** is offered only for devices with power levels, such as a water heater with several heating steps. It works on its own: it makes room by turning down lower-priority devices, within both the hard cap and today's budget. To let the task use more than today's budget allows, also turn on **go over today's budget**. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
 
 Changing only the permissions re-plans the task and keeps the current run going. Changing the goal or the ready-by time starts a new run, and the run so far moves to **Past tasks**.
 

@@ -460,9 +460,6 @@ export const formatSmartTaskWidgetOverflow = (count: number): string =>
 // filing them under a widget-scoped record would mean someone tuning the widget
 // silently re-words the editor and its log breadcrumbs.
 export const SMART_TASK_EXTRA_PERMISSIONS_TITLE = 'Extra permissions';
-// Shown under the limit-lower-priority toggle when it is disabled: that
-// permission only has any effect alongside the budget one, so it is gated on it.
-export const SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = 'Turn on “May go over daily budget” to use this.';
 
 // ─── Create-smart-task widget copy ───────────────────────────────────────────
 // User-facing strings for the standalone "New smart task" dashboard widget.
@@ -558,12 +555,11 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
   // default; a user opts in per task. The section hint stays honest about scope
   // (only to hit THIS deadline) and never implies more total power or a raised
-  // cap (`feedback_hard_cap_is_physical`). Title and gating note are aliases of
-  // the surface-neutral constants below — the smart-task editor shows the same
-  // strings, so they must not live under a create-widget-scoped name.
+  // cap (`feedback_hard_cap_is_physical`). The title is an alias of the
+  // surface-neutral constant above — the smart-task editor shows the same
+  // string, so it must not live under a create-widget-scoped name.
   extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
   extraPermissionsHint: 'Off unless you turn them on — only used to hit this deadline.',
-  limitLowerPriorityNeedsBudget: SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   // Shown in the preview when the coordinated projection returns a real planner
   // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
   // `at_risk` (might not). Surfaced as a prominent warning so a user never
@@ -967,7 +963,8 @@ export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveR
 // (`feedback_hard_cap_is_physical`): these buy a task priority, never more power.
 export const SMART_TASK_EXTRA_PERMISSION_HINTS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'Lets the task keep going once today’s budget is spent. Still inside your hard cap.',
-  limitLowerPriorityDevices: 'Lets the task turn down devices you ranked lower while it runs.',
+  limitLowerPriorityDevices: 'Lets the task turn down devices you ranked lower while it runs. '
+    + 'Still keeps to today’s budget.',
   pauseLowerPriorityDevices: 'Reserves the power the task needs to start, so it starts sooner. '
     + 'Nothing is switched off — lower-priority devices just wait longer to resume.',
 };

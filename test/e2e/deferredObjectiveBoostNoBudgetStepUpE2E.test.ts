@@ -24,8 +24,8 @@
 // restore power dwarfs any hourly headroom), so the shed invariant normally pins
 // the tank at its low step even though it is drawing enough to want the next step
 // up (`restore_stepped_rejected`, `rejectionReason: 'shed_invariant'`). A smart
-// task with `rescue.limitLowerPriorityDevices:'always'` (paired, as the create gate
-// requires, with `exemptFromBudget:'always'`) forces boost on in its planned hours,
+// task with `rescue.limitLowerPriorityDevices:'always'` (here alongside
+// `exemptFromBudget:'always'`) forces boost on in its planned hours,
 // so the escalation is admitted instead (`restore_stepped_admitted`,
 // `blockedByShedInvariant: false`). The ONLY lever between the two task cases is the
 // price curve (which hour the planner books).
@@ -112,8 +112,9 @@ const baseTask = {
   targetTemperatureC: TARGET_C,
   deadlineAtMs: DAY + 6 * HOUR_MS,
 };
-// A boost task: limit-lower-priority is the boost permission, and the create gate
-// only persists it alongside exempt-from-budget, so a faithful task carries both.
+// A boost task: limit-lower-priority is the boost permission. It carries the
+// budget exemption too, mirroring the rescue candidate; the limit grant alone is
+// what engages boost.
 const BOOST_TASK = {
   ...baseTask,
   rescue: { limitLowerPriorityDevices: 'always' as const, exemptFromBudget: 'always' as const },

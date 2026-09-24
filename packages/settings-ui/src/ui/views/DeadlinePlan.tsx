@@ -22,7 +22,6 @@ import {
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-  SMART_TASK_LIMIT_NEEDS_BUDGET_HINT,
   SMART_TASK_LOADING_LABEL,
   SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_SCHEDULE_CARD_TITLE,
@@ -1336,9 +1335,7 @@ const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onToggle }: {
 // leave the user unable to see or revoke a permission they still have — the
 // read-only row is suppressed while the editor is open, so this is the only
 // surface for it. Rendering keys off the BASELINE so the row can't vanish the
-// moment it is switched off. The budget exemption gates it either way: the
-// controller forces it off when the exemption goes off, so a
-// checked-but-unpersistable state can't be shown.
+// moment it is switched off.
 const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
   snapshot: SmartTaskEditSnapshot;
   disabled: boolean;
@@ -1376,15 +1373,12 @@ const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
         {(snapshot.context.supportsLimitLowerPriority || baseline.limitLowerPriorityDevices) && (
           <SmartTaskPermissionRow
             label={SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices}
-            hint={permissions.exemptFromBudget
-              ? SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices
-              : SMART_TASK_LIMIT_NEEDS_BUDGET_HINT}
+            hint={SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices}
             selected={permissions.limitLowerPriorityDevices}
             // Off on an ineligible device is a one-way door: the row stays (it
             // is rendered off the baseline) but can't be switched back on, since
             // the server would drop a fresh grant here as inert.
             disabled={disabled
-              || !permissions.exemptFromBudget
               || (!snapshot.context.supportsLimitLowerPriority && !permissions.limitLowerPriorityDevices)}
             onToggle={(value) => onToggle('limitLowerPriorityDevices', value)}
           />

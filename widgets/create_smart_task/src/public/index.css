@@ -483,18 +483,14 @@
   outline-offset: 2px;
 }
 
-/* Disabled = gated off (limit-lower-priority needs the budget toggle first). */
-.perm-toggle__input:disabled {
-  cursor: default;
+/* Label over its one-line description, as in the smart-task editor. */
+.perm-toggle__text {
+  display: flex;
+  flex-direction: column;
+  padding: var(--pw-su-1, 4px) 0;
 }
 
-.perm-toggle__input:disabled + .perm-toggle__text {
-  opacity: 0.45;
-}
-
-.perm-toggle__note {
-  margin: 0 0 var(--pw-su-1, 4px);
-  padding-left: calc(20px + var(--pw-su-2, 8px));
+.perm-toggle__hint {
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
   color: var(--pw-text-muted, #6d7680);

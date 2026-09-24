@@ -46,7 +46,7 @@ const PRICES = [8, 40, 8, 40, 30, 30, 30, 30, 30, 30, 30, 30,
   30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30];
 
 // A smart task with BOTH standing permissions: boost (limit-lower-priority) and
-// exempt-from-budget — the only pairing the create gate persists.
+// exempt-from-budget.
 const boostExemptTask = () => ({
   enabled: true,
   kind: 'temperature' as const,

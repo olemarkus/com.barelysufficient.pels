@@ -335,18 +335,6 @@ export const setSmartTaskEditTarget = (rawValue: string): void => {
   applyDraftChange({ target: rawValue.trim() });
 };
 
-// Budget exemption is the gate: turning it OFF forces limit-lower-priority off
-// too, because the server drops that grant when it isn't paired with the
-// exemption. Mirrors the create widget's `budgetToggledView` — without it the
-// editor would show a checked toggle the save is guaranteed not to persist.
-const applyPermissionGate = (
-  permissions: SmartTaskEditPermissions,
-): SmartTaskEditPermissions => (
-  permissions.exemptFromBudget
-    ? permissions
-    : { ...permissions, limitLowerPriorityDevices: false }
-);
-
 // A permission change goes through the same draft lane as the fields: it arms
 // Save and re-previews, because the estimate is priced under the permissions
 // (dropping the budget exemption tightens the plan and can change the window).
@@ -357,7 +345,7 @@ export const setSmartTaskEditPermission = (
   const s = state;
   if (!s) return;
   applyDraftChange({
-    permissions: applyPermissionGate({ ...s.draft.permissions, [key]: value }),
+    permissions: { ...s.draft.permissions, [key]: value },
   });
 };
 
