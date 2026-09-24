@@ -26,6 +26,7 @@ import {
   HOMES_METER_PLACEHOLDER,
   HOMES_NAME_LABEL,
   HOMES_NO_METER_DEVICES,
+  HOMES_REFRESH_FAILED,
   HOMES_SAVE_AGAIN_BUTTON,
   HOMES_SAVE_BUTTON,
   HOMES_ZONE_HINT,
@@ -105,6 +106,12 @@ export type HomesSettingsSectionProps = {
    * lockout copy: this is a brief wait, not the runtime-can't-vouch state.
    */
   mutationsLocked: boolean;
+  /**
+   * The latest `ui_homes` read failed while an older payload still renders:
+   * the rows shown are last-good and `mutationsLocked` stays set, so this
+   * notice is the only visible reason the controls are unavailable.
+   */
+  refreshFailed: boolean;
   /** Main-home meter nudge (areas exist ∧ Homey Energy ∧ no explicit whole-home meter). */
   showMainMeterNotice: boolean;
   /** Power source is Flow: meter areas can't be measured, so warn before setup. */
@@ -221,10 +228,18 @@ const DegradedNotice = () => (
   </div>
 );
 
-const EditorForm = ({ editor, configDegraded, mutationsLocked }: {
+/** Last-good rows with every mutation locked: the one visible reason why. */
+const RefreshFailedNotice = () => (
+  <div class="pels-notice-warning" id="homes-refresh-failed">
+    {HOMES_REFRESH_FAILED}
+  </div>
+);
+
+const EditorForm = ({ editor, configDegraded, mutationsLocked, refreshFailed }: {
   editor: HomesEditorView;
   configDegraded: boolean;
   mutationsLocked: boolean;
+  refreshFailed: boolean;
 }) => (
   <section class="settings-form-card homes-settings__editor" id="homes-editor">
     <h3 class="pels-text-card-title homes-settings__editor-title">
@@ -234,6 +249,7 @@ const EditorForm = ({ editor, configDegraded, mutationsLocked }: {
     <ZoneField editor={editor} />
     <NameField editor={editor} />
     {configDegraded && <DegradedNotice />}
+    {refreshFailed && <RefreshFailedNotice />}
     {editor.areaGone && (
       <small class="field__hint field__hint--alert" id="homes-editor-area-gone">
         {HOMES_EDITOR_AREA_GONE}
@@ -412,6 +428,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
           editor={props.editor}
           configDegraded={props.configDegraded}
           mutationsLocked={props.mutationsLocked}
+          refreshFailed={props.refreshFailed}
         />
       </div>
     );
@@ -424,6 +441,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
       <div class="homes-settings">
         {props.showFlowSourceNotice && <FlowSourceNotice />}
         {props.configDegraded && <DegradedNotice />}
+        {props.refreshFailed && <RefreshFailedNotice />}
         <BetaNotice />
         <section class="settings-form-card">
           <p class="pels-card-supporting" id="homes-empty-explainer">{HOMES_EMPTY_EXPLAINER}</p>
@@ -443,6 +461,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
         && <MainMeterConflictNotice areaName={props.mainMeterConflictAreaName} />}
       {props.showFlowSourceNotice && <FlowSourceNotice />}
       {props.configDegraded && <DegradedNotice />}
+      {props.refreshFailed && <RefreshFailedNotice />}
       <BetaNotice />
       <HomesList {...props} />
       {/* Deliberately a bare footnote BELOW the card: it describes the

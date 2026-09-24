@@ -77,7 +77,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
   toggle strands a shed setpoint
 - **Smart tasks** — 2: editor revokes a standing limit-only grant; `on_track` while the planned
   bucket goes undelivered
-- **Multi-home and meter areas** — 1: the "no electricity meters" empty state never renders
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
@@ -728,22 +727,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Multi-home and meter areas
 
-- [ ] **The "no electricity meters" empty state never renders — a meter-less home gets a silent
-      empty picker, and a home whose refresh failed gets no reason its rows are locked.**
-      `refreshMeterDevices` (`packages/settings-ui/src/ui/homesSettings.ts:329-336`) assigns
-      `meterDevices` only when `meters.length > 0`, so `metersLoaded` stays false for a genuinely
-      meter-less home and the rewritten `HOMES_NO_METER_DEVICES` copy is unreachable in exactly the
-      state it was written for. One missing load-state discriminant produces both symptoms:
-      distinguish "loaded empty" from "fetch failed" — assign `[]` on a successful read, keep
-      last-good only on error. The failure arm is user-visible in its own right: a failed
-      `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but the
-      ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable; show
-      a compact stale-refresh warning beside the preserved rows. Done when BOTH arms are pinned — a
-      loaded-empty read renders the `HOMES_NO_METER_DEVICES` empty-state copy, and a failed refresh
-      renders the stale-refresh warning over the preserved rows with mutations still disabled.
-      Source: 2026-08-02 release review, pels-ux-fit rendered walk (rendered proof captured);
-      refresh-failure arm from the release review of the multi-meter GA train, 2026-07-24. [P1]
-
 - [ ] **A silent meter AREA has no staleness indication — the no-readings banner speaks only for
       Main — and an area that never had a reading at all has no surface either.** The banner
       (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the deliberately Main-only
@@ -807,8 +790,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `main_meter_required`, and assigning that one meter to the Main home makes the area editor
       refuse inline with "'Main home' already uses this meter". Both rules are correct, so the fix is
       a diagnosis line, not a relaxation of either: detect "no report meter is assignable to the Main
-      home" on the Multiple meters page and say so. Related to `The "no electricity meters" empty
-      state never renders`.
+      home" on the Multiple meters page and say so.
 
       Personas: owner who types a long or reserved name and only learns on save; owner with a single
       HAN meter who tries to add a rental. Source: multi-home finishing train, area-config invariants

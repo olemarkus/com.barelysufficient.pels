@@ -84,9 +84,11 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
  */
 export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<HomeyEnergyMeterEntry[]> {
   const items = await fetchLiveMeterItems();
-  if (items.length === 0) return [];
+  // Without the device list no `device`-type item can be classed, so an empty
+  // list would pass for "no meters"; the device read resolves a failure to [].
   const devices = (await getHomeyDevicesForDebugFromApp(app))
     .filter((device): device is HomeyDeviceLike & { id: string } => typeof device.id === 'string');
+  if (devices.length === 0) throw new Error('Homey device list unavailable');
   const nameById = new Map(devices.map((device) => [device.id, device.name] as const));
   const classById = new Map(devices.map((device) => [device.id, device.class] as const));
   return items

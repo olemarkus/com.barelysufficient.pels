@@ -2,7 +2,6 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
-import { normalizeError } from '../../utils/errorUtils';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
 const moduleLogger = getLogger('device/manager-fetch');
@@ -316,17 +315,18 @@ export async function fetchLivePowerReport(params: {
 }
 
 /**
- * The pickable whole-home meters from the live energy report — the same seam
- * the meter-selection reader resolves against, so the picker offers exactly
- * what a selection can read (no capability/class proxy over the device list).
- * A read failure or uninitialised client resolves to an empty list, never a
- * throw: the picker then shows only its placeholder and re-fetches on the next open.
+ * The meter items of the live energy report — the same seam the
+ * meter-selection reader resolves against, so the picker offers exactly what a
+ * selection can read (no capability/class proxy over the device list).
+ * Rejects rather than resolving empty when there is no answer to give: an
+ * uninitialised client, a malformed payload, a failed read, or a report
+ * listing no items at all, which is what Homey Energy serves while it warms up
+ * after a reboot (`resolveSoleCumulativeMeter` reads it as "not yet" too).
  */
 export async function fetchLiveMeterItems(): Promise<LiveMeterItem[]> {
-  try {
-    return extractLiveMeterItems(await getEnergyLiveReport());
-  } catch (error) {
-    moduleLogger.error({ event: 'energy_live_meter_items_fetch_failed', err: normalizeError(error) });
-    return [];
-  }
+  const report = asLiveEnergyReport(await getEnergyLiveReport());
+  if (report === null) throw new Error('Homey Energy live report unavailable');
+  const items = extractLiveMeterItems(report);
+  if (items.length === 0) throw new Error('Homey Energy live report lists no devices yet');
+  return items;
 }

@@ -207,11 +207,14 @@ export = {
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick
   // is guaranteed readable — unlike a capability/class filter over the device list.
+  // An unreadable report rejects instead of answering empty, so the pickers can
+  // trust an empty list as "this home has no meters".
   homey_energy_meters: withApiLogging('homey_energy_meters', async (
     { homey }: ApiContext,
   ): Promise<HomeyEnergyMeterEntry[]> => {
     const app = getApp(homey);
-    return app ? getHomeyEnergyMetersFromApp(app) : [];
+    if (!app) throw new Error('PELS app not available');
+    return getHomeyEnergyMetersFromApp(app);
   }),
   ui_refresh_devices: withApiLogging('ui_refresh_devices', ({ homey }: ApiContext) => (
     refreshSettingsUiDevices({ homey })

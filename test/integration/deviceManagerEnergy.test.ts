@@ -518,14 +518,26 @@ describe('fetchLiveMeterItems', () => {
     ]);
   });
 
-  it('returns an empty list when the REST client is not initialized', async () => {
-    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
-    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
+  // No answer must never pass for a meter-less home: the pickers trust an
+  // empty list and tell the owner to add a meter.
+  it('rejects a report listing no items, which is Homey Energy warming up', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
+    await expect(fetchLiveMeterItems()).rejects.toThrow('lists no devices yet');
   });
 
-  it('returns an empty list on API error, never throwing', async () => {
+  it('rejects when the REST client is not initialized', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    await expect(fetchLiveMeterItems()).rejects.toThrow('Homey Energy live report unavailable');
+  });
+
+  it('rejects a malformed report', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ unexpected: true });
+    await expect(fetchLiveMeterItems()).rejects.toThrow('Homey Energy live report unavailable');
+  });
+
+  it('rejects on API error', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
-    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
+    await expect(fetchLiveMeterItems()).rejects.toThrow('API down');
   });
 });
 

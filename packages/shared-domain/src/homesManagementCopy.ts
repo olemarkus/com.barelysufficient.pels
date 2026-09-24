@@ -278,6 +278,9 @@ export const HOMES_FLOW_SOURCE_NOTICE = 'Meter areas need the “Power meter” 
 
 export const HOMES_LOAD_FAILED = 'Couldn’t load your meter areas. '
   + 'PELS will try again the next time you open this page.';
+/** A refresh failed over last-good rows: they still show, but can't be changed. */
+export const HOMES_REFRESH_FAILED = 'Couldn’t load the latest meter areas, so this list may be '
+  + 'out of date and can’t be changed. PELS will try again the next time you open this page.';
 /** The zone tree hasn't been fetched yet — adding needs zones to pick from. */
 export const HOMES_ZONES_UNAVAILABLE = 'Homey’s zones aren’t available right now — try again in a moment.';
 export const HOMES_SAVED_TOAST = 'Meter area saved.';

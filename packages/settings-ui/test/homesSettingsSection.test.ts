@@ -35,6 +35,7 @@ const baseProps = (): HomesSettingsSectionProps => ({
   zonesAvailable: true,
   configDegraded: false,
   mutationsLocked: false,
+  refreshFailed: false,
   showMainMeterNotice: false,
   showFlowSourceNotice: false,
   mainMeterConflictAreaName: null,

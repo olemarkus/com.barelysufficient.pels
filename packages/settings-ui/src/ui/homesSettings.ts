@@ -261,6 +261,10 @@ const renderSection = (): void => {
     zonesAvailable: latestPayload !== null && latestPayload.zoneTree !== null,
     configDegraded: isConfigDegraded(),
     mutationsLocked,
+    // The latest ui_homes read failed while an older payload still renders:
+    // the rows are last-good and every mutation stays locked, so say why. The
+    // degraded lockout, when that payload carried it, already says so.
+    refreshFailed: loadFailed && latestPayload !== null && !isConfigDegraded(),
     // The degraded lockout owns the moment — the nudge waits for a healthy read.
     showMainMeterNotice: !isConfigDegraded() && shouldPromptMainHomeMeter({
       subHomeCount: currentHomes().length,
@@ -292,6 +296,8 @@ const renderSection = (): void => {
 const beginHomesMutationLock = (): number => {
   homesMutationLockGeneration += 1;
   mutationsLocked = true;
+  // A retry is under way: the last failure stops speaking for it.
+  loadFailed = false;
   renderSection();
   return homesMutationLockGeneration;
 };
@@ -325,15 +331,15 @@ const fetchHomes = async (ownedLockGeneration?: number): Promise<void> => {
 
 // Both picker lists refetch on EVERY panel activation (no permanent
 // first-load cache — a device renamed/added/deleted in Homey must show on the
-// next open), keeping last-good on a failed fetch and deduping in-flight.
+// next open), keeping last-good on a failed fetch and deduping in-flight. The
+// meter endpoint rejects when it has no answer (unreadable or warming-up
+// report), so an empty list is a meter-less home and reaches the editor's
+// "no meters" hint.
 const refreshMeterDevices = async (): Promise<void> => {
   if (meterDevicesLoading) return;
   meterDevicesLoading = true;
   try {
-    const meters = await callApi<HomeyEnergyMeterEntry[] | null>('GET', HOMEY_ENERGY_METERS_PATH);
-    // An empty result never overwrites last-good (it can be transient) —
-    // mirrors the whole-home meter picker in homeyEnergyMeter.ts.
-    if (meters !== null && meters.length > 0) meterDevices = meters;
+    meterDevices = await callApi<HomeyEnergyMeterEntry[]>('GET', HOMEY_ENERGY_METERS_PATH);
     renderSection();
   } catch (error) {
     await logSettingsError('Failed to load meters for the meter picker', error, 'homesSettings');

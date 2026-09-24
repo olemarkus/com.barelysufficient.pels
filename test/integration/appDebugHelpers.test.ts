@@ -139,7 +139,12 @@ describe('appDebugHelpers', () => {
       get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'ghost', values: { W: 400 } }] }),
       put: vi.fn(),
     });
-    const app = { deviceManager: buildDeviceManager({ devices: [] }), error: vi.fn() };
+    const app = {
+      deviceManager: buildDeviceManager({
+        devices: [{ id: 'lamp', name: 'Lamp', class: 'light' } as HomeyDeviceLike],
+      }),
+      error: vi.fn(),
+    };
     await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([
       { id: 'ghost', name: 'ghost' },
     ]);
@@ -176,12 +181,23 @@ describe('appDebugHelpers', () => {
     await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
   });
 
-  it('returns an empty list without reading the device list when the report has no meters', async () => {
+  it('rejects without reading the device list while the report lists nothing yet', async () => {
     const getDevicesForDebug = vi.fn().mockResolvedValue([]);
     setRestClient({ get: vi.fn().mockResolvedValue({ items: [] }), put: vi.fn() });
     const app = { deviceManager: { getDevicesForDebug }, error: vi.fn() };
-    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
+    await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toThrow('lists no devices yet');
     expect(getDevicesForDebug).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the device list comes back empty, since no device item can be classed', async () => {
+    // The device read resolves a failure to [] — answering "no meters" then
+    // would hide every sub-meter a meter area uses.
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'device', id: 'sub', values: { W: 800 } }] }),
+      put: vi.fn(),
+    });
+    const app = { deviceManager: { getDevicesForDebug: vi.fn().mockResolvedValue([]) }, error: vi.fn() };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toThrow('Homey device list unavailable');
   });
 
   it('logs the device dump as one line per section when APIs are available', async () => {

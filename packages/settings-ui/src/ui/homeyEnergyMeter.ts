@@ -92,11 +92,6 @@ export const buildMeterSelectEntries = (
 };
 
 let pickerDevices: MeterSelectEntry[] | null = null;
-// Session note that the last fetch ANSWERED with an empty list — distinct
-// from the uncached `pickerDevices`, so the loaded-empty message ("No meters
-// found" + the add-a-meter hint) is reachable while the empty answer itself
-// stays uncached and re-fetches on the next panel open.
-let pickerLoadedEmpty = false;
 let pickerDevicesLoading = false;
 let selectedMeterId: string | null = null;
 let lastRenderSignature: string | null = null;
@@ -122,12 +117,12 @@ const renderMeterOptions = (): void => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;
   const knownDevices = pickerDevices ?? [];
-  const devicesLoaded = pickerDevices !== null || pickerLoadedEmpty;
+  const devicesLoaded = pickerDevices !== null;
   const entries = buildMeterSelectEntries(knownDevices, selectedMeterId, devicesLoaded);
   const selectedValue = selectedMeterId ?? METER_NOT_CHOSEN_VALUE;
   // The hint answers the state the picker is in: a loaded-empty report means
   // "pick a meter" names an impossible action, so the hint carries the actual
-  // remedy instead (and self-heals — the empty list is never cached).
+  // remedy instead.
   if (settingsHomeyEnergyMeterHint) {
     settingsHomeyEnergyMeterHint.textContent = devicesLoaded && knownDevices.length === 0
       ? WHOLE_HOME_METER_NONE_FOUND_HINT
@@ -163,19 +158,17 @@ const forceRenderMeterOptions = (): void => {
   renderMeterOptions();
 };
 
-const ensureMeterDevicesLoaded = async (): Promise<void> => {
-  if (pickerDevices !== null || pickerDevicesLoading) return;
+// Refetched on every sync, so a meter paired in Homey shows up without a
+// reload. The endpoint rejects when it has no answer (unreadable or warming-up
+// report), so an empty list is the home's real meter list; a failed fetch
+// keeps the last good one.
+const refreshPickerDevices = async (): Promise<void> => {
+  if (pickerDevicesLoading) return;
   pickerDevicesLoading = true;
   try {
-    const meters = await callApi<HomeyEnergyMeterEntry[] | null>('GET', HOMEY_ENERGY_METERS_PATH);
-    const payload = meters ?? [];
-    // An empty PAYLOAD is not cached: it can be transient (backend still
-    // wiring, meter just paired, one poll where the report was empty), and
-    // caching it would leave the picker empty for the whole WebView session —
-    // it simply re-fetches on the next panel open. The session note below is
-    // what lets the render say "No meters found" for the answer we did get.
-    pickerLoadedEmpty = payload.length === 0;
-    if (payload.length > 0) pickerDevices = toMeterDeviceOptions(payload);
+    pickerDevices = toMeterDeviceOptions(
+      await callApi<HomeyEnergyMeterEntry[]>('GET', HOMEY_ENERGY_METERS_PATH),
+    );
     renderMeterOptions();
   } catch (error) {
     await logSettingsError('Failed to load meters for the whole-home meter picker', error, 'homeyEnergyMeter');
@@ -196,7 +189,7 @@ export const syncHomeyEnergyMeterVisibility = (powerSource: string): void => {
   if (settingsHomeyEnergyMeterField) settingsHomeyEnergyMeterField.hidden = !visible;
   if (!visible) return;
   renderMeterOptions();
-  void ensureMeterDevicesLoaded();
+  void refreshPickerDevices();
 };
 
 const composeMainMeterSaveRefusal = (
