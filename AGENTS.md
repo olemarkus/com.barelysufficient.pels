@@ -94,8 +94,9 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 
 - Every external/outer layer — Homey SDK reads, network fetches, the settings/persisted store, flow-card args, inbound API bodies, the clock — must validate and discriminate untrusted input into a strongly-typed, resolved value *before* handing it to an adjacent layer. Finiteness-gate numbers (`Number.isFinite`) and shape-guard objects. Use flat `null`/`undefined` only for genuine domain absence; API/settings absence, malformed data, or read failure must become an explicit semantic result rather than a nullable business value. Never let a raw `NaN`/`Infinity`/malformed/partial value flow inward into a sum, comparison, persisted write, or control decision.
 - Adapters that read Homey/API/settings data own the complete classification of `undefined`, `null`, empty key lists, malformed values, and thrown errors. They must expose a typed semantic result (for example, `resolved | unavailable`) to adjacent layers; downstream domain/control code must not catch adapter exceptions, inspect SDK absence/error provenance, or reinterpret an unavailable read as a default. Tests for SDK weirdness belong at the adapter boundary; business tests inject semantic states.
-- For every new optional, nullable, or discriminated variant, identify the reachable state, its owner, and the behavior it requires. Keep producer-guaranteed fields required. A tagged missing value is not stronger if it merely carries unresolved absence through consumers. Preserve meaningful adapter outcomes, genuine domain absence, and honest UI uncertainty; resolve external failure policy at its owning boundary.
+- For every new optional, nullable, or discriminated variant, identify the reachable state, its owner, and the behavior it requires. Keep producer-guaranteed fields required. A tagged missing value is not stronger if it merely carries unresolved absence through consumers. Preserve meaningful adapter outcomes, genuine domain absence, and honest UI uncertainty; resolve external failure policy at its owning boundary. A variant earns its place only when a production producer actually emits it and some consumer must behave differently for it: `absent` vs `unavailable` is right at a settings/API read, and is carried no further than the consumers that treat the two differently. Never widen a production contract so an impossible test fixture type-checks; fix the fixture.
 - Downstream layers may then assume the typed invariant holds; they must not re-validate or branch on the input's source/provenance. A hedging consumer (re-checked finiteness, presence-sniffing, a kept fallback derivation) is a symptom — fix the unclean interface upstream, not the hedge.
+- Freshness and trust are resolved once, by the layer that owns the observation: `lib/observer` for devices (`lib/observer/AGENTS.md` § "A device observation never times out"), `lib/power` for the whole-home meter. An accepted observation is the current value until its owner replaces or invalidates it; the absence of a new source event is not a new state. Consumers do not re-derive freshness from timestamps or age-gate a value the observer handed over as trusted. Likewise, a condition an owner already handles through its normal update lifecycle gets no second clearing, fallback, recovery, or mutation path elsewhere just to react sooner.
 - A transient external failure is a **no-op**, not an event. The default treatment is to decide nothing and carry the last good value forward: a missing power sample keeps the last one, a missing device read keeps the last observation. What must never happen is fabricating a stand-in — an absent reading is not `0`, and reading it as one hands control a value more favourable than anything ever measured. The narrow case the abandon-grace exists for is *loading* persisted state: one corrupt or empty SDK read on startup must not wipe persisted history, so the persistence wrappers hold a grace window before abandoning it (`notes/persisted-settings-state.md`, `feedback_homey_sdk_unreliable`).
 - Do not read the grace window as a licence to invent a third policy for live in-memory progress. Expiring, resetting, or re-earning a running timer because one read went missing is itself a destructive treatment of a transient gap, and it is usually worse than the no-op: on an irregular feed (`power_source = flow`, where a gap between events is ordinary cadence) a per-miss reset can mean the condition never completes at all.
 - Reference implementations: `lib/device/transport/managerFreshness.ts` (drops a non-finite realtime event — no write, no freshness bump) and `lib/device/managerEnergy.ts` (`asRecord` + `toFiniteNumber` resolve an untrusted live report to `null` on junk).
@@ -365,7 +366,7 @@ Repo-specific review lenses exist for fan-out checks before opening a non-trivia
 | `pels-copy-and-terminology` | `packages/settings-ui/**`, `packages/shared-domain/**` (UI strings, status labels, tooltips, copy helpers) |
 | `pels-runtime-reality` | `setup/**`, `lib/executor/**`, `lib/actuator/**`, `lib/observer/**`, `lib/plan/**`, `lib/device/**`, `lib/power/**`, `lib/dailyBudget/**`, `lib/price/**`, `drivers/**`, persisted-state handling |
 
-Findings come back classified P0/P1/P2 — P0/P1 fix in the same PR; P2/P3 to `TODO.md`.
+Findings come back classified P0/P1/P2 — a P0/P1 that survives verification (below) is fixed in the same PR; P2/P3 to `TODO.md`.
 
 A finding only earns a `TODO.md` entry if it clears the **Entry Bar** in that file's header: it
 names where the defect is, what change closes it, and how you would know it is done. A finding that
@@ -379,6 +380,43 @@ so every pointer into it rots, and once the entry is gone the pointer is an outr
 someone still owes. A comment that wants to record a gap states the gap in its own words instead,
 where it stays true on its own. Filing findings *into* `TODO.md` is unaffected; what is banned is
 pointing back at it from anywhere else.
+
+### Review findings are hypotheses
+
+This covers the lenses above and the automated PR reviewers (Codex, CodeRabbit, Gemini, Copilot)
+alike. A finding claims a failure exists; its confidence and its P1 badge are not evidence. Real
+PELS regressions have come from implementing a plausible but unreachable failure by weakening a
+valid contract. The clean/trusted rules in § Architecture stay the source of truth: a finding is
+judged under them, never used to relax them.
+
+Before a finding changes an internal contract, state model, ownership boundary, or validation
+responsibility, answer from production code:
+
+1. Which production producer creates the value or state?
+2. Which production input or event sequence reaches the claimed failure?
+3. Which existing invariant does it violate?
+4. What user-visible or internally incorrect behaviour results?
+5. Which layer owns that invariant?
+
+No reachable production path, no contract change.
+
+**Judge the finding and its remedy separately.** A reviewer can find a real bug and propose the
+wrong repair, typically widening every consumer when one producer broke its guarantee. Decide on
+their own merits whether the problem is real and reachable, whether the proposed fix is right, and
+whether it lands at the layer that owns the invariant. A finding ends accepted as proposed, fixed
+differently at the owner, declined as unreachable, or deferred as out of scope (subject to the
+Entry Bar above). The reviewer's severity does not override that decision.
+
+**Applying review feedback:**
+- Do not edit your way down the comments one at a time. Read the producer, the caller, and the
+  boundary contract first.
+- When an invariant is genuinely broken, repair the producer or owner rather than widening consumers.
+- A regression test replays the real reachable sequence through the owning seam, never a
+  post-boundary value the boundary cannot emit.
+- Reply to a declined automated finding with one line naming the invariant or owner that makes it
+  unreachable or misplaced.
+- Verify a fix with its targeted specs; ask for another broad review only if the fix materially
+  changed the design. Each speculative fix is new review surface, and a round of them breeds the next.
 
 ---
 
