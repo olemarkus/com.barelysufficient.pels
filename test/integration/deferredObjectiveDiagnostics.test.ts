@@ -15,6 +15,7 @@ import {
   PriorityAllocationTracker,
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
+import { reportStalledTasksAsSatisfied } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
@@ -378,17 +379,38 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
 
 // Wrapper: inject the price-layer `combinedPrices` derived from the same snapshot
 // the test already supplies, so existing budget-overlay assertions stay intact.
+type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0];
+// Fixture defaults for the live-wiring inputs: no committed plans, no excluded
+// devices, and no device parked at its target.
+type DefaultedDiagnosticsParam =
+  | 'getPrioritiesForDevices'
+  | 'activePlans'
+  | 'resolveDeviceExclusion'
+  | 'getStallClassification';
 const buildDeferredObjectiveDiagnostics = (
-  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon' | 'getPrioritiesForDevices'>
-    & Partial<Pick<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'getPrioritiesForDevices'>>,
+  params: Omit<RawDiagnosticsParams, 'buildPriceHorizon' | DefaultedDiagnosticsParam>
+    & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => {
   const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
   return buildDeferredObjectiveDiagnosticsRaw({
     ...params,
+    activePlans: params.activePlans ?? null,
+    resolveDeviceExclusion: params.resolveDeviceExclusion ?? (() => null),
+    getStallClassification: params.getStallClassification ?? (() => undefined),
     getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs),
   });
 };
+
+// The lifecycle lane: the batch build, then the stall status rewrite it alone
+// applies over the result.
+const buildReportedDiagnostics = (
+  params: Parameters<typeof buildDeferredObjectiveDiagnostics>[0],
+): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => reportStalledTasksAsSatisfied(
+  buildDeferredObjectiveDiagnostics(params),
+  params.getStallClassification ?? (() => undefined),
+  params.activePlans ?? null,
+);
 
 // Wrapper: inject the `priceHorizon` derived from the same snapshot the test
 // supplies, sourced through the production builder so the horizon entries match
@@ -883,16 +905,16 @@ describe('PriorityAllocationTracker', () => {
     const tracker = new PriorityAllocationTracker();
     const high = buildDevice({ id: 'high', priority: 1 });
     const low = buildDevice({ id: 'low', priority: 2 });
-    tracker.observe({ devices: [high, low], nowMs: NOW_MS });
+    tracker.observe({ devices: [high, low], nowMs: NOW_MS, isDeviceExcluded: () => false });
 
-    tracker.observe({ devices: [low], nowMs: NOW_MS + 30_000 });
+    tracker.observe({ devices: [low], nowMs: NOW_MS + 30_000, isDeviceExcluded: () => false });
     expect(tracker.shouldReserveMissingDevice({
       deviceId: 'high',
       nowMs: NOW_MS + 30_000,
       hasPersistedCommitment: false,
     })).toBe(true);
 
-    tracker.observe({ devices: [low], nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS });
+    tracker.observe({ devices: [low], nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, isDeviceExcluded: () => false });
     expect(tracker.shouldReserveMissingDevice({
       deviceId: 'high',
       nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS,
@@ -910,7 +932,7 @@ describe('PriorityAllocationTracker', () => {
     const tracker = new PriorityAllocationTracker();
     const relocated = buildDevice({ id: 'relocated', priority: 1 });
     const stays = buildDevice({ id: 'stays', priority: 1 });
-    tracker.observe({ devices: [relocated, stays], nowMs: NOW_MS });
+    tracker.observe({ devices: [relocated, stays], nowMs: NOW_MS, isDeviceExcluded: () => false });
 
     // Seconds later the device is pinned into a sub-home. It leaves
     // `params.devices` for the same reason an SDK miss would, but must be
@@ -927,7 +949,7 @@ describe('PriorityAllocationTracker', () => {
       hasPersistedCommitment: false,
     })).toBe(false);
     // A device that merely went missing in the same cycle still gets its grace.
-    tracker.observe({ devices: [], nowMs: NOW_MS + 60_000 });
+    tracker.observe({ devices: [], nowMs: NOW_MS + 60_000, isDeviceExcluded: () => false });
     expect(tracker.shouldReserveMissingDevice({
       deviceId: 'stays',
       nowMs: NOW_MS + 60_000,
@@ -1222,7 +1244,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // lower device id sorting lexically before it.
     const low = buildDevice({ id: 'a-low', name: 'Lower EV', priority: 1 });
     const tracker = new PriorityAllocationTracker();
-    tracker.observe({ devices: [high, { ...low, priority: 2 }], nowMs: NOW_MS - 30_000 });
+    tracker.observe({ devices: [high, { ...low, priority: 2 }], nowMs: NOW_MS - 30_000, isDeviceExcluded: () => false });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
@@ -1340,7 +1362,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const high = buildDevice({ priority: 1 });
     const low = buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
     const tracker = new PriorityAllocationTracker();
-    tracker.observe({ devices: [high, low], nowMs: NOW_MS });
+    tracker.observe({ devices: [high, low], nowMs: NOW_MS, isDeviceExcluded: () => false });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS + 30 * 60 * 1000,
@@ -3593,8 +3615,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
-    it('does not promote a lower relative rank after a higher task carries a prior commitment', () => {
-      const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+    const buildCommittedHigherTaskPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => {
       // Mirror the prior-cycle commitment shape that `activePlanRecorder`
       // would persist for a fully-reserved top-priority EV: a 5-hour
       // schedule at the (then-current) min-step floor. The exact hour
@@ -3618,7 +3639,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         'soft',
         ['rescue', 'always', 'always'],
       ]);
-      const activePlans: DeferredObjectiveActivePlansV1 = {
+      return {
         version: 1,
         plansByDeviceId: {
           'ev-1': {
@@ -3656,6 +3677,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           },
         },
       };
+    };
+
+    it('does not promote a lower relative rank after a higher task carries a prior commitment', () => {
+      const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+      const activePlans = buildCommittedHigherTaskPlans(deadlineAtMs);
       const diagnostics = buildDeferredObjectiveDiagnostics({
         nowMs: NOW_MS,
         timeZone: 'UTC',
@@ -3697,6 +3723,75 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expect(byDevice.get('ev-2')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
         .every((bucket) => bucket.plannedAdmissionPowerKw === 1)).toBe(true);
+    });
+
+    // Regression, prod 2026-09-23/24: a water heater parked at its target kept
+    // booking the rest of its task into each coming hour, and every hour it
+    // booked reserved its step power against the EV task behind it. The EV was
+    // handed nothing for 22:00–02:00 with ~6 kW measured free and missed its
+    // deadline. A device its own controller has parked is not drawing that
+    // energy, so the task holds no power for it.
+    describe('a higher task stalled at its target', () => {
+      const buildTwoTaskParams = (deadlineAtMs: number) => ({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [
+          buildPromotableDevice('ev-1'),
+          buildPromotableDevice('ev-2'),
+        ],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+            ...buildPromotableSettings('ev-2', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1', 'ev-2']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        sustainableRateKw: HARDCAP_KW,
+        activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
+      });
+      const parkedAtTarget = (deviceId: string) => (deviceId === 'ev-1'
+        ? {
+          classification: 'near_target_idle' as const,
+          classifiedAgainstTargetValue: 40 + (NEED_KWH_TO_REACH / 0.2),
+        }
+        : undefined);
+      const lowerTaskBookedHourCount = (diagnostics: DeferredObjectiveDiagnostic[]) => (
+        diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2')?.horizonPlan?.plannedBuckets
+          .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0).length ?? 0
+      );
+
+      it('reserves nothing against the tasks behind it', () => {
+        // A 1.5 kW cap: ev-1 books its 1 kW min rung into every hour, which
+        // leaves 0.5 kW, so while it holds that power ev-2's 1 kW rung fits nowhere.
+        const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+        const params = { ...buildTwoTaskParams(deadlineAtMs), sustainableRateKw: 1.5 };
+        // Premise: a committed higher task that is still running squeezes ev-2 out.
+        expect(lowerTaskBookedHourCount(buildDeferredObjectiveDiagnostics(params))).toBe(0);
+        expect(lowerTaskBookedHourCount(buildDeferredObjectiveDiagnostics({
+          ...params,
+          getStallClassification: parkedAtTarget,
+        }))).toBeGreaterThan(0);
+      });
+
+      it('keeps the stalled task\'s own status raw until the lifecycle lane reports it satisfied', () => {
+        // The allocation reads the stall for the ledger alone: admission reads a
+        // `satisfied` task as inactive, so the decoration lane must keep the raw
+        // verdict. Only the lifecycle lane rewrites it, for the owner-facing status.
+        const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+        const params = { ...buildTwoTaskParams(deadlineAtMs), getStallClassification: parkedAtTarget };
+        const higherTask = (diagnostics: DeferredObjectiveDiagnostic[]) => diagnostics
+          .find((diagnostic) => diagnostic.deviceId === 'ev-1');
+        expect(resolvedTrajectoryStatus(higherTask(buildDeferredObjectiveDiagnostics(params))!))
+          .toBe('at_risk');
+        expect(resolvedTrajectoryStatus(higherTask(buildReportedDiagnostics(params))!)).toBe('satisfied');
+      });
     });
   });
 });
@@ -3891,7 +3986,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     const params = withEstablishedPlan(onTrackParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('on_track');
 
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+    const [diagnostic] = buildReportedDiagnostics({
       ...params,
       getStallClassification: (id: string) => (id === 'ev-1'
         ? { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }
@@ -3909,7 +4004,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     const params = withEstablishedPlan(atRiskParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('at_risk');
 
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+    const [diagnostic] = buildReportedDiagnostics({
       ...params,
       getStallClassification: () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 60 }),
     });
@@ -3920,7 +4015,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   });
 
   it('never treats an unresponsive (likely-fault) device as satisfied', () => {
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+    const [diagnostic] = buildReportedDiagnostics({
       ...withEstablishedPlan(atRiskParams()),
       getStallClassification: () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 60 }),
     });
@@ -3931,7 +4026,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     // No activePlans → the run is first-seen, so the device-keyed classifier
     // result belongs to a prior objective and must NOT promote this brand-new
     // task to satisfied. Regression guard for the stale-classifier window.
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+    const [diagnostic] = buildReportedDiagnostics({
       ...atRiskParams(),
       getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }),
     });

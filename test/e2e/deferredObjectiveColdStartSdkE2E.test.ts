@@ -1,4 +1,5 @@
 // SDK-boundary characterization test for the cold-start ⇄ price-deferral
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // interaction — the behaviour almost every reviewer reading the per-cycle frozen
 // read gets WRONG (see notes/deferred-load-objectives/execution-adaptation.md,
 // "Interaction with the per-cycle frozen read").
@@ -203,6 +204,8 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
     const [diag] = buildDeferredObjectiveDiagnostics({
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs,

@@ -1,4 +1,5 @@
 // What an hour the allocator booked NOTHING into means to the device, driven across
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // a whole task lifecycle — and how the answer changes with the task's position.
 //
 // An hour books 0 kWh for two unrelated reasons. Either the fill already met the
@@ -251,6 +252,8 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
     const [diag] = buildDeferredObjectiveDiagnostics({
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs,

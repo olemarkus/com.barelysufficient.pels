@@ -1,4 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -204,6 +205,9 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+    getDeferredObjectiveActivePlans: () => null,
+    resolveDeviceExclusion: noDeviceExclusion,
+    getStallClassification: noStallEvidence,
   });
   return new PlanBuilder({
       leaveOffOnRelease: () => 'released',

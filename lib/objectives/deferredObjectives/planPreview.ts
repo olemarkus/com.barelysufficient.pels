@@ -5,6 +5,7 @@ import type { CapacityLimitSettings } from '../../power/capacityModel';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
+import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
@@ -18,7 +19,6 @@ import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
 import {
-  buildDeferredObjectiveDiagnostic,
   buildDeferredObjectiveDiagnostics,
   type BuildPriceHorizon,
   type DeferredObjectiveDiagnostic,
@@ -34,10 +34,6 @@ export type PreviewDeferredObjectivePlanParams = {
   timeZone: string;
   deviceId: string;
   candidate: DeferredObjectivePlanPreviewCandidate;
-  // The live plan-input device (already produced by `toPlanDevice`). Undefined
-  // when the device is not in the current snapshot — the projection then comes
-  // back `unavailable`, matching the planner's `objective_missing_device` path.
-  device: ObjectiveDeviceSource | undefined;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -50,28 +46,35 @@ export type PreviewDeferredObjectivePlanParams = {
   // ceiling `atCapNow` is measured against. Handed over unresolved so the
   // derivation happens here, in the domain, not in the wiring layer.
   capacitySettings: CapacityLimitSettings;
-  // Existing main-home planning inputs and objectives make the preview
-  // priority-aware. Optional for backward-compatible isolated callers.
-  devices?: ObjectiveDeviceSource[];
-  settings?: DeferredObjectiveSettingsV1;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  // The main-home planning inputs and objectives: the candidate is planned
+  // against the live roster, so the preview is priority-aware. The candidate's
+  // own device (already produced by `toPlanDevice`) is among `devices` when it
+  // is in the current snapshot; when it is not, the projection comes back
+  // `unavailable`, matching the planner's `objective_missing_device` path.
+  devices: ObjectiveDeviceSource[];
+  settings: DeferredObjectiveSettingsV1;
+  activePlans: DeferredObjectiveActivePlansV1 | null;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
+  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
+  // Idle-classifier reader, so a higher task stalled at its target reserves
+  // nothing against the candidate here either — the same reservation ledger the
+  // live allocation uses (`buildDeferredObjectiveDiagnostics`).
+  getStallClassification: DeferredObjectiveStallClassificationReader;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
   // attached to the (total) `costEstimate`, so a UI never renders a total as a
-  // per-kWh rate. Omit when unknown.
-  priceRateLabel?: string;
+  // per-kWh rate.
+  priceRateLabel: string;
 };
 
 /**
  * Instant estimate of the plan the planner WOULD produce for a candidate that
- * is not persisted. When the caller supplies the live device/objective roster,
- * higher-priority tasks are allocated first and the candidate sees only their
- * residual capacity; legacy callers without that roster retain isolation mode.
+ * is not persisted. The candidate joins the live device/objective roster, so
+ * higher-priority tasks are allocated first and it sees only their residual
+ * capacity.
  *
  * Fidelity comes from reuse, not re-implementation: this builds a diagnostic
- * through the exact `buildDeferredObjectiveDiagnostic` pipeline the live plan
+ * through the exact `buildDeferredObjectiveDiagnostics` pipeline the live plan
  * cycle uses (`resolveObjectiveProgress` → `resolveProfileEnergy` →
  * `resolveObjectiveSteps` → `buildDeferredObjectivePolicyHorizon` →
  * `resolveHorizonPlanWithRescue`), then derives the schedule and finish with
@@ -83,68 +86,33 @@ export const previewDeferredObjectivePlan = (
   params: PreviewDeferredObjectivePlanParams,
 ): DeferredObjectivePlanPreviewEstimate => {
   const objective = withEnabled(params.candidate);
-  const isolated = (): DeferredObjectiveDiagnostic => buildDeferredObjectiveDiagnostic({
+  // The candidate joins the live roster, so the tasks ahead of it reserve first
+  // and it sees only their residual capacity. It is always in the result: the
+  // batch returns every enabled objective, excluded ones included.
+  const diag = buildDeferredObjectiveDiagnostics({
     nowMs: params.nowMs,
     timeZone: params.timeZone,
-    deviceId: params.deviceId,
-    // The diagnostic pipeline reads an enabled `DeferredObjectiveSettingsEntry`;
-    // a preview is implicitly enabled, so seed `enabled: true`.
-    objective,
-    // Only a device with a power reading can be planned for; without one the
-    // diagnostic resolves as it does for a device in neither snapshot.
-    device: params.device && selectObjectiveDevices([params.device])[0],
+    devices: selectObjectiveDevices(params.devices),
+    settings: {
+      ...params.settings,
+      objectivesByDeviceId: {
+        ...params.settings.objectivesByDeviceId,
+        [params.deviceId]: objective,
+      },
+    },
     powerTracker: params.powerTracker,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
     buildPriceHorizon: params.buildPriceHorizon,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
-    // A candidate has no persisted active plan, so no committed hours bias the
-    // allocation — this is deliberately the fresh-optimizer view.
-    activePlans: null,
+    activePlans: params.activePlans,
     sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
-    // The exclusion travels down BOTH paths. Without it here, a preview taken
-    // without the coordinated inputs (no `settings`/`devices`) would project a
-    // rosy schedule for a device the create lane then refuses, and the two
-    // answers for one device would disagree on whether it can run at all.
-    exclusion: params.resolveDeviceExclusion?.(params.deviceId) ?? undefined,
-  });
-  const settings = params.settings;
-  const coordinated = settings && params.devices
-    ? buildDeferredObjectiveDiagnostics({
-      nowMs: params.nowMs,
-      timeZone: params.timeZone,
-      devices: selectObjectiveDevices(params.devices),
-      settings: {
-        ...settings,
-        objectivesByDeviceId: {
-          ...settings.objectivesByDeviceId,
-          [params.deviceId]: objective,
-        },
-      },
-      powerTracker: params.powerTracker,
-      dailyBudgetSnapshot: params.dailyBudgetSnapshot,
-      buildPriceHorizon: params.buildPriceHorizon,
-      priceOptimizationEnabled: params.priceOptimizationEnabled,
-      activePlans: params.activePlans ?? null,
-      sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
-      getPrioritiesForDevices: params.getPrioritiesForDevices,
-      resolveDeviceExclusion: params.resolveDeviceExclusion,
-      forceFreshDeviceId: params.deviceId,
-    }).find((diagnostic) => diagnostic.deviceId === params.deviceId)
-    : undefined;
-  const diag = coordinated ?? isolated();
-  return buildEstimateFromDiagnostic({
-    diag,
-    dailyBudgetSnapshot: params.dailyBudgetSnapshot,
-    priceRateLabel: params.priceRateLabel,
-    nowMs: params.nowMs,
-    deadlineAtMs: params.candidate.deadlineAtMs,
-    powerTracker: params.powerTracker,
-    hardCapKw: params.capacitySettings.limitKw,
-    // The candidate handed to this producer is ALREADY gated by the caller
-    // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
-    // is the surviving permission set — reflect it onto the estimate verbatim.
-    rescue: params.candidate.rescue,
-  });
+    getPrioritiesForDevices: params.getPrioritiesForDevices,
+    resolveDeviceExclusion: params.resolveDeviceExclusion,
+    getStallClassification: params.getStallClassification,
+    forceFreshDeviceId: params.deviceId,
+  }).find((diagnostic) => diagnostic.deviceId === params.deviceId);
+  if (!diag) throw new Error(`Preview candidate ${params.deviceId} missing from its own roster`);
+  return buildEstimateFromDiagnostic(diag, params);
 };
 
 // Reflect the (already-gated) candidate rescue permissions onto a flat
@@ -267,19 +235,17 @@ const isThermalObservationGap = (diag: DeferredObjectiveDiagnostic): boolean => 
     || diag.reasonCode === 'objective_missing_charge_rate')
 );
 
-const buildEstimateFromDiagnostic = (params: {
-  diag: DeferredObjectiveDiagnostic;
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  priceRateLabel: string | undefined;
-  nowMs: number;
-  deadlineAtMs: number;
-  powerTracker: PowerTrackerState;
-  hardCapKw: number;
-  rescue: DeferredObjectiveRescuePermissions | undefined;
-}): DeferredObjectivePlanPreviewEstimate => {
-  const {
-    diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs, powerTracker, hardCapKw, rescue,
-  } = params;
+const buildEstimateFromDiagnostic = (
+  diag: DeferredObjectiveDiagnostic,
+  request: PreviewDeferredObjectivePlanParams,
+): DeferredObjectivePlanPreviewEstimate => {
+  const { dailyBudgetSnapshot, priceRateLabel, nowMs, powerTracker } = request;
+  const { deadlineAtMs } = request.candidate;
+  const hardCapKw = request.capacitySettings.limitKw;
+  // The candidate handed to this producer is ALREADY gated by the caller
+  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
+  // is the surviving permission set — reflect it onto the estimate verbatim.
+  const { rescue } = request.candidate;
   const grantedRescuePermissions = resolveGrantedRescuePermissions(rescue);
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
@@ -303,9 +269,7 @@ const buildEstimateFromDiagnostic = (params: {
   const cost = resolveCostEstimate({ diag, dailyBudgetSnapshot });
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.
-  const costUnit = priceRateLabel !== undefined
-    ? priceRateLabelToAmountUnit(priceRateLabel)
-    : undefined;
+  const costUnit = priceRateLabelToAmountUnit(priceRateLabel);
   // Hourly price curve across the now→deadline window for the preview chart.
   // Same snapshot prices the cost above is summed from, and epoch-hour-floored on
   // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.

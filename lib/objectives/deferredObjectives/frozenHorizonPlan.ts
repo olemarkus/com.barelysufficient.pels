@@ -38,7 +38,7 @@ const FROZEN_STATUS_DETAIL: Record<DeferredObjectiveHorizonStatus, DeferredObjec
 // non-plannable persisted status to `on_track`: a persisted `satisfied`/`invalid`
 // here is the STALL-reported override (903f9745 — UI/Flows only) or stale, and
 // admission must NOT release on it. The REPORTING path stays correct because the
-// top-level `resolveStallReportedStatus` re-derives `satisfied` from the live stall
+// top-level `withStallSatisfiedStatus` re-derives `satisfied` from the live stall
 // classification; `at_risk`/`cannot_meet` pass through unchanged (hour-boundary-
 // paced from the persisted `:58` value, so no mid-hour churn).
 const PLANNABLE_PLAN_STATUSES = new Set<DeferredObjectiveActivePlanStatusV1>([

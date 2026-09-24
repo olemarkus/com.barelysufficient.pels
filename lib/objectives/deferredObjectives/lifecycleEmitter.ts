@@ -11,6 +11,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
+  reportStalledTasksAsSatisfied,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveAnnounce,
 } from './diagnosticsBridge';
@@ -22,10 +23,9 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from './settings';
-import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
-type StallClassification = StallEvidence | undefined;
 
 /**
  * Clock-driven smart-task lifecycle emission.
@@ -109,7 +109,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
-    getStallClassification?: (deviceId: string) => StallClassification,
+    getStallClassification: DeferredObjectiveStallClassificationReader,
   ) => void;
   /**
    * Active-plan commitment RECORD. Settles replan revisions on the clock — the
@@ -123,16 +123,16 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
-  getStallClassification?: (deviceId: string) => StallClassification;
+  getStallClassification: DeferredObjectiveStallClassificationReader;
   // Durable device-exclusion resolver (wiring-injected): names why a task's
   // device is out of the main planning lane (separate-meter sub-home, or not
   // managed by PELS), so THIS lane's diagnostics — the sole writers of
   // plan-history/active-plan records and the drivers of the status buses —
   // resolve to that exclusion's dedicated unknown code, and the
   // priority-allocation roster excludes the task (an excluded reserved task
-  // must not shrink the runnable tasks' shares). Optional: absent (tests), or
-  // answering `null`, behavior is identical.
-  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
+  // must not shrink the runnable tasks' shares). Answering `null` everywhere
+  // changes nothing.
+  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -160,7 +160,11 @@ export class DeferredObjectiveLifecycleEmitter {
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
     const devices = selectObjectiveDevices(this.deps.getDevices());
-    const diagnostics = buildDeferredObjectiveDiagnostics({
+    // Resolve the user-facing status to `satisfied` for parked/stalled devices
+    // so the status chip, notifications, Flows (active-plan recorder) and the
+    // postmortem all agree. The decoration/actuation path builds its own
+    // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
+    const diagnostics = reportStalledTasksAsSatisfied(buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),
       devices,
@@ -174,12 +178,8 @@ export class DeferredObjectiveLifecycleEmitter {
       priorityAllocationTracker: this.priorityAllocationTracker,
       getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
       resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
-      // Resolve the user-facing status to `satisfied` for parked/stalled devices
-      // so the status chip, notifications, Flows (active-plan recorder) and the
-      // postmortem all agree. The decoration/actuation path builds its own
-      // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
       getStallClassification: this.deps.getStallClassification,
-    });
+    }), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory?.(

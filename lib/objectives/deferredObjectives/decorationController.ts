@@ -1,5 +1,8 @@
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import {
+  resolvedTrajectoryStatus,
+  type DeferredObjectiveStallClassificationReader,
+} from './diagnosticTypes';
 import { selectObjectiveDevices } from '../types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
@@ -28,9 +31,9 @@ import type { DeferredObjectiveSettingsV1 } from './settings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
 export type DeferredObjectiveDecorationControllerDeps = {
-  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1 | undefined;
-  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
-  getTimeZone?: () => string;
+  getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
+  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
+  getTimeZone: () => string;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   // The persisted capacity scalars. The rate the guard admits is derived here,
@@ -47,8 +50,13 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // device is out of the main planning lane — a separate-meter sub-home, or the
   // owner turning "Managed by PELS" off. The diagnostic resolves to that
   // exclusion's dedicated unknown code and the task never governs the device.
-  // Optional — absent (tests), or answering `null`, behavior is identical.
-  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
+  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
+  // Idle-classifier reader. Read only for the priority reservation ledger — a
+  // task stalled at its target reserves nothing against lower-priority tasks —
+  // so this path allocates them against the same ledger the lifecycle emitter
+  // commits. It does not resolve the status here: admission keeps reading the
+  // raw trajectory status.
+  getStallClassification: DeferredObjectiveStallClassificationReader;
 };
 
 /**
@@ -102,22 +110,23 @@ export class DeferredObjectiveDecorationController {
     const start = Date.now();
     const rssBefore = safeRss();
     try {
-      const settings = this.deps.getDeferredObjectiveSettings?.();
+      const settings = this.deps.getDeferredObjectiveSettings();
       if (!settings) return [];
       return buildDeferredObjectiveDiagnostics({
         nowMs: nowTs,
-        timeZone: this.deps.getTimeZone?.() ?? 'UTC',
+        timeZone: this.deps.getTimeZone(),
         devices: selectObjectiveDevices(devices),
         settings,
         powerTracker: this.deps.getPowerTracker(),
         dailyBudgetSnapshot,
         buildPriceHorizon: this.deps.buildPriceHorizon,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-        activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
+        activePlans: this.deps.getDeferredObjectiveActivePlans(),
         sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
         priorityAllocationTracker: this.priorityAllocationTracker,
         getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
+        getStallClassification: this.deps.getStallClassification,
       });
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);

@@ -1,4 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // Integration coverage for the multi-home v1 smart-task scope gate
 // (`device_in_sub_home` / `objective_device_in_sub_home`):
 // - the device-scoped write op refuses an UPSERT for a sub-home device with the
@@ -242,13 +243,11 @@ const buildDiagnosticsParams = (overrides: {
   dailyBudgetSnapshot: null,
   buildPriceHorizon: () => [],
   priceOptimizationEnabled: true,
-  ...(overrides.isDeviceInSubHome
-    ? {
-      resolveDeviceExclusion: (deviceId: string) => (
-        overrides.isDeviceInSubHome?.(deviceId) === true ? 'sub_home' as const : null
-      ),
-    }
-    : {}),
+  activePlans: null,
+  getStallClassification: noStallEvidence,
+  resolveDeviceExclusion: (deviceId: string) => (
+    overrides.isDeviceInSubHome?.(deviceId) === true ? 'sub_home' as const : null
+  ),
 });
 
 describe('diagnostics: existing task whose device is in a sub-home', () => {
@@ -804,6 +803,8 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       buildPriceHorizon: () => [],
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       resolveDeviceExclusion,
+      getDeferredObjectiveActivePlans: () => null,
+      getStallClassification: noStallEvidence,
     });
     const bundle = controller.decorate({
       devices: [buildHeaterDevice()],

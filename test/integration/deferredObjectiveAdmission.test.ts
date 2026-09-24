@@ -1,4 +1,5 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -212,6 +213,9 @@ const buildBuilder = (
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
     getCapacitySettings: () => capacitySettings,
+    getDeferredObjectiveActivePlans: () => null,
+    resolveDeviceExclusion: noDeviceExclusion,
+    getStallClassification: noStallEvidence,
   });
   return new PlanBuilder({
       leaveOffOnRelease: () => 'released',
@@ -357,6 +361,9 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getDeferredObjectiveActivePlans: () => null,
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
     });
     const builder = new PlanBuilder({
       leaveOffOnRelease: () => 'released',
@@ -620,6 +627,9 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getDeferredObjectiveActivePlans: () => null,
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
     });
     const builder = new PlanBuilder({
       leaveOffOnRelease: () => 'released',

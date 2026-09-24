@@ -1,4 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -71,6 +72,8 @@ const buildDeps = (
   getDeferredObjectiveActivePlans: () => null,
   getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
   getPrioritiesForDevices: createFixturePriorityQuery(),
+  resolveDeviceExclusion: noDeviceExclusion,
+  getStallClassification: noStallEvidence,
   ...overrides,
 });
 
@@ -105,6 +108,60 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     // The same snapshot instance reaches the observe callback (third positional arg).
     const observedActivePlans = observeDeferredObjectivePlanHistory.mock.calls[0]![2];
     expect(observedActivePlans).toBe(activePlans);
+  });
+
+  it('reports a task whose device is parked at its target as satisfied', () => {
+    // The status chip, notifications and Flows read this lane's diagnostics, so
+    // it is the one lane that resolves a stall to `satisfied` (the decoration
+    // lane reads the same stall evidence for the reservation ledger only).
+    const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 80,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: JSON.stringify(['ev_soc', null, 80, deadlineAtMs, 'soft']),
+          original: null,
+          latest: {
+            revision: 1,
+            revisedAtMs: NOW_MS - HOUR_MS,
+            computedFromPricesUpTo: deadlineAtMs,
+            reason: 'flow_card',
+            hours: [],
+            energyNeededKWh: 20,
+            planStatus: 'on_track',
+          },
+        },
+      },
+    };
+    const observeDeferredObjectivePlanHistory = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => buildEvSettings(deadlineAtMs),
+      getDevices: () => [buildEvDevice()],
+      getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: (nowMs, endMs) => Array.from(
+        { length: Math.ceil((endMs - nowMs) / HOUR_MS) + 1 },
+        (_, index) => ({ startMs: Math.floor(nowMs / HOUR_MS) * HOUR_MS + index * HOUR_MS, price: 5 }),
+      ).filter((entry) => entry.startMs < endMs),
+      getDeferredObjectiveActivePlans: () => activePlans,
+      getStallClassification: () => ({ classification: 'near_target_idle', classifiedAgainstTargetValue: 80 }),
+      observeDeferredObjectivePlanHistory,
+    }));
+
+    emitter.tick(NOW_MS);
+
+    const [diagnostics] = observeDeferredObjectivePlanHistory.mock.calls[0]!;
+    expect(diagnostics[0]).toMatchObject({
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      reasonCode: 'objective_stalled_near_target',
+    });
   });
 
   it('no-ops when no settings provider returns settings', () => {

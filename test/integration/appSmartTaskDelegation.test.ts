@@ -150,7 +150,7 @@ describe('AppSmartTaskApi boot-window invariants', () => {
       getPriceOptimizationEnabled: () => true,
     },
     dailyBudgetService: { getSnapshot: () => null },
-    planService: { getPlanDevices: () => [] },
+    planService: { getPlanDevices: () => [], getStallEvidence: () => undefined },
   });
 
   // `AppContext` types `dailyBudgetService` optional while `PelsApp` declares it

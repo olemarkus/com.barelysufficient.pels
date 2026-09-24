@@ -4,7 +4,12 @@
  * current classification map for the Settings UI read model.
  *
  * The classifier is consumed downstream of plan emission as a UI / diagnostic
- * tap — it does not feed back into planner decisions. Plan-state inputs
+ * tap, with one control consumer: the smart-task allocator reads its stall
+ * evidence (`getStallEvidence`), and a task whose device is parked at its
+ * target reserves no power against lower-priority tasks
+ * (`buildDeferredObjectiveDiagnostics`). That reaches the planner only as those
+ * tasks' decorated inputs, a cycle late, since this runs after plan emission.
+ * The planner itself never reads a classification. Plan-state inputs
  * (plannedState, currentState) are only consulted to gate eligibility so the
  * classifier never reports on a device PELS itself is suppressing. We read
  * `plannedState === 'shed'` (this cycle's decision) rather than `shedAction`

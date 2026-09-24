@@ -1,4 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import {
@@ -239,11 +240,22 @@ const previewDeferredObjectivePlan = (
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
 });
 
+type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0];
+// Fixture defaults for the live-wiring inputs: no committed plans, no excluded
+// devices, and no device parked at its target.
+type DefaultedDiagnosticsParam =
+  | 'getPrioritiesForDevices'
+  | 'activePlans'
+  | 'resolveDeviceExclusion'
+  | 'getStallClassification';
 const buildDeferredObjectiveDiagnostics = (
-  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon' | 'getPrioritiesForDevices'>
-    & Partial<Pick<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'getPrioritiesForDevices'>>,
+  params: Omit<RawDiagnosticsParams, 'buildPriceHorizon' | DefaultedDiagnosticsParam>
+    & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildDeferredObjectiveDiagnosticsRaw({
   ...params,
+  activePlans: params.activePlans ?? null,
+  resolveDeviceExclusion: params.resolveDeviceExclusion ?? noDeviceExclusion,
+  getStallClassification: params.getStallClassification ?? noStallEvidence,
   getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
 });
@@ -299,10 +311,13 @@ const runPreview = (params: {
   timeZone: 'UTC',
   deviceId: params.deviceId,
   candidate: params.candidate,
-  device: params.ctx.device,
-  devices: params.ctx.devices,
-  settings: params.ctx.settings,
-  activePlans: params.ctx.activePlans,
+  // A context without a roster is the candidate's device alone (or nothing,
+  // when the device is in neither snapshot) and no other smart task.
+  devices: params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []),
+  settings: params.ctx.settings ?? { version: 1, objectivesByDeviceId: {} },
+  activePlans: params.ctx.activePlans ?? null,
+  resolveDeviceExclusion: noDeviceExclusion,
+  getStallClassification: noStallEvidence,
   getPrioritiesForDevices: params.ctx.getPrioritiesForDevices
     ?? createFixturePriorityQuery(params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : [])),
   powerTracker: params.ctx.powerTracker,

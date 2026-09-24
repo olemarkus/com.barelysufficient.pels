@@ -360,23 +360,22 @@ export class AppSmartTaskApi {
       ...device,
       priority: previewPriorities.getPriority(device.id),
     }));
-    const previewDevice = devices.find((device) => device.id === deviceId);
     return previewDeferredObjectivePlan({
       nowMs: this.ctx.getNow().getTime(),
       timeZone: this.ctx.getTimeZone(),
       deviceId,
       candidate: gatedCandidate,
-      // Convert through the same metered producer the plan cycle uses so
+      // Converted through the same metered producer the plan cycle uses so
       // the projected steps/power match the live planner. The projection is a
       // pure read projection (no live-state mutation), so the preview is
-      // read-only by construction. Undefined when the device is in neither
-      // snapshot → projection comes back `unavailable`.
-      device: previewDevice,
+      // read-only by construction. A candidate device in neither snapshot is
+      // absent here → projection comes back `unavailable`.
       devices,
       settings: roster.settings,
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
       getPrioritiesForDevices: (deviceIds) => this.ctx.getPrioritiesForDevices(deviceIds),
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
+      getStallClassification: (id) => planService.getStallEvidence(id),
       powerTracker: this.ctx.powerTracker,
       dailyBudgetSnapshot,
       buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),

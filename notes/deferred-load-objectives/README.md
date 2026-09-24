@@ -265,8 +265,16 @@ the allocator actually applies stacks three caps via `Math.min`:
   legitimately be 0 for an hour, which is a forecast of no room rather than a physical
   limit; see "An unbooked hour is not a stand-down" below for what that means downstream.
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
-  `reservedHeadroomKw = (sustainableRateKw − grossBackgroundKWh/duration) × sharePerTask` is the
-  per-bucket physical headroom forecast from `policyHorizon.ts`. `backgroundKWh` remains the
+  `reservedHeadroomKw = sustainableRateKw − grossBackgroundKWh/duration − higherPriorityAdmissionPowerKw`
+  is the per-bucket physical headroom forecast from `policyHorizon.ts`
+  (`resolveReservedHeadroomKw`). The last term is the step power every higher-priority task
+  booked into that bucket, from the reservation ledger `buildDeferredObjectiveDiagnostics` builds
+  in priority order. A task whose device is parked at its target (the stall verdict that reports
+  it `satisfied`) adds nothing to that ledger: the device is not drawing its booking, so
+  holding step power for it only starves the tasks behind it. If its own controller starts it
+  again (a tank reheating at the bottom of its band), it competes live and the capacity guard
+  orders the two by priority. The verdict is read per cycle, so a device cycling across `:58`
+  settles changes the lower tasks' coordination context and replaces their commitment. `backgroundKWh` remains the
   net daily-budget reserve for the pacing slice above; `grossBackgroundKWh` prevents solar
   self-consumption from overstating physical room. When the forecast is unavailable
   (`undefined`), this term is skipped; a forecast of zero correctly caps the hour at zero kWh.

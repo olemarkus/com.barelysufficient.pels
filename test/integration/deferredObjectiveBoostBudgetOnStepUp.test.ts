@@ -1,4 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // Integration proof: with the daily budget ON, the per-hour DAILY-BUDGET slice is
 // the binding soft constraint (not the hard cap), and a smart task's
 // limit-lower-priority "boost" permission still lets a priority-1 stepped device
@@ -268,6 +269,9 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (start, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), start, deadline),
     getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
+    getDeferredObjectiveActivePlans: () => null,
+    resolveDeviceExclusion: noDeviceExclusion,
+    getStallClassification: noStallEvidence,
   });
 
   const builder = new PlanBuilder({

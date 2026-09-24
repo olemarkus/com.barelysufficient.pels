@@ -230,6 +230,9 @@ export function buildMainHomeScope(
     // no explicit opt-out → `null` for every device, preserving exact
     // single-home behavior.
     resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
+    // The same idle-classifier reader the lifecycle emitter gets, so both lanes
+    // allocate lower-priority tasks against the same reservation ledger.
+    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
   });
   const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
     void requirePlanService(ctx).rebuildPlanFromCache(trigger);

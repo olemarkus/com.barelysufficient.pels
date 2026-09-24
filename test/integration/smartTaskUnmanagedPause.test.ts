@@ -1,4 +1,5 @@
 // Integration coverage for the "device is no longer managed" smart-task pause
+import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // (`unmanaged` exclusion → `objective_device_unmanaged`):
 // - un-managing a device does NOT end its task; the diagnostic reports the
 //   dedicated paused code instead of the misleading `objective_missing_device`
@@ -102,9 +103,9 @@ const buildDiagnosticsParams = (overrides: {
   dailyBudgetSnapshot: null,
   buildPriceHorizon: () => [],
   priceOptimizationEnabled: true,
-  ...(overrides.resolveDeviceExclusion
-    ? { resolveDeviceExclusion: overrides.resolveDeviceExclusion }
-    : {}),
+  activePlans: null,
+  getStallClassification: noStallEvidence,
+  resolveDeviceExclusion: overrides.resolveDeviceExclusion ?? noDeviceExclusion,
 });
 
 describe('smart task on an un-managed device', () => {
@@ -158,8 +159,8 @@ describe('smart task on an un-managed device', () => {
     const missing = buildHeaterDevice('a-missing');
     const survivor = { ...buildHeaterDevice('z-survivor'), priority: 1 };
     const tracker = new PriorityAllocationTracker();
-    tracker.observe({ devices: [missing, survivor], nowMs: NOW_MS });
-    tracker.observe({ devices: [survivor], nowMs: NOW_MS + 30_000 });
+    tracker.observe({ devices: [missing, survivor], nowMs: NOW_MS, isDeviceExcluded: () => false });
+    tracker.observe({ devices: [survivor], nowMs: NOW_MS + 30_000, isDeviceExcluded: () => false });
     const settings = normalizeDeferredObjectiveSettings({
       version: 1,
       objectivesByDeviceId: { [missing.id]: heaterEntry, [survivor.id]: heaterEntry },
@@ -167,7 +168,9 @@ describe('smart task on an un-managed device', () => {
     const orderAt = (nowMs: number) => orderDeferredObjectives({
       settings,
       deviceById: new Map([[survivor.id, survivor]]),
+      isDeviceExcluded: () => false,
       tracker,
+      activePlans: null,
       nowMs,
       getPrioritiesForDevices: (deviceIds) => catalog.getOrder('Home', deviceIds),
     }).map(({ deviceId, priority, reservationEligible }) => ({ deviceId, priority, reservationEligible }));
@@ -186,7 +189,7 @@ describe('smart task on an un-managed device', () => {
     const tracker = new PriorityAllocationTracker();
     const running = buildHeaterDevice('heater-running');
     // Both devices are managed and seen once...
-    tracker.observe({ devices: [running, buildHeaterDevice('heater-1')], nowMs: NOW_MS });
+    tracker.observe({ devices: [running, buildHeaterDevice('heater-1')], nowMs: NOW_MS, isDeviceExcluded: () => false });
     // ...then one is un-managed and leaves the plan input. Unlike an SDK miss,
     // it is purged from the roster outright instead of holding its share
     // through the missing-device grace window.
@@ -199,6 +202,7 @@ describe('smart task on an un-managed device', () => {
       deviceById: new Map([[running.id, running]]),
       isDeviceExcluded: (deviceId) => deviceId === 'heater-1',
       tracker,
+      activePlans: null,
       nowMs: NOW_MS + 30_000,
     });
     expect(ordered.map((entry) => entry.deviceId)).toEqual(['heater-running']);

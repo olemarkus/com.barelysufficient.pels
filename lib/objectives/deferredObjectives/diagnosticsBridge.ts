@@ -40,12 +40,12 @@ import {
 import {
   buildObjectiveDeviceExclusionPredicate,
   OBJECTIVE_EXCLUSION_REASON_CODES,
-  type ObjectiveDeviceExclusion,
   type ResolveObjectiveDeviceExclusion,
 } from './deviceExclusion';
 import {
   resolvedTrajectoryStatus,
   type BuildPriceHorizon,
+  type DeferredObjectiveStallClassificationReader,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveDiagnosticReasonCode,
 } from './diagnosticTypes';
@@ -94,7 +94,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // budget overlay.
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  activePlans: DeferredObjectiveActivePlansV1 | null;
   sustainableRateKw: number;
   priorityAllocationTracker?: PriorityAllocationTracker;
   // Current mode-catalog priority producer. The batch allocator projects its
@@ -103,20 +103,23 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // Preview-only override: solve the candidate fresh while allowing tasks
   // ahead of it to keep their settled commitments.
   forceFreshDeviceId?: string;
-  // Idle-classifier reader. When provided, the live (user-facing) status is
-  // resolved to `satisfied` for devices parked in a stall classification so the
-  // status chip, notifications and Flows agree with the postmortem recorder
-  // (which already promotes such runs to `satisfied(stalled)`). The decoration /
-  // actuation path deliberately OMITS this so admission keeps reading the raw
-  // trajectory status — only `horizonPlan.status` (untouched) drives commitment.
-  getStallClassification?: (deviceId: string) => StallEvidence | undefined;
+  // Idle-classifier reader. A task whose device is parked at its target (the
+  // stall verdict below) reserves nothing against lower-priority tasks: the
+  // device is not drawing its booking, so holding step power for it only
+  // starves the tasks behind it. If the device's own controller starts it
+  // again, it competes live and the capacity guard orders the two by priority.
+  // Every path that allocates passes it — the lifecycle emitter commits the
+  // lower tasks' schedules, the decoration path re-allocates them at the
+  // settle, and the preview projects them — so all three read the same
+  // reservation ledger. It never changes a status here: see
+  // `reportStalledTasksAsSatisfied`.
+  getStallClassification: DeferredObjectiveStallClassificationReader;
   // Durable device-exclusion resolver, injected by the wiring layer (this
   // leafward subsystem reads neither home membership nor the managed-device map
   // itself). A non-null answer short-circuits the diagnostic to `unknown` with
-  // that exclusion's dedicated code (see `deviceExclusion.ts`). Optional:
-  // absent (tests, preview callers), or answering `null` everywhere, nothing
-  // changes.
-  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
+  // that exclusion's dedicated code (see `deviceExclusion.ts`); answering `null`
+  // everywhere changes nothing.
+  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(params.resolveDeviceExclusion);
@@ -203,7 +206,12 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         ? { replaceCommitment: true as const }
         : {}),
     };
-    if (reservationEligible) {
+    const stalled = stallAtTarget(
+      coordinated,
+      params.getStallClassification(deviceId),
+      hasEstablishedActivePlan(params.activePlans, deviceId, coordinated.deadlineAtMs),
+    );
+    if (reservationEligible && stalled === null) {
       const previousReservationCount = reservations.length;
       reservations.push(...buildPriorityReservations({
         diagnostic: coordinated,
@@ -216,24 +224,24 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         higherTaskBootstrapped = true;
       }
     }
-    return resolveExternalOffReportedStatus(resolveStallReportedStatus(
-      coordinated,
-      params.getStallClassification?.(deviceId),
-      hasEstablishedActivePlan(params.activePlans, deviceId, coordinated.deadlineAtMs),
-    ), device);
+    return resolveExternalOffReportedStatus(coordinated, device);
   });
   // Excluded objectives (sub-home device, or a device the owner no longer
   // manages) remain visible as explicit unknown diagnostics but do not
   // participate in the main home's allocation context or reservation ledger.
   diagnostics.push(...Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
-    const exclusion = objective.enabled ? params.resolveDeviceExclusion?.(deviceId) ?? null : null;
-    return exclusion === null ? [] : [buildDeferredObjectiveDiagnostic({
-      ...params,
+    const exclusion = objective.enabled ? params.resolveDeviceExclusion(deviceId) : null;
+    // The device may well be present (or planner scoping may have dropped it)
+    // — either way the honest story is the exclusion itself ("out of the main
+    // home's meter scope", "not managed"), never "missing device".
+    return exclusion === null ? [] : [withUnavailableTrajectory(buildDiagnosticBase({
       deviceId,
-      objective,
       device: deviceById.get(deviceId),
-      exclusion,
-    })];
+      objective,
+      timeZone: params.timeZone,
+      powerTracker: params.powerTracker,
+      ...UNRESOLVED_PROGRESS,
+    }), OBJECTIVE_EXCLUSION_REASON_CODES[exclusion])];
   }));
   return diagnostics;
 };
@@ -263,42 +271,70 @@ const hasEstablishedActivePlan = (
   return plan?.deadlineAtMs === deadlineAtMs && plan?.latest != null;
 };
 
-// Resolve the user-facing `status` (NOT `horizonPlan.status`, which stays the
-// raw trajectory verdict) when the device's own controller has parked it: a
-// `near_target_idle` / `capped_idle` device won't move further, so the
-// objective is "as met as it gets". Only the live trajectory verdicts are
-// overridden — `unknown` / `invalid` / an already-`satisfied` run are left
-// alone, and `unresponsive` (a likely fault) never counts as satisfied
+// The stall verdict: the device's own controller has parked it at the task's
+// target — a `near_target_idle` / `capped_idle` device won't move further, so
+// the objective is "as met as it gets". Only the live trajectory verdicts
+// qualify — `unknown` / `invalid` / an already-`satisfied` run are left alone,
+// and `unresponsive` (a likely fault) never counts as satisfied
 // (`classificationImpliesStallSatisfied`). Mirrors the postmortem's
-// `stallClassificationToMetReason`.
+// `stallClassificationToMetReason`. Returns the evidence that proved the
+// stall, or `null` when the task is not stalled.
 const STALL_RESOLVABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectoryStatus>>(
   ['on_track', 'at_risk', 'cannot_meet'],
 );
 
-const resolveStallReportedStatus = (
+const stallAtTarget = (
   diagnostic: DeferredObjectiveDiagnostic,
   evidence: StallEvidence | undefined,
   hasEstablishedPlan: boolean,
-): DeferredObjectiveDiagnostic => {
+): StallEvidence | null => {
   // First-seen tasks read a stale, device-keyed classifier verdict — wait until
   // the run is established (a committed revision exists) so the classification
   // belongs to THIS objective. See `hasEstablishedActivePlan`.
-  if (!hasEstablishedPlan) return diagnostic;
+  if (!hasEstablishedPlan) return null;
   // Gate on the setpoint the verdict was measured against, not the verdict
   // alone: PELS parks a managed device by writing a lower setback setpoint, and
   // a device idling there is `near_target_idle` without having delivered this
   // task's target. Mirrors `maybePromoteOnStall` so the live status and the
   // recorded outcome cannot disagree.
-  if (!stallEvidenceCoversTarget(evidence, diagnostic.targetValue)) return diagnostic;
-  if (!STALL_RESOLVABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) return diagnostic;
-  return {
-    ...diagnostic,
-    trajectory: { kind: 'resolved', status: 'satisfied' },
-    reasonCode: evidence.classification === 'capped_idle'
-      ? 'objective_stalled_device_capped'
-      : 'objective_stalled_near_target',
-  };
+  if (!stallEvidenceCoversTarget(evidence, diagnostic.targetValue)) return null;
+  if (!STALL_RESOLVABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) return null;
+  return evidence;
 };
+
+/**
+ * Resolve the user-facing `status` (NOT `horizonPlan.status`, which stays the
+ * raw trajectory verdict) of every task stalled at its target to `satisfied`,
+ * so the status chip, notifications and Flows agree with the postmortem
+ * recorder (which already promotes such runs to `satisfied(stalled)`).
+ *
+ * The lifecycle emitter applies it; the decoration / actuation path must not,
+ * because admission reads a `satisfied` task as `inactive` — only
+ * `horizonPlan.status` (untouched) drives commitment.
+ */
+export const reportStalledTasksAsSatisfied = (
+  diagnostics: readonly DeferredObjectiveDiagnostic[],
+  getStallClassification: DeferredObjectiveStallClassificationReader,
+  activePlans: DeferredObjectiveActivePlansV1 | null,
+): DeferredObjectiveDiagnostic[] => diagnostics.map((diagnostic) => {
+  const stalled = stallAtTarget(
+    diagnostic,
+    getStallClassification(diagnostic.deviceId),
+    hasEstablishedActivePlan(activePlans, diagnostic.deviceId, diagnostic.deadlineAtMs),
+  );
+  return stalled === null ? diagnostic : withStallSatisfiedStatus(diagnostic, stalled);
+});
+
+const withStallSatisfiedStatus = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  evidence: StallEvidence,
+): DeferredObjectiveDiagnostic => ({
+  ...diagnostic,
+  trajectory: { kind: 'resolved', status: 'satisfied' },
+  reasonCode: evidence.classification === 'capped_idle'
+    ? 'objective_stalled_device_capped'
+    : 'objective_stalled_near_target',
+});
 
 /**
  * Mark the diagnostic when the user has turned the device off outside PELS and
@@ -360,31 +396,35 @@ const resolveExternalOffReportedStatus = (
   return { ...diagnostic, externalOffHoldActive: true };
 };
 
-// Exported for focused single-objective callers. The plan-preview composition
-// uses the batch bridge when a live roster is available so higher-priority
-// tasks reserve first; legacy isolated preview callers still use this leaf.
-export const buildDeferredObjectiveDiagnostic = (params: {
+// The progress fields of a diagnostic that has not resolved its objective's
+// progress (yet): the trajectory builders fill them in once it has.
+const UNRESOLVED_PROGRESS = {
+  currentPercent: null,
+  currentTemperatureC: null,
+  energyNeededKWh: null,
+  kWhPerUnitBanded: null,
+  rateConfidence: null,
+  displayConfidence: null,
+  kwhPerUnitSource: null,
+} as const;
+
+// One objective, given the reservations of the tasks ahead of it. Every caller
+// goes through `buildDeferredObjectiveDiagnostics`, which supplies that ledger.
+const buildDeferredObjectiveDiagnostic = (params: {
   nowMs: number;
   timeZone: string;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
-  device?: ObjectiveDeviceInput;
+  // `undefined` when the device is missing from this cycle's roster.
+  device: ObjectiveDeviceInput | undefined;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  activePlans: DeferredObjectiveActivePlansV1 | null;
   sustainableRateKw: number;
-  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
-  forceFreshAllocation?: boolean;
-  // Producer-resolved exclusion (see `buildDeferredObjectiveDiagnostics`): a
-  // non-null value short-circuits to that exclusion's dedicated unknown
-  // diagnostic BEFORE the missing-device check. Both arms describe a device
-  // that is absent from `devices` while still existing — a sub-home device
-  // under main-only planner scoping, or one the owner stopped managing — so
-  // falling through would mislabel it as missing. Preview callers omit it
-  // (candidates are main-home-gated and managed-gated at the write lanes).
-  exclusion?: ObjectiveDeviceExclusion;
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+  forceFreshAllocation: boolean;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -404,21 +444,8 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     objective,
     timeZone,
     powerTracker,
-    currentPercent: null,
-    currentTemperatureC: null,
-    energyNeededKWh: null,
-    kWhPerUnitBanded: null,
-    rateConfidence: null,
-    displayConfidence: null,
-    kwhPerUnitSource: null,
+    ...UNRESOLVED_PROGRESS,
   });
-  // Exclusion check FIRST: the device may well be present (or planner scoping
-  // may have dropped it) — either way the honest story is the exclusion itself
-  // ("out of the main home's meter scope", "not managed"), never "missing
-  // device".
-  if (params.exclusion) {
-    return withUnavailableTrajectory(base, OBJECTIVE_EXCLUSION_REASON_CODES[params.exclusion]);
-  }
   if (!device) return withUnavailableTrajectory(base, 'objective_missing_device');
 
   if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {
@@ -479,7 +506,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
   }
   const horizonAvailable = rawPolicyHorizon.reasonCode === null;
-  const replanRequested = params.forceFreshAllocation === true
+  const replanRequested = params.forceFreshAllocation
     || !frozenFallback
     || isPastHourSettleMark(nowMs);
   const replan = replanRequested && horizonAvailable;

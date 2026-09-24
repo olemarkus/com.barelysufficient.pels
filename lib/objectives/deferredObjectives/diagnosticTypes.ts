@@ -8,12 +8,20 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from './settings';
 import type { DeferredObjectiveHorizonPlan } from './types';
+import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
 
 // Injected by the wiring layer: resolves the price-layer allocation horizon for
 // `[nowMs, deadlineAtMs)`. Defined as a closure (not a `CombinedPricesV2` input)
 // so this leafward subsystem never imports the `lib/price` peer — the producer
 // (`buildPriceHorizonFromCombined` in lib/price) lives in the price layer.
 export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHorizonEntry[];
+
+// Injected by the wiring layer: reads the observer-layer idle classifier
+// (`lib/observer/idleClassifier.ts`). `undefined` is the classifier's own
+// answer that the device has no reportable classification right now.
+export type DeferredObjectiveStallClassificationReader = (
+  deviceId: string,
+) => StallEvidence | undefined;
 
 /**
  * Why a diagnostic carries no trajectory verdict.
@@ -49,7 +57,7 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_missing_temperature'
   | 'objective_progress_stale'
   // Live status resolved to `satisfied` because the device parked in a stall
-  // classification (see `resolveStallReportedStatus`). `near_target` = inside
+  // classification (see `withStallSatisfiedStatus`). `near_target` = inside
   // the hysteresis band; `device_capped` = at the device's own internal cap.
   | 'objective_stalled_near_target'
   // The device is being left off because it was turned off outside PELS. An

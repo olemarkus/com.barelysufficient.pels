@@ -9,10 +9,8 @@ import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import {
-  stallEvidenceCoversTarget,
-  type StallEvidence,
-} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
+import { stallEvidenceCoversTarget } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import {
   appendHourlyContribution,
@@ -84,16 +82,13 @@ const resolveDeliveryInterval = (
   };
 };
 
-// Reads through the observer-layer idle classifier
-// (`lib/observer/idleClassifier.ts`). `near_target_idle` and `capped_idle`
-// both promote the run to satisfied (the run reflects "the device went as
-// far as it was going to go" — same outcome, two underlying causes which
-// the recorder distinguishes via `metReason`). `unresponsive` is a
-// hardware-fault signal and is deliberately ignored — we don't want to
+// Stall promotion reads through the observer-layer idle classifier
+// (`DeferredObjectiveStallClassificationReader`). `near_target_idle` and
+// `capped_idle` both promote the run to satisfied (the run reflects "the
+// device went as far as it was going to go" — same outcome, two underlying
+// causes which the recorder distinguishes via `metReason`). `unresponsive` is
+// a hardware-fault signal and is deliberately ignored — we don't want to
 // silently call a tripped breaker "succeeded".
-export type DeferredObjectiveStallClassificationReader = (
-  deviceId: string,
-) => StallEvidence | undefined;
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;

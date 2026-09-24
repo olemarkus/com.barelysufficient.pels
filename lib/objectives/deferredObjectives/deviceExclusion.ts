@@ -45,7 +45,5 @@ export const OBJECTIVE_EXCLUSION_REASON_CODES = {
  * need "is this device out of the main lane", not which way.
  */
 export const buildObjectiveDeviceExclusionPredicate = (
-  resolve: ResolveObjectiveDeviceExclusion | undefined,
-): ((deviceId: string) => boolean) | undefined => (
-  resolve === undefined ? undefined : (deviceId: string) => resolve(deviceId) !== null
-);
+  resolve: ResolveObjectiveDeviceExclusion,
+): ((deviceId: string) => boolean) => (deviceId: string) => resolve(deviceId) !== null;
