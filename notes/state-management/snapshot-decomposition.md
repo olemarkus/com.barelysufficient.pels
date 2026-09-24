@@ -390,13 +390,9 @@ store, because:
    the objectives layer reads `lastFreshDataMs` off the plan device, and a
    repeated IDENTICAL reading bumps that stamp in the transport without a
    dispatch, so the projection's copy can lag it until the next full refresh.
-   The lag is safe, but NOT for the reason a first draft of this paragraph gave.
-   `lib/objectives/samples.ts` does gate on that stamp (30 minutes); what makes it
-   safe is that the 5-minute device poll re-stamps the whole projection through
-   `dispatchObservedStateRefresh`, and that the failure direction is to REJECT a
-   sample rather than bill an idle interval at full power. So the safety margin is
-   `DEVICE_POLL_INTERVAL_MS` against `OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS` —
-   lengthen the poll past 30 minutes and this stops holding.
+   (Since 2026-09-24 that lag has no objectives consumer: smart tasks no longer
+   read observation timestamps at all, and `lib/objectives/samples.ts` samples on
+   its caller's clock. It used to gate on this stamp with a 30-minute window.)
    **Its two siblings were not benign, and reasoning about `lastFreshDataMs` alone
    is what hid them.** The same stamp-before-the-change-check line writes
    `measuredPowerObservedAtMs`, and its consumer flips the unsafe way: an identical

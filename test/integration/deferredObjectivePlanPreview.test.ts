@@ -572,10 +572,11 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.atCapNow).toBe(false);
   });
 
-  it('omits atCapNow when the measured sample is stale (no honest claim off a dead reading)', () => {
+  it('claims atCapNow off the last whole-home reading, however old', () => {
+    // The last reading holds until the next one. A meter that went silent is
+    // `lib/power`'s to escalate; the preview does not re-judge its freshness.
     const ctx: PreviewContext = {
       device: buildEvDevice(),
-      // At cap, but the sample is 10 minutes old → too stale to assert "at cap now".
       powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS - 10 * 60 * 1000 }),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
@@ -584,23 +585,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
-    expect(estimate.atCapNow).toBeUndefined();
-  });
-
-  it('omits atCapNow when the measured sample has a negative age (future timestamp / clock drift)', () => {
-    const ctx: PreviewContext = {
-      device: buildEvDevice(),
-      // At cap, but the sample is timestamped in the future → negative age must
-      // fail the freshness contract just like a too-stale reading.
-      powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS + 5 * 60 * 1000 }),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
-      capacitySettings: { limitKw: 10, marginKw: 0 },
-    };
-    const estimate = runPreview({
-      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
-    });
-    expect(estimate.atCapNow).toBeUndefined();
+    expect(estimate.atCapNow).toBe(true);
   });
 
   // ── Granted rescue permissions (honest "Extra permissions" summary) ────────

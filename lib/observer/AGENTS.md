@@ -57,8 +57,6 @@ goes quiet. Every consumer now reads the last trusted value directly.
 
 Ages that DO stay, because their feed is not change-driven:
 
-- **Profile learning** (`lib/objectives/samples.ts`) keeps its 30-minute
-  observation-age gate: rate learning needs recent value-CHANGED samples.
 - **EV SoC** (`getTrustedStateOfCharge`) keeps its `status === 'fresh'` gate:
   charger session validity genuinely requires per-session telemetry.
 - **The whole-home meter** (`generationFreshness.ts`, `POWER_SAMPLE_STALE_THRESHOLD_MS`)

@@ -41,11 +41,14 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
 
 describe('objective profile outdoor-temperature covariate', () => {
   it('stamps outdoorTemperatureC on the recorded observation when provided', () => {
-    const initial = updateDeviceObjectiveProfile({ sample: sampleAt(startMs, 50) });
+    const initial = updateDeviceObjectiveProfile({ sample: sampleAt(startMs, 50), previous: undefined, deviceId: 'dev', deviceName: 'Device', debugStructured: () => undefined, outdoorTemperatureC: undefined });
     const updated = updateDeviceObjectiveProfile({
       previous: initial,
       sample: sampleAt(startMs + HALF_HOUR_MS, 51),
       outdoorTemperatureC: -5.5,
+      deviceId: 'dev',
+      deviceName: 'Device',
+      debugStructured: () => undefined,
     });
     expect(updated.samples).toHaveLength(1);
     expect(updated.samples?.[0]).toMatchObject({
@@ -56,10 +59,14 @@ describe('objective profile outdoor-temperature covariate', () => {
   });
 
   it('omits the field entirely when no outdoor temperature is available', () => {
-    const initial = updateDeviceObjectiveProfile({ sample: sampleAt(startMs, 50) });
+    const initial = updateDeviceObjectiveProfile({ sample: sampleAt(startMs, 50), previous: undefined, deviceId: 'dev', deviceName: 'Device', debugStructured: () => undefined, outdoorTemperatureC: undefined });
     const updated = updateDeviceObjectiveProfile({
       previous: initial,
       sample: sampleAt(startMs + HALF_HOUR_MS, 51),
+      deviceId: 'dev',
+      deviceName: 'Device',
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
     expect(updated.samples).toHaveLength(1);
     expect('outdoorTemperatureC' in (updated.samples?.[0] ?? {})).toBe(false);
@@ -69,12 +76,15 @@ describe('objective profile outdoor-temperature covariate', () => {
     let state: PowerTrackerState = {};
     state = updateObjectiveProfilesFromSnapshot({
       state, devices: [temperatureDevice()], nowMs: startMs,
+                                             debugStructured: () => undefined,
+                                             outdoorTemperatureC: undefined,
     });
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({ currentTemperature: 51, lastFreshDataMs: startMs + HALF_HOUR_MS })],
       nowMs: startMs + HALF_HOUR_MS,
       outdoorTemperatureC: -8,
+      debugStructured: () => undefined,
     });
     expect(state.objectiveProfiles?.['heater-1']?.samples?.[0]?.outdoorTemperatureC).toBe(-8);
   });

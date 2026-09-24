@@ -446,21 +446,19 @@ describe('recordPowerSampleForApp', () => {
 
     // Mirrors the production wiring (`setup/powerSamplePipeline.ts`): the raw
     // snapshots go through the producer boundary so the profile sees a resolved
-    // `currentDrawKw`, not a raw `measuredPowerKw`, and the objectives seam's
-    // `observedAtMs` stamped from the transport's `lastFreshDataMs`.
+    // `currentDrawKw`, not a raw `measuredPowerKw`, and the objectives seam
+    // receives the quantity without any observation time.
     const updateProfiles: UpdateObjectiveProfiles = (params) => (
       updateObjectiveProfilesFromSnapshot({
         ...params,
         devices: params.devices.flatMap((device) => {
-          const observedQuantity = resolveObjectiveObservedQuantity({
-            device,
-            deviceObservedAtMs: device.lastFreshDataMs,
-          });
+          const observedQuantity = resolveObjectiveObservedQuantity(device);
           return observedQuantity === null
             ? []
             : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
         }),
         debugStructured,
+        outdoorTemperatureC: undefined,
       })
     );
 

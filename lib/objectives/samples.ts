@@ -58,10 +58,11 @@ export type ObjectiveSampleDevice = ObservedDeviceState
   & {
     currentDrawKw: number;
     /**
-     * The measured quantity this device's objective tracks, with the time it was
-     * measured — or `null` when it has no reading. Temperature and SoC resolve to
-     * the same shape here (`resolveObjectiveObservedQuantity`); the unit is the
-     * only surviving difference, and it is for display.
+     * The measured quantity this device's objective tracks. Temperature and SoC
+     * resolve to the same shape here (`resolveObjectiveObservedQuantity`); the
+     * unit is the only surviving difference, and it is for display. No
+     * observation time travels with it: freshness and trust are settled at the
+     * observer, and the profile works on its caller's clock.
      *
      * REQUIRED and non-null, like `currentDrawKw` above: a device with nothing to
      * sample is not passed at all, so this contract means "a device with a
@@ -70,38 +71,19 @@ export type ObjectiveSampleDevice = ObservedDeviceState
     observedQuantity: ObjectiveObservedQuantity;
   };
 
-export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
-export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
-
+// A sample is the device's quantity and draw as they stand at `nowMs`, the
+// caller's clock. Both are levels that hold until they change, so a device that
+// stopped reporting is still at its last value, and the profile bills each
+// sample's power until the next sample (`calculateWindowEnergyKwh`).
 export function buildObjectiveProfileSample(
   device: ObjectiveSampleDevice,
   nowMs: number,
-): DeviceObjectiveProfileSample | null {
-  const observed = device.observedQuantity;
-  // The one question left. NOT a freshness gate on the value — the reading stays
-  // usable everywhere else however old it is (a thermostat at setpoint is silent
-  // for hours, an idle charger reports its level long before it draws anything).
-  // This asks whether the stamp and a power reading taken NOW describe one
-  // interval, because the profile bills
-  // `previousSample.crediblePowerW × (thisSample.observedAtMs − previous)`
-  // (`calculateWindowEnergyKwh`). Pairing an old stamp with current power would
-  // bill the whole idle interval at full power. Decision-relative, so it belongs
-  // here and not in the producer.
-  if (!isUsableSampleObservationTime(observed.observedAtMs, nowMs)) return null;
-  return { ...observed, ...resolveCredibleDevicePower(device) };
-}
-
-/**
- * Whether an observation's timestamp can be paired with a power reading taken
- * now and still describe one interval.
- *
- * A future-dated stamp is corrupt; one older than the window cannot be joined to
- * current power without misattributing everything in between. Neither is a
- * judgement about the observed VALUE — the producer already resolved that.
- */
-function isUsableSampleObservationTime(observedAtMs: number, nowMs: number): boolean {
-  return observedAtMs <= nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS
-    && nowMs - observedAtMs <= OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS;
+): DeviceObjectiveProfileSample {
+  return {
+    observedAtMs: nowMs,
+    value: device.observedQuantity.value,
+    ...resolveCredibleDevicePower(device),
+  };
 }
 
 function resolveCredibleDevicePower(

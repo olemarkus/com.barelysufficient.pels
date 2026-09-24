@@ -104,12 +104,21 @@ export type ObjectiveDeviceInput = {
   // `level.kind`/`percent`; declaring the whole bag let it reach `report` and the
   // session bookkeeping it has no business with, and made a transport-internal
   // change look like an objectives-layer change.
-  stateOfCharge?: ObservedStateOfCharge;
-  // No observation-freshness field. The progress resolvers ask value questions
-  // only — a finite `currentTemperature` is itself the proof the device has
-  // reported. The sampler's time coordinate is `observedAtMs` on
-  // `ObjectiveSampleDevice`, a different input on a different path.
+  stateOfCharge?: ObjectiveStateOfCharge;
+  // No observation timestamp anywhere on this input. Freshness and trust are
+  // settled at the observer; the progress resolvers ask value questions only,
+  // and every time question in this layer is asked on its own clock.
   stepPowerCalibration?: Record<string, number>;
+};
+
+/**
+ * The observer's resolved charge level without its report time: smart tasks
+ * never see observation timestamps. `ObservedStateOfCharge` is assignable to it.
+ */
+export type ObjectiveStateOfCharge = {
+  level:
+    | { kind: 'known'; percent: number }
+    | Extract<ObservedStateOfCharge['level'], { kind: 'unavailable' }>;
 };
 
 /** A plan device as it reaches this layer: with or without a power axis. */

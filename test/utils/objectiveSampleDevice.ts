@@ -43,12 +43,9 @@ export const withResolvedCurrentDraw = <
 // longer models — a fixture without temperature or state of charge is a mistake
 // in the test, not a case the layer has to carry.
 const resolveFixtureQuantity = (
-  device: ObjectiveQuantityDevice & { lastFreshDataMs?: number },
+  device: ObjectiveQuantityDevice,
 ): ObjectiveObservedQuantity => {
-  const quantity = resolveObjectiveObservedQuantity({
-    device,
-    deviceObservedAtMs: device.lastFreshDataMs,
-  });
+  const quantity = resolveObjectiveObservedQuantity(device);
   if (!quantity) {
     throw new Error(
       'objective fixture has neither an observed temperature nor a state of charge: '

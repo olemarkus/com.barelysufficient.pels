@@ -82,8 +82,8 @@ export function updateObjectiveProfilesFromSnapshot(params: {
   state: PowerTrackerState;
   devices: ObjectiveSampleDevice[];
   nowMs: number;
-  debugStructured?: ObjectiveProfileDebugEmitter;
-  outdoorTemperatureC?: number;
+  debugStructured: ObjectiveProfileDebugEmitter;
+  outdoorTemperatureC: number | undefined;
 }): PowerTrackerState {
   const { state, devices, nowMs, debugStructured, outdoorTemperatureC } = params;
   const previousProfiles = state.objectiveProfiles ?? {};
@@ -100,7 +100,6 @@ export function updateObjectiveProfilesFromSnapshot(params: {
 
   for (const device of devices) {
     const sample = buildObjectiveProfileSample(device, nowMs);
-    if (!sample) continue;
 
     const previous = previousProfiles[device.id];
     const next = updateDeviceObjectiveProfile({
@@ -129,7 +128,7 @@ export function updateObjectiveProfilesFromSnapshot(params: {
     if (pruned !== nextProfiles) {
       nextProfiles = pruned;
       changed = true;
-      debugStructured?.({
+      debugStructured({
         event: 'objective_profile_pruned',
         retainedDeviceCount: Object.keys(nextProfiles).length,
       });
@@ -140,17 +139,26 @@ export function updateObjectiveProfilesFromSnapshot(params: {
 }
 
 export function updateDeviceObjectiveProfile(params: {
-  previous?: DeviceObjectiveProfile;
+  previous: DeviceObjectiveProfile | undefined;
   sample: DeviceObjectiveProfileSample;
-  deviceId?: string;
-  deviceName?: string;
-  debugStructured?: ObjectiveProfileDebugEmitter;
-  outdoorTemperatureC?: number;
+  deviceId: string;
+  deviceName: string;
+  debugStructured: ObjectiveProfileDebugEmitter;
+  outdoorTemperatureC: number | undefined;
 }): DeviceObjectiveProfile {
   const { previous, sample, deviceId, deviceName, debugStructured, outdoorTemperatureC } = params;
   if (!previous) return buildInitialProfile(sample);
 
   const previousSample = previous.lastSample;
+  // The quantity is a level that holds until it changes, so a sample with the
+  // same value is not an observation to judge. It only moves the energy window
+  // onto a changed draw; an unchanged draw bills the same either way, so the
+  // profile stays as it is.
+  if (sample.value === previousSample.value) {
+    return sample.crediblePowerW === resolveSubIntervalLeftEdge(previous).powerW
+      ? previous
+      : accrueSubInterval({ previous, sample });
+  }
   const intervalMs = getProfileIntervalMs(previousSample, sample);
   const valueDelta = getProfileValueDelta(previousSample, sample);
 
@@ -163,19 +171,6 @@ export function updateDeviceObjectiveProfile(params: {
     intervalMs,
   });
   if (intervalRejection) {
-    // `resolveLastFreshDataMs` in `device/transport/managerParseSnapshot.ts`
-    // takes `Math.max(...)` over multiple capability `lastUpdated` timestamps,
-    // so an unrelated capability emitting a fresh update can rebuild the
-    // snapshot with the *same* `value` and either an unchanged `observedAtMs`
-    // (exact duplicate) or one a few ms lower (a previous capability ageing
-    // out of the `Math.max` floor). Those duplicates carry no learning signal
-    // and would otherwise burn the per-device rejection-throttle window on
-    // real same-reason rejections, so silently drop them: no event, no
-    // `rejectedSamples` increment. Other intervalRejection reasons (and any
-    // non-monotonic sample whose value *did* change) still flow through the
-    // normal rejection path.
-    if (intervalRejection.reason === 'objective_profile_non_monotonic_time'
-      && sample.value === previousSample.value) return previous;
     emitRejectedProfileSample({
       deviceId,
       deviceName,
@@ -213,7 +208,7 @@ export function updateDeviceObjectiveProfile(params: {
     emitRejectedProfileSample({
       deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection,
     });
-    return accrueSubIntervalSkip({ previous, sample });
+    return { ...accrueSubInterval({ previous, sample }), rejectedSamples: previous.rejectedSamples + 1 };
   }
   if (rejection) {
     emitRejectedProfileSample({
@@ -244,14 +239,15 @@ export function updateDeviceObjectiveProfile(params: {
   });
 }
 
-// `rise_too_small` skip: close the open sub-interval at its left-edge power into
-// `pendingEnergyKWh`, advance the sub-interval pointer to this sample, and keep
-// the baseline (`lastSample`) so the value delta still measures the full rise.
+// Close the open sub-interval at its left-edge power into `pendingEnergyKWh`,
+// advance the sub-interval pointer to this sample, and keep the baseline
+// (`lastSample`) so the value delta still measures the full rise. Runs for a
+// draw change at an unchanged value, and for a `rise_too_small` skip.
 // A sub-interval whose left-edge power is absent or non-positive is thermally
 // contaminated (the device coasted, not heated electrically) — discard the
 // partial window and reset the baseline to this sample instead of averaging
 // coast drift into the energy estimate.
-function accrueSubIntervalSkip(params: {
+function accrueSubInterval(params: {
   previous: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
 }): DeviceObjectiveProfile {
@@ -262,14 +258,12 @@ function accrueSubIntervalSkip(params: {
       ...previous,
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
-      rejectedSamples: previous.rejectedSamples + 1,
       ...CLEARED_ENERGY_ACCUMULATOR,
     };
   }
   return {
     ...previous,
     updatedAtMs: sample.observedAtMs,
-    rejectedSamples: previous.rejectedSamples + 1,
     pendingEnergyKWh: (previous.pendingEnergyKWh ?? 0)
       + subIntervalEnergyKwh(powerW, fromMs, sample.observedAtMs),
     subIntervalStartMs: sample.observedAtMs,
@@ -280,13 +274,13 @@ function accrueSubIntervalSkip(params: {
 function buildAcceptedProfileSample(params: {
   previous: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
-  deviceId?: string;
-  deviceName?: string;
-  debugStructured?: ObjectiveProfileDebugEmitter;
+  deviceId: string;
+  deviceName: string;
+  debugStructured: ObjectiveProfileDebugEmitter;
   intervalMs: number;
   valueDelta: number;
   windowEnergyKwh: number | undefined;
-  outdoorTemperatureC?: number;
+  outdoorTemperatureC: number | undefined;
 }): DeviceObjectiveProfile {
   const {
     previous, sample, deviceId, deviceName, debugStructured,
@@ -328,7 +322,7 @@ function buildAcceptedProfileSample(params: {
   // `energyConfidence` reflects banded data when bands have fit (best-available
   // signal); `globalEnergyConfidence` always carries the raw-CV value so
   // old/new log dumps stay directly comparable across the Step-2 cutover.
-  debugStructured?.({
+  debugStructured({
     event: 'objective_profile_sample_recorded',
     deviceId,
     ...(deviceName ? { deviceName } : {}),
@@ -379,9 +373,9 @@ function buildRejectedProfileSample(params: {
 }
 
 function emitRejectedProfileSample(params: {
-  deviceId?: string;
-  deviceName?: string;
-  debugStructured?: ObjectiveProfileDebugEmitter;
+  deviceId: string;
+  deviceName: string;
+  debugStructured: ObjectiveProfileDebugEmitter;
   intervalMs: number;
   valueDelta: number;
   rejection: ProfileSampleRejection;
@@ -396,7 +390,7 @@ function emitRejectedProfileSample(params: {
   } = params;
   const rejectionReason = rejection.reason;
   if (!shouldEmitRejectedProfileSample({ deviceId, rejectionReason })) return;
-  debugStructured?.({
+  debugStructured({
     event: 'objective_profile_sample_rejected',
     reasonCode: rejectionReason,
     deviceId,
@@ -538,7 +532,7 @@ function resolveLearnedRateUpdate(params: {
   previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   kwhPerUnit: number | undefined;
-  outdoorTemperatureC?: number;
+  outdoorTemperatureC: number | undefined;
 }): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands' | 'kwhPerUnit'>> {
   const { previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC } = params;
   if (kwhPerUnit === undefined) return {};

@@ -49,7 +49,7 @@ const ingestEvSample = (params: {
   deviceId?: string;
   debugStructured?: (payload: Record<string, unknown>) => void;
 }): PowerTrackerState => {
-  const { state, percent, atMs, measuredPowerKw, deviceId, debugStructured } = params;
+  const { state, percent, atMs, measuredPowerKw, deviceId, debugStructured = () => undefined } = params;
   return updateObjectiveProfilesFromSnapshot({
     state,
     devices: [
@@ -61,6 +61,7 @@ const ingestEvSample = (params: {
     ],
     nowMs: atMs,
     debugStructured,
+    outdoorTemperatureC: undefined,
   });
 };
 
@@ -178,11 +179,9 @@ describe('EV kWhPerUnit learning', () => {
   });
 
   describe('rejection reasons', () => {
-    it('rejects a no-progress SoC sample with `rise_too_small` (zero delta, non-negative)', () => {
-      // Baseline 40 % at startMs; second sample at startMs + 1h still reads
-      // 40 % despite credible charging power. Zero delta is `>= 0` and below
-      // MIN_SOC_RISE_PERCENT (0.2 %), so it's `rise_too_small` rather than
-      // `value_fell`.
+    it('treats an unchanged SoC as no observation, not a rejection', () => {
+      // The level holds until it changes, so a sample at the same percent is not
+      // judged at all: no rejection counted, no event, and the baseline stays.
       const debugStructured = vi.fn();
       let state: PowerTrackerState = ingestEvSample({
         state: {}, percent: 40, atMs: startMs, deviceId: 'ev-noprogress',
@@ -197,12 +196,57 @@ describe('EV kWhPerUnit learning', () => {
 
       const profile = state.objectiveProfiles?.['ev-noprogress'];
       expect(profile?.acceptedSamples).toBe(0);
-      expect(profile?.rejectedSamples).toBe(1);
-      expect(profile?.kwhPerUnit).toBeUndefined();
-      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(profile?.rejectedSamples).toBe(0);
+      expect(profile?.lastSample.observedAtMs).toBe(startMs);
+      expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
-        reasonCode: 'objective_profile_rise_too_small',
       }));
+    });
+
+    // `measure_battery` is change-only, so a charger PELS resumes reported its
+    // level hours before it draws anything. Sampling on the caller's clock sees
+    // the paused stretch at 0 W, so the first tick at charging power restarts
+    // the window and the next level change bills only from there — not the
+    // whole paused interval at full power.
+    // A charger that pauses at an unchanged level has no credible draw. That
+    // "none" must survive at the sub-interval edge: falling back to the
+    // baseline's power would bill the whole pause as charging when it resumes.
+    it('does not bill a pause at an unchanged level as charging', () => {
+      let state: PowerTrackerState = ingestEvSample({
+        state: {}, percent: 40, atMs: startMs, measuredPowerKw: 7, deviceId: 'ev-paused',
+      });
+      state = ingestEvSample({
+        state, percent: 50, atMs: startMs + hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
+      });
+      state = ingestEvSample({
+        state, percent: 50, atMs: startMs + 2 * hourMs, measuredPowerKw: 0, deviceId: 'ev-paused',
+      });
+      state = ingestEvSample({
+        state, percent: 50, atMs: startMs + 5 * hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
+      });
+      state = ingestEvSample({
+        state, percent: 60, atMs: startMs + 6 * hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
+      });
+
+      const profile = state.objectiveProfiles?.['ev-paused'];
+      expect(profile?.acceptedSamples).toBe(2);
+      expect(profile?.kwhPerUnit?.mean).toBeCloseTo(0.7, 6);
+    });
+
+    it('bills a resumed charger only from when it started drawing', () => {
+      let state: PowerTrackerState = ingestEvSample({
+        state: {}, percent: 40, atMs: startMs, measuredPowerKw: 0, deviceId: 'ev-resumed',
+      });
+      state = ingestEvSample({
+        state, percent: 40, atMs: startMs + 3 * hourMs, measuredPowerKw: 7, deviceId: 'ev-resumed',
+      });
+      state = ingestEvSample({
+        state, percent: 50, atMs: startMs + 4 * hourMs, measuredPowerKw: 7, deviceId: 'ev-resumed',
+      });
+
+      const profile = state.objectiveProfiles?.['ev-resumed'];
+      expect(profile?.acceptedSamples).toBe(1);
+      expect(profile?.kwhPerUnit?.mean).toBeCloseTo(0.7, 6);
     });
 
     it('rejects a duplicate-timestamp SoC sample with `non_monotonic_time`', () => {

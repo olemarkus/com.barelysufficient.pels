@@ -57,10 +57,7 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
     // Through the real seam rather than a cast: `observedQuantity` is what the
     // sampler reads, and hand-building it would test the fixture instead of the
     // resolution that decides a charger reports its charge.
-    const observedQuantity = resolveObjectiveObservedQuantity({
-      device: observed,
-      deviceObservedAtMs: observed.lastFreshDataMs,
-    });
+    const observedQuantity = resolveObjectiveObservedQuantity(observed);
     // The seam drops a device with no reading, so reaching the sampler at all is
     // itself the assertion that this capability-only charger resolved one.
     expect(observedQuantity).not.toBeNull();

@@ -106,6 +106,9 @@ export type ObjectiveProfileBand = {
 };
 
 export type DeviceObjectiveProfileSample = {
+  // The sampler's clock when the sample was taken (the power sample's `nowMs`),
+  // not the device's report time: smart tasks never see observation timestamps.
+  // The persisted name predates that.
   observedAtMs: number;
   value: number;
   crediblePowerW?: number;

@@ -12,18 +12,19 @@ import type {
 } from './types';
 
 // Left edge of the currently-open sub-interval: the most recent raw sample's
-// timestamp + the power to bill from there to the next sample. Seeds from the
-// accumulator fields, falling back to the baseline (`lastSample`) for a legacy
-// profile or a freshly-opened window with no `rise_too_small` skips yet — which
-// makes the no-skip case bill exactly `baselinePower × wholeInterval`, identical
-// to the pre-accumulator behaviour.
+// timestamp + the power to bill from there to the next sample. A window with no
+// sub-interval opened yet (a legacy profile, or no sample since the baseline)
+// starts at the baseline (`lastSample`), which makes the no-skip case bill
+// exactly `baselinePower × wholeInterval`. Once a sub-interval is open, its own
+// power is the answer — including none: a device whose draw fell below the
+// credibility floor has no `crediblePowerW`, and falling back to the baseline's
+// power then would bill the idle stretch as powered.
 export function resolveSubIntervalLeftEdge(
   previous: DeviceObjectiveProfile,
 ): { fromMs: number; powerW: number | undefined } {
-  return {
-    fromMs: previous.subIntervalStartMs ?? previous.lastSample.observedAtMs,
-    powerW: previous.subIntervalPowerW ?? previous.lastSample.crediblePowerW,
-  };
+  return previous.subIntervalStartMs === undefined
+    ? { fromMs: previous.lastSample.observedAtMs, powerW: previous.lastSample.crediblePowerW }
+    : { fromMs: previous.subIntervalStartMs, powerW: previous.subIntervalPowerW };
 }
 
 export function subIntervalEnergyKwh(powerW: number, fromMs: number, toMs: number): number {

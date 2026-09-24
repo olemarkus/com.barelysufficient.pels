@@ -20,7 +20,7 @@ const tempSample = (overrides: Partial<DeviceObjectiveProfileSample> & {
 const step = (
   previous: DeviceObjectiveProfile | undefined,
   sample: DeviceObjectiveProfileSample,
-): DeviceObjectiveProfile => updateDeviceObjectiveProfile({ previous, sample });
+): DeviceObjectiveProfile => updateDeviceObjectiveProfile({ previous, sample, deviceId: 'dev', deviceName: 'Device', debugStructured: () => undefined, outdoorTemperatureC: undefined });
 
 describe('objective profile energy accumulator', () => {
   it('sums sub-intervals at their own left-edge power across a rise_too_small skip', () => {

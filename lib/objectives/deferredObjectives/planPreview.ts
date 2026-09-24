@@ -153,11 +153,6 @@ export const buildUnavailableDeferredObjectivePlanEstimate = (params: {
 };
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
-// A measured-draw sample older than this is treated as too stale to make an
-// at-cap claim against. PELS polls every ~10s (homey_energy) or on flow events;
-// two minutes is generous enough to tolerate a flow gap while still refusing to
-// assert "at cap right now" off a long-dead reading.
-const AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1000;
 // Fraction of the hard cap the measured draw must reach to count as "at cap".
 // The preview cannot promise live capacity; only flag when the house is
 // genuinely pressed against the physical ceiling, not merely busy.
@@ -169,26 +164,20 @@ const AT_CAP_THRESHOLD = 0.98;
 // "runs now" implication with a measured
 // fact (draw vs cap), NEVER a suggestion to raise the cap (the cap is physical).
 // Returns undefined when the inputs can't support the claim (no scheduled current
-// hour, or no fresh measured sample) so the UI omits the line rather than
-// guessing.
-const resolveAtCapNow = (params: {
-  scheduledHours: DeferredObjectivePlanPreviewHour[];
-  powerTracker: PowerTrackerState;
-  hardCapKw: number;
-  nowMs: number;
-}): boolean | undefined => {
-  const { scheduledHours, powerTracker, hardCapKw, nowMs } = params;
+// hour, or no whole-home reading yet) so the UI omits the line rather than
+// guessing. The last reading holds until the next one: a meter that went silent
+// is `lib/power`'s to escalate, not this line's to second-guess.
+const resolveAtCapNow = (
+  scheduledHours: readonly DeferredObjectivePlanPreviewHour[],
+  request: PreviewDeferredObjectivePlanParams,
+): boolean | undefined => {
+  const { nowMs, powerTracker } = request;
+  const hardCapKw = request.capacitySettings.limitKw;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
   if (!runsCurrentHour) return undefined;
-  const { lastPowerW, lastTimestamp } = powerTracker;
-  if (typeof lastPowerW !== 'number' || !Number.isFinite(lastPowerW)) return undefined;
-  if (typeof lastTimestamp !== 'number') return undefined;
-  // Treat a negative age (clock drift / a future-dated timestamp) as not-fresh,
-  // alongside the too-stale case — both fail the freshness contract, so neither
-  // can support an at-cap claim.
-  const ageMs = nowMs - lastTimestamp;
-  if (ageMs < 0 || ageMs > AT_CAP_SAMPLE_FRESHNESS_MS) return undefined;
+  const { lastPowerW } = powerTracker;
+  if (lastPowerW === undefined) return undefined;
   return lastPowerW / 1000 >= hardCapKw * AT_CAP_THRESHOLD;
 };
 
@@ -239,9 +228,8 @@ const buildEstimateFromDiagnostic = (
   diag: DeferredObjectiveDiagnostic,
   request: PreviewDeferredObjectivePlanParams,
 ): DeferredObjectivePlanPreviewEstimate => {
-  const { dailyBudgetSnapshot, priceRateLabel, nowMs, powerTracker } = request;
+  const { dailyBudgetSnapshot, priceRateLabel, nowMs } = request;
   const { deadlineAtMs } = request.candidate;
-  const hardCapKw = request.capacitySettings.limitKw;
   // The candidate handed to this producer is ALREADY gated by the caller
   // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
   // is the surviving permission set — reflect it onto the estimate verbatim.
@@ -275,7 +263,7 @@ const buildEstimateFromDiagnostic = (
   // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
-  const atCapNow = resolveAtCapNow({ scheduledHours, powerTracker, hardCapKw, nowMs });
+  const atCapNow = resolveAtCapNow(scheduledHours, request);
   return {
     status: resolvePreviewStatus(diag.horizonPlan.status),
     scheduledHours,

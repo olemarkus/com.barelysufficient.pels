@@ -111,7 +111,7 @@ const ORDINARY_HISTORY = Array.from({ length: 10 }, () => 0.5);
 const applyWindow = (
   previous: DeviceObjectiveProfile,
   valueDelta: number,
-  debugStructured?: (payload: Record<string, unknown>) => void,
+  debugStructured: (payload: Record<string, unknown>) => void = () => undefined,
 ): DeviceObjectiveProfile => updateDeviceObjectiveProfile({
   previous,
   sample: sampleAt(
@@ -119,7 +119,9 @@ const applyWindow = (
     previous.lastSample.value + valueDelta,
   ),
   deviceId: 'heater-1',
-  ...(debugStructured ? { debugStructured } : {}),
+  deviceName: 'Device',
+  debugStructured,
+  outdoorTemperatureC: undefined,
 });
 
 const bandAt = (
@@ -191,6 +193,9 @@ describe('objective profile energy band', () => {
       previous,
       sample: sampleAt(startMs + hourMs, previous.lastSample.value - 8),
       deviceId: 'heater-1',
+      deviceName: 'Device',
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
     expect(afterFall.rejectedSamples).toBe(1);
     // The fall reseeded the baseline; the next ordinary rise is measured from
@@ -238,6 +243,9 @@ describe('objective profile energy band', () => {
       // Its own id: the rejection log throttles per (device, reason), and the
       // spec below asserts that same reason is emitted for `heater-1`.
       deviceId: 'heater-2',
+      deviceName: 'Device',
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
 
     expect(next.rejectedSamples).toBe(1);
@@ -267,6 +275,8 @@ describe('objective profile energy band', () => {
       sample: sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
       deviceId: 'heater-1',
       debugStructured,
+      deviceName: 'Device',
+      outdoorTemperatureC: undefined,
     });
 
     expect(next.rejectedSamples).toBe(1);
@@ -361,6 +371,9 @@ describe('the learned rate follows the same horizon as admission', () => {
       // 2 kWh over 1.25 °C = 1.6 kWh/°C, more than three times the old rate.
       sample: sampleAt(lateMs + hourMs, 51.25),
       deviceId: 'heater-3',
+      deviceName: 'Device',
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
 
     expect(next.acceptedSamples).toBe(11);
@@ -399,6 +412,8 @@ describe('objective profiles through the snapshot pipeline', () => {
           lastFreshDataMs: startMs + hour * hourMs,
         })],
         nowMs: startMs + hour * hourMs,
+        debugStructured: () => undefined,
+        outdoorTemperatureC: undefined,
       });
     }
     const learned = state.objectiveProfiles?.['heater-1'];
@@ -413,6 +428,8 @@ describe('objective profiles through the snapshot pipeline', () => {
         lastFreshDataMs: startMs + 11 * hourMs,
       })],
       nowMs: startMs + 11 * hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
     // The refill: 2 kWh buys 0.8 °C at the sensor while the tank re-heats the
     // cold water underneath it.
@@ -423,6 +440,8 @@ describe('objective profiles through the snapshot pipeline', () => {
         lastFreshDataMs: startMs + 12 * hourMs,
       })],
       nowMs: startMs + 12 * hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
 
     const profile = state.objectiveProfiles?.['heater-1'];
@@ -449,6 +468,8 @@ describe('objective profiles through the snapshot pipeline', () => {
           }),
         })],
         nowMs: startMs + hour * hourMs,
+        debugStructured: () => undefined,
+        outdoorTemperatureC: undefined,
       });
     }
     const learned = state.objectiveProfiles?.['ev-1'];
@@ -465,6 +486,8 @@ describe('objective profiles through the snapshot pipeline', () => {
         }),
       })],
       nowMs: startMs + 11 * hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
     // ...then steps back 50 points on 7 kWh, at 0.14 kWh per unit.
     state = updateObjectiveProfilesFromSnapshot({
@@ -476,6 +499,8 @@ describe('objective profiles through the snapshot pipeline', () => {
         }),
       })],
       nowMs: startMs + 12 * hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
     });
 
     const profile = state.objectiveProfiles?.['ev-1'];

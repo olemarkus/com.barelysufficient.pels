@@ -9,7 +9,7 @@ import type {
 } from '../../contracts/src/types';
 
 /**
- * The quantity an objective measures progress in, with the time it was measured.
+ * The quantity an objective measures progress in.
  *
  * Temperature and state-of-charge are the SAME thing — a value that rises toward
  * a target — and nothing downstream is told which it was. There is no unit here:
@@ -20,10 +20,7 @@ import type {
  * This is the observation half of a `DeviceObjectiveProfileSample`; the power half
  * is resolved separately, from the device's draw.
  */
-export type ObjectiveObservedQuantity = Pick<
-  DeviceObjectiveProfileSample,
-  'observedAtMs' | 'value'
->;
+export type ObjectiveObservedQuantity = Pick<DeviceObjectiveProfileSample, 'value'>;
 
 // Exactly what resolution reads, and nothing else: the kind predicate's two
 // descriptor fields plus the two observed facets. Deliberately NOT the whole
@@ -35,44 +32,30 @@ export type ObjectiveQuantityDevice =
   & StateOfChargeObservedProbe;
 
 /**
- * Resolves the device's measured quantity, or `null` when it has none.
- *
- * `observedAtMs` is non-null by construction: a value and its timestamp arrive
- * together, so there is no "measured but un-timed" state for a consumer to model
- * or defend against. A device with no reading at all resolves to `null` — that is
- * the one real absence, and it is the whole absence.
+ * Resolves the device's measured quantity, or `null` when it has none. A device
+ * with no reading at all is the one real absence, and it is the whole absence.
+ * No observation time travels with it: freshness is settled at the observer.
  *
  * SoC takes precedence over temperature for a device reporting both, matching
  * `resolveSmartTaskDeviceKind` ("EV chargers win over the temperature branch").
  * The two classifiers must not disagree: with the profile's kind guard gone there
  * is nothing downstream to catch it, and a kWh/°C rate consumed as kWh/% would
  * mis-size the whole deadline plan.
- *
- * `deviceObservedAtMs` is the device-level stamp (Homey's highest per-capability
- * `lastUpdated`), needed only for temperature: `TemperatureObservation` carries no
- * stamp of its own, while a known SoC level carries its own by construction.
  */
-export function resolveObjectiveObservedQuantity(params: {
-  device: ObjectiveQuantityDevice;
-  deviceObservedAtMs: number | undefined;
-}): ObjectiveObservedQuantity | null {
-  const { device, deviceObservedAtMs } = params;
+export function resolveObjectiveObservedQuantity(
+  device: ObjectiveQuantityDevice,
+): ObjectiveObservedQuantity | null {
 
   if (hasObservedStateOfCharge(device)) {
     // `level` answers usability, and no `Number.isFinite` re-check follows it —
     // the producer stands behind the level or reports none.
     const { level } = device.stateOfCharge;
     if (level.kind !== 'known') return null;
-    return { observedAtMs: level.observedAtMs, value: level.percent };
+    return { value: level.percent };
   }
 
-  if (
-    isTemperatureControlDevice(device)
-    && hasObservedTemperature(device)
-    && deviceObservedAtMs !== undefined
-  ) {
+  if (isTemperatureControlDevice(device) && hasObservedTemperature(device)) {
     return {
-      observedAtMs: deviceObservedAtMs,
       // Tenths: the profile's rise thresholds are in tenths of a degree, and an
       // un-rounded sensor value would make two identical readings compare unequal.
       value: Math.round(device.temperature.currentTemperature * 10) / 10,

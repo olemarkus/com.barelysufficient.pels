@@ -207,13 +207,8 @@ export class PowerSamplePipeline {
   // required, dropping this map is a compile error rather than a fleet learning
   // at 0 W.
   // Resolves each device's measured quantity — temperature or SoC, one shape —
-  // before the objectives layer sees it. The device-level `lastFreshDataMs`
-  // (Homey's highest per-capability `lastUpdated`) is passed as the temperature
-  // stamp, since `TemperatureObservation` carries none of its own; a SoC snapshot
-  // brings its own. Inside `lib/objectives` that timestamp is a sample's time
-  // coordinate — the left edge of the interval `calculateWindowEnergyKwh` bills —
-  // never a freshness or trust signal, which is why it is not handed over under a
-  // name that suggests one.
+  // before the objectives layer sees it. No observation time goes with it: the
+  // objectives layer samples on its own clock.
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
     updateObjectiveProfilesFromSnapshot({
       ...params,
@@ -223,10 +218,7 @@ export class PowerSamplePipeline {
       // `pruneObjectiveProfiles` keeps anything touched inside its retention window,
       // so a device that simply goes quiet for a cycle does not lose what it learned.
       devices: params.devices.flatMap((device) => {
-        const observedQuantity = resolveObjectiveObservedQuantity({
-          device,
-          deviceObservedAtMs: device.lastFreshDataMs,
-        });
+        const observedQuantity = resolveObjectiveObservedQuantity(device);
         return observedQuantity === null
           ? []
           : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
