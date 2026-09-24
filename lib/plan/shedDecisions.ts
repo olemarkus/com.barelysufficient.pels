@@ -3,9 +3,10 @@ import type { PlanInputDevice } from './planTypes';
 /**
  * What the plan decided to hold shed, when, and under which posture — the
  * decision-time record, as opposed to the actuation-time clocks in
- * `ActuationRecord`. One per `PlanEngineState`. In-memory: after a restart the
- * current devices have no prior plan membership, so they start in
- * shed posture and must pass planner admission before the plan can keep them.
+ * `ActuationRecord`. One per `PlanEngineState`. In-memory: after a restart
+ * there is no prior plan to diff. Cold-start off devices still pass start
+ * admission; after the first plan, devices missing from its membership start
+ * in shed posture and must pass planner admission before the plan can keep them.
  *
  * Four writers, and not all of them are the planner. The planner authors the
  * record at plan finalization (`planBuilder`, and the silent-meter pass) and
@@ -35,8 +36,9 @@ export class ShedDecisions {
    * stepped-restore blocking, and the uncontrolled-restore stability gate.
    * Planned-shed membership is the separate fact in `lastPlannedShedIds`; a
    * write-skipped shed still gets its decision time so these age-based gates
-   * do not let it restore early. Restore admission also treats devices missing
-   * from `lastPlannedDeviceIds` as starting in shed posture. See
+   * do not let it restore early. Once a prior plan exists, restore admission
+   * also treats devices missing from `lastPlannedDeviceIds` as starting in
+   * shed posture. See
    * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
    */
   decidedMs: Record<string, number> = {};
@@ -64,16 +66,27 @@ export class ShedDecisions {
    */
   lastPlannedShedIds: ReadonlySet<string> = new Set<string>();
 
+  /** Whether a non-empty plan has established membership history; sticky across empty snapshots. */
+  hasRecordedPlan = false;
+
   /** Every device represented by the previous plan, including planned keeps. */
   lastPlannedDeviceIds: ReadonlySet<string> = new Set<string>();
 
+  get hasPlanHistory(): boolean {
+    // A non-empty set is also sufficient evidence in focused domain fixtures
+    // that seed the previous plan directly.
+    return this.hasRecordedPlan || this.lastPlannedDeviceIds.size > 0;
+  }
+
   /**
-   * A keep from the shed posture needs capacity admission. A device absent from
-   * the previous plan starts in that same posture, so a first plan cannot turn
-   * an unseen load on by default.
+   * A keep from the shed posture needs capacity admission. Once a prior plan
+   * exists, a device absent from it starts in that same posture. Before then
+   * there is no history to diff; `restore/devices.ts` admits only observed-off
+   * cold-start activations through the same capacity gates.
    */
   wasShedOrUnplanned(deviceId: string): boolean {
-    return this.lastPlannedShedIds.has(deviceId) || !this.lastPlannedDeviceIds.has(deviceId);
+    if (this.lastPlannedShedIds.has(deviceId)) return true;
+    return this.hasPlanHistory && !this.lastPlannedDeviceIds.has(deviceId);
   }
 
   /**
@@ -112,6 +125,7 @@ export class ShedDecisions {
     }
     this.lastPlannedShedIds = new Set(shedIds);
     this.lastPlannedDeviceIds = new Set(devices.map(({ id }) => id));
+    if (devices.length > 0) this.hasRecordedPlan = true;
   }
 
   /**

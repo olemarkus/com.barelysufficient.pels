@@ -2631,6 +2631,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedDeviceIds = new Set(['existing-device']);
 
     const result = applyRestorePlanFromPlanState({
       planDevices: [
@@ -2647,6 +2648,32 @@ describe('restore admission — headroom and penalty gates', () => {
 
     expect(result.restoredThisCycle).toEqual(new Set(['new-1', 'new-2', 'new-3']));
     expect(result.planDevices.find((device) => device.id === 'new-4')?.plannedState).toBe('shed');
+  });
+
+  it('does not restore-admit already-running devices on the first plan', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    const alreadyRunning = buildPlanDevice({
+      id: 'already-running',
+      name: 'already-running',
+      priority: 10,
+      currentState: 'on',
+      currentOn: true,
+      currentDrawKw: 0.5,
+      expectedPowerKw: 0.5,
+    });
+
+    const result = applyRestorePlanFromPlanState({
+      planDevices: [alreadyRunning],
+      ...freshBatchContext(0.1),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set());
+    expect(result.planDevices[0]?.plannedState).toBe('keep');
   });
 
   it('counts previously-shed stepped restores toward the shared three-device batch limit', () => {

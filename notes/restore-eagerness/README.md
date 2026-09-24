@@ -72,8 +72,11 @@ Batching is intentionally narrow:
 
 - the first restore still follows the normal admission rule
 - at most three devices can be admitted from the shed posture in one cycle, counting binary and
-  stepped transitions together. A device missing from the previous plan starts in that posture;
-  a device the previous plan kept does not become a restore candidate from its observed off state
+  stepped transitions together. Once a non-empty plan has established membership history, a
+  device missing from the previous plan starts in that posture; a device the previous plan kept
+  does not become a restore candidate from its observed off state. Before that first plan, only
+  observed-off devices use the initial start-admission path; already-running loads are not treated
+  as restorations just because no plan history exists yet
 - cumulative admitted restore need is capped at 50% of the starting available headroom
 - startup stabilization, shortfall, overshoot, shed cooldown, and restore cooldown keep the
   previous one-at-a-time behavior

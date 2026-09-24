@@ -90,6 +90,17 @@ export function isOffBinaryRestoreHoldCandidate(device: DevicePlanDevice): devic
   return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
 }
 
+function needsRestoreAdmission(device: DevicePlanDevice, shedDecisions: ShedDecisions): boolean {
+  if (shedDecisions.wasShedOrUnplanned(device.id)) return true;
+  // With no completed plan there is no plan-state diff. Preserve the initial
+  // start gate for observed-off devices, while already-running devices remain
+  // governed by their measured contribution to whole-home headroom. After a
+  // plan exists, a newly appearing device is admitted from shed posture above,
+  // regardless of its binary observation.
+  return !shedDecisions.hasPlanHistory
+    && resolveRestoreObservedState(device) === 'off';
+}
+
 export function isShedPostureBinaryRestoreCandidate(
   device: DevicePlanDevice,
   shedDecisions: ShedDecisions,
@@ -97,7 +108,7 @@ export function isShedPostureBinaryRestoreCandidate(
   // The previous plan's shed posture — or the baseline shed posture of a device
   // absent from that plan — moves to keep only through admission. Its observed
   // on/off value does not classify this transition.
-  return shedDecisions.wasShedOrUnplanned(device.id)
+  return needsRestoreAdmission(device, shedDecisions)
     && isBinaryPlanDevice(device)
     && device.shedAction !== 'set_temperature'
     && isRestoreLiveEligibleDevice(device);
@@ -110,7 +121,7 @@ export function isShedPostureSteppedRestoreCandidate(
   // Planned history classifies the transition; a device missing from that
   // history starts in shed posture. The step observation prices the rung change
   // but does not decide whether admission is needed.
-  return shedDecisions.wasShedOrUnplanned(device.id)
+  return needsRestoreAdmission(device, shedDecisions)
     && isSteppedLoadDevice(device)
     && device.shedAction !== 'set_temperature'
     && device.steppedLoadProfile.steps.length > 0

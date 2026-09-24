@@ -126,9 +126,21 @@ describe('plan restore device helpers', () => {
 
   it('admits devices absent from the previous plan from the shed posture', () => {
     const device = makeDevice({ id: 'new-device', currentState: 'off' });
+    const history = new ShedDecisions();
+    history.lastPlannedDeviceIds = new Set(['existing-device']);
 
-    expect(getRestoreCandidates([device], new ShedDecisions()).map((candidate) => candidate.device.id))
+    expect(getRestoreCandidates([device], history).map((candidate) => candidate.device.id))
       .toEqual(['new-device']);
+  });
+
+  it('uses the cold-start activation gate until a non-empty plan exists', () => {
+    const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' });
+    const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' });
+    const history = new ShedDecisions();
+    history.recordPlannedShed(new Set(), [], Date.now());
+
+    expect(getRestoreCandidates([offDevice, onDevice], history).map(({ device }) => device.id))
+      .toEqual(['off-at-start']);
   });
 
   // Behaviour change (resolved-control refactor): on/off is the latched `currentOn`
