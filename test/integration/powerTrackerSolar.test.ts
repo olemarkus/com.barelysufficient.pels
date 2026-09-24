@@ -64,7 +64,6 @@ const ingestForApp = async (
     capacitySettings: { limitKw: 10, marginKw: 0.5, periodMinutes: 60 },
     getLatestTargetSnapshot: () => [],
     powerTracker: tracker,
-    sumBudgetExemptUsage: () => null,
     updateObjectiveProfiles: ({ state }) => state,
     schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
     saveState: (nextState) => {

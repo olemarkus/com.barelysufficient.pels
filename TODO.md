@@ -76,8 +76,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
 - **Smart tasks** — 1: `on_track` while the planned bucket goes undelivered
-- **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
-  exempt-draw projection reaches a persisted bucket
+- **Daily budget and weather** — 1: weather budget-correction sentence contradicts its card
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
 - **Docs** — 1: safe pace defined as "hard cap minus safety margin"
 
@@ -931,23 +930,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       on the card ("N kWh of the suggestion covers days that ran past your budget"). Source:
       2026-08-02 release review (v2.19.3..origin/main), pels-ux-fit rendered walk. [P1]
 
-- [ ] **The exempt-draw PROJECTION reaches a persisted energy bucket.**
-      `setup/powerSamplePipeline.ts` passes `sumBudgetExemptProjectedUsageKw` as
-      `sumBudgetExemptUsage`, which `lib/power/sampleIngest.ts` integrates into
-      `exemptBuckets` — a persisted kWh figure read by `dailyBudgetState`,
-      `dailyBudgetObservedStats`, `dailyBudgetLearning` and
-      `planDailyBudgetWindow`. The projection deliberately substitutes
-      `getHighestKnownPowerKw` (nameplate) for an observed-OFF exempt device,
-      which is right for the daily-pace CONTROL threshold (`planBuilder`'s
-      `computeDailySoftLimit`) and wrong for an energy integral —
-      `notes/safe-pace-two-constraints.md` says exactly this: the projected value
-      is "correct for the control threshold and wrong for anything rendering
-      current load". Fix is one line (`sumBudgetExemptMeasuredUsageKw` on the
-      sample path), but it changes persisted daily-budget accounting for existing
-      users mid-day, so it wants its own change with a migration thought through.
-      Source: adversarial review of the measured-draw collapse, 2026-08-08.
-      **Do this before the budget-pressure exempt-kWh entry**, whose fix reads the very
-      `exemptBuckets` integral this projection contaminates. [P1]
+- [ ] **A smart task's "May go over daily budget" lifts the pace but its energy still counts as
+      used.** The exempt kWh integral (`exemptBuckets`, accrued in `lib/power/sampleIngest.ts`) reads
+      the raw snapshot's `budgetExempt`, which carries only the owner's static
+      `budget_exempt_devices` setting. A smart task's exemption is set on the plan device only
+      (`lib/objectives/deferredObjectives/admission.ts`), so the control threshold in
+      `lib/plan/planBuilder.ts` treats the task's device as exempt while its kWh lands in the
+      counted bucket: `budgetPaceKw` falls while the task runs and the rest of the day is squeezed.
+      Change: publish the plan cycle's resolved exempt device ids to a power-owned reader that
+      `sampleIngest` consults beside the static flag (setup may not hold that state). Done when an
+      integration spec shows a device exempted only by a smart task booking its measured draw into
+      `exemptBuckets`. Source: pels-runtime-reality on the exempt-bucket fix, 2026-09-24. [P2]
 
 - [ ] **A budget-axis restore rejection is attributed as capacity pressure when
       `softLimitSource` is 'capacity'.** With an off exempt device projecting, the binding source
@@ -1583,12 +1576,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       evades the selector but not the intent. **What changes:** give the four sums in
       `lib/power/usageAttribution.ts` and `sumBudgetExemptProjectedUsageKw` an explicit
       `countsAsManaged` predicate parameter instead of a stamped field, so each caller answers the
-      question at its own seam and nothing is copied. The obstacle to doing it in the posture PR
-      was `setup/powerSamplePipeline.ts:191`, which would then have to supply
-      `(d) => d.controllable !== false` — a classification in the wiring layer, which
-      `setup/AGENTS.md` forbids; that call site needs a `lib/`-owned predicate to pass instead.
-      **Done when:** `toUsageDevice` is gone, no `.map()` runs on the plan-build path to feed a
-      usage sum, and `setup/powerSamplePipeline.ts` names no predicate of its own.
+      question at its own seam and nothing is copied. The sample path already answers it in
+      `lib/power/sampleIngest.ts` (`controllable !== false` on the raw snapshot), so it can pass
+      that predicate directly.
+      **Done when:** `toUsageDevice` is gone and no `.map()` runs on the plan-build path to feed a
+      usage sum.
 
 - [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
       invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`

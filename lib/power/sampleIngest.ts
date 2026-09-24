@@ -10,7 +10,12 @@ import {
   normalizeMeasuredPowerKw,
 } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { splitControlledUsageKw, sumControlledUsageKw, type UsageDevice } from './usageAttribution';
+import {
+  splitControlledUsageKw,
+  sumBudgetExemptMeasuredUsageKw,
+  sumControlledUsageKw,
+  type UsageDevice,
+} from './usageAttribution';
 
 /**
  * Whole-home power sample ingest pipeline.
@@ -20,8 +25,7 @@ import { splitControlledUsageKw, sumControlledUsageKw, type UsageDevice } from '
  * uncontrolled / exempt split → objective profile update → tracker
  * record → capacity guard notify).
  *
- * Cross-peer concerns (objective-profile update, projected budget exemption,
- * daily-budget cap recording) are reached via injected callbacks
+ * Cross-peer concerns (objective-profile update, daily-budget cap recording) are reached via injected callbacks
  * so this file does not import from `lib/objectives/`, `lib/plan/`, or
  * `lib/dailyBudget/` (per the no-power-to-peer rule in dep-cruiser).
  */
@@ -169,8 +173,6 @@ const resolveGrossConsumptionW = (params: {
   return Math.max(0, sumControlledUsageKw(devices) * 1000);
 };
 
-export type SumBudgetExemptUsage = (devices: TargetDeviceSnapshot[]) => number | null;
-
 export type UpdateObjectiveProfiles = (params: {
   state: PowerTrackerState;
   devices: TargetDeviceSnapshot[];
@@ -198,7 +200,6 @@ export async function recordPowerSampleForApp(params: {
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
-  sumBudgetExemptUsage: SumBudgetExemptUsage;
   updateObjectiveProfiles: UpdateObjectiveProfiles;
 }): Promise<void> {
   const snapshotStart = Date.now();
@@ -212,7 +213,6 @@ export async function recordPowerSampleForApp(params: {
     powerTracker,
     schedulePlanRebuild,
     saveState,
-    sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
   const hourBudgetKWh = resolveUsableCapacityKw(capacitySettings);
@@ -248,7 +248,11 @@ export async function recordPowerSampleForApp(params: {
       totalKw: grossConsumptionW / 1000,
     })
     : { controlledKw: null };
-  const exemptKw = snapshot.length ? sumBudgetExemptUsage(snapshot) : null;
+  // MEASURED exempt draw: this feeds a persisted kWh integral, so an off exempt
+  // device books nothing. The planner's projection (an off device claiming its
+  // configured demand) is a control threshold, never energy
+  // (`notes/safe-pace-two-constraints.md`).
+  const exemptKw = snapshot.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
   const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices: snapshot });

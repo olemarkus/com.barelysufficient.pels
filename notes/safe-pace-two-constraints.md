@@ -168,7 +168,7 @@ signed and unfloored), so it
 goes negative while exporting and `headroom = bindingPaceKw - P_import` correctly
 grows. `P_nonExempt` is the exact analogue on the budget axis and gets the same
 treatment. Substituting `P_import = grossConsumption - solar` and
-`grossConsumption = projectedExemptKw + nonExemptGross`:
+`grossConsumption = measuredExemptKw + nonExemptGross`:
 
 ```text
 P_nonExempt = P_import - <exempt sum> = nonExemptGross - solar
@@ -383,11 +383,19 @@ Exempt netting happens at `lib/plan/planDailyBudgetWindow.ts:80-84`: the bucket'
 performs the same subtraction for the daily-budget state and UI view; that is a
 parallel path, not the one the planner paces on.)
 
-The exempt device set is the same on both axes: `sumBudgetExemptProjectedUsageKw`
-(`lib/plan/planUsage.ts`) gates the energy accrual at `lib/power/sampleIngest.ts`
-and the power term at `lib/plan/planBuilder.ts`. Feeding the PROJECTED sum to the
-energy accrual is a known defect — it books an off exempt device's nameplate into
-a persisted kWh bucket.
+The two axes read different sums over different device sets. The power term at
+`lib/plan/planBuilder.ts` reads the PROJECTED sum
+(`sumBudgetExemptProjectedUsageKw`, `lib/plan/planUsage.ts`) over plan devices,
+which include a smart task's `exemptFromBudget` grant. The energy accrual at
+`lib/power/sampleIngest.ts` reads the MEASURED sum
+(`sumBudgetExemptMeasuredUsageKw`, `lib/power/usageAttribution.ts`) over the raw
+snapshot, which carries only the owner's static `budget_exempt_devices` setting.
+So a smart task's exemption lifts the control threshold but its energy still
+counts as used today: an open gap, not a design choice. The accrual
+must never read the projection: it would book an off exempt device's configured
+power into a persisted kWh bucket, and because each sample's exempt power is only
+bounded by the whole home's draw, a large parked charger would book the entire
+house as exempt and the budget would count almost nothing as used.
 
 The gap is that the energy side materialises `P_nonExempt`'s kWh equivalent as the
 bucket's `usedKWh`, while the power side never materialises `P_nonExempt` at all.
@@ -439,14 +447,12 @@ effective pace for the rest of the house tightens by 5 kW over a few minutes wit
 no budget change behind it. Against the 60 s shed cooldown that is a control
 question, not only a display one.
 
-**3. Unresolved exempt draw silently becomes zero exempt draw.**
-`sumBudgetExemptProjectedUsageKw` returns `null` when exempt devices exist but none
-report power, and `planBuilder.ts:534` coerces that with `?? 0`. With two exempt
-devices and one reporting it returns a *partial* sum with no signal at all.
-`budgetPaceImportKw` then collapses to `budgetPaceKw` while `P_import` still
-includes the exempt device's draw, mixing the two axes by exactly that draw and
-shedding non-exempt devices for a missing reading. Same boundary-rule violation as
-the unwired-provider fallbacks above, in a different place.
+**3. Unresolved exempt draw silently became zero exempt draw (resolved).**
+`sumBudgetExemptProjectedUsageKw` used to return `null` when exempt devices existed
+but none reported power, and the planner coerced that with `?? 0`, shedding
+non-exempt devices for a missing reading. Every metered plan device now carries a
+resolved draw and a device without a reading has no power axis to sum, so the sum
+is a plain number and the coercion is gone (`lib/plan/planBuilder.ts`).
 
 **4. The rebase steers `softLimitSource`, which is load-bearing elsewhere.**
 `resolveSoftLimitSource` (`lib/plan/planBuilder.ts:522-526`) compares
@@ -725,8 +731,8 @@ means and answers in kW.* The nullable was the symptom; the layering was the
 defect. Two further facts point the same way:
 
 - Both ingredients already live in `lib/power`. `sampleIngest` computes the
-  exempt sum through its injected `sumBudgetExemptUsage` and records
-  `exemptPowerW` into the tracker's `exemptBuckets`. The planner subtracting a
+  measured exempt sum and records `exemptPowerW` into the tracker's
+  `exemptBuckets`. The planner subtracting a
   device-list sum from a meter reading is a re-derivation.
 - The settings UI already has a power-owned channel, `SettingsUiPowerPayload`
   (read via `getPowerReadModel()`, the same one the capacity scalars use). A
@@ -745,8 +751,9 @@ It needs to land twice, with different exempt sums: the daily-pace add-back uses
 the projected `sumBudgetExemptProjectedUsageKw`, while the measured-only
 `sumBudgetExemptMeasuredUsageKw` feeds the restore-admission budget axis
 (`PlanContext.budgetHeadroomKw` — a control input, so a non-exempt restore cannot
-spend an off exempt device's projection) and, eventually, the hero's display
-value (§ "Overview hero").
+spend an off exempt device's projection), the exempt kWh integrated at
+`lib/power/sampleIngest.ts`, and, eventually, the hero's display value
+(§ "Overview hero").
 
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an

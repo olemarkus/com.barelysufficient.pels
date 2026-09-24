@@ -3,13 +3,11 @@ import type { PlanEngine } from '../lib/plan/planEngine';
 import type { PlanService } from '../lib/plan/planService';
 import {
   recordPowerSampleForApp,
-  type SumBudgetExemptUsage,
   type UpdateObjectiveProfiles,
 } from '../lib/power/sampleIngest';
 import type { PlanRebuildThrottle } from '../lib/plan/rebuildScheduler/throttle';
 import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
-import { sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
@@ -194,15 +192,8 @@ export class PowerSamplePipeline {
    */
   private readonly queue: SampleIngestQueue<PowerSampleRequest>;
 
-  // The planner owns projected exemption: its reservation survives an off
-  // device's duty cycle. Measured attribution is owned and called by power.
-  private readonly sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
-    sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
-  );
-
-  // Same producer boundary as the projected usage seam above:
-  // rate learning reads the device's DRAW, and the raw `measuredPowerKw` does
-  // not travel past the producer. Resolving here means `lib/objectives` never
+  // The sample path's producer boundary: rate learning reads the device's DRAW,
+  // and the raw `measuredPowerKw` does not travel past the producer. Resolving here means `lib/objectives` never
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
   // required, dropping this map is a compile error rather than a fleet learning
   // at 0 W.
@@ -314,7 +305,6 @@ export class PowerSamplePipeline {
         timeZone: this.deps.getTimeZone(),
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
-        sumBudgetExemptUsage: this.sumBudgetExemptUsage,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {
           // Fence ordering: the tracker core invokes this callback after

@@ -17,7 +17,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
-import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/power/usageAttribution';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -29,20 +28,10 @@ import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
-import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
-import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
 const FIXTURE_TOTAL_KW = 3;
-
-// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
-// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
-// resolves `currentDrawKw` and `currentOn` for the projected exemption seam.
-const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
-  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
-);
-
 
 const SOLAR_ID = 'solar';
 const HEATER_ID = 'heater';
@@ -251,7 +240,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         // The harness type expects a no-arg getter; close over the per-call nowMs.
         getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
         powerTracker: tracker,
-        sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
         saveState: (next) => { tracker = next; },

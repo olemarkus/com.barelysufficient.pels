@@ -19,7 +19,7 @@ import type { PendingBinaryCommandStore } from '../../lib/observer/pendingBinary
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { partialDouble } from '../helpers/partialDouble';
-import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from '../../lib/plan/planUsage';
+import { toUsageDevice } from '../../lib/plan/planUsage';
 import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
 import {
   buildPlanDevice,
@@ -32,16 +32,6 @@ import {
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
-import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
-
-// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
-// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
-// resolves `currentDrawKw` and `currentOn` for the projected exemption seam.
-const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
-  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
-);
-
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -318,7 +308,6 @@ describe('P1 bug proofs', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {

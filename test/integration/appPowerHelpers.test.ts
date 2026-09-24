@@ -3,7 +3,6 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
-  type SumBudgetExemptUsage,
   type UpdateObjectiveProfiles,
 } from '../../lib/power/sampleIngest';
 import {
@@ -16,19 +15,9 @@ import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
-import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
-
-// Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
-// snapshots go through `withHeadroomCurrentOn` — the producer boundary that
-// resolves `currentDrawKw` and `currentOn` for the projected exemption seam.
-// Injecting the bare plan helpers would hand them un-resolved snapshots the
-// runtime never produces.
-const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
-  sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
-);
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -107,7 +96,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -124,7 +112,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -137,36 +124,47 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
 
-  it('keeps an OFF exempt device claiming its configured demand on the daily axis', async () => {
-    // The exempt projection is a reservation, not a measurement stand-in: the
-    // daily-pace add-back has to survive the device's duty cycle. Note the
-    // trigger is being observed OFF — a running exempt device measuring 0 books 0.
+  it('books nothing for an OFF exempt device, however large its configured power', async () => {
+    // The exempt buckets are a persisted energy integral, so they take MEASURED
+    // exempt draw. The planner's projection (an off device claiming its
+    // configured demand) is a control threshold only. Fed here, it booked the
+    // parked charger's 11 kW, bounded only by the whole home's draw, so the
+    // heater's 2 kW was recorded as exempt and the budget counted nothing used.
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getLatestTargetSnapshot = () => ([
       {
         available: true,
-        id: 'dev-budget',
-        name: 'Budget exempt heater',
+        id: 'dev-charger',
+        name: 'Budget exempt charger',
         targets: [],
         binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         measuredPowerKw: 0,
-        expectedPowerKw: 0.8,
+        expectedPowerKw: 11,
         expectedPowerSource: 'default' as const,
         budgetExempt: true,
+      },
+      {
+        available: true,
+        id: 'dev-heater',
+        name: 'Heater',
+        targets: [],
+        measuredPowerKw: 2,
+        expectedPowerKw: 2,
+        expectedPowerSource: 'default' as const,
+        budgetExempt: false,
       },
     ]);
 
     await recordPowerSampleForApp({
       generationSegments: [],
-      currentPowerW: 800,
+      currentPowerW: 2000,
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -177,13 +175,12 @@ describe('recordPowerSampleForApp', () => {
 
     await recordPowerSampleForApp({
       generationSegments: [],
-      currentPowerW: 800,
+      currentPowerW: 2000,
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -193,7 +190,8 @@ describe('recordPowerSampleForApp', () => {
     });
 
     const bucketKey = new Date(start).toISOString();
-    expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.4, 3);
+    expect(tracker.buckets?.[bucketKey]).toBeCloseTo(1, 3);
+    expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
   });
 
   it('does not record budget-exempt buckets for devices with capacity control disabled', async () => {
@@ -221,7 +219,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -238,7 +235,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -311,7 +307,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -328,7 +323,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -368,7 +362,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -385,7 +378,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -409,7 +401,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot: () => [],
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -470,7 +461,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -488,7 +478,6 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
@@ -545,7 +534,6 @@ describe('recordPowerSampleForApp', () => {
         capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
         getLatestTargetSnapshot: params.getLatestTargetSnapshot as never,
         powerTracker: {},
-        sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
         saveState: (nextState) => {

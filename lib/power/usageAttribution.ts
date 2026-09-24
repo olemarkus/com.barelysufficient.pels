@@ -54,10 +54,10 @@ export const sumControlledUsageKw = (devices: readonly UsageDevice[]): number =>
   return totalKw;
 };
 
-// Measured exemption is the budget-axis input for restore admission
-// (`notes/safe-pace-two-constraints.md` § "It needs to land twice"). An off
-// exempt device contributes no reservation on this axis: only its resolved
-// current draw counts. The projected sibling remains in `lib/plan/planUsage.ts`.
+// Measured exemption is the budget-axis input for restore admission and the
+// exempt kWh the sample path integrates (`notes/safe-pace-two-constraints.md`
+// § "It needs to land twice"). An off exempt device contributes no reservation
+// on either: only its resolved current draw counts. The projected sibling remains in `lib/plan/planUsage.ts`.
 export const sumBudgetExemptMeasuredUsageKw = (devices: readonly UsageDevice[]): number => {
   let totalKw = 0;
   for (const dev of devices) {

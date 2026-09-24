@@ -86,10 +86,9 @@ export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number 
  * restore admission spends.
  */
 const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
-  // Kept from the pre-refactor ladder, and currently INERT: both callers sum
-  // shapes that carry no `plannedState` (`planBuilder` over `PlanInputDevice[]`,
-  // `powerSamplePipeline` over `withHeadroomCurrentOn(snapshot)`), so this never
-  // fires today — see `notes/safe-pace-two-constraints.md`. It stays because the
+  // Kept from the pre-refactor ladder, and currently INERT: the one caller sums
+  // a shape that carries no `plannedState` (`planBuilder` over
+  // `PlanInputDevice[]`), so this never fires today — see `notes/safe-pace-two-constraints.md`. It stays because the
   // rule it encodes is right: a device PELS decided to shed has no claim to
   // project, since the plan is to take its load away.
   if (dev.plannedState === 'shed') return dev.currentDrawKw;
