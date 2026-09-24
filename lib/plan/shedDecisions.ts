@@ -33,11 +33,12 @@ export class ShedDecisions {
    * even when the executor skips the write. Cleared where the claim is released:
    * controlled restores age it out via the `lastDeviceRestoreMs` comparison,
    * uncontrolled `capacity_control_off` restores delete it, and an abandoned
-   * surplus posture drops it. This is the intent/existence fact the
-   * restore-eligibility readers consult — recovering, stepped-restore
-   * blocking, restore-log source, and the uncontrolled-restore stability gate
-   * — so a write-skipped shed no longer under-stamps and lets a device restore
-   * early. See `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+   * surplus posture drops it. This decision time feeds recovery,
+   * stepped-restore blocking, and the uncontrolled-restore stability gate.
+   * Candidate membership is a separate fact in `lastPlannedShedIds`; a
+   * write-skipped shed still gets its decision time so these age-based gates
+   * do not let it restore early. See
+   * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
    */
   decidedMs: Record<string, number> = {};
 

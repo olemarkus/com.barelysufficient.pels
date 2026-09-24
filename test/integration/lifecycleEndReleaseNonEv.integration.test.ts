@@ -171,7 +171,6 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
       // `setCapability`, so `setCapabilityCalls` still observes onoff writes.
       actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     }),
-    getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},
     recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},
@@ -231,7 +230,6 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
       pendingBinaryCommandStore,
       actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     }),
-    getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},
     recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},

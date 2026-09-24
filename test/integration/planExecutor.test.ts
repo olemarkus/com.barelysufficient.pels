@@ -835,22 +835,6 @@ describe('PlanExecutor restore logging', () => {
     expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
   });
 
-  it('logs restore from shed state when the device has not been restored since the last shed', async () => {
-    const state = createPlanEngineState();
-    state.shedDecisions.decidedMs['dev-1'] = Date.now() - 10_000;
-    const { executor, deviceManager } = buildExecutor(state);
-
-    await executor.applyPlanActions(buildPlan());
-
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_succeeded',
-      deviceName: 'Heater',
-      desired: true,
-      restoreSource: 'shed_state',
-    }));
-  });
-
   it('does not actuate a binary restore while meter settling keeps an off device in keep state', async () => {
     const { executor, deviceManager } = buildExecutor();
 
@@ -998,7 +982,7 @@ describe('PlanExecutor restore logging', () => {
       event: 'binary_command_applied',
       deviceId: 'dev-1',
       desired: true,
-      reasonCode: 'shed_state',
+      reasonCode: 'activation',
     }));
     expect(state.actuation.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
@@ -1069,23 +1053,6 @@ describe('PlanExecutor restore logging', () => {
     }));
     expect(state.actuation.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
-  });
-
-  it('reports restoreSource=current_plan when matching the current plan after a later external off', async () => {
-    const state = createPlanEngineState();
-    state.actuation.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
-    state.actuation.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
-    const { executor, deviceManager } = buildExecutor(state);
-
-    await executor.applyPlanActions(buildPlan());
-
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'binary_command_succeeded',
-      deviceName: 'Heater',
-      desired: true,
-      restoreSource: 'current_plan',
-    }));
   });
 
   // Every restore actuation stamps the 60-300 s restore cooldown and opens an

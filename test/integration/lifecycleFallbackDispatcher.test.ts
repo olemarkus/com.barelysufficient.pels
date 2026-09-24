@@ -428,7 +428,6 @@ describe('LifecycleFallbackDispatcher', () => {
         markSteppedLoadDesiredStepIssued: vi.fn(),
         recordShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
-        getRestoreLogSource: () => 'current_plan',
         steppedCommandClaim: createSteppedCommandClaim(),
         steppedCommandOwner: 'ordinary',
         binaryCommandClaim: createBinaryCommandClaim(),
@@ -722,7 +721,6 @@ describe('LifecycleFallbackDispatcher', () => {
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
-        getRestoreLogSource: () => 'current_plan',
         recordShedActuation: vi.fn(),
         recordReleaseShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
@@ -778,7 +776,6 @@ describe('LifecycleFallbackDispatcher', () => {
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
-        getRestoreLogSource: () => 'current_plan',
         recordShedActuation: vi.fn(),
         recordReleaseShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
@@ -867,7 +864,6 @@ describe('LifecycleFallbackDispatcher', () => {
         markSteppedLoadDesiredStepIssued: vi.fn(),
         recordShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
-        getRestoreLogSource: () => 'current_plan',
       }),
       recordReleaseShedActuation: vi.fn(),
     });
@@ -929,7 +925,6 @@ describe('LifecycleFallbackDispatcher', () => {
         markSteppedLoadDesiredStepIssued: () => { commandPending = true; },
         recordShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
-        getRestoreLogSource: () => 'current_plan',
       }),
       recordReleaseShedActuation: vi.fn(),
     });
@@ -1005,7 +1000,6 @@ describe('LifecycleFallbackDispatcher', () => {
         markSteppedLoadDesiredStepIssued: marked,
         recordShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
-        getRestoreLogSource: () => 'current_plan',
       }),
       recordReleaseShedActuation: vi.fn(),
     });
@@ -1076,7 +1070,6 @@ describe('LifecycleFallbackDispatcher', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
     });
 
     const lifecycle = applySteppedLoadCommand(buildContext('lifecycle'), buildAction('low'));
@@ -1127,7 +1120,6 @@ describe('LifecycleFallbackDispatcher', () => {
         markSteppedLoadDesiredStepIssued: vi.fn(),
         recordShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
-        getRestoreLogSource: () => 'current_plan',
       }),
       recordReleaseShedActuation: vi.fn(),
     });
@@ -1144,7 +1136,6 @@ describe('LifecycleFallbackDispatcher', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
     };
     const action: ExecutableSteppedLoadDevice & DesiredBinaryKind = {
       id: device.id, name: device.name, steppedLoadProfile: profile,
@@ -1839,7 +1830,6 @@ describe('LifecycleFallbackDispatcher', () => {
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
-      getRestoreLogSource: () => 'shed_state',
       recordShedActuation: vi.fn(),
       recordReleaseShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
@@ -1896,7 +1886,6 @@ describe('LifecycleFallbackDispatcher', () => {
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
-      getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(),
       recordReleaseShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
@@ -1941,7 +1930,6 @@ describe('LifecycleFallbackDispatcher', () => {
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
-      getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(),
       recordReleaseShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
@@ -1979,7 +1967,6 @@ describe('LifecycleFallbackDispatcher', () => {
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
-      getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
       isBinaryCommandAuthorityCurrent: () => current,
@@ -2024,7 +2011,6 @@ describe('LifecycleFallbackDispatcher', () => {
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
-      getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
       isBinaryCommandAuthorityCurrent: () => current,
@@ -2068,7 +2054,6 @@ describe('LifecycleFallbackDispatcher', () => {
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
-        getRestoreLogSource: () => 'current_plan',
         recordShedActuation: vi.fn(),
         recordReleaseShedActuation: vi.fn(),
         recordRestoreActuation: vi.fn(),
@@ -2150,7 +2135,6 @@ describe('LifecycleFallbackDispatcher', () => {
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
-      getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim, binaryCommandOwner: 'ordinary',
     };
@@ -2160,7 +2144,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryControlTransport: binaryContext.buildBinaryControlTransport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
     };
     const action: ExecutableSteppedLoadDevice & DesiredBinaryKind = {
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,
@@ -2240,7 +2223,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryControlTransport: transport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
     };
 
     expect(await applySteppedLoadShedOff(steppedContext, action, buildSnapshot())).toBe(false);
@@ -2366,7 +2348,6 @@ describe('LifecycleFallbackDispatcher', () => {
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
     };
     const dispatcher = new ExecutorLifecycleFallbackDispatcher({
       capacityDryRun: () => false,

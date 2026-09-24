@@ -937,7 +937,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
@@ -1002,7 +1001,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation,
       recordRestoreActuation,
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
     const action = buildSteppedAction({
@@ -1068,7 +1066,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
     const action = buildSteppedAction({
@@ -1116,7 +1113,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
       // The write lost its claim while in flight; the successor owns the
       // bookkeeping now.
@@ -1167,7 +1163,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
     const action = buildSteppedAction({
@@ -1213,7 +1208,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
     const action = buildSteppedAction({
@@ -1253,7 +1247,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
     const action = buildSteppedAction({
@@ -1304,7 +1297,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
@@ -1387,7 +1379,6 @@ describe('native stepped-load wiring', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
-      getRestoreLogSource: () => 'current_plan',
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 

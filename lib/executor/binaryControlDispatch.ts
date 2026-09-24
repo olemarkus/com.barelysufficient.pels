@@ -2,7 +2,6 @@ import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
-  type BinaryControlRestoreSource,
   type ObservedBinaryControlRead,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
@@ -76,7 +75,6 @@ export async function decideAndDispatchBinaryControl(params: {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
-  restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
@@ -84,7 +82,7 @@ export async function decideAndDispatchBinaryControl(params: {
 }): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
-    restoreSource, reason, lifecycleRelease, forceAgainstReleasedOpposing,
+    reason, lifecycleRelease, forceAgainstReleasedOpposing,
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
@@ -94,7 +92,6 @@ export async function decideAndDispatchBinaryControl(params: {
     desired,
     snapshot,
     logContext,
-    restoreSource,
     reason,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
@@ -217,7 +214,6 @@ function recordPendingForDispatch(params: {
     desired: decision.desired,
     startedMs: Date.now(),
     logContext: decision.logContext,
-    restoreSource: decision.restoreSource,
     ...(decision.reason ? { reason: decision.reason } : {}),
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });
@@ -247,7 +243,6 @@ function emitBinaryCommandSuccess(params: {
     controlAxis: 'binary',
     desired: decision.desired,
     logContext: decision.logContext,
-    ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
   });
 }
@@ -265,7 +260,6 @@ function emitBinaryCommandFailure(params: {
     desired: decision.desired,
     controlAxis: 'binary',
     logContext: decision.logContext,
-    ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
   });
@@ -292,11 +286,9 @@ function emitBinaryCommandOutcomeUnknown(params: {
     desired: decision.desired,
     controlAxis: 'binary',
     logContext: decision.logContext,
-    ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
   });
 }
-
 
 

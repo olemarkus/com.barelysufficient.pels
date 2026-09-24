@@ -32,14 +32,12 @@ export type PendingObservationSource =
   | 'device_update';
 
 export type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
-export type PendingBinaryCommandRestoreSource = 'shed_state' | 'current_plan';
 
 export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
   startedMs: number;
   logContext?: PendingBinaryCommandLogContext;
-  restoreSource?: PendingBinaryCommandRestoreSource;
   reason?: string;
   /**
    * True when this pending command was issued by the smart-task lifecycle-end

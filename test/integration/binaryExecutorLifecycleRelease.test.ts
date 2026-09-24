@@ -48,7 +48,6 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
         requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
-    getRestoreLogSource: () => 'current_plan',
     recordShedActuation,
     recordReleaseShedActuation,
     recordRestoreActuation: () => {},

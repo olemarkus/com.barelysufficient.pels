@@ -4,7 +4,6 @@ import {
   PLAN_REASON_CODES,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { isOffSteppedRestoreCandidate } from './devices';
-import { computeRestoreBufferKw } from './accounting';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
 import {
@@ -40,16 +39,18 @@ export function admitSteppedRestore(params: {
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
   deltaKw: number;
+  neededKw: number;
   availableHeadroom: number;
   restoreDebugKey: string;
+  batchContinuation: boolean;
+  restoredOneThisCycle: boolean;
   swapExecutor?: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
     deltaKw, availableHeadroom, restoreDebugKey, swapExecutor,
-    headroomReserves } = params;
-  const restoreBuffer = computeRestoreBufferKw(deltaKw);
-  const needed = deltaKw + restoreBuffer;
+    headroomReserves, neededKw, batchContinuation, restoredOneThisCycle } = params;
+  const needed = neededKw;
   // See the binary twin in `gating.ts`: admit against the power this device may actually claim
   // (raw minus any higher-priority startup reservation), while the running headroom total keeps
   // tracking the raw figure.
@@ -68,9 +69,9 @@ export function admitSteppedRestore(params: {
         ...(isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreShedUpdate(dev) : {}),
         reason: buildReservedForStartReason(reserved.holderName),
       });
-      return { availableHeadroom, restoredOneThisCycle: false };
+      return { availableHeadroom, restoredOneThisCycle };
     }
-    if (swapExecutor && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
+    if (!batchContinuation && swapExecutor && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
       // Hand the swap the RESERVED figure for the same reason as the binary twin in `gating.ts`:
       // it may only proceed by freeing enough to cover this step on top of a block already
       // promised to a higher-priority device. The raw total is restored on the way out.
@@ -99,13 +100,13 @@ export function admitSteppedRestore(params: {
       if (swapResult.kind === 'decided') {
         return {
           availableHeadroom: swapResult.availableHeadroom + reservedHeadroomKw,
-          restoredOneThisCycle: swapResult.restoredOneThisCycle,
+          restoredOneThisCycle: restoredOneThisCycle || swapResult.restoredOneThisCycle,
         };
       }
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission, availableHeadroom, needed, restoreDebugKey,
+      admission, availableHeadroom, needed, restoreDebugKey, restoredOneThisCycle,
     });
   }
   setRestorePlanDevice(deviceMap, dev.id, {
@@ -231,9 +232,10 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
   availableHeadroom: number;
   needed: number;
   restoreDebugKey: string;
+  restoredOneThisCycle: boolean;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    admission, availableHeadroom, needed, restoreDebugKey } = params;
+    admission, availableHeadroom, needed, restoreDebugKey, restoredOneThisCycle } = params;
   const reason = buildRestoreHeadroomReason({
     neededKw: needed,
     availableKw: availableHeadroom,
@@ -263,5 +265,5 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       rejectionReason: 'insufficient_headroom',
     },
   });
-  return { availableHeadroom, restoredOneThisCycle: false };
+  return { availableHeadroom, restoredOneThisCycle };
 }

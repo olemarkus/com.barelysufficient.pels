@@ -61,10 +61,8 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
 
 function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedState {
-  // On/off is a binary-only question — narrow first, then read the resolved
-  // `currentOn` (a binary device is never 'unknown'). `currentOn` already folds
-  // the stepped-off step for binary+stepped devices, so a capped binary stepper
-  // reads 'off' here.
+  // `currentOn` already folds the stepped-off step for binary+stepped devices,
+  // so a capped binary stepper reads 'off' here.
   if (isBinaryPlanDevice(device)) {
     return device.currentOn ? 'on' : 'off';
   }
@@ -84,8 +82,38 @@ function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedS
   return device.currentState === 'not_applicable' ? 'target_only' : 'unknown';
 }
 
-export function isBinaryRestoreCandidate(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
+export function isOffBinaryRestoreHoldCandidate(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
+  // This observed-OFF predicate is only used by shed/shortfall hold lanes: an
+  // off device must not be commanded ON while the planner is standing down.
+  // It does not classify a restoration; that comes from the previous plan.
   return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
+}
+
+export function isPreviouslyShedBinaryRestoreCandidate(
+  device: DevicePlanDevice,
+  lastPlannedShedIds: ReadonlySet<string>,
+): device is MeteredDevicePlanDevice {
+  // A binary restoration is a PLAN transition: this device was shed by the
+  // previous plan and this plan now wants to keep it. Its observed on/off value
+  // is not evidence that the planner admitted that transition.
+  return lastPlannedShedIds.has(device.id)
+    && isBinaryPlanDevice(device)
+    && device.shedAction !== 'set_temperature'
+    && isRestoreLiveEligibleDevice(device);
+}
+
+export function isPreviouslyShedSteppedRestoreCandidate(
+  device: DevicePlanDevice,
+  lastPlannedShedIds: ReadonlySet<string>,
+): device is SteppedPlanDevice & MeteredKind {
+  // The plan transition classifies the restore. The step/off observation is
+  // consumed later to price the actual rung change, not to decide admission
+  // candidacy.
+  return lastPlannedShedIds.has(device.id)
+    && isSteppedLoadDevice(device)
+    && device.shedAction !== 'set_temperature'
+    && device.steppedLoadProfile.steps.length > 0
+    && isRestoreLiveEligibleDevice(device);
 }
 
 export function isSteppedRestoreCandidate(
@@ -122,10 +150,12 @@ export function isSwapRestoreCandidate(device: DevicePlanDevice): device is Mete
   return isRestoreLiveEligibleDevice(device) && (observedState === 'on' || observedState === 'target_only');
 }
 
-export function getOffDevices(planDevices: DevicePlanDevice[]): MeteredDevicePlanDevice[] {
+export function getOffDevices(
+  planDevices: DevicePlanDevice[],
+): MeteredDevicePlanDevice[] {
   const filtered = planDevices
     .filter((device): device is MeteredDevicePlanDevice => (
-      !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device)
+      !isSteppedLoadDevice(device) && isOffBinaryRestoreHoldCandidate(device)
     ));
   return sortByPriorityAsc(filtered);
 }
@@ -136,17 +166,23 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): Ar
   return sortByPriorityAsc(filtered);
 }
 
-export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCandidate[] {
+export function getRestoreCandidates(
+  planDevices: DevicePlanDevice[],
+  lastPlannedShedIds: ReadonlySet<string>,
+): RestoreCandidate[] {
   const candidates: RestoreCandidate[] = [
     ...planDevices
       .filter((device): device is MeteredDevicePlanDevice => (
-        !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device)
+        !isSteppedLoadDevice(device) && isPreviouslyShedBinaryRestoreCandidate(device, lastPlannedShedIds)
       ))
       .map((device) => ({ kind: 'binary' as const, device })),
     ...planDevices
-      // `isOffSteppedRestoreCandidate` funnels through `isRestoreLiveEligibleDevice`,
-      // which is what proves the power axis.
-      .filter((device): device is MeteredDevicePlanDevice => isOffSteppedRestoreCandidate(device))
+      // Previous planned shed membership classifies the transition; observed
+      // binary state does not. The helper also proves the stepped profile and
+      // power axis are available.
+      .filter((device): device is SteppedPlanDevice & MeteredKind => (
+        isPreviouslyShedSteppedRestoreCandidate(device, lastPlannedShedIds)
+      ))
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];
   return candidates.slice().sort((a, b) => {
@@ -226,7 +262,7 @@ export function markOffDevicesStayOff(params: {
     deviceFilter,
   } = params;
   const offDevices = Array.from(deviceMap.values())
-    .filter((device) => isBinaryRestoreCandidate(device))
+    .filter((device) => isOffBinaryRestoreHoldCandidate(device))
     .filter((device) => deviceFilter?.(device) ?? true);
   for (const dev of offDevices) {
     const inactiveReason = getInactiveReason(dev);

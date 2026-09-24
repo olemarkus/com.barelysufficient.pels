@@ -168,7 +168,6 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
     desired: true,
     snapshot,
     logContext: 'capacity',
-    restoreSource: ctx.getRestoreLogSource(action.id),
   });
   return outcome.applied;
 };

@@ -27,7 +27,6 @@ export type PlanExecutorBinaryContext = {
   readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
   capacityDryRun: boolean;
   buildBinaryControlTransport: () => BinaryControlTransport;
-  getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   // Diagnostic-only recorder for the smart-task lifecycle-end disable path: records
   // the pels_shed diagnostic + closes the activation attempt WITHOUT stamping the
@@ -119,13 +118,12 @@ export const runBinaryControl = async (params: {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: 'capacity' | 'capacity_control_off';
-  restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
 }): Promise<BinaryControlOutcome> => {
   const {
-    ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason,
+    ctx, deviceId, name, desired, snapshot, logContext, reason,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
@@ -149,7 +147,6 @@ export const runBinaryControl = async (params: {
       desired,
       snapshot,
       logContext,
-      restoreSource,
       reason,
       lifecycleRelease,
       forceAgainstReleasedOpposing,

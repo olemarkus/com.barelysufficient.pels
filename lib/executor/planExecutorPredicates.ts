@@ -31,7 +31,7 @@ export function resolveConfirmedBinaryCommandReasonCode(
   if (pending.logContext === 'capacity_control_off') {
     return 'capacity_control_off_restore';
   }
-  return pending.restoreSource ?? 'current_plan';
+  return 'activation';
 }
 
 export function hasStableUncontrolledRestoreActuation(
@@ -42,23 +42,6 @@ export function hasStableUncontrolledRestoreActuation(
     && dev.plannedState === 'keep'
     && isPlanDeviceObservedOff(dev)
     && Boolean(state.shedDecisions.decidedMs[dev.id]);
-}
-
-/**
- * Restore-log source label: `shed_state` when the planner still holds the
- * device in capacity-shed posture (decided-shed more recently than it was
- * restored), else `current_plan`. Reads the decision-time `shedDecisions.decidedMs`
- * clock so a write-skipped shed is still attributed to the shed state. The
- * result is a log field only — no decision branches on it.
- */
-export function resolveRestoreLogSource(
-  state: PlanEngineState,
-  deviceId: string,
-): 'shed_state' | 'current_plan' {
-  const shedDecidedMs = state.shedDecisions.decidedMs[deviceId];
-  if (!shedDecidedMs) return 'current_plan';
-  const lastRestoreMs = state.actuation.lastDeviceRestoreMs[deviceId];
-  return !lastRestoreMs || lastRestoreMs < shedDecidedMs ? 'shed_state' : 'current_plan';
 }
 
 export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {

@@ -47,7 +47,6 @@ export type ObservedBinaryControlRead = (
 export type { BinaryControlPlan };
 
 export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
-export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 
 /**
  * The plan layer hands one of these to the executor per cycle for each
@@ -64,7 +63,6 @@ export type BinaryControlDecision = {
   name: string;
   desired: boolean;
   logContext: BinaryControlLogContext;
-  restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   /**
    * True when this decision comes from the smart-task lifecycle-end disable path
@@ -216,5 +214,4 @@ export function hasPendingMatchingBinaryCommand(params: {
   if (!pending) return false;
   return pending.desired === desired;
 }
-
 

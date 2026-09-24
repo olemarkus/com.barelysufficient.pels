@@ -24,7 +24,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   getInactiveReason,
   getRestoreCandidates,
-  isBinaryRestoreCandidate,
+  isOffBinaryRestoreHoldCandidate,
   isRestoreLiveEligibleDevice,
 } from '../../lib/plan/restore/devices';
 import { applyOffStateReason } from '../../lib/plan/planOffStateReason';
@@ -65,19 +65,21 @@ const heldDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice
 describe('external-off hold — restore exclusion', () => {
   it('makes the device ineligible for every restore lane', () => {
     expect(isRestoreLiveEligibleDevice(heldDevice())).toBe(false);
-    expect(isBinaryRestoreCandidate(heldDevice())).toBe(false);
+    expect(isOffBinaryRestoreHoldCandidate(heldDevice())).toBe(false);
   });
 
-  it('leaves an unheld off device restorable, so existing behaviour is unchanged', () => {
-    expect(isRestoreLiveEligibleDevice(makeDevice())).toBe(true);
-    expect(isBinaryRestoreCandidate(makeDevice())).toBe(true);
+  it('allows a prior-shed, unheld device into the restore lane', () => {
+    const device = makeDevice();
+    expect(isRestoreLiveEligibleDevice(device)).toBe(true);
+    expect(isOffBinaryRestoreHoldCandidate(device)).toBe(true);
+    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
   });
 
   it('drops the held device from restore candidates while keeping its peers', () => {
     const candidates = getRestoreCandidates([
       heldDevice({ id: 'held' }),
       makeDevice({ id: 'free' }),
-    ]);
+    ], new Set(['held', 'free']));
     expect(candidates.map((candidate) => candidate.device.id)).toEqual(['free']);
   });
 });
@@ -232,7 +234,6 @@ const buildExecutorCtx = (held: boolean) => {
         requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
-    getRestoreLogSource: () => 'shed_state',
     recordShedActuation: vi.fn(),
     recordReleaseShedActuation: vi.fn(),
     recordRestoreActuation: vi.fn(),

@@ -27,7 +27,6 @@ import {
   hasStableSteppedLoadStepActuation,
   hasStableUncontrolledRestoreActuation,
   resolveConfirmedBinaryCommandReasonCode,
-  resolveRestoreLogSource,
 } from './planExecutorPredicates';
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 import {
@@ -159,9 +158,6 @@ export class PlanExecutor {
       nowTs: now,
     });
   };
-  private readonly boundGetRestoreLogSource = (deviceId: string): 'shed_state' | 'current_plan' => (
-    resolveRestoreLogSource(this.state, deviceId)
-  );
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
   private binaryExecutorContext?: PlanExecutorBinaryContext;
@@ -358,7 +354,6 @@ export class PlanExecutor {
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
-        getRestoreLogSource: this.boundGetRestoreLogSource,
         // Route step writes through the single actuator seam. The not-requested
         // arm keeps the outcome's `reason` — dropping it collapsed an
         // unacknowledged Flow trigger into an ordinary "no transport" skip.
@@ -384,7 +379,6 @@ export class PlanExecutor {
         readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
         capacityDryRun: this.capacityDryRun,
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
-        getRestoreLogSource: this.boundGetRestoreLogSource,
         recordShedActuation: this.boundRecordShedActuation,
         recordReleaseShedActuation: this.recordReleaseShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,

@@ -2,7 +2,7 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
-import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
+import { isPreviouslyShedBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -119,24 +119,24 @@ describe('planner current-state consistency', () => {
 
     return {
       mergedCurrentState: mergedPlan.devices[0].currentState,
-      restoreCandidate: isBinaryRestoreCandidate(mergedPlan.devices[0]),
+      restoreCandidate: isPreviouslyShedBinaryRestoreCandidate(mergedPlan.devices[0], new Set<string>()),
       shedCandidate: sheddingPlan.shedSet.has(liveDevice.id),
     };
   }
 
-  it('keeps an observed-off binary device off across reconcile, restore, and shedding without pending commands', async () => {
+  it('does not classify off/keep as a restore without a previous shed decision', async () => {
     const phaseAnswers = await resolvePhaseAnswers({
       liveDevice: buildLiveDevice(),
     });
 
     expect(phaseAnswers).toEqual({
       mergedCurrentState: 'off',
-      restoreCandidate: true,
+      restoreCandidate: false,
       shedCandidate: false,
     });
   });
 
-  it('does not let a pending restore make an observed-off binary device look shed-eligible', async () => {
+  it('does not let a pending restore change the previous-plan restore classification', async () => {
     const phaseAnswers = await resolvePhaseAnswers({
       liveDevice: buildLiveDevice(),
       pendingRestore: true,
@@ -144,7 +144,7 @@ describe('planner current-state consistency', () => {
 
     expect(phaseAnswers).toEqual({
       mergedCurrentState: 'off',
-      restoreCandidate: true,
+      restoreCandidate: false,
       shedCandidate: false,
     });
   });

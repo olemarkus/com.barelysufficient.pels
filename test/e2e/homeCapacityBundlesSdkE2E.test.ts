@@ -22,10 +22,10 @@
 // 4. Restart rehydration — `device_last_controlled_ms:<id>` survives a
 //    restart: the resume of a shed sub-home device stays backoff-blocked
 //    right after reboot and lands once the cooldown elapses.
-// 5. Orphaned-shed adoption (binary) — a device shed by MAIN and then moved
-//    into a new sub-home is resumed by the sub-home's own planner via the
-//    provenance-free restore lane (stepped-modality candidates are covered in
-//    test/integration/homeCapacityBundles.test.ts).
+// 5. New-scope activation — a device shed by MAIN and then moved into a new
+//    sub-home has no prior shed transition in that planner. Its off/keep state
+//    is therefore an activation executed from the desired plan, not a restore
+//    admission.
 // 6. Mode targets in an area — a setpoint-shed area heater is commanded back to
 //    its mode target, and that same raise is HELD while the area's meter has
 //    not reported (the direction/clamp rule itself is pinned far more cheaply in
@@ -643,7 +643,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(rebooted).toBeTruthy();
   }, 30_000);
 
-  it('orphaned-shed adoption: a device shed by MAIN and then moved into a new sub-home is resumed by the sub-home bundle', async () => {
+  it('activates a keep device moved from MAIN into a new sub-home', async () => {
     const { subDevice } = await setupTwoZoneDevices();
     configureMainCapacity(1);
     installApiRoutes();
@@ -663,9 +663,10 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await subDevice.setCapabilityValue('measure_power', 0);
     await drainPending();
 
-    // The user now creates the sub-home around the SHED device, with its own
-    // meter and ample capacity. The sub-home bundle must adopt the observed-off
-    // device as an ordinary resume candidate (no shed provenance required).
+    // The user now creates the sub-home around the device MAIN shed, with its
+    // own meter and ample capacity. From the sub-home planner's perspective
+    // this is an off device whose desired plan says keep, so executor activation
+    // applies the plan without treating the binary off state as restoration.
     const adoptionPhaseStart = putSpy.mock.calls.length;
     configureSubHomeCapacity(6);
     writeActiveHomesConfig({ subHomes: [SUB_HOME] });
@@ -677,8 +678,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       60,
     );
 
-    // The resume came from the sub-home's planner: main is still hard over its
-    // cap the whole time and its own device stays off (no ON write for it).
+    // The activation came from the sub-home's keep plan: main is still hard
+    // over its cap the whole time and its own device stays off (no ON write).
     const mainOnWrites = callsFor(putSpy, 'device-main', adoptionPhaseStart)
       .filter(([, body]) => (body as { value?: unknown } | undefined)?.value === true);
     expect(mainOnWrites).toEqual([]);

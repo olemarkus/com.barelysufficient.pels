@@ -64,24 +64,27 @@ narrows the upper-bound estimate as evidence accrues.
 
 ## Bounded Restore Batching
 
-PELS may restore more than one binary device in a single planning cycle only when the normal
-restore gates are otherwise clear. This is intended for recovery after a
+PELS may admit more than one previously-shed device to `keep` in a single planning cycle only
+when the normal restore gates are otherwise clear. This is intended for recovery after a
 capacity limit or margin increase, where many devices can be shed despite abundant headroom.
 
 Batching is intentionally narrow:
 
 - the first restore still follows the normal admission rule
-- at most three binary restores can be admitted in one cycle
+- at most three previously-shed devices can be admitted in one cycle, counting binary and
+  stepped `shed -> keep` transitions together
 - cumulative admitted restore need is capped at 50% of the starting available headroom
 - startup stabilization, shortfall, overshoot, shed cooldown, and restore cooldown keep the
   previous one-at-a-time behavior
 - the budget-exempt restore lane (admissions while shedding stays latched on a budget-driven
   overshoot) is always one-at-a-time: its batch state is explicitly disabled, independent of the
   overshoot flag, so the hysteresis band cannot re-enable continuation there
-- target-based and stepped restores remain conservative unless separately proven safe
-- stepped-load `off -> lowest active step` restores follow normal cross-device priority ordering;
-  the conservative stepped gate applies to later step-ups while other devices remain shed, unless
-  the device has an active boost (invariant bypass, 2026-07-05; headroom admission and
+- target-based restores and active stepped-load step-ups remain conservative unless separately
+  proven safe
+- a previously-shed stepped load restoring from `off` to its lowest active step follows normal
+  cross-device priority ordering and consumes one slot in the shared three-device cap; the
+  conservative stepped gate still applies to later step-ups while other devices remain shed,
+  unless the device has an active boost (invariant bypass, 2026-07-05; headroom admission and
   attempt-hold still gate each rung). "Active" is the upstream decision described above — a boost
   released for confirmed no-draw is not active, and the device is then subject to the invariant
   like any other

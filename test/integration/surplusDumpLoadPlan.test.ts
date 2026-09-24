@@ -628,7 +628,6 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
         requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
       }),
     }),
-    getRestoreLogSource: () => 'shed_state',
     recordShedActuation: vi.fn(),
     recordReleaseShedActuation: vi.fn(),
     recordRestoreActuation: vi.fn(),

@@ -27,12 +27,18 @@ import { applySteppedRestoreAttemptHold } from '../planSteppedRestoreHold';
 import { setRestorePlanDevice } from './planDeviceUpdates';
 import { applySteppedDeviceGates } from './steppedRestoreGates';
 import {
+  buildDisabledRestoreBatchState,
+  canAdmitWithinBatch,
+  canAttemptBatchContinuation,
+} from './batch';
+import { computeRestoreBufferKw } from './accounting';
+import {
   admitSteppedRestore,
   blockSteppedRestoreForShedInvariant,
   type SteppedSwapExecutor,
 } from './steppedRestoreAdmission';
 import type { HeadroomReserve } from '../admission';
-import type { RestoreDeviceTiming } from './types';
+import type { RestoreBatchState, RestoreDeviceTiming } from './types';
 
 // Re-export the public restore-helper surface so existing importers
 // (lib/plan/restore/index.ts, lib/plan/restore/gating.ts, tests) are unchanged
@@ -193,16 +199,19 @@ function resolveSteppedRestoreCommitmentKw(
   return change.direction === 'up' ? change.deltaKw : 0;
 }
 
-export function planRestoreForSteppedDevice(params: {
-  dev: SteppedPlanDevice & MeteredKind;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  timing: RestoreDeviceTiming;
-  availableHeadroom: number;
-  restoredOneThisCycle: boolean;
-  swapExecutor?: SteppedSwapExecutor;
-  headroomReserves?: readonly HeadroomReserve[];
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+export function planRestoreForSteppedDevice(
+  params: {
+    dev: SteppedPlanDevice & MeteredKind;
+    deviceMap: Map<string, DevicePlanDevice>;
+    state: PlanEngineState;
+    timing: RestoreDeviceTiming;
+    availableHeadroom: number;
+    restoredOneThisCycle: boolean;
+    swapExecutor?: SteppedSwapExecutor;
+    headroomReserves?: readonly HeadroomReserve[];
+  },
+  batchState: RestoreBatchState = buildDisabledRestoreBatchState(),
+): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
     swapExecutor, headroomReserves = [] } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
@@ -229,6 +238,12 @@ export function planRestoreForSteppedDevice(params: {
   // and admission are about — while `nextStep` is the step the surplus ceiling
   // actually admits, and drives everything after it.
   const nextStep = admitStepUnderSurplusCeiling(dev, state, requestedStep);
+  const deltaKw = nextStep ? resolveSteppedRestoreCommitmentKw(dev, nextStep.id) : 0;
+  const neededKw = deltaKw > 0 ? deltaKw + computeRestoreBufferKw(deltaKw) : 0;
+  const batchContinuation = state.shedDecisions.lastPlannedShedIds.has(dev.id)
+    && restoredOneThisCycle
+    && canAttemptBatchContinuation(batchState)
+    && canAdmitWithinBatch(batchState, neededKw);
   if (applySteppedDeviceGates({
     dev,
     deviceMap,
@@ -236,6 +251,7 @@ export function planRestoreForSteppedDevice(params: {
     timing,
     deviceIsActive,
     restoredOneThisCycle,
+    batchContinuation,
     restoreDebugKey,
     availableHeadroom,
     phase,
@@ -258,7 +274,6 @@ export function planRestoreForSteppedDevice(params: {
   const lowestNonZeroStep = isSteppedLoadDevice(dev)
     ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
     : null;
-  const deltaKw = resolveSteppedRestoreCommitmentKw(dev, nextStep.id);
   if (deltaKw <= 0) {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
@@ -302,6 +317,9 @@ export function planRestoreForSteppedDevice(params: {
     restoreDebugKey,
     swapExecutor,
     headroomReserves,
+    neededKw,
+    batchContinuation,
+    restoredOneThisCycle,
   });
 }
 

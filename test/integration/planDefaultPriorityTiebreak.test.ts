@@ -103,12 +103,12 @@ describe('default-priority deterministic tiebreak (shed & restore)', () => {
       buildRestoreDevice('alpha'),
       buildRestoreDevice('bravo'),
       buildRestoreDevice('charlie'),
-    ]);
+    ], new Set(['alpha', 'bravo', 'charlie']));
     const reversed = getRestoreCandidates([
       buildRestoreDevice('charlie'),
       buildRestoreDevice('bravo'),
       buildRestoreDevice('alpha'),
-    ]);
+    ], new Set(['alpha', 'bravo', 'charlie']));
 
     const forwardIds = forward.map((c) => c.device.id);
     const reversedIds = reversed.map((c) => c.device.id);

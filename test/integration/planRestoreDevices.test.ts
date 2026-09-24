@@ -1,5 +1,5 @@
 import {
-  isBinaryRestoreCandidate,
+  isOffBinaryRestoreHoldCandidate,
   getInactiveReason,
   getOffDevices,
   getOnDevices,
@@ -9,6 +9,7 @@ import {
   isOffSteppedRestoreCandidate,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
+  isPreviouslyShedBinaryRestoreCandidate,
 } from '../../lib/plan/restore/devices';
 import type {
   DevicePlanDevice,
@@ -109,7 +110,10 @@ describe('plan restore device helpers', () => {
       makeDevice({ id: 'binary-higher-priority', priority: 2, currentState: 'off' }),
     ];
 
-    expect(getRestoreCandidates(devices).map((candidate) => [candidate.kind, candidate.device.id])).toEqual([
+    const lastPlannedShedIds = new Set([
+      'binary-lower-priority', 'stepped-higher-priority', 'binary-higher-priority',
+    ]);
+    expect(getRestoreCandidates(devices, lastPlannedShedIds).map((candidate) => [candidate.kind, candidate.device.id])).toEqual([
       ['stepped', 'stepped-higher-priority'],
       ['binary', 'binary-higher-priority'],
       ['binary', 'binary-lower-priority'],
@@ -371,13 +375,13 @@ describe('plan restore device helpers', () => {
     });
 
     expect(isRestoreLiveEligibleDevice(eligible)).toBe(true);
-    expect(isBinaryRestoreCandidate(eligible)).toBe(true);
-    // Stale-off is now trusted-off (no staleness gate) -> a valid restore candidate.
-    expect(isBinaryRestoreCandidate(stale)).toBe(true);
-    expect(isBinaryRestoreCandidate(shed)).toBe(false);
+    expect(isOffBinaryRestoreHoldCandidate(eligible)).toBe(true);
+    // Stale-off is trusted for the protective hold lane (no staleness gate).
+    expect(isOffBinaryRestoreHoldCandidate(stale)).toBe(true);
+    expect(isOffBinaryRestoreHoldCandidate(shed)).toBe(false);
     expect(isRestoreLiveEligibleDevice(inactiveSteppedEv)).toBe(false);
     expect(isSteppedRestoreCandidate(inactiveSteppedEv)).toBe(false);
-    expect(getRestoreCandidates([inactiveSteppedEv])).toEqual([]);
+    expect(getRestoreCandidates([inactiveSteppedEv], new Set(['inactive-stepped-ev']))).toEqual([]);
   });
 
   it('does not treat target-only (not_applicable) devices as binary restore candidates', () => {
@@ -387,9 +391,20 @@ describe('plan restore device helpers', () => {
     const targetOnlyOff = makeDevice({
       id: 'target-only-off',
       currentState: 'not_applicable',
-      binaryControl: { on: false },
+      binaryCapabilityId: undefined,
     });
 
-    expect(isBinaryRestoreCandidate(targetOnlyOff)).toBe(false);
+    expect(isPreviouslyShedBinaryRestoreCandidate(targetOnlyOff, new Set([targetOnlyOff.id]))).toBe(false);
+  });
+
+  it('leaves setpoint restores to the target lane', () => {
+    const setpointShed = makeDevice({
+      id: 'setpoint-shed',
+      currentState: 'off',
+      binaryControl: { on: false },
+      shedAction: 'set_temperature',
+    });
+
+    expect(getRestoreCandidates([setpointShed], new Set([setpointShed.id]))).toEqual([]);
   });
 });

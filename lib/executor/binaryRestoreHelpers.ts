@@ -115,7 +115,6 @@ export const applyBinaryRestoreWithSnapshot = async (
         desired: true,
         snapshot,
         logContext: 'capacity',
-        restoreSource: ctx.getRestoreLogSource(deviceId),
       });
       if (!outcome.applied) return false;
       return true;

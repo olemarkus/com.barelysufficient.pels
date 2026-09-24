@@ -89,8 +89,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `recordPlannedShed` stamps the decision clock only on ENTRY into the shed set. So a device
       whose decision the executor's capacity-control-off lanes clear (`lib/executor/planExecutor.ts`,
       `lib/executor/binaryControlShared.ts`) while capacity still holds it shed carries no
-      `decidedMs` for the rest of the hold, and then reads false for recovering, stepped-restore
-      blocking and the restore-log source. The planner's own release guards exactly this
+      `decidedMs` for the rest of the hold, and then reads false for recovering and
+      stepped-restore blocking. The planner's own release guards exactly this
       (`releaseAbandonedSurplusPosture` skips a device the shed set still holds); the two executor
       lanes do not. Change: rule on whether `clearFor` should also drop the id from
       `lastPlannedShedIds` (re-arming the edge) or whether the executor lanes should skip a device

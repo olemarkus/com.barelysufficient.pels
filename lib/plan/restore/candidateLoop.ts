@@ -1,17 +1,17 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
-import { isSteppedLoadDevice } from '../planSteppedLoad';
 import {
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
-  isBinaryRestoreCandidate,
-  isOffSteppedRestoreCandidate,
+  isPreviouslyShedBinaryRestoreCandidate,
+  isPreviouslyShedSteppedRestoreCandidate,
   type RestoreCandidate,
 } from './devices';
 import {
   planRestoreForSteppedDevice,
   type SteppedSwapExecutor,
 } from './helpers';
+import { recordBatchAdmission } from './batch';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { planRestoreForDevice } from './gating';
@@ -52,7 +52,7 @@ export function planSteppedRestoreThroughSourceHold(
   loop: RestoreLoopState,
 ): RestoreLoopState {
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
-  return planRestoreForSteppedDevice({
+  const result = planRestoreForSteppedDevice({
     dev,
     deviceMap: cycle.deviceMap,
     state: cycle.state,
@@ -61,7 +61,8 @@ export function planSteppedRestoreThroughSourceHold(
     restoredOneThisCycle: loop.restoredOneThisCycle,
     swapExecutor: lane.steppedSwapExecutor,
     headroomReserves: cycle.headroomReserves,
-  });
+  }, cycle.batchState);
+  return result;
 }
 
 export function applyActiveSteppedRestoreCandidates(
@@ -74,6 +75,7 @@ export function applyActiveSteppedRestoreCandidates(
   let restoredOne = restoredOneThisCycle;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(cycle.deviceMap.values()))
     .filter((dev) => isActiveSteppedRestoreCandidate(dev))
+    .filter((dev) => !cycle.state.shedDecisions.lastPlannedShedIds.has(dev.id))
     .filter((dev) => candidateFilter?.(dev) ?? true);
   for (const dev of activeSteppedDevices) {
     const availableForCandidate = ledger.availableFor(dev);
@@ -98,11 +100,20 @@ function applyRestoreCandidate(
   // the map entry is the same device this cycle, re-read for its latest updates.
   if (!dev || !isMeteredPlanDevice(dev)) return loop;
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
-  if (candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
+  const lastPlannedShedIds = cycle.state.shedDecisions.lastPlannedShedIds;
+  if (candidate.kind === 'binary' && isPreviouslyShedBinaryRestoreCandidate(dev, lastPlannedShedIds)) {
     return planRestoreForDevice(cycle, lane, dev, loop);
   }
-  if (candidate.kind === 'stepped' && isSteppedLoadDevice(dev) && isOffSteppedRestoreCandidate(dev)) {
-    return planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
+  if (
+    candidate.kind === 'stepped'
+    && isPreviouslyShedSteppedRestoreCandidate(dev, lastPlannedShedIds)
+  ) {
+    const result = planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
+    const admittedNeedKw = loop.availableHeadroom - result.availableHeadroom;
+    if (result.restoredOneThisCycle && admittedNeedKw > 0) {
+      recordBatchAdmission(cycle.batchState, admittedNeedKw);
+    }
+    return result;
   }
   return loop;
 }

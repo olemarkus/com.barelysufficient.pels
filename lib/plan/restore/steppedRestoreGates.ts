@@ -39,6 +39,7 @@ export function applySteppedDeviceGates(params: {
   timing: SteppedDeviceGateTiming;
   deviceIsActive: boolean;
   restoredOneThisCycle: boolean;
+  batchContinuation: boolean;
   restoreDebugKey: string;
   availableHeadroom: number;
   phase: 'startup' | 'runtime';
@@ -51,22 +52,24 @@ export function applySteppedDeviceGates(params: {
     timing,
     deviceIsActive,
     restoredOneThisCycle,
+    batchContinuation,
     restoreDebugKey,
     availableHeadroom,
     phase,
     requestedStepId,
   } = params;
+  const gateRestoredOneThisCycle = restoredOneThisCycle && !batchContinuation;
   const lastRestoreTs = deviceIsActive
     ? (state.actuation.lastDeviceRestoreMs[dev.id] ?? null)
     : state.actuation.lastRestoreMs;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing, lastRestoreTs, restoredOneThisCycle,
+    timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
   });
   if (meterSettlingRemainingSec !== null) {
     const reason = buildMeterSettlingReason(
       meterSettlingRemainingSec,
       resolveMeterSettlingCountdownTiming({
-        timing, lastRestoreTs, restoredOneThisCycle,
+        timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
       }),
     );
     setRestorePlanDevice(deviceMap, dev.id,
@@ -89,7 +92,7 @@ export function applySteppedDeviceGates(params: {
     : timing;
   const gateReason = resolveCapacityRestoreBlockReason({
     timing: gateTiming,
-    restoredOneThisCycle,
+    restoredOneThisCycle: gateRestoredOneThisCycle,
   });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, deviceIsActive

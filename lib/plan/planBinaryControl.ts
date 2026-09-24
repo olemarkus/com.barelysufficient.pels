@@ -3,7 +3,6 @@ import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
-  type BinaryControlRestoreSource,
   type ObservedBinaryControlRead,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
@@ -37,14 +36,13 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
-  restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
 }): BinaryControlDecision | null {
   const {
     pendingBinaryCommandStore, getObservedBinaryControl,
-    deviceId, name, desired, snapshot, logContext, restoreSource, reason,
+    deviceId, name, desired, snapshot, logContext, reason,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
@@ -70,7 +68,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     name,
     desired,
     logContext,
-    restoreSource,
     reason,
     ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
   };

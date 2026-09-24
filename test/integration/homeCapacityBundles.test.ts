@@ -13,8 +13,7 @@
 // - the boot-window execution gate (forced dry-run until membership has
 //   resolved from a committed zone tree);
 // - the fail-closed sub-home device path (`filterDevicesForHome`);
-// - the provenance-free restore lanes the orphaned-shed adoption relies on
-//   (binary + stepped candidates carry no shed-provenance fields).
+// - planner restore candidates selected from the previous plan's shed set.
 // Only outward seams are mocked: the shared mock Homey settings store backs
 // the real homes store, capacity store, and the last-controlled blob; an
 // in-memory userdata store backs the tracker persistence; the bundles run
@@ -35,9 +34,9 @@ import { createHomesStore as createRawHomesStore } from '../../setup/homeRegistr
 import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
 import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
 import {
-  isBinaryRestoreCandidate,
+  getRestoreCandidates,
   isOffSteppedRestoreCandidate,
-  isSteppedRestoreCandidate,
+  getSteppedRestoreCandidates,
 } from '../../lib/plan/restore/devices';
 import { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
@@ -2017,26 +2016,26 @@ describe('fail-closed sub-home device path (filterDevicesForHome)', () => {
   });
 });
 
-// Orphaned-shed adoption: the generic restore lanes must accept
-// an observed-off device on observed state ALONE — no shed-provenance fields —
-// so a device shed by MAIN before relocating into a sub-home is an ordinary
-// restore candidate for its NEW bundle's planner. Verified per modality; the
-// full binary adoption path (main sheds → sub-home bundle resumes) runs
-// end-to-end in `test/e2e/homeCapacityBundlesSdkE2E.test.ts`.
-describe('provenance-free restore lanes (orphaned-shed adoption)', () => {
-  it('binary: an observed-off, eligible device is a restore candidate with zero provenance fields', () => {
+describe('planner restore transitions', () => {
+  it('binary: off state alone does not classify a device as restored', () => {
     const device = buildPlanDevice({ id: 'relocated-binary', currentOn: false, controllable: true });
-    expect(isBinaryRestoreCandidate(device)).toBe(true);
+    expect(getRestoreCandidates([device], new Set<string>())).toEqual([]);
+    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
+    const alreadyOn = buildPlanDevice({ id: device.id, currentOn: true, controllable: true });
+    expect(getRestoreCandidates([alreadyOn], new Set([device.id]))).toHaveLength(1);
   });
 
-  it('stepped: a device parked at the off step is a restore candidate with zero provenance fields', () => {
+  it('stepped: an off step is restored only when the previous plan shed the device', () => {
     const device = steppedPlanDevice({ id: 'relocated-stepped', selectedStepId: 'off' });
-    expect(isSteppedRestoreCandidate(device)).toBe(true);
     expect(isOffSteppedRestoreCandidate(device)).toBe(true);
+    expect(getRestoreCandidates([device], new Set<string>())).toEqual([]);
+    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
+    const activeStep = steppedPlanDevice({ id: device.id, selectedStepId: 'low' });
+    expect(getRestoreCandidates([activeStep], new Set([device.id]))).toHaveLength(1);
   });
 
-  it('stepped: a device capped below its highest step is a step-up candidate', () => {
+  it('stepped: an active device capped below its highest step remains a step-up candidate', () => {
     const device = steppedPlanDevice({ id: 'capped-stepped', selectedStepId: 'low' });
-    expect(isSteppedRestoreCandidate(device)).toBe(true);
+    expect(getSteppedRestoreCandidates([device])).toHaveLength(1);
   });
 });
