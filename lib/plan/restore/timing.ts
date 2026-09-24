@@ -332,14 +332,16 @@ function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReason
       ...buildCountdownTiming(timing.shedCooldownStartedAtMs, timing.shedCooldownTotalSec),
     };
   }
-  if (timing.inRestoreCooldown) {
-    return {
-      code: PLAN_REASON_CODES.cooldownRestore,
-      remainingSec: timing.restoreCooldownRemainingSec ?? 0,
-      ...buildCountdownTiming(timing.restoreCooldownStartedAtMs, timing.restoreCooldownTotalSec),
-    };
-  }
-  return null;
+  return timing.inRestoreCooldown ? buildRestoreCooldownReason(timing) : null;
+}
+
+/** The restore cooldown as a hold reason, counting down to the next resume. */
+export function buildRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason {
+  return {
+    code: PLAN_REASON_CODES.cooldownRestore,
+    remainingSec: timing.restoreCooldownRemainingSec ?? 0,
+    ...buildCountdownTiming(timing.restoreCooldownStartedAtMs, timing.restoreCooldownTotalSec),
+  };
 }
 
 export function resolveMeterSettlingRemainingSec(params: {

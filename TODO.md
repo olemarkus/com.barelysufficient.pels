@@ -201,24 +201,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       2026-08-07; rewritten 2026-08-08 after the held-back clock ruling falsified the original
       premise (both lanes paused/counted differently; now both count). [P2]
 
-- [ ] **The restore-cooldown branch marks nothing during an overshoot, so a sub-deadband deficit
-      still resumes an already-limited device with no admission check.**
-      In `applyRestorePlan` the `inRestoreCooldown` branch derives its hold from
-      `resolveCapacityRestoreBlockReason`, which returns `null` on `activeOvershoot` ("the caller's
-      own reason stands") — and in that branch there is no caller reason. The branch then returns
-      without marking anything, so every off device stays `plannedState: 'keep'` and the executor
-      turns it on. Reaching it needs `sheddingActive === false` while headroom is negative, which
-      after the 2026-08-16 latch fix means exactly one state: a deficit below
-      `SOFT_OVERSHOOT_DEADBAND_KW` (50 W) still inside its 20 s `SOFT_OVERSHOOT_PERSIST_MS` window,
-      with the global restore cooldown running and nothing else holding. The deficit is tiny; the
-      resume is not — nothing sizes it against available power, so a 2 kW load can come back on the
-      strength of a 40 W deficit. Pre-dates the shed grace (`actionable` was equally false for a
-      sub-deadband deficit before it). Fix direction: the branch should fall back to
-      `markOffDevicesStayOff` rather than returning empty-handed, or the ladder should stop treating
-      "a caller reason exists" as a given. Found 2026-08-16 while fixing the shed-grace restore-all;
-      the invariant it violates is in `lib/plan/shedding/AGENTS.md` § "Declining to shed is not
-      deciding there is no overshoot". [P2]
-
 - [ ] **A temperature device shed during a facet-miss cycle is turned off instead of set back.**
       `buildInitialPlanDevices` (`lib/plan/planDevices.ts`) only consults `deps.getShedBehavior`
       for stepped or temperature devices, so in the one cycle a device plans as `onoff` its shed

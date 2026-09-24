@@ -14,7 +14,7 @@ import type { RestoreTiming } from './timing';
 import type { SoftLimitSource } from '../planContext';
 import {
   buildRestoreTiming,
-  resolveCapacityRestoreBlockReason,
+  buildRestoreCooldownReason,
   resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
   shouldPlanBudgetExemptRestores,
@@ -118,6 +118,10 @@ export function applyRestorePlan(params: {
     ({ restoredOneThisCycle } = applyBudgetExemptRestorePass(cycle, ledger, restoredOneThisCycle));
   } else if (
     sheddingActive
+    // A deficit too small to latch shedding is still an overshoot: nothing
+    // resumes against it (`shedding/AGENTS.md` § "Declining to shed is not
+    // deciding there is no overshoot").
+    || effectiveTiming.activeOvershoot
     || timing.inCooldown
     || effectiveTiming.inStartupStabilization
   ) {
@@ -218,15 +222,13 @@ function applyFullRestorePass(
 }
 
 /**
- * The inRestoreCooldown branch of applyRestorePlan. Nothing is admitted; every
- * restore candidate is told which timer holds it — the meter-settling window
- * while the last restore's draw is still unseen by the meter, the restore
- * cooldown after that. Which of the held devices resumes first is settled once
- * on the finished plan (`planRestoreCooldownCohort.ts`), from the admission
- * order; the planner no longer runs a second, hypothetical admission pass to
- * find out. No hold reason resolves only under
- * an active overshoot, where the shed itself is the cause and the producer's
- * reason stands.
+ * The inRestoreCooldown branch of applyRestorePlan, reached only without an
+ * overshoot. Nothing is admitted; every restore candidate is told which timer
+ * holds it — the meter-settling window while the last restore's draw is still
+ * unseen by the meter, the restore cooldown after that. Which of the held
+ * devices resumes first is settled once on the finished plan
+ * (`planRestoreCooldownCohort.ts`), from the admission order; the planner no
+ * longer runs a second, hypothetical admission pass to find out.
  */
 function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
   const { deviceMap, swapLedger, state, timing } = cycle;
@@ -235,11 +237,10 @@ function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
     lastRestoreTs: state.actuation.lastRestoreMs,
   });
   const holdReason = meterSettlingRemainingSec === null
-    ? resolveCapacityRestoreBlockReason({ timing })
+    ? buildRestoreCooldownReason(timing)
     : buildMeterSettlingReason(
       meterSettlingRemainingSec,
       resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
     );
-  if (holdReason === null) return;
   markRestoreCandidatesHeld(deviceMap, swapLedger, holdReason);
 }

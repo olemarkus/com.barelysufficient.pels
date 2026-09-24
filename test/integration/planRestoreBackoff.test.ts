@@ -1241,6 +1241,40 @@ describe('restore cooldown backoff', () => {
     expect(result.restoredOneThisCycle).toBe(false);
   });
 
+  it('keeps an off device off during a sub-deadband overshoot while the restore cooldown runs', () => {
+    // A deficit below the soft-overshoot deadband does not latch shedding, but
+    // it is still an overshoot: nothing may resume against it. The cooldown
+    // lane used to find no hold reason under an overshoot and mark nothing,
+    // leaving the device planned `keep` for the executor to turn on.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.actuation.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [buildPlanDevice({
+        id: 'heater',
+        name: 'Heater',
+        currentState: 'off',
+        measuredPowerKw: 0,
+        expectedPowerKw: 2,
+      })],
+      ...buildContext({ headroomRaw: -0.04, headroom: -0.04 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
+        temperatureSetpoints: new Map(),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
+      },
+    });
+
+    expect(result.timing.activeOvershoot).toBe(true);
+    expect(result.timing.inRestoreCooldown).toBe(true);
+    expect(result.planDevices[0]?.plannedState).toBe('shed');
+    expect(result.restoredThisCycle).toEqual(new Set());
+  });
+
   it('names the restore cooldown on a candidate that could not be admitted yet', () => {
     // The timer is what holds the device NOW; whether the power would suffice is
     // the next pass's question, and one no amount of freed power answers early.
