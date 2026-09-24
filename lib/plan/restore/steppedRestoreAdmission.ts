@@ -20,6 +20,8 @@ import {
   setRestorePlanDevice,
 } from './planDeviceUpdates';
 import type { SwapRestoreOutcome } from './swap';
+import type { RestoreBatchState, RestoreLoopState, SteppedRestoreNeed } from './types';
+import { recordShedPostureRestoreBatchAdmission } from './batch';
 
 export type SteppedSwapExecutor = (params: {
   dev: SteppedPlanDevice;
@@ -31,25 +33,27 @@ export type SteppedSwapExecutor = (params: {
   rejectedDeviceUpdate: Partial<DevicePlanDevice>;
 }) => SwapRestoreOutcome;
 
-export function admitSteppedRestore(params: {
-  dev: SteppedPlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  phase: 'startup' | 'runtime';
-  nextStep: { id: string; planningPowerW: number };
-  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
-  deltaKw: number;
-  neededKw: number;
-  availableHeadroom: number;
-  restoreDebugKey: string;
-  batchContinuation: boolean;
-  restoredOneThisCycle: boolean;
-  swapExecutor?: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+export function admitSteppedRestore(
+  params: {
+    dev: SteppedPlanDevice;
+    deviceMap: Map<string, DevicePlanDevice>;
+    state: PlanEngineState;
+    phase: 'startup' | 'runtime';
+    nextStep: { id: string; planningPowerW: number };
+    lowestNonZeroStep: { id: string; planningPowerW: number } | null;
+    need: SteppedRestoreNeed;
+    restoreDebugKey: string;
+    swapExecutor?: SteppedSwapExecutor;
+    headroomReserves: readonly HeadroomReserve[];
+  },
+  loop: RestoreLoopState,
+  batchState: RestoreBatchState,
+  batchContinuation: boolean,
+): RestoreLoopState {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, restoreDebugKey, swapExecutor,
-    headroomReserves, neededKw, batchContinuation, restoredOneThisCycle } = params;
+    need: { deltaKw, neededKw }, restoreDebugKey,
+    swapExecutor, headroomReserves } = params;
+  const { availableHeadroom, restoredOneThisCycle } = loop;
   const needed = neededKw;
   // See the binary twin in `gating.ts`: admit against the power this device may actually claim
   // (raw minus any higher-priority startup reservation), while the running headroom total keeps
@@ -58,7 +62,7 @@ export function admitSteppedRestore(params: {
     dev, availableHeadroom, neededKw: needed, reserves: headroomReserves,
   });
   const { admission, effectiveHeadroomKw } = reserved;
-  const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
   if (reserved.kind !== 'admitted') {
     // Only the reservation is in the way — there is enough raw power, it is just promised to a
     // higher-priority device. Stand down with an honest reason instead of swapping into a block
@@ -69,7 +73,7 @@ export function admitSteppedRestore(params: {
         ...(isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreShedUpdate(dev) : {}),
         reason: buildReservedForStartReason(reserved.holderName),
       });
-      return { availableHeadroom, restoredOneThisCycle };
+      return loop;
     }
     if (!batchContinuation && swapExecutor && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
       // Hand the swap the RESERVED figure for the same reason as the binary twin in `gating.ts`:
@@ -106,8 +110,8 @@ export function admitSteppedRestore(params: {
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission, availableHeadroom, needed, restoreDebugKey, restoredOneThisCycle,
-    });
+      admission, need: params.need, restoreDebugKey,
+    }, loop);
   }
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
@@ -139,6 +143,12 @@ export function admitSteppedRestore(params: {
       decision: 'admitted',
     },
   });
+  recordShedPostureRestoreBatchAdmission(
+    batchState,
+    state.shedDecisions,
+    dev.id,
+    needed,
+  );
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
 
@@ -160,7 +170,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   // regression in planRestoreBoostShedInvariantBypass.test.ts).
   if (dev.boostActive) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
-  const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
   if (shedDeviceCount === 0) return false;
   const reason = {
     code: PLAN_REASON_CODES.shedInvariant,
@@ -220,24 +230,26 @@ function canUseSwapForSteppedRestore(params: {
   return dev.boostActive;
 }
 
-function rejectSteppedRestoreForInsufficientHeadroom(params: {
-  dev: SteppedPlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  phase: 'startup' | 'runtime';
-  nextStep: { id: string };
-  lowestNonZeroStep: { id: string } | null;
-  shedDeviceCount: number;
-  admission: RestoreAdmissionMetrics;
-  availableHeadroom: number;
-  needed: number;
-  restoreDebugKey: string;
-  restoredOneThisCycle: boolean;
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+function rejectSteppedRestoreForInsufficientHeadroom(
+  params: {
+    dev: SteppedPlanDevice;
+    deviceMap: Map<string, DevicePlanDevice>;
+    state: PlanEngineState;
+    phase: 'startup' | 'runtime';
+    nextStep: { id: string };
+    lowestNonZeroStep: { id: string } | null;
+    shedDeviceCount: number;
+    admission: RestoreAdmissionMetrics;
+    need: SteppedRestoreNeed;
+    restoreDebugKey: string;
+  },
+  loop: RestoreLoopState,
+): RestoreLoopState {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    admission, availableHeadroom, needed, restoreDebugKey, restoredOneThisCycle } = params;
+    admission, need, restoreDebugKey } = params;
+  const { availableHeadroom } = loop;
   const reason = buildRestoreHeadroomReason({
-    neededKw: needed,
+    neededKw: need.neededKw,
     availableKw: availableHeadroom,
     marginKw: admission.marginKw,
   });
@@ -258,12 +270,12 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       lowestNonZeroStepId: lowestNonZeroStep?.id,
       blockedByShedInvariant: false,
       shedDeviceCount,
-      neededKw: needed,
+      neededKw: need.neededKw,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },
   });
-  return { availableHeadroom, restoredOneThisCycle };
+  return loop;
 }

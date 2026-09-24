@@ -4,7 +4,9 @@ import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDe
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { getInactiveReason } from './devices';
 import { blockRestoreForRecentActivationSetback, setRestorePlanDevice as setDevice } from './helpers';
-import { hasOtherDevicesWithUnconfirmedRecovery } from './coordination';
+import {
+  shouldWaitForOtherRecovery,
+} from './coordination';
 import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
@@ -86,7 +88,7 @@ export function planRestoreForDevice(
 
   const waitingReason = resolveCapacityRestoreBlockReason({
     timing,
-    waitingForOtherRecovery: hasOtherDevicesWithUnconfirmedRecovery(deviceMap, dev.id),
+    waitingForOtherRecovery: shouldWaitForOtherRecovery(deviceMap, dev.id, batchContinuation),
   });
   if (waitingReason) {
     return rejectBinaryRestore(cycle, dev, loop, waitingReason);

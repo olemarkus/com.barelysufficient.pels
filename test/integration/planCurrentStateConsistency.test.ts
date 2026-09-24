@@ -2,7 +2,8 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
-import { isPreviouslyShedBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
+import { isShedPostureBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
+import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -119,10 +120,16 @@ describe('planner current-state consistency', () => {
 
     return {
       mergedCurrentState: mergedPlan.devices[0].currentState,
-      restoreCandidate: isPreviouslyShedBinaryRestoreCandidate(mergedPlan.devices[0], new Set<string>()),
+      restoreCandidate: isShedPostureBinaryRestoreCandidate(mergedPlan.devices[0], previousKeepHistory(liveDevice.id)),
       shedCandidate: sheddingPlan.shedSet.has(liveDevice.id),
     };
-  }
+}
+
+function previousKeepHistory(deviceId: string): ShedDecisions {
+  const history = new ShedDecisions();
+  history.lastPlannedDeviceIds = new Set([deviceId]);
+  return history;
+}
 
   it('does not classify off/keep as a restore without a previous shed decision', async () => {
     const phaseAnswers = await resolvePhaseAnswers({

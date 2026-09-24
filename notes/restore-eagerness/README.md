@@ -71,8 +71,9 @@ capacity limit or margin increase, where many devices can be shed despite abunda
 Batching is intentionally narrow:
 
 - the first restore still follows the normal admission rule
-- at most three previously-shed devices can be admitted in one cycle, counting binary and
-  stepped `shed -> keep` transitions together
+- at most three devices can be admitted from the shed posture in one cycle, counting binary and
+  stepped transitions together. A device missing from the previous plan starts in that posture;
+  a device the previous plan kept does not become a restore candidate from its observed off state
 - cumulative admitted restore need is capped at 50% of the starting available headroom
 - startup stabilization, shortfall, overshoot, shed cooldown, and restore cooldown keep the
   previous one-at-a-time behavior

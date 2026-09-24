@@ -195,15 +195,24 @@ const runCycleAtHour = async (params: {
   await tank.setCapabilityValue('onoff', true);
   await tank.setCapabilityValue('target_power', STEP_LOW_W); // observed at step '1500w'
   const lower = new MockDevice(LOWER, 'Lower', ['onoff', 'measure_power'], 'heater');
-  await lower.setCapabilityValue('onoff', false);
-  await lower.setCapabilityValue('measure_power', 0);
+  // Start this 8 kW lower-priority load on so the real planner must shed it;
+  // the shed-invariant assertions below need an actual prior PELS shed.
+  await lower.setCapabilityValue('onoff', true);
+  await lower.setCapabilityValue('measure_power', LOWER_LOAD_W);
   lower.setSettings({ load: LOWER_LOAD_W });
   setMockDrivers({ d: new MockDriver('d', [tank, lower]) });
 
   // Drive total home power through the real Homey Energy poll (the SDK seam).
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
-    if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: STEP_LOW_W } }] };
+    if (path === 'manager/energy/live') {
+      const lowerOn = (await lower.getCapabilityValue('onoff')) === true;
+      const lowerDraw = lowerOn ? LOWER_LOAD_W : 0;
+      if ((await lower.getCapabilityValue('measure_power')) !== lowerDraw) {
+        await lower.setCapabilityValue('measure_power', lowerDraw);
+      }
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: STEP_LOW_W + lowerDraw } }] };
+    }
     return originalGet(path);
   });
 
@@ -230,8 +239,17 @@ const runCycleAtHour = async (params: {
     return origLog(...args);
   };
   await app.onInit();
-  // Drive the real plan cycle off the SDK clock: the 10 s energy poll plus the
-  // periodic rebuild. No internal `rebuildPlanFromCache` kick.
+  // Let the real plan cycle shed the initially-on lower-priority load, then
+  // observe that SDK capability change before driving the tank's next decision.
+  // No internal `rebuildPlanFromCache` kick.
+  for (let i = 0; i < 12 && (await lower.getCapabilityValue('onoff')) === true; i++) {
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntil(() => false, { rounds: 20 }).catch(() => {});
+  }
+  expect(await lower.getCapabilityValue('onoff')).toBe(false);
+
+  // A later real poll/rebuild now sees a device previously shed by PELS, which is
+  // the state needed for the tank's shed-invariant decision.
   for (let i = 0; i < 10; i++) {
     await vi.advanceTimersByTimeAsync(10_000);
     await drainUntil(() => false, { rounds: 20 }).catch(() => {});

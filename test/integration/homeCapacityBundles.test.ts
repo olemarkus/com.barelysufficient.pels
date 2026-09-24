@@ -38,6 +38,7 @@ import {
   isOffSteppedRestoreCandidate,
   getSteppedRestoreCandidates,
 } from '../../lib/plan/restore/devices';
+import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
@@ -2017,21 +2018,31 @@ describe('fail-closed sub-home device path (filterDevicesForHome)', () => {
 });
 
 describe('planner restore transitions', () => {
-  it('binary: off state alone does not classify a device as restored', () => {
+  it('binary: an off device previously planned keep is not a restore candidate', () => {
     const device = buildPlanDevice({ id: 'relocated-binary', currentOn: false, controllable: true });
-    expect(getRestoreCandidates([device], new Set<string>())).toEqual([]);
-    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
+    const previouslyKept = new ShedDecisions();
+    previouslyKept.lastPlannedDeviceIds = new Set([device.id]);
+    expect(getRestoreCandidates([device], previouslyKept)).toEqual([]);
+    const previouslyShed = new ShedDecisions();
+    previouslyShed.lastPlannedDeviceIds = new Set([device.id]);
+    previouslyShed.lastPlannedShedIds = new Set([device.id]);
+    expect(getRestoreCandidates([device], previouslyShed)).toHaveLength(1);
     const alreadyOn = buildPlanDevice({ id: device.id, currentOn: true, controllable: true });
-    expect(getRestoreCandidates([alreadyOn], new Set([device.id]))).toHaveLength(1);
+    expect(getRestoreCandidates([alreadyOn], previouslyShed)).toHaveLength(1);
   });
 
-  it('stepped: an off step is restored only when the previous plan shed the device', () => {
+  it('stepped: an off step previously planned keep is not a restore candidate', () => {
     const device = steppedPlanDevice({ id: 'relocated-stepped', selectedStepId: 'off' });
     expect(isOffSteppedRestoreCandidate(device)).toBe(true);
-    expect(getRestoreCandidates([device], new Set<string>())).toEqual([]);
-    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
+    const previouslyKept = new ShedDecisions();
+    previouslyKept.lastPlannedDeviceIds = new Set([device.id]);
+    expect(getRestoreCandidates([device], previouslyKept)).toEqual([]);
+    const previouslyShed = new ShedDecisions();
+    previouslyShed.lastPlannedDeviceIds = new Set([device.id]);
+    previouslyShed.lastPlannedShedIds = new Set([device.id]);
+    expect(getRestoreCandidates([device], previouslyShed)).toHaveLength(1);
     const activeStep = steppedPlanDevice({ id: device.id, selectedStepId: 'low' });
-    expect(getRestoreCandidates([activeStep], new Set([device.id]))).toHaveLength(1);
+    expect(getRestoreCandidates([activeStep], previouslyShed)).toHaveLength(1);
   });
 
   it('stepped: an active device capped below its highest step remains a step-up candidate', () => {

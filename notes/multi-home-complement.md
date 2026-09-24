@@ -81,10 +81,10 @@ accounting; the whole-home default keeps the conservative behavior above.
 
 A device shed by main that THEN joins a sub-home drops out of main's plan
 input; from R7b the sub-home's own capacity bundle
-(`setup/homeRuntime/createHomeCapacityBundle.ts`) plans it, and the generic
-provenance-free restore lanes (`lib/plan/restore/devices.ts` — candidacy is
-observed-state-only, no shed-provenance fields) resume it when headroom
-allows. Verified per modality: the binary adoption path runs end-to-end in
+(`setup/homeRuntime/createHomeCapacityBundle.ts`) plans it. Because it is
+absent from that bundle's previous plan, it starts in the shed posture and
+reaches `keep` through ordinary planner restore admission; observed on/off
+state does not classify the plan transition. Verified per modality: the binary adoption path runs end-to-end in
 `test/e2e/homeCapacityBundlesSdkE2E.test.ts` (main sheds → sub-home bundle
 resumes); binary + stepped candidate lanes are pinned in
 `test/integration/homeCapacityBundles.test.ts`.

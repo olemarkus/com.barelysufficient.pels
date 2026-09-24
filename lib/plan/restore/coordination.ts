@@ -3,6 +3,8 @@ import { getInactiveReason, isRestoreLiveEligibleDevice } from './devices';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
+import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { ShedDecisions } from '../shedDecisions';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
   if (!isTemperaturePlanDevice(device)) return false;
@@ -15,6 +17,11 @@ function isTargetRestorePending(device: DevicePlanDevice): boolean {
 
 function isSteppedRestorePending(device: DevicePlanDevice): boolean {
   if (!isSteppedLoadDevice(device)) return false;
+  // In the same plan pass the executor has not published `stepCommandPending`
+  // yet. `restoreNeed` is the planner's admission decision; keep other loads
+  // behind it until the observed step catches up. This marker also covers an
+  // off device whose selected rung already matches its first active rung.
+  if (device.reason.code === PLAN_REASON_CODES.restoreNeed) return true;
   if (device.stepCommandPending !== true) return false;
   if (!device.desiredStepId || device.desiredStepId === device.selectedStepId) {
     return false;
@@ -27,14 +34,19 @@ function isSteppedRestorePending(device: DevicePlanDevice): boolean {
 
 function isDeviceBlockingSteppedRestore(
   device: DevicePlanDevice,
-  shedDecidedMs: Record<string, number>,
+  shedDecisions: ShedDecisions,
 ): boolean {
-  if (!shedDecidedMs[device.id] || device.plannedState !== 'keep') return false;
-  return device.currentState === 'off'
-    || device.currentState === 'unknown'
-    || isTargetRestorePending(device)
+  if (device.plannedState !== 'keep') return false;
+  if (
+    isTargetRestorePending(device)
     || isSteppedRestorePending(device)
-    || device.binaryCommandPending === true;
+    || device.binaryCommandPending === true
+  ) return true;
+  // A provisional keep is not yet a recovery: current-cycle shed-posture
+  // candidates still have to pass admission. Only a keep in the previous plan
+  // can be waiting for its observation to confirm recovery here.
+  if (shedDecisions.wasShedOrUnplanned(device.id) || !shedDecisions.decidedMs[device.id]) return false;
+  return device.currentState === 'off' || device.currentState === 'unknown';
 }
 
 function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {
@@ -44,15 +56,25 @@ function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean 
     || isSteppedRestorePending(device);
 }
 
-export function hasOtherDevicesWithUnconfirmedRecovery(
+export function shouldWaitForOtherRecovery(
   deviceMap: Map<string, DevicePlanDevice>,
   deviceId: string,
+  batchContinuation: boolean,
 ): boolean {
   for (const device of deviceMap.values()) {
     if (device.id === deviceId) continue;
     if (!isRestoreLiveEligibleDevice(device)) continue;
     if (getInactiveReason(device)) continue;
-    if (isDeviceUnconfirmedRecoveryInFlight(device)) return true;
+    if (!isDeviceUnconfirmedRecoveryInFlight(device)) continue;
+    if (!batchContinuation) return true;
+    if (
+      isSteppedLoadDevice(device)
+      && device.plannedState === 'keep'
+      && device.currentState === 'off'
+      && device.reason.code === PLAN_REASON_CODES.restoreNeed
+      && device.selectedStepId !== undefined
+      && device.selectedStepId === device.desiredStepId
+    ) return true;
   }
   return false;
 }
@@ -60,13 +82,13 @@ export function hasOtherDevicesWithUnconfirmedRecovery(
 export function hasOtherDevicesBlockingSteppedRestore(
   deviceMap: Map<string, DevicePlanDevice>,
   steppedDeviceId: string,
-  shedDecidedMs: Record<string, number>,
+  shedDecisions: ShedDecisions,
 ): boolean {
   for (const device of deviceMap.values()) {
     if (device.id === steppedDeviceId) continue;
     if (!isRestoreLiveEligibleDevice(device)) continue;
     if (getInactiveReason(device)) continue;
-    if (isDeviceBlockingSteppedRestore(device, shedDecidedMs)) return true;
+    if (isDeviceBlockingSteppedRestore(device, shedDecisions)) return true;
   }
   return false;
 }
@@ -74,12 +96,15 @@ export function hasOtherDevicesBlockingSteppedRestore(
 export function countShedDevices(
   deviceMap: Map<string, DevicePlanDevice>,
   excludeId: string,
+  shedDecisions: ShedDecisions,
 ): number {
   let count = 0;
   for (const device of deviceMap.values()) {
     if (device.id === excludeId) continue;
     if (device.control.commandAuthority === false) continue;
-    if (device.plannedState === 'shed') count += 1;
+    // Base plan keep is provisional until this pass admits a previous-shed or
+    // first-plan candidate. Keep those in the invariant's shed count meanwhile.
+    if (device.plannedState === 'shed' || shedDecisions.wasShedOrUnplanned(device.id)) count += 1;
   }
   return count;
 }

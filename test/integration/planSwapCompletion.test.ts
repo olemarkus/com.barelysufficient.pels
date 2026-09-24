@@ -92,6 +92,7 @@ describe('swap reservation lifetime', () => {
     const t0 = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(t0);
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-off']);
 
     // Cycle 1 — no headroom of its own, so only a swap can fund the restore.
     const first = applyRestorePlan({
@@ -150,6 +151,7 @@ describe('swap reservation lifetime', () => {
     const t0 = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(t0);
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-off']);
 
     applyRestorePlan({
       planDevices: [beneficiary(), donorOn()],

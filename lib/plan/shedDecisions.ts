@@ -1,13 +1,11 @@
-import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
-/** What `recordPlannedShed` needs of a device to tell whether its shed carries a baseline-off posture. */
-type BaselineOffPostureDevice = { id: string; surplusOnly?: true; startPolicy?: DeviceStartPolicy };
+import type { PlanInputDevice } from './planTypes';
 
 /**
  * What the plan decided to hold shed, when, and under which posture — the
  * decision-time record, as opposed to the actuation-time clocks in
- * `ActuationRecord`. One per `PlanEngineState`. In-memory: a restart drops the
- * whole record, which is the safe direction for the lane that reads it to
- * force a device ON — no decision on record means it does nothing.
+ * `ActuationRecord`. One per `PlanEngineState`. In-memory: after a restart the
+ * current devices have no prior plan membership, so they start in
+ * shed posture and must pass planner admission before the plan can keep them.
  *
  * Four writers, and not all of them are the planner. The planner authors the
  * record at plan finalization (`planBuilder`, and the silent-meter pass) and
@@ -35,9 +33,10 @@ export class ShedDecisions {
    * uncontrolled `capacity_control_off` restores delete it, and an abandoned
    * surplus posture drops it. This decision time feeds recovery,
    * stepped-restore blocking, and the uncontrolled-restore stability gate.
-   * Candidate membership is a separate fact in `lastPlannedShedIds`; a
+   * Planned-shed membership is the separate fact in `lastPlannedShedIds`; a
    * write-skipped shed still gets its decision time so these age-based gates
-   * do not let it restore early. See
+   * do not let it restore early. Restore admission also treats devices missing
+   * from `lastPlannedDeviceIds` as starting in shed posture. See
    * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
    */
   decidedMs: Record<string, number> = {};
@@ -65,6 +64,18 @@ export class ShedDecisions {
    */
   lastPlannedShedIds: ReadonlySet<string> = new Set<string>();
 
+  /** Every device represented by the previous plan, including planned keeps. */
+  lastPlannedDeviceIds: ReadonlySet<string> = new Set<string>();
+
+  /**
+   * A keep from the shed posture needs capacity admission. A device absent from
+   * the previous plan starts in that same posture, so a first plan cannot turn
+   * an unseen load on by default.
+   */
+  wasShedOrUnplanned(deviceId: string): boolean {
+    return this.lastPlannedShedIds.has(deviceId) || !this.lastPlannedDeviceIds.has(deviceId);
+  }
+
   /**
    * Record one plan build's shed decisions. The decision clock is EDGE-SET on
    * the transition into the shed set, so a re-shed after a restore takes a
@@ -74,7 +85,7 @@ export class ShedDecisions {
    */
   recordPlannedShed(
     shedIds: ReadonlySet<string>,
-    devices: readonly BaselineOffPostureDevice[],
+    devices: readonly PlanInputDevice[],
     nowTs: number,
   ): void {
     // EITHER baseline-off posture earns the stamp. The stamp's whole job is to
@@ -100,6 +111,7 @@ export class ShedDecisions {
       }
     }
     this.lastPlannedShedIds = new Set(shedIds);
+    this.lastPlannedDeviceIds = new Set(devices.map(({ id }) => id));
   }
 
   /**

@@ -10,6 +10,11 @@ import {
   resolveSteppedRestoreAttemptState,
 } from './planSteppedRestorePending';
 
+export type SteppedRestoreAttemptHold =
+  | { kind: 'pending'; availableHeadroom: number; restoredOneThisCycle: true }
+  | { kind: 'retry_backoff'; availableHeadroom: number; restoredOneThisCycle: boolean }
+  | { kind: 'not_handled'; availableHeadroom: number; restoredOneThisCycle: boolean };
+
 export function applySteppedRestoreAttemptHold(params: {
   dev: SteppedPlanDevice & MeteredKind;
   nextStepId: string;
@@ -22,7 +27,7 @@ export function applySteppedRestoreAttemptHold(params: {
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   setDevice: (updates: Partial<DevicePlanDevice>) => void;
-}): { handled: boolean; availableHeadroom: number; restoredOneThisCycle: boolean } {
+}): SteppedRestoreAttemptHold {
   const {
     dev,
     nextStepId,
@@ -88,7 +93,7 @@ export function applySteppedRestoreAttemptHold(params: {
       },
     });
     return {
-      handled: true,
+      kind: 'pending',
       availableHeadroom: availableHeadroom - needed,
       restoredOneThisCycle: true,
     };
@@ -102,8 +107,8 @@ export function applySteppedRestoreAttemptHold(params: {
       expectedPowerKw: nextStepPowerKw,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    return { handled: true, availableHeadroom, restoredOneThisCycle };
+    return { kind: 'retry_backoff', availableHeadroom, restoredOneThisCycle };
   }
 
-  return { handled: false, availableHeadroom, restoredOneThisCycle };
+  return { kind: 'not_handled', availableHeadroom, restoredOneThisCycle };
 }

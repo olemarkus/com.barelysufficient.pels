@@ -27,6 +27,12 @@ export type RestoreBatchState = {
   admittedNeedKw: number;
 };
 
+/** The draw increase and buffered power claim for one stepped restore. */
+export type SteppedRestoreNeed = {
+  deltaKw: number;
+  neededKw: number;
+};
+
 export type RestoreLoopState = {
   availableHeadroom: number;
   restoredOneThisCycle: boolean;

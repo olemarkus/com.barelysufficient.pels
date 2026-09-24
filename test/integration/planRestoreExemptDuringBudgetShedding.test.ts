@@ -80,6 +80,12 @@ const offThermostat = () => buildPlanDevice({
   expectedPowerKw: 1,
 });
 
+const stateWithPreviouslyShed = (...deviceIds: string[]) => {
+  const state = createPlanEngineState();
+  state.shedDecisions.lastPlannedShedIds = new Set(deviceIds);
+  return state;
+};
+
 const runLane = (params: {
   devices: ReturnType<typeof buildPlanDevice>[];
   context?: PlanCycleSpec;
@@ -110,7 +116,10 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
   });
 
   it('admits an off exempt device on the capacity axis while the latch holds; non-exempt stays budget-held', () => {
-    const result = runLane({ devices: [offExemptHeater(), offThermostat()] });
+    const result = runLane({
+      devices: [offExemptHeater(), offThermostat()],
+      state: stateWithPreviouslyShed('exempt-heater'),
+    });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');
     const thermostat = result.planDevices.find((d) => d.id === 'thermostat');
     // A real admission, not just "left untouched": only the admit path records
@@ -125,6 +134,7 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
     const result = runLane({
       devices: [offExemptHeater(), offThermostat()],
       context: { capacityHeadroomKw: 0.3 },
+      state: stateWithPreviouslyShed('exempt-heater'),
     });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');
     expect(result.restoredThisCycle.has('exempt-heater')).toBe(false);
@@ -169,6 +179,7 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
     const result = runLane({
       devices: [offExemptHeater(), offThermostat()],
       context: { capacityHeadroomKw: -0.5 },
+      state: stateWithPreviouslyShed('exempt-heater'),
     });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');
     expect(heater?.plannedState).toBe('shed');
@@ -178,6 +189,7 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
     const result = runLane({
       devices: [offExemptHeater(), offThermostat()],
       context: { softLimitSource: 'capacity', capacitySoftLimit: 2.2, headroomRaw: 0.2, headroom: 0.2 },
+      state: stateWithPreviouslyShed('exempt-heater'),
     });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');
     expect(heater?.plannedState).toBe('shed');
@@ -190,6 +202,7 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
         offExemptHeater({ id: 'exempt-second', name: 'Second Heater', priority: 3 }),
       ],
       context: { capacityHeadroomKw: 10 },
+      state: stateWithPreviouslyShed('exempt-heater', 'exempt-second'),
     });
     expect([...result.restoredThisCycle]).toEqual(['exempt-heater']);
     const admitted = result.planDevices.filter((d) => d.plannedState !== 'shed');
@@ -212,12 +225,13 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
         capacityHeadroomKw: 10,
         budgetHeadroomKw: 10,
       },
+      state: stateWithPreviouslyShed('exempt-heater', 'exempt-second'),
     });
     expect([...result.restoredThisCycle]).toEqual(['exempt-heater']);
   });
 
   it('holds exempt candidates during the shed cooldown', () => {
-    const state = createPlanEngineState();
+    const state = stateWithPreviouslyShed('exempt-heater');
     state.restoreBackoff.noteInstability(Date.now() - 20 * 1000);
     const result = runLane({ devices: [offExemptHeater(), offThermostat()], state });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');

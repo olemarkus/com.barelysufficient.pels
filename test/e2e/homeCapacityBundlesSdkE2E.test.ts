@@ -22,10 +22,9 @@
 // 4. Restart rehydration — `device_last_controlled_ms:<id>` survives a
 //    restart: the resume of a shed sub-home device stays backoff-blocked
 //    right after reboot and lands once the cooldown elapses.
-// 5. New-scope activation — a device shed by MAIN and then moved into a new
-//    sub-home has no prior shed transition in that planner. Its off/keep state
-//    is therefore an activation executed from the desired plan, not a restore
-//    admission.
+// 5. New-scope admission — a device shed by MAIN and then moved into a new
+//    sub-home is absent from that planner's previous plan. It starts in the
+//    shed posture and reaches keep through ordinary restore admission.
 // 6. Mode targets in an area — a setpoint-shed area heater is commanded back to
 //    its mode target, and that same raise is HELD while the area's meter has
 //    not reported (the direction/clamp rule itself is pinned far more cheaply in
@@ -665,8 +664,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
 
     // The user now creates the sub-home around the device MAIN shed, with its
     // own meter and ample capacity. From the sub-home planner's perspective
-    // this is an off device whose desired plan says keep, so executor activation
-    // applies the plan without treating the binary off state as restoration.
+    // this device is absent from the previous plan, so it starts in the shed
+    // posture and must pass ordinary restore admission before the executor turns it on.
     const adoptionPhaseStart = putSpy.mock.calls.length;
     configureSubHomeCapacity(6);
     writeActiveHomesConfig({ subHomes: [SUB_HOME] });

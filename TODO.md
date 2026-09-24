@@ -103,9 +103,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       is and what it is keyed on — because each answer bounds the other.
 
       *The window.* With the pending-restore reservation removed (2026-08-28),
-      `RESTORE_COOLDOWN_MS = 60 s` (`lib/plan/planConstants.ts`) is the only thing pacing a second
-      restore behind a first. Measured against 62 EV-charger turn-ons in the 2026-08-11→13
-      production log, the load appears in whole-home draw at p50 19.7 s, **p90 129.7 s,
+      `RESTORE_COOLDOWN_MS = 60 s` (`lib/plan/planConstants.ts`) is the only thing pacing restores
+      across planning cycles after a same-cycle batch. Measured against 62 EV-charger turn-ons in
+      the 2026-08-11→13 production log, the load appears in whole-home draw at p50 19.7 s,
+      **p90 129.7 s,
       max 250.0 s**, and never at all in 2 cases. So the base window covers the median and not the
       tail: on a slow start PELS can admit a second device against a reading that does not yet
       contain the first one's load. The backoff ladder reaches 5 min and would bracket the whole

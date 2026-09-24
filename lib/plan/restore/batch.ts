@@ -1,6 +1,7 @@
 import { RESTORE_BATCH_HEADROOM_FRACTION, RESTORE_BATCH_MAX_DEVICES } from '../planConstants';
 import type { RestoreTiming } from './timing';
 import type { RestoreBatchState } from './types';
+import type { ShedDecisions } from '../shedDecisions';
 
 export function buildRestoreBatchState(params: {
   timing: RestoreTiming;
@@ -41,6 +42,30 @@ export function canAttemptBatchContinuation(batchState: RestoreBatchState): bool
 
 export function canAdmitWithinBatch(batchState: RestoreBatchState, neededKw: number): boolean {
   return batchState.admittedNeedKw + neededKw <= batchState.maxNeedKw;
+}
+
+export function canContinueShedPostureRestoreBatch(
+  batchState: RestoreBatchState,
+  shedDecisions: ShedDecisions,
+  deviceId: string,
+  restoredOneThisCycle: boolean,
+  neededKw: number,
+): boolean {
+  return shedDecisions.wasShedOrUnplanned(deviceId)
+    && restoredOneThisCycle
+    && canAttemptBatchContinuation(batchState)
+    && canAdmitWithinBatch(batchState, neededKw);
+}
+
+export function recordShedPostureRestoreBatchAdmission(
+  batchState: RestoreBatchState,
+  shedDecisions: ShedDecisions,
+  deviceId: string,
+  neededKw: number,
+): void {
+  if (batchState.enabled && shedDecisions.wasShedOrUnplanned(deviceId)) {
+    recordBatchAdmission(batchState, neededKw);
+  }
 }
 
 export function recordBatchAdmission(batchState: RestoreBatchState, neededKw: number): void {

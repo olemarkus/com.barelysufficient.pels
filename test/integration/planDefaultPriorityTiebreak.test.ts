@@ -6,6 +6,7 @@ import type { ShedCandidateParams } from '../../lib/plan/shedding/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice, DevicePlanDevice } from '../../lib/plan/planTypes';
 import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devices';
+import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 
@@ -99,16 +100,19 @@ describe('default-priority deterministic tiebreak (shed & restore)', () => {
   });
 
   it('orders default-priority restore candidates deterministically regardless of input order', () => {
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set(['alpha', 'bravo', 'charlie']);
+    history.lastPlannedDeviceIds = new Set(['alpha', 'bravo', 'charlie']);
     const forward = getRestoreCandidates([
       buildRestoreDevice('alpha'),
       buildRestoreDevice('bravo'),
       buildRestoreDevice('charlie'),
-    ], new Set(['alpha', 'bravo', 'charlie']));
+    ], history);
     const reversed = getRestoreCandidates([
       buildRestoreDevice('charlie'),
       buildRestoreDevice('bravo'),
       buildRestoreDevice('alpha'),
-    ], new Set(['alpha', 'bravo', 'charlie']));
+    ], history);
 
     const forwardIds = forward.map((c) => c.device.id);
     const reversedIds = reversed.map((c) => c.device.id);

@@ -274,6 +274,9 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getStallClassification: noStallEvidence,
   });
 
+  const state = createPlanEngineState();
+  state.shedDecisions.lastPlannedShedIds = new Set([LOWER_PRIORITY_ID]);
+
   const builder = new PlanBuilder({
       leaveOffOnRelease: () => 'released',
       getInferredSurplusKw: () => 0,
@@ -298,7 +301,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     log: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     getDynamicSoftLimitOverride: () => null,
-  }, createPlanEngineState());
+  }, state);
 
   const snapshot = await builder.buildDevicePlanSnapshot([
     buildSteppedDevice(nowMs),

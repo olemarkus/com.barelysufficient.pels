@@ -10,6 +10,7 @@
  */
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { describe, expect, it, vi } from 'vitest';
+import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
@@ -70,16 +71,22 @@ describe('external-off hold — restore exclusion', () => {
 
   it('allows a prior-shed, unheld device into the restore lane', () => {
     const device = makeDevice();
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set([device.id]);
+    history.lastPlannedDeviceIds = new Set([device.id]);
     expect(isRestoreLiveEligibleDevice(device)).toBe(true);
     expect(isOffBinaryRestoreHoldCandidate(device)).toBe(true);
-    expect(getRestoreCandidates([device], new Set([device.id]))).toHaveLength(1);
+    expect(getRestoreCandidates([device], history)).toHaveLength(1);
   });
 
   it('drops the held device from restore candidates while keeping its peers', () => {
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set(['held', 'free']);
+    history.lastPlannedDeviceIds = new Set(['held', 'free']);
     const candidates = getRestoreCandidates([
       heldDevice({ id: 'held' }),
       makeDevice({ id: 'free' }),
-    ], new Set(['held', 'free']));
+    ], history);
     expect(candidates.map((candidate) => candidate.device.id)).toEqual(['free']);
   });
 });

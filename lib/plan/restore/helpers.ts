@@ -11,7 +11,6 @@ import {
 import { resolveCapacityRestoreBlockReason } from './timing';
 import {
   getSteppedLoadNextRestoreStep,
-  isSteppedLoadDevice,
   resolveStepChangeKw,
 } from '../planSteppedLoad';
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
@@ -23,13 +22,16 @@ import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDe
 import { countShedDevices } from './coordination';
 import { resolveRestoreDecisionPhase } from '../admission';
 import { buildActivationBackoffReason } from '../planReasonStrings';
-import { applySteppedRestoreAttemptHold } from '../planSteppedRestoreHold';
+import {
+  applySteppedRestoreAttemptHold,
+  type SteppedRestoreAttemptHold,
+} from '../planSteppedRestoreHold';
 import { setRestorePlanDevice } from './planDeviceUpdates';
 import { applySteppedDeviceGates } from './steppedRestoreGates';
 import {
   buildDisabledRestoreBatchState,
-  canAdmitWithinBatch,
-  canAttemptBatchContinuation,
+  canContinueShedPostureRestoreBatch,
+  recordShedPostureRestoreBatchAdmission,
 } from './batch';
 import { computeRestoreBufferKw } from './accounting';
 import {
@@ -38,7 +40,12 @@ import {
   type SteppedSwapExecutor,
 } from './steppedRestoreAdmission';
 import type { HeadroomReserve } from '../admission';
-import type { RestoreBatchState, RestoreDeviceTiming } from './types';
+import type {
+  RestoreBatchState,
+  RestoreDeviceTiming,
+  RestoreLoopState,
+  SteppedRestoreNeed,
+} from './types';
 
 // Re-export the public restore-helper surface so existing importers
 // (lib/plan/restore/index.ts, lib/plan/restore/gating.ts, tests) are unchanged
@@ -199,6 +206,16 @@ function resolveSteppedRestoreCommitmentKw(
   return change.direction === 'up' ? change.deltaKw : 0;
 }
 
+function resolveSteppedRestoreNeed(
+  dev: SteppedPlanDevice & MeteredKind,
+  nextStep: { id: string } | null,
+): SteppedRestoreNeed {
+  if (!nextStep) return { deltaKw: 0, neededKw: 0 };
+  const deltaKw = resolveSteppedRestoreCommitmentKw(dev, nextStep.id);
+  if (deltaKw <= 0) return { deltaKw, neededKw: 0 };
+  return { deltaKw, neededKw: deltaKw + computeRestoreBufferKw(deltaKw) };
+}
+
 export function planRestoreForSteppedDevice(
   params: {
     dev: SteppedPlanDevice & MeteredKind;
@@ -211,7 +228,7 @@ export function planRestoreForSteppedDevice(
     headroomReserves?: readonly HeadroomReserve[];
   },
   batchState: RestoreBatchState = buildDisabledRestoreBatchState(),
-): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+): RestoreLoopState {
   const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
     swapExecutor, headroomReserves = [] } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
@@ -224,7 +241,7 @@ export function planRestoreForSteppedDevice(
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  if (countShedDevices(deviceMap, dev.id) === 0) {
+  if (countShedDevices(deviceMap, dev.id, state.shedDecisions) === 0) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
@@ -238,12 +255,14 @@ export function planRestoreForSteppedDevice(
   // and admission are about — while `nextStep` is the step the surplus ceiling
   // actually admits, and drives everything after it.
   const nextStep = admitStepUnderSurplusCeiling(dev, state, requestedStep);
-  const deltaKw = nextStep ? resolveSteppedRestoreCommitmentKw(dev, nextStep.id) : 0;
-  const neededKw = deltaKw > 0 ? deltaKw + computeRestoreBufferKw(deltaKw) : 0;
-  const batchContinuation = state.shedDecisions.lastPlannedShedIds.has(dev.id)
-    && restoredOneThisCycle
-    && canAttemptBatchContinuation(batchState)
-    && canAdmitWithinBatch(batchState, neededKw);
+  const restoreNeed = resolveSteppedRestoreNeed(dev, nextStep);
+  const batchContinuation = canContinueShedPostureRestoreBatch(
+    batchState,
+    state.shedDecisions,
+    dev.id,
+    restoredOneThisCycle,
+    restoreNeed.neededKw,
+  );
   if (applySteppedDeviceGates({
     dev,
     deviceMap,
@@ -271,10 +290,8 @@ export function planRestoreForSteppedDevice(
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  const lowestNonZeroStep = isSteppedLoadDevice(dev)
-    ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
-    : null;
-  if (deltaKw <= 0) {
+  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+  if (restoreNeed.deltaKw <= 0) {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -291,11 +308,8 @@ export function planRestoreForSteppedDevice(
     restoredOneThisCycle,
     setDevice: (updates) => setRestorePlanDevice(deviceMap, dev.id, updates),
   });
-  if (attemptHold.handled) {
-    return {
-      availableHeadroom: attemptHold.availableHeadroom,
-      restoredOneThisCycle: attemptHold.restoredOneThisCycle,
-    };
+  if (attemptHold.kind !== 'not_handled') {
+    return commitSteppedRestoreAttempt(batchState, state, dev, restoreNeed, attemptHold);
   }
 
   if (blockSteppedRestoreForShedInvariant({
@@ -312,15 +326,32 @@ export function planRestoreForSteppedDevice(
     phase,
     nextStep,
     lowestNonZeroStep,
-    deltaKw,
-    availableHeadroom,
+    need: restoreNeed,
     restoreDebugKey,
     swapExecutor,
     headroomReserves,
-    neededKw,
-    batchContinuation,
-    restoredOneThisCycle,
-  });
+  }, { availableHeadroom, restoredOneThisCycle }, batchState, batchContinuation);
+}
+
+function commitSteppedRestoreAttempt(
+  batchState: RestoreBatchState,
+  state: PlanEngineState,
+  dev: SteppedPlanDevice,
+  need: SteppedRestoreNeed,
+  attemptHold: SteppedRestoreAttemptHold,
+): RestoreLoopState {
+  if (attemptHold.kind === 'pending') {
+    recordShedPostureRestoreBatchAdmission(
+      batchState,
+      state.shedDecisions,
+      dev.id,
+      need.neededKw,
+    );
+  }
+  return {
+    availableHeadroom: attemptHold.availableHeadroom,
+    restoredOneThisCycle: attemptHold.restoredOneThisCycle,
+  };
 }
 
 function keepInactiveSteppedDeviceInactive(params: {

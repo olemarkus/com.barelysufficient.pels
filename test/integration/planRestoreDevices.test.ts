@@ -9,8 +9,9 @@ import {
   isOffSteppedRestoreCandidate,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
-  isPreviouslyShedBinaryRestoreCandidate,
+  isShedPostureBinaryRestoreCandidate,
 } from '../../lib/plan/restore/devices';
+import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import type {
   DevicePlanDevice,
   TemperatureDiscriminantProbe,
@@ -113,11 +114,21 @@ describe('plan restore device helpers', () => {
     const lastPlannedShedIds = new Set([
       'binary-lower-priority', 'stepped-higher-priority', 'binary-higher-priority',
     ]);
-    expect(getRestoreCandidates(devices, lastPlannedShedIds).map((candidate) => [candidate.kind, candidate.device.id])).toEqual([
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = lastPlannedShedIds;
+    history.lastPlannedDeviceIds = new Set(devices.map(({ id }) => id));
+    expect(getRestoreCandidates(devices, history).map((candidate) => [candidate.kind, candidate.device.id])).toEqual([
       ['stepped', 'stepped-higher-priority'],
       ['binary', 'binary-higher-priority'],
       ['binary', 'binary-lower-priority'],
     ]);
+  });
+
+  it('admits devices absent from the previous plan from the shed posture', () => {
+    const device = makeDevice({ id: 'new-device', currentState: 'off' });
+
+    expect(getRestoreCandidates([device], new ShedDecisions()).map((candidate) => candidate.device.id))
+      .toEqual(['new-device']);
   });
 
   // Behaviour change (resolved-control refactor): on/off is the latched `currentOn`
@@ -381,7 +392,10 @@ describe('plan restore device helpers', () => {
     expect(isOffBinaryRestoreHoldCandidate(shed)).toBe(false);
     expect(isRestoreLiveEligibleDevice(inactiveSteppedEv)).toBe(false);
     expect(isSteppedRestoreCandidate(inactiveSteppedEv)).toBe(false);
-    expect(getRestoreCandidates([inactiveSteppedEv], new Set(['inactive-stepped-ev']))).toEqual([]);
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set(['inactive-stepped-ev']);
+    history.lastPlannedDeviceIds = new Set(['inactive-stepped-ev']);
+    expect(getRestoreCandidates([inactiveSteppedEv], history)).toEqual([]);
   });
 
   it('does not treat target-only (not_applicable) devices as binary restore candidates', () => {
@@ -394,7 +408,10 @@ describe('plan restore device helpers', () => {
       binaryCapabilityId: undefined,
     });
 
-    expect(isPreviouslyShedBinaryRestoreCandidate(targetOnlyOff, new Set([targetOnlyOff.id]))).toBe(false);
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set([targetOnlyOff.id]);
+    history.lastPlannedDeviceIds = new Set([targetOnlyOff.id]);
+    expect(isShedPostureBinaryRestoreCandidate(targetOnlyOff, history)).toBe(false);
   });
 
   it('leaves setpoint restores to the target lane', () => {
@@ -405,6 +422,9 @@ describe('plan restore device helpers', () => {
       shedAction: 'set_temperature',
     });
 
-    expect(getRestoreCandidates([setpointShed], new Set([setpointShed.id]))).toEqual([]);
+    const history = new ShedDecisions();
+    history.lastPlannedShedIds = new Set([setpointShed.id]);
+    history.lastPlannedDeviceIds = new Set([setpointShed.id]);
+    expect(getRestoreCandidates([setpointShed], history)).toEqual([]);
   });
 });

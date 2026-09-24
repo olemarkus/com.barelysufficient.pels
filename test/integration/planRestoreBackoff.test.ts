@@ -111,13 +111,18 @@ const restoreEventsFor = (event: string, deviceId: string): Record<string, unkno
 // candidate helpers directly.
 const applyRestorePlan = (params: Parameters<typeof applyRestorePlanFromPlanState>[0]) => {
   const { state, planDevices } = params;
+  const previouslyPlannedIds = state.shedDecisions.lastPlannedDeviceIds;
   state.shedDecisions.lastPlannedShedIds = new Set([
     ...state.shedDecisions.lastPlannedShedIds,
     ...planDevices
-      .filter((device) => (
+      .filter((device) => !previouslyPlannedIds.has(device.id) && (
         isOffBinaryRestoreHoldCandidate(device) || isOffSteppedRestoreCandidate(device)
       ))
       .map((device) => device.id),
+  ]);
+  state.shedDecisions.lastPlannedDeviceIds = new Set([
+    ...state.shedDecisions.lastPlannedDeviceIds,
+    ...planDevices.map(({ id }) => id),
   ]);
   return applyRestorePlanFromPlanState(params);
 };
@@ -431,6 +436,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedDeviceIds = new Set(['dev-off', 'dev-step']);
     state.shedDecisions.decidedMs['dev-off'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
@@ -2621,6 +2627,28 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
   });
 
+  it('applies the three-device batch cap to devices absent from the previous plan', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlanFromPlanState({
+      planDevices: [
+        batchDevice('new-1', 10),
+        batchDevice('new-2', 20),
+        batchDevice('new-3', 30),
+        batchDevice('new-4', 40),
+      ],
+      ...freshBatchContext(5),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set(['new-1', 'new-2', 'new-3']));
+    expect(result.planDevices.find((device) => device.id === 'new-4')?.plannedState).toBe('shed');
+  });
+
   it('counts previously-shed stepped restores toward the shared three-device batch limit', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);
@@ -2738,6 +2766,47 @@ describe('restore admission — headroom and penalty gates', () => {
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');
     expect(fourth?.plannedState).toBe('shed');
     expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('charges the full stepped need when a pending restore reserves only its buffer', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['binary-first', 'stepped-second', 'binary-third']);
+    state.actuation.lastDeviceRestoreMs['stepped-second'] = now - 500;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('binary-first', 1, 1),
+        buildBinarySteppedPlanDevice({
+          id: 'stepped-second',
+          name: 'Priority tank',
+          priority: 2,
+          currentState: 'off',
+          binaryControl: { on: false },
+          plannedState: 'keep',
+          boostActive: false,
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          lastDesiredStepId: 'low',
+          stepCommandPending: false,
+          stepCommandStatus: 'success',
+          currentDrawKw: 0,
+        }),
+        batchDevice('binary-third', 3, 1),
+      ],
+      ...freshBatchContext(7.4),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    const stepped = result.planDevices.find((device) => device.id === 'stepped-second');
+    expect(stepped?.reason?.code).toBe(PLAN_REASON_CODES.meterSettling);
+    const third = result.planDevices.find((device) => device.id === 'binary-third');
+    expect(third?.plannedState).toBe('shed');
+    expect(reasonText(third?.reason)).toBe('meter settling (60s remaining)');
+    expect(result.restoredThisCycle).toEqual(new Set(['binary-first']));
   });
 
   it('caps restore batching at half of the starting available headroom', () => {
@@ -3973,6 +4042,8 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected re-emits after device was unblocked and shed resumes', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedDeviceIds = new Set(['binary-shed', 'dev-step']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
     const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const restoredDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
@@ -3994,6 +4065,7 @@ describe('stepped-load shed invariant', () => {
     expect(rejectedCalls()).toHaveLength(1);
 
     // Second: no shed devices → not blocked, tracking cleared (restore_stepped_admitted may fire)
+    state.shedDecisions.lastPlannedShedIds = new Set();
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
       dev: steppedDevOf(mapClear),
@@ -4005,6 +4077,7 @@ describe('stepped-load shed invariant', () => {
     });
 
     // Third: shed resumes → first rejection again, must re-emit
+    state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
     planRestoreForSteppedDevice({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
@@ -4018,6 +4091,8 @@ describe('stepped-load shed invariant', () => {
 
   it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedDeviceIds = new Set(['binary-shed', 'dev-step']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
     const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const restoredDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
@@ -4040,6 +4115,7 @@ describe('stepped-load shed invariant', () => {
 
     // Round 2: shed cleared, cooldown active — active device bypasses global cooldown and
     // admits the step-up to 'max', clearing the invariant tracking as a side effect.
+    state.shedDecisions.lastPlannedShedIds = new Set();
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
       dev: steppedDevOf(mapClear),
@@ -4052,6 +4128,7 @@ describe('stepped-load shed invariant', () => {
     expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_admitted']);
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
+    state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
     planRestoreForSteppedDevice({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,

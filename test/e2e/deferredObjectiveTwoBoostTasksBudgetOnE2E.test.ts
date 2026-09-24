@@ -163,15 +163,24 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     const tankA = await buildTank(TANK_A);
     const tankB = await buildTank(TANK_B);
     const lower = new MockDevice(LOWER, 'Lower', ['onoff', 'measure_power'], 'heater');
-    await lower.setCapabilityValue('onoff', false);
-    await lower.setCapabilityValue('measure_power', 0);
+    // Start the lower-priority 8 kW load on so the real planner sheds it. The
+    // tank shed-invariant checks below require this prior PELS decision.
+    await lower.setCapabilityValue('onoff', true);
+    await lower.setCapabilityValue('measure_power', LOWER_LOAD_W);
     lower.setSettings({ load: LOWER_LOAD_W });
     setMockDrivers({ d: new MockDriver('d', [tankA, tankB, lower]) });
 
     // Both tanks at their low step → 3.0 kW total reported through the SDK energy poll.
     const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
     vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
-      if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 2 * STEP_LOW_W } }] };
+      if (path === 'manager/energy/live') {
+        const lowerOn = (await lower.getCapabilityValue('onoff')) === true;
+        const lowerDraw = lowerOn ? LOWER_LOAD_W : 0;
+        if ((await lower.getCapabilityValue('measure_power')) !== lowerDraw) {
+          await lower.setCapabilityValue('measure_power', lowerDraw);
+        }
+        return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 2 * STEP_LOW_W + lowerDraw } }] };
+      }
       return originalGet(path);
     });
 
@@ -193,6 +202,15 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
       return origLog(...args);
     };
     await app.onInit();
+    // The first SDK-observed cycles let PELS shed the initially-on lower-priority
+    // load. Confirm that effect before evaluating the tank restore-lane decisions.
+    for (let i = 0; i < 12 && (await lower.getCapabilityValue('onoff')) === true; i++) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainUntil(() => false, { rounds: 20 }).catch(() => {});
+    }
+    expect(await lower.getCapabilityValue('onoff')).toBe(false);
+
+    // Drive later real cycles with the lower device observed off after PELS's shed.
     for (let i = 0; i < 12; i++) {
       await vi.advanceTimersByTimeAsync(10_000);
       await drainUntil(() => false, { rounds: 20 }).catch(() => {});

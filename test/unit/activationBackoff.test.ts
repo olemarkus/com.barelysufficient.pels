@@ -444,6 +444,7 @@ describe('activation backoff', () => {
 
   it('uses penalty level in restore decisions', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
     // An old setback: the level stays, the restore block it imposed has lapsed.
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: Date.now() - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
@@ -477,6 +478,7 @@ describe('activation backoff', () => {
 
   it('blocks restore for a cooldown window after a fresh activation setback', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
     const now = Date.now();
 
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - 30_000);
@@ -570,6 +572,7 @@ describe('activation backoff', () => {
 
   it('allows restore again once the activation setback window expires', () => {
     const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
     const now = Date.now();
 
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000);

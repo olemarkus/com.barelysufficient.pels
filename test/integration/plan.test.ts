@@ -45,6 +45,12 @@ const setManagedAndControllableDevices = (params: {
   mockHomeyInstance.settings.set('controllable_devices', params.controllable);
 };
 
+function seedPreviouslyShedDevice(app: MyApp, deviceId: string): void {
+  const shedDecisions = app.planEngine.state.shedDecisions;
+  shedDecisions.lastPlannedDeviceIds = new Set([...shedDecisions.lastPlannedDeviceIds, deviceId]);
+  shedDecisions.lastPlannedShedIds = new Set([...shedDecisions.lastPlannedShedIds, deviceId]);
+}
+
 async function advanceTimeAndRecordPower(app: MyApp, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
   await app['powerSamplePipeline'].recordPowerSample(powerW);
@@ -1385,6 +1391,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Soft limit 1.3 kW, current total 1.0 kW -> headroom 0.3 kW (not enough for ~1 kW restore)
     app.computeDynamicSoftLimit = () => 1.3;
@@ -1642,6 +1649,7 @@ describe('Device plan snapshot', () => {
     // ingest stamps both together and the resolver refuses the half-state.)
     app.powerTracker = { ...app.powerTracker, lastPowerW: 5_000, lastTimestamp: Date.now() };
     app.computeDynamicSoftLimit = () => 5.0;
+    seedPreviouslyShedDevice(app, 'dev-1');
 
     const plan = await app.planService.buildDevicePlanSnapshot([
       buildPlanInputDevice({
@@ -2465,6 +2473,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // With hysteresis: restoreBuffer = clamp(0.2..0.6, 1.5 * 0.1 + 0.1) = 0.25 kW
     // High-pri device needs 1.5 + 0.25 = 1.75 kW
@@ -2519,6 +2528,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Headroom 0.5 kW, not enough for dev-high (1.5 kW + margin)
     app.computeDynamicSoftLimit = () => 3;
@@ -2560,6 +2570,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Soft limit = 3.5 kW, total = 3 kW, headroom = 0.5 kW
     // High-pri needs 2 + 0.2 margin = 2.2 kW
@@ -2611,6 +2622,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Soft limit = 4.3 kW, total = 3 kW, headroom = 1.3 kW
     // Shedding both low-priority devices yields 2.8 kW potential headroom.
@@ -2671,6 +2683,8 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-swap-target');
+    seedPreviouslyShedDevice(app, 'dev-lower');
 
     // Setup: enough headroom to restore the lower priority device (0.3 + 0.4 = 0.7 kW)
     // but not enough for the swap target (1.0 + 0.4 = 1.4 kW)
@@ -2777,6 +2791,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-target');
 
     // Setup: not enough headroom for swap target (needs 2kW + 0.4 = 2.4kW)
     // but enough for swapped-out device (needs 0.5kW + 0.4 = 0.9kW)
@@ -2884,6 +2899,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Set up conditions for swap
     app.computeDynamicSoftLimit = () => 4.3;
@@ -2943,6 +2959,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     // Set up conditions for swap
     app.computeDynamicSoftLimit = () => 4.5;
@@ -3011,6 +3028,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     app.computeDynamicSoftLimit = () => 4.5;
     app.computeDynamicSoftLimit = () => 4.5;
@@ -3059,6 +3077,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    seedPreviouslyShedDevice(app, 'dev-high');
 
     app.computeDynamicSoftLimit = () => 4.3;
     app.computeDynamicSoftLimit = () => 4.3;
@@ -3579,7 +3598,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('overshoot_behaviors', {
       'dev-1': { action: 'set_temperature', temperature: 12 },
     });
-    mockHomeyInstance.settings.set('capacity_limit_kw', 2);
+    mockHomeyInstance.settings.set('capacity_limit_kw', 4);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const now = new Date();
@@ -3610,6 +3629,8 @@ describe('Dry run mode', () => {
       },
     ]);
 
+    // createApp seeds a fresh 0 kW sample; the 4 kW limit leaves room for the
+    // first-seen load and isolates the price-versus-temperature behavior.
     await app.planService.rebuildPlanFromCache('unknown');
     const preShedPlan = getLatestPlanSnapshotForTests();
     const preShedDevice = preShedPlan.devices.find((d: { id: string }) => d.id === 'dev-1');

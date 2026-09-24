@@ -15,6 +15,7 @@ import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
+import type { ShedDecisions } from '../shedDecisions';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -89,27 +90,27 @@ export function isOffBinaryRestoreHoldCandidate(device: DevicePlanDevice): devic
   return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
 }
 
-export function isPreviouslyShedBinaryRestoreCandidate(
+export function isShedPostureBinaryRestoreCandidate(
   device: DevicePlanDevice,
-  lastPlannedShedIds: ReadonlySet<string>,
+  shedDecisions: ShedDecisions,
 ): device is MeteredDevicePlanDevice {
-  // A binary restoration is a PLAN transition: this device was shed by the
-  // previous plan and this plan now wants to keep it. Its observed on/off value
-  // is not evidence that the planner admitted that transition.
-  return lastPlannedShedIds.has(device.id)
+  // The previous plan's shed posture — or the baseline shed posture of a device
+  // absent from that plan — moves to keep only through admission. Its observed
+  // on/off value does not classify this transition.
+  return shedDecisions.wasShedOrUnplanned(device.id)
     && isBinaryPlanDevice(device)
     && device.shedAction !== 'set_temperature'
     && isRestoreLiveEligibleDevice(device);
 }
 
-export function isPreviouslyShedSteppedRestoreCandidate(
+export function isShedPostureSteppedRestoreCandidate(
   device: DevicePlanDevice,
-  lastPlannedShedIds: ReadonlySet<string>,
+  shedDecisions: ShedDecisions,
 ): device is SteppedPlanDevice & MeteredKind {
-  // The plan transition classifies the restore. The step/off observation is
-  // consumed later to price the actual rung change, not to decide admission
-  // candidacy.
-  return lastPlannedShedIds.has(device.id)
+  // Planned history classifies the transition; a device missing from that
+  // history starts in shed posture. The step observation prices the rung change
+  // but does not decide whether admission is needed.
+  return shedDecisions.wasShedOrUnplanned(device.id)
     && isSteppedLoadDevice(device)
     && device.shedAction !== 'set_temperature'
     && device.steppedLoadProfile.steps.length > 0
@@ -168,20 +169,20 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): Ar
 
 export function getRestoreCandidates(
   planDevices: DevicePlanDevice[],
-  lastPlannedShedIds: ReadonlySet<string>,
+  shedDecisions: ShedDecisions,
 ): RestoreCandidate[] {
   const candidates: RestoreCandidate[] = [
     ...planDevices
       .filter((device): device is MeteredDevicePlanDevice => (
-        !isSteppedLoadDevice(device) && isPreviouslyShedBinaryRestoreCandidate(device, lastPlannedShedIds)
+        !isSteppedLoadDevice(device) && isShedPostureBinaryRestoreCandidate(device, shedDecisions)
       ))
       .map((device) => ({ kind: 'binary' as const, device })),
     ...planDevices
-      // Previous planned shed membership classifies the transition; observed
-      // binary state does not. The helper also proves the stepped profile and
-      // power axis are available.
+      // Previous shed posture or absence from the prior plan classifies the
+      // transition; observed binary state does not. The helper also proves the
+      // stepped profile and power axis are available.
       .filter((device): device is SteppedPlanDevice & MeteredKind => (
-        isPreviouslyShedSteppedRestoreCandidate(device, lastPlannedShedIds)
+        isShedPostureSteppedRestoreCandidate(device, shedDecisions)
       ))
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];

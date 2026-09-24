@@ -205,7 +205,7 @@ function applyFullRestorePass(
   const { deviceMap, deps } = cycle;
   let restoredOneThisCycle = restoredOne;
   const snapshot = Array.from(deviceMap.values());
-  const restoreCandidates = getRestoreCandidates(snapshot, cycle.state.shedDecisions.lastPlannedShedIds);
+  const restoreCandidates = getRestoreCandidates(snapshot, cycle.state.shedDecisions);
   const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints);
   const lane: RestoreLane = {
     onDevices,

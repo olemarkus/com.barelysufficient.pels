@@ -66,7 +66,7 @@ export function applyBudgetExemptRestorePass(
 
   const restoreCandidates = getRestoreCandidates(
     Array.from(deviceMap.values()),
-    state.shedDecisions.lastPlannedShedIds,
+    state.shedDecisions,
   )
     .filter((candidate) => isBudgetExempt(candidate.device));
   ({ restoredOneThisCycle } = applyRestoreCandidates(
