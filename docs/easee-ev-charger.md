@@ -31,7 +31,12 @@ PELS turns it on by itself when none of your Flows already sets the charger's cu
 
 - sets the charger's dynamic charging current, in whole amps
 - reads the current back from the charger, so it knows which level the charger actually runs at
-- starts and stops charging, as it does for any EV charger
+- pauses charging by setting the current to 0 A, and resumes it by raising the current again
+- starts charging again when the session was stopped outside PELS, for example in the Easee app, unless [**Leave off until turned on again**](/configuration#leave-off-until-turned-on-again) is on for the charger
+
+Setting the current below 6 A in the Easee app, where the charger pauses, counts as turning charging off outside PELS. When PELS wants the charger running, it puts current back, unless **Leave off until turned on again** is on.
+
+Pausing at 0 A keeps the charging session open. A charger that needs an RFID tag to charge does not ask for the tag again when PELS resumes it, and charging resumes at the lowest current instead of the charger's maximum.
 
 PELS does not change the charger's maximum current setting in the Easee app.
 
@@ -45,7 +50,7 @@ A Flow that only reports the car's battery level to PELS is not a current-contro
 
 ## Charging Session Starts
 
-An Easee charger goes back to its maximum current whenever a charging session starts. PELS sees that on the charger and sets the planned current again after the next whole-home power reading. With a Homey Energy power source that reading normally arrives within 10 seconds. With a Flow power source, the timing follows your **Report power usage** Flow. Until that reading arrives, the car can draw more than PELS planned.
+An Easee charger goes back to its maximum current whenever a charging session starts: when the car is plugged in, or when PELS starts a session that was stopped outside PELS. Pausing and resuming does not start a new session. PELS sees that on the charger and sets the planned current again after the next whole-home power reading. With a Homey Energy power source that reading normally arrives within 10 seconds. With a Flow power source, the timing follows your **Report power usage** Flow. Until that reading arrives, the car can draw more than PELS planned.
 
 ## Battery Reporting
 

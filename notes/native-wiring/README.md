@@ -34,9 +34,62 @@ capabilities instead of round-tripping through user-authored Flow cards.
   { dynamicChargerCurrent }`, and the app publishes the cloud's value back on
   `target_charger_current`. Needs the owner's EV 1-phase / 3-phase preset
   (amps only become watts through it). Same opt-in gate and flow-conflict
-  auto-enable as Hoiax. Start/stop stays on `evcharger_charging`. The
-  session-start reset to the charger maximum arrives as an observed step and
-  is corrected by the ordinary stepped mismatch path, as it was with the Flow.
+  auto-enable as Hoiax. The session-start reset to the charger maximum
+  arrives as an observed step and is corrected by the ordinary stepped
+  mismatch path, as it was with the Flow.
+
+  **The charging switch is translated at the SDK seam, and nowhere else.**
+  Everything above `lib/device` treats `evcharger_charging` as this charger's
+  switch, like any EV charger's. The Easee app turns `false` into
+  `stop_charging`, which ends the session: an RFID-authorised charger then
+  needs its card again (community thread 147496, post 159), and every
+  restart opens a new session at the 32 A maximum. So
+  `resolveEaseeSwitchWrite` (`lib/device/easeeChargingSwitch.ts`, called
+  from `transport/deviceWrites.ts`) writes `false` as 0 A, which Easee
+  answers with `Paused` (`plugged_in_paused`), the session still open.
+  `true` on a charger whose session is open (`plugged_in_paused` or
+  `plugged_in_charging`) writes 6 A, the smallest current it charges at;
+  `true` on a stopped session (stopped in the Easee app or by the car)
+  still goes to the switch and starts a new one: the plan decided the
+  charger should run, and no current can restart a session that is gone.
+  A paused session gets current, never a start, even while the charger
+  holds off: Easee waits about 5 minutes after a current is raised before
+  it offers the car current again (production, 2026-09-25: 08:11:26 to
+  08:16:27 and 08:50:58 to 08:55:55), longer than PELS waits for the switch
+  to confirm, and a start in that window reset the charger to 32 A. The write changes
+  only what reaches the SDK: the local-write record and the settle evidence
+  stay on `evcharger_charging`, which is also what keeps PELS's own pause
+  from reading as an outside turn-off. The current actually written is
+  recorded as a local write as well, so its Homey echo is handled like any
+  built-in step write's, not taken as an observation of the charger.
+
+  The switch is read back (`withEaseeObservedCharging` on a read,
+  `resolveEaseeRealtimeUpdates` on realtime events, both in
+  `lib/device/easeeChargingSwitch.ts`) as the app's own `evcharger_charging`,
+  but never on while the plug state is `plugged_in_paused`. Homey keeps
+  PELS's last write to the switch until the app publishes again, which it
+  does only when the charger mode changes: in production (2026-09-25) a
+  charger that went to `Paused` while PELS's start was in flight, and never
+  charged, held PELS's `true`, so PELS showed a charger allocating 0 A as
+  running at 6 A. The plug state comes from the same mode and is never
+  written. A current of 0-5 A set in the Easee app pauses the charger, and
+  the app reports that within seconds (4 s in production), so it reads as
+  the switch going off outside PELS, which PELS decides about again like any
+  outside turn-off. The level reads 0-5 A as the off step, so switching such
+  a charger back on writes 6 A rather than starting a session.
+
+  A switch-on that is not followed by PELS's own step commands leaves the
+  charger at the lowest charging step, where a start used to reset it to its
+  maximum. That is the case when PELS lets go of a paused charger, for
+  instance when Power-limit control is turned off for it.
+
+  Unlike a stopped session, a paused one resumes on any current of 6 A or
+  more, so a charging step written while the plan holds the charger off
+  would restart charging. Nothing does: a plan holding the charger off plans its off step,
+  not a charging one. The charger's mode change (plug state, the app's own
+  switch) trails the current by tens of seconds; the SDK e2e
+  (`test/e2e/easeeNativeChargerCurrentSdkE2E.test.ts`) holds it back past two
+  meter readings and asserts no current is put back on offer.
 
   **Phase auto-selection excludes IT three-phase.** `resolveChargerPhaseReport`
   never assigns the TN three-phase preset to a reported `IT_3_PHASE` grid, including

@@ -17,11 +17,13 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { clearLocalCapabilityWrite, recordLocalCapabilityWrite } from './managerRealtimeSupport';
 import { recordLocalWriteObservation } from './managerObservation';
 import { setObservedNativeSteppedLoadStep } from '../managerNativeSteppedCommand';
-import { isNativeSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
+import { isEaseeUnderBuiltInControl, resolveEaseeSwitchWrite } from '../easeeChargingSwitch';
 import type {
   SteppedLoadStepRequestResult,
 } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { TransportContext } from './transportContext';
 
 const moduleLogger = getLogger('device/transport');
@@ -45,18 +47,44 @@ function emitCapabilityWriteDebug(ctx: TransportContext, params: {
     deviceId: string;
     deviceName?: string;
     capabilityId: string;
-    writeCapabilityId: string;
     value: unknown;
+    write: CapabilityWrite;
 }): void {
     (ctx.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
         event: params.event,
         deviceId: params.deviceId,
         deviceName: params.deviceName ?? null,
         capabilityId: params.capabilityId,
-        writeCapabilityId: params.writeCapabilityId,
+        writeCapabilityId: params.write.capabilityId,
         value: params.value,
         valueType: typeof params.value,
+        writeValue: params.write.value,
     });
+}
+
+/**
+ * What reaches the SDK for a requested write, and which Homey echoes of it are
+ * PELS's own.
+ */
+type SdkWrite = { write: CapabilityWrite; ownEchoes: readonly CapabilityWrite[] };
+
+/**
+ * Where a write to a device's binary switch lands in the SDK: the switch, or the
+ * capability the transport routes it to. An Easee under built-in control carries
+ * out its charging switch through the charger current instead
+ * (`resolveEaseeSwitchWrite`). Everything about the write that PELS reasons with
+ * (the settle evidence it waits for, the observed state it publishes) stays on
+ * the switch it asked for; the charger current is recorded as PELS's own write
+ * too, so its echo is treated like the echo of any other built-in step write
+ * rather than as an observation of the charger.
+ */
+function resolveSwitchSdkWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): SdkWrite {
+    if (typeof requested.value === 'boolean' && isEaseeUnderBuiltInControl(snapshot)) {
+        const easeeWrite = resolveEaseeSwitchWrite(snapshot, requested.value);
+        if (easeeWrite.kind === 'current') return { write: easeeWrite.write, ownEchoes: [requested, easeeWrite.write] };
+    }
+    const capabilityId = snapshot.binaryWriteCapabilityId ?? requested.capabilityId;
+    return { write: { capabilityId, value: requested.value }, ownEchoes: [requested] };
 }
 
 export async function setCapability(
@@ -68,11 +96,10 @@ export async function setCapability(
     if (!hasRestClient()) throw new Error('REST client not ready');
     const normalizedValue = normalizeCapabilityValue(ctx, deviceId, capabilityId, value);
     const snapshotBefore = ctx.latestSnapshot.find((device) => device.id === deviceId);
-    const writeCapabilityId = (
-        snapshotBefore?.binaryCapabilityId === capabilityId
-          ? snapshotBefore.binaryWriteCapabilityId ?? capabilityId
-          : capabilityId
-    );
+    const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
+    const { write, ownEchoes }: SdkWrite = snapshotBefore?.binaryCapabilityId === capabilityId
+        ? resolveSwitchSdkWrite(snapshotBefore, requested)
+        : { write: requested, ownEchoes: [requested] };
     logEvCapabilityRequest({
         logger: ctx.logger,
         snapshotBefore,
@@ -86,28 +113,32 @@ export async function setCapability(
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
-    recordLocalCapabilityWrite({
-        recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
-        deviceId,
-        capabilityId,
-        value: normalizedValue,
-    });
+    for (const echo of ownEchoes) {
+        recordLocalCapabilityWrite({
+            recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
+            deviceId,
+            capabilityId: echo.capabilityId,
+            value: echo.value,
+        });
+    }
     emitCapabilityWriteDebug(ctx, {
         event: 'device_capability_write_requested',
         deviceId,
         deviceName: snapshotBefore?.name,
         capabilityId,
-        writeCapabilityId,
         value: normalizedValue,
+        write,
     });
     try {
-        await setRawCapabilityValue(deviceId, writeCapabilityId, normalizedValue);
+        await setRawCapabilityValue(deviceId, write.capabilityId, write.value);
     } catch (error) {
-        clearLocalCapabilityWrite({
-            recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
-            deviceId,
-            capabilityId,
-        });
+        for (const echo of ownEchoes) {
+            clearLocalCapabilityWrite({
+                recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
+                deviceId,
+                capabilityId: echo.capabilityId,
+            });
+        }
         throw error;
     }
     emitCapabilityWriteDebug(ctx, {
@@ -115,8 +146,8 @@ export async function setCapability(
         deviceId,
         deviceName: snapshotBefore?.name,
         capabilityId,
-        writeCapabilityId,
         value: normalizedValue,
+        write,
     });
 
     recordLocalWriteObservation({

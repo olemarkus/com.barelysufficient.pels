@@ -1490,6 +1490,7 @@ describe('native stepped-load wiring', () => {
         writeCapabilityId: 'max_power_3000',
         value: '2',
         valueType: 'string',
+        writeValue: '2',
       });
       expect(debugStructured).toHaveBeenCalledWith({
         event: 'device_capability_write_accepted',
@@ -1499,6 +1500,7 @@ describe('native stepped-load wiring', () => {
         writeCapabilityId: 'max_power_3000',
         value: '2',
         valueType: 'string',
+        writeValue: '2',
       });
 
       put.mockClear();

@@ -3,6 +3,11 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
+import {
+  isEaseeUnderBuiltInControl,
+  resolveEaseeRealtimeUpdates,
+  withEaseeObservedCharging,
+} from './easeeChargingSwitch';
 
 const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
   'charging_button',
@@ -240,7 +245,7 @@ export function applyNativeEvWiringOverlay(params: {
 export function normalizeNativeEvCapabilityUpdate(params: {
   snapshot: Pick<
     TransportDeviceSnapshot,
-    'controlAdapter' | 'binaryControl' | 'evChargingState'
+    'controlAdapter' | 'binaryControl' | 'evChargingState' | 'capabilities'
   >;
   capabilityId: string;
   value: unknown;
@@ -249,6 +254,8 @@ export function normalizeNativeEvCapabilityUpdate(params: {
   if (snapshot.controlAdapter?.activationEnabled !== true) {
     return [{ capabilityId, value }];
   }
+
+  if (isEaseeUnderBuiltInControl(snapshot)) return resolveEaseeRealtimeUpdates(snapshot, capabilityId, value);
 
   if (capabilityId === 'charging_button' && typeof value === 'boolean') {
     return [{ capabilityId: 'evcharger_charging', value }];
@@ -299,7 +306,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
   device: HomeyDeviceLike;
   previousSnapshot: Pick<
     TransportDeviceSnapshot,
-    'controlAdapter'
+    'controlAdapter' | 'capabilities'
   > | null | undefined;
 }): DeviceCapabilityMap {
   const { device, previousSnapshot } = params;
@@ -309,6 +316,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
   if (previousSnapshot?.controlAdapter?.activationEnabled !== true) {
     return nextCapabilityObj;
   }
+  if (isEaseeUnderBuiltInControl(previousSnapshot)) return withEaseeObservedCharging(nextCapabilityObj);
 
   if (
     nextCapabilityObj.evcharger_charging === undefined
@@ -337,7 +345,7 @@ export function buildNativeEvObservationDevice(params: {
   device: HomeyDeviceLike;
   previousSnapshot: Pick<
     TransportDeviceSnapshot,
-    'controlAdapter'
+    'controlAdapter' | 'capabilities'
   > | null | undefined;
 }): HomeyDeviceLike {
   const { device, previousSnapshot } = params;

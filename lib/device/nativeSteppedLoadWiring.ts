@@ -63,6 +63,11 @@ export const AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID = 'available_installat
 // conflict exactly as a Flow writing the capability would be, so it belongs in
 // the owned native-write set the flow-conflict classifier intersects.
 const EASEE_CHARGER_CURRENT_FLOW_CARD_ID = 'setDynamicChargerCurrent';
+/**
+ * The smallest current an Easee charges at. Below it (0-5 A) the charger
+ * pauses and draws nothing, so PELS reads any such current as the off step.
+ */
+export const EASEE_MIN_CHARGING_CURRENT_A = 6;
 const EASEE_OWNER_URIS = new Set(['homey:app:no.easee']);
 const EASEE_CHARGER_DRIVER_IDS = new Set([
   'homey:app:no.easee:charger',
@@ -309,10 +314,13 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
     // The current is the whole answer. Easee's `onoff` mirrors "is charging"
     // (and a paused charger keeps its current), so the off-by-onoff fallback
     // below would misreport a paused 16 A charger as standing on the off step.
+    // A current too low to charge at is the off step: the charger is paused.
     const currentA = capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value;
     if (typeof currentA !== 'number' || !Number.isFinite(currentA)) return undefined;
     const sortedSteps = sortSteppedLoadSteps(profile.steps);
-    if (currentA <= 0) return sortedSteps.find((step) => isSteppedLoadOffStep(profile, step.id))?.id;
+    if (currentA < EASEE_MIN_CHARGING_CURRENT_A) {
+      return sortedSteps.find((step) => isSteppedLoadOffStep(profile, step.id))?.id;
+    }
     // The rung whose current is nearest; a tie goes to the lower rung, which
     // the stable sort over the ascending ladder keeps first.
     return sortedSteps
@@ -337,12 +345,15 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
   return undefined;
 }
 
+/** One SDK capability write: the capability and the value it receives. */
+export type CapabilityWrite = { capabilityId: string; value: unknown };
+
 export function resolveNativeSteppedLoadCommand(params: {
   profile: SteppedLoadProfile;
   desiredStepId: string;
   capabilities: readonly string[];
   capabilityObj?: DeviceCapabilityMap;
-}): { capabilityId: string; value: unknown } | null {
+}): CapabilityWrite | null {
   const {
     profile,
     desiredStepId,
