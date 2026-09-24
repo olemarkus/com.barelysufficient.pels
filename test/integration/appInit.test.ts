@@ -3,12 +3,10 @@ import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures
 const {
   capturedPlanExecutorDeps,
   capturedEmitterDeps,
-  capturedPriceCoordinatorDeps,
   capturedFlowCardDeps,
 } = vi.hoisted(() => ({
   capturedPlanExecutorDeps: { current: null as null | Record<string, unknown> },
   capturedEmitterDeps: { current: null as null | Record<string, unknown> },
-  capturedPriceCoordinatorDeps: { current: null as null | Record<string, unknown> },
   capturedFlowCardDeps: { current: null as null | Record<string, unknown> },
 }));
 
@@ -42,17 +40,6 @@ vi.mock('../../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
   },
 }));
 
-vi.mock('../../lib/price/priceCoordinator', () => ({
-  PriceCoordinator: class MockPriceCoordinator {
-    deps: Record<string, unknown>;
-
-    constructor(deps: Record<string, unknown>) {
-      this.deps = deps;
-      capturedPriceCoordinatorDeps.current = deps;
-    }
-  },
-}));
-
 vi.mock('../../flowCards/registerFlowCards', () => ({
   registerFlowCards: (deps: Record<string, unknown>) => {
     capturedFlowCardDeps.current = deps;
@@ -64,7 +51,6 @@ import {
   createDeferredObjectivePlanHistoryRecorder,
   createPlanEngine,
   createPlanService,
-  createPriceCoordinator,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../../setup/appInit';
@@ -802,17 +788,5 @@ describe('app init plan service wiring', () => {
       ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
     );
     expect(watermarkSets).toHaveLength(0);
-  });
-
-  it('fails fast when price coordinator rebuild wiring is invoked without a plan service', async () => {
-    capturedPriceCoordinatorDeps.current = null;
-    createPriceCoordinator(createAppContextMock({
-      planService: undefined,
-    }));
-
-    expect(
-      () => (capturedPriceCoordinatorDeps.current as { rebuildPlanFromCache: (reason?: string) => Promise<void> })
-        .rebuildPlanFromCache('price_refresh'),
-    ).toThrow('PlanService must be initialized before use.');
   });
 });

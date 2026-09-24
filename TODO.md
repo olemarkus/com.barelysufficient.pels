@@ -930,37 +930,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Done when a home on this source with export pricing on shows the app's own feed-in price on
       the Budget tab's "Export price now", and the planning price follows it. [P2]
 
-- [ ] **A home with no price-aware device only learns the price level when something else asks
-      for a plan rebuild.** The `price_level` Flow trigger and the `pels_insights` level capability
-      are both written by `PlanStatusWriter.update`, i.e. during a plan rebuild, and
-      `PriceOptimizer.applyOnceCore` (`lib/price/priceOptimizer.ts`) returns before requesting one
-      when price response is switched off or no device carries price settings. Under
-      `power_source = homey_energy` a reading every 10 s hides this; under `power_source = flow`,
-      where readings arrive on the owner's Flow, a level change can go unpublished for as long as
-      the Flow is quiet — and since the level now changes up to four times an hour on a 15-minute
-      zone, that is four missable transitions instead of one. Change: give the level its own
-      publication path that does not go through a plan rebuild — the rebuild re-decides shedding,
-      and an extra one purely to publish a level changed shed depth in
+- [ ] **A price-level change is only published when a reading rebuilds the plan.** The
+      `price_level` Flow trigger and the `pels_insights` level capability are both written by
+      `PlanStatusWriter.update`, i.e. during a plan rebuild, and nothing rebuilds on a price-period
+      boundary any more (the boundary rebuild ran against a daily-budget snapshot still pointing at
+      the hour just ended). Under `power_source = homey_energy` a reading every 10 s hides this;
+      under `power_source = flow`, where readings arrive on the owner's Flow, a level change can go
+      unpublished for as long as the Flow is quiet — and on a 15-minute zone the level changes up to
+      four times an hour. Change: give the level its own publication path on the price-period clock
+      that does not go through a plan rebuild — a rebuild re-decides shedding, and an extra one
+      purely to publish a level changed shed depth in
       `test/e2e/temperatureControlDisabledSteppedShedSdkE2E.test.ts` when tried. Done when a level
-      change reaches the trigger and the insights capability on a flow-fed home with no price-aware
-      device, and that e2e's shed ladder is unchanged. *(Codex review on #2434, 2026-09-17.)* [P2]
-
-- [ ] **Switching the price scheme leaves the price-period timer armed for the old scheme's
-      cadence.** `PriceOptimizer.scheduleNextPeriod` (`lib/price/priceOptimizer.ts`) computes its
-      delay from the series in force when it armed, and the `PRICE_SCHEME` handler in
-      `lib/utils/settingsHandlers.ts` refreshes derived state and rebuilds once but never restarts
-      the optimizer. An owner moving from an hourly scheme to a quarter-hour Homey Energy zone
-      therefore keeps the old top-of-hour wake until it fires, so the first hour's `:15`, `:30` and
-      `:45` transitions are missed — and under `power_source = flow`, where readings arrive on the
-      owner's Flow rather than a clock, nothing else is guaranteed to correct them. Change: have the
-      price-scheme settings handler restart the optimizer (or re-arm its timer) the way a refresh
-      does, so the cadence follows the scheme that is now active. Done when a test switches the
-      scheme mid-run and the next wake lands on the new scheme's boundary rather than the old one's.
-      The `POWERHOUR_DEVICE_ID` handler in the same file has the same gap and needs the same fix:
-      the Power by the Hour source can be moved between an hourly (`dap`) and a quarter-hourly
-      (`dap15`) price device without the scheme changing at all, so the cadence can go stale
-      without the scheme key ever being written.
-      *(Codex review on #2434, 2026-09-17; second path added with the Power by the Hour source.)* [P2]
+      change reaches the trigger and the insights capability on a flow-fed home without a reading
+      in between, and that e2e's shed ladder is unchanged. *(Codex review on #2434, 2026-09-17;
+      widened to every home when the price-period rebuild was removed.)* [P2]
 
 ## Daily budget and weather
 

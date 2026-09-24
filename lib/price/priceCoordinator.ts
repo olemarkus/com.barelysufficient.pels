@@ -1,11 +1,10 @@
 /**
  * Orchestrates refresh and rotation of the combined-prices store and notifies
- * consumers when it changes — the 3-hour spot/grid-tariff refresh loop, the
- * per-local-midnight rotation (plus its boot catch-up for flow-scheme users),
- * and the `PriceOptimizer` lifecycle. Consumers are notified through
- * `onCombinedPricesUpdated` and plan rebuilds via `rebuildPlanFromCache`;
- * they receive resolved flat values (hourly prices, levels, cheap/expensive
- * verdicts) and never branch on which source (spot / flow / Homey Energy /
+ * consumers when it changes — the 3-hour spot/grid-tariff refresh loop and the
+ * per-local-midnight rotation (plus its boot catch-up for flow-scheme users).
+ * Consumers are notified through `onCombinedPricesUpdated`; they receive
+ * resolved flat values (hourly prices, levels, cheap/expensive verdicts), read
+ * at the next plan rebuild, and never branch on which source (spot / flow / Homey Energy /
  * Power by the Hour) produced them — source resolution stays inside `PriceService`.
  *
  * All cached price-data persistence goes through the typed stores
@@ -14,14 +13,13 @@
  * store boundaries): `lib/price/AGENTS.md`.
  */
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
-import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
 import type { HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus } from '../../packages/contracts/src/settingsUiApi';
 import type { BudgetPriceInputs } from './budgetPrice';
-import { type CombinedHourlyPrice, type CombinedPricePeriod, isCombinedPricesV1 } from './priceTypes';
+import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import type {
   PriceOptimizationDeviceSettings,
@@ -58,8 +56,6 @@ export type PriceCoordinatorDeps = {
    */
   homeyWebApiGet: import('./homeyPriceFormula').HomeyWebApiGet;
   getCurrentPriceLevel: () => PriceLevel;
-  /** Names the price MODE; the wiring turns it into the `price` rebuild trigger. */
-  rebuildPlanFromCache: (priceMode: string) => Promise<void>;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
@@ -71,7 +67,6 @@ export class PriceCoordinator {
   private lastGoodHourPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   private priceService: PriceService;
-  private priceOptimizer?: PriceOptimizer;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
   private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
   // Guards midnight-rotation re-entry. A pending setTimeout may still fire
@@ -130,32 +125,6 @@ export class PriceCoordinator {
     }
   }
 
-  initOptimizer(): void {
-    this.priceOptimizer = new PriceOptimizer({
-      // One series, and the optimizer answers every question of its own tick
-      // from it — the level, the price in force, and when the next one starts.
-      priceStatus: { getCombinedPricePeriods: () => this.getCombinedPricePeriods() },
-      getSettings: () => this.priceOptimizationSettings,
-      isEnabled: () => this.priceOptimizationEnabled,
-      getThresholdPercent: () => this.deps.priceOptimizationSettingsStore.getThresholdPercent(),
-      getMinDiffOre: () => this.deps.priceOptimizationSettingsStore.getMinDiffOre(),
-      rebuildPlan: async (priceMode) => {
-        this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', priceMode });
-        await this.deps.rebuildPlanFromCache(priceMode);
-      },
-      debugStructured: this.deps.debugStructured,
-      structuredLog: this.deps.structuredLog,
-    });
-  }
-
-  async applyPriceOptimization(): Promise<void> {
-    await this.priceOptimizer?.applyOnce();
-  }
-
-  async startPriceOptimization(applyImmediately = true): Promise<void> {
-    await this.priceOptimizer?.start(applyImmediately);
-  }
-
   stop(): void {
     this.stopped = true;
     if (this.priceRefreshInterval) {
@@ -166,7 +135,6 @@ export class PriceCoordinator {
       clearTimeout(this.midnightRotationTimeout);
       this.midnightRotationTimeout = undefined;
     }
-    this.priceOptimizer?.stop();
   }
 
   startPriceRefresh(): void {
@@ -324,16 +292,6 @@ export class PriceCoordinator {
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
-  }
-
-  /**
-   * The price series at the source's own periods. Private on purpose: only the
-   * price level and its own cadence may read it, and everything that reasons in
-   * hours takes {@link getCombinedHourlyPrices}. Handing a 15-minute series to
-   * an hour-shaped consumer would have it counting 96 hours in a day.
-   */
-  private getCombinedPricePeriods(): CombinedPricePeriod[] {
-    return this.priceService.getCombinedPricePeriods();
   }
 
   /** Inject (or clear) the forecast-surplus inputs that derive the planning price. */

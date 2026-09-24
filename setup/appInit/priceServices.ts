@@ -1,4 +1,3 @@
-import { requirePlanService } from './contextGuards';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../../lib/price/priceFlowTags';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
@@ -15,9 +14,6 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getPowerTracker: () => ctx.powerTracker,
     homeyWebApiGet: createHomeyWebApiGet(),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
-    rebuildPlanFromCache: (priceMode) => requirePlanService(ctx)
-      .rebuildPlanFromCache('price', { detail: priceMode })
-      .then(() => undefined),
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),

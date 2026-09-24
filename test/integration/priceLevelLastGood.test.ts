@@ -19,7 +19,6 @@ describe('PriceCoordinator.getCurrentHourPriceLevel', () => {
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
-    rebuildPlanFromCache: async () => undefined,
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,

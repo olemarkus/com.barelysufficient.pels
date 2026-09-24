@@ -141,7 +141,6 @@ rather than budgeted, so the list can reach zero and be deleted.
 - `hard_cap_shortfall_recovery_started`
 - `hard_cap_shortfall_recovery_reset`
 - `hard_cap_shortfall_recovered`
-- `price_optimization_completed`
 - `price_fetch_failed`
 - `budget_recomputed`
 - `app_initialized`

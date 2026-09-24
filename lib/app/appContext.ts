@@ -106,7 +106,6 @@ export type StartupBootstrapConfig = {
   overheadTokenDelayMs?: number;
   runSnapshotPlanBootstrapInBackground?: boolean;
   runPriceBootstrapInBackground?: boolean;
-  applyPriceOptimizationImmediatelyOnStart?: boolean;
 };
 
 export type AppContext = {

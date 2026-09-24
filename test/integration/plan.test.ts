@@ -3430,8 +3430,8 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    // Manually trigger price optimization
-    await app.priceCoordinator.applyPriceOptimization();
+    // A reading rebuilds the plan with the cheap price in force.
+    await app['powerSamplePipeline'].recordPowerSample(1000);
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)

@@ -275,7 +275,6 @@ export class AppServiceWiring {
       snapshotPlanBootstrapDelayMs: deferStartupBootstrap ? 1200 : 0,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
       runPriceBootstrapInBackground: deferStartupBootstrap,
-      applyPriceOptimizationImmediatelyOnStart: !deferStartupBootstrap,
     };
     ctx.startupBootstrap = startupBootstrap;
     await runStartupStep('initCapacityGuard', () => this.deps.initCapacityGuard(), logStartupStepFailure);

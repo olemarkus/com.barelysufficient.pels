@@ -64,7 +64,7 @@ const probeUnactionable = async (throttle: PlanRebuildThrottle): Promise<void> =
 describe('a device observation landing during an in-flight rebuild', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
   });
 
   afterEach(() => {

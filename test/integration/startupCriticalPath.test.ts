@@ -44,11 +44,9 @@ const buildContext = () => {
   const startPeriodicSnapshotRefresh = vi.spyOn(ctx.snapshotHelpers, 'startPeriodicSnapshotRefresh')
     .mockImplementation(() => undefined);
   const startHomeyEnergy = vi.spyOn(ctx.homeyEnergyHelpers, 'start').mockImplementation(() => undefined);
-  const initOptimizer = vi.mocked(ctx.priceCoordinator!.initOptimizer);
   const refreshSpotPrices = vi.mocked(ctx.priceCoordinator!.refreshSpotPrices);
   const refreshGridTariffData = vi.mocked(ctx.priceCoordinator!.refreshGridTariffData);
   const startPriceRefresh = vi.mocked(ctx.priceCoordinator!.startPriceRefresh);
-  const startPriceOptimization = vi.mocked(ctx.priceCoordinator!.startPriceOptimization);
   const rebuildPlanFromCache = vi.mocked(ctx.planService!.rebuildPlanFromCache);
 
   hydratePowerTracker.mockImplementation(() => undefined);
@@ -57,11 +55,9 @@ const buildContext = () => {
   updateDailyBudgetState.mockImplementation(() => undefined);
   refreshTargetDevicesSnapshot.mockImplementation(async () => undefined);
   registerFlowCards.mockImplementation(() => undefined);
-  initOptimizer.mockImplementation(() => undefined);
   refreshSpotPrices.mockImplementation(async () => undefined);
   refreshGridTariffData.mockImplementation(async () => undefined);
   startPriceRefresh.mockImplementation(() => undefined);
-  startPriceOptimization.mockImplementation(async () => undefined);
   rebuildPlanFromCache.mockImplementation(async () => createPlanRebuildOutcome(false));
   ctx.operatingMode = 'Home';
   ctx.lastNotifiedOperatingMode = 'Away';
@@ -70,7 +66,6 @@ const buildContext = () => {
     startupLogger,
     hydratePowerTracker,
     loadPriceOptimizationSettings,
-    initOptimizer,
     updateOverheadToken,
     updateDailyBudgetState,
     refreshTargetDevicesSnapshot,
@@ -81,7 +76,6 @@ const buildContext = () => {
     refreshSpotPrices,
     refreshGridTariffData,
     startPriceRefresh,
-    startPriceOptimization,
     timers,
     ctx,
   };
@@ -96,15 +90,12 @@ describe('startup critical path perf guardrails', () => {
     expect(params.hydratePowerTracker).toHaveBeenCalledTimes(1);
     expect(params.hydratePowerTracker).toHaveBeenCalledWith();
     expect(params.loadPriceOptimizationSettings).toHaveBeenCalledTimes(1);
-    expect(params.initOptimizer).toHaveBeenCalledTimes(1);
     expect(params.updateOverheadToken).toHaveBeenCalledTimes(1);
     expect(params.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(params.registerFlowCards).toHaveBeenCalledTimes(1);
     expect(params.startPeriodicSnapshotRefresh).toHaveBeenCalledTimes(1);
     expect(params.startHomeyEnergy).toHaveBeenCalledTimes(1);
     expect(params.startPriceRefresh).toHaveBeenCalledTimes(1);
-    expect(params.startPriceOptimization).toHaveBeenCalledTimes(1);
-    expect(params.startPriceOptimization).toHaveBeenCalledWith(false);
   });
 
   it('does not block startup completion on initial snapshot and plan rebuild', async () => {
@@ -271,11 +262,9 @@ describe('startup critical path perf guardrails', () => {
     const params = buildContext();
     const refreshSpotGate = createDeferred<void>();
     const refreshTariffGate = createDeferred<void>();
-    const optimizeGate = createDeferred<void>();
 
     params.refreshSpotPrices.mockImplementation(() => refreshSpotGate.promise);
     params.refreshGridTariffData.mockImplementation(() => refreshTariffGate.promise);
-    params.startPriceOptimization.mockImplementation(() => optimizeGate.promise);
 
     const startupPromise = startAppServices(params.ctx);
     let settled = false;
@@ -292,7 +281,6 @@ describe('startup critical path perf guardrails', () => {
     } finally {
       refreshSpotGate.resolve(undefined);
       refreshTariffGate.resolve(undefined);
-      optimizeGate.resolve(undefined);
       await startupPromise;
     }
   });

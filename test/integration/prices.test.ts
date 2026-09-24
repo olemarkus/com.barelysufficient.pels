@@ -1347,7 +1347,6 @@ describe('Price optimization', () => {
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
-    rebuildPlanFromCache: async () => undefined,
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,
@@ -2482,7 +2481,7 @@ describe('Price optimization', () => {
     }
   });
 
-  it('applies price optimization delta on startup during expensive hour', async () => {
+  it('applies the expensive-hour delta at the first reading after startup', async () => {
     const waterHeater = new MockDevice(
       'water-heater-1', 'Connected 300', ['target_temperature', 'onoff', 'measure_power'],
     );
@@ -2559,8 +2558,12 @@ describe('Price optimization', () => {
       // Verify that it's detected as expensive hour
       expect(app['isCurrentHourExpensive']()).toBe(true);
 
-      // The device should have been set to 60 (65 base - 5 delta) on startup
-      // Check the device's current target temperature via the mock
+      // The price-shifted setpoint arrives with the first reading once prices are
+      // loaded: a price change does not rebuild the plan on its own.
+      await app['powerSamplePipeline'].recordPowerSample(1_000);
+      await flushPromises();
+
+      // 65 base - 5 expensive delta
       const currentTarget = await waterHeater.getCapabilityValue('target_temperature');
       expect(currentTarget).toBe(60); // 65 - 5 = 60
     } finally {

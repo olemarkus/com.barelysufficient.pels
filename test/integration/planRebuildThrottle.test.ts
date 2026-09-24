@@ -34,7 +34,7 @@ const SHORTFALL_THRESHOLD_KW = 4.961;
 describe('PlanRebuildThrottle — rebuild gates', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
     addPerfDurationMock.mockReset();
   });
 
@@ -345,6 +345,34 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     await vi.advanceTimersByTimeAsync(1);
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(3);
+  });
+
+  // Nothing rebuilds on a price or budget period boundary by itself; the next
+  // reading decides. A no-op backoff carried over from the old period must not
+  // make that reading wait, or a sparse flow feed keeps the old period's
+  // price-shifted setpoints through the new one.
+  it('rebuilds the first reading in a new quarter-hour even inside no-op backoff', async () => {
+    vi.setSystemTime(new Date('2024-01-01T00:14:50.000Z'));
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+    });
+    const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+
+    await sampleThrottle(throttle, tightSample);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    // The no-op armed a 15 s backoff; 00:14:55 is inside it and inside the quarter.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, tightSample);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    // 00:15:01 is still inside the backoff, but it is the first reading of the new quarter.
+    await vi.advanceTimersByTimeAsync(6_000);
+    await sampleThrottle(throttle, tightSample);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+    expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('headroom_tight');
   });
 
   it('lets meaningful power deltas bypass tight-headroom no-op backoff', async () => {
@@ -711,7 +739,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
 describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
     addPerfDurationMock.mockReset();
   });
 
@@ -1093,7 +1121,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
 describe('PlanRebuildThrottle.onObservation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
   });
 
   afterEach(() => {
@@ -1164,7 +1192,7 @@ describe('PlanRebuildThrottle.onObservation', () => {
 describe('PlanRebuildThrottle — the unrecoverable-shortfall gate', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
   });
 
   afterEach(() => {

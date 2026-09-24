@@ -37,6 +37,8 @@ export const POWER_SAMPLE_REBUILD_TRIGGERS = [
   'headroom_tight',
   'power_sample_convergence',
   'power_delta',
+  // The first reading in a new planning period (`rebuildScheduler/policy.ts`).
+  'period_boundary',
   'max_interval',
   /** The policy wanted a rebuild but no branch claimed it; kept so that stays visible. */
   'unknown',
@@ -57,11 +59,16 @@ export const PLAN_REBUILD_TRIGGERS = [
   'freshness_heartbeat',
 
   // An input other than the reading changed, so a re-decision is owed regardless
-  // of how current the reading is. Each of these carries a `detail`. What a Flow
-  // card or a smart-task write changes is not here on purpose: it is read at the
-  // next reading that rebuilds, which is when it has ever taken effect.
+  // of how current the reading is. Carries a `detail`. What a Flow card or a
+  // smart-task write changes is not here on purpose: it is read at the next
+  // reading that rebuilds, which is when it has ever taken effect.
+  //
+  // A price-period change is not here either. The price in force is read at the
+  // next reading, like any other input: a price-shifted setpoint waits for it.
+  // A rebuild fired at the boundary ran against the daily-budget snapshot the
+  // last reading computed, which still pointed at the hour just ended, and paced
+  // the new hour from that hour's leftover budget.
   'settings',
-  'price',
 
   // Startup and per-home lifecycle.
   'startup_snapshot_bootstrap',
@@ -106,7 +113,5 @@ export const describePlanRebuildTrigger = (
   detail?: string,
 ): string => {
   if (detail === undefined) return trigger;
-  // The one label that is a sentence rather than a path.
-  if (trigger === 'price') return `price optimization (${detail} hour)`;
   return `${trigger}:${detail}`;
 };

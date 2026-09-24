@@ -21,10 +21,6 @@ describe('describePlanRebuildTrigger', () => {
       .toBe('settings:capacity_priorities');
   });
 
-  it('keeps the price label a sentence rather than a path', () => {
-    expect(describePlanRebuildTrigger('price', 'cheap')).toBe('price optimization (cheap hour)');
-    expect(describePlanRebuildTrigger('price', 'expensive')).toBe('price optimization (expensive hour)');
-  });
 });
 
 // `getPlanRebuildLogLevel` matched `reason.startsWith('settings:')` before the set

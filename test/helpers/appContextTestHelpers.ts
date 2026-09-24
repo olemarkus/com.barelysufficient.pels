@@ -412,11 +412,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
       getSnapshot: vi.fn(() => null),
     } as never,
     priceCoordinator: {
-      initOptimizer: vi.fn(),
       refreshSpotPrices: vi.fn(async () => undefined),
       refreshGridTariffData: vi.fn(async () => undefined),
       startPriceRefresh: vi.fn(),
-      startPriceOptimization: vi.fn(async () => undefined),
       getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     } as never,
     planService: {

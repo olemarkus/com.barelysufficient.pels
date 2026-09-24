@@ -111,11 +111,9 @@ const buildBootstrapContext = () => {
   vi.mocked(ctx.updateOverheadToken).mockImplementation(async () => undefined);
   vi.mocked(ctx.registerFlowCards).mockImplementation(() => undefined);
   vi.mocked(ctx.dailyBudgetService!.updateState).mockImplementation(() => undefined);
-  vi.mocked(ctx.priceCoordinator!.initOptimizer).mockImplementation(() => undefined);
   vi.mocked(ctx.priceCoordinator!.refreshSpotPrices).mockImplementation(async () => undefined);
   vi.mocked(ctx.priceCoordinator!.refreshGridTariffData).mockImplementation(async () => undefined);
   vi.mocked(ctx.priceCoordinator!.startPriceRefresh).mockImplementation(() => undefined);
-  vi.mocked(ctx.priceCoordinator!.startPriceOptimization).mockImplementation(async () => undefined);
 
   return { ctx, warmupGate, timers };
 };
@@ -266,8 +264,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       snapshotWarmupGate: warmupGate,
     });
 
-    // Simulate a price-coordinator rebuild arriving during the warmup window.
-    void planService.rebuildPlanFromCache('price', { detail: 'cheap' });
+    // Simulate non-reading rebuilds arriving during the warmup window.
     void planService.rebuildPlanFromCache('settings', { detail: 'capacity_changed' });
     void planService.rebuildPlanFromCache('home_membership_changed');
     await flushMicrotasks();

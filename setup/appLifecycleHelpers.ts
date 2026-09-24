@@ -99,7 +99,6 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
     overheadTokenDelayMs = 0,
     runSnapshotPlanBootstrapInBackground = true,
     runPriceBootstrapInBackground = true,
-    applyPriceOptimizationImmediatelyOnStart = false,
   } = {
     logStartupStepFailure: ctx.getStructuredLogger('startup')
       ? (label: string, error: Error) => {
@@ -115,7 +114,6 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
   };
   await runStep('hydratePowerTracker', async () => appContext.hydratePowerTracker());
   await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
-  await runStep('initOptimizer', async () => priceCoordinator.initOptimizer());
   scheduleBackgroundTask(
     'startup_update_overhead_token',
     () => appContext.updateOverheadToken(),
@@ -160,7 +158,6 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
   const bootstrapPricePipeline = async (): Promise<void> => {
     await priceCoordinator.refreshSpotPrices();
     await priceCoordinator.refreshGridTariffData();
-    await priceCoordinator.startPriceOptimization(applyPriceOptimizationImmediatelyOnStart);
   };
 
   if (runSnapshotPlanBootstrapInBackground) {

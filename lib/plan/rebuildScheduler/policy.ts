@@ -13,6 +13,7 @@ export type RebuildDecision = {
   deltaW: number;
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
+  periodBoundaryCrossed: boolean;
   headroomTight: boolean;
   backoffActive: boolean;
   // The last plan proved nothing can be shed or restored while a capacity
@@ -41,6 +42,12 @@ export const POWER_SAMPLE_REBUILD_CADENCE: RebuildCadence = {
   minIntervalMs: 2000,
   maxIntervalMs: 30_000,
 };
+
+// The finest period PELS plans in: a 15-minute price zone's period, and a
+// quarter of the hour the capacity period and the daily-budget bucket turn on.
+// Every UTC offset in use is a whole number of quarters, so a UTC quarter is a
+// local one.
+const PLANNING_PERIOD_MS = 15 * 60 * 1000;
 
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
@@ -137,6 +144,8 @@ export const resolveRebuildDecision = (
   const { deltaW, deltaMeaningful } = resolvePowerDelta(signal, lastRebuild);
   const maxIntervalExceeded = maxIntervalMs > 0
     && (lastRebuild === null || nowMs - lastRebuild.atMs >= maxIntervalMs);
+  const periodBoundaryCrossed = lastRebuild !== null
+    && Math.floor(nowMs / PLANNING_PERIOD_MS) !== Math.floor(lastRebuild.atMs / PLANNING_PERIOD_MS);
   const lastBreach = lastRebuild !== null && lastRebuild.hardCapBreach.breached;
   const repeatedHardCapBreach = hardCapBreachActive && lastBreach;
   const hardCapDeficitIncreased = hardCapBreachActive
@@ -156,7 +165,13 @@ export const resolveRebuildDecision = (
     headroomTight,
     deltaMeaningful,
   );
-  const shouldRebuild = shouldRebuildFromDecision(
+  // The first reading in a new planning period always decides. Nothing rebuilds
+  // on a period boundary by itself — the price, the capacity period and the
+  // daily-budget bucket are read at the next reading like any other input — so
+  // a suppression carried over from the old period must not make that reading
+  // wait, or a sparse feed could hold the old period's setpoints through the
+  // whole new one.
+  const shouldRebuild = periodBoundaryCrossed || shouldRebuildFromDecision(
     signal,
     memory,
     controlBoundaryActive,
@@ -172,6 +187,7 @@ export const resolveRebuildDecision = (
     deltaW,
     deltaMeaningful,
     maxIntervalExceeded,
+    periodBoundaryCrossed,
     headroomTight,
     backoffActive,
     tightUnactionable,
@@ -189,6 +205,7 @@ export const resolveRebuildReason = (
   if (decision.headroomTight) return 'headroom_tight';
   if (signal.planConvergenceActive && decision.deltaMeaningful) return 'power_sample_convergence';
   if (decision.deltaMeaningful) return 'power_delta';
+  if (decision.periodBoundaryCrossed) return 'period_boundary';
   if (decision.maxIntervalExceeded) return 'max_interval';
   return 'unknown';
 };

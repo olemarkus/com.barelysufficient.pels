@@ -255,10 +255,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePriceCoordinator().storeFlowPriceData(kind, raw);
   }
 
-  public async applyPriceOptimization(): Promise<void> {
-    await this.requirePriceCoordinator().applyPriceOptimization();
-  }
-
   public resolveModeName = (name: string): string => resolveModeNameHelper(
     name,
     this.context.modeAliases,

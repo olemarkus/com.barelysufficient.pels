@@ -44,7 +44,8 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
   status. **That app publishes only FUTURE slots**, so today's stored day is merged into rather than
   replaced, and a change of price device drops the days built from the previous one.
 - `priceService.ts` — fetching + caching: spot prices, grid tariff (with static fallback), flow/Homey price slots.
-- `priceOptimizer.ts` — price-level classification (cheap/normal/expensive), re-applied at each price-period boundary.
+- `priceOptimizer.ts` — the per-device price-optimization settings and their resolved config. Nothing here
+  acts on a price-period change: the price in force is read at the next reading's rebuild like any other input.
 - `priceLevelUtils.ts` — what the price is right now: the period in force, the level, the owner-facing line.
 - `hourlyPriceProjection.ts` — the period → hour projection every hour-shaped consumer is served through.
 - `combinedPricesReader.ts` / `priceStore.ts` — typed read boundary for the persisted combined-prices store + its pure derivations.
