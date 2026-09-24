@@ -1,5 +1,4 @@
 import type {
-  MeteredPowerReading,
   MeasuredPowerObservedFields,
   MeasuredPowerObservedProbe,
 } from '../../packages/contracts/src/types';
@@ -18,4 +17,3 @@ export const selectMeteredSnapshots = <T extends MeasuredPowerObservedProbe>(
   snapshots: readonly T[],
 ): Array<T & MeasuredPowerObservedFields> => snapshots.filter(hasObservedMeasuredPower);
 
-export type MeteredDeviceReading = MeteredPowerReading & { deviceId: string };

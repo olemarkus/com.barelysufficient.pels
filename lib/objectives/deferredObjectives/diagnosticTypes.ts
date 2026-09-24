@@ -163,6 +163,11 @@ type BaseDeferredObjectiveDiagnostic = {
   // useful power. Null when no steps were resolvable. Surfaced as the
   // "Y.Y kW" speed-mode reading in the hero meta line.
   planningSpeedKw: number | null;
+  // The device's measured draw this tick, as the observer resolved it. A watt
+  // reading is a level that holds until the next report, so the plan-history
+  // recorder books it over its own tick clock. Null only when the device is
+  // missing from this tick's roster.
+  currentDrawKw: number | null;
   // Planning-affecting rescue permissions participate in the active-plan signature
   // so permission edits invalidate stale committed schedules.
   rescue?: DeferredObjectiveRescuePermissions;

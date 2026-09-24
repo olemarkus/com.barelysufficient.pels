@@ -251,12 +251,7 @@ export function createDeferredObjectiveLifecycleEmitter(
     onDeadlineReached: (deviceId, deadlineAtMs, nowMs) => (
       handleDeferredDeadlineReached(ctx, deviceId, deadlineAtMs, nowMs)
     ),
-    observeDeferredObjectivePlanHistory: (
-      diagnostics,
-      nowMs,
-      activePlans,
-      getStallClassification,
-    ) => {
+    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
       // Run the offline-window back-fill that an earlier boot deferred because the per-key
       // migration marker was still unset (an empty-`getKeys()` flake). `getDeferredObjectiveSettings`
@@ -265,19 +260,14 @@ export function createDeferredObjectiveLifecycleEmitter(
       // before the watermark-advance below jumps it to `now` and silently skips the migrated
       // legacy task's elapsed deadline. No-op once back-fill completed for this session.
       runPendingDeferredObjectiveBackfill(ctx, recorder);
-      recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
-      // Persist the watermark when we flushed new history (recorder is clean and the save
-      // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
-      // last watermark write, also advance it — this keeps the back-fill window small during
-      // long idle stretches and prevents post-enable objectives from being back-filled into
-      // periods they didn't exist for. If the recorder is still dirty (failed save), leave
-      // the watermark alone so the next restart re-tries the persistence.
-      const flushed = recorder.flushIfDirty();
-      if (flushed) {
-        writeWatermark(ctx, nowMs);
-        lastWatermarkPersistMs = nowMs;
-        return;
-      }
+      recorder.observe(diagnostics, nowMs, activePlans);
+      // Advance the watermark only once the recorder is clean: a failed save leaves it
+      // dirty, and the watermark stays put so the next restart re-tries the persistence.
+      // Otherwise advance it on its own throttle — never per flush. An open run's
+      // metered delivery accrues on every tick, and a settings write per tick is the
+      // allocation churn `settings.set` must never see. A watermark up to one throttle
+      // behind costs nothing: back-fill skips any deadline that already has an entry.
+      recorder.flushIfDirty();
       if (recorder.isDirty()) return;
       // A still-pending back-fill (a boot flake deferred the migration and this tick's retry
       // didn't complete it — e.g. getKeys() flaked empty again) means the (watermark, now]

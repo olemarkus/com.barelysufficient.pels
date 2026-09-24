@@ -1,3 +1,4 @@
+import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import {
   applyDeferredObjectiveChange,
   DeferredObjectiveActivePlanRecorder,
@@ -9,7 +10,8 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const buildHistoryRecorder = (): DeferredObjectivePlanHistoryRecorder => (
   new DeferredObjectivePlanHistoryRecorder({
-    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+    ...inertPlanHistoryDeps(),
+    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
     save: () => true,
   })
 );

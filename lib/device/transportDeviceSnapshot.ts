@@ -52,9 +52,21 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
  * `hasObservedMeasuredPower` / `isSteppedLoadSnapshot` / `hasObservedReportedStep`
  * (`packages/shared-domain/src/*ObservedState.ts`).
  */
+/**
+ * Time semantics for a trusted device-meter result, private to the device layer
+ * (retained-power persistence and the observation merge read it; nothing past
+ * the transport does). Direct watt readings are point observations whose value
+ * applies until the next observation. A cumulative energy meter resolves an
+ * average over the exact interval between its two source observations.
+ */
+export type MeteredPowerReading =
+  | { kind: 'instantaneous'; powerKw: number; observedAtMs: number }
+  | { kind: 'interval_average'; powerKw: number; startMs: number; endMs: number };
+
 export type TransportDeviceSnapshot =
   Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {
     binaryControlObservation?: TransportBinaryControlObservation;
+    measuredPowerReading?: MeteredPowerReading;
   } & EvObservedProbe & TemperatureObservedProbe & ThermostatModeObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe

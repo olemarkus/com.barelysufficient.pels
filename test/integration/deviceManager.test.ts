@@ -23,7 +23,6 @@ import {
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import type { MeteredDeviceReading } from '../../lib/ports/meteredSnapshots';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -1737,7 +1736,7 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const snapshot = deviceManager.getSnapshot();
 
-            const measured = snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
+            const measured = snapshot[0] as TransportDeviceSnapshot;
             expect(measured.measuredPowerKw).toBeCloseTo(1, 3);
             expect(measured.measuredPowerReading).toEqual({
                 kind: 'interval_average',
@@ -1769,8 +1768,7 @@ describe('DeviceTransport', () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({ dev1: meterDevice(0) });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            const meteredReadings = vi.fn<(reading: MeteredDeviceReading) => void>();
-            deviceManager.onMeteredPowerReading(meteredReadings);
+            const reading = () => (deviceManager.getSnapshot()[0] as TransportDeviceSnapshot).measuredPowerReading;
             for (const minute of [1, 2]) {
                 vi.setSystemTime(startMs + minute * 60_000);
                 const device = meterDevice(minute);
@@ -1786,18 +1784,19 @@ describe('DeviceTransport', () => {
                 } });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             }
-            meteredReadings.mockClear();
-            for (const minute of [3, 4]) {
-                vi.setSystemTime(startMs + minute * 60_000);
-                mockApiGet.mockResolvedValue({ dev1: meterDevice(minute) });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            }
-            const intervalReadings = meteredReadings.mock.calls.map(([reading]) => reading)
-                .filter((reading) => reading.kind === 'interval_average');
-            expect(intervalReadings).toEqual([{
-                deviceId: 'dev1', kind: 'interval_average', powerKw: expect.closeTo(1, 6),
+            // The first cumulative reading back only re-anchors: an interval
+            // reaching into the direct-power period would overlap it.
+            vi.setSystemTime(startMs + 3 * 60_000);
+            mockApiGet.mockResolvedValue({ dev1: meterDevice(3) });
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            expect(reading()?.kind).not.toBe('interval_average');
+            vi.setSystemTime(startMs + 4 * 60_000);
+            mockApiGet.mockResolvedValue({ dev1: meterDevice(4) });
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            expect(reading()).toEqual({
+                kind: 'interval_average', powerKw: expect.closeTo(1, 6),
                 startMs: startMs + 3 * 60_000, endMs: startMs + 4 * 60_000,
-            }]);
+            });
             vi.useRealTimers();
         });
 

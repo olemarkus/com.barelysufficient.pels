@@ -18,7 +18,7 @@
 # permanent exemption. When the last line goes, DELETE THIS FILE — the guard
 # then requires its absence.
 #
-# Counts were 63 files / 122 sites at the guard's introduction; 50 files / 80 sites now.
+# Counts were 63 files / 122 sites at the guard's introduction; 48 files / 76 sites now.
 # The executor lane is gone: its debug events were the four *_command_skipped that
 # production never showed, and they now resolve their own emitter.
 
@@ -86,7 +86,6 @@ lib/diagnostics/deviceDiagnosticsPersistence.ts 1
 lib/diagnostics/deviceDiagnosticsService.ts 1
 lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 1
-lib/objectives/deferredObjectives/planHistory.ts 1
 lib/power/soleMeterAdoption.ts 2
 # `dateUtils.ts` has a twin at packages/shared-domain/src/utils/dateUtils.ts with
 # the same console.warn in the same fallback, and that package is OUTSIDE this

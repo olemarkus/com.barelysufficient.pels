@@ -74,6 +74,8 @@ const buildDeps = (
   getPrioritiesForDevices: createFixturePriorityQuery(),
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  observeDeferredObjectivePlanHistory: () => undefined,
+  observeDeferredObjectiveActivePlans: () => undefined,
   ...overrides,
 });
 

@@ -151,6 +151,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   kwhPerUnitAcceptedSamples: 0,
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: null,
+  currentDrawKw: null,
   horizonBucketCount: plan.plannedBuckets.length,
   expectedStepId: plan.expectedStepId,
   horizonPlan: plan,

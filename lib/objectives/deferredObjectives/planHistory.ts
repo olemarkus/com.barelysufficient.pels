@@ -5,7 +5,6 @@ import type {
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryV5,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
-import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -38,9 +37,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
-import type { MeteredDeviceReading } from '../../ports/meteredSnapshots';
 
-const logger = getLogger('plan/deferred-history');
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
 // single-device household and shorter spans for multi-device homes. Bounded JSON size keeps
@@ -51,35 +48,13 @@ export const HISTORY_ENTRY_CAP = 30;
 // in the future, treat the run as abandoned (settings disabled, device removed, evaluator
 // dropped to unknown for an extended stretch).
 const ABANDON_GRACE_MS = 60 * 60 * 1000;
-const MAX_METERED_DELIVERY_SAMPLE_GAP_MS = 10 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
-type DeliveryInterval = {
-  startMs: number;
-  endMs: number;
-  powerKw: number;
-};
-
-const readingEndMs = (reading: MeteredDeviceReading): number => (
-  reading.kind === 'instantaneous' ? reading.observedAtMs : reading.endMs
-);
-
-const resolveDeliveryInterval = (
-  reading: MeteredDeviceReading,
-  previous: MeteredDeviceReading | undefined,
-): DeliveryInterval | null => {
-  if (reading.kind === 'interval_average') {
-    if (previous !== undefined && reading.endMs <= readingEndMs(previous)) return null;
-    if (reading.endMs <= reading.startMs) return null;
-    return { startMs: reading.startMs, endMs: reading.endMs, powerKw: reading.powerKw };
-  }
-  if (previous?.kind !== 'instantaneous') return null;
-  if (reading.observedAtMs <= previous.observedAtMs) return null;
-  return {
-    startMs: previous.observedAtMs,
-    endMs: reading.observedAtMs,
-    powerKw: previous.powerKw,
-  };
+// The last draw booked for a device, and when. In memory only: after a restart
+// the first tick re-anchors, so the downtime is never billed.
+type DeliveryTick = {
+  atMs: number;
+  drawKw: number;
 };
 
 // Stall promotion reads through the observer-layer idle classifier
@@ -139,36 +114,36 @@ export type PlanHistoryPersistDeps = {
   // recorder filters by `discoveredFrom === 'observation'` and public outcome
   // (`met`/`missed`/`abandoned`) before publishing — backfill and replaced
   // entries never reach the bus.
-  endedBus?: DeferredObjectiveEndedBus;
+  endedBus: DeferredObjectiveEndedBus;
   // Resolve the spot price and price tone (cheap/normal/expensive) for an
   // hour-aligned timestamp. The internal hour-rollover detector calls this
   // when it closes an hour so per-hour `hourlyContributions` carry a stable
   // band even if cheap/normal/expensive thresholds shift in a later
   // version. Returning `null` (no price data yet, hour outside the
   // published horizon) causes that hour's contribution to be skipped
-  // rather than fabricated. The dep is optional so the recorder remains
-  // useful in tests; without it no priced contribution is ever emitted.
-  resolveHourPrice?: HourPriceResolver;
-  // Optional structured-debug emitter. The recorder emits one
+  // rather than fabricated.
+  resolveHourPrice: HourPriceResolver;
+  // Structured-debug emitter. The recorder emits one
   // `deferred_objective_history_finalized` event per observation entry as it
   // finalizes, carrying the resolved miss attribution (cause + the raw plan-time
   // confidence / committed-floor / delivery inputs it rested on). This is the
   // telemetry that lets us count how many `missed` runs were genuine capacity
-  // misses versus shaky-estimate / conservative-planning false alarms. Optional
-  // so the recorder stays usable in tests and headless callers. Gated on the
-  // `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
-  debugStructured?: StructuredDebugEmitter;
+  // misses versus shaky-estimate / conservative-planning false alarms. Gated on
+  // the `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
+  debugStructured: StructuredDebugEmitter;
+  // Idle-classifier reader for stall promotion (see `maybePromoteOnStall`).
+  getStallClassification: DeferredObjectiveStallClassificationReader;
 };
 
 export type PlanHistoryLoadResult = {
   snapshot: DeferredObjectivePlanHistoryV5;
   persistenceSafe: boolean;
-  meteredDeliveryStates?: readonly PersistedMeteredDeliveryState[];
+  meteredDeliveryStates: readonly PersistedMeteredDeliveryState[];
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
   private inProgress = new Map<InProgressKey, InProgressRecord>();
-  private lastMeteredDeliveryByDeviceId = new Map<string, MeteredDeviceReading>();
+  private lastDeliveryTickByDeviceId = new Map<string, DeliveryTick>();
   private restoredMeteredDeliveryByKey = new Map<InProgressKey, PersistedMeteredDeliveryState>();
 
   private entries: DeferredObjectivePlanHistoryRecord[];
@@ -181,7 +156,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     const loaded = deps.load();
     this.entries = loaded.snapshot.entries.slice();
     this.persistenceSafe = loaded.persistenceSafe;
-    for (const state of loaded.meteredDeliveryStates ?? []) {
+    for (const state of loaded.meteredDeliveryStates) {
       this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), state);
     }
     this.trimEntries();
@@ -213,16 +188,16 @@ export class DeferredObjectivePlanHistoryRecorder {
   observe(
     diagnostics: readonly DeferredObjectiveDiagnostic[],
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1 | null = null,
-    getStallClassification?: DeferredObjectiveStallClassificationReader,
+    activePlans: DeferredObjectiveActivePlansV1 | null,
   ): void {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
       const key = buildKey(diag.deviceId, diag.deadlineAtMs);
       seenKeys.add(key);
-      this.observeDiagnostic(diag, key, nowMs, activePlans, getStallClassification);
+      this.observeDiagnostic(diag, key, nowMs, activePlans);
     }
+    for (const diag of diagnostics) this.recordDeliveryTick(diag, nowMs);
     this.finalizeStaleRecords(seenKeys, nowMs);
   }
 
@@ -232,9 +207,8 @@ export class DeferredObjectivePlanHistoryRecorder {
     record: InProgressRecord,
     diag: DeferredObjectiveDiagnostic,
     nowMs: number,
-    getStallClassification?: DeferredObjectiveStallClassificationReader,
   ): InProgressRecord {
-    const evidence = getStallClassification?.(diag.deviceId);
+    const evidence = this.deps.getStallClassification(diag.deviceId);
     // The verdict alone is not enough: a device idling at a setback setpoint
     // PELS itself wrote is `near_target_idle` without having delivered this
     // task's target. Only evidence measured against a setpoint that covers the
@@ -253,7 +227,6 @@ export class DeferredObjectivePlanHistoryRecorder {
     key: InProgressKey,
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
-    getStallClassification?: DeferredObjectiveStallClassificationReader,
   ): void {
     const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs! });
     const existing = this.inProgress.get(key);
@@ -267,7 +240,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       const merged = plannable
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
-      const settled = this.maybePromoteOnStall(merged, diag, nowMs, getStallClassification);
+      const settled = this.maybePromoteOnStall(merged, diag, nowMs);
       this.inProgress.set(key, settled);
       return;
     }
@@ -345,10 +318,10 @@ export class DeferredObjectivePlanHistoryRecorder {
    * to judge outcome against.
    */
   finalizeForUserChange(deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned'): void {
+    this.bookHeldDraw(deviceId, nowMs);
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
-      this.pushEntry(finalizeRecord(record, nowMs, reason));
-      this.inProgress.delete(key);
+      this.finalizeInProgress(key, record, nowMs, reason);
     }
   }
 
@@ -367,34 +340,42 @@ export class DeferredObjectivePlanHistoryRecorder {
    * to gate on that, but the guard is here too as a safety net).
    */
   finalizeElapsedDeadline(deviceId: string, nowMs: number): void {
+    this.bookHeldDraw(deviceId, nowMs);
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
       if (record.deadlineAtMs > nowMs) continue;
-      this.pushEntry(finalizeRecord(record, nowMs, 'deadline_passed'));
-      this.inProgress.delete(key);
+      this.finalizeInProgress(key, record, nowMs, 'deadline_passed');
     }
   }
 
   /**
-   * Integrate trusted, source-timed device-meter readings for every open
-   * Smart-task run. Retained snapshots repeat the same source timestamp and are
-   * therefore a no-op. Direct watt readings close the prior sample's forward
-   * interval; cumulative-meter averages book their own already-covered interval.
+   * Book each device's draw over this recorder's own tick clock. A watt reading
+   * is a level that holds until the next report replaces it, so the draw seen
+   * on the previous tick is what ran between that tick and this one — however
+   * long the gap. A tick where the device is missing books the last draw and
+   * carries it forward.
    */
-  observeMeteredReading(reading: MeteredDeviceReading): void {
-    const previous = this.lastMeteredDeliveryByDeviceId.get(reading.deviceId);
-    if (previous !== undefined && readingEndMs(reading) <= readingEndMs(previous)) return;
-    this.lastMeteredDeliveryByDeviceId.set(reading.deviceId, reading);
-    const interval = resolveDeliveryInterval(reading, previous);
-    if (interval === null) return;
-    if (reading.kind === 'instantaneous'
-      && interval.endMs - interval.startMs > MAX_METERED_DELIVERY_SAMPLE_GAP_MS) return;
+  private recordDeliveryTick(diag: DeferredObjectiveDiagnostic, nowMs: number): void {
+    const previous = this.lastDeliveryTickByDeviceId.get(diag.deviceId);
+    if (previous !== undefined) this.bookDelivery(diag.deviceId, previous, nowMs);
+    const drawKw = diag.currentDrawKw ?? previous?.drawKw;
+    if (drawKw !== undefined) this.lastDeliveryTickByDeviceId.set(diag.deviceId, { atMs: nowMs, drawKw });
+  }
+
+  // A finalize the user triggers lands between ticks: the draw the last tick saw
+  // still holds up to it. (`bookDelivery` caps the stretch at each deadline.)
+  private bookHeldDraw(deviceId: string, nowMs: number): void {
+    const previous = this.lastDeliveryTickByDeviceId.get(deviceId);
+    if (previous !== undefined) this.bookDelivery(deviceId, previous, nowMs);
+  }
+
+  private bookDelivery(deviceId: string, from: DeliveryTick, toMs: number): void {
     for (const [key, record] of this.inProgress) {
-      if (record.deviceId !== reading.deviceId) continue;
-      const startMs = Math.max(interval.startMs, record.startedAtMs);
-      const endMs = Math.min(interval.endMs, record.deadlineAtMs);
+      if (record.deviceId !== deviceId) continue;
+      const startMs = Math.max(from.atMs, record.startedAtMs);
+      const endMs = Math.min(toMs, record.deadlineAtMs);
       if (endMs <= startMs) continue;
-      this.inProgress.set(key, this.integrateMeteredDelivery(record, startMs, endMs, interval.powerKw));
+      this.inProgress.set(key, this.integrateMeteredDelivery(record, startMs, endMs, from.drawKw));
       this.dirty = true;
     }
   }
@@ -415,7 +396,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       const hourMs = hourBucketMs(cursorMs);
       const sliceEndMs = Math.min(endMs, hourMs + ONE_HOUR_MS);
       const sliceDeliveredKWh = currentDrawKw * ((sliceEndMs - cursorMs) / ONE_HOUR_MS);
-      const price = this.deps.resolveHourPrice?.(hourMs) ?? null;
+      const price = this.deps.resolveHourPrice(hourMs);
       if (price === null) {
         deliveredKWh += sliceDeliveredKWh;
         deliveryPriceComplete = deliveryPriceComplete && sliceDeliveredKWh === 0;
@@ -446,8 +427,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   private finalizeStaleRecords(seenKeys: ReadonlySet<InProgressKey>, nowMs: number): void {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
-        this.pushEntry(finalizeRecord(record, nowMs, 'deadline_passed'));
-        this.inProgress.delete(key);
+        this.finalizeInProgress(key, record, nowMs, 'deadline_passed');
         continue;
       }
       if (seenKeys.has(key)) continue;
@@ -455,10 +435,19 @@ export class DeferredObjectivePlanHistoryRecorder {
       // window before declaring the run abandoned, in case the device briefly drops out and
       // recovers.
       if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
-        this.pushEntry(finalizeRecord(record, nowMs, 'abandoned'));
-        this.inProgress.delete(key);
+        this.finalizeInProgress(key, record, nowMs, 'abandoned');
       }
     }
+  }
+
+  private finalizeInProgress(
+    key: InProgressKey,
+    record: InProgressRecord,
+    nowMs: number,
+    reason: 'deadline_passed' | 'replaced' | 'abandoned',
+  ): void {
+    this.pushEntry(finalizeRecord(record, nowMs, reason));
+    this.inProgress.delete(key);
   }
 
   private pushEntry(entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord): void {
@@ -469,7 +458,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       this.emitFinalizedAttribution(entry);
       const endedEvent = buildEndedEventFromEntry(entry);
       if (endedEvent !== null) {
-        this.deps.endedBus?.publish(endedEvent);
+        this.deps.endedBus.publish(endedEvent);
       }
     }
   }
@@ -483,12 +472,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   // resolve the same cause by construction.
   private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
     if (entry.discoveredFrom !== 'observation') return;
-    const event = buildFinalizedAttributionEvent(entry);
-    if (this.deps.debugStructured) {
-      this.deps.debugStructured(event);
-    } else {
-      logger.debug(event);
-    }
+    this.deps.debugStructured(buildFinalizedAttributionEvent(entry));
   }
 
   private trimEntries(): void {
@@ -526,7 +510,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     const recovered = this.deps.load();
     if (!recovered.persistenceSafe) return;
     this.entries = mergeRecoveredEntries(recovered.snapshot.entries, this.entries);
-    for (const state of recovered.meteredDeliveryStates ?? []) {
+    for (const state of recovered.meteredDeliveryStates) {
       const key = buildKey(state.deviceId, state.deadlineAtMs);
       const active = this.inProgress.get(key);
       if (active === undefined) {
@@ -564,7 +548,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   // Test-only seam: clear in-progress state without touching persisted entries.
   resetInProgressForTests(): void {
     this.inProgress.clear();
-    this.lastMeteredDeliveryByDeviceId.clear();
+    this.lastDeliveryTickByDeviceId.clear();
   }
 }
 

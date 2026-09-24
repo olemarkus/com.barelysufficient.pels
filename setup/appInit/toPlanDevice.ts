@@ -620,7 +620,6 @@ export function toPlanDevice(
     // any structural consumer, which is exactly the second competing answer this
     // change exists to remove. `currentDrawKw` below is the only answer.
     measuredPowerKw: _measuredPowerKw,
-    measuredPowerReading: _measuredPowerReading,
     // Same discipline, binary axis. `withBinaryDiscriminant` strips these when the
     // plan OUTPUT is regrouped (`planDevicesBase`), but this producer attaches
     // `currentOn` itself without routing through it, so the spread would carry the

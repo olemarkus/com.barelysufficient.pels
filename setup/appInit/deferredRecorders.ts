@@ -30,6 +30,7 @@ import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import { createPlanHistoryStoreForApp } from './planHistoryStore';
+import { requirePlanService } from './contextGuards';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
@@ -136,7 +137,11 @@ export function createDeferredObjectivePlanHistoryRecorder(
             event: 'deferred_objective_plan_history_load_unavailable', err: normalizeError(error),
           });
         }
-        return { snapshot: normalizeDeferredObjectivePlanHistory(null), persistenceSafe: false };
+        return {
+          snapshot: normalizeDeferredObjectivePlanHistory(null),
+          persistenceSafe: false,
+          meteredDeliveryStates: [],
+        };
       }
       if (loadUnavailable) {
         loadUnavailable = false;
@@ -168,6 +173,8 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    // Read lazily on the lifecycle clock, after the plan service exists.
+    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;

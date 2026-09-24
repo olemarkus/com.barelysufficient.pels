@@ -22,7 +22,7 @@ describe('Smart-task metered history through the SDK', () => {
     vi.useRealTimers();
   });
 
-  it('accounts for every cumulative interval between lifecycle ticks', async () => {
+  it('books a cumulative meter\'s resolved draw across the run on the lifecycle clock', async () => {
     const charger = new MockDevice(DEVICE_ID, 'Metered charger', [
       'meter_power', 'measure_battery', 'evcharger_charging', 'evcharger_charging_state',
     ], 'evcharger');
@@ -46,8 +46,11 @@ describe('Smart-task metered history through the SDK', () => {
     });
     await createApp().onInit();
     await drainPending();
-    // Start tracking at the 30-second lifecycle tick, then deliver five full
-    // 10-second intervals before the task expires. Equal rates still count.
+    // The meter advances 0.01 kWh every 10 s, which the observer resolves to a
+    // 3.6 kW draw. Tracking starts at the 30-second lifecycle tick, and the draw
+    // each tick sees holds until the next one, so the run books 3.6 kW from 30 s
+    // to its 90 s deadline. The held level also covers 80–90 s, which the meter
+    // had not yet reported: a cumulative meter's draw lags by one push.
     for (let sample = 1; sample <= 8; sample += 1) {
       await vi.advanceTimersByTimeAsync(10_000);
       charger.setActualCapabilityValue('meter_power', 100 + sample * 0.01);
@@ -58,6 +61,6 @@ describe('Smart-task metered history through the SDK', () => {
     await drainPending();
     const history = await api.ui_deferred_objective_history({ homey: mockHomeyInstance as never });
     expect(history.entriesByDeviceId[DEVICE_ID]).toHaveLength(1);
-    expect(history.entriesByDeviceId[DEVICE_ID][0].deliveredKWh).toBeCloseTo(0.05, 7);
+    expect(history.entriesByDeviceId[DEVICE_ID][0].deliveredKWh).toBeCloseTo(3.6 * (60 / 3600), 7);
   });
 });

@@ -1,3 +1,5 @@
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
+import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 const {
   capturedPlanExecutorDeps,
   capturedEmitterDeps,
@@ -519,7 +521,8 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+      ...inertPlanHistoryDeps(),
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Drive the recorder into a dirty-and-couldn't-flush state.
@@ -549,10 +552,11 @@ describe('app init plan service wiring', () => {
       kwhPerUnitAcceptedSamples: 50,
       kwhPerUnitLastAcceptedAtMs: 0,
       planningSpeedKw: 1,
+      currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    }], 0);
-    recorder.observe([], 6 * 60 * 60 * 1000); // deadline-passed → finalized → dirty
+    }], 0, null);
+    recorder.observe([], 6 * 60 * 60 * 1000, null); // deadline-passed → finalized → dirty
     expect(recorder.flushIfDirty()).toBe(false);
     expect(recorder.isDirty()).toBe(true);
 
@@ -569,7 +573,8 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+      ...inertPlanHistoryDeps(),
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => true,
     });
     expect(recorder.isDirty()).toBe(false);
@@ -615,7 +620,6 @@ describe('app init plan service wiring', () => {
         diagnostics: readonly unknown[],
         nowMs: number,
         activePlans: null,
-        meteredDevices: readonly never[],
       ) => void;
     }).observeDeferredObjectivePlanHistory;
 
@@ -626,16 +630,77 @@ describe('app init plan service wiring', () => {
 
     // First idle observe — closure-state `lastWatermarkPersistMs` is 0, the difference vs a
     // real-clock nowMs is far above the threshold, so the watermark advances on this first tick.
-    observe([], baseMs, null, []);
+    observe([], baseMs, null);
     expect(countWatermarkWrites()).toBe(1);
 
     // Second observe one minute later, still idle. Below the 5-minute throttle → no write.
-    observe([], baseMs + 60_000, null, []);
+    observe([], baseMs + 60_000, null);
     expect(countWatermarkWrites()).toBe(1);
 
     // Third observe past the throttle threshold → second write.
-    observe([], baseMs + 60_000 + 5 * 60_000 + 1, null, []);
+    observe([], baseMs + 60_000 + 5 * 60_000 + 1, null);
     expect(countWatermarkWrites()).toBe(2);
+  });
+
+  it('does not write the watermark on every tick while an open run accrues delivery', () => {
+    // An open run's metered delivery accrues on every 30 s tick, so the recorder
+    // is dirty every tick. Tying the watermark to each flush would put a
+    // `settings.set` on the lifecycle clock for as long as any smart task runs.
+    const ctx = createAppContextMock({ deviceManager: {} as AppContext['deviceManager'] });
+    ctx.deferredObjectivePlanHistoryRecorder = new DeferredObjectivePlanHistoryRecorder({
+      ...inertPlanHistoryDeps(),
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      save: () => true,
+    });
+    const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
+    setSpy.mockClear();
+    capturedEmitterDeps.current = null;
+    createDeferredObjectiveLifecycleEmitter(ctx);
+    const observe = (capturedEmitterDeps.current as unknown as {
+      observeDeferredObjectivePlanHistory: (
+        diagnostics: readonly DeferredObjectiveDiagnostic[],
+        nowMs: number,
+        activePlans: null,
+      ) => void;
+    }).observeDeferredObjectivePlanHistory;
+    const baseMs = 1_000_000_000_000;
+    const drawing: DeferredObjectiveDiagnostic = {
+      deviceId: 'dev',
+      deviceName: 'd',
+      objectiveId: 'dev:temperature',
+      actuationSatisfied: false,
+      objectiveKind: 'temperature',
+      enforcement: 'soft',
+      trajectory: { kind: 'resolved', status: 'on_track' },
+      reasonCode: 'planned_with_margin',
+      targetPercent: null,
+      currentPercent: null,
+      targetTemperatureC: 65,
+      currentTemperatureC: 50,
+      deadlineAtMs: baseMs + 6 * 60 * 60 * 1000,
+      deadlineLocalTime: '06:00',
+      energyNeededKWh: 1,
+      kWhPerUnitBanded: 1,
+      currentValue: 50,
+      targetValue: 65,
+      kwhPerUnitLearnedMean: 1,
+      rateConfidence: 'high',
+      displayConfidence: 'high',
+      kwhPerUnitSource: 'learned',
+      kwhPerUnitAcceptedSamples: 50,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      planningSpeedKw: 1,
+      currentDrawKw: 2,
+      horizonBucketCount: 6,
+      expectedStepId: null,
+    };
+
+    for (let tick = 0; tick < 6; tick += 1) observe([drawing], baseMs + tick * 30_000, null);
+
+    const watermarkWrites = setSpy.mock.calls.filter(
+      ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
+    ).length;
+    expect(watermarkWrites).toBe(1);
   });
 
   it('does not throttle-advance the watermark while the recorder is dirty from a failed save', () => {
@@ -645,7 +710,8 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     // Save callback that always reports failure — drives the recorder into permanent dirty.
     const recorder = new DeferredObjectivePlanHistoryRecorder({
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+      ...inertPlanHistoryDeps(),
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Force a dirty record using a directly-pushed entry via observe.
@@ -675,10 +741,11 @@ describe('app init plan service wiring', () => {
       kwhPerUnitAcceptedSamples: 50,
       kwhPerUnitLastAcceptedAtMs: 0,
       planningSpeedKw: 1,
+      currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    }], 0);
-    recorder.observe([], 1_000);
+    }], 0, null);
+    recorder.observe([], 1_000, null);
     expect(recorder.isDirty()).toBe(true);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     setSpy.mockClear();
@@ -690,12 +757,11 @@ describe('app init plan service wiring', () => {
         diagnostics: readonly unknown[],
         nowMs: number,
         activePlans: null,
-        meteredDevices: readonly never[],
       ) => void;
     }).observeDeferredObjectivePlanHistory;
 
-    observe([], 1_000_000_000_000, null, []);
-    observe([], 1_000_000_000_000 + 10 * 60_000, null, []);
+    observe([], 1_000_000_000_000, null);
+    observe([], 1_000_000_000_000 + 10 * 60_000, null);
     const watermarkWrites = setSpy.mock.calls.filter(
       ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
     ).length;

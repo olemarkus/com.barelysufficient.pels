@@ -4,12 +4,6 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
-const projectMeasuredPowerReading = (snapshot: TransportDeviceSnapshot) => (
-    snapshot.measuredPowerReading === undefined
-        ? {}
-        : { measuredPowerReading: { ...snapshot.measuredPowerReading } }
-);
-
 /**
  * Pure projection from the full transport snapshot down to the observed-state
  * surface (`ObservedDeviceState`). Stage 4a of the snapshot decomposition
@@ -48,7 +42,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         targets: snapshot.targets.map((target) => ({ ...target })),
         available: snapshot.available,
         ...projectReportedStepObservation(snapshot),
-        ...projectMeasuredPowerReading(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;

@@ -1,12 +1,11 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type {
   DeviceControlProfile,
-  MeteredPowerReading,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
-import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import type { ResolvedTransportPowerState } from './transportTypes';

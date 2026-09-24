@@ -7,7 +7,7 @@ import type {
 } from './measuredPowerReader';
 import { getLogger } from '../logging/logger';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
-import type { MeteredPowerReading } from '../../packages/contracts/src/types';
+import type { MeteredPowerReading } from './transportDeviceSnapshot';
 
 const moduleLogger = getLogger('device/measured-power');
 

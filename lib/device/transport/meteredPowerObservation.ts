@@ -1,4 +1,4 @@
-import type { MeteredPowerReading } from '../../../packages/contracts/src/types';
+import type { MeteredPowerReading } from '../transportDeviceSnapshot';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 const endMs = (reading: MeteredPowerReading): number => (

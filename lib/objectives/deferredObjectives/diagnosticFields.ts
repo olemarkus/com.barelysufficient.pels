@@ -104,7 +104,8 @@ export const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan
 
 export const buildDiagnosticBase = (params: {
   deviceId: string;
-  device?: ObjectiveDeviceInput;
+  // `undefined` when the device is missing from this tick's roster.
+  device: ObjectiveDeviceInput | undefined;
   objective: DeferredObjectiveSettingsEntry;
   timeZone: string;
   powerTracker: PowerTrackerState;
@@ -151,6 +152,7 @@ export const buildDiagnosticBase = (params: {
     kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
     kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
     planningSpeedKw: resolvePlanningSpeedKw(params.device),
+    currentDrawKw: params.device === undefined ? null : params.device.currentDrawKw,
     horizonBucketCount: 0,
     expectedStepId: null,
   };

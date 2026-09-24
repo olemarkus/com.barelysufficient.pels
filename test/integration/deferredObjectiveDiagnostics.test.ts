@@ -1,3 +1,4 @@
+import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
 import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
@@ -213,7 +214,8 @@ const buildHistoryRecorder = (): {
   let saved: DeferredObjectivePlanHistoryV5 | null = null;
   return {
     recorder: new DeferredObjectivePlanHistoryRecorder({
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+      ...inertPlanHistoryDeps(),
+      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: (next) => { saved = next; return true; },
     }),
     saved: () => saved,
@@ -2620,9 +2622,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: false,
     });
 
-    recorder.observe([satisfied!], NOW_MS);
-    recorder.observe([staleBelowTarget!], NOW_MS + HOUR_MS);
-    recorder.observe([], deadlineAtMs);
+    recorder.observe([satisfied!], NOW_MS, null);
+    recorder.observe([staleBelowTarget!], NOW_MS + HOUR_MS, null);
+    recorder.observe([], deadlineAtMs, null);
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;

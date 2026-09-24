@@ -21,7 +21,6 @@
  */
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
-import type { MeteredDeviceReading } from '../ports/meteredSnapshots';
 import type {
   AssociatedCarSnapshot,
   BinaryControlObservation,
@@ -210,13 +209,11 @@ export class DeviceTransport {
     // once so the extracted free functions mutate the SAME snapshot / evidence
     // maps this class owns (object identity preserved).
     private readonly ctx: TransportContext;
-    private readonly meteredPowerListeners = new Set<(reading: MeteredDeviceReading) => void>();
 
     private readonly handleRealtimeCapabilityUpdate = (
         deviceId: string, capabilityId: string, value: unknown,
     ): void => {
         runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
-        this.publishMeteredPower(deviceId);
     };
 
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
@@ -224,7 +221,6 @@ export class DeviceTransport {
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         handleRealtimeDeviceUpdateEvent(this.ctx, device);
-        this.publishMeteredPower(device.id);
     };
 
     constructor(
@@ -452,7 +448,6 @@ export class DeviceTransport {
         this.latestSnapshot = s;
         this.syncLatestSnapshotIndex();
         reconcileBinarySettleEvidenceWithSnapshot(this.ctx, s);
-        for (const snapshot of s) this.publishMeteredPower(snapshot.id);
         this.retainedPower.persist(s, Date.now());
     }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
@@ -633,7 +628,6 @@ export class DeviceTransport {
     }
 
     public destroy(): void {
-        this.meteredPowerListeners.clear();
         this.observationProducers.destroy();
         void this.liveFeed?.stop();
         this.liveFeed = null;
@@ -736,18 +730,6 @@ export class DeviceTransport {
             this.observedStateDispatcher.externalTemperatureAdjusted(adjustment);
         }
         this.observedStateDispatcher.observedControlStateChanged(event);
-    }
-
-    /** Delivery observes every committed source record, independently of control changes. */
-    onMeteredPowerReading(listener: (reading: MeteredDeviceReading) => void): void {
-        this.meteredPowerListeners.add(listener);
-    }
-
-    private publishMeteredPower(deviceId: string): void {
-        const reading = this.latestSnapshotById.get(deviceId)?.measuredPowerReading;
-        if (reading === undefined) return;
-        const observed: MeteredDeviceReading = { deviceId, ...reading };
-        for (const listener of this.meteredPowerListeners) listener(observed);
     }
 
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById

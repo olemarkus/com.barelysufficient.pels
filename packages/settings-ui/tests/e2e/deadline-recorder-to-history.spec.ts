@@ -45,14 +45,24 @@ type DeferredObjectiveDiagnosticLike = {
 };
 
 type PlanHistoryRecorderLike = {
-  observe(diagnostics: ReadonlyArray<DeferredObjectiveDiagnosticLike>, nowMs: number): void;
+  observe(diagnostics: ReadonlyArray<DeferredObjectiveDiagnosticLike>, nowMs: number, activePlans: null): void;
   flushIfDirty(): boolean;
 };
 
+// Mirrors `PlanHistoryPersistDeps` by hand: the recorder is loaded from a bundle
+// at run time, so tsc cannot hold this seam to the real contract.
 type PlanHistoryRuntimeModule = {
   DeferredObjectivePlanHistoryRecorder: new (deps: {
-    load: () => { snapshot: DeferredObjectivePlanHistoryV5; persistenceSafe: boolean };
+    load: () => {
+      snapshot: DeferredObjectivePlanHistoryV5;
+      persistenceSafe: boolean;
+      meteredDeliveryStates: readonly unknown[];
+    };
     save: (history: DeferredObjectivePlanHistoryV5) => boolean;
+    endedBus: { publish: (event: unknown) => void; onEnded: (listener: unknown) => () => void };
+    resolveHourPrice: (hourStartMs: number) => null;
+    debugStructured: (payload: Record<string, unknown>) => void;
+    getStallClassification: (deviceId: string) => undefined;
   }) => PlanHistoryRecorderLike;
 };
 
@@ -132,8 +142,12 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV5> => {
   const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
   let saved: DeferredObjectivePlanHistoryV5 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
-    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true }),
+    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
     save: (history) => { saved = history; return true; },
+    endedBus: { publish: () => undefined, onEnded: () => () => undefined },
+    resolveHourPrice: () => null,
+    debugStructured: () => undefined,
+    getStallClassification: () => undefined,
   });
 
   // Both devices are observed on every planning tick, mirroring how the runtime hands the
@@ -165,18 +179,18 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV5> => {
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'on_track' }, 50),
     poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 50),
-  ], T0);
+  ], T0, null);
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'on_track' }, 60),
     poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 55),
-  ], T0 + 3 * HOUR_MS);
+  ], T0 + 3 * HOUR_MS, null);
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'satisfied' }, 65),
     poolPumpDiag({ kind: 'resolved', status: 'cannot_meet' }, 58),
-  ], T0 + 5 * HOUR_MS);
+  ], T0 + 5 * HOUR_MS, null);
 
   // Final tick past both deadlines — no live diagnostics, both records finalize as deadline_passed.
-  recorder.observe([], MISSED_DEADLINE_MS + 1);
+  recorder.observe([], MISSED_DEADLINE_MS + 1, null);
   recorder.flushIfDirty();
 
   if (!saved) {

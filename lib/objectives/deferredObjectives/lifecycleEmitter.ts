@@ -105,11 +105,10 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     deadlineAtMs: number,
     nowMs: number,
   ) => void;
-  observeDeferredObjectivePlanHistory?: (
+  observeDeferredObjectivePlanHistory: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
-    getStallClassification: DeferredObjectiveStallClassificationReader,
   ) => void;
   /**
    * Active-plan commitment RECORD. Settles replan revisions on the clock — the
@@ -119,7 +118,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
    * so it can never be starved by power-reading timing. See
    * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
    */
-  observeDeferredObjectiveActivePlans?: (
+  observeDeferredObjectiveActivePlans: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
@@ -182,12 +181,7 @@ export class DeferredObjectiveLifecycleEmitter {
     }), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.
-    this.deps.observeDeferredObjectivePlanHistory?.(
-      diagnostics,
-      nowMs,
-      activePlans,
-      this.deps.getStallClassification,
-    );
+    this.deps.observeDeferredObjectivePlanHistory(diagnostics, nowMs, activePlans);
 
     // Active-plan commitment WRITE, on the clock. The recorder gates replan
     // revisions to once per hour at the :58 mark (a first revision is immediate).
@@ -197,7 +191,7 @@ export class DeferredObjectiveLifecycleEmitter {
     // starved by power-reading timing. Written after the plan-history observe
     // above, which intentionally uses the pre-write snapshot (see note above).
     // See notes/state-management/deferred-objective-lifecycle-carveout.md.
-    this.deps.observeDeferredObjectiveActivePlans?.(diagnostics, nowMs);
+    this.deps.observeDeferredObjectiveActivePlans(diagnostics, nowMs);
 
     // Emission to the UI / Flow buses + clock-owned terminal fallback/ending.
     const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();

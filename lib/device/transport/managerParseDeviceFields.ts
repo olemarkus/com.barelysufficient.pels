@@ -3,12 +3,11 @@ import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/me
 import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
-  MeteredPowerReading,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
-import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
     isReportedThermostatMode,
     normalizeReportedThermostatMode,
