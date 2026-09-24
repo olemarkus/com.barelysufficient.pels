@@ -51,6 +51,32 @@ describe('temperature setpoints, resolved before the planner', () => {
     expect([cooler.desiredC, cooler.keepC]).toEqual([20, 20]);
   });
 
+  it('holds the mode target while a manual temperature change cancels this price level', () => {
+    const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
+      ...modeTarget(21), ...priced(PriceLevel.EXPENSIVE, 2, -2),
+      shouldApplyPriceShift: () => false,
+    });
+    expect([heater.desiredC, heater.keepC]).toEqual([21, 21]);
+  });
+
+  it('observes a pending price-level cancellation while price shifts are disabled', () => {
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.NORMAL);
+    const shouldApplyPriceShift = vi.fn(() => true);
+    const hasPendingPriceShiftCancellations = vi.fn((deviceIds: readonly string[]) => deviceIds.includes('unit'));
+    const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
+      ...modeTarget(21),
+      getPriceOptimizationEnabled: () => false,
+      getCurrentHourPriceLevel,
+      hasPendingPriceShiftCancellations,
+      shouldApplyPriceShift,
+    });
+
+    expect([heater.desiredC, heater.keepC]).toEqual([21, 21]);
+    expect(getCurrentHourPriceLevel).toHaveBeenCalledOnce();
+    expect(hasPendingPriceShiftCancellations).toHaveBeenCalledExactlyOnceWith(['unit']);
+    expect(shouldApplyPriceShift).toHaveBeenCalledExactlyOnceWith('unit', PriceLevel.NORMAL);
+  });
+
   it('holds the deadline floor on the demand side of the kept setpoint, per direction', () => {
     // A heater is kept at least as warm as the floor, a cooling unit at least as cold.
     expect(resolve(device({ currentTarget: 20, currentTemperature: 19, deadlineFloorTargetC: 23 }), modeTarget(20)).keepC)

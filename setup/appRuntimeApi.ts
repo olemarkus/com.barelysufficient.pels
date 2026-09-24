@@ -284,7 +284,9 @@ abstract class AppRuntimeApi extends Base {
   public get priceOptimizationSettings() {
     return temperaturePolicyPriceSettings(
       this.requirePriceCoordinator().getPriceOptimizationSettings(),
-      this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments
+      this.context.observedTemperatureModeUpdates.allowsPriceBasedDeltas
+        .bind(this.context.observedTemperatureModeUpdates),
+      this.context.observedTemperatureModeUpdates.allowsSolarAdjustments
         .bind(this.context.observedTemperatureModeUpdates),
     );
   }

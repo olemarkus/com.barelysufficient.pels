@@ -1,4 +1,6 @@
-import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
+import {
+  createObservedTemperatureModeUpdates, createTemperaturePriceShiftPolicy,
+} from './appInit/createObservedTemperatureModeUpdates';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
@@ -217,6 +219,10 @@ export class AppServiceWiring {
       () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
       (deviceId) => this.isDeviceLimitedInOwningHome(deviceId),
     );
+  }
+
+  createTemperaturePriceShiftPolicy() {
+    return createTemperaturePriceShiftPolicy(this.deps.ctx);
   }
 
   async runInit(): Promise<void> {

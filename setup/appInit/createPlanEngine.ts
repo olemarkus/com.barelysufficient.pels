@@ -205,6 +205,8 @@ export function createPlanEngineComposition(
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
+    shouldApplyPriceShift: scope.shouldApplyPriceShift,
+    hasPendingPriceShiftCancellations: scope.hasPendingPriceShiftCancellations,
     getInferredSurplusKw: scope.getInferredSurplusKw,
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,

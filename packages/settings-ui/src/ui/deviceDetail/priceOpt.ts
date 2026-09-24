@@ -1,4 +1,4 @@
-import { supportsTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
+import { supportsPriceTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
 import {
   deviceDetailCheapDelta,
   deviceDetailDeltaGateHint,
@@ -89,7 +89,7 @@ export const updateDeltaSectionVisibility = (params: {
 
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
   const gateHint = resolveDeltaGateHint({
-    canControlTemperature: supportsTemperatureAdjustments(device),
+    canControlTemperature: supportsPriceTemperatureAdjustments(device),
     disabledHint: temperatureAdjustmentGateHint(device),
     isManaged,
     selected: deviceDetailPriceOpt.selected,
@@ -121,7 +121,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!deviceId) return;
 
     const device = params.getDeviceById(deviceId);
-    if (!supportsTemperatureAdjustments(device)) return;
+    if (!supportsPriceTemperatureAdjustments(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
     // Snapshot only this device's three fields before the optimistic mutation

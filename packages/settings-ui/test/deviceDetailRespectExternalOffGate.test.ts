@@ -500,7 +500,7 @@ describe('device detail "Disable temperature control"', () => {
     expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({ 'other-1': true, stale: false });
   });
 
-  it('saves as current mode target while keeping mode targets editable and disabling price adjustments', async () => {
+  it('saves as current mode target while keeping price shifts and mode targets enabled', async () => {
     const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
     homey.__settingsStore.temperature_control_modes = { other: 'external' };
     const select = temperatureControlToggle();
@@ -510,13 +510,13 @@ describe('device detail "Disable temperature control"', () => {
     expect(temperatureConfirmation().open).toBe(true);
     expect(select.value).toBe('mode');
     expect(homey.__settingsStore.temperature_control_modes).toEqual({ other: 'external' });
-    expect(temperatureConfirmation().textContent).toContain('Price-based temperature adjustments will stop.');
+    expect(temperatureConfirmation().textContent).toContain('keeps that temperature through this price level');
     finishTemperatureConfirmation('confirm');
     await flushPromises();
     expect(homey.__settingsStore.temperature_control_modes).toEqual({ other: 'external', 'heater-1': 'update_mode' });
     expect(state.temperatureControlDisabledMap['heater-1']).toBe(false);
-    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
-    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(false);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(false);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(true);
     expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent)
       .toContain('still limits');
     const modeInput = document.querySelector<MdSwitchLike>('.detail-mode-temp[data-mode="Home"]');

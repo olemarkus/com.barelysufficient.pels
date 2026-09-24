@@ -18,6 +18,7 @@ export type SmartTaskDeviceLike = {
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
   temperatureControlDisabled?: true;
+  /** Legacy runtime stamp used to deny Smart Tasks under manual target policies. */
   temperatureAdjustmentsDisabled?: true;
   temperature?: {
     currentTemperature: number;

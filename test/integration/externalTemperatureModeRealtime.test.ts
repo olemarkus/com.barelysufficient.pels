@@ -4,6 +4,7 @@ import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const deviceId = 'heater-1';
 const capabilities = ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'];
@@ -69,9 +70,8 @@ describe('external temperature changes reach the mode through observation', () =
   });
 
   it('the next meter-driven plan reads the adopted target, and the configured limit still applies', async () => {
-    // "Save as current mode target" switches off the offsets, not the limit:
-    // the owner's limited temperature is what PELS lowers the device to under
-    // pressure, and the target it saved is what it comes back to.
+    // "Save as current mode target" leaves price deltas and the owner's limit
+    // available; the chosen target remains what PELS comes back to.
     const app = await start('update_mode');
     mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
     await drainPending();
@@ -115,16 +115,39 @@ describe('external temperature changes reach the mode through observation', () =
     expect(app.modeDeviceTargets.Home?.[deviceId]).toBe(22);
   });
 
-  it('keeps saved price and solar settings without applying their offsets', async () => {
+  it('keeps price deltas enabled but disables solar adjustments for the saved mode target', async () => {
     const app = await start('update_mode');
     const config = { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: true, surplusDelta: 3 };
     mockHomeyInstance.settings.set('price_optimization_settings', { [deviceId]: config });
     await drainPending();
-    expect(app.priceOptimizationSettings[deviceId]).toMatchObject({ enabled: false, surplusWilling: false });
+    expect(app.priceOptimizationSettings[deviceId]).toMatchObject({ enabled: true, surplusWilling: false });
     expect(mockHomeyInstance.settings.get('price_optimization_settings')).toEqual({ [deviceId]: config });
     mockHomeyInstance.settings.set('temperature_control_modes', { [deviceId]: 'mode' });
     await drainPending();
     expect(app.priceOptimizationSettings[deviceId]).toMatchObject(config);
+  });
+
+  it('holds the manual mode target for the current level and admits the next level price target', async () => {
+    const app = await start('update_mode');
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      [deviceId]: { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0 },
+    });
+    await drainPending();
+    const getPriceLevel = vi.spyOn(app, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.EXPENSIVE);
+
+    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
+    expect(mockHomeyInstance.settings.get(`thermostat_price_shift_cancellation.${deviceId}`))
+      .toBe(PriceLevel.EXPENSIVE);
+    expect(app.priceShiftPolicy.allowsCurrentPriceShiftTarget(deviceId, 22, 20)).toBe(false);
+
+    getPriceLevel.mockReturnValue(PriceLevel.NORMAL);
+    expect(app.priceShiftPolicy.allowsCurrentPriceShiftTarget(deviceId, 22, 20)).toBe(false);
+    expect(mockHomeyInstance.settings.get(`thermostat_price_shift_cancellation.${deviceId}`)).toBeNull();
+
+    getPriceLevel.mockReturnValue(PriceLevel.CHEAP);
+    expect(app.priceShiftPolicy.allowsCurrentPriceShiftTarget(deviceId, 22, 24)).toBe(true);
   });
 
   it('blocks old adjusted commands but applies the saved target when the mode changes', async () => {
@@ -141,7 +164,7 @@ describe('external temperature changes reach the mode through observation', () =
   });
 
   it('still limits a device whose only control is temperature, by setpoint', async () => {
-    // "Save as current mode target" switches off the offsets, not the limit. A
+    // "Save as current mode target" keeps price deltas and limiting available. A
     // device with nothing but a setpoint to limit on keeps its authority and is
     // lowered to its limited temperature under pressure — this is the
     // auto-seeded air-conditioner shape, so a `commandAuthority: false` here

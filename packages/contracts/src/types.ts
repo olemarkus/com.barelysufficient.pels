@@ -855,7 +855,7 @@ export type SteppedLoadDecoration = {
      * commands only while this marker is present.
      */
     temperatureControlDisabled?: true;
-    /** Saved mode targets remain writable; automatic temperature adjustments do not. */
+    /** Temperature Smart Tasks are unavailable; price and solar policies are gated separately. */
     temperatureAdjustmentsDisabled?: true;
     selectedStepId?: string;
     planningPowerKw?: number;

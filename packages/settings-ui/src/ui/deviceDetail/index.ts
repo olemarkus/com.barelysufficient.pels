@@ -228,7 +228,10 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // use price-based temperature control, so the row hides instead of promising
   // "adjust temperature" on a charger or socket.
   if (deviceDetailPriceOptRow) deviceDetailPriceOptRow.hidden = !controlState.supportsTemperature;
-  setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
+  setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, {
+    ...controlState,
+    canControlTemperature: controlState.canControlPriceTemperature,
+  });
   setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, {
     ...controlState,
     // The surplus lift reaches only a device with a power reading.
