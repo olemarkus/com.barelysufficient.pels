@@ -232,7 +232,6 @@ export function finalizePlanDevices(
   },
 ): {
   planDevices: DevicePlanDevice[];
-  lastPlannedShedIds: Set<string>;
 } {
   // Stamp the shed END STATE here and nowhere else. The restore, swap, and hold
   // stages each revise `plannedState` through their own paths, so a kind derived
@@ -263,8 +262,7 @@ export function finalizePlanDevices(
     }
   }
 
-  const lastPlannedShedIds = new Set(sorted.filter((d) => d.plannedState === 'shed').map((d) => d.id));
-  return { planDevices: sorted, lastPlannedShedIds };
+  return { planDevices: sorted };
 }
 
 /**

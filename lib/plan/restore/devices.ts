@@ -91,14 +91,15 @@ export function isOffBinaryRestoreHoldCandidate(device: DevicePlanDevice): devic
 }
 
 function needsRestoreAdmission(device: DevicePlanDevice, shedDecisions: ShedDecisions): boolean {
+  // A newly appearing device is admitted from shed posture regardless of its
+  // binary observation.
   if (shedDecisions.wasShedOrUnplanned(device.id)) return true;
-  // With no completed plan there is no plan-state diff. Preserve the initial
-  // start gate for observed-off devices, while already-running devices remain
-  // governed by their measured contribution to whole-home headroom. After a
-  // plan exists, a newly appearing device is admitted from shed posture above,
-  // regardless of its binary observation.
-  return !shedDecisions.hasPlanHistory
-    && resolveRestoreObservedState(device) === 'off';
+  // Otherwise only an off device is a start, and it skips admission only when
+  // the previous plan kept it with command authority (it drifted off). Left
+  // `inactive` (held off, unavailable), kept without authority, or no plan yet:
+  // turning it on is a start PELS has not admitted. A running device stays
+  // governed by its measured contribution to whole-home headroom.
+  return resolveRestoreObservedState(device) === 'off' && !shedDecisions.lastPlannedKeptIds.has(device.id);
 }
 
 export function isShedPostureBinaryRestoreCandidate(

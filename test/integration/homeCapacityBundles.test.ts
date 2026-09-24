@@ -2022,6 +2022,7 @@ describe('planner restore transitions', () => {
     const device = buildPlanDevice({ id: 'relocated-binary', currentOn: false, controllable: true });
     const previouslyKept = new ShedDecisions();
     previouslyKept.lastPlannedDeviceIds = new Set([device.id]);
+    previouslyKept.lastPlannedKeptIds = new Set([device.id]);
     expect(getRestoreCandidates([device], previouslyKept)).toEqual([]);
     const previouslyShed = new ShedDecisions();
     previouslyShed.lastPlannedDeviceIds = new Set([device.id]);
@@ -2036,6 +2037,7 @@ describe('planner restore transitions', () => {
     expect(isOffSteppedRestoreCandidate(device)).toBe(true);
     const previouslyKept = new ShedDecisions();
     previouslyKept.lastPlannedDeviceIds = new Set([device.id]);
+    previouslyKept.lastPlannedKeptIds = new Set([device.id]);
     expect(getRestoreCandidates([device], previouslyKept)).toEqual([]);
     const previouslyShed = new ShedDecisions();
     previouslyShed.lastPlannedDeviceIds = new Set([device.id]);

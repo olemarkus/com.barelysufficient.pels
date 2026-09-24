@@ -137,7 +137,7 @@ describe('plan restore device helpers', () => {
     const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' });
     const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' });
     const history = new ShedDecisions();
-    history.recordPlannedShed(new Set(), [], Date.now());
+    history.recordPlannedShed([], [], Date.now());
 
     expect(getRestoreCandidates([offDevice, onDevice], history).map(({ device }) => device.id))
       .toEqual(['off-at-start']);

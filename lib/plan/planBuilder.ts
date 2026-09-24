@@ -284,7 +284,7 @@ export class PlanBuilder {
     const finalized = this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `ShedDecisions.recordPlannedShed`.
-    this.state.shedDecisions.recordPlannedShed(finalized.lastPlannedShedIds, admittedDevices, nowTs);
+    this.state.shedDecisions.recordPlannedShed(finalized.planDevices, admittedDevices, nowTs);
     const capacityLimitKw = this.capacitySettings.limitKw;
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context: heldContext,

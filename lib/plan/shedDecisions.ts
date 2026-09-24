@@ -1,12 +1,13 @@
-import type { PlanInputDevice } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 
 /**
  * What the plan decided to hold shed, when, and under which posture — the
  * decision-time record, as opposed to the actuation-time clocks in
  * `ActuationRecord`. One per `PlanEngineState`. In-memory: after a restart
- * there is no prior plan to diff. Cold-start off devices still pass start
- * admission; after the first plan, devices missing from its membership start
- * in shed posture and must pass planner admission before the plan can keep them.
+ * there is no prior plan to diff. An off device goes through start admission
+ * unless the previous plan kept it with command authority; after the first plan,
+ * devices missing from its membership start in shed posture and must pass
+ * planner admission before the plan can keep them.
  *
  * Four writers, and not all of them are the planner. The planner authors the
  * record at plan finalization (`planBuilder`, and the silent-meter pass) and
@@ -69,6 +70,14 @@ export class ShedDecisions {
   /** Whether a non-empty plan has established membership history; sticky across empty snapshots. */
   hasRecordedPlan = false;
 
+  /**
+   * The devices the previous plan kept while it held command authority over
+   * them: PELS decided they should run. An off device outside this set (left
+   * `inactive`, kept without authority, or with no plan yet) is turned on only
+   * through admission (`restore/devices.ts`); one inside it is drift.
+   */
+  lastPlannedKeptIds: ReadonlySet<string> = new Set<string>();
+
   /** Every device represented by the previous plan, including planned keeps. */
   lastPlannedDeviceIds: ReadonlySet<string> = new Set<string>();
 
@@ -80,9 +89,9 @@ export class ShedDecisions {
 
   /**
    * A keep from the shed posture needs capacity admission. Once a prior plan
-   * exists, a device absent from it starts in that same posture. Before then
-   * there is no history to diff; `restore/devices.ts` admits only observed-off
-   * cold-start activations through the same capacity gates.
+   * exists, a device absent from it starts in that same posture. An observed-off
+   * device the previous plan did not keep with authority is admitted too
+   * (`lastPlannedKeptIds`, read in `restore/devices.ts`).
    */
   wasShedOrUnplanned(deviceId: string): boolean {
     if (this.lastPlannedShedIds.has(deviceId)) return true;
@@ -90,17 +99,18 @@ export class ShedDecisions {
   }
 
   /**
-   * Record one plan build's shed decisions. The decision clock is EDGE-SET on
+   * Record one plan build's final shed and keep decisions. The decision clock is EDGE-SET on
    * the transition into the shed set, so a re-shed after a restore takes a
    * fresh decision time while a device held throughout keeps its original one.
    * The surplus stamp is REFRESHED for every currently planned-shed device, so
    * toggling the posture off while held clears it.
    */
   recordPlannedShed(
-    shedIds: ReadonlySet<string>,
+    planDevices: readonly DevicePlanDevice[],
     devices: readonly PlanInputDevice[],
     nowTs: number,
   ): void {
+    const shedIds = planDevices.filter((device) => device.plannedState === 'shed').map(({ id }) => id);
     // EITHER baseline-off posture earns the stamp. The stamp's whole job is to
     // refuse the uncontrolled force-ON when the owner withdraws PELS's
     // authority, and "I am off because my owner configured a baseline of off" is
@@ -124,6 +134,9 @@ export class ShedDecisions {
       }
     }
     this.lastPlannedShedIds = new Set(shedIds);
+    this.lastPlannedKeptIds = new Set(planDevices
+      .filter((device) => device.plannedState === 'keep' && device.control.commandAuthority)
+      .map(({ id }) => id));
     this.lastPlannedDeviceIds = new Set(devices.map(({ id }) => id));
     if (devices.length > 0) this.hasRecordedPlan = true;
   }

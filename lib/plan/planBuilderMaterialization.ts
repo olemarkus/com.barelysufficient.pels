@@ -69,7 +69,6 @@ type HoldPlanResult = {
 
 type FinalizedPlanResult = {
   planDevices: DevicePlanDevice[];
-  lastPlannedShedIds: Set<string>;
 };
 
 export class PlanMaterializationStages {

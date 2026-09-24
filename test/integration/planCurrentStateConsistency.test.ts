@@ -128,6 +128,7 @@ describe('planner current-state consistency', () => {
 function previousKeepHistory(deviceId: string): ShedDecisions {
   const history = new ShedDecisions();
   history.lastPlannedDeviceIds = new Set([deviceId]);
+  history.lastPlannedKeptIds = new Set([deviceId]);
   return history;
 }
 

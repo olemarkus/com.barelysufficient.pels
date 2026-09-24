@@ -42,10 +42,10 @@ function isDeviceBlockingSteppedRestore(
     || isSteppedRestorePending(device)
     || device.binaryCommandPending === true
   ) return true;
-  // A provisional keep is not yet a recovery: current-cycle shed-posture
-  // candidates still have to pass admission. Only a keep in the previous plan
-  // can be waiting for its observation to confirm recovery here.
-  if (shedDecisions.wasShedOrUnplanned(device.id) || !shedDecisions.decidedMs[device.id]) return false;
+  // A provisional keep is not yet a recovery: current-cycle candidates still
+  // have to pass admission. Only a keep the previous plan made with command
+  // authority can be waiting for its observation to confirm recovery here.
+  if (!shedDecisions.lastPlannedKeptIds.has(device.id) || !shedDecisions.decidedMs[device.id]) return false;
   return device.currentState === 'off' || device.currentState === 'unknown';
 }
 
@@ -103,7 +103,7 @@ export function countShedDevices(
     if (device.id === excludeId) continue;
     if (device.control.commandAuthority === false) continue;
     // Base plan keep is provisional until this pass admits a previous-shed or
-    // first-plan candidate. Keep those in the invariant's shed count meanwhile.
+    // unplanned candidate. Keep those in the invariant's shed count meanwhile.
     if (device.plannedState === 'shed' || shedDecisions.wasShedOrUnplanned(device.id)) count += 1;
   }
   return count;

@@ -294,6 +294,82 @@ describe('start policy through a whole plan build', () => {
     expect(hasBinaryCommand(intent) ? intent.binary.desiredOn : false).toBe(false);
   });
 
+  describe('an off device the previous plan did not keep is started through admission', () => {
+    // Only a keep PELS decided with command authority stays a keep without
+    // admission. Every other off device is a start, one plan later just as on
+    // the first plan: 1 kW does not fit in 0.3 kW of room.
+    const tightBuilder = (decide?: () => DeferredAdmissionDecision) => buildBuilder({
+      getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+      getDynamicSoftLimitOverride: () => 0.8,
+      ...(decide ? { decorateDeferredObjectives: (input: { devices: PlanInputDevice[] }) => (
+        decorateWithDecision('charger', decide())(input)
+      ) } : {}),
+    });
+    const offCharger = (overrides: Parameters<typeof inputDevice>[0] = {}): PlanInputDevice => inputDevice({
+      id: 'charger',
+      name: 'Charger',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on: false },
+      currentState: 'off',
+      currentDrawKw: 0,
+      expectedPowerKw: 1,
+      controllable: true,
+      managed: true,
+      ...overrides,
+    });
+    const expectNotStarted = (plan: Awaited<ReturnType<PlanBuilder['buildDevicePlanSnapshot']>>) => {
+      const device = plan.devices.find((entry) => entry.id === 'charger');
+      expect(device?.plannedState).toBe('shed');
+      expect(device?.reason?.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+      const intent = buildExecutableDeviceIntent(device!, plan.meta);
+      expect(hasBinaryCommand(intent) ? intent.binary.desiredOn : false).toBe(false);
+    };
+
+    it('when an unclaimed hour lifts the hold the previous plan held it off under', async () => {
+      let decision: DeferredAdmissionDecision = inactiveDecision;
+      const builder = tightBuilder(() => decision);
+      const held = await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
+      expect(held.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('inactive');
+
+      decision = unclaimedDecision;
+      expectNotStarted(await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]));
+    });
+
+    it('when it comes back from unavailable', async () => {
+      const builder = tightBuilder();
+      const unavailable = await builder.buildDevicePlanSnapshot([
+        offCharger({ commandableNow: false, commandabilityReason: 'device_unavailable' }),
+      ]);
+      expect(unavailable.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('inactive');
+
+      expectNotStarted(await builder.buildDevicePlanSnapshot([offCharger()]));
+    });
+
+    it('when the owner turns Power-limit control on while it is off', async () => {
+      const builder = tightBuilder();
+      const uncontrolled = await builder.buildDevicePlanSnapshot([offCharger({ controllable: false })]);
+      expect(uncontrolled.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('keep');
+
+      expectNotStarted(await builder.buildDevicePlanSnapshot([offCharger()]));
+    });
+
+    it('and still starts it once there is room', async () => {
+      let decision: DeferredAdmissionDecision = inactiveDecision;
+      const builder = buildBuilder({
+        decorateDeferredObjectives: (input) => decorateWithDecision('charger', decision)(input),
+      });
+      await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
+
+      decision = unclaimedDecision;
+      const plan = await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
+      const device = plan.devices.find((entry) => entry.id === 'charger');
+      expect(device?.plannedState).toBe('keep');
+      const intent = buildExecutableDeviceIntent(device!, plan.meta);
+      expect(hasBinaryCommand(intent) ? intent.binary : undefined)
+        .toMatchObject({ deviceId: 'charger', desiredOn: true });
+    });
+  });
+
   it('still sheds the hold to OFF when the meter has gone silent', async () => {
     // The fail-closed pass sheds every candidate to its floor, and for this
     // device the floor is OFF — the policy carries its own shed intent, not the

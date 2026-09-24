@@ -124,6 +124,13 @@ const applyRestorePlan = (params: Parameters<typeof applyRestorePlanFromPlanStat
     ...state.shedDecisions.lastPlannedDeviceIds,
     ...planDevices.map(({ id }) => id),
   ]);
+  // Every other previously planned device was kept, with the authority it has now.
+  state.shedDecisions.lastPlannedKeptIds = new Set([
+    ...state.shedDecisions.lastPlannedKeptIds,
+    ...planDevices
+      .filter((device) => device.control.commandAuthority && !state.shedDecisions.lastPlannedShedIds.has(device.id))
+      .map(({ id }) => id),
+  ]);
   return applyRestorePlanFromPlanState(params);
 };
 
