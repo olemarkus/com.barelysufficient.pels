@@ -42,7 +42,7 @@ const recordsForUntrackedDevice: DeviceWriteGate = (device) => (
 // can actually limit. The transport only admits devices with positive support
 // evidence; `powerCapable === false` refuses an enable while that evidence is
 // absent. The planner independently requires a real per-device reading before
-// any control decision, so a Flow setting never substitutes for meter admission.
+// granting command authority, so a Flow setting never substitutes for a meter.
 // Refusing the write turns a silent failure into a logged `device_setting_toggle_skipped`.
 //
 // An UNTRACKED device is refused too: its eligibility cannot be resolved, and a

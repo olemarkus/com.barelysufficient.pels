@@ -3,7 +3,7 @@
  *
  * They live here rather than inline in `app.ts` because one of them needs a
  * control-resolution step — the mode-target pass takes the planner's device
- * type and admitted set, so the snapshot goes through `toPlanDevice` first —
+ * type, so the snapshot goes through `toPlanDevice` first —
  * and that is not something the composition root should be doing beside a
  * settings handle.
  */

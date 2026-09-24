@@ -206,7 +206,7 @@ const renderManagedControl = (controlState: ReturnType<typeof resolveDeviceDetai
   }
   const managedHint = document.getElementById('device-detail-managed-hint');
   if (managedHint) {
-    managedHint.textContent = controlState.supportsPower
+    managedHint.textContent = controlState.supportsPower || controlState.supportsTemperature
       ? 'Include this device in modes and optimization plans.'
       : DEVICE_POWER_SUPPORT_HINT;
   }
@@ -229,7 +229,11 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // "adjust temperature" on a charger or socket.
   if (deviceDetailPriceOptRow) deviceDetailPriceOptRow.hidden = !controlState.supportsTemperature;
   setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
-  setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, controlState);
+  setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, {
+    ...controlState,
+    // The surplus lift reaches only a device with a power reading.
+    canControlTemperature: controlState.canControlTemperature && controlState.supportsPower,
+  });
   if (deviceDetailSurplusOptRow) {
     // Hidden outright rather than shown disabled, so the control never clutters
     // a home where the surplus engine has nothing to allocate.

@@ -184,32 +184,20 @@ describe('device settings initial load guard', () => {
     expect(savePriceOptimizationSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('disables management and price control for a thermostat without power support', async () => {
+  it('allows managed and price toggles, but keeps capacity toggle disabled, for temperature devices without power capability', async () => {
     const {
       managedCheckbox,
       controllableCheckbox,
       priceOptCheckbox,
-      debouncedSetSetting,
-      savePriceOptimizationSettings,
     } = await setupHarness({
       initialLoadComplete: true,
       isManaged: true,
       deviceOverrides: { powerCapable: false },
     });
 
-    expect(managedCheckbox.getAttribute('aria-checked')).toBe('false');
-    expect(managedCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(managedCheckbox.getAttribute('aria-checked')).toBe('true');
+    expect(managedCheckbox.getAttribute('aria-disabled')).not.toBe('true');
     expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
-    expect(priceOptCheckbox.getAttribute('aria-disabled')).toBe('true');
-    expect(document.getElementById('device-card-list')?.textContent).toContain('power readings');
-    expect(priceOptCheckbox.getAttribute('data-tooltip')).toContain('power readings');
-    expect(priceOptCheckbox.getAttribute('data-tooltip')).not.toContain('requires Managed');
-    const reasons = [...document.querySelectorAll('.pels-device-card__reasons li')];
-    expect(reasons.filter((reason) => reason.textContent?.startsWith('PELS needs power readings'))).toHaveLength(1);
-    managedCheckbox.click();
-    priceOptCheckbox.click();
-    await Promise.resolve();
-    expect(debouncedSetSetting).not.toHaveBeenCalled();
-    expect(savePriceOptimizationSettings).not.toHaveBeenCalled();
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).not.toBe('true');
   });
 });

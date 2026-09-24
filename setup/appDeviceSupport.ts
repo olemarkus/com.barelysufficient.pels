@@ -11,7 +11,6 @@ import {
 } from '../lib/utils/settingsKeys';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
-import { filterMeteredPlanDevices } from '../lib/plan/planMeteredDevice';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import {
   enforceTemperatureWithoutOnOffOvershootBehaviors,
@@ -48,7 +47,8 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
 
 // The SINGLE definition of "is this device in the runtime-planned set" — the
 // set the plan cycle actually evaluates. The plan service projects the snapshot,
-// admits metered devices, then applies this predicate (see `buildHomePlanDevices`),
+// keeps the devices the plan can act on, then applies this predicate (see
+// `buildHomePlanDevices`),
 // so any consumer that needs to know whether a device will be planned (the
 // create-smart-task candidate list AND create-time validation) MUST use this
 // exact predicate. Otherwise a
@@ -110,12 +110,13 @@ export function seedTemperatureShedFloorDefaults(params: {
 /**
  * Persist the per-mode targets `resolveModeTargets` had to fill.
  *
- * The planner's resolver answers completely for every admitted device, so this
- * pass only adds durability: PELS owns a metered thermostat's setpoint, and a
- * setpoint re-derived from the device on every boot is followed rather than
- * owned. Writing the first resolution down makes it the owner's target from
- * then on, editable on the Modes screen and stable across a restart. An
- * unmetered device is not in the planner's admitted set and must not be seeded.
+ * The resolver already answers completely, so nothing downstream depends on
+ * this pass having run — a device that appeared a second ago is planned with a
+ * resolved target either way. What this adds is durability: PELS owns a managed
+ * thermostat's setpoint, and a setpoint that is re-derived from the device on
+ * every boot is not owned, it is followed. Writing the first resolution down
+ * makes it the owner's target from then on, editable on the Modes screen and
+ * stable across a restart.
  *
  * Runs on the snapshot refresh, before the plan cycle, so the write is a
  * deliberate act on the producer's pass rather than a side effect hiding inside
@@ -126,8 +127,8 @@ export function seedTemperatureShedFloorDefaults(params: {
  * the two views answer differently on purpose: a device whose owner switched
  * temperature control off is still a temperature device to the UI (that is what
  * renders the toggle and the saved targets beneath it) and is NOT one to
- * control. The metered admission guard keeps this pass on the set that can
- * actually receive plan controls.
+ * control. Consuming the planner's type is what keeps this pass from having a
+ * concept of the flag at all.
  */
 export function persistFilledModeTargets(params: {
   devices: readonly UnrankedPlanInputDevice[];
@@ -140,8 +141,7 @@ export function persistFilledModeTargets(params: {
     devices: planDevices, settings, resolveHomeIdForDevice, structuredLog, debugStructured,
   } = params;
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
-  const candidates = filterMeteredPlanDevices(planDevices)
-    .filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }));
+  const candidates = planDevices.filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }));
   if (candidates.length === 0) return;
 
   const byHome = new Map<HomeId, UnrankedPlanInputDevice[]>();

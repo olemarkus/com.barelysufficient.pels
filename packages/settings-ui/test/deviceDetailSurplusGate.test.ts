@@ -156,25 +156,24 @@ describe('device detail "Use solar surplus" gating', () => {
     expect(surplusRow()?.hidden).toBe(false);
   });
 
-  it('explains unsupported thermostat control without offering an unusable Managed switch', async () => {
+  it('keeps mode and price control usable for a thermostat without power support', async () => {
+    // PELS still sets such a thermostat's mode target and price shift; only
+    // power limiting waits for a reading.
     await openPanel({ hasManagedSolarDevice: true, device: buildDevice({ powerCapable: false }), surplusWilling: true });
-    for (const id of ['managed', 'price-opt', 'surplus-opt']) {
-      const control = document.getElementById(`device-detail-${id}`) as HTMLElement & { disabled: boolean; selected: boolean };
-      expect(control.disabled).toBe(true);
-      expect(control.selected).toBe(false);
+    for (const id of ['managed', 'price-opt']) {
+      const control = document.getElementById(`device-detail-${id}`) as HTMLElement & { disabled: boolean };
+      expect(control.disabled).toBe(false);
     }
-    expect(document.getElementById('device-detail-managed-hint')?.textContent).toContain('power readings');
-    const hint = document.getElementById('device-detail-surplus-gate-hint');
-    expect(hint?.textContent).toContain('power readings');
-    expect(hint?.textContent).not.toContain('Turn on Managed');
-    expect(hint?.textContent).not.toContain('keeps the new temperature');
-    expect(document.getElementById('device-detail-delta-gate-hint')?.textContent).toContain('power readings');
-    expect(document.getElementById('device-detail-modes-help')?.textContent).toContain('power readings');
+    expect(document.getElementById('device-detail-managed-hint')?.textContent).not.toContain('power readings');
+    expect(document.getElementById('device-detail-modes-help')?.textContent).not.toContain('power readings');
     const target = document.querySelector('.detail-mode-temp') as HTMLElement & { disabled: boolean };
-    expect(target.disabled).toBe(true);
+    expect(target.disabled).toBe(false);
     const temperaturePolicy = document.getElementById('device-detail-temperature-control-disabled') as HTMLSelectElement;
-    expect(temperaturePolicy.disabled).toBe(true);
-    expect(document.getElementById('device-detail-temperature-control-hint')?.textContent).toContain('power readings');
+    expect(temperaturePolicy.disabled).toBe(false);
+    // The surplus lift reaches only a device with a power reading.
+    const surplus = document.getElementById('device-detail-surplus-opt') as HTMLElement & { disabled: boolean };
+    expect(surplus.disabled).toBe(true);
+    expect(document.getElementById('device-detail-surplus-gate-hint')?.textContent).toContain('needs a power reading');
   });
 
   it('keeps supported controls usable before a current device reading arrives', async () => {

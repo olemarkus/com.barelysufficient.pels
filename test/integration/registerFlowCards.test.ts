@@ -363,7 +363,7 @@ describe('registerFlowCards', () => {
 
   // `powerCapable: false` means this read has no positive support evidence, so
   // the enable card refuses while the status is unresolved. The planner also
-  // requires a real reading before any control decision. The card refuses a
+  // requires a real reading before granting command authority. The card refuses a
   // device PELS does not track at all, whose eligibility cannot be resolved.
   // The disable card does neither, because taking control away must never
   // depend on a successful lookup.

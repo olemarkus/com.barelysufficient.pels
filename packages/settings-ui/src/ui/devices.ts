@@ -130,7 +130,6 @@ const getCapacityTitle = (params: {
 const getPriceTitle = (isLoadingComplete: boolean, manageability: DeviceControlAvailabilityState): string => {
   if (!isLoadingComplete) return 'Loading...';
   if (!manageability.supportsTemperature) return 'Price-based control (temperature devices only)';
-  if (!manageability.supportsPower) return DEVICE_POWER_SUPPORT_HINT;
   if (manageability.isManaged) return 'Price-based control';
   return 'Price-based control (requires Managed by PELS)';
 };

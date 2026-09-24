@@ -95,7 +95,7 @@ export const appendRedesignDisabledReasons = (
 export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsPower;
+  const supportsManage = supportsPower || supportsTemperature;
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   const canManage = supportsManage && !nativeWiringRequired;
   return {

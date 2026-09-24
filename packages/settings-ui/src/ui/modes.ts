@@ -1,5 +1,5 @@
 import Sortable from 'sortablejs';
-import { supportsPowerDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
@@ -252,7 +252,6 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   priorityList.innerHTML = '';
   const managedDevices = devices.filter((device) => (
     resolveManagedState(device.id)
-    && supportsPowerDevice(device)
     && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
   if (!managedDevices.length) {

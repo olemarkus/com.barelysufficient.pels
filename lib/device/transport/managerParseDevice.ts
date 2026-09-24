@@ -161,13 +161,14 @@ export function parseDevice(params: {
  * be structural (capability or Homey Energy metadata), live (a Homey Energy
  * report), or retained from an earlier reading. Because live evidence can be
  * missing on a fast boot refresh, `false` is not durable proof of unsupported
- * hardware and must not overwrite saved owner choices. Plan admission asks the
+ * hardware and must not overwrite saved owner choices. Power limiting asks the
  * separate, stricter question: is a trusted per-device reading available now?
  *
  * Homey Energy metadata and the owner's Energy settings ("Energy used when
- * on") are support signals, not readings. Admission to any plan control takes a
- * real per-device power reading, and the plan projection only gives a device a
- * power axis when it has one (`isMeteredPlanDevice`).
+ * on") are support signals, not readings. Power limiting and command authority
+ * take a real per-device power reading, and the plan projection only gives a
+ * device a power axis when it has one (`isMeteredPlanDevice`). A temperature
+ * device without one is still planned for its mode target and price shift.
  *
  * A device without structural support may still expose a real reading through
  * the Homey Energy live report. The reading and its retained copy make the

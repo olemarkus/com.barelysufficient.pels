@@ -1335,12 +1335,12 @@ describe('settings script', () => {
     expect(controllableWrites().at(-1)?.[1]).toEqual(expect.objectContaining({ 'socket-2': false }));
   });
 
-  it('omits unsupported thermostats with stale Managed flags from Modes but keeps supported devices without samples', async () => {
+  it('lists a thermostat without power support in Modes, since PELS still sets its mode target', async () => {
     installSettingsHomeyMock({
       target_devices_snapshot: [
         {
-          id: 'unsupported',
-          name: 'Unsupported thermostat',
+          id: 'unmetered',
+          name: 'Thermostat without power readings',
           powerCapable: false,
           targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         },
@@ -1351,16 +1351,16 @@ describe('settings script', () => {
           targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         },
       ],
-      managed_devices: { unsupported: true, supported: true },
-      capacity_priorities: { Home: { unsupported: 1, supported: 2 } },
-      mode_device_targets: { Home: { unsupported: 21, supported: 21 } },
+      managed_devices: { unmetered: true, supported: true },
+      capacity_priorities: { Home: { unmetered: 1, supported: 2 } },
+      mode_device_targets: { Home: { unmetered: 21, supported: 21 } },
     });
 
     await loadDeviceAndModeSettings();
 
     const rows = Array.from(document.querySelectorAll<HTMLElement>('#priority-list .device-row'));
-    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['supported']);
-    expect(document.querySelector('#priority-list [data-device-id="supported"] .mode-target-input')).not.toBeNull();
+    expect(rows.map((row) => row.dataset.deviceId)).toEqual(['unmetered', 'supported']);
+    expect(document.querySelector('#priority-list [data-device-id="unmetered"] .mode-target-input')).not.toBeNull();
   });
 
   it('normalizes loaded priorities to a strict, deterministic order', async () => {
@@ -1396,19 +1396,16 @@ describe('settings script', () => {
         {
           id: 'z-new',
           name: 'Zulu',
-          powerCapable: true,
           targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         },
         {
           id: 'configured',
           name: 'Configured',
-          powerCapable: true,
           targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         },
         {
           id: 'a-new',
           name: 'Alpha',
-          powerCapable: true,
           targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         },
       ],
@@ -2417,7 +2414,6 @@ describe('Plan sorting', () => {
           id: 'dev-1',
           name: 'Connected 300',
           deviceType: 'temperature',
-          powerCapable: true,
           targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
         },
       ],

@@ -155,7 +155,8 @@ export function getCurrentDrawKw(device: CurrentDrawInput): number {
  * The plan device's power axis (`MeteredPlanInputKind`): the device's own
  * reading as `currentDrawKw`, or nothing at all when it has none. Unlike
  * `getCurrentDrawKw` above, absence stays absence — the plan keeps a device
- * without a reading out of every control lane rather than reading it as `0`.
+ * without a reading out of every power lane rather than reading it as `0`, and
+ * still plans its temperature.
  * Uses the same normalization as every snapshot write seam, so a junk value is
  * absence here too.
  */

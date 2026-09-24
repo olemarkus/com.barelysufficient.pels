@@ -25,13 +25,16 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   Usage history, and smart-task allocation remain hourly. A partial first/reset quarter is not
   a complete period and must never be treated as favourable capacity evidence. Design of record:
   `notes/capacity-periods.md`.
-- **Every planned device has a real per-device power reading** (owner ruling 2026-09-23).
+- **The power axis is a cluster, and only power logic reads it** (owner ruling 2026-09-23).
   `currentDrawKw` lives on `MeteredPlanInputKind` / `MeteredKind`, reached through
   `isMeteredPlanDevice` (`planMeteredDevice.ts`), and is present iff the device has a real
-  per-device power reading. `buildHomePlanDevices` drops every unmetered device before the plan
-  boundary, including temperature devices: a setpoint axis does not bypass power admission, and
-  neither mode targets nor price shifts apply before a trusted reading arrives. Never stamp a `0`
-  draw on a device without a reading; the upstream gate excludes it instead.
+  per-device power reading. A temperature device without one is still planned
+  (`isPlannableDevice`): mode targets and the price shift apply, but shedding, restore, swaps,
+  reserves, surplus absorption, usage sums, overshoot tracking, idle classification and
+  budget-pressure denial take metered devices only. That includes the shed-floor hold: a device
+  without a reading follows its temperature logic (`planReasonsHoldDecisions.ts`), as it does on the
+  first plan after a restart. Never stamp a `0`
+  draw on a device without a reading: that is the placeholder the split removed.
 - **No EV cluster on the plan device, and there is not going to be one** (owner ruling
   2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
   `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost threshold

@@ -10,7 +10,7 @@ import {
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from './state.ts';
-import { supportsPowerDevice, supportsTemperatureDevice } from './deviceUtils.ts';
+import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
 import { readCurrentPriceSettings } from './priceSettingsPersistence.ts';
@@ -103,7 +103,6 @@ const buildPriceOptDevices = (devices: SettingsUiDeviceView[]): PriceOptDevice[]
       const cfg = state.priceOptimizationSettings[d.id];
       return resolveManagedState(d.id)
         && cfg?.enabled === true
-        && supportsPowerDevice(d)
         && supportsTemperatureDevice(d);
     })
     .map((d) => {

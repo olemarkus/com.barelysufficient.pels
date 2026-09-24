@@ -20,7 +20,8 @@ export const LEGEND_ONLY_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Power support applies to management as well as limiting. A configured load
+ * The one way an owner makes a device limitable, named once so every surface
+ * that turns power-limit control away says the same thing. A configured load
  * (`settings.load`) is deliberately NOT offered: it refines the expected-power
  * estimate but is not an eligibility source (`isDevicePowerCapable` in
  * `lib/device/transport/managerParseDevice.ts`), and a hint that named it sent
@@ -28,13 +29,11 @@ export const LEGEND_ONLY_REASONS: ReadonlySet<string> = new Set([
  * own label for the field, as an owner read it off the device's Advanced
  * settings; the Energy section is named too, so the hint still finds the field
  * if Homey words that label differently (it matches `docs/configuration.md`).
- * Metadata can establish support, but control waits for the first device reading.
  */
-export const POWER_READING_REMEDY = 'device readings from a power meter or Homey Energy';
+export const POWER_READING_REMEDY = 'a power meter, or "Energy used when on" under Energy in the device’s'
+  + ' Advanced settings in Homey';
 
-export const DEVICE_POWER_SUPPORT_REASON = 'PELS needs power readings from this device to manage it.';
-
-export const DEVICE_POWER_SUPPORT_HINT = `${DEVICE_POWER_SUPPORT_REASON} `
+export const DEVICE_POWER_SUPPORT_HINT = 'PELS needs power readings from this device to manage it. '
   + 'Use a power meter or configure "Energy used when on" under Energy in the device’s Advanced settings in Homey. '
   + 'Control starts when readings arrive.';
 
@@ -87,7 +86,6 @@ export const getPriceDisabledReason = (
 ): string | null => {
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
   if (!manageability.supportsTemperature) return PRICE_TEMPERATURE_ONLY_REASON;
-  if (!manageability.supportsPower) return DEVICE_POWER_SUPPORT_HINT;
   if (!manageability.isManaged) return PRICE_NEEDS_MANAGED_REASON;
   return null;
 };

@@ -262,7 +262,9 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
   });
 
-  it('excludes a temperature device until a trusted device-power reading exists', () => {
+  it('plans a temperature device without a power reading for its setpoints, with no power axis', () => {
+    // Owner ruling 2026-09-23: the temperature logic applies, the power logic
+    // does not. The same device without a temperature axis is excluded above.
     const { measuredPowerKw: _measuredPowerKw, ...unmetered } = mainDevice as TargetDeviceSnapshot & {
       measuredPowerKw: number;
     };
@@ -279,7 +281,10 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       resolveManagedState: vi.fn(() => true),
     });
 
-    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
+    const planned = buildHomePlanDevices(ctx, MAIN_HOME_ID);
+    expect(planned.map((device) => device.id)).toEqual(['device-main']);
+    expect('currentDrawKw' in planned[0]!).toBe(false);
+    expect(planned[0]!.control.commandAuthority).toBe(false);
   });
 
   it('excludes a sub-home zone member from the main plan devices', () => {

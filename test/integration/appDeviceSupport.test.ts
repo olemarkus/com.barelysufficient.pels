@@ -216,19 +216,17 @@ describe('persistFilledModeTargets', () => {
     }));
   });
 
-  it('does not seed a thermostat target until its per-device reading is trusted', () => {
+  it('seeds a thermostat without a per-device reading, since the plan still sets its mode target', () => {
     const settings = baseSettings({ Home: {} });
-    const structuredLog = vi.fn();
 
     persistFilledModeTargets({
       devices: [buildUnmeteredThermostat()],
       settings: asAppSettings(settings),
-      structuredLog,
+      structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
 
-    expect(settings.set).not.toHaveBeenCalled();
-    expect(structuredLog).not.toHaveBeenCalled();
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', { Home: { 't-1': 21 } });
   });
 
   it('is a no-op when every entry is already populated', () => {

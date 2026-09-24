@@ -15,7 +15,9 @@ export const resolveDeviceDetailControlState = (
   const canControlTemperature = supportsTemperatureAdjustments(device);
   const supportsPower = supportsPowerDevice(device);
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
-  const canManageDevice = supportsPower && !nativeWiringRequired;
+  // A temperature device without power support is still managed for its mode
+  // target and price shift; only power limiting waits for a reading.
+  const canManageDevice = (supportsPower || supportsTemperature) && !nativeWiringRequired;
   return {
     supportsTemperature,
     canControlTemperature,

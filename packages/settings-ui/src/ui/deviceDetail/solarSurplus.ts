@@ -1,4 +1,5 @@
 import { supportsTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
+import { POWER_READING_REMEDY } from '../deviceControlAvailability.ts';
 import {
   deviceDetailDumpLoadDisabledHint,
   deviceDetailDumpLoadOpt,
@@ -10,6 +11,7 @@ import {
   deviceDetailSurplusSection,
 } from '../dom.ts';
 import {
+  supportsPowerDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -101,9 +103,14 @@ export const updateSurplusSectionVisibility = (params: {
     deviceDetailSurplusSection.style.display = 'none';
     return;
   }
+  // The surplus lift reaches only a device with a power reading
+  // (`lib/plan/planSurplusAbsorb.ts`), unlike its mode target and price shift.
+  const supportsPower = supportsPowerDevice(device);
   const gateHint = resolveSurplusGateHint({
-    canControlTemperature: supportsTemperatureAdjustments(device),
-    disabledHint: temperatureAdjustmentGateHint(device),
+    canControlTemperature: supportsPower && supportsTemperatureAdjustments(device),
+    disabledHint: supportsPower
+      ? temperatureAdjustmentGateHint(device)
+      : `Solar surplus needs a power reading: ${POWER_READING_REMEDY}.`,
     isManaged,
     selected: deviceDetailSurplusOpt.selected,
   });

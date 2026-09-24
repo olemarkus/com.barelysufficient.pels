@@ -107,7 +107,7 @@ describe('VThermo device integration', () => {
     expect(priceSettings['vthermo-1']?.enabled).toBe(true);
   });
 
-  it('does not control an unmetered thermostat with saved control enabled', async () => {
+  it('applies mode targets for VThermo even when it lacks power capabilities', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'vthermo-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
@@ -129,12 +129,16 @@ describe('VThermo device integration', () => {
 
     await app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
-    expect(setCapSpy).not.toHaveBeenCalled();
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/vthermo-1/capability/target_temperature',
+      { value: 19 },
+    );
   });
 
-  it('waits for a trusted device-power reading before controlling a supported thermostat', async () => {
-    // "Energy used when on" establishes durable support, so the owner can
-    // configure the device. It does not substitute for a live power reading.
+  it('never switches on a supported thermostat that has no power reading, but still applies its mode target', async () => {
+    // "Energy used when on" keeps it supported, so Power-limit control stays on,
+    // but nothing measures its draw. Turning it on is a power decision, which
+    // takes a reading; its setpoint is temperature logic and still applies.
     setMockDrivers({});
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'vthermo-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
@@ -156,7 +160,7 @@ describe('VThermo device integration', () => {
 
     await app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
-    expect(setCapSpy).not.toHaveBeenCalledWith(
+    expect(setCapSpy).toHaveBeenCalledWith(
       'manager/devices/device/vthermo-1/capability/target_temperature',
       { value: 19 },
     );

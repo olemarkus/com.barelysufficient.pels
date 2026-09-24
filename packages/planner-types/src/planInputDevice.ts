@@ -141,9 +141,12 @@ export type BinaryPlanInputKind = {
  *
  * Present IFF the device has a real per-device power reading this cycle
  * (`measure_power`, a `meter_power` window, or its Homey Energy live value).
- * Every device reaching the planner has a per-device power reading. The
- * upstream plan-device admission drops devices without one, including
- * temperature devices: mode targets and price shifts do not bypass that gate.
+ * A temperature device with no power reading still reaches the plan — mode
+ * targets, the price shift and the rest of the temperature logic apply to it —
+ * but without this cluster, so it is never limited for power, never counted in
+ * managed usage (the whole-home meter counts its draw as background usage), and
+ * never priced as denied demand. A device with neither a power reading nor a
+ * temperature axis has nothing the plan can do for it and is not planned.
  *
  * The raw `measuredPowerKw` deliberately does NOT reach this contract. It stays
  * on the transport snapshot, where absence is real and the producer reads it;

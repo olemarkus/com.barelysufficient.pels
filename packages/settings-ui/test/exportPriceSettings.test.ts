@@ -314,7 +314,7 @@ describe('Price-aware devices power support (via priceConfig)', () => {
     document.body.replaceChildren();
   });
 
-  it('omits unsupported thermostats with stale Managed flags but keeps supported devices without samples', async () => {
+  it('lists a thermostat without power support, since PELS still applies its price shift', async () => {
     const { state } = await import('../src/ui/state.ts');
     state.latestDevices = [
       {
@@ -351,8 +351,7 @@ describe('Price-aware devices power support (via priceConfig)', () => {
     await initPriceAwareDevicesView(surface);
 
     const names = Array.from(surface.querySelectorAll('.price-aware-grid__name'));
-    expect(names.map((name) => name.textContent)).toEqual(['Supported thermostat without sample']);
-    expect(surface.querySelectorAll('.price-aware-grid__row .value-adjuster__btn')).toHaveLength(4);
+    expect(names.map((name) => name.textContent)).toEqual(['Unsupported thermostat', 'Supported thermostat without sample']);
   });
 });
 
