@@ -992,9 +992,13 @@ describe('MyApp initialization', () => {
       app.planEngine.state.sheddingActive = false;
     }
 
-    // The restore estimate is 2 kW plus its admission buffer, so 5 kW gives
-    // enough headroom for the planned shed → keep transition.
-    void setLimitListener({ limit_kw: 5 });
+    // The restore estimate is 2 kW plus its admission buffer, and the heater
+    // still draws 2 kW (dry run). Admission also reads the hour's energy pace,
+    // (limit - margin - 1.3 kWh used) / hours left, which is tightest at the top
+    // of the hour: 8 kW leaves 6.5 kW of pace even with a full hour to go, so the
+    // restore is admitted whatever minute the test runs at (5 kW failed before
+    // roughly ten past).
+    void setLimitListener({ limit_kw: 8 });
     await waitFor(() => (
       getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'keep'
     ));
