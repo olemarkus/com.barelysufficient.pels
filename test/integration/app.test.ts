@@ -992,7 +992,9 @@ describe('MyApp initialization', () => {
       app.planEngine.state.sheddingActive = false;
     }
 
-    void setLimitListener({ limit_kw: 4 });
+    // The restore estimate is 2 kW plus its admission buffer, so 5 kW gives
+    // enough headroom for the planned shed → keep transition.
+    void setLimitListener({ limit_kw: 5 });
     await waitFor(() => (
       getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'keep'
     ));
