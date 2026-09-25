@@ -14,7 +14,7 @@
  */
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
-import type { ShedDecisions } from './shedDecisions';
+import type { BaselineOffPosture, ShedDecisions } from './shedDecisions';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
 import type { SheddingPlan } from './shedding/types';
@@ -317,12 +317,15 @@ export function applyPostSheddingHolds(params: {
  * Asked only when the OWNER withdrew the posture: neither "Run on solar surplus"
  * (`surplusWilling`) nor "Only PELS starts this device" stands any more. The
  * posture also drops for reasons that are not a withdrawal — Power-limit control
- * off, the device unmanaged, a control-model change, a move to a meter area —
+ * off, the device unmanaged, a control-model change, a move to a meter area, and
+ * for the start policy Power-limit control ON, which takes it out of force —
  * and minting a hold there would outlive the posture coming back and keep a
- * surplus load off for good. Clearing "Only PELS starts this device" counts as a
- * withdrawal too, where it reaches this function: for a device PELS was holding
- * shed under the policy. An already-off `pels_only` device is inactive rather
- * than shed, carries no stamp, and is never released here.
+ * surplus load off for good. Each stamp records which posture earned it and is
+ * judged against that posture's own stored setting (`isBaselineOffStillWanted`).
+ * Clearing "Only PELS starts this device" counts as a withdrawal too, where it
+ * reaches this function: for a device PELS was holding shed under the policy.
+ * An already-off `pels_only` device is inactive rather than shed, carries no
+ * stamp, and is never released here.
  *
  * Returns the devices the release handed to that hold, so the builder can carry
  * it into this build's input before restore runs.
@@ -342,6 +345,25 @@ export function applyPostSheddingHolds(params: {
  * `test/integration/surplusDumpLoadPlan.test.ts` exist so it cannot be made true
  * by accident.
  */
+/**
+ * Does the owner still hold a setting that earned this stamp? Each posture is
+ * judged against its OWN stored setting, never the one in force: this asks
+ * whether the owner withdrew it. A start policy that stopped applying because
+ * Power-limit control came on was not withdrawn, and answering it with "Leave
+ * off until turned on again" would park the device off with the house under its
+ * cap, the outcome turning power limiting on is meant to end. A cleared "Run on
+ * solar surplus" is withdrawn even while a paused start policy is still stored,
+ * because the start policy did not earn that stamp.
+ */
+function isBaselineOffStillWanted(
+  device: PlanInputDevice,
+  posture: BaselineOffPosture,
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
+): boolean {
+  return (posture.surplus && getConfig(device.id)?.surplusWilling === true)
+    || (posture.startPolicy && device.startPolicy === 'pels_only');
+}
+
 export function releaseAbandonedSurplusPosture(params: {
   shedDecisions: ShedDecisions;
   admittedDevices: PlanInputDevice[];
@@ -352,35 +374,38 @@ export function releaseAbandonedSurplusPosture(params: {
   const {
     shedDecisions, admittedDevices, shedSet, getConfig, leaveOffOnRelease,
   } = params;
-  const stampedIds = Object.keys(shedDecisions.surplusOnlyByDevice);
+  const stamps = Object.entries(shedDecisions.surplusOnlyByDevice);
   const heldOffIds = new Set<string>();
-  if (stampedIds.length === 0) return heldOffIds;
+  if (stamps.length === 0) return heldOffIds;
   // EITHER baseline-off posture keeps the stamp alive, matching what stamps it
   // (`ShedDecisions.recordPlannedShed`). A `pels_only` device the owner has just
   // opted OUT of is in neither set and falls through to the clear, which is the
   // whole point: without it the stale decision let the uncontrolled-restore lane
-  // force the device ON as PELS's last act before losing authority.
+  // force the device ON as PELS's last act before losing authority. The policy
+  // IN FORCE, so a device whose owner turned Power-limit control on is released
+  // too: its baseline of off no longer applies (`resolveStartPolicyInForce`).
   const baselineOffNow = new Set(
     admittedDevices
-      .filter((dev) => dev.surplusOnly === true || dev.startPolicy === 'pels_only')
+      .filter((dev) => dev.surplusOnly === true || dev.startPolicyInForce === 'pels_only')
       .map((dev) => dev.id),
   );
   // Only a binary device observed OFF can be left off: "Leave off until turned
   // on again" has planning effect only while the device is still observed off
   // (`resolveExternalOffHoldActive`), and a running device must never be marked
   // held. A device that left the snapshot is in neither set and is simply released.
-  const withdrawnObservedOffIds = new Set(
+  const observedOffById = new Map(
     admittedDevices
       .filter((dev) => isBinaryPlanDevice(dev) && dev.currentOn === false)
-      .filter((dev) => dev.startPolicy !== 'pels_only' && getConfig(dev.id)?.surplusWilling !== true)
-      .map((dev) => dev.id),
+      .map((dev) => [dev.id, dev]),
   );
-  for (const id of stampedIds) {
+  for (const [id, posture] of stamps) {
     if (baselineOffNow.has(id)) continue; // still a baseline-off device — keep the stamp
+    const observedOff = observedOffById.get(id);
+    const withdrawn = observedOff !== undefined && !isBaselineOffStillWanted(observedOff, posture, getConfig);
     // Asked on THIS build whatever else holds the device: the plan's finalization
     // drops the posture stamp of a device capacity is still shedding, so this is
     // the only build that sees the release.
-    const outcome = withdrawnObservedOffIds.has(id) ? leaveOffOnRelease(id) : 'released';
+    const outcome = withdrawn ? leaveOffOnRelease(id) : 'released';
     // `unavailable` decides nothing (a transient settings failure is a no-op):
     // the device stays off this build, as the hold's own fail-closed read would
     // keep it, and the stamp stays so the next build asks again.

@@ -98,6 +98,22 @@ describe('resolveStartPolicyHold', () => {
     expect([...resolveStartPolicyHold([unmanaged]).holdIds]).toEqual([]);
   });
 
+  it('does not hold a pels_only device whose power limiting is on', () => {
+    // Power limiting on means PELS already owns when the device runs, so the
+    // policy is not in force (owner ruling, 2026-09-25) and nothing is held.
+    const limited = inputDevice({
+      id: 'charger',
+      name: 'charger',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on: false },
+      controllable: true,
+      managed: true,
+      startPolicy: 'pels_only',
+    });
+
+    expect([...resolveStartPolicyHold([limited]).holdIds]).toEqual([]);
+  });
+
   it('emits a reason with no numbers, so it is byte-stable across cycles', () => {
     const first = resolveStartPolicyHold([device('charger', 'pels_only')]);
     const second = resolveStartPolicyHold([device('charger', 'pels_only')]);

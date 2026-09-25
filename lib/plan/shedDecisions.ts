@@ -1,6 +1,17 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 
 /**
+ * Which baseline-of-off posture(s) earned a device's shed-decision stamp
+ * (`ShedDecisions.surplusOnlyByDevice`).
+ */
+export type BaselineOffPosture = {
+  /** "Run on solar surplus": the producer-resolved `surplusOnly` posture. */
+  surplus: boolean;
+  /** "Only PELS starts this device", in force (`startPolicyInForce`). */
+  startPolicy: boolean;
+};
+
+/**
  * What the plan decided to hold shed, when, and under which posture — the
  * decision-time record, as opposed to the actuation-time clocks in
  * `ActuationRecord`. One per `PlanEngineState`. In-memory: after a restart
@@ -45,9 +56,15 @@ export class ShedDecisions {
   decidedMs: Record<string, number> = {};
 
   /**
-   * Plan-less-safe "Run on solar surplus" posture stamp: `true` for a device
-   * whose CURRENT shed decision was taken while it carried the
-   * producer-resolved `surplusOnly` dump-load posture. Refreshed for every
+   * Plan-less-safe baseline-off posture stamp: present for a device whose
+   * CURRENT shed decision was taken while it carried a baseline-of-off posture
+   * — the producer-resolved `surplusOnly` dump-load posture, or "Only PELS
+   * starts this device" in force — and naming which. The executor asks only
+   * whether it is present; the release (`releaseAbandonedSurplusPosture`) reads
+   * which posture earned it, because a stamp must be judged against the owner
+   * setting that earned it: a start policy that stopped applying because power
+   * limiting came on is not a withdrawal, a cleared "Run on solar surplus" is,
+   * and one device can carry the first while losing the second. Refreshed for every
    * planned-shed device each build, so a posture toggle while held updates it,
    * and cleared with the decision clock. The executor's
    * capacity-control-off/uncontrolled binary restore lanes consult THIS stamp
@@ -57,7 +74,7 @@ export class ShedDecisions {
    * uncontrolled-restore lane requires the decision, so that race is fail-safe
    * (no stamp ⇒ no decision ⇒ no forced ON).
    */
-  surplusOnlyByDevice: Record<string, true> = {};
+  surplusOnlyByDevice: Record<string, BaselineOffPosture> = {};
 
   /**
    * The previous plan's shed set — what makes the decision clock edge-set
@@ -117,18 +134,21 @@ export class ShedDecisions {
     // the same fact whether the posture is "Run on solar surplus" or "Only PELS
     // starts this device". Without the second arm, clearing the start policy
     // turned the device ON as PELS's last act before giving up the lever.
-    const baselineOffIds = new Set<string>();
+    const postureById = new Map<string, BaselineOffPosture>();
     for (const device of devices) {
-      if (device.surplusOnly === true || device.startPolicy === 'pels_only') {
-        baselineOffIds.add(device.id);
-      }
+      const posture = {
+        surplus: device.surplusOnly === true,
+        startPolicy: device.startPolicyInForce === 'pels_only',
+      };
+      if (posture.surplus || posture.startPolicy) postureById.set(device.id, posture);
     }
     for (const id of shedIds) {
       if (!this.lastPlannedShedIds.has(id)) {
         this.decidedMs[id] = nowTs;
       }
-      if (baselineOffIds.has(id)) {
-        this.surplusOnlyByDevice[id] = true;
+      const posture = postureById.get(id);
+      if (posture) {
+        this.surplusOnlyByDevice[id] = posture;
       } else {
         delete this.surplusOnlyByDevice[id];
       }

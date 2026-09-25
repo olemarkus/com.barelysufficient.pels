@@ -72,6 +72,25 @@ export function resolveDeviceControlPosture(
 }
 
 /**
+ * The start policy that applies to the device: the owner's while Power-limit
+ * control is off, `'unrestricted'` while it is on.
+ *
+ * With power limiting on, PELS already owns when the device runs — it limits it
+ * under the cap and starts it again when there is room — so "Only PELS starts
+ * this device" has nothing left to add, and a baseline of off would only
+ * override those capacity decisions (owner ruling, 2026-09-25). Resolved here,
+ * beside the posture, from the same two inputs, so the planner never learns
+ * which toggle said so. `capacityControlEnabled` is the same conjunction the
+ * posture takes, for the reasons given there.
+ */
+export function resolveStartPolicyInForce(
+  startPolicy: DeviceStartPolicy,
+  capacityControlEnabled: boolean,
+): DeviceStartPolicy {
+  return capacityControlEnabled ? 'unrestricted' : startPolicy;
+}
+
+/**
  * Whether the device has any axis PELS may limit on. The setpoint counts unless
  * the owner switched temperature control off ("Keep the new temperature") —
  * NOT when they chose "Save as current mode target": that policy switches off

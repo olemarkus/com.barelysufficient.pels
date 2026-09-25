@@ -56,6 +56,7 @@ import {
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
+import { resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getSteppedLoadLowestActiveStep } from '../../lib/utils/deviceControlProfiles';
 import {
@@ -303,6 +304,7 @@ export const withMaterializedEvPlugState = <T extends {
   objectiveSessionInactive: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
   startPolicy: DeviceStartPolicy;
+  startPolicyInForce: DeviceStartPolicy;
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   const dev = {
@@ -344,6 +346,7 @@ export const withMaterializedEvPlugState = <T extends {
     // exercising the "Only PELS starts this device" hold says `'pels_only'`.
     startPolicy: (overrides as { startPolicy?: DeviceStartPolicy }).startPolicy
       ?? DEFAULT_DEVICE_START_POLICY,
+    startPolicyInForce: fixtureStartPolicyInForce(overrides as Parameters<typeof fixtureStartPolicyInForce>[0]),
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
@@ -651,11 +654,15 @@ export const withFixtureResidualKw = <T extends object>(
   priority: number;
   control: DeviceControlPosture;
   startPolicy: DeviceStartPolicy;
+  startPolicyInForce: DeviceStartPolicy;
 } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
   // Defaulted here for the same reason the posture is — see the note below.
   const startPolicy = (fields as { startPolicy?: DeviceStartPolicy }).startPolicy
     ?? DEFAULT_DEVICE_START_POLICY;
+  const startPolicyInForce = fixtureStartPolicyInForce(
+    fields as Parameters<typeof fixtureStartPolicyInForce>[0],
+  );
   // Defaulted here for the same reason `priority` is: several local spec helpers
   // build a device literal and pass it straight through this wrapper, so a
   // posture defaulted only in the top-level builders would leave those devices
@@ -674,6 +681,7 @@ export const withFixtureResidualKw = <T extends object>(
       priority,
       control,
       startPolicy,
+      startPolicyInForce,
       residualKw: { shed: declared.shed, restore: declared.restore },
     };
   }
@@ -683,6 +691,7 @@ export const withFixtureResidualKw = <T extends object>(
     priority,
     control,
     startPolicy,
+    startPolicyInForce,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,
@@ -918,6 +927,21 @@ export const fixtureControlPosture = (loose: {
     commandAuthority: loose.commandAuthority ?? (ownerPowerLimitOn && managed),
   };
 };
+
+/**
+ * The start policy in force, resolved by the producer's own function from the
+ * same shorthand the posture reads: Power-limit control on (the fixture default)
+ * means the owner's policy does not apply. A spec may still declare it.
+ */
+const fixtureStartPolicyInForce = (loose: {
+  startPolicy?: DeviceStartPolicy;
+  startPolicyInForce?: DeviceStartPolicy;
+  controllable?: boolean;
+  managed?: boolean;
+}): DeviceStartPolicy => loose.startPolicyInForce ?? resolveStartPolicyInForce(
+  loose.startPolicy ?? DEFAULT_DEVICE_START_POLICY,
+  (loose.controllable ?? true) && (loose.managed ?? true),
+);
 
 // `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
 // (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder

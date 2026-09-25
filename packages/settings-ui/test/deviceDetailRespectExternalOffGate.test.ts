@@ -41,6 +41,11 @@ const buildDom = () => {
           <small id="device-detail-temperature-control-power-hint" hidden></small>
           <small id="device-detail-temperature-control-disabled-smart-task-hint" hidden></small>
         </div>
+        <div class="md-switch-row" id="device-detail-start-policy-row" hidden>
+          <md-switch id="device-detail-start-policy"></md-switch>
+          <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden></small>
+          <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden></small>
+        </div>
         <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
           <md-switch id="device-detail-respect-external-off"></md-switch>
           <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
@@ -136,6 +141,7 @@ type OpenPanelParams = {
   managed?: boolean;
   controllable?: boolean;
   optedIn?: boolean;
+  pelsOnly?: boolean;
   activeSmartTask?: boolean;
   storedOptInMap?: Record<string, unknown>;
   temperatureControlDisabled?: boolean;
@@ -162,6 +168,7 @@ const openPanel = async (params: OpenPanelParams) => {
   state.controllableMap = { [deviceId]: params.controllable ?? true };
   state.budgetExemptMap = {};
   state.respectExternalOffMap = params.optedIn ? { [deviceId]: true } : {};
+  state.deviceStartPolicyMap = params.pelsOnly ? { [deviceId]: 'pels_only' } : {};
   state.temperatureControlDisabledMap = params.temperatureControlDisabled ? { [deviceId]: true } : {};
   state.priceOptimizationSettings = params.priceEnabled
     ? {
@@ -343,6 +350,72 @@ describe('device detail "Leave off until turned on again" gating', () => {
     await openPanel({ device: buildBinaryDevice() });
     expect(powerLimitHint()?.hidden).toBe(true);
     expect(smartTaskHint()?.hidden).toBe(true);
+  });
+});
+
+// "Only PELS starts this device" is the complement: it applies only while
+// Power-limit control is OFF. With power limiting on PELS already decides when
+// the device runs, the runtime does not apply the policy, and the row is hidden
+// (owner ruling, 2026-09-25).
+describe('device detail "Only PELS starts this device" row', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    buildDom();
+    mockSiblings();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const startPolicyRow = () => document.querySelector('#device-detail-start-policy-row') as HTMLElement | null;
+  const startPolicyToggle = () => document.querySelector('#device-detail-start-policy') as MdSwitchLike | null;
+  const pausedHint = () => document.querySelector('#device-detail-start-policy-paused-hint') as HTMLElement | null;
+  const noTaskHint = () => document.querySelector('#device-detail-start-policy-no-task-hint') as HTMLElement | null;
+
+  it('is offered while Power-limit control is off', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false });
+    expect(startPolicyRow()?.hidden).toBe(false);
+    expect(startPolicyToggle()?.disabled).toBe(false);
+    expect(pausedHint()?.hidden).toBe(true);
+  });
+
+  it('is hidden while Power-limit control is on for a device not opted in', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true });
+    expect(startPolicyRow()?.hidden).toBe(true);
+  });
+
+  it('says an opted-in device\u2019s setting is paused while power limiting is on, and can still clear it', async () => {
+    // A Flow can turn power limiting off (`disable_device_capacity_control`), and
+    // the stored choice applies again then, so the owner must be able to see it
+    // and switch it off. The no-task warning would be false here: PELS starts the
+    // device on capacity.
+    await openPanel({ device: buildBinaryDevice(), controllable: true, pelsOnly: true });
+    expect(startPolicyRow()?.hidden).toBe(false);
+    expect(startPolicyToggle()?.selected).toBe(true);
+    expect(startPolicyToggle()?.disabled).toBe(false);
+    expect(pausedHint()?.hidden).toBe(false);
+    expect(noTaskHint()?.hidden).toBe(true);
+  });
+
+  it('keeps the stored choice when power limiting pauses it, and applies it again when it goes off', async () => {
+    const { state } = await openPanel({ device: buildBinaryDevice(), controllable: false, pelsOnly: true });
+    expect(startPolicyToggle()?.selected).toBe(true);
+    expect(noTaskHint()?.hidden).toBe(false);
+
+    const powerLimit = document.querySelector('#device-detail-controllable') as MdSwitchLike;
+    powerLimit.selected = true;
+    powerLimit.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(pausedHint()?.hidden).toBe(false);
+    expect(noTaskHint()?.hidden).toBe(true);
+    expect(state.deviceStartPolicyMap).toEqual({ 'heater-1': 'pels_only' });
+
+    powerLimit.selected = false;
+    powerLimit.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(pausedHint()?.hidden).toBe(true);
+    expect(startPolicyToggle()?.selected).toBe(true);
   });
 });
 

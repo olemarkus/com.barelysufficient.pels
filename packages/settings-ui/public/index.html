@@ -1228,15 +1228,18 @@
 
                 <!-- The complement of "Leave off until turned on again" below.
                      That switch answers "who may turn it OFF"; this one answers
-                     "who may turn it ON". It applies whether or not Power-limit
-                     control is on, and it is the only lever PELS has when that
-                     control is off. -->
+                     "who may turn it ON". It applies only while Power-limit
+                     control is off, where it is the only lever PELS has; with
+                     power limiting on PELS already decides when the device runs,
+                     so the row is hidden unless the device is opted in, where it
+                     says the setting is paused (startPolicy.ts). -->
                 <div class="md-switch-row" id="device-detail-start-policy-row" hidden>
                   <md-switch id="device-detail-start-policy"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Only PELS starts this device</span>
                     <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a Smart task needs it to, and not otherwise.</small>
                     <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no Smart task, so nothing will start it while this is on.</small>
+                    <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden>Paused while Power-limit control is on, because PELS already decides when this device runs. It applies again if Power-limit control is turned off.</small>
                   </span>
                 </div>
 

@@ -258,11 +258,13 @@ const resolveHourClaims = (
     // `idle` / `released` stay held: the task decided it can finish without the
     // hour, typically waiting for a cheaper one, and lifting there would let the
     // ordinary restore lane start a device its own task chose to leave alone.
+    // The policy IN FORCE, not the stored one: with Power-limit control on there
+    // is no hold to lift (`resolveStartPolicyInForce`).
     // The literal, not a shared predicate: see the note on
     // `isStartPolicyHeldDevice` (`lib/plan/shedding/startPolicyHold.ts`) — the
     // boundary that separates these two readers is why the comparison is
     // duplicated, and shared-domain is not a legal home for it.
-    liftsStartPolicyHold: (planned || unclaimed) && device.startPolicy === 'pels_only',
+    liftsStartPolicyHold: (planned || unclaimed) && device.startPolicyInForce === 'pels_only',
   };
 };
 

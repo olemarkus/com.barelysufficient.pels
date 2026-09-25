@@ -9,9 +9,9 @@ import {
  *
  * Ownership: this module — the single home for shedding selection
  * (`lib/plan/shedding/AGENTS.md`) — decides which devices are HELD OFF this
- * cycle by their owner's start policy. The policy itself is producer-resolved
- * onto `PlanInputDevice.startPolicy` at `toPlanDevice`; nothing here reads the
- * settings map.
+ * cycle by their owner's start policy. The policy in force is producer-resolved
+ * onto `PlanInputDevice.startPolicyInForce` at `toPlanDevice`; nothing here
+ * reads the settings map.
  *
  * ## Why this is a plan posture and not an executor rule
  *
@@ -120,6 +120,11 @@ export function resolveStartPolicyHold(
  * always has the lever this hold assumes. Re-checking authority here would be the
  * conjunction this feature exists to avoid — the policy is most useful exactly
  * where power-limit control is OFF.
+ *
+ * It reads the policy IN FORCE (`startPolicyInForce`), which is `'unrestricted'`
+ * whenever Power-limit control is on. PELS then owns when the device runs, and
+ * holding it off would override its own capacity decisions with "only when a
+ * smart task says so" (owner ruling, 2026-09-25).
  */
 // `'pels_only'` is compared inline here rather than through a shared predicate.
 // The two backend readers of this question — this hold and
@@ -129,7 +134,7 @@ export function resolveStartPolicyHold(
 // backend peers is the bypass root `AGENTS.md` names. The same rule prescribes
 // what to do instead — accept the duplication and record the constraint.
 export function isStartPolicyHeldDevice(device: PlanInputDevice): boolean {
-  return device.startPolicy === 'pels_only'
+  return device.startPolicyInForce === 'pels_only'
     && device.control.managed
     && device.startPolicyHoldLifted !== true;
 }

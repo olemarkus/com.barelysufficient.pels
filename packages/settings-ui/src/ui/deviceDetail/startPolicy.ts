@@ -18,15 +18,20 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
  *
  * `respectExternalOff.ts` answers "who may turn this device OFF" and needs
  * Power-limit control on to mean anything. This one answers "who may turn it
- * ON", and it applies either way: with power limiting on it adds a baseline of
- * off to a device that also takes part in capacity limiting; with power limiting
- * off it is the ONLY lever PELS has, which is the case it was built for — a
- * managed load PELS watches but may never command, whose unplanned start is
- * absorbed as background usage while the house sits over its cap.
+ * ON", and it applies only with power limiting OFF, where it is the only lever
+ * PELS has — the case it was built for: a managed load PELS watches but may
+ * never command, whose unplanned start is absorbed as background usage while
+ * the house sits over its cap. With power limiting on PELS already decides when
+ * the device runs, and the runtime does not apply the policy
+ * (`resolveStartPolicyInForce`, owner ruling 2026-09-25), so the row is hidden
+ * for a device that is not opted in. The stored choice is left as it is and
+ * applies again if power limiting goes off, which a Flow can do
+ * (`disable_device_capacity_control`), so an opted-in device keeps the row,
+ * says the setting is paused, and can still be switched off.
  *
  * The policy carries its own grant: `resolveDeviceControlPosture` ORs
  * `'pels_only'` into `commandAuthority`, so switching this on is what gives PELS
- * the ability to act. Nothing here needs to consult Power-limit control.
+ * the ability to act.
  *
  * Shown only for managed devices PELS can actually switch: without a binary
  * handle there is nothing to turn back off, and offering the switch would
@@ -42,6 +47,7 @@ const toggleEl = q<HTMLElement & { selected: boolean; disabled: boolean }>(
   '#device-detail-start-policy',
 );
 const noTaskHintEl = q<HTMLElement>('#device-detail-start-policy-no-task-hint');
+const pausedHintEl = q<HTMLElement>('#device-detail-start-policy-paused-hint');
 
 const runSerializedStartPolicyWrite = createSerializedAsyncRunner();
 
@@ -65,21 +71,24 @@ const isPelsOnly = (deviceId: string): boolean => (
   resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only'
 );
 
+const isPowerLimitControlOn = (deviceId: string): boolean => state.controllableMap[deviceId] === true;
+
 /**
- * Show the row for any managed device PELS can switch, OR when the device is
- * already opted in.
+ * Show the row while Power-limit control is off, for any managed device PELS can
+ * switch, OR when the device is already opted in.
  *
- * The second half is the escape hatch every sibling setting keeps: without it a
- * device that stops qualifying — unmanaged now, or its binary handle gone —
- * leaves the owner no way to remove the opt-in, and PELS silently keeps
- * honouring it.
+ * The opted-in half is the escape hatch every sibling setting keeps: without it
+ * a device that stops qualifying (unmanaged now, its binary handle gone, or
+ * power limiting on) leaves the owner no way to remove the opt-in, and PELS
+ * silently starts honouring it again once the device qualifies.
  */
 const shouldShowStartPolicyRow = (
   deviceId: string,
   device: SettingsUiDeviceDetailItem | null,
   isManaged: boolean,
 ): boolean => (
-  (isManaged && device?.binaryControllable === true) || isPelsOnly(deviceId)
+  (!isPowerLimitControlOn(deviceId) && isManaged && device?.binaryControllable === true)
+  || isPelsOnly(deviceId)
 );
 
 /** Sync the row for the open device. */
@@ -99,16 +108,21 @@ export const syncStartPolicyRow = (params: {
     toggleEl.selected = false;
     toggleEl.disabled = true;
     if (noTaskHintEl) noTaskHintEl.hidden = true;
+    if (pausedHintEl) pausedHintEl.hidden = true;
     return;
   }
   toggleEl.selected = optedIn;
   toggleEl.disabled = false;
+  // Only reachable opted in: the row is hidden otherwise while power limiting is on.
+  const paused = isPowerLimitControlOn(deviceId);
+  if (pausedHintEl) pausedHintEl.hidden = !paused;
   if (noTaskHintEl) {
     // A WARNING, not a blocker. A smart task is the only thing that starts a
     // held device, so switching this on for a device with no task means it will
     // not run at all — which is a legitimate thing to want, and the owner should
-    // simply be told rather than stopped.
-    noTaskHintEl.hidden = !optedIn || hasActiveDeadlineObjective(deviceId);
+    // simply be told rather than stopped. Not while paused: PELS then starts the
+    // device on capacity, so the warning would be false.
+    noTaskHintEl.hidden = !optedIn || paused || hasActiveDeadlineObjective(deviceId);
   }
 };
 

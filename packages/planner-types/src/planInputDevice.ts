@@ -549,34 +549,54 @@ export type PlanInputDeviceBase = {
    * `'unrestricted'`, which is an answer rather than a gap, so no consumer
    * branches on presence. `resolveDeviceStartPolicy` owns that default.
    *
-   * It reaches the plan as a device fact rather than as a decision because two
-   * unrelated things read it: the posture producer, which turns `'pels_only'`
-   * into standing `commandAuthority`, and the shedding lane's start-policy hold,
-   * which turns it into a standing OFF intent when no smart task is driving the
-   * device.
+   * This is the owner's SETTING, and the plan reads it as a setting in one place:
+   * `releaseAbandonedSurplusPosture`, which has to tell an owner who switched
+   * the policy off (a withdrawal, answered by "Leave off until turned on
+   * again") from a policy that merely stopped applying because Power-limit
+   * control came on (not a withdrawal: PELS now starts the device on capacity).
+   * Everything that asks what the policy DOES this cycle reads
+   * {@link startPolicyInForce}.
    */
   startPolicy: DeviceStartPolicy;
+  /**
+   * The start policy that applies: the owner's {@link startPolicy} while
+   * Power-limit control is off, `'unrestricted'` while it is on.
+   *
+   * With power limiting on PELS already decides when the device runs: it limits
+   * it to stay under the cap and starts it again when there is room. A baseline
+   * of off on top of that only overrides PELS's own capacity decisions with
+   * "stay off unless a smart task says otherwise", which left a charger parked
+   * at 46% with the house under its cap once its task's deadline passed (owner
+   * ruling, 2026-09-25). So the policy is the lever for power limiting OFF,
+   * which is the case it was built for, and nothing else.
+   *
+   * REQUIRED and producer-resolved (`resolveStartPolicyInForce`). The
+   * start-policy hold, the smart-task lift and the baseline-off stamps read it.
+   */
+  startPolicyInForce: DeviceStartPolicy;
   /**
    * A smart task is ACTIVELY DRIVING this device this cycle, so its
    * start-policy baseline of off does not apply — the one thing in PELS that
    * positively starts a device has booked energy into this hour and wants it
    * running.
    *
-   * Stamped by `applyDeferredAdmissionToInput` on a `planned` admission
-   * decision, and only there. It is a per-cycle DERIVATION, deliberately not a
-   * rewrite of `startPolicy` above: that field is the owner's setting, and
-   * runtime code overwriting an owner setting mid-cycle is the exact shape the
+   * Stamped by `applyDeferredAdmissionToInput` on a `planned` or `unclaimed`
+   * admission decision, and only there. It is a per-cycle DERIVATION,
+   * deliberately not a rewrite of {@link startPolicyInForce} above: runtime code
+   * overwriting a producer-resolved setting mid-cycle is the exact shape the
    * `controllable: true` admission write was removed for — every downstream
    * reader then had to know whether it ran before or after admission. The two
    * baseline-off stamps that must survive an authority withdrawal
    * (`ShedDecisions.recordPlannedShed`, `releaseAbandonedSurplusPosture`) read
-   * the owner's setting for that reason; everything that asks "is the hold in
-   * force right now" reads it through `isStartPolicyHeldDevice`.
+   * the policy in force, unlifted, for that reason; everything that asks "is
+   * the hold in force right now" reads it through `isStartPolicyHeldDevice`.
    *
    * Narrower than `admittedDeviceIds` on purpose: a device its own task left
-   * `idle`, `unclaimed` or `inactive` this hour stays held, because an hour the
-   * task did not claim is not an hour the task is driving it (owner rulings,
-   * 2026-09-10).
+   * `idle` or `inactive` this hour stays held, because an hour the task decided
+   * it can do without is not an hour the task is driving it (owner rulings,
+   * 2026-09-10). An `unclaimed` hour does lift it: the task booked nothing only
+   * because a forecast left no room, and cannot finish without the hour (owner
+   * ruling, 2026-09-24).
    */
   startPolicyHoldLifted?: true;
 };

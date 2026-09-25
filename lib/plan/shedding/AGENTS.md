@@ -73,6 +73,36 @@ A descent that lands on the off step is a full turn-off, and `sortCandidates` is
 
 Selection stops on the deficit and on nothing else (`selection.ts`): the relief of the candidate just taken is banked before the loop asks again. It used to break right after a preemptive step-down, which — while the rung was unsized — ended a cycle on a step-down worth a fraction of the deficit with the breach still open and nothing else limited.
 
+## "Only PELS starts this device" applies only while Power-limit control is off
+
+Owner ruling 2026-09-25. The start-policy hold (`startPolicyHold.ts`) is the lever for a managed
+device whose Power-limit control is OFF — a load PELS watches but may not otherwise command, where
+the policy is PELS's only authority to keep an unplanned start off. With power limiting ON, PELS
+already owns the device's on/off: it limits it under the cap and starts it again when there is room.
+A baseline of off on top of that only overrides PELS's own capacity decisions with "stay off unless a
+smart task says so". Production 2026-09-25: an EV charger with both on sat `awaiting_pels_start` at
+46% from the moment its task's deadline passed, with the house under its cap.
+
+So the producer resolves the policy IN FORCE (`resolveStartPolicyInForce`,
+`lib/device/temperatureControlPosture.ts`) onto `PlanInputDevice.startPolicyInForce`:
+the owner's policy while power limiting is off, `unrestricted` while it is on. Review rules:
+
+- **Every "does the policy act this cycle" reader takes `startPolicyInForce`**: the hold, the
+  smart-task lift (`admission.ts`), and the baseline-off stamp (`ShedDecisions.recordPlannedShed`,
+  `releaseAbandonedSurplusPosture`'s keep-alive set). Reading the stored `startPolicy` there brings
+  the prod bug back.
+- **The stored `startPolicy` answers exactly one question: did the owner withdraw it.** Turning power
+  limiting on is not a withdrawal, so a device the hold had off is released plainly (the restore lane
+  starts it when there is room), never answered with "Leave off until turned on again". That is why
+  the stamp records which posture earned it (`BaselineOffPosture`) and the release judges each
+  against its own stored setting (`isBaselineOffStillWanted`).
+- **The stored choice is never rewritten.** It applies again when power limiting goes off — a Flow
+  can do that (`disable_device_capacity_control`) — so the settings row stays visible for an
+  opted-in device, marked paused, and stays hidden for one that is not.
+
+Regression cover: `test/integration/startPolicyPlanBuild.test.ts` § "with Power-limit control on",
+`test/integration/surplusDumpLoadPlan.test.ts` (withdrawal while a paused policy is stored).
+
 ## A skip must be reviewable
 
 Candidate gathering has a dozen exits that drop a device. Each one records a reason through `candidateSkipLog.ts`, rolled up into one `plan_shed_candidates_skipped` event per cycle and counted onto `OvershootStats`. Do not add a bare `continue` / `return null` to the collect loop or the builders without a reason code.

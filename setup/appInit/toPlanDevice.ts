@@ -1,5 +1,5 @@
 import { resolvePlanPowerAxis } from '../../lib/observer/observedPower';
-import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
+import { resolveDeviceControlPosture, resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
@@ -565,12 +565,14 @@ export function toPlanDevice(
   // a battery whose settings say so. The structural key closes that window: a
   // present observe-only device is NEVER commandable.
   const startPolicy = resolveDeviceStartPolicy(ctx.deviceStartPolicies, device.id);
+  const capacityControlEnabled = ctx.isCapacityControlEnabled(device.id);
   const control = resolveDeviceControlPosture(
     device,
     ctx.resolveManagedState(device.id),
-    ctx.isCapacityControlEnabled(device.id),
+    capacityControlEnabled,
     startPolicy,
   );
+  const startPolicyInForce = resolveStartPolicyInForce(startPolicy, capacityControlEnabled);
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
   // the planner helper carries no such branch (control-model vocab rule).
@@ -692,6 +694,7 @@ export function toPlanDevice(
     // else re-resolve.
     control,
     startPolicy,
+    startPolicyInForce,
     available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     surplusTracking,

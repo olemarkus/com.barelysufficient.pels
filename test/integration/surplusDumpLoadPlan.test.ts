@@ -173,7 +173,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(pump?.plannedState).toBe('shed');
     expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     // The hold is a standing decision: the plan-less-safe stamp is written.
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
   });
 
@@ -186,7 +186,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // surplus-held.
     const h = makeHarness({ totalKw: 0.5 });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
 
     await vi.advanceTimersByTimeAsync(10_000);
@@ -253,7 +253,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
 
     const failed = await h.builder.buildDevicePlanSnapshot([released]);
     expect(intentOf(failed, PUMP)?.desiredOn).not.toBe(true);
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
 
     await vi.advanceTimersByTimeAsync(10_000);
     await h.builder.buildDevicePlanSnapshot([released]);
@@ -299,19 +299,42 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(leaveOffOnRelease).not.toHaveBeenCalled();
   });
 
+  it('counts clearing "Run on solar surplus" as a withdrawal while a paused start policy is still stored', async () => {
+    // Power limiting on takes "Only PELS starts this device" out of force, but
+    // the owner's stored `pels_only` stays. The surplus hold earned this stamp, so
+    // clearing surplus is the owner withdrawing it; the paused start policy did
+    // not earn it and must not make the release look like "still opted in".
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
+    const pausedPolicy = { startPolicy: 'pels_only', startPolicyInForce: 'unrestricted' } as const;
+    await h.builder.buildDevicePlanSnapshot([{ ...buildPump({ on: false }), ...pausedPolicy }]);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.builder.buildDevicePlanSnapshot([{
+      ...buildPump({ on: false, surplusOnly: false }), ...pausedPolicy, currentState: 'off',
+    }]);
+
+    expect(leaveOffOnRelease).toHaveBeenCalledWith(PUMP);
+  });
+
   it('counts clearing "Only PELS starts this device" on a device PELS turned off as a withdrawal', async () => {
     // Reachable only for a device PELS was holding SHED under the policy (a
     // start it turned back off). An already-off `pels_only` device is inactive,
     // not shed, so it carries no stamp and is never released here.
     const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
     const h = makeHarness({ totalKw: 0.5, leaveOffOnRelease });
-    const running: PlanInputDevice = { ...buildPump({ on: true, surplusOnly: false }), startPolicy: 'pels_only' };
+    // In force as well as stored: the policy applies only with power limiting off.
+    const running: PlanInputDevice = {
+      ...buildPump({ on: true, surplusOnly: false }), startPolicy: 'pels_only', startPolicyInForce: 'pels_only',
+    };
     await h.builder.buildDevicePlanSnapshot([running]);
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: false, startPolicy: true });
 
     await vi.advanceTimersByTimeAsync(10_000);
     const after = await h.builder.buildDevicePlanSnapshot([{
-      ...buildPump({ on: false, surplusOnly: false }), startPolicy: 'unrestricted', currentState: 'off',
+      ...buildPump({ on: false, surplusOnly: false }),
+      startPolicy: 'unrestricted', startPolicyInForce: 'unrestricted', currentState: 'off',
     }]);
 
     expect(leaveOffOnRelease).toHaveBeenCalledWith(PUMP);
@@ -387,7 +410,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // actuation / capacity-control-off clears them) — so while the lifted pump is
     // still awaiting its restore actuation, BOTH remain, and a capacity-control-off
     // in this window still resolves to "leave it off" (the safe posture).
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
   });
 
@@ -408,7 +431,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // hence the pin.
     const h = makeHarness({ totalKw: 2 });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
 
     // The device vanishes from the snapshot while held.
@@ -429,7 +452,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
 
     const returned = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     expect(deviceOf(returned, PUMP)?.plannedState).toBe('shed');
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
     expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
   });
 
@@ -488,7 +511,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(pump?.plannedState).toBe('shed');
     expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
     expect(intentOf(plan, PUMP)?.desiredOn).toBe(false);
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
   });
 
   it('holds the pump when whole-home power is stale (fail-closed: no blind surplus)', async () => {
@@ -665,7 +688,7 @@ describe('executor carve-outs: capacity-control-off can never force-turn-ON a du
     const h = buildExecutorCtx(offPumpSnapshot);
     h.state.shedDecisions.decidedMs[PUMP] = 1000;
     h.state.actuation.lastDeviceShedMs[PUMP] = 1000;
-    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = true;
+    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = { surplus: true, startPolicy: false };
 
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
     expect(applied).toBe(false);
@@ -679,7 +702,7 @@ describe('executor carve-outs: capacity-control-off can never force-turn-ON a du
   it('applyCapacityControlOffRestoreWithSnapshot honours the stamp too (second lane)', async () => {
     const h = buildExecutorCtx(offPumpSnapshot);
     h.state.shedDecisions.decidedMs[PUMP] = 1000;
-    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = true;
+    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = { surplus: true, startPolicy: false };
 
     const applied = await applyCapacityControlOffRestoreWithSnapshot(h.ctx, {
       deviceId: PUMP,

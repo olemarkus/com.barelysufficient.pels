@@ -128,8 +128,9 @@ const kinds: Kind[] = [
   {
     label: 'a device only PELS may start, still held',
     dev: buildPlanInputDevice({
+      // Power limiting off: the one case the policy is in force.
       id: 'sp1', name: 'SP', binaryControl: { on: true }, startPolicy: 'pels_only',
-      expectedPowerKw: 1.4, currentDrawKw: 1.4,
+      controllable: false, commandAuthority: true, expectedPowerKw: 1.4, currentDrawKw: 1.4,
     }),
     shed: true, behavior: SET_STEP, conditional: ['startPolicyHoldActive'],
   },
@@ -137,6 +138,7 @@ const kinds: Kind[] = [
     label: 'a device only PELS may start, lifted by a smart task',
     dev: buildPlanInputDevice({
       id: 'sp2', name: 'SP2', binaryControl: { on: true }, startPolicy: 'pels_only',
+      controllable: false, commandAuthority: true,
       startPolicyHoldLifted: true, expectedPowerKw: 1.4, currentDrawKw: 1.4,
     }),
     shed: true, behavior: SET_STEP, conditional: [],

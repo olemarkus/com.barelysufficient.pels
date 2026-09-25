@@ -370,6 +370,69 @@ describe('start policy through a whole plan build', () => {
     });
   });
 
+  describe('with Power-limit control on, the policy does not apply', () => {
+    // Owner ruling 2026-09-25. With power limiting on PELS already owns when the
+    // device runs, so a baseline of off only overrode its own capacity decisions.
+    // Production 2026-09-25: a pels_only EV charger with power limiting on sat
+    // `awaiting_pels_start` at 46% from the moment its task's deadline passed,
+    // with the house under its cap.
+    const limitedCharger = (on: boolean): PlanInputDevice => inputDevice({
+      id: 'charger',
+      name: 'Charger',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on },
+      currentState: on ? 'on' : 'off',
+      currentDrawKw: on ? 1 : 0,
+      expectedPowerKw: 1,
+      controllable: true,
+      managed: true,
+      startPolicy: 'pels_only',
+    });
+
+    it('starts an off device with no smart task once there is room', async () => {
+      const plan = await buildBuilder().buildDevicePlanSnapshot([limitedCharger(false)]);
+
+      const device = plan.devices.find((entry) => entry.id === 'charger');
+      expect(device?.plannedState).toBe('keep');
+      expect(device?.reason?.code).not.toBe(PLAN_REASON_CODES.awaitingPelsStart);
+      const intent = buildExecutableDeviceIntent(device!, plan.meta);
+      expect(hasBinaryCommand(intent) ? intent.binary : undefined)
+        .toMatchObject({ deviceId: 'charger', desiredOn: true });
+    });
+
+    it('keeps it off for capacity, not the policy, when there is no room', async () => {
+      const plan = await buildBuilder({
+        getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+        getDynamicSoftLimitOverride: () => 0.8,
+      }).buildDevicePlanSnapshot([limitedCharger(false)]);
+
+      const device = plan.devices.find((entry) => entry.id === 'charger');
+      expect(device?.plannedState).toBe('shed');
+      expect(device?.reason?.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+    });
+
+    it('releases a device the hold turned off when the owner turns power limiting on', async () => {
+      // The hold shed it while power limiting was off, which stamps it as a
+      // baseline-off device. Turning power limiting on is not the owner
+      // withdrawing the policy, so the release must not answer it with "Leave off
+      // until turned on again": that would park it off exactly as before.
+      const leaveOffOnRelease = vi.fn(() => 'released' as const);
+      const builder = buildBuilder({ leaveOffOnRelease });
+      const held = await builder.buildDevicePlanSnapshot([charger('pels_only')]);
+      expect(held.devices.find((entry) => entry.id === 'charger')?.reason?.code)
+        .toBe(PLAN_REASON_CODES.awaitingPelsStart);
+
+      const plan = await builder.buildDevicePlanSnapshot([limitedCharger(false)]);
+
+      expect(leaveOffOnRelease).not.toHaveBeenCalled();
+      const device = plan.devices.find((entry) => entry.id === 'charger');
+      expect(device?.plannedState).toBe('keep');
+      const intent = buildExecutableDeviceIntent(device!, plan.meta);
+      expect(hasBinaryCommand(intent) ? intent.binary : undefined)
+        .toMatchObject({ deviceId: 'charger', desiredOn: true });
+    });
+  });
+
   it('still sheds the hold to OFF when the meter has gone silent', async () => {
     // The fail-closed pass sheds every candidate to its floor, and for this
     // device the floor is OFF — the policy carries its own shed intent, not the

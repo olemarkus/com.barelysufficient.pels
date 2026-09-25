@@ -67,7 +67,7 @@ export const skipRestoreForSurplusPosture = (
   deviceId: string,
   name: string,
 ): boolean => {
-  if (ctx.state.shedDecisions.surplusOnlyByDevice[deviceId] !== true) return false;
+  if (ctx.state.shedDecisions.surplusOnlyByDevice[deviceId] === undefined) return false;
   emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode: 'surplus_only_posture',

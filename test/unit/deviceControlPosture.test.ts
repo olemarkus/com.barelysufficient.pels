@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
+import { resolveDeviceControlPosture, resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -91,5 +91,15 @@ describe('resolveDeviceControlPosture', () => {
       true, true, 'unrestricted',
     );
     expect(posture.commandAuthority).toBe(false);
+  });
+});
+
+describe('resolveStartPolicyInForce', () => {
+  it('applies the owner\u2019s policy only while power limiting is off', () => {
+    // Owner ruling 2026-09-25: with power limiting on PELS already decides when
+    // the device runs, so "Only PELS starts this device" has nothing to add.
+    expect(resolveStartPolicyInForce('pels_only', false)).toBe('pels_only');
+    expect(resolveStartPolicyInForce('pels_only', true)).toBe('unrestricted');
+    expect(resolveStartPolicyInForce('unrestricted', false)).toBe('unrestricted');
   });
 });

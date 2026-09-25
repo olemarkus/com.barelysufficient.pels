@@ -1270,29 +1270,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
-- [ ] **Two device-page strings go false when "Only PELS starts this device" is on.**
-      `packages/settings-ui/public/index.html` — the neighbouring "Leave off until turned on
-      again" hint ends "Turning it on again returns it to normal PELS control", which with the
-      start policy on means turning it on returns it to being switched back off. And
-      `packages/settings-ui/src/ui/deviceDetail/respectExternalOff.ts` toasts "PELS may now
-      resume this device when power is available." when the owner switches that setting OFF —
-      an affirmative claim, made at the moment of the action, that is false for a `pels_only`
-      device (PELS will not resume it; only a smart task will). **What changes:** make both
-      consult the start policy — suppress or amend the hint's third sentence, and pick the
-      toast text on `resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId)`.
-      **Done when:** neither string asserts a resume that the start policy forbids. [P2]
-
-- [ ] **The three solar-surplus toggles stay enabled on a device the start policy holds.**
-      `packages/settings-ui/public/index.html` offers "Run on solar surplus" / "Match solar
-      surplus" / "Charge on solar surplus" for the same device population as the start-policy
-      row, and nothing disables them against each other. The runtime ruling (2026-09-10) is
-      that the start policy wins: the device stays off when surplus arrives, so the surplus
-      toggle silently does nothing. The surplus row already has the right treatment for its two
-      other blocked substates — visible, disabled, with a hint naming the real switch.
-      **What changes:** add a third substate with a hint naming the start policy.
-      **Done when:** switching the start policy on disables the surplus toggle with a hint, and
-      switching it off re-enables it. [P2]
-
 - [ ] **"Smart task" is capitalised mid-sentence in the two start-policy hints.**
       `packages/settings-ui/public/index.html` — the dominant convention in body copy is
       lowercase (`notes/ui-terminology.md`, and the two adjacent hints in the same panel), with

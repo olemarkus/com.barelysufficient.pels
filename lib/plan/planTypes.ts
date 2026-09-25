@@ -583,10 +583,12 @@ type DevicePlanDeviceBase = {
    * by `isStartPolicyHeldDevice` and stamped once in `buildBasePlanDevice`,
    * exactly as `externalOffHoldActive` below forwards its own standing posture.
    *
-   * The DECISION travels, not the setting. The owner's raw `startPolicy` stays on
-   * the plan input, where the two baseline-off stamps that must outlive an
-   * authority withdrawal read it (`ShedDecisions.recordPlannedShed`,
-   * `releaseAbandonedSurplusPosture`). Carrying the raw enum here instead made
+   * The DECISION travels, not the setting. The policy in force
+   * (`startPolicyInForce`) stays on the plan input, where the two baseline-off
+   * stamps that must outlive an authority withdrawal read it
+   * (`ShedDecisions.recordPlannedShed`, `releaseAbandonedSurplusPosture`), and
+   * the owner's stored `startPolicy` beside it for the one question that needs
+   * the setting: did the owner withdraw it. Carrying the raw enum here instead made
    * both output-side readers re-derive the hold from half its terms — they could
    * not see the smart-task lift, so a task's planned hour never started a device
    * the hold had already taken off.

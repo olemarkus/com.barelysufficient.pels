@@ -31,6 +31,7 @@ describe('buildPlanInputDevice', () => {
       control: { managed: true, commandAuthority: true },
       // Producer-resolved: absence in the settings map is the default policy.
       startPolicy: 'unrestricted',
+      startPolicyInForce: 'unrestricted',
       available: true,
       id: 'dev-1',
       name: 'Device',

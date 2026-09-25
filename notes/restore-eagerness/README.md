@@ -76,7 +76,7 @@ Batching is intentionally narrow:
   device missing from the previous plan starts in that posture; a device the previous plan kept
   with command authority does not become a restore candidate from its observed off state (that is
   drift). Any other observed-off device (left `inactive` when held off by "Only PELS starts this
-  device" or unavailable, kept without command authority, or seen before any plan exists) goes
+  device", which applies only while Power-limit control is off, or unavailable, kept without command authority, or seen before any plan exists) goes
   through start admission before it is turned on. Already-running loads are not treated as
   restorations just because no plan history exists yet
 - cumulative admitted restore need is capped at 50% of the starting available headroom
