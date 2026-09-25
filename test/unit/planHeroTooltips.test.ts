@@ -1,8 +1,6 @@
 import {
-  HARD_CAP_TOOLTIP,
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
-  formatHardCapTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../packages/settings-ui/src/ui/planHeroTooltips';
@@ -95,20 +93,6 @@ describe('planHeroTooltips', () => {
       })).toBeNull();
       expect(formatSafePaceComposition(6, 'daily', { budgetPaceKw: -1, projectedExemptKw: 7 })).toBeNull();
       expect(formatSafePaceComposition(13, 'daily', { budgetPaceKw: 5, projectedExemptKw: 7 })).toBeNull();
-    });
-  });
-
-  describe('formatHardCapTooltip', () => {
-    it('renders the canonical "Hard cap {kW} kW — {HARD_CAP_TOOLTIP}" string', () => {
-      expect(formatHardCapTooltip(8, 60)).toBe(`Hard cap 8.0 kW — ${HARD_CAP_TOOLTIP}`);
-    });
-
-    it('frames the cap as the hourly tariff step, never as breaker protection', () => {
-      // An hourly-average ceiling cannot prevent breaker trips
-      // (notes/ui-terminology.md § "Hard cap is an hourly ceiling").
-      expect(HARD_CAP_TOOLTIP).not.toMatch(/breaker/i);
-      expect(HARD_CAP_TOOLTIP).toMatch(/tariff step/);
-      expect(HARD_CAP_TOOLTIP).toMatch(/hour/);
     });
   });
 });

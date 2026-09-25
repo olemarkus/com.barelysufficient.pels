@@ -6,8 +6,8 @@ import {
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudgetParts,
   formatHeroHeadline,
-  formatPowerMeterMarkerLabels,
   formatProjectedEnergySubline,
+  formatSafePaceMeterMarkerLabels,
   type DecisionSentenceInput,
   type PlanHeroMetaInput,
 } from '../../packages/settings-ui/src/ui/planHeroSummary';
@@ -47,7 +47,7 @@ describe('formatHeroHeadline', () => {
     expect(headline.overSoftLimit).toBe(false);
   });
 
-  it('carries the hard cap as a display value only — no instantaneous over-cap judgement', () => {
+  it('carries the cap for period-energy decisions without an instantaneous over-cap judgement', () => {
     // Regression: instantaneous kW above the cap is NOT a breach (the cap is
     // an hourly-average tariff-step ceiling). The headline must not derive any
     // over-cap state from power vs cap; the alert-tier hero state comes from
@@ -104,16 +104,12 @@ describe('formatProjectedEnergySubline', () => {
 });
 
 describe('hero meter marker labels', () => {
-  it('formats power markers with the numeric value in the visible legend label', () => {
+  it('formats the safe-pace marker with its numeric value in the visible legend label', () => {
     // The legend is the only touch-reachable home for these numbers (tippy
     // tooltips need hover), so the visible label carries the value.
-    expect(formatPowerMeterMarkerLabels('target', 11)).toEqual({
+    expect(formatSafePaceMeterMarkerLabels(11)).toEqual({
       short: 'Safe pace now 11.0 kW',
       aria: 'Safe pace now 11.0 kW',
-    });
-    expect(formatPowerMeterMarkerLabels('cap', 14)).toEqual({
-      short: 'Hard cap 14.0 kW',
-      aria: 'Hard cap 14.0 kW',
     });
   });
 
@@ -475,10 +471,8 @@ describe('computeEnergyBarScaleKWh — projected marker alignment', () => {
 
   // Regression: prod 2026-07-25. The energy bar's hard-cap marker only renders
   // while the cap is on-scale, and the cap normally sits ABOVE the budget
-  // (budget = cap − safety margin). Omitting it from the scale dropped the tick
-  // in exactly the healthy case, so the cap was never shown in the unit it
-  // governs and appeared only as a kW tick on the instantaneous power bar —
-  // where "6.7 kW now" beside "Hard cap 5.0 kW" reads as a breach it is not.
+  // (budget = cap − safety margin). Including it in the scale keeps the cap
+  // visible in the selected period's kWh even in a healthy hour.
   it('keeps the hard cap on-scale when it sits above the budget', () => {
     // The reported case: budget 3.2, used 1.1, projected 1.97, cap 5.0.
     expect(computeEnergyBarScaleKWh(3.2, 1.97, 1.1, 5.0)).toBe(5.0);

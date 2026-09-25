@@ -132,14 +132,7 @@ export type HeroMeterMarkerLabels = {
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const formatKWh = (kwh: number): string => `${kwh.toFixed(1)} kWh`;
 
-export const formatPowerMeterMarkerLabels = (
-  kind: 'target' | 'cap',
-  valueKw: number,
-): HeroMeterMarkerLabels => {
-  if (kind === 'cap') {
-    const label = `Hard cap ${formatKw(valueKw)}`;
-    return { short: label, aria: label };
-  }
+export const formatSafePaceMeterMarkerLabels = (valueKw: number): HeroMeterMarkerLabels => {
   const label = `Safe pace now ${formatKw(valueKw)}`;
   return { short: label, aria: label };
 };
@@ -211,15 +204,9 @@ export const computeEnergyBarScaleKWh = (
   budgetKWh: number,
   projectedKWh: number | null,
   usedKWh: number,
-  // The hour's hard-cap ceiling in kWh. Included in the scale for the same
-  // reason the power bar's scale includes the cap in kW ("the cap tick must
-  // remain visible"): the energy bar's cap marker only renders while the cap is
-  // on-scale, and the cap normally sits ABOVE the budget (budget = cap − safety
-  // margin, or a tighter daily allocation). Without this the tick was dropped in
-  // exactly the healthy case, so the cap was never shown in the unit it actually
-  // governs — an hourly kWh ceiling — and only ever appeared as a kW tick on the
-  // instantaneous power bar, where "6.7 kW now vs 5.0 kW cap" reads as a breach
-  // it is not (prod 2026-07-25).
+  // The selected capacity period's hard-cap ceiling in kWh. The hard cap is an
+  // average constraint, so its energy equivalent belongs on the energy bar;
+  // it is not an instantaneous threshold for the power bar.
   hardCapKWh?: number | null,
 ): number => {
   const overshoot = Math.max(projectedKWh ?? 0, usedKWh);

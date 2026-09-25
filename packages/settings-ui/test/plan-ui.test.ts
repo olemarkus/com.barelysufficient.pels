@@ -703,20 +703,22 @@ describe('Redesign plan UI', () => {
       // The subline keeps the safe-pace value visible instead of an over-cap claim.
       const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
       expect(subline?.textContent?.trim()).toBe('Safe pace now 5.5 kW \u00b7 set by this hour\'s pace');
-      // The cap tick still renders even though safe pace sits above the cap —
-      // previously it vanished in exactly this state.
+      // The power bar compares only current draw with safe pace. The hard cap
+      // is an average over the hour and appears on the energy bar in kWh.
       const powerMarkers = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')[0]!
         .querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
       expect(powerMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
         'Safe pace now 5.5 kW',
-        'Hard cap 5.0 kW',
       ]);
+      const energyMarkers = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')[1]!
+        .querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
+      expect(energyMarkers.map((m) => m.getAttribute('aria-label'))).toContain('Hard cap this hour 5.0 kWh');
       // The decision sentence describes what PELS is actually doing.
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
         .toBe('Holding back 1 device so the house stays under 5.5 kW.');
     });
 
-    it('labels every hero meter marker with aria-label and a legend when more than one marker is present', async () => {
+    it('keeps the power marker on safe pace and labels the hourly cap in kWh', async () => {
       await renderPlanSnapshot({
         meta: buildPlanMeta({
           totalKw: 5.2,
@@ -733,12 +735,11 @@ describe('Redesign plan UI', () => {
       const sections = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')) as HTMLElement[];
       expect(sections).toHaveLength(2);
 
-      // Power bar has two markers: safe pace + hard cap. Both labeled.
+      // The power bar carries only the instantaneous safe-pace threshold.
       const powerMarkers = Array.from(sections[0]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
-      expect(powerMarkers).toHaveLength(2);
+      expect(powerMarkers).toHaveLength(1);
       expect(powerMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
         'Safe pace now 11.0 kW',
-        'Hard cap 14.0 kW',
       ]);
       expect(powerMarkers.every((m) => m.getAttribute('role') === 'img')).toBe(true);
 
@@ -755,26 +756,20 @@ describe('Redesign plan UI', () => {
         'Hard cap this hour 14.0 kWh',
       ]);
 
-      // Each bar with more than one marker renders a sublegend row.
+      // Both bars retain visible legends; the hard cap is only on the energy
+      // bar, where its period-equivalent kWh value is meaningful.
       const legends = Array.from(document.querySelectorAll('.plan-hero__legend')) as HTMLElement[];
       expect(legends).toHaveLength(2);
       const legendLabels = legends.map((l) => Array.from(l.querySelectorAll('.plan-hero__legend-label'))
         .map((el) => el.textContent?.trim()));
-      expect(legendLabels[0]).toEqual(['Safe pace now 11.0 kW', 'Hard cap 14.0 kW']);
-      // The kWh cap legend carries its value (the kW legend's number is a
-      // different quantity — an instantaneous tick, not this hour's ceiling).
+      expect(legendLabels[0]).toEqual(['Safe pace now 11.0 kW']);
+      // The cap is labelled in its period-equivalent kWh unit.
       expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour', 'Hard cap this hour 14.0 kWh']);
     });
 
-    it('renders a visible legend naming every power-bar marker', async () => {
-      // A marker's meaning otherwise lives only in a hover tooltip
-      // (non-discoverable on touch) + aria-label, so the bar must render a
-      // visible legend (progress-markers follow-up).
-      //
-      // This was "single-marker meter", premised on no hard cap being
-      // configured. There is no such state: the cap is `capacitySettings.limitKw`,
-      // always a number, and `notes/ui-terminology.md` says its tick always
-      // renders. So the bar always carries both markers and the legend names both.
+    it('renders a visible legend for the safe-pace power marker', async () => {
+      // The power bar has one marker, whose meaning must remain visible on
+      // touch where the tooltip cannot be discovered by hovering.
       await renderPlanSnapshot({
         meta: buildPlanMeta({
           totalKw: 1.5,
@@ -789,11 +784,11 @@ describe('Redesign plan UI', () => {
 
       const sections = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')) as HTMLElement[];
       const powerMarkers = Array.from(sections[0]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
-      expect(powerMarkers, 'power bar carries the safe-pace and hard-cap markers').toHaveLength(2);
+      expect(powerMarkers, 'power bar carries the safe-pace marker').toHaveLength(1);
       const powerLegend = sections[0]!.querySelector('.plan-hero__legend');
       expect(powerLegend, 'the power bar renders a legend').not.toBeNull();
       const labels = Array.from(powerLegend!.querySelectorAll('.plan-hero__legend-label')).map((el) => el.textContent?.trim());
-      expect(labels).toEqual(['Safe pace now 2.3 kW', 'Hard cap 12.0 kW']);
+      expect(labels).toEqual(['Safe pace now 2.3 kW']);
     });
 
     it('explains a daily safe pace that includes power allowed beyond the daily budget', async () => {

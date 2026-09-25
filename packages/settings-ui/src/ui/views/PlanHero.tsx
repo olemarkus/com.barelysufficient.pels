@@ -11,7 +11,7 @@ import {
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudgetParts,
   formatHeroHeadline,
-  formatPowerMeterMarkerLabels,
+  formatSafePaceMeterMarkerLabels,
   formatProjectedEnergySubline,
   formatSafePaceSubline,
   type HeroHeadline,
@@ -20,7 +20,6 @@ import {
 import {
   formatHeroInfoTooltip,
   formatHardCapEnergyTooltip,
-  formatHardCapTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
   resolveSafePaceSourceText,
@@ -197,7 +196,6 @@ type BarScale = {
   controlled: number;
   uncontrolled: number;
   safePaceKw: number;
-  hardCapKw: number;
   scaleKw: number;
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
   budgetPaceKw: number | null;
@@ -210,10 +208,8 @@ type MeterMarker = {
   positionPct: number;
   tone?: MeterTone;
   tooltip?: string;
-  // Short legend label and screen-reader label, sourced from
-  // `shared-domain/planHeroSummary.formatPowerMeterMarkerLabels` /
-  // `formatEnergyMeterMarkerLabels` so wording stays in sync with the runtime
-  // logger.
+  // Short legend label and screen-reader label, sourced from the local
+  // `planHeroSummary` helpers so the two bar legends use the same wording.
   labels: HeroMeterMarkerLabels;
 };
 
@@ -241,14 +237,15 @@ const computePowerBarScale = (
   // the residual keeps the segmented gauge consistent with the number above it
   // and ensures over-threshold tones reflect the full draw.
   const uncontrolled = Math.max(0, total - controlled);
-  const hardCapKw = headline.hardLimitKw;
-  const scaleKw = Math.max(safePaceKw * 1.2, hardCapKw, total * 1.05);
+  // This is an instantaneous-power gauge: its scale follows current draw and
+  // the safe pace PELS reacts to. The capacity-period hard cap belongs on the
+  // energy bar in kWh, not on this axis.
+  const scaleKw = Math.max(safePaceKw * 1.2, total * 1.05);
   return {
     total,
     controlled,
     uncontrolled,
     safePaceKw,
-    hardCapKw,
     scaleKw,
     softLimitSource: meta.softLimitSource,
     budgetPaceKw: meta.budgetPaceKw,
@@ -457,8 +454,8 @@ const PelsMeterTrack = ({
 // Sublegend rendered below a meter for every marker it carries. A marker's
 // meaning otherwise lives only in its `aria-label` + a tippy.js tooltip, and
 // the tooltip is non-discoverable on touch (no hover) — so even a SINGLE
-// marker (e.g. the safe-pace tick on a power bar with no hard cap) needs a
-// visible key, not just a colour cue. Hidden from screen readers
+// marker (the safe-pace tick on the power bar) needs a visible key, not just a
+// colour cue. Hidden from screen readers
 // (`aria-hidden`) because the per-marker `aria-label` already describes each
 // marker.
 const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
@@ -483,26 +480,12 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
     budgetPaceKw: scale.budgetPaceKw,
     projectedExemptKw: scale.projectedExemptKw,
   });
-  const markers: MeterMarker[] = [
-    {
-      kind: 'target',
-      positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
-      tooltip: safePaceTooltip,
-      labels: formatPowerMeterMarkerLabels('target', scale.safePaceKw),
-    },
-  ];
-  // The cap tick ALWAYS renders — including when the dynamic safe pace sits at
-  // or above it (legitimate late in an under-used hour). Hiding it in that
-  // state left the bar without its reference line exactly when users wondered
-  // where the cap was. The `!== null` gate this replaces could never fire:
-  // the cap comes from `capacitySettings.limitKw`, which is always configured,
-  // and `notes/ui-terminology.md` says the tick always renders.
-  markers.push({
-    kind: 'cap',
-    positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
-    tooltip: formatHardCapTooltip(scale.hardCapKw, scale.periodMinutes),
-    labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
-  });
+  const markers: MeterMarker[] = [{
+    kind: 'target',
+    positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
+    tooltip: safePaceTooltip,
+    labels: formatSafePaceMeterMarkerLabels(scale.safePaceKw),
+  }];
   return (
     <>
       <PelsMeterTrack fill={<PowerMeterSegments scale={scale} isLimiting={isLimiting} />} markers={markers} />

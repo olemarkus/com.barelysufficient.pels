@@ -2506,7 +2506,7 @@ md-filled-button.is-busy {
 }
 
 /* Segmented power-bar fill: managed | background. Free space is the empty
-   track remainder. Safe-pace and hard-cap markers ride on top. */
+   track remainder. The safe-pace marker rides on top. */
 .pels-meter-segments {
   position: absolute;
   inset: 0;

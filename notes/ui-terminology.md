@@ -96,7 +96,7 @@ corresponding detailed form:
 7.0 kW reserved for devices allowed beyond it; PELS starts reacting here.`
 Do not call those devices "exempt" in user-facing copy.
 
-The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body naming the configured hour or quarter-hour average. Never "breaker trips": an average-power tariff ceiling cannot prevent them (see § "Hard cap is a capacity-period ceiling"). When the period's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` or `Hard cap this quarter N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
+The hard cap is an average over the selected capacity period, not an instantaneous power threshold. Do not put a hard-cap tick on the Power-now gauge. The energy bar renders the cap as its period-equivalent energy value, labelled `Hard cap this hour N kWh` or `Hard cap this quarter N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made. Never say "breaker trips": an average-power tariff ceiling cannot prevent them (see § "Hard cap is a capacity-period ceiling").
 
 ### Safe pace, hard cap, and safety margin
 
@@ -112,12 +112,12 @@ Do not use `power limit` as a casual threshold label where it could blur Safe pa
 
 ### Hero legend
 
-Two rows under the power bar — the tick legend (swatch + label with value, the
-only touch-reachable home for these numbers since tooltips need hover), then
-the segment split:
+Two rows under the power bar — the safe-pace tick legend (swatch + label with
+value, the only touch-reachable home for this number since tooltips need
+hover), then the segment split:
 
 ```text
-▮ Safe pace now 6.0 kW   ▮ Hard cap 8.0 kW
+▮ Safe pace now 6.0 kW
 Managed 3.2 kW  ·  Background 2.9 kW
 ```
 
@@ -139,7 +139,7 @@ Marker grammar for read-only meter tracks:
 | Solid dot | Actual/current value |
 | Hollow dot | Projected/forecast value |
 | Thin tick (neutral) | Threshold/target |
-| Thin tick (warning-toned) | Hard cap reference — renders wherever the cap falls on the scale |
+| Thin tick (warning-toned) | Hard-cap reference on the energy bar, in the selected capacity period's kWh |
 
 Overview status chips are hidden when everything is normal. Show short exception chips only:
 
@@ -1099,7 +1099,7 @@ one of them.
 Two different colour systems coexist, and mixing them up is a review trap.
 
 - **Neutral semantic palette** — every *data* chart (Usage hourly + daily, Budget progress + hourly, smart-task schedule + trajectory). One hue carries one fixed meaning regardless of value: mint = actual/measured/managed/picked, ice-blue = projection/plan/forecast, slate = background/neutral (with bright-slate dashed = budget reference), amber = warning only, red = error only. The tokens are `pels.chart.*` (see `tokens/component.json`). A projection is ice-blue whether it lands above or below budget; a background segment is slate whether usage is high or low.
-- **Status-toned hero gauge** — the Overview `Power now` meter is NOT a semantic-palette chart; it is a *status gauge*. Its fill (and the `Projected this hour` marker) render as **shades of the current live status tone** — success under safe pace, warning above, error over the hard cap (driven by `data-over-safe-pace` / `data-over-hard-cap`). So its managed/background segments are a bright/dim pair of the *good* tone (dim-mint background), not the slate the data charts use, precisely because the whole gauge must flip to amber/warning and red/critical as power crosses the thresholds. This is intentional and governed by `notes/overview-hero-spec.md`; do **not** recolour the hero background segment to slate to "match" the data charts — that would break the flip-to-warning behaviour. Colour still never carries meaning alone here: the status chip and the `Managed X kW · Background Y kW` line carry the split and state in text.
+- **Status-toned hero gauge** — the Overview `Power now` meter is not a semantic-palette chart; its segments show current draw against safe pace. Under safe pace the managed/background pair uses success tones; the trailing segment turns warning-toned when draw crosses safe pace. A momentary kW reading above the hard cap does not turn the power segments critical because the cap is an average over the selected capacity period. When the projected period energy exceeds the cap, the `Above hard cap` chip, hero rim, and energy-bar projection marker carry the critical signal. This is intentional and governed by `notes/overview-hero-spec.md`; preserve the dimmed background segment so the managed/background split remains readable. Colour still never carries meaning alone here: the status chip and the `Managed X kW · Background Y kW` line carry the split and state in text.
 
 ## Solar and export price vocabulary
 

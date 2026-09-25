@@ -28,8 +28,8 @@ One elevated Material 3 card with tonal background that shifts with state.
 │ pace                                         │
 │                                              │
 │ [managed][other][free.................]      │
-│                  ↑ pace            ↑ cap    │
-│ ▮ Safe pace now 12.0 kW ▮ Hard cap 15.0 kW  │
+│                  ↑ safe pace                 │
+│ ▮ Safe pace now 12.0 kW                       │
 │ Managed 3.2 kW · Background 3.8 kW          │
 │                                              │
 │ Energy this hour                             │
@@ -174,14 +174,15 @@ Vocabulary registered in `notes/ui-terminology.md` § Solar.
 
 ### Power bar
 
-Threshold gauge, not a progress bar. Scale tracks
-`max(safe pace × 1.2, hard cap, draw × 1.05)` so both ticks stay on-scale —
-the safe pace legitimately rises above the cap late in an under-used hour,
-and the cap tick must remain visible in exactly that state.
+Threshold gauge, not a progress bar. It shows the safe pace where PELS starts
+reacting to current draw. Scale tracks `max(safe pace × 1.2, draw × 1.05)` so
+the pace tick stays on-scale. The hard cap is an average over the selected
+capacity period, so it is not a threshold on this instantaneous-power gauge;
+its kWh equivalent belongs on the energy bar.
 
 ```
 [ managed ][ background ][ free ........... ]
-                          ↑ safe pace      ↑ hard cap
+                          ↑ safe pace
 ```
 
 Segments:
@@ -193,13 +194,13 @@ Segments:
 | Free | Remaining room before safe pace |
 | Overflow | Amount above safe pace (warn tone) |
 
-There is no instantaneous over-hard-cap segment tone: the error story is the
-trajectory chip plus the energy bar's projection marker, never the power bar.
+The power bar's overflow tone only compares current draw with safe pace. The
+hard-cap story is the trajectory chip plus the energy bar's projection marker
+and kWh cap tick.
 
-Both ticks always render (the cap tick even when safe pace ≥ cap). Marker
-values live in the legend row below the bar — `Safe pace now 12.0 kW` /
-`Hard cap 15.0 kW` — because tippy tooltips are not discoverable on touch;
-the tooltip adds the source explanation on hover.
+The safe-pace tick and its value (`Safe pace now 12.0 kW`) live in the legend
+row below the bar because tippy tooltips are not discoverable on touch; the
+tooltip adds the source explanation on hover.
 
 Supporting text:
 ```
@@ -256,15 +257,15 @@ chip and decision-sentence rule 2. The subline keeps a single warn rung
 (critical falls through to neutral text) so the red story stays one voice:
 chip + projection marker + cap tick.
 
-The energy bar renders a cap tick at `hardCapKWh` with the value-carrying
-legend label `Hard cap this hour N kWh` — the threshold that turns the
-projection red, printed in kWh on the bar where the judgement lives. **The tick
-renders in every hour, calm or not** (2026-07-25): the scale includes the cap
-precisely so it cannot fall off-scale. It used to appear only when a projection
+The energy bar renders a cap tick at `hardCapKWh` in the selected capacity
+period's kWh. Its legend reads `Hard cap this hour N kWh` in hourly mode or
+`Hard cap this quarter N kWh` in quarter-hour mode — the threshold that turns
+the projection red, printed in the unit where the judgement lives. **The tick
+renders in every capacity period, calm or not** (2026-07-25): the scale includes
+the cap so it cannot fall off-scale. It used to appear only when a projection
 overshoot stretched the scale past the budget, which hid it in exactly the
-healthy hours where "over the soft budget, comfortably under the cap" is the
-reassuring reading — and left the cap visible only as a kW tick on the power
-bar, where an instantaneous draw above it looks like a breach it is not.
+healthy periods where "over the budget, comfortably under the cap" is the
+reassuring reading.
 
 No projection available:
 ```
@@ -307,17 +308,14 @@ Standard Material linear progress bar with a projected-end marker.
 - Filled = kWh used
 - Empty = remaining budget
 - Projected marker: warning tone if beyond budget
-- Hard-cap marker: the hour's kWh ceiling. **This is the bar that owns the
-  cap's value.** The cap is an hourly-average tariff step, so kWh is the unit it
-  actually governs — the power bar's kW cap tick exists to bound that bar's scale
-  and to show the safe pace decaying toward the cap, not to be compared against
-  the instantaneous reading. Scale is
-  `max(budget or overshoot × 1.05, hard cap)`; the cap term is required for the
-  same reason the power bar's is (§ "Power bar"), because the cap normally sits
-  ABOVE the budget (budget = cap − safety margin, or a tighter daily allocation)
-  and would otherwise fall off-scale and be dropped in the healthy case. Losing
-  it there left the cap visible only in kW, where `6.7 kW now` beside
-  `Hard cap 5.0 kW` reads as a breach it is not (prod 2026-07-25).
+- Hard-cap marker: the selected capacity period's kWh ceiling. **This is the
+  bar that owns the cap's value.** The hard cap is an average-power tariff
+  ceiling, so its period-equivalent kWh value belongs here, not as a kW tick on
+  the instantaneous power bar. Scale is
+  `max(budget or overshoot × 1.05, hard cap)`; the cap term keeps the marker
+  visible because the cap normally sits ABOVE the budget (budget = cap − safety
+  margin, or a tighter daily allocation) and would otherwise fall off-scale in
+  healthy hours.
 - The `used of N kWh` denominator names the BINDING allocation (the hourly
   budget), not the cap; the cap is the marker, not the denominator.
 - The projected-end label sits *above* the bar so the eye reads "projection

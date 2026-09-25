@@ -198,11 +198,12 @@ backwards, while cumulative billed usage cannot, which is the same reason
 `getCurrentHourContext` (`lib/plan/planHourContext.ts`) floors the hourly bucket ("Billed usage can't be
 negative"). Keep the floor on the kWh axis and off the kW axis.
 
-The user-facing labels are unchanged and are governed by `notes/ui-terminology.md`:
-**Safe pace now** renders `bindingPaceKw`, **Hard cap** renders `hardCapKw`, and
-the Limits page's "safe pace starts each period at" renders the capacity allowance
-read as a rate. Those three labels map to three different quantities, which is
-correct, but it is the reason the internal names have to be unambiguous.
+The user-facing labels are governed by `notes/ui-terminology.md`: **Safe pace
+now** marks `bindingPaceKw` on the Power-now gauge, and the Overview **Hard cap**
+is rendered as the selected period's kWh ceiling on the energy bar. The Limits
+page's "safe pace starts each period at" renders the capacity allowance read
+as a rate. Those labels map to different quantities, which is why the internal
+names have to be unambiguous.
 
 ### Why the table is a change, not a description
 
@@ -620,11 +621,14 @@ planner must not be handed an "exempt draw unresolved" state to branch on.
 ## What this means for the Overview hero
 
 The hero power bar's x-axis is `P_import`, and it carries one pace tick
-(`bindingPaceKw`) plus the `hardCapKw` tick. As established above, a single tick
-on that axis is necessarily the rebased expression, so the hero cannot show an
-exempt-independent budget pace by computing it differently. The shipped first
-slice therefore explains the rebase textually; any later geometry has to show the
-projected/measured difference explicitly.
+(`bindingPaceKw`). That is the instantaneous threshold PELS reacts to. The hard
+cap is an average over the selected capacity period and is shown on the energy
+bar in its period-equivalent kWh value, not on the Power-now gauge. As
+established above, a single pace tick on that axis is necessarily the rebased
+expression, so the hero cannot show an exempt-independent budget pace by
+computing it differently. The shipped first slice therefore explains the
+rebase textually; any later geometry has to show the projected/measured
+difference explicitly.
 
 Deferred direction: **make the rebase visible as geometry.** The bar already
 renders `[managed][background][free]` (`notes/overview-hero-spec.md`). A future
@@ -633,8 +637,8 @@ managed:
 
 ```text
 [ exempt ][ managed ][ background ][ free .......... ]
-          ^                     ^              ^
-   budget pace measured    Safe pace now    Hard cap
+          ^                     ^
+   budget pace measured    Safe pace now
    from this edge
 ```
 
@@ -697,8 +701,9 @@ Two supporting changes:
   would **double-count**, because the projection is already there. This is the same
   fallback the open P1 item on observed-off usage attribution is about.
 
-Rejected: two permanently visible pace ticks. Three ticks at 320 px, with the
-`hardCapKw` tick already mandatory, for a state most homes never enter.
+Rejected: two permanently visible pace ticks. A second threshold on the power
+bar would add another scale to compare at 320 px for a state most homes never
+enter.
 
 Deferred: carve-out geometry. The visible bar remains measured whole-home load,
 while `projectedExemptKw` can include expected power for an observed-off device.

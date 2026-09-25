@@ -52,9 +52,6 @@ export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = 
     + 'PELS starts reacting here.',
 };
 
-export const HARD_CAP_TOOLTIP
-  = 'your grid tariff step; PELS keeps each hour\'s average power under this.';
-
 // Visible on the Power-now subline, not only in the tooltip above.
 //
 // WHICH ceiling is binding is a house-level fact — the same one for every device
@@ -161,13 +158,6 @@ export const formatSafePaceComposition = (
   return `Safe pace reserves ${formatKw(detail.projectedExemptKw)} for devices allowed beyond today's budget; `
     + `usage counted toward today's budget is paced at ${formatKw(detail.budgetPaceKw)}.`;
 };
-
-export const formatHardCapTooltip = (
-  hardCapKw: number,
-  periodMinutes: CapacityPeriodMinutes,
-): string => `Hard cap ${formatKw(hardCapKw)} — ${periodMinutes === 15
-  ? 'your peak target; PELS keeps each quarter-hour average under this.'
-  : HARD_CAP_TOOLTIP}`;
 
 // Energy-bar variant: the cap expressed as this hour's kWh ceiling. Appears on
 // the bar that carries the "Above hard cap" judgement, so the tooltip names
