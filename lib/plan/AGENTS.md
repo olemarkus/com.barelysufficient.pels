@@ -71,6 +71,12 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   a figure admission already consumes**. It must never **add a device to `shedSet`** and must never
   **produce an actuation intent**.
 
+  One channel is exempt by contract, and it is not a decoration flag: deferred admission's
+  `forceShedSet` holds a smart task's OWN device off in an hour the task defers (planner-types
+  `DeferredDecorationBundle`). That is the task deciding its own device, never selecting another,
+  and during an active task the task decides whether its device runs (owner ruling 2026-09-25,
+  `lib/objectives/deferredObjectives/AGENTS.md`).
+
   Those two clauses are the whole rule, and both are greppable. Note what is deliberately NOT in
   it: a restore reject setting `plannedState: 'shed'` on a device that is *already off* is ordinary
   shared machinery (`rejectBinaryRestore` does it for every reject reason) and records "not

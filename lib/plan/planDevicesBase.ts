@@ -10,6 +10,7 @@ import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
+import { isDeferredHoldShed } from './shedding/deferredHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
@@ -244,11 +245,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     residualKw: dev.residualKw,
     surplusTracking: dev.surplusTracking,
   };
-  // The hold DECIDED once here, not the owner's setting carried through: the
-  // two output-side readers (`getInactiveReason`, starvation eligibility) ask
-  // whether the policy is holding this device, and only the shared predicate
-  // knows the smart-task lift. See `DevicePlanDeviceBase.startPolicyHoldActive`.
-  if (isStartPolicyHeldDevice(dev)) loose.startPolicyHoldActive = true;
+  Object.assign(loose, resolveHoldDecisions(dev, inputs.sheddingPlan));
   // The power axis, only when the input device has a reading this cycle.
   Object.assign(loose, meteredCluster(dev));
   // The binary on/off truth, only when the input device is binary this cycle.
@@ -305,6 +302,32 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 // A helper rather than a twelfth conditional in the builder above (its
 // complexity budget is spent): the draw is forwarded unchanged, resolved once at
 // `toPlanDevice`, and only for a device that has one.
+/**
+ * The holds that are not capacity pressure, DECIDED once here rather than carried
+ * as settings, for the output-side readers that have only the plan.
+ *
+ * - `startPolicyHoldActive`: `getInactiveReason` and starvation eligibility ask
+ *   whether the policy is holding this device, and only the shared predicate
+ *   knows the smart-task lift.
+ * - `nonCapacityHoldShed`: this cycle's shed is one of the two holds alone, with
+ *   no fresh capacity reason, for the stepped fairness invariant's readers.
+ *   `shedSet` membership is part of the question, not a hedge: a start-policy
+ *   device that is already off is `inactive`, not shed.
+ */
+function resolveHoldDecisions(
+  dev: PlanInputDevice,
+  sheddingPlan: SheddingPlan,
+): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'nonCapacityHoldShed'> {
+  const { shedSet, shedReasons } = sheddingPlan;
+  // Keys only when true: absence is the one spelling of "not held".
+  const holdOnly = shedSet.has(dev.id)
+    && (isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons));
+  return {
+    ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
+    ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
+  };
+}
+
 function meteredCluster(dev: PlanInputDevice): MeteredDiscriminantProbe {
   return isMeteredPlanDevice(dev) ? { currentDrawKw: dev.currentDrawKw } : {};
 }
@@ -347,7 +370,16 @@ function resolveEffectiveShedBehavior(
   configured: ShedBehavior,
   shedReasons: Map<string, DeviceReason>,
 ): ShedBehavior {
-  return shouldShed && isStartPolicyHoldShed(dev, shedReasons) ? TURN_OFF_SHED_BEHAVIOR : configured;
+  // A smart task's deferred-hour hold is shed to OFF for the same reason: the task
+  // wants the device off, and the floor still draws (`isDeferredHoldShed`).
+  //
+  // Only for a device that CAN be turned off: an on/off handle or a step ladder. A
+  // temperature-only device has neither, so an OFF there issues no command at all
+  // and the plain setpoint write keeps it heating to its mode target under a plan
+  // that says off. Its configured floor, the setback, is the most "off" it has.
+  const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons);
+  const canTurnOff = isBinaryPlanDevice(dev) || isSteppedLoadDevice(dev);
+  return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;
 }
 
 function resolveShedAction(params: {

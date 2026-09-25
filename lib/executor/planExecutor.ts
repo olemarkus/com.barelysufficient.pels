@@ -182,7 +182,24 @@ export class PlanExecutor {
     };
   }
 
+  /**
+   * Devices the plan being applied holds off by a hold that is NOT capacity
+   * pressure (`DevicePlanDevice.nonCapacityHoldShed`: "Only PELS starts this
+   * device", or a smart task's deferred hour). Replaced with each applied plan; a
+   * binary OFF confirmed after a later plan is read against that later plan.
+   */
+  private nonCapacityHoldShedIds: ReadonlySet<string> = new Set();
+
   private recordShedActuation(deviceId: string, name: string, now: number): void {
+    // A hold is a planning decision, not capacity pressure, exactly like a smart
+    // task's lifecycle release: turning the device off must not start the shed
+    // cooldown or note instability, which would hold every other off device in
+    // the home for 60 s and double the restore back-off at each hour a task
+    // defers (owner ruling, 2026-09-25).
+    if (this.nonCapacityHoldShedIds.has(deviceId)) {
+      this.recordReleaseShedActuation(deviceId, name, now);
+      return;
+    }
     this.state.restoreBackoff.noteInstability(now);
     this.state.actuation.markShed(deviceId, now);
     this.recordReleaseShedActuation(deviceId, name, now);
@@ -504,6 +521,9 @@ export class PlanExecutor {
       return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [] };
     }
 
+    this.nonCapacityHoldShedIds = new Set(
+      plan.devices.filter((device) => device.nonCapacityHoldShed === true).map((device) => device.id),
+    );
     this.controlPersistenceBatchDepth += 1;
     try {
       return await dispatchPlanActions(this.getDispatchCore(), plan);

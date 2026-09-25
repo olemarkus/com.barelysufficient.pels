@@ -103,13 +103,14 @@ const resolveDecision = (
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //
     // Binary-controlled devices (cap-on or cap-off): always release the binary control.
-    // Off-peak hours have no capacity pressure, so the planner's normal shed/restore lane
-    // would never command the cap-on device off — but the smart task's whole point is not
-    // to run outside planned hours, so we force binary_release regardless of cap-on/off.
+    // A device with authority of its own is ALSO held off through the planner
+    // (`holdsDeviceOff`), so the plan's shed and this release agree: the smart task's
+    // whole point is not to run outside planned hours.
     //
     // Non-binary cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
-    // non-binary stays on the planner's normal lane — emitting shed_release there would race
-    // the planner's own decisions (it might be deliberately restoring the device).
+    // non-binary gets no release intent — emitting shed_release there would race the
+    // planner's own decisions — and is held off through the planner instead
+    // (`holdsDeviceOff`, `deferredHoldActive`).
     if (releasesViaBinary) {
       return { kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' };
     }
@@ -177,6 +178,25 @@ const contributesCommandAuthority = (
   && device.control.commandAuthority === false
   && !rescueBlockedByExternalOffHold(device)
 );
+
+/**
+ * A deferred hour holds a device that has command authority of its OWN (Power-limit
+ * control on, or "Only PELS starts this device" in force) off, through the planner.
+ *
+ * During an active smart task the task decides whether the device runs, also with
+ * power limiting on (owner ruling, 2026-09-25): the task may aim higher than the
+ * mode would, so running as normal in an hour it skipped spends energy it has
+ * scheduled for a cheaper one. This used to be left to "the planner's normal
+ * lane", which had nothing to hold a stepped device with, so it ran on spare
+ * capacity, and released a binary one by command while the plan kept it on.
+ *
+ * A device the task lends authority to (`contributesCommandAuthority`) keeps its
+ * own route: force-shed with a release to its configured posture.
+ */
+const holdsDeviceOff = (
+  decision: DeferredAdmissionDecision,
+  device: PlanInputDevice,
+): boolean => decision.kind === 'idle' && device.control.commandAuthority === true;
 
 export type DeferredAdmissionInput = {
   devices: PlanInputDevice[];
@@ -293,10 +313,15 @@ export const applyDeferredAdmissionToInput = (
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
     const override = contributesCommandAuthority(decision, device);
-    if (override && decision.kind === 'idle') forceShedSet.add(device.id);
+    const holdsOwnAuthorityOff = holdsDeviceOff(decision, device);
+    if ((override && decision.kind === 'idle') || holdsOwnAuthorityOff) forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);
-    if (!override && !hasDeadlineFloor && !claimsAnything(claims)) return device;
-    return { ...device, ...buildAdmissionDecoration(device, override, claims, deadlineFloorTargetC) };
+    if (!override && !holdsOwnAuthorityOff && !hasDeadlineFloor && !claimsAnything(claims)) return device;
+    return {
+      ...device,
+      ...buildAdmissionDecoration(device, override, claims, deadlineFloorTargetC),
+      ...(holdsOwnAuthorityOff ? { deferredHoldActive: true as const } : {}),
+    };
   });
   return { devices: transformed, forceShedSet };
 };

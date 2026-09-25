@@ -608,6 +608,27 @@ type DevicePlanDeviceBase = {
    * reason normalization has stamped one.
    */
   startPolicyHoldActive?: true;
+  /**
+   * This cycle's shed is a hold that is NOT capacity pressure, and nothing else:
+   * "Only PELS starts this device" (`isStartPolicyHoldShed`) or a smart task's
+   * deferred hour (`isDeferredHoldShed`), with no fresh capacity reason. A device
+   * capacity also took down is pressure and does not carry it. Stamped once in
+   * `buildBasePlanDevice`, from the same predicates the plan's own keep-invariant
+   * exclusion reads (`planDevices.ts`).
+   *
+   * Read by the two other readers of the stepped fairness invariant, so all
+   * three answer alike: `countShedDevices` (`lib/plan/restore/coordination.ts`,
+   * which runs before reason normalization, so it cannot key on a reason code)
+   * and the executor's `hasExecutableShedDevices`. Neither hold may keep an
+   * unrelated stepped load at its lowest step: one honours a configuration, the
+   * other the task's own schedule (owner rulings 2026-09-10 and 2026-09-25).
+   *
+   * Distinct from `startPolicyHoldActive` above, which answers "is the policy
+   * holding this device" whatever capacity does — the question for starvation
+   * and the `inactive` reason, where a device the hold keeps off is not waiting
+   * for power even when capacity also wanted it off.
+   */
+  nonCapacityHoldShed?: true;
   budgetExempt?: boolean;
   /**
    * The device's boost decision this cycle, and the planner's whole boost

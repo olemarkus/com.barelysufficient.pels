@@ -320,7 +320,16 @@ rather than re-derives:
 |---|---|---|
 | `claimed` | the hour carries booked energy and no release applies | driven: floor-step target, deadline floor, rescue permissions |
 | `unclaimed` | booked nothing here AND the task cannot finish without it | managed, competing on its own priority — no forced shed, no release intent, no deadline floor, no rescue claims |
-| `released` | booked nothing here and the task can finish without it, OR a price release applies | the configured release posture |
+| `released` | booked nothing here and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture |
+
+**During an active task the task decides whether the device runs, also with Power-limit control on**
+(owner ruling 2026-09-25). A task can aim higher than the mode would (a water heater at 65 °C where
+the mode says 45 °C), so running as normal in a `released` hour spends energy the task scheduled
+for a cheaper one. A power-limited device used to stay on "the planner's normal lane" there, which
+had nothing to hold a stepped device with. Now admission force-sheds it and stamps
+`deferredHoldActive`, and the planner sheds it to OFF, not to the owner's limiting floor, without
+counting the hold as capacity pressure or starvation (`lib/objectives/deferredObjectives/AGENTS.md`
+§ "During an active smart task, the task decides whether the device runs").
 
 "Cannot finish without it" is narrower than "the floor was short". It keys on the settled
 `floorShortfallCause`, which maps an unbooked hour straight to a claim:

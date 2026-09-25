@@ -192,6 +192,15 @@ const resolveEligibleForStarvation = (params: {
   // accrual on the first cycle eligibility drops, which is the cycle the hold
   // returns.
   if (device.startPolicyHoldActive === true) return false;
+  // And for an hour the device's own smart task defers (`deferredHoldActive`): the
+  // task scheduled its energy for a cheaper hour and holds the device off until
+  // then (owner ruling, 2026-09-25). PELS is not withholding power, and a "Let it
+  // run now" rescue would argue with the task's own schedule. Its planned hours
+  // are not held, so a task-driven device denied power there still counts.
+  // The hold being ACTIVE, not the hold-only shed (`nonCapacityHoldShed`), exactly
+  // as `startPolicyHoldActive` above: the task keeps the device off this hour even
+  // when capacity also wanted it off, so it is not waiting for power either way.
+  if (inputDevice.deferredHoldActive === true) return false;
   // One read, not two: `DevicePlanDevice.control` is carried through from the
   // plan input unchanged, so asking both shapes was a dead second read.
   return inputDevice.control.managed

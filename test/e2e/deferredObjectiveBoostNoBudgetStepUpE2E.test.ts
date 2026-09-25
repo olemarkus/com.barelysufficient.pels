@@ -151,6 +151,8 @@ type DeferredDiag = {
 type Observed = {
   steppedEvents: SteppedEvent[];
   diag: DeferredDiag | undefined;
+  /** The tank's on/off capability after the cycle, read at the SDK. */
+  tankOn: unknown;
 };
 
 const runCycleAtHour = async (params: {
@@ -255,7 +257,7 @@ const runCycleAtHour = async (params: {
     await drainUntil(() => false, { rounds: 20 }).catch(() => {});
   }
 
-  return { steppedEvents, diag: diagEvents.at(-1) };
+  return { steppedEvents, diag: diagEvents.at(-1), tankOn: await tank.getCapabilityValue('onoff') };
 };
 
 const findEvent = (events: SteppedEvent[], name: string): SteppedEvent | undefined => (
@@ -314,20 +316,18 @@ describe('smart-task boost — no daily budget, hourly hard cap (SDK-boundary e2
       .toBe(false);
   });
 
-  it('WITH the same boost smart task in a RELEASED (expensive) hour: no boost — the shed invariant rejects the step-up', async () => {
+  it('WITH the same boost smart task in a RELEASED (expensive) hour: no boost — the task holds the tank off', async () => {
     // ONLY the price curve changes: the cheap hour is now LATER (hour 2), so the
     // planner releases the expensive current hour (hour 0) toward it. The task is
-    // not in a planned hour, boost stays off, and the shed invariant rejects the
-    // step-up again — proving boost is scoped to the task's planned hours.
-    const { steppedEvents } = await runCycleAtHour({ cheapHour: 2, currentHour: 0, withSmartTask: 'boost' });
+    // not in a planned hour, so boost stays off — proving boost is scoped to the
+    // task's planned hours — and the task holds the power-limited tank OFF until
+    // its cheap hour rather than leaving it heating at its lowest step (owner
+    // ruling, 2026-09-25: during an active smart task the task decides whether the
+    // device runs). Observed at the SDK: the tank's on/off capability.
+    const { steppedEvents, tankOn } = await runCycleAtHour({ cheapHour: 2, currentHour: 0, withSmartTask: 'boost' });
 
-    const rejected = findEvent(steppedEvents, 'restore_stepped_rejected');
-    expect(rejected).toMatchObject({
-      requestedStepId: ESCALATED_STEP,
-      rejectionReason: 'shed_invariant',
-      blockedByShedInvariant: true,
-    });
     expect(findEvent(steppedEvents, 'restore_stepped_admitted')).toBeUndefined();
+    expect(tankOn).toBe(false);
   });
 
   it('A PLAIN (exempt-OFF) smart task is admitted to run against the hard cap when daily budget is OFF', async () => {

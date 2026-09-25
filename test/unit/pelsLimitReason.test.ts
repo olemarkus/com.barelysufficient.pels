@@ -102,6 +102,22 @@ describe('pels status limit reason', () => {
     expect(status.devicesOff).toBe(1);
   });
 
+  it('reports none when the only shed device is held off by its smart task or start policy', () => {
+    // `nonCapacityHoldShed`: a deferred smart-task hour or "Only PELS starts this
+    // device", and nothing else. No limit drives it (owner ruling, 2026-09-25).
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'waiting for cheaper hours' });
+    plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
+
+    const status = buildPelsStatus({
+      plan,
+      priceLevel: PriceLevel.NORMAL,
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
+    });
+
+    expect(status.limitReason).toBe('none');
+  });
+
   it('reports none for the unmeasured fail-closed build, and publishes no measured figure for it', () => {
     const plan = buildPlan({
       softLimitSource: 'capacity',

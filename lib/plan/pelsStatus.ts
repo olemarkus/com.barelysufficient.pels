@@ -243,6 +243,10 @@ function isRestoreHoldShedReason(reason: DeviceReason): boolean {
 
 function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
   if (device.plannedState !== 'shed') return false;
+  // Held off by "Only PELS starts this device" or its smart task's deferred hour,
+  // and by nothing else: no limit is driving it, so it must not make the home
+  // report hourly or daily limiting (`nonCapacityHoldShed`).
+  if (device.nonCapacityHoldShed === true) return false;
   return !isRestoreHoldShedReason(device.reason);
 }
 

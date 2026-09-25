@@ -433,6 +433,32 @@ describe('start policy through a whole plan build', () => {
     });
   });
 
+  it('does not hold another stepped device at its lowest step while it holds a device off', async () => {
+    // The hold honours a configuration, it is not a device limited for power, so
+    // the restore-side shed invariant must not count it.
+    const heater = inputDevice({
+      id: 'heater',
+      name: 'Heater',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on: true },
+      currentState: 'on',
+      currentDrawKw: 1.25,
+      expectedPowerKw: 3,
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      controllable: true,
+      managed: true,
+    });
+    const plan = await buildBuilder().buildDevicePlanSnapshot([charger('pels_only'), heater]);
+
+    expect(plan.devices.find((entry) => entry.id === 'charger')?.reason?.code)
+      .toBe(PLAN_REASON_CODES.awaitingPelsStart);
+    const other = plan.devices.find((entry) => entry.id === 'heater');
+    expect(other?.reason?.code).not.toBe(PLAN_REASON_CODES.shedInvariant);
+    expect(other?.desiredStepId).toBe('max');
+  });
+
   it('still sheds the hold to OFF when the meter has gone silent', async () => {
     // The fail-closed pass sheds every candidate to its floor, and for this
     // device the floor is OFF — the policy carries its own shed intent, not the

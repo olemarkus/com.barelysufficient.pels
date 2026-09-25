@@ -102,6 +102,11 @@ export function countShedDevices(
   for (const device of deviceMap.values()) {
     if (device.id === excludeId) continue;
     if (device.control.commandAuthority === false) continue;
+    // Held off by a hold that is not capacity pressure, and by nothing else: the
+    // invariant is fairness between devices limited for power, and neither hold
+    // is one ("Only PELS starts this device" and a deferred smart-task hour, owner
+    // rulings 2026-09-10 and 2026-09-25). See `nonCapacityHoldShed`.
+    if (device.nonCapacityHoldShed === true) continue;
     // Base plan keep is provisional until this pass admits a previous-shed or
     // unplanned candidate. Keep those in the invariant's shed count meanwhile.
     if (device.plannedState === 'shed' || shedDecisions.wasShedOrUnplanned(device.id)) count += 1;

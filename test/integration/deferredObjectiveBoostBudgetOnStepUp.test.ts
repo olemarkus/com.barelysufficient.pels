@@ -347,7 +347,7 @@ describe('smart-task boost — daily budget ON, per-hour budget slice is the bin
       .toContain(tank.reason.code);
   });
 
-  it('is held at its lowest step in a released (expensive) hour because boost is NOT engaged', async () => {
+  it('is held off by its task in a released (expensive) hour, with boost NOT engaged', async () => {
     const { tank, lowerPriorityShed, softLimitSource } = await runCycleAtHour(1);
 
     expect(softLimitSource).toBe('daily'); // budget still binding
@@ -355,7 +355,12 @@ describe('smart-task boost — daily budget ON, per-hour budget slice is the bin
 
     expect(tank.boostActive).toBe(false);
 
+    // The task deferred this hour, so it holds the power-limited tank OFF rather than
+    // leaving it heating at its lowest step (owner ruling, 2026-09-25: during an active
+    // smart task the task decides whether the device runs).
     expect(tank.desiredStepId).not.toBe('medium');
-    expect(tank.reason.code).toBe(PLAN_REASON_CODES.shedInvariant);
+    expect(tank.plannedState).toBe('shed');
+    expect(tank.shedAction).toBe('turn_off');
+    expect(tank.reason.code).toBe(PLAN_REASON_CODES.deferredObjectiveAvoid);
   });
 });

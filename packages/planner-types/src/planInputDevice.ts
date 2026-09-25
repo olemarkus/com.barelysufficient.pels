@@ -599,6 +599,25 @@ export type PlanInputDeviceBase = {
    * ruling, 2026-09-24).
    */
   startPolicyHoldLifted?: true;
+  /**
+   * The device's smart task is deferring this hour (an `idle` admission
+   * decision: nothing booked here, or a later hour is cheaper) and the device
+   * has command authority of its own, so the task holds it OFF this cycle.
+   *
+   * During an active smart task the task decides whether the device runs, also
+   * with Power-limit control on (owner ruling, 2026-09-25): the task may aim
+   * higher than the mode would (a water heater at 65 °C where the mode says
+   * 45 °C), so running as normal in an hour the task skipped spends energy the
+   * task has scheduled for a cheaper one. The hold sheds to OFF, not to the
+   * owner's limiting floor, which answers capacity pressure and still draws.
+   *
+   * Stamped by `applyDeferredAdmissionToInput`, and only there, together with
+   * the device's membership of the admission's `forceShedSet`. A device the task
+   * lends authority to (Power-limit control off) keeps its own route, a release
+   * to its configured posture, and is not stamped. Read through
+   * `isDeferredHoldShed` (`lib/plan/shedding/deferredHold.ts`).
+   */
+  deferredHoldActive?: true;
 };
 
 /**

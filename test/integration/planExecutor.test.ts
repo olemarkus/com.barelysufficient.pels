@@ -4811,6 +4811,38 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(typeof state.actuation.lastDeviceShedMs['dev-1']).toBe('number');
     });
 
+    it('records a hold\u2019s turn-off as a release, not a capacity shed', async () => {
+      // A smart task's deferred hour (or "Only PELS starts this device") is a planning
+      // decision, not capacity pressure: the same off-write must not start the shed
+      // cooldown or note instability, which would hold every other off device in the
+      // home at each hour a task defers (owner ruling, 2026-09-25).
+      const state = createPlanEngineState();
+      const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
+        binaryControl: { on: true },
+        binaryControlObservation: { ...trustedOffObservation, observedValue: true },
+      }));
+      const plan = chargerShedPlan();
+      plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
+
+      await executor.applyPlanActions(plan);
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      const pending = state.pendingBinaryCommands['dev-1'];
+      syncPendingBinaryCommands({
+        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        liveDevices: [{
+          id: 'dev-1', name: 'Charger',
+          binaryCommandConfirmation: {
+            state: 'observed', observedValue: false, observedAtMs: pending.startedMs + 1,
+          },
+        }],
+        source: 'device_update',
+        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
+      });
+      expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
+    });
+
     it('skips off from the resolved binary state even without observation metadata', async () => {
       // Planner inputs are already producer-resolved. Missing observation
       // metadata does not turn a strict `binaryControl.on === false` into an

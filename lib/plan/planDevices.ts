@@ -15,6 +15,7 @@ import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
+import { isDeferredHoldShed } from './shedding/deferredHold';
 import type { SheddingPlan } from './shedding/types';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
@@ -71,15 +72,19 @@ export function buildInitialPlanDevices(params: {
   // stepped clamp (docs/technical.md:222) is symmetric with the executor's
   // hasExecutableShedDevices: the phantom set_step shed entries it also ignores, PLUS
   // both STANDING POSTURES — "Run on solar surplus" and the "Only PELS starts this
-  // device" start policy. Neither is capacity pressure: the device is off because its
-  // owner opted into a baseline, not because the house is short of power. Mirrors the
-  // executor's reason-code exclusions.
+  // device" start policy — and a smart task's deferred-hour hold. None is capacity
+  // pressure: the device is off because its owner opted into a baseline or its task
+  // scheduled it for a cheaper hour, not because the house is short of power.
+  // The executor (`hasExecutableShedDevices`) and the restore side
+  // (`countShedDevices`) answer alike through `nonCapacityHoldShed`, stamped from
+  // these same predicates.
   const effectiveShedSet = buildEffectiveShedPosture({
     devices: context.devices,
     shedSet,
     isExcluded: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps })
       || isSurplusOnlyHoldShed({ dev, state, shedReasons })
-      || isStartPolicyHoldShed(dev, shedReasons),
+      || isStartPolicyHoldShed(dev, shedReasons)
+      || isDeferredHoldShed(dev, shedReasons),
   });
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going

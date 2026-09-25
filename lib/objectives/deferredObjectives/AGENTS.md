@@ -39,6 +39,42 @@ Three things that look like regressions and are not:
 Design of record: `notes/deferred-load-objectives/README.md` § "An unbooked hour is not a
 stand-down"; proof: `test/integration/smartTaskUnclaimedHourLifecycle.test.ts`.
 
+## During an active smart task, the task decides whether the device runs
+
+Owner ruling 2026-09-25, and it holds with Power-limit control ON. A task can aim higher than the
+mode would (a water heater at 65 °C where the mode says 45 °C), so letting the device "run as
+normal" in an hour the task deferred spends energy the task has already scheduled for a cheaper
+hour. In the owner's words: "during the smart task, it is the smart task logic that wins".
+
+So a `released` hour (`idle` decision) stands the device down whatever its power-limit setting:
+
+- **PELS has standing authority over the device** (Power-limit control on, or "Only PELS starts
+  this device" in force, which applies with power limiting off): `holdsDeviceOff` in
+  `admission.ts` force-sheds it and stamps `deferredHoldActive`. The planner sheds it to OFF, not
+  to the owner's limiting floor, which answers capacity pressure and still draws
+  (`isDeferredHoldShed`, `lib/plan/shedding/deferredHold.ts`). The hold alone is not capacity
+  pressure: all three readers of the stepped fairness invariant exclude it — the plan's
+  keep-invariant clamp (`planDevices.ts`), the restore side (`countShedDevices`) and the executor
+  (`hasExecutableShedDevices`), the last two through `nonCapacityHoldShed`. The executor records
+  its turn-off as a release, not a capacity shed, so it starts no house-wide shed cooldown or
+  restore back-off (`PlanExecutor.recordShedActuation`); the home's status reports no limiting for
+  it (`pelsStatus.ts`); and starvation excludes the device while the hold is active. A device with
+  no OFF to reach (temperature-only: no on/off handle, no step ladder) keeps its configured
+  setback, since an OFF there would issue no command at all.
+- **The task lends the device authority** (no standing authority: power limiting off and no
+  start policy): unchanged, force-shed with a release to its configured posture
+  (`contributesCommandAuthority`). That route still counts toward the fairness invariant, because
+  its device is overridden to `commandAuthority: true` and shed like a capacity shed; it predates
+  this ruling and is not covered by it.
+
+What this does not change: `claimed` and `unclaimed` hours hand the device to the planner as
+before, and a task that is not plannable (`inactive`: satisfied, invalid, no horizon) leaves the
+device on its normal lane — the ruling is about an ACTIVE task. Do not reintroduce "a power-limited
+device stays on the planner's normal lane in a released hour": that lane had nothing to hold a
+stepped device with, so it charged on spare capacity, and a binary one was released off by command
+while the plan kept it on. Proof: `test/integration/smartTaskDeferredHourPlanBuild.test.ts`,
+`test/e2e/deferredObjectiveBoostNoBudgetStepUpE2E.test.ts` (released hour).
+
 ## The step-ladder gap is the producer's answer, and its two readers are mirrors
 
 "Configured as a stepped load, but no live ladder this cycle" is resolved at `toPlanDevice` and
