@@ -58,6 +58,12 @@ export type DeferredPlanHistoryPostmortemVariant =
   // sentence names the device's own setpoint cap (not the PELS hard cap,
   // per `feedback_hard_cap_is_physical.md`) as the cause.
   | 'met-by-device-cap'
+  // An EV task whose car stops charging on its own below the task's target:
+  // the car's charge limit, learned from where it repeatedly stops, capped
+  // what any plan could reach, and PELS counted the run done there (owner
+  // ruling 2026-09-26). The sentence names the car as the cause, since the
+  // setting that would change it lives in the car.
+  | 'met-at-car-limit'
   | 'missed-by-shortfall'
   | 'missed-by-budget-exhaustion'
   | 'abandoned-by-clear'
@@ -212,6 +218,25 @@ const resolveDeviceCappedMetPostmortem = (
   };
 };
 
+const resolveCarLimitMetPostmortem = (
+  entry: PostmortemEntry,
+): DeferredPlanHistoryPostmortem => {
+  const finalLabel = formatFinalProgressValue(entry.objectiveKind, entry.finalProgressValue);
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
+  if (finalLabel !== null && targetLabel !== null) {
+    return {
+      variant: 'met-at-car-limit',
+      sentence: `Your car stopped at its own charge limit of ${finalLabel},`
+        + ` below this smart task's ${targetLabel} target. PELS counted the run as done.`,
+    };
+  }
+  return {
+    variant: 'met-at-car-limit',
+    sentence: "Your car stopped at its own charge limit, below this smart task's target."
+      + ' PELS counted the run as done.',
+  };
+};
+
 const resolveMetPostmortem = (
   entry: PostmortemEntry,
   timeZone: string,
@@ -229,6 +254,9 @@ const resolveMetPostmortem = (
   }
   if (entry.metReason === 'stalled') {
     return resolveStalledMetPostmortem(entry);
+  }
+  if (entry.metReason === 'observed_limit') {
+    return resolveCarLimitMetPostmortem(entry);
   }
   const timing = resolveMetTimingLabels(entry, timeZone);
   const overshot = wasOvershoot(entry.objectiveKind, entry.finalProgressValue, entry.targetValue);
@@ -375,6 +403,8 @@ const resolveAbandonedPostmortem = (
  *  - `met-by-device-cap`   — idle classifier reported `capped_idle` (device
  *                            parked at its own internal setpoint cap below
  *                            the PELS target).
+ *  - `met-at-car-limit`    — an EV task capped at its car's own charge limit
+ *                            (`metReason: 'observed_limit'`) and met there.
  *  - `missed-by-shortfall` — final progress < target with no daily-budget
  *                            cause recorded.
  *  - `missed-by-budget-exhaustion` — the final revision recorded the daily

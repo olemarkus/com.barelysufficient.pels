@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-26: 363 files, 915 bundles.
+# Seeded 2026-09-26: 362 files, 912 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -51,7 +51,7 @@ lib/device/deviceResidualKw.ts 2
 lib/device/deviceTransport.ts 1
 lib/device/evCarLink.ts 3
 lib/device/evCarLinkObservation.ts 2
-lib/device/evCarLinkProducer.ts 2
+lib/device/evCarLinkProducer.ts 1
 lib/device/evCarLinkReadModel.ts 1
 lib/device/evCarLinkSelfStop.ts 2
 lib/device/evCarLinkSessionResume.ts 1
@@ -77,7 +77,6 @@ lib/device/targetPowerContractWarn.ts 2
 lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
 lib/device/transport/binarySettleEvidence.ts 3
-lib/device/transport/carAssociation.ts 2
 lib/device/transport/deviceUpdateHandling.ts 1
 lib/device/transport/deviceWrites.ts 2
 lib/device/transport/flowReportedCapabilities.ts 6

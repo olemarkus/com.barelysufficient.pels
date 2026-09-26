@@ -1,6 +1,8 @@
 import type { AssociatedCarSnapshot } from '../../packages/contracts/src/types';
+import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { CarObservation } from './evCarLinkObservation';
 import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
+import { resolveEvCarChargeLimit } from './evCarLinkSnapshot';
 
 /**
  * Resolves the car-link probe's in-memory session state into the flat,
@@ -77,6 +79,18 @@ export const resolveAssociatedCarSnapshot = (params: {
 };
 
 /**
+ * The battery level an associated car lends its charger, with the charge the car
+ * stops at on its own once its stops qualify one (`null` until then).
+ */
+export type AssociatedCarLevel = {
+    chargerId: string;
+    carId: string;
+    socPct: number;
+    socAtMs: number;
+    chargeLimitPct: number | null;
+};
+
+/**
  * Every associated charger's current car battery level.
  *
  * The level is a value the probe holds continuously, not an event: a car sitting
@@ -84,15 +98,22 @@ export const resolveAssociatedCarSnapshot = (params: {
  * already sent its update. Serving it from the association rather than from a
  * change notification is what lets an associated charger always have a level.
  */
-export const collectAssociatedCarLevels = (params: {
-    cars: ReadonlyMap<string, CarObservation>;
-    links: ReadonlyMap<string, ActiveLinkView>;
-}): Array<{ chargerId: string; carId: string; socPct: number; socAtMs: number }> => {
-    const readings: Array<{ chargerId: string; carId: string; socPct: number; socAtMs: number }> = [];
-    for (const [chargerId, link] of params.links) {
-        const car = params.cars.get(link.carId);
+export const collectAssociatedCarLevels = (
+    cars: ReadonlyMap<string, CarObservation>,
+    links: ReadonlyMap<string, ActiveLinkView>,
+    snapshot: EvCarLinkSnapshot,
+): AssociatedCarLevel[] => {
+    const readings: AssociatedCarLevel[] = [];
+    for (const [chargerId, link] of links) {
+        const car = cars.get(link.carId);
         if (car?.socPct === undefined) continue;
-        readings.push({ chargerId, carId: link.carId, socPct: car.socPct, socAtMs: car.socAtMs });
+        readings.push({
+            chargerId,
+            carId: link.carId,
+            socPct: car.socPct,
+            socAtMs: car.socAtMs,
+            chargeLimitPct: resolveEvCarChargeLimit(snapshot, link.carId),
+        });
     }
     return readings;
 };

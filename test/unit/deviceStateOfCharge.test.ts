@@ -265,11 +265,11 @@ describe('car-sourced state of charge', () => {
 
     // A reading the car took BEFORE this charging session was anchored.
     updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1',
+      snapshot, percent: 63, observedAtMs: 1_000, chargeLimitPct: null, carId: 'car-1',
     });
     snapshot.stateOfCharge = { ...snapshot.stateOfCharge!, sessionStartedAtMs: 4_000 };
     updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1',
+      snapshot, percent: 63, observedAtMs: 1_000, chargeLimitPct: null, carId: 'car-1',
     });
 
     expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000 });
@@ -298,7 +298,7 @@ describe('car-sourced state of charge', () => {
     } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0]['snapshot'];
 
     expect(updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_500, carId: 'car-1',
+      snapshot, percent: 63, observedAtMs: 1_500, chargeLimitPct: null, carId: 'car-1',
     })).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({
       report: { percent: 63 },

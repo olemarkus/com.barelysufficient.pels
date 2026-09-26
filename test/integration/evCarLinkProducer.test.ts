@@ -759,9 +759,22 @@ describe('state-of-charge shadow', () => {
     // Offered repeatedly and idempotently, not once on change: the level is a
     // value the probe holds, so an associated charger can always ask for it.
     // The consumer writes only when it actually moves.
+    // No stops banked yet, so no charge limit rides with the level.
     expect(h.adopted).toContainEqual(
-      { chargerId: 'charger-1', carId: 'car-1', socPct: 74, socAtMs: readingAt },
+      { chargerId: 'charger-1', carId: 'car-1', socPct: 74, socAtMs: readingAt, chargeLimitPct: null },
     );
+  });
+
+  it('offers the car\'s qualified charge limit with its level', () => {
+    // Two agreeing stops qualify the limit; from then on it rides with every
+    // reading this car lends its charger, which is how a smart task learns it.
+    h.snapshot = {
+      ...h.snapshot,
+      cars: { 'car-1': { stopSocPct: [70, 70], lastObservedAtMs: 1 } },
+    };
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    expect(h.adopted.at(-1)).toMatchObject({ carId: 'car-1', socPct: 55, chargeLimitPct: 70 });
   });
 
   it('offers nothing for a car with no session', () => {

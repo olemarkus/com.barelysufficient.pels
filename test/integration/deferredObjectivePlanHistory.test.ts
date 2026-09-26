@@ -95,12 +95,15 @@ const makeDiag = (
   } as DeferredObjectiveDiagnostic;
   // Keep the unit-agnostic pair consistent with whatever kind-split fields the
   // override set, unless the override set the pair explicitly.
+  const targetValue = overrides.targetValue
+    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent);
   return {
     ...diag,
     currentValue: overrides.currentValue
       ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
-    targetValue: overrides.targetValue
-      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent),
+    targetValue,
+    // No car limit unless the case sets one: the reachable target is the target.
+    reachableTargetValue: overrides.reachableTargetValue ?? targetValue ?? 0,
   };
 };
 
@@ -2315,6 +2318,112 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled');
+    });
+
+    it('records a run met at its car\'s own charge limit, and keeps it met once the charger lets go', () => {
+      // Production, 2026-09-26: an 80 % task on a car that stops at 70 %. The
+      // capped task is satisfied at 70; the Easee then ended the session and
+      // read unplugged, which is a non-plannable tick with no progress.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 9 * HOUR_MS;
+      const ev = {
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc' as const,
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+        reachableTargetValue: 70,
+      };
+      recorder.observe([makeDiag({ ...ev, currentPercent: 53 })], 0, null);
+      recorder.observe([makeDiag({
+        ...ev,
+        currentPercent: 70,
+        trajectory: { kind: 'resolved', status: 'satisfied' },
+        horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+      })], 6 * HOUR_MS, null);
+      // A tick that cannot plan but still reads 70 %: at the target it can reach.
+      recorder.observe([makeDiag({
+        ...ev,
+        currentPercent: 70,
+        trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
+        reasonCode: 'objective_missing_price_horizon',
+        horizonPlan: undefined,
+      })], 6 * HOUR_MS + 60_000, null);
+      recorder.observe([makeDiag({
+        ...ev,
+        currentPercent: null,
+        trajectory: { kind: 'unavailable', reasonCode: 'objective_invalid_session' },
+        reasonCode: 'objective_invalid_session',
+        horizonPlan: undefined,
+      })], 7 * HOUR_MS, null);
+      recorder.observe([], deadlineAtMs, null);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('observed_limit');
+      expect(entry.finalProgressValue).toBe(70);
+    });
+
+    it('re-opens a run met at a car limit once the limit is gone and the charge is short', () => {
+      // A car charging past its qualified limit disproves it; the task's full
+      // target is back, and a reading below it is not "at target" any more.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 9 * HOUR_MS;
+      const ev = {
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc' as const,
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+      };
+      recorder.observe([makeDiag({
+        ...ev,
+        reachableTargetValue: 70,
+        currentPercent: 70,
+        trajectory: { kind: 'resolved', status: 'satisfied' },
+        horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+      })], 0, null);
+      recorder.observe([makeDiag({ ...ev, currentPercent: 72 })], HOUR_MS, null);
+      recorder.observe([], deadlineAtMs, null);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+    });
+
+    it('meets a car that arrived above its target the ordinary way, cap or not', () => {
+      // Fast-charged on a trip to 85 %: the car reached the owner's 80 % target,
+      // so the run is not "met at the car's limit".
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 9 * HOUR_MS;
+      recorder.observe([makeDiag({
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc',
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+        reachableTargetValue: 70,
+        currentPercent: 85,
+        trajectory: { kind: 'resolved', status: 'satisfied' },
+        horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+      })], 0, null);
+      recorder.observe([], deadlineAtMs, null);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBeUndefined();
     });
 
     it('does not write metReason on runs that crossed the target normally', () => {

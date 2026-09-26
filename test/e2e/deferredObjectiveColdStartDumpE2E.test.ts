@@ -97,6 +97,7 @@ const diagnosticFor = (
   currentTemperatureC,
   currentValue: currentTemperatureC,
   targetValue: TARGET_C,
+  reachableTargetValue: TARGET_C,
   deadlineAtMs: DAY + DEADLINE_HOUR * HOUR_MS,
   deadlineLocalTime: '06:00',
   energyNeededKWh,

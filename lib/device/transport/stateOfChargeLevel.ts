@@ -22,7 +22,11 @@ export const stateOfChargeLevelsDiffer = (
   // `observedAtMs`: this asks whether the ANSWER moved, and a level re-stamped at
   // the same percentage says the same thing. Callers that care about the stamp
   // compare `report.observedAtMs` themselves, and both of them do.
-  if (previous.kind === 'known' && next.kind === 'known') return previous.percent !== next.percent;
+  // The car's ceiling is part of the answer: a limit that qualifies, moves or is
+  // disproved changes what a smart task can reach.
+  if (previous.kind === 'known' && next.kind === 'known') {
+    return previous.percent !== next.percent || previous.carChargeLimitPercent !== next.carChargeLimitPercent;
+  }
   if (previous.kind === 'unavailable' && next.kind === 'unavailable') {
     return previous.reasonCode !== next.reasonCode;
   }

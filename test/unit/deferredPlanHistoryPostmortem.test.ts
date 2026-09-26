@@ -221,6 +221,30 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.sentence).not.toContain('hard cap');
     });
 
+    it('resolves met-at-car-limit when an EV task was met at its car\'s own charge limit', () => {
+      // Production, 2026-09-26: an 80 % task on a Polestar set to stop at 70 %.
+      // The car's limit capped what any plan could reach, so the run was met
+      // there, and the sentence names the car as the cause.
+      const entry = buildEntry({
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 53,
+        finalProgressC: null,
+        finalProgressPercent: 70,
+        outcome: 'met',
+        metReason: 'observed_limit',
+        metAtMs: DEADLINE_MS - 2 * HOUR_MS,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-at-car-limit');
+      expect(result.sentence).toBe(
+        "Your car stopped at its own charge limit of 70 %, below this smart task's 80 % target."
+        + ' PELS counted the run as done.',
+      );
+    });
+
     it('met-by-device-cap sentence drops to a generic fallback when finalProgress is missing', () => {
       // Defensive: a legacy entry hand-rewritten without finalProgressC
       // should still get a sentence that names the device cap rather
