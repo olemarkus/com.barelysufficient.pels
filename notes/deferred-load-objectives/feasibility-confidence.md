@@ -96,6 +96,23 @@ value finally moves. Per the power-continuity rule, if any sub-interval shows
 power = 0, the window is thermally contaminated (coasting, not electrical heat) →
 reset the baseline and discard the partial accumulator rather than averaging it.
 
+After a pause part-way through a step, that reset lands mid-step: the value is a
+quantized reading, and a rising edge is what fixes where the true value sits
+inside it. A battery holds its charge while paused, so the first rise after the
+resume was billed a whole step for the part left: on 2026-09-25 an Easee paused
+and resumed 18 times learned 0.108–0.28 kWh/% against a real ~1.4, and the
+night's smart task was sized from 0.85. So when the draw returns at an unchanged
+value and the baseline is still the last accepted rise, the baseline is marked
+`baselineMidStep` and the next value change re-anchors the window
+(`objective_profile_baseline_mid_step`) instead of being billed.
+
+Only that case. After a visible fall, or from any baseline that was not an
+accepted rise, the first rise is learned as before: a thermostat's first rise
+after power-on carries the energy it spends warming up before the room responds,
+and production thermostat windows starting there learned higher rates, not lower
+(2026-09-15..26). Re-anchoring them would size a task that starts from a cold
+room too small.
+
 ## The real gap: two coupled problems
 
 > This section is the **pre-fix diagnosis** that motivated the now-shipped

@@ -162,6 +162,17 @@ export function updateDeviceObjectiveProfile(params: {
   const intervalMs = getProfileIntervalMs(previousSample, sample);
   const valueDelta = getProfileValueDelta(previousSample, sample);
 
+  // A mid-step baseline cannot open a window (`baselineMidStep`): the first
+  // change after it is where one can start, not a rise to bill. Ahead of the
+  // interval checks on purpose — a change that lands too soon to bill is still
+  // the step edge, and holding the baseline past it until the minimum interval
+  // re-anchors a later, mid-step moment instead.
+  if (previous.baselineMidStep === true && intervalMs > 0) {
+    const rejection: ProfileSampleRejection = { reason: 'objective_profile_baseline_mid_step', openWindow: 'void' };
+    emitRejectedProfileSample({ deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection });
+    return buildRejectedProfileSample({ previous, sample, rejection });
+  }
+
   // Timing checks (non-monotonic time, too-short/too-long intervals) run first:
   // a stale or out-of-order sample has no window to bill energy across, so it
   // must never reach the value or energy verdicts, let alone reset the baseline.
@@ -246,7 +257,8 @@ export function updateDeviceObjectiveProfile(params: {
 // A sub-interval whose left-edge power is absent or non-positive is thermally
 // contaminated (the device coasted, not heated electrically) — discard the
 // partial window and reset the baseline to this sample instead of averaging
-// coast drift into the energy estimate.
+// coast drift into the energy estimate. After a pause part-way through a step
+// the reset lands mid-step (`resolvePausedMidProgress`).
 function accrueSubInterval(params: {
   previous: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
@@ -259,6 +271,7 @@ function accrueSubInterval(params: {
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
       ...CLEARED_ENERGY_ACCUMULATOR,
+      baselineMidStep: resolvePausedMidProgress(previous, sample),
     };
   }
   return {
@@ -305,6 +318,7 @@ function buildAcceptedProfileSample(params: {
     // The accepted rise closes the window; the next sample starts a fresh one
     // measured from this baseline.
     ...CLEARED_ENERGY_ACCUMULATOR,
+    baselineMidStep: undefined,
   };
   // Snapshot the raw-CV (global) confidence *before* `applyBandedConfidence`
   // overrides `kwhPerUnit.confidence`, so `globalEnergyConfidence` below
@@ -364,6 +378,7 @@ function buildRejectedProfileSample(params: {
       // Both halves are required: keeping either the baseline or the partial sum
       // carries the refused window into the next one.
       ...CLEARED_ENERGY_ACCUMULATOR,
+      baselineMidStep: undefined,
     };
   }
   return {
@@ -550,6 +565,36 @@ function resolveLearnedRateUpdate(params: {
   // to publish one (e.g., the buffer dipped under the split threshold). The
   // undefined key is dropped when the tracker store serialises the profiles.
   return { samples, bands, kwhPerUnit: resolveKwhPerUnitStat(samples, sample.observedAtMs) };
+}
+
+/**
+ * Whether the draw returning at `sample` leaves the baseline mid-step: the
+ * device was paused part-way through a step it had risen onto, and the pause
+ * showed no change. Then the reset lands inside a reading the device had already
+ * made progress through, and the first rise out of it would bill a whole step
+ * for the part left. A battery holds its charge while paused, so this is the
+ * progress made before every pause, lost each time: an EV paused and resumed 18
+ * times in a day learned 0.108-0.28 kWh/% against a real ~1.4.
+ *
+ * Only that case. A reset after the value FELL, or after any baseline that was
+ * not an accepted rise, keeps learning as it always has: a thermostat's first
+ * rise after power-on carries the energy it spends warming up before the room
+ * responds, and production thermostat windows starting there learned higher
+ * rates, not lower (2026-09-15..26), so discarding them would size a task that
+ * starts from a cold room too small. The baseline is an accepted rise exactly
+ * when the newest buffered observation was recorded at it; a pause that repeats
+ * before the next change stays mid-step.
+ *
+ * `undefined` rather than `false` for an anchored baseline, so the key drops
+ * when the tracker store serialises the profile, like the accumulator fields.
+ */
+function resolvePausedMidProgress(
+  previous: DeviceObjectiveProfile,
+  sample: DeviceObjectiveProfileSample,
+): true | undefined {
+  if (sample.value !== previous.lastSample.value) return undefined;
+  if (previous.baselineMidStep === true) return true;
+  return previous.samples?.at(-1)?.observedAtMs === previous.lastSample.observedAtMs ? true : undefined;
 }
 
 function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile {
