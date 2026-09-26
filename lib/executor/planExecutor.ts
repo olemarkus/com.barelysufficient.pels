@@ -92,16 +92,6 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
     /** Commanded-axis: a step command is issued and not yet settled. */
     stepCommandPending: boolean;
   };
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /**
@@ -340,7 +330,6 @@ export class PlanExecutor {
         actuator: this.deps.actuator,
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
-        logTargetRetryComparison: this.deps.logTargetRetryComparison,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         recordActivationAttemptStarted: this.boundRecordActivationAttemptStarted,
@@ -351,7 +340,6 @@ export class PlanExecutor {
     this.targetExecutorContext.state = this.state;
     this.targetExecutorContext.operatingMode = this.operatingMode;
     this.targetExecutorContext.syncLivePlanStateAfterTargetActuation = this.deps.syncLivePlanStateAfterTargetActuation;
-    this.targetExecutorContext.logTargetRetryComparison = this.deps.logTargetRetryComparison;
     this.targetExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
     return this.targetExecutorContext;
   }

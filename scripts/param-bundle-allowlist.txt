@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-24: 363 files, 916 bundles.
+# Seeded 2026-09-26: 362 files, 908 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -22,7 +22,7 @@ flowCards/registerFlowCards.ts 2
 flowCards/steppedLoadFlowCards.ts 1
 flowCards/steppedLoadReport.ts 5
 lib/actuator/deviceCommand.ts 1
-lib/app/appContext.ts 2
+lib/app/appContext.ts 1
 lib/dailyBudget/dailyBudgetAllocation.ts 6
 lib/dailyBudget/dailyBudgetBreakdown.ts 1
 lib/dailyBudget/dailyBudgetConfidence.ts 6
@@ -117,7 +117,7 @@ lib/executor/executorSupport.ts 6
 lib/executor/lifecycleFallbackDispatcher.ts 3
 lib/executor/lifecycleReleaseRecording.ts 1
 lib/executor/planExecutionDrift.ts 3
-lib/executor/planExecutor.ts 5
+lib/executor/planExecutor.ts 4
 lib/executor/planExecutorDispatch.ts 3
 lib/executor/shedReleaseActuation.ts 5
 lib/executor/steppedCommandAttempt.ts 1
@@ -129,8 +129,7 @@ lib/executor/steppedLoadExecutorContext.ts 2
 lib/executor/steppedLoadExecutorRestore.ts 4
 lib/executor/targetCommandRetry.ts 4
 lib/executor/targetExecutor.ts 4
-lib/executor/targetExecutorContext.ts 1
-lib/executor/targetPendingCommand.ts 2
+lib/executor/targetPendingCommand.ts 1
 lib/executor/targetPowerReachability.ts 4
 lib/logging/deviationGate.ts 1
 lib/logging/logDedupe.ts 2
@@ -331,7 +330,7 @@ packages/shared-domain/src/solar/solarMoney.ts 1
 packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
-setup/appDebugHelpers.ts 4
+setup/appDebugHelpers.ts 2
 setup/appDeviceControlFeedback.ts 5
 setup/appDeviceControlHelpers.ts 5
 setup/appDeviceControlSteppedState.ts 2
@@ -339,7 +338,7 @@ setup/appDeviceSupport.ts 2
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/calibrationViews.ts 1
-setup/appInit/planEngineWiring.ts 2
+setup/appInit/planEngineWiring.ts 1
 setup/appInit/registerSettingsHandler.ts 1
 setup/appInit/residualKwForPlanDevice.ts 1
 setup/appInit/toPlanDevice.ts 3
@@ -347,7 +346,7 @@ setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
 setup/appObservedControlStateRuntime.ts 2
 setup/appPriceLowestTrigger.ts 1
-setup/appRuntimeApi.ts 2
+setup/appRuntimeApi.ts 1
 setup/appSettingsHelpers.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/appTargetPowerReachability.ts 8

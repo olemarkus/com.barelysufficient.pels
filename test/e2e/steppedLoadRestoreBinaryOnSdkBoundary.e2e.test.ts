@@ -220,7 +220,6 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
-    logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {

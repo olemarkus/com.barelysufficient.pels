@@ -318,7 +318,6 @@ const buildExecutor = (
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
-    logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     ...depsOverrides,
   };
@@ -1272,7 +1271,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('does not resend the same target command until the retry deadline', async () => {
     const state = createPlanEngineState();
-    const { executor, deviceManager, state: nextState, deps } = buildExecutor(state, [
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
         expectedPowerKw: 1,
@@ -1320,16 +1319,6 @@ describe('PlanExecutor pending target commands', () => {
       reasonCode: 'retry_pending_confirmation',
       operatingMode: 'Home',
     }));
-    expect(deps.logTargetRetryComparison).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      name: 'Heater',
-      target: 'temperature',
-      desired: 23,
-      observedValue: 18,
-      observedSource: undefined,
-      retryCount: 1,
-      skipContext: 'plan',
-    });
   });
 
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {

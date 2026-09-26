@@ -424,17 +424,7 @@ const executeTargetCommandDispatch = async (
       && pendingStillExists
       && !Object.is(latestObservedValueAfterActuation, requestedValue)
     ) {
-      await logPendingTargetRetry(ctx, {
-        deviceId,
-        name,
-        target: 'temperature',
-        desired: requestedValue,
-        retryCount: pending.retryCount,
-        retryDelaySec,
-        observedValue: pending.lastObservedValue,
-        observedSource: pending.lastObservedSource,
-        skipContext,
-      });
+      logPendingTargetRetry(name, pending, retryDelaySec);
     } else if (pendingStillExists) {
       emitExecutorDebug({
         event: 'executor_target_log_debug',
