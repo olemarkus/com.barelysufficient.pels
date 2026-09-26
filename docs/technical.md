@@ -204,7 +204,7 @@ For devices configured with the built-in **stepped load** control model, resume 
 - PELS expects vendor-specific flows to report the selected step back through **Report stepped load for [device] as [step]** or **Report stepped load for [device] matching [power]** unless the device exposes that state generically.
 - For supported stepped-load devices (such as compatible water heaters and Easee chargers), **built-in device control** lets PELS set the level directly instead of routing through your own Flow cards, and is on by default. PELS automatically leaves it off — with a notice on the device — when it detects a Homey Flow already writing that device's level, so the existing setup keeps working. To switch, turn off only the conflicting Flow action, then enable built-in device control in the device's **Setup** section.
 
-Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
+Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation. An Easee charger under built-in device control is the exception: PELS pauses it by setting the current to 0 A and resumes it at 6 A, so the charging session stays open (see [Easee EV Charger](/easee-ev-charger)).
 
 PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
 - Resumes stepped loads one at a time; binary loads may use the bounded batch above when the available-power margin is large

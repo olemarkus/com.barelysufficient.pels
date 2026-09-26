@@ -246,6 +246,7 @@ export function normalizeNativeEvCapabilityUpdate(params: {
   snapshot: Pick<
     TransportDeviceSnapshot,
     'controlAdapter' | 'binaryControl' | 'evChargingState' | 'capabilities'
+    | 'reportedStepId' | 'steppedLoadProfile'
   >;
   capabilityId: string;
   value: unknown;

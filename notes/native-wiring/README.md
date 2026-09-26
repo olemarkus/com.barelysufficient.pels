@@ -65,31 +65,85 @@ capabilities instead of round-tripping through user-authored Flow cards.
 
   The switch is read back (`withEaseeObservedCharging` on a read,
   `resolveEaseeRealtimeUpdates` on realtime events, both in
-  `lib/device/easeeChargingSwitch.ts`) as the app's own `evcharger_charging`,
-  but never on while the plug state is `plugged_in_paused`. Homey keeps
-  PELS's last write to the switch until the app publishes again, which it
-  does only when the charger mode changes: in production (2026-09-25) a
-  charger that went to `Paused` while PELS's start was in flight, and never
-  charged, held PELS's `true`, so PELS showed a charger allocating 0 A as
-  running at 6 A. The plug state comes from the same mode and is never
-  written. A current of 0-5 A set in the Easee app pauses the charger, and
-  the app reports that within seconds (4 s in production), so it reads as
-  the switch going off outside PELS, which PELS decides about again like any
-  outside turn-off. The level reads 0-5 A as the off step, so switching such
-  a charger back on writes 6 A rather than starting a session.
+  `lib/device/easeeChargingSwitch.ts`) from the plug state and the current,
+  never from the app's own `evcharger_charging`: on while the charger is
+  `plugged_in_charging`, and while it is `plugged_in_paused` holding 6 A or
+  more; off otherwise. The app 2.0.5 derives its switch from the same charger
+  mode as the plug state (on only in `Charging`) and publishes the two
+  together, switch first, so the switch adds nothing the plug state does not,
+  except a value PELS wrote itself: Homey keeps a written switch until the app
+  next publishes, which it does only when the charger mode changes. The
+  current tells a paused charger PELS switched on from one it switched off.
+  After a resume Easee holds the charger in `Awaiting Start`, which the app
+  publishes as `plugged_in_paused`, for about 5 minutes before it offers the
+  car current, so a charger paused at 6 A is on and waiting, and one paused
+  at 0-5 A is off. A realtime current or plug-state report carries the switch
+  it implies (the realtime path reads the held current as the reported step,
+  which puts 0-5 A on the off step); the app's switch events are dropped, and
+  a malformed plug state or current implies nothing. PELS's own write to the
+  switch is no observation of it either (`readBackAsWritten` in
+  `transport/deviceWrites.ts`): a recorded local write would otherwise win
+  over any later read Homey dated before it (`observationMerge`,
+  `retained_fresher`), and the app never re-dates a switch it did not
+  republish, so a start that never charged would read on for good.
+
+  This is what lets a resume confirm. Reading "never on while paused" (the
+  first shipped rule) left every resume unconfirmed for the whole hold: the
+  90 s confirmation window expired, the reachability back-off armed, and the
+  plan held the charger inactive ("did not respond") with its power
+  unreserved, until the charger started unplanned about 5 minutes later
+  (production, 2026-09-25, on every resume). Now the current's echo confirms
+  within seconds and the plan keeps the charger's power booked through the
+  hold. A charger PELS restarts inside a hold reads on too, so a plan that
+  wants it off pauses it rather than skipping a charger it read as off.
+
+  A pause confirms later than it writes: a charger still `plugged_in_charging`
+  reads on whatever its current, so after PELS's 0 A the switch reads off once
+  Easee reports the pause (17-37 s in production), when the charger has
+  stopped drawing, not when the current lands. A current of 0-5 A set in the
+  Easee app pauses the charger the same way, and the app reports it within
+  seconds (4 s in production), so it reads as the switch going off outside
+  PELS, which PELS decides about again like any outside turn-off. A charger
+  Easee pauses for its own reasons while holding 6 A or more (its load
+  balancer, a remote authorisation) reads on and draws nothing, like a car
+  that is not taking current.
+
+  **Open:** whether raising the current inside the hold restarts it. While the
+  charger reads on, the planner ramps it at its ordinary cadence (6 A to 16 A
+  over about 5 minutes when there is room) before it draws anything. The
+  production hold was only ever measured from a 0 A to 6 A resume. A second
+  6 A write inside it did not restart it (2026-09-25: 12:14:14 resume, 6 A
+  again at 12:15:44, charging at 12:19:50; 15:13:06, 15:14:36, 15:18:34), but
+  a raise to a higher current is untested. If one restarts it, the ramp
+  pushes the start out to about 5 minutes after the last raise. The SDK e2e
+  models the hold as timed from the resume.
 
   A switch-on that is not followed by PELS's own step commands leaves the
   charger at the lowest charging step, where a start used to reset it to its
   maximum. That is the case when PELS lets go of a paused charger, for
   instance when Power-limit control is turned off for it.
 
+  With built-in control off the switch is the app's, read and written as any
+  EV charger's, with one exception: a switch-on for a session paused below 6 A
+  writes 6 A, because no start command resumes it. That is PELS's own 0 A
+  pause when the owner turned built-in control off before PELS resumed it;
+  without the exception nothing would raise the current again. The raw
+  current comes from the tracked Homey device, since the snapshot has no
+  native step for a charger PELS does not step itself.
+
   Unlike a stopped session, a paused one resumes on any current of 6 A or
-  more, so a charging step written while the plan holds the charger off
-  would restart charging. Nothing does: a plan holding the charger off plans its off step,
-  not a charging one. The charger's mode change (plug state, the app's own
-  switch) trails the current by tens of seconds; the SDK e2e
-  (`test/e2e/easeeNativeChargerCurrentSdkE2E.test.ts`) holds it back past two
-  meter readings and asserts no current is put back on offer.
+  more, so a charging step written while the plan holds the charger off would
+  restart charging. The plan does not avoid that by planning the off step: a
+  plan holding the charger off still carries its lowest charging step (6 A in
+  production). What holds it is the executor. A binary-driven off that has
+  settled skips every step command (`isSettledAtPlannedOff`,
+  `lib/executor/steppedLoadExecutor.ts`), the step goes out before the
+  shed-off in a pass that sheds, and the desired step of a shed device never
+  rises above the step the charger reports (`resolveDesiredStepId`,
+  `lib/executor/executableSteppedLoadProjection.ts`), which for a paused
+  charger is the off step. The SDK e2e
+  (`test/e2e/easeeNativeChargerCurrentSdkE2E.test.ts`) holds the mode change
+  back past two meter readings and asserts no current is put back on offer.
 
   **Phase auto-selection excludes IT three-phase.** `resolveChargerPhaseReport`
   never assigns the TN three-phase preset to a reported `IT_3_PHASE` grid, including

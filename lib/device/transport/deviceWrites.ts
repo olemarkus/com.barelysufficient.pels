@@ -63,28 +63,49 @@ function emitCapabilityWriteDebug(ctx: TransportContext, params: {
 }
 
 /**
- * What reaches the SDK for a requested write, and which Homey echoes of it are
- * PELS's own.
+ * What reaches the SDK for a requested write, which Homey echoes of it are
+ * PELS's own, and whether PELS reads the requested capability back as Homey
+ * holds it. Only then may the local write stand in for a read that Homey dated
+ * before it.
  */
-type SdkWrite = { write: CapabilityWrite; ownEchoes: readonly CapabilityWrite[] };
+type SdkWrite = {
+    write: CapabilityWrite;
+    ownEchoes: readonly CapabilityWrite[];
+    readBackAsWritten: boolean;
+};
 
 /**
  * Where a write to a device's binary switch lands in the SDK: the switch, or the
- * capability the transport routes it to. An Easee under built-in control carries
- * out its charging switch through the charger current instead
- * (`resolveEaseeSwitchWrite`). Everything about the write that PELS reasons with
- * (the settle evidence it waits for, the observed state it publishes) stays on
- * the switch it asked for; the charger current is recorded as PELS's own write
- * too, so its echo is treated like the echo of any other built-in step write
- * rather than as an observation of the charger.
+ * capability the transport routes it to. An Easee may carry out its charging
+ * switch through the charger current instead (`resolveEaseeSwitchWrite`).
+ * The settle evidence PELS waits for stays on the switch it asked for; the
+ * charger current is recorded as PELS's own write too, so its echo is treated
+ * like the echo of any other built-in step write rather than as an observation
+ * of the charger. An Easee under built-in control reads its switch from the
+ * plug state and the current, not from what Homey holds for it, so PELS's own
+ * write to the switch is no observation of it either.
  */
-function resolveSwitchSdkWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): SdkWrite {
-    if (typeof requested.value === 'boolean' && isEaseeUnderBuiltInControl(snapshot)) {
-        const easeeWrite = resolveEaseeSwitchWrite(snapshot, requested.value);
-        if (easeeWrite.kind === 'current') return { write: easeeWrite.write, ownEchoes: [requested, easeeWrite.write] };
+function resolveSwitchSdkWrite(
+    ctx: TransportContext,
+    snapshot: TransportDeviceSnapshot,
+    requested: CapabilityWrite,
+): SdkWrite {
+    const plain: SdkWrite = {
+        write: routeSwitchWrite(snapshot, requested),
+        ownEchoes: [requested],
+        readBackAsWritten: true,
+    };
+    if (typeof requested.value !== 'boolean') return plain;
+    const easeeWrite = resolveEaseeSwitchWrite(snapshot, ctx.getTrackedDevicesById(), requested.value);
+    const readBackAsWritten = !isEaseeUnderBuiltInControl(snapshot);
+    if (easeeWrite.kind === 'current') {
+        return { write: easeeWrite.write, ownEchoes: [requested, easeeWrite.write], readBackAsWritten };
     }
-    const capabilityId = snapshot.binaryWriteCapabilityId ?? requested.capabilityId;
-    return { write: { capabilityId, value: requested.value }, ownEchoes: [requested] };
+    return { ...plain, readBackAsWritten };
+}
+
+function routeSwitchWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): CapabilityWrite {
+    return { capabilityId: snapshot.binaryWriteCapabilityId ?? requested.capabilityId, value: requested.value };
 }
 
 export async function setCapability(
@@ -97,9 +118,9 @@ export async function setCapability(
     const normalizedValue = normalizeCapabilityValue(ctx, deviceId, capabilityId, value);
     const snapshotBefore = ctx.latestSnapshot.find((device) => device.id === deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
-    const { write, ownEchoes }: SdkWrite = snapshotBefore?.binaryCapabilityId === capabilityId
-        ? resolveSwitchSdkWrite(snapshotBefore, requested)
-        : { write: requested, ownEchoes: [requested] };
+    const { write, ownEchoes, readBackAsWritten }: SdkWrite = snapshotBefore?.binaryCapabilityId === capabilityId
+        ? resolveSwitchSdkWrite(ctx, snapshotBefore, requested)
+        : { write: requested, ownEchoes: [requested], readBackAsWritten: true };
     logEvCapabilityRequest({
         logger: ctx.logger,
         snapshotBefore,
@@ -150,18 +171,23 @@ export async function setCapability(
         write,
     });
 
-    recordLocalWriteObservation({
-        state: ctx.observationState,
-        latestSnapshot: ctx.latestSnapshot,
-        deviceId,
-        capabilityId,
-        value: normalizedValue,
-        preservedLocalState: false,
-    });
-    // The accepted write advances only command metadata (`lastLocalWriteMs`),
-    // never observed capability truth. Publish the unchanged observed state so
-    // the observer projection remains an exact shadow while confirmation still
-    // has to arrive through snapshot/realtime telemetry.
+    if (readBackAsWritten) {
+        recordLocalWriteObservation({
+            state: ctx.observationState,
+            latestSnapshot: ctx.latestSnapshot,
+            deviceId,
+            capabilityId,
+            value: normalizedValue,
+            preservedLocalState: false,
+        });
+    }
+    // The accepted write publishes no observed value of its own. Publish the
+    // unchanged observed state so the observer projection remains an exact
+    // shadow while confirmation still has to arrive through snapshot/realtime
+    // telemetry. A local write recorded above (`readBackAsWritten`) does count
+    // on a later read: a pulled value Homey dated before it gives way to PELS's
+    // value (`observationMerge`, `retained_fresher`) until a newer observation
+    // arrives.
     if (snapshotBefore?.binaryCapabilityId === capabilityId) {
         ctx.dispatchObservedStateForDevice(deviceId, capabilityId);
     }

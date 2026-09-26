@@ -317,6 +317,10 @@ const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   // rung there reported "Limited to Max" for a device whose step never moved —
   // the setpoint is what this cycle lowered, so that is what the owner is told.
   if (device.shedAction === 'set_temperature') return DEVICE_OVERVIEW_LOWERED;
+  // A charger the plan holds off keeps its lowest charging rung as the parked
+  // target, so naming the rung read "Limited to 6 A" for a charger that is
+  // paused and drawing nothing.
+  if (isEvChargerDevice(device) && isOffLikeState(device.currentState)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
   // Same display formatter as the usage line and the card rail — one entry
   // must not read "Limited to 32a" beside "target: 32 A".
   if (parkedStep !== null && isRunningStep(parkedStep)) {

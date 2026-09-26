@@ -36,7 +36,13 @@ PELS turns it on by itself when none of your Flows already sets the charger's cu
 
 Setting the current below 6 A in the Easee app, where the charger pauses, counts as turning charging off outside PELS. When PELS wants the charger running, it puts current back, unless **Leave off until turned on again** is on.
 
-Pausing at 0 A keeps the charging session open. A charger that needs an RFID tag to charge does not ask for the tag again when PELS resumes it, and charging resumes at the lowest current instead of the charger's maximum.
+Pausing at 0 A keeps the charging session open. A charger that needs an RFID tag to charge does not ask for the tag again when PELS resumes it, and charging resumes at 6 A instead of the charger's maximum. PELS then raises the current to the planned level as power allows.
+
+After PELS raises the current again, the Easee charger waits about 5 minutes before the car starts charging. PELS counts the charger as on during that wait and keeps its power set aside. Do not start charging in the Easee app during the wait: that starts a new charging session at the charger's maximum current.
+
+If you turn off **Power-limit control** for the charger while PELS has it paused, PELS lets it charge again at 6 A and then stops changing the current. It stays at 6 A until the next charging session starts. Raise the current in the Easee app if you want it to charge faster.
+
+If you turn off **Use built-in device control** while PELS has the charger paused, PELS still sets 6 A when it wants the charger running, because only a current resumes a paused session. After that, your own Flow sets the current.
 
 PELS does not change the charger's maximum current setting in the Easee app.
 
@@ -63,6 +69,7 @@ Choose a supported car in the charger's **Car** section to use its battery level
 | **Use built-in device control** is not shown | Check that **Control model** is **EV 1-phase** or **EV 3-phase**, and that the charger is paired with the Easee app. |
 | Built-in control stays off | Look for the Flow notice on the charger's page, and disable the part of that Flow that sets the charger current. |
 | The charger uses more or less power per step than PELS expects | Check that the control model matches the charger's phases. |
+| Charging does not start right after PELS resumes it | Easee waits about 5 minutes after the current is raised. Leave it: starting charging in the Easee app opens a new session at the charger's maximum current. |
 
 ## Related Pages
 

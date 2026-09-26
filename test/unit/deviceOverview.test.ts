@@ -369,6 +369,25 @@ describe('device overview formatter', () => {
     })).stateMsg).toBe('Charging paused');
   });
 
+  it('calls a charger the plan holds off paused, though its parked target is a charging rung', () => {
+    // Production, 2026-09-25 10:04:25: an Easee paused at 0 A, planned shed with
+    // its lowest charging rung (6 A) as the target, read "Limited to 6 A".
+    expect(formatDeviceOverview(buildSteppedOverviewDevice({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      deviceRole: 'ev_charger',
+      evChargingState: 'plugged_in_paused',
+      currentDrawKw: 0,
+      reason: r('shed due to capacity'),
+    }, {
+      reportedStepId: 'off',
+      targetStepId: 'low',
+      selectedStepId: 'off',
+      planningPowerKw: 1.25,
+    })).stateMsg).toBe('Charging paused');
+  });
+
   it('formats reported stepped-load feedback as confirmed observed state', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
       currentState: 'on',

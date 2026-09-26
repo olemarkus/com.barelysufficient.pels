@@ -99,13 +99,20 @@ function configureRuntime(nativeWiringEnabled: boolean): void {
 
 const SWITCH_PATH = `manager/devices/device/${CHARGER_ID}/capability/evcharger_charging`;
 
-// The Easee cloud's answer to a dynamic current (Easee app 2.0.5): 0 A pauses
-// the open session, and any current on a paused session resumes it.
-// `evcharger_charging` is true only while charging. The current echoes at once;
-// the mode change behind the plug state and the switch trails it, as it does in
-// production (17-37 s), held back past two meter readings so PELS decides while
-// it still reads the switch the old way.
+// The Easee cloud's answer to a dynamic current (Easee app 2.0.5): below 6 A
+// pauses the open session, and 6 A or more on a paused session resumes it.
+// `evcharger_charging` is true only while charging; the app sets it just before
+// the plug state, both from the one charger mode. The current is set at once.
+// A pause trails it, as it does in production (17-37 s), held back past two
+// meter readings so PELS decides before the mode changes. A resume trails it by
+// about 5 minutes (production, 2026-09-25: 08:11:26 to 08:16:27): Easee holds
+// the charger in `Awaiting Start` before it offers the car current. PELS sees
+// these values through its device reads, since `setCapabilityValue` emits no
+// realtime event; the realtime path is pinned in
+// `test/integration/easeeNativeChargerCurrent.test.ts`.
 const EASEE_MODE_CHANGE_DELAY_MS = 25_000;
+const EASEE_RESUME_HOLD_MS = 300_000;
+const EASEE_MIN_CHARGING_CURRENT_A = 6;
 
 type SimulatedEasee = {
   writesTo: (capabilityPath: string) => unknown[];
@@ -115,13 +122,32 @@ type SimulatedEasee = {
 };
 
 function simulateEasee(charger: MockDevice): SimulatedEasee {
+  let modeChange: ReturnType<typeof setTimeout> | undefined;
+  const currentA = (): number => Number(charger.getActualCapabilityValue('target_charger_current') ?? 0);
   const applyChargerMode = async (charging: boolean): Promise<void> => {
-    await charger.setCapabilityValue('evcharger_charging_state', charging ? 'plugged_in_charging' : 'plugged_in_paused');
     await charger.setCapabilityValue('evcharger_charging', charging);
+    await charger.setCapabilityValue('evcharger_charging_state', charging ? 'plugged_in_charging' : 'plugged_in_paused');
+    await charger.setCapabilityValue('measure_power', charging ? currentA() * 230 : 0);
   };
-  const followCurrent = async (currentA: number): Promise<void> => {
-    await charger.setCapabilityValue('measure_power', currentA * 230);
-    setTimeout(() => { void applyChargerMode(currentA > 0); }, EASEE_MODE_CHANGE_DELAY_MS);
+  // The hold is timed from the resume. Whether a further raise inside it
+  // restarts it is not known from production; it is modelled as not.
+  let holding = false;
+  const scheduleMode = (charging: boolean, delayMs: number): void => {
+    clearTimeout(modeChange);
+    holding = charging;
+    modeChange = setTimeout(() => { holding = false; void applyChargerMode(charging); }, delayMs);
+  };
+  const followCurrent = async (nextCurrentA: number): Promise<void> => {
+    const charging = charger.getActualCapabilityValue('evcharger_charging_state') === 'plugged_in_charging';
+    if (nextCurrentA < EASEE_MIN_CHARGING_CURRENT_A) {
+      await charger.setCapabilityValue('measure_power', 0);
+      scheduleMode(false, EASEE_MODE_CHANGE_DELAY_MS);
+    } else if (charging) {
+      clearTimeout(modeChange);
+      await charger.setCapabilityValue('measure_power', nextCurrentA * 230);
+    } else if (!holding) {
+      scheduleMode(true, EASEE_RESUME_HOLD_MS);
+    }
   };
   const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
@@ -143,10 +169,31 @@ function simulateEasee(charger: MockDevice): SimulatedEasee {
       .filter(([path]) => path === capabilityPath)
       .map(([, body]) => (body as { value?: unknown }).value),
     setBackgroundW: (watts) => { backgroundW = watts; },
-    setCurrentInApp: async (currentA) => {
-      await charger.setCapabilityValue('target_charger_current', currentA);
-      await followCurrent(currentA);
+    setCurrentInApp: async (nextCurrentA) => {
+      await charger.setCapabilityValue('target_charger_current', nextCurrentA);
+      await followCurrent(nextCurrentA);
     },
+  };
+}
+
+type LoggedEvent = { event?: unknown };
+
+/**
+ * `log`, also recording each structured event the app logs into `events`, as
+ * it reaches the Homey logging seam (`app.log`, one JSON line each).
+ */
+function recordingLog(
+  events: LoggedEvent[],
+  log: (...args: unknown[]) => void,
+): (...args: unknown[]) => void {
+  return (...args: unknown[]) => {
+    for (const arg of args) {
+      if (typeof arg !== 'string') continue;
+      try {
+        events.push(JSON.parse(arg) as LoggedEvent);
+      } catch { /* not a structured line */ }
+    }
+    log(...args);
   };
 }
 
@@ -219,6 +266,8 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     const MODE_CHANGE_DELAY_MS = EASEE_MODE_CHANGE_DELAY_MS;
 
     const app = createApp();
+    const loggedEvents: LoggedEvent[] = [];
+    app.log = recordingLog(loggedEvents, app.log.bind(app));
     await app.onInit();
     // 1.38 kW of charging on top of 9 kW of other load, against an 8 kW hard cap.
     for (let tick = 0; tick < 30 && !writesTo(CHARGER_CURRENT_PATH).includes(0); tick += 1) {
@@ -243,7 +292,18 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
       await vi.advanceTimersByTimeAsync(10_000);
     }
     await drainUntil(resumed);
-    await vi.advanceTimersByTimeAsync(MODE_CHANGE_DELAY_MS);
+
+    // Easee holds the resumed charger for about 5 minutes. PELS switched it on
+    // and Easee took the current, so the switch-on is confirmed, not a command
+    // the charger failed to answer: no retry back-off, no second resume.
+    for (let elapsedMs = 0; elapsedMs < EASEE_RESUME_HOLD_MS - 10_000; elapsedMs += 10_000) {
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    await drainPending();
+    expect(charger.getActualCapabilityValue('evcharger_charging_state')).toBe('plugged_in_paused');
+    expect(loggedEvents.map(({ event }) => event)).toContain('binary_command_succeeded');
+    expect(loggedEvents.filter(({ event }) => event === 'binary_command_reachability_backoff_armed')).toEqual([]);
+    await vi.advanceTimersByTimeAsync(20_000);
     await drainPending();
 
     // Back on at the lowest charging current, not the charger's maximum, and
@@ -284,7 +344,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     const putBackA = easee.writesTo(CHARGER_CURRENT_PATH).slice(writesBefore).find((currentA) => currentA !== 0);
     expect(putBackA).toBeGreaterThanOrEqual(6);
     expect(easee.writesTo(SWITCH_PATH)).toEqual([]);
-    await vi.advanceTimersByTimeAsync(EASEE_MODE_CHANGE_DELAY_MS);
+    await vi.advanceTimersByTimeAsync(EASEE_RESUME_HOLD_MS);
     await drainPending();
     expect(charger.getActualCapabilityValue('evcharger_charging_state')).toBe('plugged_in_charging');
   });

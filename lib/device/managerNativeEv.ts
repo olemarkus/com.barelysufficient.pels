@@ -36,7 +36,7 @@ import {
   resolveTargetPowerSteppedControl,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
-import { withEaseeObservedCharging } from './easeeChargingSwitch';
+import { isEaseeUnderBuiltInControl, withEaseeObservedCharging } from './easeeChargingSwitch';
 import {
   resetTargetPowerContractLogStateForTests,
   warnIfTargetPowerCapabilityViolatesContract,
@@ -153,12 +153,9 @@ export function resolveFlowCapabilityOverlay(params: {
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
     : undefined;
-  // An Easee under built-in control reads its charging switch from the current and plug state.
-  const readsEaseeSwitch = nativeSteppedOverlay.controlAdapter?.activationEnabled === true
-    && isEaseeChargerCurrentCandidate(device, capabilityObj);
-  return {
+  const overlay: ReturnType<typeof resolveFlowCapabilityOverlay> = {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
-    capabilityObj: readsEaseeSwitch ? withEaseeObservedCharging(capabilityObj) : capabilityObj,
+    capabilityObj,
     controlAdapter,
     binaryWriteCapabilityId: nativeEvOverlay.binaryWriteCapabilityId,
     binaryObservationCapabilityId: nativeEvOverlay.binaryObservationCapabilityId,
@@ -177,6 +174,9 @@ export function resolveFlowCapabilityOverlay(params: {
     targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     allReportedCapabilities,
   };
+  // An Easee under built-in control reads its charging switch from the plug state and current.
+  if (!isEaseeUnderBuiltInControl(overlay)) return overlay;
+  return { ...overlay, capabilityObj: withEaseeObservedCharging(capabilityObj) };
 }
 
 /**
