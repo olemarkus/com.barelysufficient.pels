@@ -34,7 +34,9 @@ import {
   RECOURSE_CANNOT_MEET_DEVICE,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
+  resolveSmartTaskCarChargeLimit,
   resolveSmartTaskWidgetDetailCopy,
+  type SmartTaskCarChargeLimit,
   suppressesSmartTaskConfidenceChip,
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
@@ -336,6 +338,7 @@ const resolveStatusId = (
     planStatus: plan.latest?.planStatus,
     firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
     nowMs,
+    carChargeLimitReached: plan.carChargeLimit?.reached === true,
   })
 );
 
@@ -347,6 +350,10 @@ type RowCopy = {
   whyLabel: string | null;
   recourseHint: string | null;
 };
+
+const withCarChargeLimit = (
+  cap: SmartTaskCarChargeLimit | null,
+): { carChargeLimit?: SmartTaskCarChargeLimit } => (cap === null ? {} : { carChargeLimit: cap });
 
 const resolveRowCopy = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
@@ -362,6 +369,7 @@ const resolveRowCopy = (
       ? { budgetContributedToShortfall: true as const }
       : {}),
     firstPlannedTimeLabel,
+    ...withCarChargeLimit(resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue)),
   });
   // Suppress the receipt-flavoured plan-meta line on a failing task: the
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and

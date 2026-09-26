@@ -21,7 +21,7 @@ import type {
 import {
   formatEstimatedDuration,
 } from './activePlanDuration';
-import { resolveDiagnosticReasonCode } from './activePlanDiagnosticReason';
+import { resolveCarChargeLimitOverlay, resolveDiagnosticReasonCode } from './activePlanDiagnosticReason';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
   resolveHorizonPriceWatermark,
@@ -232,6 +232,7 @@ export const createPlanFromDiagnostic = (
   nowMs: number,
 ): DeferredObjectiveActivePlanV1 => {
   const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
+  const carChargeLimit = resolveCarChargeLimitOverlay(diag, undefined);
   return {
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
@@ -243,6 +244,7 @@ export const createPlanFromDiagnostic = (
     pending: true,
     pendingReason: resolvePendingReason(diag),
     ...(diagnosticReasonCode !== undefined ? { diagnosticReasonCode } : {}),
+    ...(carChargeLimit !== undefined ? { carChargeLimit } : {}),
     objectiveSignature: signature,
     original: null,
     latest: null,

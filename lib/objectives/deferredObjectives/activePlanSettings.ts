@@ -302,10 +302,18 @@ const hasValidPlanLevelDurationSnapshot = (v: Record<string, unknown>): boolean 
     && isOptionalFinitePositive(v.initialKwhPerUnit)
 );
 
+const isOptionalCarChargeLimit = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.limitValue) && typeof v.reached === 'boolean';
+};
+
 const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidPlanIdentity(v)
+    && isOptionalCarChargeLimit(v.carChargeLimit)
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)
     && isKwhPerUnitProvenance(v.kwhPerUnitProvenance)

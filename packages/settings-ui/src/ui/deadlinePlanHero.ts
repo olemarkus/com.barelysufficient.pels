@@ -5,6 +5,7 @@ import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   formatConfidenceChipLabel,
   formatDeadlineDeliveredSoFarLine,
+  formatSmartTaskCarLimitReason,
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
@@ -12,6 +13,7 @@ import {
   type DeadlineCannotMeetRecourse,
   type DeadlineBudgetRole,
   type DeadlineLabels,
+  type SmartTaskCarChargeLimit,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
@@ -192,6 +194,11 @@ export const resolveCannotMeetMeta = (params: {
   return params.labels.cannotMeetShortfall();
 };
 
+// The reason line for a task capped at its car's own charge limit; null otherwise.
+const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): string | null => (
+  carChargeLimit === null ? null : formatSmartTaskCarLimitReason(carChargeLimit)
+);
+
 // Resolves the recourse action surfaced below the cannot-finish body. Returns
 // null when the plan is not cannot-meet so the view never branches on
 // `cannotMeet` state. `open_budget` is reserved for the daily-budget cause;
@@ -259,6 +266,9 @@ export type BuildHeroInput = {
   // sentence and suppresses the recourse, so an at-risk hero reached through the
   // overlay never explains itself with the target, the deadline, or the budget.
   deviceLeftOff: boolean;
+  // The car's own charge limit, when it caps an EV task below its target.
+  // Explains a plan that stops short of the target it shows.
+  carChargeLimit: SmartTaskCarChargeLimit | null;
   // Planner's `computedFromPricesUpTo` carried verbatim so the producer can
   // resolve the "prices not through deadline yet" headline-reason branch.
   // Null when the latest revision predates the field.
@@ -371,8 +381,9 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   // time for this target. …" / "Today's daily budget is fully booked. …") —
   // the "how bad is this?" context ("needs 17 kWh") lives in the stat pairs
   // above, so a running task no longer stacks a reason paragraph. Null on
-  // healthy / at-risk / queued heroes.
-  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : null;
+  // healthy / at-risk / queued heroes, except one capped at its car's own
+  // charge limit, which says why its plan stops short of the target.
+  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
   const confidenceChipText = resolveLiveHeroConfidenceChipText({
     confidence: params.confidence,
     planStatus: params.planStatus,

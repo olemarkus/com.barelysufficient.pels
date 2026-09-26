@@ -12,7 +12,10 @@ import {
   type DeadlineBudgetRole,
   isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
+  formatSmartTaskCarLimitReason,
+  resolveSmartTaskCarChargeLimit,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
+  type SmartTaskCarChargeLimit,
   type DeadlinePendingContext,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
@@ -40,6 +43,7 @@ import {
   resolveEnergyNeededKWh,
   resolveProfile,
   resolveProgress,
+  withCarChargeLimitProgress,
 } from './deadlinePlanResolvers.ts';
 import {
   renderDeadlinePlan,
@@ -167,7 +171,9 @@ const buildCoverStartByStartMs = (
 
 type ObjectivePayloadResult =
   | { kind: 'ok'; payload: DeadlinePlanPayload }
-  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason }
+  // `body` replaces the reason's fixed copy when that would be false: a task done
+  // at its car's own charge limit is not "at or above the smart task target".
+  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason; body?: string }
   // Active plan exists but the UI lacks prices to render a timeline. The
   // caller routes this to the pending hero so the user sees the same "waiting
   // for prices" copy regardless of whether the recorder or the prices fetch
@@ -185,6 +191,12 @@ type ObjectivePayloadReady = {
   priceUnitLabel: string;
 };
 
+const doneAtCarLimit = (carChargeLimit: SmartTaskCarChargeLimit): ObjectivePayloadResult => ({
+  kind: 'unavailable',
+  reason: 'already_satisfied',
+  body: formatSmartTaskCarLimitReason({ ...carChargeLimit, reached: true }),
+});
+
 const prepareObjectivePayload = (
   params: ObjectivePlanInput,
 ): ObjectivePayloadReady | ObjectivePayloadResult | null => {
@@ -197,9 +209,21 @@ const prepareObjectivePayload = (
   if (!ctx.activePlan?.latest) return null;
 
   const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
-  const progress = resolveProgress({ device: ctx.device, objective: ctx.objective, profile });
-  if (!progress) return { kind: 'unavailable', reason: 'no_current_reading' };
-  if (progress.remainingUnits <= 0) return { kind: 'unavailable', reason: 'already_satisfied' };
+  const observedProgress = resolveProgress({ device: ctx.device, objective: ctx.objective, profile });
+  const carChargeLimit = resolveSmartTaskCarChargeLimit(
+    ctx.activePlan.carChargeLimit,
+    ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null,
+  );
+  // Done at the car's own charge limit. Checked before the reading, because the
+  // charger that ends the session at the limit takes the car's level with it.
+  if (carChargeLimit?.reached === true) return doneAtCarLimit(carChargeLimit);
+  if (!observedProgress) return { kind: 'unavailable', reason: 'no_current_reading' };
+  const progress = withCarChargeLimitProgress(observedProgress, carChargeLimit?.limitValue ?? null);
+  if (progress.remainingUnits <= 0) {
+    return carChargeLimit === null
+      ? { kind: 'unavailable', reason: 'already_satisfied' }
+      : doneAtCarLimit(carChargeLimit);
+  }
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
   const hours = collectHorizonHours({
@@ -457,6 +481,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       cannotMeet,
       budgetRole,
       deviceLeftOff,
+      carChargeLimit: resolveSmartTaskCarChargeLimit(activePlan!.carChargeLimit, progress.targetValue),
       // Latest revision's `computedFromPricesUpTo` is carried verbatim so the
       // hero's headline-reason resolver can branch on "prices not through
       // deadline yet" without re-deriving the comparison at the view layer.
@@ -473,7 +498,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       plannedTotalKWh: energyNeededKWh,
       currentProgress: progress.currentValue,
       startProgress,
-      targetValue: progress.targetValue,
+      targetValue: progress.plannedTargetValue,
       targetUnit: progress.unit,
     }),
     timeline: buildTimeline({
@@ -494,7 +519,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       currentChargeByStartMs,
       currentCoverStartByStartMs: buildCoverStartByStartMs(latest),
       currentValue: progress.currentValue,
-      targetValue: progress.targetValue,
+      targetValue: progress.plannedTargetValue,
       progressPerKWh,
       unit: progress.unit,
       deadlineAtMs,
@@ -534,7 +559,12 @@ const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResu
 export type DeadlineRenderInput =
   | { status: 'pending'; pending: DeadlinePlanPendingPayload }
   | { status: 'ready'; payload: DeadlinePlanPayload }
-  | { status: 'unavailable'; kind: DeferredObjectiveSettingsEntry['kind']; reason: DeadlinePlanUnavailableReason }
+  | {
+    status: 'unavailable';
+    kind: DeferredObjectiveSettingsEntry['kind'];
+    reason: DeadlinePlanUnavailableReason;
+    body?: string;
+  }
   | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
   | { status: 'absent' };
 
@@ -560,7 +590,12 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   const result = buildObjectivePayload(params);
   if (!result) return { status: 'absent' };
   if (result.kind === 'unavailable') {
-    return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
+    return {
+      status: 'unavailable',
+      kind: ctx.objective.kind,
+      reason: result.reason,
+      ...(result.body === undefined ? {} : { body: result.body }),
+    };
   }
   if (result.kind === 'awaiting_prices') {
     return {
@@ -595,6 +630,7 @@ export const resolveDeadlinePlanLoadState = (
       status: 'unavailable',
       objectiveKind: renderInput.kind,
       reason: renderInput.reason,
+      ...(renderInput.body === undefined ? {} : { body: renderInput.body }),
       history,
     };
   }

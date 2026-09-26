@@ -207,6 +207,7 @@ describe('chip primitive: every surface walks the canonical `.plan-chip`', () =>
         learning: false,
         extraPermissionsValue: null,
         currentValueLine: null,
+        carLimitLine: null,
       }],
     });
     const chips = mount.querySelectorAll('.deadline-list-card__header .plan-chip');

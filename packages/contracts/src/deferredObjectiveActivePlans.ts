@@ -332,6 +332,12 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   // plan itself.
   | 'objective_device_unmanaged';
 
+/** The car's own charge limit capping an EV task: see `DeferredObjectiveActivePlanV1.carChargeLimit`. */
+export type DeferredObjectiveActivePlanCarChargeLimitV1 = {
+  limitValue: number;
+  reached: boolean;
+};
+
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
   deviceName: string | null;
@@ -355,6 +361,13 @@ export type DeferredObjectiveActivePlanV1 = {
   // present on a committed record with a cached revision so consumers do not
   // advertise that stale schedule. Optional for backward compatibility.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
+  // Present only while the car's own charge limit holds an EV task short of its
+  // target (owner ruling 2026-09-26): the limit the task plans to, and whether
+  // the car has reached it. Refreshed every cycle the device reports a level,
+  // held while it reports none (a charger that ended the session at the limit
+  // reads unplugged), so every surface can say why the task stops short, and a
+  // task done at the limit is not mistaken for an unplugged one.
+  carChargeLimit?: DeferredObjectiveActivePlanCarChargeLimitV1;
   // The signature of the objective settings that produced `latest`. Used to
   // detect `objective_changed` replans without re-deriving the hash on every
   // load.
@@ -469,7 +482,7 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
 // instead, never this state.
 export type OverviewDeferredObjectiveActivePlan = Pick<
   DeferredObjectiveActivePlanV1,
-  'latest' | 'diagnosticReasonCode' | 'pending' | 'pendingReason' | 'deviceName' | 'deadlineAtMs'
+  'latest' | 'diagnosticReasonCode' | 'pending' | 'pendingReason' | 'deviceName' | 'deadlineAtMs' | 'carChargeLimit'
 >;
 
 export type OverviewDeferredObjectiveActivePlans = {

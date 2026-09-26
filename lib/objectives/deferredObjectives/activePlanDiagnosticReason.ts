@@ -1,8 +1,10 @@
 import type {
+  DeferredObjectiveActivePlanCarChargeLimitV1,
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import { isCarLimitBinding } from './diagnosticTypes';
 
 // Narrow diagnostic reason codes that the UI needs to render specific copy
 // (e.g. "car unplugged") beyond what `pendingReason` alone can express.
@@ -30,6 +32,34 @@ export const resolveDiagnosticReasonCode = (
   // goes off, and stops claiming risk the moment it is turned back on.
   if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
   return undefined;
+};
+
+// The target the task can reach, while the car's own charge limit holds it below
+// the owner's (a car that arrived above its target has nothing to explain). Only
+// a diagnostic that carries a reading knows the cap (it rides
+// on the car's known level), so one without HOLDS whatever is persisted: the
+// charger that ends the session at the car's limit reads unplugged, which is
+// exactly when the card should still say why.
+export const resolveCarChargeLimitOverlay = (
+  diag: DeferredObjectiveDiagnostic,
+  current: DeferredObjectiveActivePlanCarChargeLimitV1 | undefined,
+): DeferredObjectiveActivePlanCarChargeLimitV1 | undefined => {
+  if (diag.currentValue === null) return current;
+  if (!isCarLimitBinding(diag)) return undefined;
+  return { limitValue: diag.reachableTargetValue, reached: diag.currentValue >= diag.reachableTargetValue };
+};
+
+export const sameCarChargeLimit = (
+  left: DeferredObjectiveActivePlanCarChargeLimitV1 | undefined,
+  right: DeferredObjectiveActivePlanCarChargeLimitV1 | undefined,
+): boolean => left?.limitValue === right?.limitValue && left?.reached === right?.reached;
+
+export const withCarChargeLimit = (
+  plan: DeferredObjectiveActivePlanV1,
+  value: DeferredObjectiveActivePlanCarChargeLimitV1 | undefined,
+): DeferredObjectiveActivePlanV1 => {
+  const { carChargeLimit: _drop, ...rest } = plan;
+  return value === undefined ? rest : { ...rest, carChargeLimit: value };
 };
 
 // Return a copy of `plan` with `diagnosticReasonCode` set to `code` (or the key

@@ -68,6 +68,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     planStatus: 'on_track' as const,
     firstActionAtMs: null,
     nowMs: 1_000_000,
+    carChargeLimitReached: false,
   };
 
   it('routes the cause onto the plan every cycle', () => {

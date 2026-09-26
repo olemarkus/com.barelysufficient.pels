@@ -14,6 +14,7 @@ import type {
   DeferredObjectiveSettingsKind,
 } from '../../contracts/src/deferredObjectiveSettings';
 import type {
+  DeferredObjectiveActivePlanCarChargeLimitV1,
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanPendingReason,
@@ -316,7 +317,64 @@ export type SmartTaskWidgetDetailInput = {
   // `queued` "Cheaper hours start at HH:MM" line. Locale formatting lives in the
   // caller so shared-domain stays free of Intl.
   firstPlannedTimeLabel?: string | null;
+  // The plan's `carChargeLimit` and owner's target, when the car's own
+  // charge limit caps an EV task below its target.
+  carChargeLimit?: SmartTaskCarChargeLimit;
 };
+
+/**
+ * An EV smart task capped at its car's own charge limit (owner ruling
+ * 2026-09-26): the limit the plan works to, the owner's target above it, and
+ * whether the car has reached the limit. Only an EV task is ever capped, so both
+ * values are percentages.
+ */
+export type SmartTaskCarChargeLimit = { limitValue: number; targetValue: number; reached: boolean };
+
+/** Resolves the cap from a plan's flat fields; null unless the limit sits below the target. */
+export const resolveSmartTaskCarChargeLimit = (
+  carChargeLimit: DeferredObjectiveActivePlanCarChargeLimitV1 | undefined,
+  targetValue: number | null,
+): SmartTaskCarChargeLimit | null => (
+  carChargeLimit !== undefined && targetValue !== null && carChargeLimit.limitValue < targetValue
+    ? { limitValue: carChargeLimit.limitValue, targetValue, reached: carChargeLimit.reached }
+    : null
+);
+
+const formatCarLimitPercent = (value: number): string => formatSmartTaskGoalValue(value, '%');
+
+/**
+ * The detail page's line for a task capped at its car's limit: while it charges
+ * toward the limit, and once the car has stopped there.
+ */
+export const formatSmartTaskCarLimitReason = (cap: SmartTaskCarChargeLimit): string => {
+  const limit = formatCarLimitPercent(cap.limitValue);
+  const target = formatCarLimitPercent(cap.targetValue);
+  return cap.reached
+    ? `Your car stopped at its own charge limit of ${limit}, below this smart task's ${target} target.`
+      + ' PELS counted the task as done.'
+    : `Your car stops at its own charge limit of ${limit}, below this smart task's ${target} target.`
+      + ` PELS charges to ${limit} and counts the task as done there.`;
+};
+
+/** The widget's shorter why-line for the same task. */
+export const formatSmartTaskCarLimitWhy = (cap: SmartTaskCarChargeLimit): string => {
+  const limit = formatCarLimitPercent(cap.limitValue);
+  const target = formatCarLimitPercent(cap.targetValue);
+  return cap.reached
+    ? `Your car stopped at its own charge limit of ${limit}, below the ${target} target.`
+    : `Your car stops at its own charge limit of ${limit}, below the ${target} target.`;
+};
+
+/** The smart-task list card's one-line note, beside "Target 80%". */
+export const formatSmartTaskCarLimitListLine = (cap: SmartTaskCarChargeLimit): string => (
+  cap.reached
+    ? `Car stopped at its limit of ${formatCarLimitPercent(cap.limitValue)}`
+    : `Car stops at ${formatCarLimitPercent(cap.limitValue)}`
+);
+
+// A task working as planned explains its cap; one with a problem keeps its own
+// diagnosis, which is what needs attention.
+const CAR_LIMIT_WHY_STATUSES: ReadonlySet<SmartTaskListStatusId> = new Set(['on_track', 'queued', 'satisfied']);
 
 // Budget vs device cause. The producer-resolved `floorShortfallCause` decides,
 // alone (per `feedback_layering_resolution_in_producer`). Absence is NOT
@@ -351,6 +409,17 @@ const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDe
   return { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
 };
 
+const resolveCannotMeetCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy => {
+  const budgetRole = resolveWidgetBudgetRole(input);
+  if (budgetRole === 'sole') {
+    return { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET };
+  }
+  if (budgetRole === 'contributing') {
+    return { whyLabel: WHY_CANNOT_MEET_BUDGET_PARTIAL, recourseHint: RECOURSE_BUDGET_PARTIAL };
+  }
+  return { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
+};
+
 export const resolveSmartTaskWidgetDetailCopy = (
   input: SmartTaskWidgetDetailInput,
 ): SmartTaskWidgetDetailCopy => {
@@ -361,16 +430,7 @@ export const resolveSmartTaskWidgetDetailCopy = (
       recourseHint: null,
     };
   }
-  if (input.statusId === 'cannot_meet') {
-    const budgetRole = resolveWidgetBudgetRole(input);
-    if (budgetRole === 'sole') {
-      return { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET };
-    }
-    if (budgetRole === 'contributing') {
-      return { whyLabel: WHY_CANNOT_MEET_BUDGET_PARTIAL, recourseHint: RECOURSE_BUDGET_PARTIAL };
-    }
-    return { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
-  }
+  if (input.statusId === 'cannot_meet') return resolveCannotMeetCopy(input);
   if (input.statusId === 'at_risk') return resolveAtRiskCopy(input);
   if (input.statusId === 'building_plan') {
     const reason = resolveSmartTaskPendingReason(input.pendingReason);
@@ -381,6 +441,13 @@ export const resolveSmartTaskWidgetDetailCopy = (
       whyLabel: why,
       recourseHint: resolvePendingRecourseHint(reason),
     };
+  }
+  if (input.carChargeLimit && CAR_LIMIT_WHY_STATUSES.has(input.statusId)) {
+    // A scheduled task keeps its start time: it is the only one the widget shows.
+    const startLine = input.statusId === 'queued' && input.firstPlannedTimeLabel
+      ? `Cheaper hours start at ${input.firstPlannedTimeLabel}. `
+      : '';
+    return { whyLabel: `${startLine}${formatSmartTaskCarLimitWhy(input.carChargeLimit)}`, recourseHint: null };
   }
   if (input.statusId === 'queued' && input.firstPlannedTimeLabel) {
     return {
@@ -1338,19 +1405,19 @@ export const resolveEffectivePlanStatus = <T extends DeferredObjectiveActivePlan
 // is set even on plans with a cached `latest` revision (e.g. EV unplugged
 // mid-plan). When present, it takes precedence over `planStatus` so the chip
 // matches the device-card line.
-export const resolveSmartTaskListStatus = (params: {
-  pending: boolean;
-  pendingReason: DeferredObjectiveActivePlanPendingReason | undefined;
-  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined;
-  planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied' | undefined;
-  firstActionAtMs: number | null;
-  nowMs: number;
-}): SmartTaskListStatusId => {
-  const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
-
+// The live causes that outrank a cached revision, in precedence order.
+const resolveCurrentCauseListStatus = (
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
+  carChargeLimitReached: boolean,
+): SmartTaskListStatusId | null => {
   // Home-scope truth outranks a cached revision: once the device belongs to a
   // separate meter, that committed schedule no longer governs anything.
   if (diagnosticReasonCode === 'objective_device_in_sub_home') return 'unavailable';
+  // Done at the car's own charge limit, ahead of "unplugged": the charger that
+  // ends the session at the car's limit reads unplugged with the car still in,
+  // and telling that owner to plug in would be wrong. Ahead of the `:58`
+  // settle too, which is when a satisfied verdict reaches `planStatus`.
+  if (carChargeLimitReached) return 'satisfied';
   // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
   // non-pending plans so this branch fires regardless of whether `latest` is
   // still cached. Without this, the list chip would say "On track" while the
@@ -1360,6 +1427,23 @@ export const resolveSmartTaskListStatus = (params: {
   // PELS plans nothing for a device it does not manage, so a cached revision is
   // no longer being executed and the chip must say so instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
+  return null;
+};
+
+export const resolveSmartTaskListStatus = (params: {
+  pending: boolean;
+  pendingReason: DeferredObjectiveActivePlanPendingReason | undefined;
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined;
+  planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied' | undefined;
+  firstActionAtMs: number | null;
+  nowMs: number;
+  // The plan's `carChargeLimit.reached`: the car stopped at its own charge limit.
+  carChargeLimitReached: boolean;
+}): SmartTaskListStatusId => {
+  const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
+
+  const current = resolveCurrentCauseListStatus(diagnosticReasonCode, params.carChargeLimitReached);
+  if (current !== null) return current;
 
   if (pending || planStatus === undefined) {
     if (pendingReason === 'device_in_sub_home') return 'unavailable';

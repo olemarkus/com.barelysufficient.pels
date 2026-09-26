@@ -2315,6 +2315,116 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
   });
 
+  // Owner ruling 2026-09-26: an 80 % task on a car that stops at 70 % plans to
+  // 70 %, and the page says why its plan stops short of the target it shows.
+  const carCapPlanInput = (
+    carChargeLimit: NonNullable<DeferredObjectiveActivePlanV1['carChargeLimit']>,
+    percent: number | null,
+  ) => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+      id: 'ev',
+      name: 'Garage EV',
+      binaryControl: { on: false },
+      ...(percent === null ? {} : { stateOfCharge: stateOfChargeFixture({ percent }) }),
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+      pvForecastSource: { kind: 'unknown' },
+      homeyPriceFormula: { kind: 'unknown' },
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+    powerhourSource: { kind: 'unknown' },
+    priceOptimizationSetup: { state: 'unavailable' },
+    };
+    const bootstrapRevision = {
+      revision: 1,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'flow_card' as const,
+      hours: [
+        { startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 2).getTime(), plannedKWh: 6 },
+      ],
+      energyNeededKWh: 20,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'bootstrap' as const,
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      carChargeLimit,
+      original: bootstrapRevision,
+      latest: bootstrapRevision,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          ev: {
+            enabled: true,
+            kind: 'ev_soc',
+            enforcement: 'soft',
+            targetPercent: 80,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    // No learned EV profile — only the heater placeholder.
+    bootstrap.power.tracker = { objectiveProfiles: {} };
+
+    return { bootstrap, deviceId: 'ev', devices, prices, nowMs: now.getTime() };
+  };
+
+  it('explains a plan capped at the car\'s own charge limit, and counts progress to the limit', () => {
+    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: false }, 40)));
+
+    expect(payload.hero.metaLine).toBe(
+      "Your car stops at its own charge limit of 70%, below this smart task's 80% target."
+        + ' PELS charges to 70% and counts the task as done there.',
+    );
+    expect(payload.hero.deliveredSoFarLine).toContain('now 40% of 70% target');
+  });
+
+  it('shows a task whose car stopped at its limit as done, not as waiting for a reading', () => {
+    // The charger ends the session at the limit and takes the car's level with it.
+    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null));
+
+    expect(renderInput).toMatchObject({
+      status: 'unavailable',
+      reason: 'already_satisfied',
+      body: "Your car stopped at its own charge limit of 70%, below this smart task's 80% target."
+        + ' PELS counted the task as done.',
+    });
+  });
+
   it('omits the bootstrap note once the revision has been refined to learned data', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
