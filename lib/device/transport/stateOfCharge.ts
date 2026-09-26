@@ -130,14 +130,15 @@ export function updateStateOfChargeFromCarObservation(params: {
   percent: number;
   observedAtMs: number;
   carId: string;
+  chargeLimitPct: number | null;
 }): boolean {
-  const { snapshot, percent, observedAtMs, carId } = params;
+  const { snapshot, percent, observedAtMs, carId, chargeLimitPct } = params;
   if (snapshot.deviceClass !== 'evcharger') return false;
   const normalized = normalizeStateOfChargePercent(percent);
   if (normalized === undefined) return false;
 
   const previous = snapshot.stateOfCharge;
-  const source = { kind: 'car', carId } as const;
+  const source = { kind: 'car', carId, chargeLimitPercent: chargeLimitPct } as const;
   const next = buildStateOfChargeSnapshot({
     percent: normalized,
     observedAtMs,
@@ -449,7 +450,14 @@ function resolveStateOfChargeLevel(params: {
   // what `resolveAssociatedCarSnapshot` already says about serving a pre-plug
   // reading. Retiring it here would blank the level of a car that just plugged
   // back in at the level it left at, for as long as that level stayed put.
-  if (source.kind === 'car') return { kind: 'known', percent, observedAtMs };
+  if (source.kind === 'car') {
+    return {
+      kind: 'known',
+      percent,
+      observedAtMs,
+      ...(source.chargeLimitPercent === null ? {} : { carChargeLimitPercent: source.chargeLimitPercent }),
+    };
+  }
   // A car IS attached, but the reading predates it: it was taken before the
   // unplug, or before this session was anchored. Possibly a different car.
   if (

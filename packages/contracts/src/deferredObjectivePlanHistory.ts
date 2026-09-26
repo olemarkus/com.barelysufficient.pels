@@ -40,7 +40,9 @@ export type DeferredObjectivePlanTerminalOutcome = Exclude<DeferredObjectivePlan
 // either string on `met` outcomes; any other shape (an unknown string,
 // the field present on a non-met outcome) is treated as schema tamper and
 // dropped on read.
-export type DeferredObjectivePlanMetReason = 'stalled' | 'stalled_device_capped';
+// `observed_limit`: the run was met at the car's own charge limit, below the
+// owner's target — the car stops charging there, so no plan could go further.
+export type DeferredObjectivePlanMetReason = 'stalled' | 'stalled_device_capped' | 'observed_limit';
 
 export type DeferredObjectivePlanHistoryDiscoveredFrom = 'observation' | 'backfill';
 

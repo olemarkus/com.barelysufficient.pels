@@ -119,6 +119,11 @@ type BaseDeferredObjectiveDiagnostic = {
   // (a `?: never` ev-variant temperature field counts as null).
   currentValue: number | null;
   targetValue: number | null;
+  // The target this task can reach, same unit: `targetValue`, capped by the
+  // car's own charge limit when an EV task's car stops below it
+  // (`resolveReachableTargetValue`). Progress and satisfaction are judged
+  // against this; `targetValue` stays what the owner asked for.
+  reachableTargetValue: number;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;
@@ -238,4 +243,18 @@ export const resolvedTrajectoryStatus = (
   diagnostic: Pick<BaseDeferredObjectiveDiagnostic, 'trajectory'>,
 ): DeferredObjectiveHorizonPlan['status'] | undefined => (
   diagnostic.trajectory.kind === 'resolved' ? diagnostic.trajectory.status : undefined
+);
+
+/**
+ * Whether the car's own charge limit is what holds this task short of its
+ * target: the reachable target sits below the owner's, and so does the reading.
+ * A task satisfied while this holds is satisfied only at the car's limit. A car
+ * that arrived above both (fast-charged on a trip) reached the owner's target,
+ * and is met the ordinary way.
+ */
+export const isCarLimitBinding = (diagnostic: DeferredObjectiveDiagnostic): boolean => (
+  diagnostic.targetValue !== null
+  && diagnostic.currentValue !== null
+  && diagnostic.reachableTargetValue < diagnostic.targetValue
+  && diagnostic.currentValue < diagnostic.targetValue
 );

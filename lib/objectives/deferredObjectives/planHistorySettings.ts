@@ -59,7 +59,7 @@ const isOutcome = (value: unknown): value is DeferredObjectivePlanOutcome => (
 );
 
 const isMetReason = (value: unknown): value is DeferredObjectivePlanMetReason => (
-  value === 'stalled' || value === 'stalled_device_capped'
+  value === 'stalled' || value === 'stalled_device_capped' || value === 'observed_limit'
 );
 
 const isFiniteOrNull = (value: unknown): value is number | null => (

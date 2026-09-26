@@ -47,7 +47,7 @@ export const stateOfChargeFixture = (params: {
     ...session,
     report: { percent, observedAtMs: stamp },
     capabilityId: capabilityId ?? 'measure_battery',
-    source: carId === undefined ? { kind: 'charger' } : { kind: 'car', carId },
+    source: carId === undefined ? { kind: 'charger' } : { kind: 'car', carId, chargeLimitPercent: null },
     level: unavailable === undefined
       ? { kind: 'known', percent, observedAtMs: stamp ?? UNSTATED_OBSERVED_AT_MS }
       : { kind: 'unavailable', reasonCode: unavailable },

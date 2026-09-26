@@ -69,6 +69,8 @@ export const buildDeferredObjectiveDebugPayload = (
   // reports as `time_capacity` because uncapping helps without closing the gap.
   budgetContributedToShortfall: diagnostic.horizonPlan?.budgetContributedToShortfall === true,
   targetPercent: diagnostic.targetPercent,
+  // Below `targetPercent` only while the car's own charge limit caps the task.
+  reachableTargetPercent: diagnostic.objectiveKind === 'ev_soc' ? diagnostic.reachableTargetValue : null,
   currentPercent: diagnostic.currentPercent,
   targetTemperatureC: diagnostic.objectiveKind === 'temperature' ? diagnostic.targetTemperatureC : null,
   currentTemperatureC: diagnostic.objectiveKind === 'temperature' ? diagnostic.currentTemperatureC : null,

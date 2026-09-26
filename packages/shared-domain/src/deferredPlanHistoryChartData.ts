@@ -516,7 +516,12 @@ const pickMetMarkerValue = (
   >,
 ): number | null => {
   if (pickMetMarker(entry) === null) return null;
-  if (entry.metReason === 'stalled' || entry.metReason === 'stalled_device_capped') {
+  // A run met at its car's own charge limit stops below the target line too.
+  if (
+    entry.metReason === 'stalled'
+    || entry.metReason === 'stalled_device_capped'
+    || entry.metReason === 'observed_limit'
+  ) {
     const finalProgress = entry.finalProgressValue;
     return finalProgress !== null && Number.isFinite(finalProgress) ? finalProgress : null;
   }

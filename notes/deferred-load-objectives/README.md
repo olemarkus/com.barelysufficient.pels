@@ -800,6 +800,38 @@ depends on the per-device Power-limit control setting:
   command collisions are skipped, never replayed from a captured plan; a later plan or lifecycle
   tick must decide again from fresh observation.
 
+### The car's own charge limit
+
+Owner ruling 2026-09-26: when the car stops charging on its own below the task's target, the
+task is capped at the car's limit. Production that night: an 80 % task on a Polestar set to stop
+at 70 % stopped at 70 and finalized `missed / energy_underestimate`, blaming PELS's learned rate
+for a car setting.
+
+- **Where the limit comes from.** Observed stops only (`notes/ev-car-link/README.md`,
+  `resolveEvCarChargeLimit`); no vendor capability. The device layer lends it with the car's
+  battery level, as `carChargeLimitPercent` on the car-sourced known level, so it exists exactly
+  while the car lends its level and is re-derived on every rebuild of that level.
+- **Where it is applied.** Once, at the read edge: `resolveReachableTargetValue`
+  (`diagnosticProgress.ts`) is the owner's target, capped by that limit for an EV task.
+  Remaining units, energy needed and satisfaction all follow from it. The diagnostic carries it
+  as `reachableTargetValue` (logged as `reachableTargetPercent`); `targetValue` stays what the
+  owner asked for.
+- **What met means.** A run satisfied below the owner's target finalizes `met` with
+  `metReason: 'observed_limit'`, and the postmortem says the car stopped there. The recorder
+  judges "at target" against the reachable target, so a later reading at the limit does not
+  re-open it; a limit that is disproved brings the full target back.
+- **No pause at the limit.** A task satisfied only at the car's limit does not trigger the
+  satisfied-charger pause above: the car stops by itself there, and pausing would stop it from
+  ever charging past a wrong limit on this charger, which is what disproves one. "Only at the
+  limit" means the reading is below the owner's target too: a car that arrived above it
+  (fast-charged on a trip) is met the ordinary way.
+- **Known limit: the car must be seen at its limit.** The cap is met when a reading reaches it.
+  If the car stops and the charger ends the session before the car's reading of its limit
+  arrives, the task holds its last reading and finishes missed by that last step: an invalid
+  session withholds progress, so nothing later can credit it. Cars report the limit while still
+  topping off (the Polestar reported 70 % at 03:11:16 and stopped at 03:15:59), so the window is
+  narrow.
+
 ## Energy Calculation
 
 Shipped v1 uses a single path:

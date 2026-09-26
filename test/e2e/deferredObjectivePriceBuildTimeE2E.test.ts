@@ -140,6 +140,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   currentTemperatureC: 50,
   currentValue: 50,
   targetValue: 65,
+  reachableTargetValue: 65,
   deadlineAtMs: DEADLINE_MS,
   deadlineLocalTime: '18:00',
   energyNeededKWh,

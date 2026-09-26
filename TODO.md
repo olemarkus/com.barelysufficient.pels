@@ -424,6 +424,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
+- [ ] **P2 — a disproved car charge limit is served from the frozen plan until the `:58` settle.**
+      When a car charges past its qualified limit (`ev_car_observed_limit_disproven`), the task's
+      reachable target returns to the owner's, but the committed hours and their
+      `plannedUnitMilestone`s were booked against the cap. Until the next settle the frozen read
+      judges the car "ahead" of a milestone that ends at the old limit and can release or hold the
+      charger in a later-cheaper hour, for up to an hour. **Where:** the replan decision in
+      `buildDeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
+      `replanRequested`), which asks only for an objective edit, a missing commitment or the settle
+      mark. **What changes:** record the reachable target a commitment was booked against on the
+      revision, and request a fresh allocation when the live reachable target differs.
+      **Done:** an SDK e2e where the limit is disproved mid-run replans to the owner's target on the
+      next lifecycle tick.
+
 - [ ] **The budget-contribution probe cannot tell a per-bucket budget cap from another
       task's reservation.** `resolveBudgetBoundFeasibility` uncaps by setting
       `usefulEnergyCapKWh: Number.POSITIVE_INFINITY`, but that field is not the raw budget

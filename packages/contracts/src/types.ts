@@ -229,7 +229,17 @@ export type DeviceStateOfChargeSnapshot = {
      * to fill the gap.
      */
     level:
-        | { kind: 'known'; percent: number; observedAtMs: number }
+        | {
+            kind: 'known'; percent: number; observedAtMs: number;
+            /**
+             * The charge the associated car stops at on its own, once its stops
+             * qualify one (`resolveEvCarChargeLimit`). Present only on a level the
+             * car lends its charger (`source.kind === 'car'`), and gone with it:
+             * the ceiling is the car's, not the charger's. A charger's own reading
+             * never carries it — no Homey capability reports a car's limit.
+             */
+            carChargeLimitPercent?: number;
+        }
         | { kind: 'unavailable'; reasonCode: EvSocUnavailableReason };
     /**
      * The raw last report, kept for the observation layer's own bookkeeping
@@ -285,7 +295,11 @@ export type DeviceStateOfChargeSnapshot = {
      */
     source:
         | { kind: 'charger' }
-        | { kind: 'car'; carId: string };
+        // `chargeLimitPercent` rides with the car's id because it is the car's:
+        // kept here, every rebuild of `level` from `report` re-derives it, so the
+        // ceiling cannot drop out between two car readings. `null` while the
+        // car's stops qualify no limit.
+        | { kind: 'car'; carId: string; chargeLimitPercent: number | null };
 };
 
 /**
