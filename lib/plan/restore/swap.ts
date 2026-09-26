@@ -1,5 +1,5 @@
 import { getDebugEmitter } from '../../logging/logger';
-import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildSwapCandidates,
@@ -10,6 +10,7 @@ import {
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { setRestorePlanDevice as setDevice } from './helpers';
+import { buildOffSteppedRestoreHoldUpdate } from './planDeviceUpdates';
 import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { buildRestoreAdmissionLogFields, buildRestoreAdmissionMetrics } from '../admission';
@@ -167,6 +168,37 @@ export function holdPendingSwapTargetUntilSourcesAreOff(
 ): boolean {
   if (!hasPendingSwapSourcesStillOn(swapLedger, targetDevice.id, deviceMap)) return false;
   setDevice(deviceMap, targetDevice.id, buildSwapPendingTargetUpdate(targetDevice));
+  return true;
+}
+
+/**
+ * A stepped device paused to fund a swap stays paused until that swap settles —
+ * the stepped half of the donor hold the binary lane applies through
+ * `blockingTarget` (`gating.ts`). Without it the paused donor was the off,
+ * shed-posture candidate the restore loop visits first, so the next reading
+ * resumed it as the cycle's one restore and the target it had been paused for
+ * waited behind that restore until its reservation expired unserved.
+ *
+ * Applied before every restore gate, because each gate writes its own reason
+ * onto a device that still reads on, and a donor can: in the cycle the swap
+ * paused it (the active-stepped loop reaches it after the swap), and on any
+ * later reading that lands before the pause does. A donor still running is held
+ * as the swap marked it — `shed`, `swappedOut`; an off one is held at its off
+ * step, waiting on the target, as the binary lane holds its off donors.
+ */
+export function holdSteppedSwapDonor(
+  cycle: RestoreCycle,
+  dev: SteppedPlanDevice & MeteredKind,
+): boolean {
+  const { swapLedger, deviceMap, state } = cycle;
+  const target = swapLedger.blockingTarget(dev, deviceMap);
+  // `blockingTarget` settles a kept reservation first, so a donor whose target
+  // has been served is no longer one by the time this is asked.
+  if (target === undefined || !swapLedger.isDonor(dev.id)) return false;
+  clearRestoreDebugEvent(state, `stepped:${dev.id}`);
+  setDevice(deviceMap, dev.id, isOffSteppedRestoreCandidate(dev)
+    ? buildOffSteppedRestoreHoldUpdate(dev, { code: PLAN_REASON_CODES.swapPending, targetName: target.name })
+    : { plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swappedOut, targetName: target.name } });
   return true;
 }
 

@@ -12,7 +12,11 @@ import {
   type SteppedSwapExecutor,
 } from './helpers';
 import type { RestoreHeadroomLedger } from './headroomLedger';
-import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
+import {
+  attemptSwapRestore,
+  holdPendingSwapTargetUntilSourcesAreOff,
+  holdSteppedSwapDonor,
+} from './swap';
 import { planRestoreForDevice } from './gating';
 import type { RestoreCycle, RestoreLane, RestoreLoopState } from './types';
 
@@ -41,7 +45,8 @@ export function applyRestoreCandidates(
 
 // Single shared entry for every stepped-restore path. It applies the pending-swap source-off
 // hold (a stepped-swap target must not be restored while its swapped-out sources are still on)
-// and then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
+// and the donor hold (a device paused to fund a swap stays paused until that swap settles), and
+// then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
 // Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
 // through here keeps both admission wrappers applied uniformly.
 export function planSteppedRestoreThroughSourceHold(
@@ -51,6 +56,7 @@ export function planSteppedRestoreThroughSourceHold(
   loop: RestoreLoopState,
 ): RestoreLoopState {
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
+  if (holdSteppedSwapDonor(cycle, dev)) return loop;
   const result = planRestoreForSteppedDevice({
     dev,
     deviceMap: cycle.deviceMap,
