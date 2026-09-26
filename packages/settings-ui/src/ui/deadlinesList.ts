@@ -30,8 +30,10 @@ import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
+  formatSmartTaskCarLimitListLine,
   formatSmartTaskCurrentValueLine,
   resolveChipConfidence,
+  resolveSmartTaskCarChargeLimit,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
   SMART_TASK_LIST_LOAD_ERROR_COPY,
@@ -91,7 +93,9 @@ const buildCard = (params: {
     planStatus: plan.latest?.planStatus,
     firstActionAtMs: firstHour,
     nowMs,
+    carChargeLimitReached: plan.carChargeLimit?.reached === true,
   });
+  const carChargeLimit = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
   // Mirror the hero's chip-confidence chain (see `resolveEnergyNeededKWh` in
   // `deadlinePlanResolvers.ts`); `profileConfidence: null` collapses the
   // live-profile step since the list doesn't load `objectiveProfiles`.
@@ -125,6 +129,8 @@ const buildCard = (params: {
       kind: plan.objectiveKind,
       currentValue,
     }),
+    // Why a task shows a target it will not reach: the car stops charging below it.
+    carLimitLine: carChargeLimit === null ? null : formatSmartTaskCarLimitListLine(carChargeLimit),
   };
 };
 

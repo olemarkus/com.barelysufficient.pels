@@ -31,7 +31,13 @@ import {
   toPersistedPlanLevelDurationFields,
 } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
-import { resolveDiagnosticReasonCode, withDiagnosticReasonCode } from './activePlanDiagnosticReason';
+import {
+  resolveDiagnosticReasonCode,
+  resolveCarChargeLimitOverlay,
+  sameCarChargeLimit,
+  withCarChargeLimit,
+  withDiagnosticReasonCode,
+} from './activePlanDiagnosticReason';
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/deadlineLabels';
 import { effectivePlanStatusOf, publishOverlayOnlyStatusChange } from './effectivePlanStatusEvents';
 import type {
@@ -321,8 +327,11 @@ export class DeferredObjectiveActivePlanRecorder {
     diag: DeferredObjectiveDiagnostic,
   ): DeferredObjectiveActivePlanV1 {
     const code = resolveDiagnosticReasonCode(diag, current.diagnosticReasonCode);
-    if (current.diagnosticReasonCode === code) return current;
-    const refreshed = withDiagnosticReasonCode(current, code);
+    const carChargeLimit = resolveCarChargeLimitOverlay(diag, current.carChargeLimit);
+    if (current.diagnosticReasonCode === code && sameCarChargeLimit(current.carChargeLimit, carChargeLimit)) {
+      return current;
+    }
+    const refreshed = withCarChargeLimit(withDiagnosticReasonCode(current, code), carChargeLimit);
     this.plans[current.deviceId] = refreshed;
     this.dirty = true;
     return refreshed;
@@ -346,8 +355,16 @@ export class DeferredObjectiveActivePlanRecorder {
       // Pending records refresh both `pendingReason` and `diagnosticReasonCode`.
       const pendingReason = resolvePendingReason(diag);
       const diagnosticReasonCode = resolveDiagnosticReasonCode(diag, existing.diagnosticReasonCode);
-      if (existing.pendingReason !== pendingReason || existing.diagnosticReasonCode !== diagnosticReasonCode) {
-        this.plans[diag.deviceId] = withDiagnosticReasonCode({ ...existing, pendingReason }, diagnosticReasonCode);
+      const carChargeLimit = resolveCarChargeLimitOverlay(diag, existing.carChargeLimit);
+      if (
+        existing.pendingReason !== pendingReason
+        || existing.diagnosticReasonCode !== diagnosticReasonCode
+        || !sameCarChargeLimit(existing.carChargeLimit, carChargeLimit)
+      ) {
+        this.plans[diag.deviceId] = withCarChargeLimit(
+          withDiagnosticReasonCode({ ...existing, pendingReason }, diagnosticReasonCode),
+          carChargeLimit,
+        );
         this.dirty = true;
       }
       return;
@@ -417,7 +434,10 @@ export class DeferredObjectiveActivePlanRecorder {
     // left off — the Flow would report Waiting -> On track, the UI would show
     // that false status until the next cycle, and that cycle would then fire a
     // second transition to At risk.
-    this.plans[diag.deviceId] = withDiagnosticReasonCode(firstRecord, firstDiagnosticReasonCode);
+    this.plans[diag.deviceId] = withCarChargeLimit(
+      withDiagnosticReasonCode(firstRecord, firstDiagnosticReasonCode),
+      resolveCarChargeLimitOverlay(diag, firstRecord.carChargeLimit),
+    );
     this.dirty = true;
     this.emit({
       event: 'active_plan_revision_written',

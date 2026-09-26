@@ -696,6 +696,30 @@ itself signals approximation — no narrating sentence sits beneath it.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
+### A smart task capped at the car's own charge limit
+
+An EV task whose car stops charging on its own below the task's target plans to the car's limit
+and is met there (owner ruling 2026-09-26). Every surface names the **car's own limit** as the
+cause, since the setting that would change it lives in the car, never PELS or the charger:
+
+| Surface | Copy |
+|---|---|
+| Detail hero reason line (not cannot-finish) | `Your car stops at its own charge limit of 70%, below this smart task's 80% target. PELS charges to 70% and counts the task as done there.` |
+| Detail page once the car stopped there (`Satisfied`) | `Your car stopped at its own charge limit of 70%, below this smart task's 80% target. PELS counted the task as done.` |
+| Widget why-line (on track / scheduled / done) | `Your car stops at its own charge limit of 70%, below the 80% target.` (`stopped` once done; a scheduled task keeps `Cheaper hours start at 02:00.` ahead of it) |
+| Smart-task list card, beside `Target 80%` | `Car stops at 70%` / `Car stopped at its limit of 70%` |
+| Past-task sentence (`met-at-car-limit`) | `Your car stopped at its own charge limit of 70 %, below this smart task's 80 % target. PELS counted the run as done.` |
+| Past-task row time | `done at 05:10` (not `reached at`, as for every run met short of its target) |
+
+A task with a problem (at risk, cannot finish) keeps its own diagnosis on the widget: that is what
+needs attention. Progress on the detail page (the trajectory, `now 40% of 70% target`) counts to the
+limit, the plan's own target; the subline keeps the owner's `Target 80%`.
+
+Once the car stops at its limit the task reads **`Satisfied`**, ahead of `Paused — unplugged`: an
+Easee ends the session at the car's limit and reports unplugged with the car still in, and telling
+that owner to plug in would be wrong. The words come from `deadlineLabels.ts` /
+`deferredPlanHistoryPostmortem.ts`.
+
 ### Smart task list status chips
 
 The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABELS` in `deadlineLabels.ts`.

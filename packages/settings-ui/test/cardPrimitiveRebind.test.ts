@@ -265,6 +265,7 @@ describe('card primitive: every surface walks the canonical `.pels-surface-card`
         learning: false,
         extraPermissionsValue: null,
         currentValueLine: null,
+        carLimitLine: null,
       }],
     });
     const card = mount.querySelector('a.deadline-list-card');
