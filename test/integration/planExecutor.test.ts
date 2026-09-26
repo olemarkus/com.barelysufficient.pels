@@ -922,7 +922,8 @@ describe('PlanExecutor restore logging', () => {
 
   it('records a fast flow-backed restore confirmation exactly once', async () => {
     const state = createPlanEngineState();
-    state.shedDecisions.decidedMs['dev-1'] = Date.now() - 10_000;
+    // PELS had switched the heater off; this resume undoes that shed.
+    state.shedDecisions.standingShedIds = new Set(['dev-1']);
     seedSwapReservation(state, { targetId: 'dev-1', openedAtMs: Date.now() - 1_000 });
     const { executor, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
       state,
@@ -977,6 +978,9 @@ describe('PlanExecutor restore logging', () => {
       onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
+    // The confirmed turn-on undoes the shed at once, not at the next build: an
+    // owner who switches the heater off before then is not overruled later.
+    expect(state.shedDecisions.standingShedIds.has('dev-1')).toBe(false);
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',

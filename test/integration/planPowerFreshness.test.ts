@@ -267,10 +267,11 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
 
     const failClosedPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
     // The fail-closed pass records its decision, not just its plan: the first
-    // measured cycle after the meter returns needs the decision clock to know
-    // this device was held, or it restores everything at once. `dev` carries no
-    // surplus posture, so only the shed set can put it here.
-    expect(state.shedDecisions.decidedMs.dev).toEqual(expect.any(Number));
+    // measured cycle after the meter returns has to know this device was held,
+    // or it restores everything at once. `dev` carries no surplus posture, so
+    // only the shed set can put it here.
+    expect(state.shedDecisions.lastPlannedShedIds.has('dev')).toBe(true);
+    expect(state.shedDecisions.standingShedIds.has('dev')).toBe(true);
     expect(state.shedDecisions.surplusOnlyByDevice.dev).toBeUndefined();
     // The unmeasured build carries the signal and NO derived figure: no
     // headroom, no managed/background split, nothing a consumer could do
@@ -525,6 +526,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set<string>(),
         drivingDeviceIds: new Set<string>(),
+        lentAuthorityDeviceIds: new Set<string>(),
       }),
       structuredLog: structuredLog as never,
       log: vi.fn(),
@@ -575,6 +577,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         deferredReleaseIntentByDeviceId: { release: 'binary_release', resume: 'binary_restore' },
         admittedDeviceIds: new Set<string>(),
         drivingDeviceIds: new Set<string>(),
+        lentAuthorityDeviceIds: new Set<string>(),
       }),
       log: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,

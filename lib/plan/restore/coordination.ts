@@ -44,9 +44,9 @@ function isDeviceBlockingSteppedRestore(
   ) return true;
   // A provisional keep is not yet a recovery: current-cycle candidates still
   // have to pass admission. Only a keep the previous plan made with command
-  // authority can be waiting for its observation to confirm recovery here.
-  if (!shedDecisions.lastPlannedKeptIds.has(device.id) || !shedDecisions.decidedMs[device.id]) return false;
-  return device.currentState === 'off' || device.currentState === 'unknown';
+  // authority can be waiting for its observation to confirm recovery here —
+  // PELS decided it should run, so a device still off is about to draw.
+  return shedDecisions.lastPlannedKeptIds.has(device.id) && device.currentState === 'off';
 }
 
 function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {

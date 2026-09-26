@@ -15,10 +15,7 @@ import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
-import {
-  applyBinaryRestoreWithSnapshot,
-  applyCapacityControlOffRestoreWithSnapshot,
-} from '../../lib/executor/binaryRestoreHelpers';
+import { applyBinaryRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -258,64 +255,34 @@ const uncontrolledRestoreIntent = {
 };
 
 describe('external-off hold — executor carve-outs', () => {
-  it('never force-turns-ON a held device when it is unmanaged or control is switched off', async () => {
-    // The shape that gets here: PELS shed the device at some point (so
-    // `shedDecisions.decidedMs` is still stamped), the user then turned it off themselves,
-    // and only then was Power-limit control disabled. Losing control authority is
-    // not consent to undo the user's own off action.
+  it('never force-turns-ON a held device when control is switched off', async () => {
+    // A shed PELS has not undone is still on record, but the device is off
+    // under the owner's own hold too. Losing control authority is not consent
+    // to undo the owner's off action.
     const h = buildExecutorCtx(true);
-    h.state.shedDecisions.decidedMs[HEATER] = 1000;
+    h.state.shedDecisions.standingShedIds = new Set([HEATER]);
 
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
     expect(applied).toBe(false);
     expect(h.setCapabilityCalls).toEqual([]);
   });
 
-  it('honours the hold in the capacity-control-off funnel too (second lane)', async () => {
-    const h = buildExecutorCtx(true);
-    const applied = await applyCapacityControlOffRestoreWithSnapshot(h.ctx, {
-      deviceId: HEATER,
-      name: 'Water heater',
-      snapshot: offHeaterSnapshot,
-    });
-    expect(applied).toBe(false);
-    expect(h.setCapabilityCalls).toEqual([]);
-  });
-
   it('blocks the controlled plan lane even against a plan built before the hold', async () => {
     const h = buildExecutorCtx(true);
-    const applied = await applyBinaryRestoreWithSnapshot(h.ctx, {
-      deviceId: HEATER,
-      name: 'Water heater',
-      snapshot: offHeaterSnapshot,
-      logContext: 'capacity',
-    });
+    const applied = await applyBinaryRestoreWithSnapshot(h.ctx, HEATER, 'Water heater', offHeaterSnapshot);
     expect(applied).toBe(false);
     expect(h.setCapabilityCalls).toEqual([]);
   });
 
   it('control case: with no hold, every one of those lanes still restores', async () => {
     const uncontrolled = buildExecutorCtx(false);
-    uncontrolled.state.shedDecisions.decidedMs[HEATER] = 1000;
+    uncontrolled.state.shedDecisions.standingShedIds = new Set([HEATER]);
     expect(await applyUncontrolledBinaryRestore(uncontrolled.ctx, uncontrolledRestoreIntent, undefined))
       .toBe(true);
     expect(uncontrolled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
 
-    const capacityControlOff = buildExecutorCtx(false);
-    expect(await applyCapacityControlOffRestoreWithSnapshot(capacityControlOff.ctx, {
-      deviceId: HEATER,
-      name: 'Water heater',
-      snapshot: offHeaterSnapshot,
-    })).toBe(true);
-    expect(capacityControlOff.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
-
     const controlled = buildExecutorCtx(false);
-    expect(await applyBinaryRestoreWithSnapshot(controlled.ctx, {
-      deviceId: HEATER,
-      name: 'Water heater',
-      snapshot: offHeaterSnapshot,
-      logContext: 'capacity',
-    })).toBe(true);
+    expect(await applyBinaryRestoreWithSnapshot(controlled.ctx, HEATER, 'Water heater', offHeaterSnapshot)).toBe(true);
     expect(controlled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);
   });
 });

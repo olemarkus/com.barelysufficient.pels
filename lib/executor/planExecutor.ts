@@ -275,11 +275,11 @@ export class PlanExecutor {
     });
 
     if (pending.desired) {
+      // Any confirmed turn-on undoes PELS's shed at once: an owner who switches
+      // the device off again before the next build is not overruled later.
+      this.state.shedDecisions.noteShedReleased(deviceId);
       if (pending.logContext === 'capacity_control_off') {
-        // Route through the narrow mutators so the surplus-posture stamp
-        // (`shedDecisions.surplusOnlyByDevice`) is cleared in lockstep with the decision clock.
         this.state.actuation.clearShed(deviceId);
-        this.state.shedDecisions.clearFor(deviceId);
       } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         recordActivationAttemptStarted({

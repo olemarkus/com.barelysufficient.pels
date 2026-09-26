@@ -5,7 +5,6 @@ import {
   type PlanExecutorBinaryContext,
   runBinaryControl,
   skipRestoreForExternalOffHold,
-  skipRestoreForSurplusPosture,
 } from './binaryControlShared';
 
 const logger = getLogger('executor/binary');
@@ -19,7 +18,6 @@ const logger = getLogger('executor/binary');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const canApplyRestoreSnapshot = (
-  _ctx: PlanExecutorBinaryContext,
   params: {
     snapshot?: ExecutorDeviceSnapshot;
     deviceId: string;
@@ -73,23 +71,14 @@ export const canApplyRestoreSnapshot = (
 
 export const applyBinaryRestoreWithSnapshot = async (
   ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    name: string;
-    snapshot: ExecutorDeviceSnapshot;
-    logContext: 'capacity';
-  },
+  deviceId: string,
+  name: string,
+  snapshot: ExecutorDeviceSnapshot,
 ): Promise<boolean> => {
-  const {
-    deviceId,
-    name,
-    snapshot,
-  } = params;
   // "Leave off until turned on again", at the FUNNEL: every controlled-restore
   // lane ends here — the plan lane, and the smart-task deferred `binary_restore`
-  // — so one guard covers them all and they cannot drift apart. Placed like
-  // `skipRestoreForSurplusPosture` in the capacity-control-off helper for the
-  // same reason. See `skipRestoreForExternalOffHold`.
+  // — so one guard covers them all and they cannot drift apart. See
+  // `skipRestoreForExternalOffHold`.
   if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
   if (ctx.state.actuation.isRestoreInFlight(deviceId)) {
     emitExecutorDebug({
@@ -128,45 +117,5 @@ export const applyBinaryRestoreWithSnapshot = async (
     }
   } finally {
     ctx.state.actuation.endRestore(deviceId);
-  }
-};
-
-export const applyCapacityControlOffRestoreWithSnapshot = async (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    name: string;
-    snapshot: ExecutorDeviceSnapshot;
-  },
-): Promise<boolean> => {
-  const {
-    deviceId,
-    name,
-    snapshot,
-  } = params;
-  // "Run on solar surplus" carve-out, last line of defense — whatever lane
-  // reaches this helper, the shared guard skips force-turning-ON a baseline-off
-  // dump load on capacity-control-off/unmanage. See `skipRestoreForSurplusPosture`.
-  if (skipRestoreForSurplusPosture(ctx, deviceId, name)) return false;
-  // "Leave off until turned on again" reaches this lane too. A device that still
-  // carries `shedDecisions.decidedMs` from an earlier capacity shed, is then turned off
-  // outside PELS, and is then unmanaged (or has Power-limit control switched off)
-  // would otherwise be force-turned-ON here — the one thing the hold forbids.
-  // Losing control authority is not consent to undo the user's own off action.
-  if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
-  try {
-    const outcome = await runBinaryControl({
-      ctx,
-      deviceId,
-      name,
-      desired: true,
-      snapshot,
-      logContext: 'capacity_control_off',
-    });
-    if (!outcome.applied) return false;
-    return true;
-  } catch (error) {
-    logger.error({ event: 'executor_binary_error', msg: `Failed to restore ${name} via DeviceTransport`, err: error });
-    return false;
   }
 };

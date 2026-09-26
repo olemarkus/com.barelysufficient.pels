@@ -215,7 +215,7 @@ export class PlanEngineState {
   /** How long restores wait after instability, and when it last was — see `RestoreBackoff`. */
   readonly restoreBackoff = new RestoreBackoff();
 
-  /** What the plan decided to hold shed, when, and under which posture — see `ShedDecisions`. */
+  /** What the plan decided to hold shed, and under which posture — see `ShedDecisions`. */
   readonly shedDecisions = new ShedDecisions();
 
   /**
@@ -226,9 +226,8 @@ export class PlanEngineState {
    * AND still observed off), so there is exactly one definition of "held" and
    * the two layers cannot disagree.
    *
-   * Read here rather than off the plan device on purpose, exactly like
-   * `shedDecisions.surplusOnlyByDevice`: a cold, stale, or absent plan must not resume a
-   * device the user turned off. Unlike that stamp this one is backed by
+   * Read here rather than off the plan device on purpose: a cold, stale, or
+   * absent plan must not resume a device the user turned off. It is backed by
    * persistence, so the guard also holds across a restart. Assigned by the
    * wiring for main and by each sub-home bundle.
    */

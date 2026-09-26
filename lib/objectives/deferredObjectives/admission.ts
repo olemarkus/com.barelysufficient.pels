@@ -201,6 +201,8 @@ const holdsDeviceOff = (
 export type DeferredAdmissionInput = {
   devices: PlanInputDevice[];
   forceShedSet: Set<string>;
+  /** Devices this cycle's task lends PELS authority over (`contributesCommandAuthority`). */
+  lentAuthorityDeviceIds: Set<string>;
 };
 
 // A planned limit-lower-priority task forces the device's boost on. `resolveBoostActive`
@@ -304,15 +306,17 @@ export const applyDeferredAdmissionToInput = (
   targetOverrides: Readonly<Record<string, number>>,
 ): DeferredAdmissionInput => {
   if (decisions.size === 0 && Object.keys(targetOverrides).length === 0) {
-    return { devices, forceShedSet: new Set() };
+    return { devices, forceShedSet: new Set(), lentAuthorityDeviceIds: new Set() };
   }
   const forceShedSet = new Set<string>();
+  const lentAuthorityDeviceIds = new Set<string>();
   const transformed = devices.map((device) => {
     const decision = decisions.get(device.id);
     const deadlineFloorTargetC = targetOverrides[device.id];
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
     const override = contributesCommandAuthority(decision, device);
+    if (override) lentAuthorityDeviceIds.add(device.id);
     const holdsOwnAuthorityOff = holdsDeviceOff(decision, device);
     if ((override && decision.kind === 'idle') || holdsOwnAuthorityOff) forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);
@@ -323,7 +327,7 @@ export const applyDeferredAdmissionToInput = (
       ...(holdsOwnAuthorityOff ? { deferredHoldActive: true as const } : {}),
     };
   });
-  return { devices: transformed, forceShedSet };
+  return { devices: transformed, forceShedSet, lentAuthorityDeviceIds };
 };
 
 // Per-cycle map of the deadline temperature target a device should be commanded to during a

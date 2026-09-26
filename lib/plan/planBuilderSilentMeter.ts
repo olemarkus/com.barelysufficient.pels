@@ -137,10 +137,12 @@ export class SilentMeterPlanBuilder {
       planDevices,
       context.temperatureSetpoints,
     );
-    // Decision-time shed clock: the cooldowns that follow a shed apply to this
-    // one like any other, so the first measured cycle after the meter returns
-    // does not restore everything at once.
-    this.state.shedDecisions.recordPlannedShed(finalized.planDevices, context.devices, nowTs);
+    // Recorded like any other shed: the first measured cycle after the meter
+    // returns sees every device in shed posture, so each one resumes through
+    // admission rather than everything at once.
+    this.state.shedDecisions.recordPlannedShed(
+      finalized.planDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
+    );
     this.deps.structuredLog?.info({
       event: 'plan_silent_meter_pass',
       shedDeviceCount: sheddingPlan.shedSet.size,

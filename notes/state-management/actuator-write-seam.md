@@ -363,9 +363,9 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
   **Consumer-side recompute — *Shipped.*** The binary path used to *re-resolve* the
   flow-vs-native decision after the write: `isFlowBackedBinaryControl(...)` was
   recomputed at three post-write consumer sites (`turnOffDevice` in
-  `binaryExecutor.ts`; `applyBinaryRestoreWithSnapshot` and
-  `applyCapacityControlOffRestoreWithSnapshot` in `binaryRestoreHelpers.ts`) to
-  decide whether the command was flow-backed when recording confirmation. PR1b-3
+  `binaryExecutor.ts`; `applyBinaryRestoreWithSnapshot` and the
+  capacity-control-off restore, since folded into `applyUncontrolledBinaryRestore`)
+  to decide whether the command was flow-backed when recording confirmation. PR1b-3
   hoisted the *dispatch-path* recompute but left these consumer-side re-resolutions.
   The decide-and-dispatch wrapper now returns a `BinaryControlOutcome`
   (`{ applied: false } | { applied: true; flowBacked }`) carrying the

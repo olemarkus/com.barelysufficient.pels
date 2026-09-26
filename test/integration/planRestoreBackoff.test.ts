@@ -444,14 +444,14 @@ describe('restore cooldown backoff', () => {
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedDeviceIds = new Set(['dev-off', 'dev-step']);
-    state.shedDecisions.decidedMs['dev-off'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
           name: 'Critical heater',
-          currentState: 'unknown',
+          // The previous plan resumed it; the heater has not come on yet.
+          currentState: 'off',
           plannedState: 'keep',
           boostActive: false,
           expectedPowerKw: 2,
@@ -589,52 +589,8 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toMatch(/shed invariant/);
   });
 
-  it('does not let a stale recently shed device block an unrelated stepped restore', () => {
-    const state = createPlanEngineState();
-    state.actuation.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
-
-    const result = applyRestorePlan({
-      planDevices: [
-        buildPlanDevice({
-          id: 'dev-off',
-          name: 'Critical heater',
-          currentState: 'unknown',
-          plannedState: 'keep',
-          boostActive: false,
-          expectedPowerKw: 2,
-          measuredPowerKw: 0,
-        }),
-        steppedPlanDevice({
-          id: 'dev-step',
-          name: 'Tank',
-          selectedStepId: 'low',
-          desiredStepId: 'low',
-          currentDrawKw: 0,
-          planningPowerKw: 1.25,
-        }),
-      ],
-      ...buildContext({
-        headroomRaw: 5,
-        headroom: 5,
-      }),
-      state,
-      sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
-    });
-
-    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
-
-    expect(steppedDevice?.desiredStepId).toBe('medium');
-    expect(reasonText(steppedDevice?.reason)).toBe('restore low -> medium (need 0.95kW)');
-  });
-
   it('blocks stepped-load step-up while a shed-temperature device is still awaiting restore confirmation', () => {
     const state = createPlanEngineState();
-    state.shedDecisions.decidedMs['dev-temp'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [

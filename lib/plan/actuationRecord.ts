@@ -13,7 +13,7 @@ import { isNumberMap } from '../utils/appTypeGuards';
  * anything is in flight.
  *
  * These are ACTUATION clocks. "Is this device in shed posture?" is the
- * planner's decision-time question (`ShedDecisions.decidedMs`): a device
+ * planner's question, answered by plan membership (`ShedDecisions`): a device
  * the plan decided to shed but that was already off (write skipped) has no
  * entry here.
  *

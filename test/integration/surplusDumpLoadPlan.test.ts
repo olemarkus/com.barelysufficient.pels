@@ -6,9 +6,9 @@ import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 // deferred decoration (identity) → context → shedding → the hoisted surplus
 // allocator (`resolveSurplusEligibility`) → the standing hold
 // (`resolveSurplusHold`) → materialization → restore → reason normalization →
-// the executable projection — plus the executor carve-outs
-// (`applyUncontrolledBinaryRestore` / `applyCapacityControlOffRestoreWithSnapshot`)
-// against the plan-less-safe `shedDecisions.surplusOnlyByDevice` stamp, and the producer
+// the executable projection — plus the release lane
+// (`applyUncontrolledBinaryRestore`), which refuses a surplus hold because the
+// planner never records it as a shed PELS undoes, and the producer
 // stamp wiring in `toPlanDevice`. Nothing internal mocked; the layer's outward
 // seams (capacity guard totals, power tracker, deps, a faked clock) are provided
 // directly.
@@ -37,7 +37,6 @@ import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
-import { applyCapacityControlOffRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -57,7 +56,9 @@ const PUMP_DRAW_KW = 1;
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
-  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredKind & { id: string; name: string },
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredKind & {
+    id: string; name: string; controllable?: boolean;
+  },
 ): MeteredPlanInputDevice => {
   const merged = {
     targets: [] as PlanInputDevice['targets'],
@@ -73,7 +74,9 @@ const buildInputDevice = (
   })) as MeteredPlanInputDevice;
 };
 
-const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boolean } = { on: false }): MeteredPlanInputDevice => (
+const buildPump = (params: {
+  on: boolean; measuredKw?: number; surplusOnly?: boolean; powerLimitControl?: boolean;
+} = { on: false }): MeteredPlanInputDevice => (
   buildInputDevice({
     id: PUMP,
     name: 'Pool pump',
@@ -81,6 +84,7 @@ const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boo
     // user having toggled "Run on solar surplus" off — the producer stops
     // stamping the flat bit.
     ...((params.surplusOnly ?? true) ? { surplusOnly: true } : {}),
+    controllable: params.powerLimitControl ?? true,
     binaryControl: { on: params.on },
     currentDrawKw: params.measuredKw ?? (params.on ? PUMP_DRAW_KW : 0),
     expectedPowerKw: PUMP_DRAW_KW,
@@ -172,28 +176,26 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
     expect(pump?.reason).toEqual({ code: PLAN_REASON_CODES.awaitingSolarSurplus });
-    // The hold is a standing decision: the plan-less-safe stamp is written.
+    // The hold is a standing decision: the posture stamp is written, and it is
+    // never a shed PELS would undo by turning the pump on.
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
+    expect(h.state.shedDecisions.lastPlannedShedIds.has(PUMP)).toBe(true);
+    expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
   });
 
   it('clears the surplus shed bookkeeping when the posture is toggled off while held', async () => {
-    // opt-in → held (stamps written) → toggle "Run on solar surplus" off while
-    // held. `releaseAbandonedSurplusPosture` clears the stale surplus/decision
-    // stamps so the device is no longer RECORDED as a PELS-shed / dump-load
-    // device (which the stepped-restore-blocking reader and the executor's
-    // capacity-control-off carve-out both key on). The device is no longer
-    // surplus-held.
+    // opt-in → held (stamp written) → toggle "Run on solar surplus" off while
+    // held. `releaseAbandonedSurplusPosture` clears the stale posture stamp so
+    // the device is no longer RECORDED as a dump-load device. The device is no
+    // longer surplus-held.
     const h = makeHarness({ totalKw: 0.5 });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
 
     await vi.advanceTimersByTimeAsync(10_000);
     const after = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false, surplusOnly: false })]);
-    // Stale surplus/decision stamps are gone: no lingering PELS-shed record.
+    // The stale posture stamp is gone: no lingering dump-load record.
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
     // And the device is no longer surplus-held (posture gone).
     expect(deviceOf(after, PUMP)?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);
     // What happens to the device next is its owner's switches' call — see the
@@ -225,7 +227,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(intentOf(after, PUMP)?.desiredOn).not.toBe(true);
     // PELS's own record is released either way; the hold now owns "stay off".
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
+    expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
   });
 
   it('resumes a de-opted dump load its owner did not ask to leave off', async () => {
@@ -406,12 +408,11 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(intentOf(plan, PUMP)).toEqual({
       desiredOn: true, deviceId: PUMP, name: 'Pool pump', source: 'controlled',
     });
-    // The stamp lives and dies with `shedDecisions.decidedMs` (both linger until a restore
-    // actuation / capacity-control-off clears them) — so while the lifted pump is
-    // still awaiting its restore actuation, BOTH remain, and a capacity-control-off
-    // in this window still resolves to "leave it off" (the safe posture).
+    // The stamp lingers until the posture is withdrawn, and the hold never was a
+    // shed PELS undoes — so a capacity-control-off while the lifted pump is still
+    // awaiting its restore actuation resolves to "leave it off" (the safe posture).
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
+    expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
   });
 
   it('prunes the surplus-posture stamps when a held device leaves the snapshot', async () => {
@@ -424,36 +425,32 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // empty raw read at all, and `mergeTargetedRefreshSnapshot` holds a
     // per-device grace, so a transient miss never reaches this prune. That is
     // what makes clearing safe here rather than a reset-on-one-missed-read.
-    // It matters because `shedDecisions.surplusOnlyByDevice` is what the executor's capacity-control-off
-    // and uncontrolled restore lanes read INSTEAD of the plan device: were it to
-    // survive, a posture decided before the device left would still be answering
-    // for it. The function's own comment used to claim this case was unhandled —
-    // hence the pin.
+    // It matters because a surviving stamp would keep answering for a posture
+    // decided before the device left. The function's own comment used to claim
+    // this case was unhandled — hence the pin.
     const h = makeHarness({ totalKw: 2 });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
+    expect(h.state.shedDecisions.lastPlannedShedIds.has(PUMP)).toBe(true);
 
     // The device vanishes from the snapshot while held.
     await h.builder.buildDevicePlanSnapshot([]);
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
+    expect(h.state.shedDecisions.lastPlannedShedIds.has(PUMP)).toBe(false);
   });
 
   it('re-stamps a returning device rather than reviving the pruned posture', async () => {
     // The other half: the prune must not cost the device its posture when it comes
-    // back. The shed edge re-fires because an absent device has already fallen out
-    // of `lastPlannedShedIds`, so the stamps are rebuilt from this cycle's decision
-    // rather than revived from the last one. A prune, not a downgrade.
+    // back. The stamp is rebuilt from this cycle's decision rather than revived
+    // from the last one. A prune, not a downgrade.
     const h = makeHarness({ totalKw: 2 });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     await h.builder.buildDevicePlanSnapshot([]);
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
 
     const returned = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     expect(deviceOf(returned, PUMP)?.plannedState).toBe('shed');
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeDefined();
   });
 
   it('flags surplusAbsorbActive only while the pump is eligible, unheld, and observed ON', async () => {
@@ -549,6 +546,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),
+        lentAuthorityDeviceIds: new Set<string>(),
       }),
     });
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
@@ -571,6 +569,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),
+        lentAuthorityDeviceIds: new Set<string>(),
       }),
     });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
@@ -625,10 +624,9 @@ describe('surplus-held devices are never swap candidates', () => {
   });
 });
 
-// ─── Executor carve-outs: the plan-less-safe stamp ────────────────────────────
+// ─── The release lane: a surplus hold is never PELS's to undo ────────────────
 
-const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
-  const state = createPlanEngineState();
+const buildExecutorCtx = (snapshot: TargetDeviceSnapshot, state: PlanEngineState = createPlanEngineState()) => {
   const setCapabilityCalls: { capabilityId: string; value: boolean }[] = [];
   const observation = {
     getSnapshot: () => [snapshot],
@@ -681,53 +679,78 @@ const uncontrolledRestoreIntent = {
   source: 'uncontrolled' as const,
 };
 
-describe('executor carve-outs: capacity-control-off can never force-turn-ON a dump load', () => {
-  it('applyUncontrolledBinaryRestore skips the ON command and clears shed state (cold/absent plan)', async () => {
-    // No plan anywhere in sight: only engine state + an intent. This is the
-    // cold-plan shape — the stamp on PlanEngineState is the source of truth.
-    const h = buildExecutorCtx(offPumpSnapshot);
-    h.state.shedDecisions.decidedMs[PUMP] = 1000;
-    h.state.actuation.lastDeviceShedMs[PUMP] = 1000;
-    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = { surplus: true, startPolicy: false };
+describe('capacity-control-off can never force-turn-ON a dump load', () => {
+  it('leaves a surplus-held pump off when power limiting goes off: the hold is not a shed PELS undoes', async () => {
+    const h = makeHarness({ totalKw: 0.5 });
+    const held = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    expect(deviceOf(held, PUMP)?.plannedState).toBe('shed');
 
-    const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
-    expect(applied).toBe(false);
-    expect(h.setCapabilityCalls).toEqual([]);
-    // Shed bookkeeping is still cleared: PELS releases its claim on the device.
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
-    expect(h.state.actuation.lastDeviceShedMs[PUMP]).toBeUndefined();
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
+    // The owner turns Power-limit control off; the producer drops the posture
+    // with it, and the plan keeps the pump without authority — which is exactly
+    // the release lane's input.
+    const letGo = await h.builder.buildDevicePlanSnapshot([
+      buildPump({ on: false, surplusOnly: false, powerLimitControl: false }),
+    ]);
+    expect(intentOf(letGo, PUMP)).toEqual(uncontrolledRestoreIntent);
+
+    const exec = buildExecutorCtx(offPumpSnapshot, h.state);
+    expect(await applyUncontrolledBinaryRestore(exec.ctx, uncontrolledRestoreIntent, undefined)).toBe(false);
+    expect(exec.setCapabilityCalls).toEqual([]);
   });
 
-  it('applyCapacityControlOffRestoreWithSnapshot honours the stamp too (second lane)', async () => {
-    const h = buildExecutorCtx(offPumpSnapshot);
-    h.state.shedDecisions.decidedMs[PUMP] = 1000;
-    h.state.shedDecisions.surplusOnlyByDevice[PUMP] = { surplus: true, startPolicy: false };
+  it('never records the surplus hold switching a RUNNING pump off as a shed PELS undoes', async () => {
+    // The hold is what switches the pump off here, so "already off" does not
+    // keep it out of the record: the posture must.
+    const h = makeHarness({ totalKw: 0.5 });
+    const held = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
+    expect(deviceOf(held, PUMP)?.plannedState).toBe('shed');
+    expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
 
-    const applied = await applyCapacityControlOffRestoreWithSnapshot(h.ctx, {
-      deviceId: PUMP,
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false, surplusOnly: false, powerLimitControl: false })]);
+    const exec = buildExecutorCtx(offPumpSnapshot, h.state);
+    expect(await applyUncontrolledBinaryRestore(exec.ctx, uncontrolledRestoreIntent, undefined)).toBe(false);
+    expect(exec.setCapabilityCalls).toEqual([]);
+  });
+
+  it('never turns on a running "Only PELS starts this device" load its policy held off, once the policy is cleared', async () => {
+    // Power limiting off: the policy is PELS's only lever. It switches the
+    // running device off; clearing it withdraws PELS's authority, and letting
+    // go must not start the device.
+    const h = makeHarness({ totalKw: 0.5 });
+    const policyDevice = (on: boolean, startPolicy: 'pels_only' | 'unrestricted') => buildInputDevice({
+      id: PUMP,
       name: 'Pool pump',
-      snapshot: offPumpSnapshot,
+      binaryControl: { on },
+      currentDrawKw: on ? PUMP_DRAW_KW : 0,
+      expectedPowerKw: PUMP_DRAW_KW,
+      controllable: false,
+      // The policy is the grant: with power limiting off, "Only PELS starts
+      // this device" is what gives PELS authority (`resolveDeviceControlPosture`).
+      control: { managed: true, commandAuthority: startPolicy === 'pels_only' },
+      startPolicy,
     });
-    expect(applied).toBe(false);
-    expect(h.setCapabilityCalls).toEqual([]);
-    expect(h.state.shedDecisions.decidedMs[PUMP]).toBeUndefined();
-    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
+    const held = await h.builder.buildDevicePlanSnapshot([policyDevice(true, 'pels_only')]);
+    expect(deviceOf(held, PUMP)?.plannedState).toBe('shed');
+    expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
+
+    await h.builder.buildDevicePlanSnapshot([policyDevice(false, 'unrestricted')]);
+    const exec = buildExecutorCtx(offPumpSnapshot, h.state);
+    expect(await applyUncontrolledBinaryRestore(exec.ctx, uncontrolledRestoreIntent, undefined)).toBe(false);
+    expect(exec.setCapabilityCalls).toEqual([]);
   });
 
-  it('restart race: a fresh post-restart state (no stamps at all) issues no ON either', async () => {
-    // After a restart BOTH shedDecidedMs and the surplus stamp are gone (both
-    // in-memory). The uncontrolled lane requires a shed decision, so the race
-    // resolves fail-safe: nothing to restore, no command.
+  it('restart race: a fresh post-restart state issues no ON either', async () => {
+    // After a restart the record is empty (in-memory), so nothing is a shed
+    // PELS still holds. The race resolves fail-safe: nothing to undo, no command.
     const h = buildExecutorCtx(offPumpSnapshot);
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
     expect(applied).toBe(false);
     expect(h.setCapabilityCalls).toEqual([]);
   });
 
-  it('control case: a genuinely capacity-shed device (no stamp) IS restored on capacity-control-off', async () => {
+  it('control case: a genuinely capacity-shed device IS restored on capacity-control-off', async () => {
     const h = buildExecutorCtx(offPumpSnapshot);
-    h.state.shedDecisions.decidedMs[PUMP] = 1000;
+    h.state.shedDecisions.standingShedIds = new Set([PUMP]);
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);

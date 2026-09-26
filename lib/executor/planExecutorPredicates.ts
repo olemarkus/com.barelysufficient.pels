@@ -41,7 +41,7 @@ export function hasStableUncontrolledRestoreActuation(
   return dev.control.commandAuthority === false
     && dev.plannedState === 'keep'
     && isPlanDeviceObservedOff(dev)
-    && Boolean(state.shedDecisions.decidedMs[dev.id]);
+    && state.shedDecisions.standingShedIds.has(dev.id);
 }
 
 export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {

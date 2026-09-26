@@ -455,9 +455,9 @@ export type PlanInputDeviceBase = {
    * when the device opted in via `surplusWilling` in the per-device price-opt
    * blob AND is a plain managed, controllable binary device (not temperature,
    * not stepped, not EV). Resolved once at `toPlanDevice`
-   * (`resolveSurplusOnlyPosture`); the planner's surplus allocator/hold and the
-   * executor's force-ON carve-out stamp read this flat bit and never re-derive
-   * it from the blob (resolution-in-producer).
+   * (`resolveSurplusOnlyPosture`); the planner's surplus allocator/hold and
+   * the shed record's posture stamp (`ShedDecisions.recordPlannedShed`) read
+   * this flat bit and never re-derive it from the blob (resolution-in-producer).
    */
   surplusOnly?: true;
   /**

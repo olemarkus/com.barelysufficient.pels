@@ -238,12 +238,12 @@ describe('Device plan snapshot', () => {
     expect(reasonText(devPlan?.reason)).toContain('shed');
   });
 
-  it('stamps the decision-time shed clock at plan time even when actuation is skipped (dry-run)', async () => {
+  it('records the shed at plan time even when actuation is skipped (dry-run)', async () => {
     // Regression for the marker under-stamp: the restore-eligibility readers must
     // see a device the planner decided to shed even when the executor issues no
     // write. In dry-run the plan builds (decision facts run) but actuation is
-    // short-circuited (no `lastDeviceShedMs`). `shedDecisions.decidedMs` is the decision-time
-    // fact, so it must be stamped regardless.
+    // short-circuited (no `lastDeviceShedMs`). Shed membership is the decision
+    // fact, so it must be recorded regardless.
     const dev1 = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
     await dev1.setCapabilityValue('onoff', true);
@@ -268,8 +268,10 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.plannedState).toBe('shed');
 
     const state = app.planEngine.state;
-    // Decision-time clock: stamped by the planner at finalization...
-    expect(state.shedDecisions.decidedMs['dev-1']).toEqual(expect.any(Number));
+    // Decision: recorded by the planner at finalization...
+    expect(state.shedDecisions.lastPlannedShedIds.has('dev-1')).toBe(true);
+    // ...but not as a shed PELS undoes: in Simulation mode nothing switched it off...
+    expect(state.shedDecisions.standingShedIds.has('dev-1')).toBe(false);
     // ...actuation-time clock: unset because dry-run never issues the write.
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
   });
@@ -1061,7 +1063,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.planEngine.state.shedDecisions.decidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
     app.deviceManager.setSnapshotForTests([
       {
@@ -1141,7 +1143,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.planEngine.state.shedDecisions.decidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
     app.deviceManager.setSnapshotForTests([
       {
