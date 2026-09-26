@@ -25,6 +25,7 @@ describe('un-managed device: list status', () => {
       planStatus: 'on_track',
       firstActionAtMs: 1,
       nowMs: 0,
+      carChargeLimitReached: false,
     })).toBe('paused_unmanaged');
   });
 
@@ -36,6 +37,7 @@ describe('un-managed device: list status', () => {
       planStatus: undefined,
       firstActionAtMs: null,
       nowMs: 0,
+      carChargeLimitReached: false,
     })).toBe('paused_unmanaged');
   });
 });

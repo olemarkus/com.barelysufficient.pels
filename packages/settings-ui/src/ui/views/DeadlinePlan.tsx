@@ -306,6 +306,9 @@ export type DeadlinePlanLoadState =
     status: 'unavailable';
     objectiveKind: DeferredObjectiveSettingsKind;
     reason: DeadlinePlanUnavailableReason;
+    // Producer-resolved body replacing the reason's fixed copy (a task done at
+    // its car's own charge limit).
+    body?: string;
     history?: DeadlinePlanHistoryView;
   }
   | {
@@ -1592,7 +1595,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     return (
       <section class="pels-surface-card budget-redesign-card">
         <h1 class="plan-card__title">{copy.headline}</h1>
-        <p class="pels-card-supporting">{copy.body}</p>
+        <p class="pels-card-supporting">{loadState.body ?? copy.body}</p>
       </section>
     );
   }

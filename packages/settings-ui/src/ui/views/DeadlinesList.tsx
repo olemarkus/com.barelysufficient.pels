@@ -51,6 +51,8 @@ export type DeadlinesListCard = {
   // the device's current value is unknown. Resolved at the producer so the
   // view layer never branches on the device kind for unit formatting.
   currentValueLine: string | null;
+  // "Car stops at 70%": why the task's target is above what it will reach.
+  carLimitLine: string | null;
 };
 
 export type DeadlinesListState =
@@ -173,6 +175,9 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         <span class="deadline-list-card__target-value">{formatTarget(card)}</span>
         {card.currentValueLine !== null && (
           <span class="deadline-list-card__current">{card.currentValueLine}</span>
+        )}
+        {card.carLimitLine !== null && (
+          <span class="deadline-list-card__current">{card.carLimitLine}</span>
         )}
       </div>
       <dl class="deadline-list-card__when">

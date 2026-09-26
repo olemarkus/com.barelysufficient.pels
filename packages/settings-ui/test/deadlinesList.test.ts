@@ -426,6 +426,27 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].statusId).toBe('paused_unplugged');
   });
 
+  it('shows a task done at the car\'s own charge limit as satisfied, with the limit, not as unplugged', () => {
+    // The charger ends the session at the car's limit and reads unplugged with
+    // the car still in: the task is done (owner ruling 2026-09-26).
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 80,
+          pending: false,
+          diagnosticReasonCode: 'objective_invalid_session',
+          carChargeLimit: { limitValue: 70, reached: true },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0]).toMatchObject({ statusId: 'satisfied', carLimitLine: 'Car stopped at its limit of 70%' });
+  });
+
   it('suppresses a committed cached schedule after the device moves to a separate meter', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([

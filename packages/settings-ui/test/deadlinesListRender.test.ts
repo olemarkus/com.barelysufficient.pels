@@ -29,6 +29,7 @@ const buildCard = (overrides: Partial<DeadlinesListCard> = {}): DeadlinesListCar
   learning: false,
   extraPermissionsValue: null,
   currentValueLine: null,
+  carLimitLine: null,
   ...overrides,
 });
 
@@ -231,6 +232,15 @@ describe('DeadlinesList', () => {
       cards: [buildCard({ currentValueLine: null })],
     });
     expect(mount.querySelector('.deadline-list-card__current')).toBeNull();
+  });
+
+  it('renders the car-limit line beside the target', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ kind: 'ev_soc', targetValue: 80, carLimitLine: 'Car stops at 70%' })],
+    });
+    expect(mount.querySelector('.deadline-list-card__current')?.textContent).toBe('Car stops at 70%');
   });
 
   // Active-card timestamp rows: the list card surfaces "Starts" and "Ready by".
