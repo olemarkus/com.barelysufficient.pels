@@ -1,6 +1,6 @@
 # PELS owns a managed thermostat's setpoint
 
-**Default ownership, 2026-08-26; explicit opt-in extended 2026-09-08.**
+**Default ownership, 2026-08-26; explicit opt-in extended 2026-09-08 and 2026-09-24.**
 The per-device **When the temperature changes outside PELS** choice selects one
 of three policies:
 
@@ -11,9 +11,10 @@ of three policies:
   writes, while binary and stepped control remain available.
 - **Save as current mode target**: an admitted external setpoint transition
   updates this device's target in the active mode of its owning home. The selected
-  temperature is literal: saved mode targets remain writable, including when
-  switching modes, but price/solar offsets are not applied. Saved adjustment
-  preferences are preserved for switching back. **Power limiting by setpoint still
+  temperature becomes the mode target. Any price shift already active for this
+  device is canceled until the price level changes; price deltas remain enabled
+  for later levels. Solar offsets are not applied, and saved preferences are
+  preserved. **Power limiting by setpoint still
   applies** (since 2026-09-14; it used to be denied here too): the owner's limit
   is a limit under any policy that lets PELS write a setpoint, and the write
   fence admits it beside the saved target. **A change the owner makes while PELS
@@ -38,8 +39,12 @@ The executor and drift detector never edit a mode. Under Save as current mode
 target a live write fence (`ObservedTemperatureModeUpdates.allowsTarget`) accepts
 the normalized saved target and the normalized configured limits — both the
 heating and the cooling one, because the fence does not know which way the device
-is moving demand — so a queued price or solar offset cannot overwrite a newly
-chosen temperature after the policy changes, while limiting keeps working. The SDK settings notifications for these edits (immediate or delayed)
+is moving demand — so a queued stale price or solar offset cannot overwrite a newly
+chosen temperature after the policy changes, while limiting keeps working. The
+fence also admits only the price-shift target calculated from the current saved
+target and price level. Each device's canceled level is stored under its own
+`thermostat_price_shift_cancellation.<deviceId>` setting key. The SDK settings
+notifications for these edits (immediate or delayed)
 are consumed without a rebuild; the mode caches reload and the next reading
 decides from the new target. Ordinary UI/Flow mode edits keep their existing
 settings-triggered rebuild behavior.

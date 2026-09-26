@@ -1800,17 +1800,19 @@ The per-device selector is labelled **When the temperature changes outside PELS*
 It uses **Return to mode target** (default), **Keep the new temperature** (the
 former Disable temperature control toggle), and **Save as current mode target**.
 The last option includes changes from the device, Homey, another app or Flow; do
-not imply the physical remote is distinguishable. The saved mode target is the
-literal temperature to apply. Automatic offsets (price, solar) are unavailable
-under this choice; **power limiting stays as configured**, including limiting by
-temperature — a temperature change made outside PELS *while PELS is limiting the
-device's temperature* is not saved as the mode target (since 2026-09-14).
+not imply the physical remote is distinguishable. A manual change becomes the
+mode target. Price control stays available: when price adjustments are active,
+PELS holds the manual temperature through the current price level and resumes
+price deltas when the level changes. Solar temperature adjustments are
+unavailable under this choice; **power limiting stays as configured**, including limiting by temperature — a
+temperature change made outside PELS *while PELS is limiting the device's
+temperature* is not saved as the mode target (since 2026-09-14).
 
-For **Save as current mode target**, keep per-mode target inputs editable. Show
-price and solar controls as unavailable with saved values retained, with the explanation
-**Not applied while PELS saves temperature changes as the current mode target.
-Your saved settings are kept.** Explain
-power control beside the selector: under Save as current mode target it is
+For **Save as current mode target**, keep per-mode target inputs editable. Keep
+price controls available and show solar controls as unavailable with saved values
+retained, with the explanation **Not applied while PELS saves temperature changes
+as the current mode target. Your saved settings are kept.** Explain power control
+beside the selector: under Save as current mode target it is
 **PELS still limits this device’s power as configured. While PELS is limiting its
 temperature, a change made outside PELS is not saved as the mode target.**; under Keep
 the new temperature it is what is left — binary on/off, power levels, or

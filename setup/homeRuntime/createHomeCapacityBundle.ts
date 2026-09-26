@@ -309,6 +309,8 @@ function buildSubHomeScope(params: {
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getInferredSurplusKw: () => 0,
     getPriceOptimizationSettings: () => ({}),
+    shouldApplyPriceShift: () => true,
+    hasPendingPriceShiftCancellations: () => false,
     getDynamicSoftLimitOverride: () => null,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
     // bind live for every home. Binding them to `{}` made the kept setpoint

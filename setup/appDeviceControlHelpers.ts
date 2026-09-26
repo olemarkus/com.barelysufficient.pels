@@ -254,7 +254,8 @@ export class AppDeviceControlHelpers {
       observedAtMs: number;
     }) => boolean;
     isTemperatureControlDisabled?: (deviceId: string) => boolean;
-    allowsTemperatureAdjustments?: (deviceId: string) => boolean;
+    /** Temperature Smart Tasks still require the default mode-target policy. */
+    allowsTemperatureSmartTasks?: (deviceId: string) => boolean;
     /**
      * ONE device, by id — not the list. Every reader here resolves a single
      * device, and asking the transport for the whole snapshot to `.find()` in it
@@ -351,7 +352,7 @@ export class AppDeviceControlHelpers {
       store: this.deps.store,
       reportedStore: this.deps.reportedStore,
       temperatureControlDisabled: this.deps.isTemperatureControlDisabled?.(device.id) === true,
-      temperatureAdjustmentsDisabled: this.deps.allowsTemperatureAdjustments?.(device.id) === false,
+      temperatureAdjustmentsDisabled: this.deps.allowsTemperatureSmartTasks?.(device.id) === false,
       nowMs,
     }));
   }

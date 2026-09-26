@@ -1,4 +1,6 @@
-import { supportsTemperatureAdjustments, supportsPowerLimiting } from './temperaturePolicy.ts';
+import {
+  supportsPriceTemperatureAdjustments, supportsTemperatureAdjustments, supportsPowerLimiting,
+} from './temperaturePolicy.ts';
 import {
   requiresNativeWiringForActivation,
   supportsPowerDevice,
@@ -13,6 +15,7 @@ export const resolveDeviceDetailControlState = (
 ) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const canControlTemperature = supportsTemperatureAdjustments(device);
+  const canControlPriceTemperature = supportsPriceTemperatureAdjustments(device);
   const supportsPower = supportsPowerDevice(device);
   const nativeWiringRequired = requiresNativeWiringForActivation(device);
   // A temperature device without power support is still managed for its mode
@@ -21,6 +24,7 @@ export const resolveDeviceDetailControlState = (
   return {
     supportsTemperature,
     canControlTemperature,
+    canControlPriceTemperature,
     supportsPower,
     canLimitPower: supportsPowerLimiting(device),
     canManageDevice,

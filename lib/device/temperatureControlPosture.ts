@@ -93,9 +93,10 @@ export function resolveStartPolicyInForce(
 /**
  * Whether the device has any axis PELS may limit on. The setpoint counts unless
  * the owner switched temperature control off ("Keep the new temperature") —
- * NOT when they chose "Save as current mode target": that policy switches off
- * the price and solar offsets (`temperatureAdjustmentsDisabled`), and limiting
- * by setpoint stays in force under it. One predicate, the same one
+ * NOT when they chose "Save as current mode target": that policy still allows
+ * price deltas, switches off solar offsets, and denies temperature Smart Tasks
+ * (the legacy `temperatureAdjustmentsDisabled` stamp). Limiting by setpoint
+ * stays in force under it. One predicate, the same one
  * `allowsLimiting` answers at the shed-behaviour seam.
  */
 export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot): boolean {
@@ -215,10 +216,10 @@ function resolveShedBehaviorWithoutTemperature(
 export function withTemperatureControlPolicy<T extends TargetDeviceSnapshot>(
   device: T,
   disabled: boolean,
-  adjustmentsDisabled: boolean,
+  smartTasksDisabled: boolean,
 ): T {
   return { ...device,
     temperatureControlDisabled: disabled ? true : undefined,
-    temperatureAdjustmentsDisabled: adjustmentsDisabled ? true : undefined,
+    temperatureAdjustmentsDisabled: smartTasksDisabled ? true : undefined,
   };
 }

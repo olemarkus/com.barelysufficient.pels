@@ -113,6 +113,8 @@ export type HomeScope = {
   // PRICE/BUDGET members — but NOT for the two mode members below.
   /** Per-device price-opt config; feeds the surplus allocator + temperature surplus-absorb. Sub-homes bind `{}`. */
   getPriceOptimizationSettings: PlanEngineWiring['getPriceOptimizationSettings'];
+  shouldApplyPriceShift: PlanEngineWiring['shouldApplyPriceShift'];
+  hasPendingPriceShiftCancellations: PlanEngineWiring['hasPendingPriceShiftCancellations'];
   /** Test/diagnostic soft-limit override; consulted un-gated in the builder. Sub-homes bind `null`. */
   getDynamicSoftLimitOverride: () => number | null;
   /**
@@ -294,6 +296,8 @@ export function buildMainHomeScope(
     // Policy stragglers — the EXACT ctx reads `createPlanEngine`/`toPlanDevice`
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
+    shouldApplyPriceShift: (deviceId, level) => ctx.priceShiftPolicy.shouldApplyPriceShift(deviceId, level),
+    hasPendingPriceShiftCancellations: (deviceIds) => ctx.priceShiftPolicy.hasPendingCancellations(deviceIds),
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,

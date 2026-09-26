@@ -8,13 +8,17 @@ export function createObservedTemperatureModeUpdates(
   getAreaCatalogs: () => ReturnType<HomeRuntimeRegistry['getLiveBundles']>,
   isDeviceLimited: (deviceId: string) => boolean,
 ): ObservedTemperatureModeUpdates {
+  const reloadModeCatalogs = () => {
+    ctx.loadCapacitySettings();
+    getAreaCatalogs().forEach((catalog) => catalog.reloadModeCatalog());
+  };
   return new ObservedTemperatureModeUpdates(
     ctx.homey.settings,
     (deviceId) => resolveOperatingModeForDevice(ctx, deviceId),
     ctx.resolveManagedState.bind(ctx),
-    ctx.loadCapacitySettings.bind(ctx),
-    getAreaCatalogs,
+    reloadModeCatalogs,
     (deviceId, value) => ctx.deviceManager!.resolveTemperatureTarget(deviceId, value),
     isDeviceLimited,
+    ctx.priceShiftPolicy,
   );
 }

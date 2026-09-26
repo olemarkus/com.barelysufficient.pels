@@ -14,9 +14,14 @@ export function followsDeviceTemperature(device: SettingsUiDeviceDetailItem | nu
   ) === 'update_mode';
 }
 
-/** Price and solar offsets: switched off under both non-default policies. */
+/** Solar offsets: switched off under both non-default temperature policies. */
 export function supportsTemperatureAdjustments(device: SettingsUiDeviceDetailItem | null): boolean {
   return supportsTemperatureControlDevice(device) && !followsDeviceTemperature(device);
+}
+
+/** Price shifts remain available when manual target changes are saved to a mode. */
+export function supportsPriceTemperatureAdjustments(device: SettingsUiDeviceDetailItem | null): boolean {
+  return supportsTemperatureControlDevice(device);
 }
 
 /**

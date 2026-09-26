@@ -61,6 +61,10 @@ export type TemperatureIntentReads = {
   getPriceOptimizationSettings: () => Readonly<Record<string, PriceOptimizationSettings>>;
   /** Expensive on a Homey Pro; asked at most once per build, and only when a device can spend it. */
   getCurrentHourPriceLevel: () => PriceLevel;
+  /** A manual change may cancel this device's shift for the current price level. */
+  shouldApplyPriceShift: (deviceId: string, level: PriceLevel) => boolean;
+  /** A saved cancellation must observe level changes even with deltas switched off. */
+  hasPendingPriceShiftCancellations: (deviceIds: readonly string[]) => boolean;
   getThermalDirection: (deviceId: string) => ThermalDirection;
   /** Already resolved for the device's direction and policy (`AppHostApi.getShedBehavior`). */
   getShedBehavior: (deviceId: string) => ShedBehavior;
@@ -110,7 +114,9 @@ function resolveBuildIntent(reads: TemperatureIntentReads, devices: readonly Tem
     modeTargets,
     settings,
     priceShiftActive,
-    priceLevel: priceShiftActive ? reads.getCurrentHourPriceLevel() : PriceLevel.UNKNOWN,
+    priceLevel: priceShiftActive || reads.hasPendingPriceShiftCancellations(devices.map((device) => device.id))
+      ? reads.getCurrentHourPriceLevel()
+      : PriceLevel.UNKNOWN,
   };
 }
 
@@ -142,7 +148,11 @@ function resolveDeviceSetpoints(
   const storedIntendedC = intent.modeTargets[device.id];
   const intendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
   const config = resolvePriceOptimizationConfig(intent.settings, device.id);
-  const desiredC = intent.priceShiftActive && config.enabled
+  // Observe cancellation expiry on every build with a known level, even while
+  // price deltas are disabled. Applying a delta still requires both gates.
+  const shiftAllowed = intent.priceLevel === PriceLevel.UNKNOWN
+    || reads.shouldApplyPriceShift(device.id, intent.priceLevel);
+  const desiredC = intent.priceShiftActive && shiftAllowed && config.enabled
     ? applyPriceShift(intendedC, config, intent.priceLevel, direction)
     : intendedC;
   // A smart task in its planned hours holds the device at least at its deadline floor.

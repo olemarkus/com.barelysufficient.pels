@@ -5,6 +5,7 @@ import type { DeviceStartPolicy } from '../../packages/shared-domain/src/setting
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
+import { TemperaturePriceShiftPolicy } from '../../lib/thermostat/priceShiftPolicy';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
@@ -225,8 +226,16 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     deviceReads,
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
-      homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
+      homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), (_id, value) => value,
+      () => false, { cancelCurrentPriceShift: vi.fn(), allowsCurrentPriceShiftTarget: vi.fn(() => false) },
+    ),
+    priceShiftPolicy: new TemperaturePriceShiftPolicy(
+      homey.settings,
+      () => PriceLevel.UNKNOWN,
       () => false,
+      () => ({}),
+      () => 'heating',
+      (_deviceId, value) => value,
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),

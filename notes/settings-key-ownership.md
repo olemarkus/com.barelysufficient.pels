@@ -76,6 +76,10 @@ from outside PELS.
 
 Keys with owners so far: `mode_device_targets`, `pv_forecast_source`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`.
+`thermostat_price_shift_cancellation.<deviceId>` is runtime-only and belongs to
+`lib/thermostat/priceShiftPolicy.ts`; each key records that device's canceled
+`cheap` or `expensive` level so the hold survives restarts without sharing a
+read-modify-write map with other devices.
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders
