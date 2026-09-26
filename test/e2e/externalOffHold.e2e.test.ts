@@ -167,8 +167,9 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
   });
 
   it('does not force a held device on when Power-limit control is turned off', async () => {
-    // The capacity-control-off lane force-turns-ON devices PELS had shed, so it
-    // gets the same carve-out as the solar dump-load posture.
+    // The device is held from boot, so PELS never shed it and the
+    // capacity-control-off lane has nothing of PELS's to undo. The lane's own
+    // hold guard is pinned in `externalOffHoldPlan.test.ts`.
     setMockDrivers({ driverA: new MockDriver('driverA', [await buildHeater()]) });
     seedSettings({ optedIn: true, held: true });
 

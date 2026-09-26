@@ -5,8 +5,9 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 
 /**
  * A non-stepped device counts as "recovering" when it is currently observed off
- * because we shed (or swapped) it and have not yet restored it. Stepped-load
- * devices and uncontrollable devices are excluded.
+ * because we shed (or swapped) it and have not yet restored it: the previous
+ * plan still held it shed. Stepped-load devices and uncontrollable devices are
+ * excluded.
  *
  * Shared by the stepped-shed resolution paths in `candidates.ts` and
  * `planSteppedShedResolution.ts` so the recovery rule has a single definition.
@@ -25,8 +26,5 @@ export function isNonSteppedDeviceRecovering(
   if (state.swapLedger.isDonor(candidate.id) || state.swapLedger.reservationFor(candidate.id) !== undefined) {
     return true;
   }
-  const shedDecidedMs = state.shedDecisions.decidedMs[candidate.id];
-  if (shedDecidedMs == null) return false;
-  const lastRestoreMs = state.actuation.lastDeviceRestoreMs[candidate.id];
-  return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;
+  return state.shedDecisions.lastPlannedShedIds.has(candidate.id);
 }

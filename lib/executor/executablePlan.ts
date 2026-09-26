@@ -241,15 +241,16 @@ export type ExecutableBinaryIntent = DesiredBinaryKind & {
   deviceId: string;
   name: string;
   /**
-   * MANAGED -> UNMANAGED path ONLY, and the last provenance field on this type.
+   * The authority-withdrawal path ONLY, and the last provenance field on this type.
    *
    * `uncontrolled` marks the one case where PELS must undo its OWN prior
-   * actuation: a device PELS had shed while it was managed, whose Power-limit
-   * control the owner then turned off. Without this release it stays off
+   * actuation: a device PELS had shed while it held authority over it, whose
+   * Power-limit control the owner then turned off. (An unmanaged device leaves
+   * the plan, so it never reaches this lane.) Without this release it stays off
    * forever, because shed selection does not consult commandability while both
    * restore paths do. `applyUncontrolledBinaryRestore` gates it on
-   * `shedDecisions.decidedMs`, so it can only ever fire for a shed PELS itself
-   * decided.
+   * `shedDecisions.standingShedIds`, so it can only ever fire for a shed PELS
+   * itself decided and has not undone.
    *
    * It is NOT a general "is this device controllable" flag and must not be read
    * as one. It belongs on `ExecutableReleaseIntent` beside `binary_release` /

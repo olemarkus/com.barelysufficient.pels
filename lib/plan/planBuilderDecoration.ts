@@ -22,6 +22,7 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
     deferredReleaseIntentByDeviceId: {},
     admittedDeviceIds: new Set<string>(),
     drivingDeviceIds: new Set<string>(),
+    lentAuthorityDeviceIds: new Set<string>(),
   };
 }
 

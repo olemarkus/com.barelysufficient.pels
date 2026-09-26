@@ -96,6 +96,7 @@ export class DeferredObjectiveDecorationController {
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
+      lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
     };
   }
 
@@ -137,9 +138,8 @@ export class DeferredObjectiveDecorationController {
 
 // Devices whose deferred objective is currently GOVERNING them: a `planned` or
 // `idle` admission decision this cycle. Consumed by the planner as
-// `admittedDeviceIds` — its only consumer is the surplus dump-load hold
-// (`planBuilderSurplus` → `shedding/surplusHold`), which a governed device is
-// exempt from.
+// `admittedDeviceIds` — the surplus dump-load hold
+// (`planBuilderSurplus` → `shedding/surplusHold`) exempts a governed device.
 //
 // `inactive` (task disabled, satisfied, or otherwise not plannable) is excluded so
 // a finished smart task cannot keep a device out of the hold forever.

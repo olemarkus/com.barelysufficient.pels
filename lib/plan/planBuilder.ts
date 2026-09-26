@@ -282,9 +282,11 @@ export class PlanBuilder {
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
     this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints);
-    // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
-    // stamp — semantics on `ShedDecisions.recordPlannedShed`.
-    this.state.shedDecisions.recordPlannedShed(finalized.planDevices, admittedDevices, nowTs);
+    // Which devices this plan holds shed and under which posture — semantics
+    // on `ShedDecisions.recordPlannedShed`.
+    this.state.shedDecisions.recordPlannedShed(
+      finalized.planDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
+    );
     const capacityLimitKw = this.capacitySettings.limitKw;
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context: heldContext,

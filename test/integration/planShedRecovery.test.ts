@@ -5,13 +5,11 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 
 const buildState = (overrides: {
-  decidedMs?: Record<string, number>;
-  lastDeviceRestoreMs?: Record<string, number>;
+  lastPlannedShedIds?: readonly string[];
   swapReservation?: { targetId: string; donorIds?: readonly string[] };
 } = {}): PlanEngineState => {
   const state = createPlanEngineState();
-  Object.assign(state.shedDecisions.decidedMs, overrides.decidedMs);
-  Object.assign(state.actuation.lastDeviceRestoreMs, overrides.lastDeviceRestoreMs);
+  state.shedDecisions.lastPlannedShedIds = new Set(overrides.lastPlannedShedIds);
   if (overrides.swapReservation) seedSwapReservation(state, overrides.swapReservation);
   return state;
 };
@@ -25,14 +23,14 @@ describe('isNonSteppedDeviceRecovering', () => {
   it('is false for a stepped-load device even when observed off', () => {
     const device = steppedInputDevice({ id: 'a', selectedStepId: 'off' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
-      decidedMs: { a: 1000 },
+      lastPlannedShedIds: ['a'],
     }))).toBe(false);
   });
 
   it('is false when the device is not observed off', () => {
     const device = buildPlanInputDevice({ id: 'a', currentState: 'on' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
-      decidedMs: { a: 1000 },
+      lastPlannedShedIds: ['a'],
     }))).toBe(false);
   });
 
@@ -55,26 +53,10 @@ describe('isNonSteppedDeviceRecovering', () => {
     expect(isNonSteppedDeviceRecovering(device, buildState())).toBe(false);
   });
 
-  it('is true when shed and not yet restored', () => {
+  it('is true while the previous plan still holds it shed', () => {
     const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
-      decidedMs: { a: 1000 },
-      lastDeviceRestoreMs: { a: 500 },
+      lastPlannedShedIds: ['a'],
     }))).toBe(true);
-  });
-
-  it('is true when shed and never restored', () => {
-    const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
-    expect(isNonSteppedDeviceRecovering(device, buildState({
-      decidedMs: { a: 1000 },
-    }))).toBe(true);
-  });
-
-  it('is false when restored at or after the latest shed decision', () => {
-    const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
-    expect(isNonSteppedDeviceRecovering(device, buildState({
-      decidedMs: { a: 1000 },
-      lastDeviceRestoreMs: { a: 1000 },
-    }))).toBe(false);
   });
 });

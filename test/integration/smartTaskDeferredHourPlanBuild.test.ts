@@ -52,6 +52,7 @@ const decorateWithDecision = (
     deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
     admittedDeviceIds: new Set([deviceId]),
     drivingDeviceIds: new Set([deviceId]),
+    lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
     // What `resolveDeferredAvoidDeviceIds` answers for an on-track task deferring
     // this hour, so the card reads "Waiting for cheaper hours".
     deferredAvoidDeviceIds: new Set(decision.kind === 'idle' ? [deviceId] : []),

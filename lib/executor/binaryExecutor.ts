@@ -21,12 +21,11 @@ import type {
 } from './executablePlan';
 import {
   runBinaryControl,
-  skipRestoreForSurplusPosture,
+  skipRestoreForExternalOffHold,
   type PlanExecutorBinaryContext,
 } from './binaryControlShared';
 import {
   applyBinaryRestoreWithSnapshot,
-  applyCapacityControlOffRestoreWithSnapshot,
   canApplyRestoreSnapshot,
 } from './binaryRestoreHelpers';
 
@@ -51,7 +50,7 @@ export const applyBinaryRestore = async (
   if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
   const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
-    canApplyRestoreSnapshot(ctx, {
+    canApplyRestoreSnapshot({
       snapshot,
       deviceId: intent.deviceId,
       name: intent.name,
@@ -60,18 +59,13 @@ export const applyBinaryRestore = async (
     return false;
   }
   if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
+  if (!canApplyRestoreSnapshot({
     snapshot,
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity',
   })) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, {
-    deviceId: intent.deviceId,
-    name: intent.name,
-    snapshot,
-    logContext: 'capacity',
-  });
+  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
 };
 
 export const applyUncontrolledBinaryRestore = async (
@@ -80,15 +74,13 @@ export const applyUncontrolledBinaryRestore = async (
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || !intent.desiredOn || intent.source !== 'uncontrolled') return false;
-  const shedDecided = ctx.state.shedDecisions.decidedMs[intent.deviceId];
-  if (!shedDecided) return false;
-  // "Run on solar surplus" carve-out (shared home for the merge-blocking
-  // invariant): a baseline-off dump load must never be force-turned-ON on
-  // capacity-control-off. See `skipRestoreForSurplusPosture`.
-  if (skipRestoreForSurplusPosture(ctx, intent.deviceId, intent.name)) return false;
+  // Only a shed PELS has not undone is PELS's to undo. A baseline-off posture
+  // hold never counts (`ShedDecisions.standingShedIds`), so a dump load is
+  // never started here.
+  if (!ctx.state.shedDecisions.standingShedIds.has(intent.deviceId)) return false;
   const entry = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
-    canApplyRestoreSnapshot(ctx, {
+    canApplyRestoreSnapshot({
       snapshot: entry,
       deviceId: intent.deviceId,
       name: intent.name,
@@ -97,17 +89,33 @@ export const applyUncontrolledBinaryRestore = async (
     return false;
   }
   if (isBinaryOnOrUnknown(entry)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
+  if (!canApplyRestoreSnapshot({
     snapshot: entry,
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity_control_off',
   })) return false;
-  return applyCapacityControlOffRestoreWithSnapshot(ctx, {
-    deviceId: intent.deviceId,
-    name: intent.name,
-    snapshot: entry,
-  });
+  // "Leave off until turned on again" holds here too: losing control authority
+  // is not consent to undo the owner's own off action.
+  if (skipRestoreForExternalOffHold(ctx, intent.deviceId, intent.name)) return false;
+  try {
+    const outcome = await runBinaryControl({
+      ctx,
+      deviceId: intent.deviceId,
+      name: intent.name,
+      desired: true,
+      snapshot: entry,
+      logContext: 'capacity_control_off',
+    });
+    return outcome.applied;
+  } catch (error) {
+    logger.error({
+      event: 'executor_binary_error',
+      msg: `Failed to restore ${intent.name} via DeviceTransport`,
+      err: error,
+    });
+    return false;
+  }
 };
 
 export const applyBinarySheddingToDevice = async (
@@ -220,18 +228,13 @@ export const applyDeferredBinaryCommand = async (
   // through `canTurnOnDevice` and logs the skip, so a second silent copy of it
   // only added a way for the two to disagree.
   if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
+  if (!canApplyRestoreSnapshot({
     snapshot,
     deviceId: intent.deviceId,
     name: intent.name,
     logContext: 'capacity',
   })) return false;
-  return applyBinaryRestoreWithSnapshot(ctx, {
-    deviceId: intent.deviceId,
-    name: intent.name,
-    snapshot,
-    logContext: 'capacity',
-  });
+  return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
 };
 
 const turnOffDevice = async (

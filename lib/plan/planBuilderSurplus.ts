@@ -99,8 +99,8 @@ export function runStandingPostureHolds(params: {
   // "Leave off until turned on again" at the moment a standing posture is
   // released (`PlanBuilderDeps.leaveOffOnRelease`).
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
-  // One timestamp for the whole build, so the settle/dwell clocks and the
-  // shed-decision stamps agree on the millisecond.
+  // One timestamp for the whole build, so the settle/dwell clocks agree on the
+  // millisecond.
   nowTs: number;
 }): StandingPostureHolds {
   const { context, power, state, admittedDevices, decoration } = params;
@@ -282,29 +282,21 @@ export function applyPostSheddingHolds(params: {
 }): ReadonlySet<string> {
   mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
   clearShedStepTargets(params.shedStepTargets, params.surplusHoldIds);
-  return releaseAbandonedSurplusPosture({
-    shedDecisions: params.shedDecisions,
-    admittedDevices: params.admittedDevices,
-    shedSet: params.shedSet,
-    getConfig: params.getConfig,
-    leaveOffOnRelease: params.leaveOffOnRelease,
-  });
+  return releaseAbandonedSurplusPosture(
+    params.shedDecisions,
+    params.admittedDevices,
+    params.getConfig,
+    params.leaveOffOnRelease,
+  );
 }
 
 /**
- * Release the stale shed bookkeeping of a device that WAS surplus-held but is no
- * longer a dump-load candidate this cycle (the user toggled "Run on solar
- * surplus" off, or the device was unmanaged). Clears `shedDecisions.decidedMs` and the
- * `shedDecisions.surplusOnlyByDevice` stamp so the device is no longer RECORDED as a
- * PELS-shed / dump-load device.
- *
- * Why this matters: leaving the stale stamps in place mis-attributes the device
- * as PELS-shed to the decision-time readers — the stepped-restore-blocking gate
- * (`hasOtherDevicesBlockingSteppedRestore` reads `shedDecisions.decidedMs`) and the
- * executor's capacity-control-off carve-out (`skipRestoreForSurplusPosture`
- * reads `shedDecisions.surplusOnlyByDevice`) — so a later capacity-control-off or a
- * neighbouring stepped restore would branch on stale surplus state. Clearing
- * them returns the device to a clean, plainly-managed record.
+ * Release the posture stamp of a device that WAS held under a baseline-off
+ * posture but no longer carries one this cycle (the owner toggled "Run on solar
+ * surplus" off, or the device was unmanaged). Clears
+ * `shedDecisions.surplusOnlyByDevice` so the device is no longer RECORDED as a
+ * dump-load device: a stamp left behind would answer for a posture decided
+ * before the device changed, and this release would ask about it again.
  *
  * What happens to a released device that is still OFF is the owner's own
  * switches' call, not a rule of this function (owner ruling 2026-09-19). Once the
@@ -332,18 +324,16 @@ export function applyPostSheddingHolds(params: {
  *
  * `lastDeviceShedMs` is intentionally NOT cleared here: if PELS actually turned
  * the device off, that shed-cooldown clock is legitimate and clearing it would
- * only let the device restore sooner. Only clears a device the shed set no
- * longer holds (`!shedSet.has(id)`) — a device the posture left but that
- * capacity is still shedding keeps its decision clock (it stays shed; the
- * decision-time readers must not under-stamp it).
+ * only let the device restore sooner. A released device is never one PELS turns
+ * on as it lets go either: a posture shed never enters
+ * `ShedDecisions.standingShedIds`, so nothing here has to withdraw it.
  *
  * A device that left the SNAPSHOT entirely is covered, and the loop shape is why:
- * it iterates the stamp map, not `admittedDevices`. An absent device is in
- * neither `surplusOnlyNow` nor `shedSet`, so it falls through both guards to the
- * clear. An earlier version of this comment wrongly said the case was unhandled;
- * that was a misreading of this loop, and the two prune pins in
- * `test/integration/surplusDumpLoadPlan.test.ts` exist so it cannot be made true
- * by accident.
+ * it iterates the stamp map, not `admittedDevices`. An absent device is not in
+ * `baselineOffNow`, so it falls through to the clear. An earlier version of this
+ * comment wrongly said the case was unhandled; that was a misreading of this
+ * loop, and the two prune pins in `test/integration/surplusDumpLoadPlan.test.ts`
+ * exist so it cannot be made true by accident.
  */
 /**
  * Does the owner still hold a setting that earned this stamp? Each posture is
@@ -364,24 +354,18 @@ function isBaselineOffStillWanted(
     || (posture.startPolicy && device.startPolicy === 'pels_only');
 }
 
-export function releaseAbandonedSurplusPosture(params: {
-  shedDecisions: ShedDecisions;
-  admittedDevices: PlanInputDevice[];
-  shedSet: ReadonlySet<string>;
-  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
-  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
-}): ReadonlySet<string> {
-  const {
-    shedDecisions, admittedDevices, shedSet, getConfig, leaveOffOnRelease,
-  } = params;
+function releaseAbandonedSurplusPosture(
+  shedDecisions: ShedDecisions,
+  admittedDevices: PlanInputDevice[],
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+): ReadonlySet<string> {
   const stamps = Object.entries(shedDecisions.surplusOnlyByDevice);
   const heldOffIds = new Set<string>();
   if (stamps.length === 0) return heldOffIds;
   // EITHER baseline-off posture keeps the stamp alive, matching what stamps it
   // (`ShedDecisions.recordPlannedShed`). A `pels_only` device the owner has just
-  // opted OUT of is in neither set and falls through to the clear, which is the
-  // whole point: without it the stale decision let the uncontrolled-restore lane
-  // force the device ON as PELS's last act before losing authority. The policy
+  // opted OUT of is in neither set and falls through to the clear. The policy
   // IN FORCE, so a device whose owner turned Power-limit control on is released
   // too: its baseline of off no longer applies (`resolveStartPolicyInForce`).
   const baselineOffNow = new Set(
@@ -411,8 +395,7 @@ export function releaseAbandonedSurplusPosture(params: {
     // keep it, and the stamp stays so the next build asks again.
     if (outcome !== 'released') heldOffIds.add(id);
     if (outcome === 'unavailable') continue;
-    if (shedSet.has(id)) continue; // capacity still holds it off — keep its decision clock
-    shedDecisions.clearFor(id); // clears the decision clock + the surplus stamp
+    shedDecisions.clearPostureStamp(id);
   }
   return heldOffIds;
 }
