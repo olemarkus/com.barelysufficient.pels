@@ -1,9 +1,9 @@
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { PelsDeviceDebugState } from '../../setup/appDebugTypes';
 import {
   getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
-  logHomeyDeviceComparisonForDebugFromApp,
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
 } from '../../setup/appDebugHelpers';
@@ -32,6 +32,12 @@ const buildDeviceManager = (params: {
 
 type DumpSectionEvent = { dumpId?: string; section?: string; payload?: string };
 
+const noPelsDeviceState: PelsDeviceDebugState = {
+  present: false,
+  targetSnapshot: null,
+  planDevice: null,
+};
+
 const findDumpSections = (capture: LoggerCapture): DumpSectionEvent[] => (
   capture.findEvents('homey_device_dump') as DumpSectionEvent[]
 );
@@ -42,11 +48,14 @@ const findDumpSections = (capture: LoggerCapture): DumpSectionEvent[] => (
  * assertions read, and asserts along the way that the sections really do share
  * one `dumpId`.
  */
-const parseDumpPayload = (capture: LoggerCapture): { homey: Record<string, unknown> } & Record<string, unknown> => {
+const parseDumpPayload = (
+  capture: LoggerCapture,
+): { homey: Record<string, unknown>; pels: unknown } => {
   const sections = findDumpSections(capture);
   expect(sections.length).toBeGreaterThan(0);
   expect(new Set(sections.map((entry) => entry.dumpId)).size).toBe(1);
   const bySection = new Map(sections.map((entry) => [entry.section, JSON.parse(entry.payload ?? '{}')]));
+  expect(bySection.has('pels')).toBe(true);
   return {
     homey: {
       summary: bySection.get('summary'),
@@ -54,7 +63,7 @@ const parseDumpPayload = (capture: LoggerCapture): { homey: Record<string, unkno
       energyApproximation: bySection.get('energy'),
       comparison: bySection.get('comparison'),
     },
-    ...(bySection.has('pels') ? { pels: bySection.get('pels') } : {}),
+    pels: bySection.get('pels'),
   };
 };
 
@@ -235,13 +244,14 @@ describe('appDebugHelpers', () => {
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
+      getPelsDeviceState: () => noPelsDeviceState,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
     expect(findDumpSections(capture).map((entry) => entry.section))
-      .toEqual(['summary', 'settings', 'energy', 'comparison']);
+      .toEqual(['summary', 'settings', 'energy', 'comparison', 'pels']);
 
     const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
@@ -295,13 +305,14 @@ describe('appDebugHelpers', () => {
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
+      getPelsDeviceState: () => noPelsDeviceState,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
     expect(findDumpSections(capture).map((entry) => entry.section))
-      .toEqual(['summary', 'settings', 'energy', 'comparison']);
+      .toEqual(['summary', 'settings', 'energy', 'comparison', 'pels']);
 
     const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
@@ -335,6 +346,7 @@ describe('appDebugHelpers', () => {
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
+      getPelsDeviceState: () => noPelsDeviceState,
       error,
     });
 
@@ -369,6 +381,7 @@ describe('appDebugHelpers', () => {
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
+      getPelsDeviceState: () => noPelsDeviceState,
       error,
     });
 
@@ -634,95 +647,4 @@ describe('appDebugHelpers', () => {
     }));
   });
 
-  it('logs a compact side-by-side comparison from the app wrapper', async () => {
-    const app = {
-      deviceManager: buildDeviceManager({
-        devices: [{
-          id: 'dev-1',
-          name: 'Kitchen Socket',
-          capabilities: ['onoff'],
-          capabilitiesObj: { onoff: { value: false } },
-        }],
-        snapshot: [{
-          id: 'dev-1',
-          name: 'Kitchen Socket',
-          binaryControl: { on: false },
-          targets: [{ id: 'target_temperature', value: 20.5, unit: '°C' }],
-          measuredPowerKw: 0.1,
-        }],
-      }),
-      planService: {
-        getLatestPlanSnapshot: () => ({
-          meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-          devices: [{
-            id: 'dev-1',
-            name: 'Kitchen Socket',
-            deviceType: 'temperature',
-            currentState: 'off',
-            plannedState: 'keep',
-            currentTarget: 20.5,
-            currentTemperature: 20.5,
-            plannedTarget: 23,
-            control: fixtureControlPosture({ controllable: true }),
-            reason: { code: 'keep', detail: null },
-          }],
-        }),
-      },
-      error: vi.fn(),
-    };
-    setRestClient({
-      get: vi.fn().mockResolvedValue({
-        'dev-1': {
-          id: 'dev-1',
-          name: 'Kitchen Socket',
-          capabilities: ['onoff', 'target_temperature'],
-          capabilitiesObj: {
-            onoff: { value: true, lastUpdated: new Date('2026-03-12T10:02:00.000Z') },
-            target_temperature: { value: 23, lastUpdated: new Date('2026-03-12T10:02:10.000Z') },
-          },
-          lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
-        },
-      }),
-      put: vi.fn(),
-    });
-
-    const ok = await logHomeyDeviceComparisonForDebugFromApp({
-      app: app as never,
-      deviceId: 'dev-1',
-      reason: 'target_retry:plan:target_temperature',
-      expectedTarget: 23,
-      observedTarget: 20.5,
-      observedSource: 'rebuild',
-    });
-
-    expect(ok).toBe(true);
-    const comparisonPayload = capture.findEvent('homey_pels_device_state_comparison') as { payload?: string } | undefined;
-    expect(comparisonPayload?.payload).toBeDefined();
-    expect(JSON.parse(comparisonPayload?.payload ?? '{}')).toEqual({
-      reason: 'target_retry:plan:target_temperature',
-      expectedTarget: 23,
-      observedTarget: 20.5,
-      observedSource: 'rebuild',
-      comparison: {
-        managerDevices: {
-          sourceState: 'on',
-          target: 23,
-          lastSeenAt: '2026-03-12T10:02:30.000Z',
-          onoffLastUpdated: '2026-03-12T10:02:00.000Z',
-          targetLastUpdated: '2026-03-12T10:02:10.000Z',
-        },
-        pelsSnapshot: {
-          sourceState: 'off',
-          target: 20.5,
-          powerW: 100,
-        },
-        pelsPlan: {
-          currentState: 'off',
-          plannedState: 'keep',
-          currentTarget: 20.5,
-          plannedTarget: 23,
-        },
-      },
-    });
-  });
 });

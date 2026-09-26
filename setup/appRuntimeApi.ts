@@ -44,7 +44,6 @@ import {
 import { buildDebugLoggingTopics } from '../lib/utils/debugLoggingSettings';
 import { normalizeStoredDeviceControlProfiles } from './appDeviceControlHelpers';
 import { normalizeError } from '../lib/utils/errorUtils';
-import { logHomeyDeviceComparisonForDebugFromApp } from './appDebugHelpers';
 import {
   isTemperatureControlDisabledForApp,
   loadCapacitySettingsFromHomey,
@@ -195,19 +194,6 @@ abstract class AppRuntimeApi extends Base {
   }
   public seedObservedStateFromSnapshot(): void {
     this.observedDeviceStateProjection.seedMissing(this.context.deviceReads.observedSeed());
-  }
-  public async logTargetRetryComparison(params: {
-    deviceId: string; name: string; target: 'temperature'; desired: number; observedValue?: unknown;
-    observedSource?: string; retryCount: number; skipContext: 'plan' | 'shedding' | 'overshoot';
-  }): Promise<void> {
-    await logHomeyDeviceComparisonForDebugFromApp({
-      app: this,
-      deviceId: params.deviceId,
-      reason: `target_retry:${params.skipContext}:${params.target}`,
-      expectedTarget: params.desired,
-      observedTarget: params.observedValue,
-      observedSource: params.observedSource,
-    });
   }
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
     return this.requirePlanService().syncLivePlanStateInline(source);

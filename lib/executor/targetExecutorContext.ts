@@ -41,16 +41,6 @@ export type PlanExecutorTargetContext = {
   actuator: Actuator;
   operatingMode: string;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;

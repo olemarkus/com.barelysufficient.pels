@@ -74,16 +74,6 @@ export type PlanEngineWiring = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
   /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
   getDynamicSoftLimitOverride: () => number | null;
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
   /** Scope-owned, so the sync targets THIS home's plan service. Every home binds one. */
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;

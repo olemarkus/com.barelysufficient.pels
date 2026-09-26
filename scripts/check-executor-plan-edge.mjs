@@ -89,7 +89,6 @@ const ALLOWED = new Set([
   'targetExecutor.ts -> planTypes',
   'targetExecutorContext.ts -> planState',
   'targetExecutorContext.ts -> planTypes',
-  'targetPendingCommand.ts -> planTypes',
 ]);
 
 function isWithin(directory, candidate) {

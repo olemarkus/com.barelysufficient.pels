@@ -158,7 +158,7 @@ export type DeviceDebugDump = {
     energyApproximation: DebugSection<EnergyDebugPayload>;
     comparison: DebugSection<DeviceStateComparison>;
   };
-  pels?: PelsDeviceDebugState;
+  pels: PelsDeviceDebugState;
 };
 
 export type DeviceStateComparisonSource = {
