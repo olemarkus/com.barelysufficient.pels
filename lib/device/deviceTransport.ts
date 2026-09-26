@@ -584,6 +584,10 @@ export class DeviceTransport {
         const snapshot = this.latestSnapshotById.get(deviceId);
         const capabilityId = snapshot?.binaryCapabilityId;
         if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
+        // The switch PELS asked for, whatever reaches the SDK (an Easee under
+        // built-in control is paused with 0 A): a car-link stop that follows a
+        // PELS stop is PELS's, not the car's.
+        if (!desired) this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
         if (snapshot.flowBackedCapabilityIds?.includes(capabilityId) === true) {
             await triggerFlow(deviceId, capabilityId, desired);
             return;

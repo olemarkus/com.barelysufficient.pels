@@ -73,6 +73,8 @@ export type TransportEvCarLinkProducer = {
   tick: (nowMs: number) => void;
   getObservedCarDeviceIds: () => string[];
   getAssociatedCarForCharger: (chargerId: string) => AssociatedCarSnapshot | undefined;
+  /** PELS told this charger to stop (see `EvCarLinkProducer.noteStopCommand`). */
+  noteStopCommand: (chargerId: string, nowMs: number) => void;
 };
 
 export type SnapshotRefreshOptions = {

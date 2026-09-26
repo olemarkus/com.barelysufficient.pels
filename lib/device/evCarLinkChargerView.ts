@@ -27,11 +27,10 @@ export type EvCarLinkChargerView = {
     /** When that draw was observed; absent when the producer could not resolve it. */
     measuredPowerObservedAtMs?: number;
     /**
-     * The charger's OBSERVED binary control state — not what PELS commanded.
-     * Kept observed-only on purpose: `lib/device/AGENTS.md` treats collapsing
-     * commanded into observed as the bug this layer exists to prevent. It is
-     * used here only to widen "the charger believes it is delivering" beyond a
-     * literal `plugged_in_charging`, never to assert PELS asked for anything.
+     * The charger's OBSERVED switch (`binaryControl.on`), not what PELS
+     * commanded: `lib/device/AGENTS.md` treats collapsing commanded into observed
+     * as the bug this layer exists to prevent. Read only to tell a charger
+     * someone switched off from one whose car stopped (`classifyEvCarSelfStop`).
      */
     controlOn: boolean;
     /** Charge already on the charger snapshot (the existing flow card); absent

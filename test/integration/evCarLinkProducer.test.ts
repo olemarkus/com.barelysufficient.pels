@@ -5,6 +5,7 @@ import {
   type EvCarLinkEvent,
 } from '../../lib/device/evCarLinkProducer';
 import type { EvCarLinkChargerView } from '../../lib/device/evCarLinkChargerView';
+import { EV_CAR_LINK_LINGER_CONFIRM_MS } from '../../lib/device/evCarLinkSelfStop';
 import { createEmptyEvCarLinkSnapshot, getEvCarLinkVotes } from '../../lib/device/evCarLinkSnapshot';
 import {
   EV_CAR_LINK_AWAY_VERDICT_MS,
@@ -590,6 +591,152 @@ describe('self-stop detection', () => {
     // trustworthy, and it is reported alongside.
     expect(stops[1]).toMatchObject({ observedLimitPct: 79.9, observedLimitSamples: 2 });
     expect(stops[1]).toMatchObject({ observedLimitSpreadPct: 0.2 });
+  });
+});
+
+describe('self-stop evidence is the car\'s own', () => {
+  const linkAndCharge = (atMs: number, socPct = 60): number => {
+    seedDisconnected(h, 0);
+    plugIn(h, atMs, socPct);
+    return atMs + SETTLE_MS;
+  };
+
+  it('does not bank a stop PELS commanded', () => {
+    // A PELS pause reads exactly like a car stop from the car's side.
+    const linkedAt = linkAndCharge(10_000);
+    h.producer.noteStopCommand('charger-1', linkedAt + 5_000);
+    h.setCharger({ evChargingState: 'plugged_in', measuredPowerW: 0 });
+    h.car(carDevice({ state: 'plugged_in', socPct: 64 }), linkedAt + 10_000);
+    h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(0);
+    expect(h.snapshot.cars['car-1']).toBeUndefined();
+  });
+
+  it('does not bank a stop while the charger holds the session paused', () => {
+    // Where PELS's 0 A pause and a charger-app schedule both land.
+    const linkedAt = linkAndCharge(10_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused', measuredPowerW: 0 });
+    h.car(carDevice({ state: 'plugged_in', socPct: 64 }), linkedAt + 10_000);
+    h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(0);
+  });
+
+  it('does not bank a car that never charged in this session', () => {
+    // Production, 2026-09-15: PELS switched an Easee on during its resume
+    // hold-off, the car sat not-charging for two minutes with nothing flowing,
+    // and that was banked as the car's limit at 42 %.
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 0, controlOn: true });
+    h.car(carDevice({ state: 'plugged_in', socPct: 42 }), 10_000);
+    h.tick(10_000 + SETTLE_MS);
+    h.tick(10_000 + SETTLE_MS + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+
+    expect(h.of('ev_car_link_resolved')).toHaveLength(1);
+    expect(h.selfStops()).toHaveLength(0);
+  });
+
+  it('banks the stop when the charger ends the session with the car still plugged in', () => {
+    // Production, 2026-09-26: at the car's 70 % limit the Easee read
+    // `plugged_out` at 03:15:59 and the car reported `plugged_in` 17 s later.
+    // The charger's edge ended the association before the car said anything.
+    const linkedAt = linkAndCharge(10_000, 68);
+    const endedAt = linkedAt + 60_000;
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.tick(endedAt);
+    expect(h.ended).toEqual(['charger-1']);
+
+    h.car(carDevice({ state: 'plugged_in', socPct: 70 }), endedAt + 17_000);
+    h.tick(endedAt + 17_000 + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+    // A physical unplug reads the same on the charger; the stop is only the
+    // car's once the car has stayed connected past the confirm window.
+    expect(h.selfStops()).toHaveLength(0);
+    h.tick(endedAt + EV_CAR_LINK_LINGER_CONFIRM_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(1);
+    expect(h.selfStops()[0]).toMatchObject({
+      subReason: 'car_not_charging',
+      stoppedAtSocPct: 70,
+      chargerState: 'plugged_out',
+    });
+    expect(h.snapshot.cars['car-1']?.stopSocPct).toEqual([70]);
+  });
+
+  it('stops watching an ended session once the car is unplugged', () => {
+    const linkedAt = linkAndCharge(10_000, 68);
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.tick(linkedAt + 60_000);
+    h.car(carDevice({ state: 'plugged_out', socPct: 70 }), linkedAt + 70_000);
+    h.car(carDevice({ state: 'plugged_in', socPct: 70 }), linkedAt + 80_000);
+    h.tick(linkedAt + 80_000 + EV_CAR_LINK_LINGER_CONFIRM_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(0);
+  });
+
+  it('does not bank a PELS pause that a delayed power report keeps hiding', () => {
+    // With the live feed down (a 5-minute poll), or power reported by a Flow,
+    // passes keep seeing the last 7 kW reading after PELS has paused the
+    // charger. The pause must be judged against when that reading was taken.
+    const linkedAt = linkAndCharge(10_000);
+    h.setCharger({ measuredPowerObservedAtMs: linkedAt });
+    h.producer.noteStopCommand('charger-1', linkedAt + 60_000);
+    for (let atMs = linkedAt + 90_000; atMs <= linkedAt + 5 * 60_000; atMs += 30_000) h.tick(atMs);
+    const readAt = linkedAt + 5 * 60_000 + 10_000;
+    h.setCharger({ evChargingState: 'plugged_in', measuredPowerW: 0, measuredPowerObservedAtMs: readAt });
+    h.car(carDevice({ state: 'plugged_in', socPct: 64 }), readAt);
+    h.tick(readAt + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(0);
+  });
+
+  it('does not bank a stop someone else switched off', () => {
+    // An owner's "car at 80 % → charger off" Flow: the charger still reads
+    // connected, its switch reads off, and the car reports not charging.
+    const linkedAt = linkAndCharge(10_000);
+    h.setCharger({ evChargingState: 'plugged_in', measuredPowerW: 0, controlOn: false });
+    h.car(carDevice({ state: 'plugged_in', socPct: 80 }), linkedAt + 10_000);
+    h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS + 1_000);
+
+    expect(h.selfStops()).toHaveLength(0);
+  });
+
+  it('qualifies a limit from two agreeing stops, and drops it when the car charges past it', () => {
+    const runSession = (startMs: number, stopSocPct: number): void => {
+      h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0 });
+      h.car(carDevice({ state: 'plugged_out', socPct: 40 }), startMs);
+      h.tick(startMs);
+      plugIn(h, startMs + 10_000);
+      const linkedAt = startMs + 10_000 + SETTLE_MS;
+      h.setCharger({ measuredPowerW: 0 });
+      h.car(carDevice({ state: 'plugged_in', socPct: stopSocPct }), linkedAt + 10_000);
+      h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+    };
+    runSession(0, 70);
+    expect(h.selfStops()[0]?.chargeLimitPct).toBeUndefined();
+    runSession(1_000_000, 70);
+    expect(h.selfStops()[1]).toMatchObject({ chargeLimitPct: 70 });
+
+    // A car that arrives above its home limit (fast-charged on a trip) proves
+    // nothing about where it stops here.
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.car(carDevice({ state: 'plugged_out', socPct: 85 }), 1_500_000);
+    h.tick(1_500_000);
+    plugIn(h, 1_510_000, 85);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 86 }), 1_510_000 + SETTLE_MS + 60_000);
+    expect(h.of('ev_car_observed_limit_disproven')).toEqual([]);
+
+    // The owner raises the limit: the car charges on past 70 % in a session.
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0 });
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 2_000_000);
+    h.tick(2_000_000);
+    plugIn(h, 2_010_000, 69);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 72 }), 2_010_000 + SETTLE_MS + 60_000);
+
+    expect(h.of('ev_car_observed_limit_disproven')).toEqual([expect.objectContaining({
+      carId: 'car-1', chargeLimitPct: 70, socPct: 72,
+    })]);
+    expect(h.snapshot.cars['car-1']).toBeUndefined();
   });
 });
 

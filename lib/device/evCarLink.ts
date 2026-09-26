@@ -387,32 +387,80 @@ export const resolveLinkForCharger = (params: {
 export type EvCarSelfStopReason = 'car_not_charging' | 'car_schedule_hold';
 
 /**
+ * How far before the charger's last delivery reading a PELS stop command still
+ * explains the stop. A write can take seconds to land (an Easee takes up to ~8 s to accept
+ * one) and the charger reports the pause seconds after that, so the command
+ * precedes the end of delivery; three minutes covers both with room to spare.
+ */
+export const EV_CAR_LINK_PELS_STOP_LOOKBACK_MS = 180_000;
+
+/**
+ * One pass's view of a linked charger and its car, as far as a stop goes.
+ *
+ * `lastDeliveryReadingAtMs` is when the charger's last above-idle reading was
+ * TAKEN, and is set only if that delivery belongs to this session (the watcher
+ * decides that from the pass it was seen on). The reading's own time, not the
+ * pass: with a delayed power report (a 5-minute poll with the live feed down, or
+ * power reported by an owner's Flow) passes keep seeing the old draw after PELS
+ * has paused the charger, and anchoring on the pass would put the pause before
+ * the window that is meant to catch it. `lastStopCommandAtMs` is when PELS last
+ * told the charger to stop. Both live in memory, so a restart forgets them and
+ * no stop counts until delivery is seen again.
+ */
+export type EvCarStopObservation = {
+    carState: EvChargingState;
+    chargerState: EvChargingState;
+    chargerPowerW: number;
+    /** The charger's observed switch, `binaryControl.on`. */
+    chargerSwitchOn: boolean;
+    lastDeliveryReadingAtMs: number | undefined;
+    lastStopCommandAtMs: number | undefined;
+};
+
+/**
  * Classify a car that has stopped charging for its own reasons.
  *
- * Requires all of: the car reports connected-but-not-charging, the charger still
- * believes it is delivering, and measured draw is at or below the idle
- * threshold.
+ * The stop is the car's only when all of these hold:
+ * - the charger delivered in this session and now draws at most the idle
+ *   threshold — a charger that never delivered did not stop, it never started
+ *   (a charger held off by PELS, or an Easee waiting out its resume hold-off);
+ * - PELS did not tell it to stop, from shortly before that delivery was read
+ *   until now — a PELS pause reads exactly like a car stop from the car's side,
+ *   which reports both as connected-but-not-charging;
+ * - nobody else switched it off: a charger that still reads connected but whose
+ *   switch reads off was stopped from outside (an owner's "car at 80 % → charger
+ *   off" Flow would otherwise bank 80 % every session). A charger that reads
+ *   `plugged_out` is exempt, because an Easee ends the session at the car's
+ *   limit exactly that way, switch and plug state together;
+ * - the charger is not holding the session paused (`plugged_in_paused`), which
+ *   is where PELS's own 0 A pause and a charger-app schedule both land;
+ * - the car reports connected-but-not-charging.
  *
  * Every input is REQUIRED and already resolved. An unreadable power measurement
  * is not evidence of idleness, so the caller must not call this at all when it
- * has none — there is no "unknown" arm here to get that decision wrong, and no
- * re-validation of a finiteness invariant the producer seam already guarantees.
+ * has none.
+ *
+ * The PELS-stop test runs from shortly before the delivery reading up to now,
+ * so the verdict stays sound however late a pass first sees the stop: a pause
+ * PELS sent in that gap still rules it out, and a car that is not charging
+ * still holds the charge it stopped at.
  *
  * This is the instantaneous verdict. The caller owns the dwell requirement
- * (`EV_CAR_LINK_SELF_STOP_MIN_MS`), because only the caller knows how long the
- * condition has held continuously; a charger momentarily reading zero mid-ramp
- * satisfies this predicate but must not count as a self-stop.
+ * (`EV_CAR_LINK_SELF_STOP_MIN_MS`), because only the caller knows when the
+ * episode began; a charger momentarily reading zero mid-ramp satisfies this
+ * predicate but must not count as a self-stop.
  */
-export const classifyEvCarSelfStop = (params: {
-    carState: EvChargingState;
-    chargerState: EvChargingState;
-    chargerControlOn: boolean;
-    chargerPowerW: number;
-}): EvCarSelfStopReason | null => {
-    const { carState, chargerState, chargerControlOn: chargerCommandedOn, chargerPowerW } = params;
+export const classifyEvCarSelfStop = (observation: EvCarStopObservation): EvCarSelfStopReason | null => {
+    const {
+        carState, chargerState, chargerPowerW, chargerSwitchOn, lastDeliveryReadingAtMs, lastStopCommandAtMs,
+    } = observation;
     if (chargerPowerW > EV_CAR_LINK_IDLE_POWER_W) return null;
-    const chargerBelievesLive = chargerState === 'plugged_in_charging' || chargerCommandedOn;
-    if (!chargerBelievesLive) return null;
+    if (lastDeliveryReadingAtMs === undefined) return null;
+    const stoppedByPels = lastStopCommandAtMs !== undefined
+        && lastStopCommandAtMs >= lastDeliveryReadingAtMs - EV_CAR_LINK_PELS_STOP_LOOKBACK_MS;
+    if (stoppedByPels) return null;
+    if (!chargerSwitchOn && chargerState !== 'plugged_out') return null;
+    if (chargerState === 'plugged_in_paused') return null;
     if (carState === 'plugged_in_paused') return 'car_schedule_hold';
     if (carState === 'plugged_in') return 'car_not_charging';
     return null;
