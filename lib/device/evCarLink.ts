@@ -7,8 +7,9 @@
  * module resolves which car belongs to which charger, and classifies the moments
  * a linked car stops charging of its own accord.
  *
- * Observation-only: every function here is pure, and nothing it returns reaches
- * planning, admission, or actuation. The persisted-shape half lives in
+ * Every function here is pure, and nothing it returns reaches planning,
+ * admission, or actuation directly: the stops it classifies become a qualified
+ * charge limit that the transport lends with the car's level. The persisted-shape half lives in
  * `evCarLinkSnapshot.ts`; the SDK-facing half in `evCarLinkProducer.ts`.
  *
  * ## Why link on plug edges only

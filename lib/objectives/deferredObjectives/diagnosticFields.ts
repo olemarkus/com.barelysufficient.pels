@@ -7,7 +7,7 @@ import {
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolvePlanningSpeedKw } from './planningSpeed';
-import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
+import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import type { DeferredObjectiveKind, DeferredObjectiveHorizonPlan } from './types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 import type {
@@ -140,6 +140,7 @@ export const buildDiagnosticBase = (params: {
     // variant below overrides both with the °C readings so the invariant holds.
     currentValue: params.currentPercent,
     targetValue: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
+    reachableTargetValue: resolveReachableTargetValue(params.objective, params.device),
     deadlineAtMs,
     deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
     energyNeededKWh: params.energyNeededKWh,

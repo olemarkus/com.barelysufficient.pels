@@ -6,6 +6,7 @@ import {
   type CarAssociationSources,
 } from '../../lib/device/transport/carAssociation';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { updateStateOfChargeObservationFreshness } from '../../lib/device/transport/stateOfCharge';
 
 /**
  * The eligibility gate: the probe says which car matched a charger's plug edge,
@@ -95,7 +96,7 @@ describe('applyAssociatedCarStateOfCharge', () => {
     latestSnapshotById: new Map([['charger-1', snapshot]]),
   });
 
-  const reading = { chargerId: 'charger-1', carId: 'car-1', socPct: 63, socAtMs: 1_500 };
+  const reading = { chargerId: 'charger-1', carId: 'car-1', socPct: 63, socAtMs: 1_500, chargeLimitPct: null };
 
   it('writes the level while the car reports a connected state', () => {
     const snapshot = charger();
@@ -111,6 +112,23 @@ describe('applyAssociatedCarStateOfCharge', () => {
     const snapshot = charger();
     expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({ report: { percent: 63 } });
+  });
+
+  it('lends the car\'s qualified charge limit with its level, and keeps it through a rebuild', () => {
+    // The ceiling rides on the car source, so every rebuild of the level from
+    // the report re-derives it and a smart task's cap cannot drop out between
+    // two car readings.
+    const snapshot = charger();
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), { ...reading, chargeLimitPct: 70 })).toBe(true);
+    expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
+
+    expect(updateStateOfChargeObservationFreshness({ snapshot, reportedAt: 9_000 })).toBe(true);
+    expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
+
+    // A limit that is disproved goes with the next reading, and that is a change.
+    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(true);
+    const level = snapshot.stateOfCharge?.level;
+    expect(level?.kind === 'known' ? level.carChargeLimitPercent : 'unavailable').toBeUndefined();
   });
 
   it('writes nothing when the probe reports no association', () => {

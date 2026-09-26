@@ -1,4 +1,5 @@
 import type { AssociatedCarSnapshot } from '../../../packages/contracts/src/types';
+import type { AssociatedCarLevel } from '../evCarLinkReadModel';
 import type { DeviceTransportParseProviders } from './managerParseDevice';
 import type { TransportEvCarLinkProducer } from './transportContext';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -89,7 +90,7 @@ export const applyAssociatedCarStateOfCharge = (
   ctx: CarAssociationSources & {
     latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>;
   },
-  reading: { chargerId: string; carId: string; socPct: number; socAtMs: number },
+  reading: AssociatedCarLevel,
 ): boolean => {
   const associated = resolveAssociatedCar(ctx, reading.chargerId);
   if (associated?.carId !== reading.carId) return false;
@@ -100,6 +101,7 @@ export const applyAssociatedCarStateOfCharge = (
     percent: reading.socPct,
     observedAtMs: reading.socAtMs,
     carId: reading.carId,
+    chargeLimitPct: reading.chargeLimitPct,
   });
 };
 
@@ -118,9 +120,7 @@ export const createCarStateOfChargeAdoption = (params: {
    */
   dispatch: (chargerId: string, capabilityId: string) => void;
 }) => ({
-  onAssociatedCarStateOfCharge: (reading: {
-    chargerId: string; carId: string; socPct: number; socAtMs: number;
-  }): void => {
+  onAssociatedCarStateOfCharge: (reading: AssociatedCarLevel): void => {
     if (!applyAssociatedCarStateOfCharge(params.getCtx(), reading)) return;
     params.dispatch(reading.chargerId, EV_SOC_CAPABILITY_ID);
   },

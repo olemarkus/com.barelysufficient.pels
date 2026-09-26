@@ -5,8 +5,9 @@
  * same two seams (a SUCCESSFUL full device fetch, plus the realtime
  * `device.update` path), holds a small bounded state, and surfaces everything it
  * learns as structured events. Nothing it produces is read by planning,
- * admission, or actuation — this is a probe answering "can PELS pick this up,
- * and how well?" before any behaviour depends on the answer.
+ * admission, or actuation directly. What it offers the transport — an
+ * associated car's battery level and qualified charge limit — is applied to an
+ * opted-in charger there (`transport/carAssociation.ts`).
  *
  * Class `car` devices are invisible to the rest of PELS (they are not in
  * `SUPPORTED_DEVICE_CLASSES`), so this producer reads them straight off the raw
@@ -33,6 +34,7 @@ import {
     collectAssociatedCarLevels,
     resolveAssociatedCarSnapshot,
     type ActiveLinkView,
+    type AssociatedCarLevel,
 } from './evCarLinkReadModel';
 import { resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
@@ -62,6 +64,7 @@ import {
     getEvCarLinkVotes,
     recordEvCarLinkSession,
     recordEvCarLinkVote,
+    resolveEvCarChargeLimit,
 } from './evCarLinkSnapshot';
 
 /**
@@ -106,12 +109,7 @@ export type EvCarLinkProducerDeps = {
      * decides nothing: the consumer applies the user's eligibility set and
      * decides whether to write anything.
      */
-    onAssociatedCarStateOfCharge?: (reading: {
-        chargerId: string;
-        carId: string;
-        socPct: number;
-        socAtMs: number;
-    }) => void;
+    onAssociatedCarStateOfCharge?: (reading: AssociatedCarLevel) => void;
     /** A car association ended or was suspended, so its derived level must be cleared. */
     onAssociationEnded?: (chargerId: string) => void;
 };
@@ -720,7 +718,7 @@ export class EvCarLinkProducer {
     private publishAssociatedCarLevels(): void {
         const publish = this.deps.onAssociatedCarStateOfCharge;
         if (!publish) return;
-        for (const reading of collectAssociatedCarLevels({ cars: this.cars, links: this.activeLinks })) {
+        for (const reading of collectAssociatedCarLevels(this.cars, this.activeLinks, this.deps.getSnapshot())) {
             publish(reading);
         }
     }
@@ -789,6 +787,7 @@ export class EvCarLinkProducer {
             carId,
             socPct,
             socAtMs: reading.socAtMs,
+            chargeLimitPct: resolveEvCarChargeLimit(this.deps.getSnapshot(), carId),
         });
     }
 

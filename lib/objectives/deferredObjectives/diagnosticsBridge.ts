@@ -43,6 +43,7 @@ import {
   type ResolveObjectiveDeviceExclusion,
 } from './deviceExclusion';
 import {
+  isCarLimitBinding,
   resolvedTrajectoryStatus,
   type BuildPriceHorizon,
   type DeferredObjectiveStallClassificationReader,
@@ -544,11 +545,17 @@ const buildDeferredObjectiveDiagnostic = (params: {
   }));
 };
 
+// A task satisfied only at its car's own charge limit does not pause the
+// charger. If the limit is real the car stops there by itself, so the pause adds
+// nothing; if it is not, the pause would hold the car short of the owner's
+// target and stop it from ever charging past the limit on this charger, which
+// is the one observation that disproves a wrong one. The task still reads
+// satisfied everywhere else, and its charger stays on the ordinary lane.
 const withRawActuationSatisfaction = (
   diagnostic: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveDiagnostic => ({
   ...diagnostic,
-  actuationSatisfied: resolvedTrajectoryStatus(diagnostic) === 'satisfied',
+  actuationSatisfied: resolvedTrajectoryStatus(diagnostic) === 'satisfied' && !isCarLimitBinding(diagnostic),
 });
 
 // Which frozen read (if any) this cycle serves. Normal path: the caller's replan

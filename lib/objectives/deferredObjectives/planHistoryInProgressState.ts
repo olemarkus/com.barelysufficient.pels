@@ -1,4 +1,4 @@
-import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import { isCarLimitBinding, resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { MeteredRunCommitment } from './planHistoryMeteredState';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
@@ -233,10 +233,19 @@ const captureTrustedProgressPercent = (diag: DeferredObjectiveDiagnostic): numbe
   hasTrustworthyProgress(diag) ? captureProgressPercent(diag) : null
 );
 
+// Against the target the task can REACH: a run met at its car's own charge
+// limit is at its target there, and must not be re-opened by a reading below the
+// owner's.
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (diag.currentValue === null || diag.targetValue === null) return false;
-  return diag.currentValue >= diag.targetValue;
+  if (diag.currentValue === null) return false;
+  return diag.currentValue >= diag.reachableTargetValue;
 };
+
+// A run satisfied short of the owner's target was met at the car's own charge
+// limit; the postmortem says so rather than implying the target was reached.
+const resolveReachedMetReason = (diag: DeferredObjectiveDiagnostic): DeferredObjectivePlanMetReason | null => (
+  isCarLimitBinding(diag) ? 'observed_limit' : null
+);
 
 export const lastObservedAtMs = (record: InProgressRecord): number => {
   const { observedIntervals } = record;
@@ -315,7 +324,7 @@ export const startRecord = (
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
-    metReason: null,
+    metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
     // Seed `originalPlan` with the richer of `plan.original` / `plan.latest`
     // so a recorder picking up mid-run after the planner has already expanded
     // the schedule does not anchor on a stale first revision. Subsequent
@@ -477,6 +486,7 @@ const computeMergedMetState = (
 ): {
   satisfied: boolean;
   metAtMs: number | null;
+  metReason: DeferredObjectivePlanMetReason | null;
   finalProgressC: number | null;
   finalProgressPercent: number | null;
 } => {
@@ -485,6 +495,7 @@ const computeMergedMetState = (
     return {
       satisfied: true,
       metAtMs: record.metAtMs,
+      metReason: record.metReason,
       finalProgressC: record.finalProgressC,
       finalProgressPercent: record.finalProgressPercent,
     };
@@ -493,6 +504,7 @@ const computeMergedMetState = (
   return {
     satisfied: currentlySatisfied,
     metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
+    metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
     finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
   };
@@ -516,6 +528,7 @@ export const mergeRecord = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: merged.satisfied,
     metAtMs: merged.metAtMs,
+    metReason: merged.metReason,
     progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };

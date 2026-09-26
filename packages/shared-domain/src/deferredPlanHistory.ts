@@ -88,8 +88,9 @@ const formatPercent = (value: number | null): string | null => (
 // records when target was met. For those runs we floor the displayed end at the
 // target: the run did reach it, so `start → target` is the honest summary.
 //
-// Stall-promoted mets (`metReason` set — `stalled` / `stalled_device_capped`)
-// are the opposite case: the device plateaued *below* target and we accepted
+// Mets with a `metReason` (`stalled` / `stalled_device_capped`, or
+// `observed_limit`: the car stopped at its own charge limit) are the opposite
+// case: the device plateaued *below* target and we accepted
 // that as success, and the detail postmortem leads with that accepted plateau
 // (e.g. "settled at 61.8 °C"). Flooring those to target would invent a reading
 // the device never hit, so we leave their real final untouched — the floor
@@ -136,8 +137,11 @@ export const formatPlanHistoryProgressLine = (
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
 };
 
+// A run met without reaching its target (a stall, the device's own setpoint cap,
+// or the car's own charge limit, all named by `metReason`) was DONE then, not
+// "reached": the row beside it shows a final reading below the target.
 export const formatPlanHistoryReachedAtLine = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'metAtMs' | 'outcome'>,
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'metAtMs' | 'outcome' | 'metReason'>,
   timeZone = 'UTC',
 ): string | null => {
   if (entry.outcome !== 'met' || entry.metAtMs === null) return null;
@@ -148,7 +152,7 @@ export const formatPlanHistoryReachedAtLine = (
   const timeLabel = formatTimeInTimeZone(
     date, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }, timeZone,
   );
-  return `reached at ${timeLabel}`;
+  return entry.metReason === undefined ? `reached at ${timeLabel}` : `done at ${timeLabel}`;
 };
 
 const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {

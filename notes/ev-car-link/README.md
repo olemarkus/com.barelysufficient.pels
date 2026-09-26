@@ -3,7 +3,9 @@
 **Status: probe + adoption.** Correlation is still observation-only — nothing here reaches
 planning or actuation directly. What the probe resolves is now *used*: for a charger the user
 opted in, the associated car's `measure_battery` becomes that charger's `stateOfCharge`, which
-does reach anything that reads a charger's charge (EV boost, smart-task progress). What the
+does reach anything that reads a charger's charge (EV boost, smart-task progress), and the car's
+qualified charge limit rides with it (`carChargeLimitPercent`), capping that charger's EV smart
+task (`notes/deferred-load-objectives/README.md` § "The car's own charge limit"). What the
 probe resolves is also shown: when the user ticks a car for a charger, the association is
 served to the settings UI (see "Association and eligibility"). It began as a pure probe
 answering one question before any behaviour depended on the answer: *can PELS work out
@@ -422,8 +424,8 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 
 ## Out of scope for this slice
 
-- Suspending smart-task accounting on `ev_car_self_stopped`, and clamping a smart task's target
-  to the observed car limit. Both still need a device→objectives seam.
+- Suspending smart-task accounting on `ev_car_self_stopped` itself. The car's qualified limit now
+  caps the task through the car-sourced level, which is the seam; a single stop does not.
 - Manual car selection: the user picks which cars are *eligible*, never which one is
   associated. That stays the probe's call.
 - Suspending smart-task accounting on self-stop. The producer lives in `lib/device`, a peer

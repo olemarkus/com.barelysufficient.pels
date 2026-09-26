@@ -8,8 +8,10 @@
  *
  * The probe learns which car device belongs to which charger from coincident
  * plug/unplug transitions, and records the state-of-charge values at which a
- * car stops charging of its own accord. Both are observation-only: nothing in
- * this shape feeds planning, admission, or actuation.
+ * car stops charging of its own accord. Nothing in this shape feeds planning,
+ * admission, or actuation directly; the device layer resolves the stops into a
+ * qualified charge limit and lends it with the car's battery level, which is how
+ * it caps an EV smart task.
  */
 
 /**

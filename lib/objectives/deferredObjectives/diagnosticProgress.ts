@@ -103,6 +103,27 @@ const hasUsableTemperatureProgress = (params: {
   return typeof device.currentTemperature === 'number' && Number.isFinite(device.currentTemperature);
 };
 
+/**
+ * The target this task can actually reach, in the task's own unit: the owner's
+ * target, capped by the car's own charge limit when an EV task's car stops below
+ * it (owner ruling 2026-09-26). The limit is the one the device layer resolved
+ * from the car's own repeated stops and lends with the car's level
+ * (`carChargeLimitPercent`); nothing here infers one. A car that stops at 70 %
+ * cannot be charged to 80 % by any plan, so energy is sized to 70 % and the
+ * task is met there. Every other task reaches its target.
+ */
+export const resolveReachableTargetValue = (
+  objective: DeferredObjectiveSettingsEntry,
+  device: ObjectiveDeviceInput | undefined,
+): number => {
+  if (objective.kind !== 'ev_soc') return objective.targetTemperatureC;
+  const level = device?.stateOfCharge?.level;
+  const carChargeLimitPercent = level?.kind === 'known' ? level.carChargeLimitPercent : undefined;
+  return carChargeLimitPercent === undefined
+    ? objective.targetPercent
+    : Math.min(objective.targetPercent, carChargeLimitPercent);
+};
+
 // No `nowMs`: neither axis asks how old a reading is. EV SoC rejects on session
 // validity, temperature on the absence of the facet — both value questions.
 export const resolveObjectiveProgress = (params: {
@@ -120,7 +141,7 @@ export const resolveObjectiveProgress = (params: {
         reasonCode: progress.reasonCode,
       };
     }
-    const remainingUnits = Math.max(0, objective.targetPercent - progress.currentPercent);
+    const remainingUnits = Math.max(0, resolveReachableTargetValue(objective, device) - progress.currentPercent);
     // A bare-connected charger (`plugged_in`) no longer blocks the objective. The
     // block rested on "PELS cannot drive the charger toward the target", and that
     // is false: `plugged_in` is commandable, and on prod 2026-07-26 PELS started a
