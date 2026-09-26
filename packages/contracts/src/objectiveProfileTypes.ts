@@ -83,6 +83,16 @@ export type DeviceObjectiveProfile = {
   pendingEnergyKWh?: number;
   subIntervalStartMs?: number;
   subIntervalPowerW?: number;
+  // `true` while `lastSample` was taken mid-step: where the draw returned after
+  // the device paused part-way through a step it had risen onto, with no change
+  // in between. The value is quantized, and a rising edge is what fixes where the
+  // true value sits inside its reading, so a window cannot open from there: the
+  // next value change re-anchors it instead of being billed
+  // (`resolvePausedMidProgress` in `lib/objectives/profiles.ts`). Absent is
+  // anchored. A profile persisted before this field existed loads anchored even
+  // if its last baseline was mid-step; at worst its first window learns the way
+  // every window did before.
+  baselineMidStep?: true;
 };
 
 export type ObjectiveProfileSampleObservation = {

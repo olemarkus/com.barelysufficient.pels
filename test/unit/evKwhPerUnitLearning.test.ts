@@ -224,8 +224,13 @@ describe('EV kWhPerUnit learning', () => {
       state = ingestEvSample({
         state, percent: 50, atMs: startMs + 5 * hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
       });
+      // The first rise after the resume re-anchors rather than bills: where the
+      // charge sat inside its 50 % reading when the draw returned is unknown.
       state = ingestEvSample({
         state, percent: 60, atMs: startMs + 6 * hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
+      });
+      state = ingestEvSample({
+        state, percent: 70, atMs: startMs + 7 * hourMs, measuredPowerKw: 7, deviceId: 'ev-paused',
       });
 
       const profile = state.objectiveProfiles?.['ev-paused'];
@@ -247,6 +252,45 @@ describe('EV kWhPerUnit learning', () => {
       const profile = state.objectiveProfiles?.['ev-resumed'];
       expect(profile?.acceptedSamples).toBe(1);
       expect(profile?.kwhPerUnit?.mean).toBeCloseTo(0.7, 6);
+    });
+
+    // Production, 2026-09-25: an Easee paused and resumed 18 times in a day. The
+    // charge kept whatever part of a percent it had gained before each pause, so
+    // the first tick after a resume came minutes later and was billed a whole
+    // percent for those minutes: samples of 0.108-0.28 kWh/% against a real
+    // ~1.4, which sized the night's smart task at 0.85 kWh/%.
+    it('does not bill the first tick after a resume, which carries charge from before the pause', () => {
+      const minuteMs = 60 * 1000;
+      const debugStructured = vi.fn();
+      const at = (minutes: number, percent: number, measuredPowerKw: number) => (state: PowerTrackerState) => (
+        ingestEvSample({
+          state, percent, atMs: startMs + minutes * minuteMs, measuredPowerKw, deviceId: 'ev-paused', debugStructured,
+        })
+      );
+      const steps = [
+        at(60, 61, 1.35), // 1 % in the hour at 1.35 kW: 1.35 kWh/%
+        at(85, 61, 0), // paused 25 minutes into the next percent
+        at(145, 61, 1.35), // resumed an hour later
+        at(148, 62, 1.35), // that percent completes 3 minutes after the resume
+        at(153, 62, 1.35), // (the minimum interval has now passed since the resume)
+        at(208, 63, 1.35), // a whole percent, charged from its lower edge
+      ];
+      const state = steps.reduce(
+        (current, step) => step(current),
+        ingestEvSample({
+          state: {}, percent: 60, atMs: startMs, measuredPowerKw: 1.35, deviceId: 'ev-paused', debugStructured,
+        }),
+      );
+
+      const profile = state.objectiveProfiles?.['ev-paused'];
+      expect(profile?.samples?.map((sample) => sample.kwhPerUnit)).toEqual([
+        expect.closeTo(1.35, 6),
+        expect.closeTo(1.35, 6),
+      ]);
+      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'objective_profile_sample_rejected',
+        reasonCode: 'objective_profile_baseline_mid_step',
+      }));
     });
 
     it('rejects a duplicate-timestamp SoC sample with `non_monotonic_time`', () => {
