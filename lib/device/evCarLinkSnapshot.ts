@@ -23,7 +23,18 @@ import type {
  * the contracts package) so Homey runtime code does not value-import from
  * `packages/contracts/src/**`, which is deploy-excluded.
  */
-export const EV_CAR_LINK_VERSION: EvCarLinkVersion = 1;
+export const EV_CAR_LINK_VERSION: EvCarLinkVersion = 2;
+
+/**
+ * The version before stop samples had to be the car's own. Version 1 banked a
+ * sample whenever the car reported not-charging against a charger that read
+ * "on", and on an Easee that includes PELS's own resume during its hold-off: the
+ * only sample production ever banked (2026-09-15, 42 %) came two minutes after
+ * PELS switched the charger on. A v1 blob still loads — its pairs and sessions
+ * are sound evidence and are kept — but its stop samples are dropped, so no
+ * limit is ever qualified from them.
+ */
+const EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS = 1;
 
 /** Retained self-stop samples per car — enough to see a cluster, bounded for RSS. */
 export const EV_CAR_LINK_MAX_STOP_SAMPLES = 20;
@@ -65,6 +76,10 @@ const isFinitePositive = (value: unknown): value is number => (
     typeof value === 'number' && Number.isFinite(value) && value > 0
 );
 
+const isKnownEvCarLinkVersion = (value: unknown): boolean => (
+    value === EV_CAR_LINK_VERSION || value === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS
+);
+
 const isValidSocPct = (value: unknown): value is number => (
     typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
 );
@@ -97,9 +112,9 @@ const normalizeObservedStops = (value: unknown): EvCarObservedStops | null => {
  */
 export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCarLinkSnapshot => {
     if (!isRecord(value)) return createEmptyEvCarLinkSnapshot();
-    if (value.version !== EV_CAR_LINK_VERSION) return createEmptyEvCarLinkSnapshot();
+    if (!isKnownEvCarLinkVersion(value.version)) return createEmptyEvCarLinkSnapshot();
     const pairsRaw = value.pairs;
-    const carsRaw = value.cars;
+    const carsRaw = value.version === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS ? {} : value.cars;
     if (!isRecord(pairsRaw) || !isRecord(carsRaw)) return createEmptyEvCarLinkSnapshot();
 
     // Clamp any timestamp that sits in the future to the load-time clock. A
@@ -178,7 +193,9 @@ export const clearEvCarLinkSession = (params: {
  */
 export const isStrictlyValidPersistedEvCarLink = (value: unknown): boolean => {
     if (!isRecord(value)) return false;
-    if (value.version !== EV_CAR_LINK_VERSION) return false;
+    // A v1 blob is a successful read, not a suspect one: its samples are dropped
+    // by the normaliser, not by a load grace.
+    if (!isKnownEvCarLinkVersion(value.version)) return false;
     const { pairs, cars } = value;
     if (!isRecord(pairs) || !isRecord(cars)) return false;
     const pairEntries = Object.entries(pairs);
@@ -274,8 +291,9 @@ export type EvCarObservedLimit = {
 export const summarizeEvCarObservedLimit = (
     snapshot: EvCarLinkSnapshot,
     carId: string,
-): EvCarObservedLimit | null => {
-    const samples = snapshot.cars[carId]?.stopSocPct ?? [];
+): EvCarObservedLimit | null => summarizeStopSamples(snapshot.cars[carId]?.stopSocPct ?? []);
+
+const summarizeStopSamples = (samples: readonly number[]): EvCarObservedLimit | null => {
     if (samples.length < 2) return null;
     const sorted = [...samples].sort((a, b) => a - b);
     const middle = Math.floor(sorted.length / 2);
@@ -299,6 +317,46 @@ export const summarizeEvCarObservedLimit = (
         spreadPct: Math.round((highest - lowest) * 10) / 10,
         sampleCount: sorted.length,
     };
+};
+
+/** How many of the newest stops a charge limit is judged on. */
+export const EV_CAR_LINK_LIMIT_WINDOW_SAMPLES = 3;
+
+/** Widest spread across that window that still reads as one limit. */
+export const EV_CAR_LINK_LIMIT_MAX_SPREAD_PCT = 2;
+
+/**
+ * The car's charge limit, once its recent stops agree on one: the LOWEST of the
+ * newest {@link EV_CAR_LINK_LIMIT_WINDOW_SAMPLES} stops, when there are at least
+ * two and they lie within {@link EV_CAR_LINK_LIMIT_MAX_SPREAD_PCT} of each other.
+ * `null` otherwise — one stop proves nothing, and stops scattered across a range
+ * are an owner unplugging at varying levels, not a setting. Judged on the newest
+ * stops only, so a limit the owner changes is relearned in two sessions instead
+ * of being outvoted by the old one.
+ *
+ * The lowest, not the median, because a smart task is capped at this value and
+ * counts as met on reaching it: a car that stops a point either side of its
+ * setting (stops at 70 and 71) must be able to reach its own limit every time,
+ * or the task never reads met and keeps claiming hours for a car that will not
+ * draw. Every stop in the window is a level the car is known to reach.
+ */
+export const resolveEvCarChargeLimit = (
+    snapshot: EvCarLinkSnapshot,
+    carId: string,
+): number | null => {
+    const recentStops = (snapshot.cars[carId]?.stopSocPct ?? []).slice(-EV_CAR_LINK_LIMIT_WINDOW_SAMPLES);
+    const summary = summarizeStopSamples(recentStops);
+    if (summary === null || summary.spreadPct > EV_CAR_LINK_LIMIT_MAX_SPREAD_PCT) return null;
+    return Math.min(...recentStops);
+};
+
+/** Forgets every stop a car has banked — its limit is relearned from scratch. */
+export const clearEvCarObservedStops = (
+    snapshot: EvCarLinkSnapshot,
+    carId: string,
+): EvCarLinkSnapshot => {
+    const { [carId]: removed, ...rest } = snapshot.cars;
+    return removed === undefined ? snapshot : { ...snapshot, cars: rest };
 };
 
 /** Drop pair and car records untouched for longer than `maxAgeMs`. */

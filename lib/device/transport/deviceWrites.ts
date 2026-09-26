@@ -12,6 +12,7 @@ import { getLogger } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
+import { isSteppedLoadOffStep } from '../../utils/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { clearLocalCapabilityWrite, recordLocalCapabilityWrite } from './managerRealtimeSupport';
@@ -241,6 +242,11 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
         planningCurrentA,
         previousStepId,
     } = params;
+    // A step to the off step is PELS stopping the device: a car-link stop that
+    // follows it is PELS's, not the car's.
+    if (isSteppedLoadOffStep(profile, desiredStepId)) {
+        ctx.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
+    }
     const snapshot = ctx.latestSnapshotById.get(deviceId);
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
         const nativeRequested = await setObservedNativeSteppedLoadStep({
