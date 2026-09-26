@@ -584,8 +584,8 @@ type DevicePlanDeviceBase = {
    * exactly as `externalOffHoldActive` below forwards its own standing posture.
    *
    * The DECISION travels, not the setting. The policy in force
-   * (`startPolicyInForce`) stays on the plan input, where the two baseline-off
-   * stamps that must outlive an authority withdrawal read it
+   * (`startPolicyInForce`) stays on the plan input, where the shed record reads
+   * it to keep a baseline-off shed out of the ones PELS undoes
    * (`ShedDecisions.recordPlannedShed`, `releaseAbandonedSurplusPosture`), and
    * the owner's stored `startPolicy` beside it for the one question that needs
    * the setting: did the owner withdraw it. Carrying the raw enum here instead made
@@ -650,7 +650,7 @@ type DevicePlanDeviceBase = {
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
   // Producer-resolved "Run on solar surplus" dump-load posture, forwarded flat from
-  // `PlanInputDevice.surplusOnly` (see its doc block). The plan-less-safe
+  // `PlanInputDevice.surplusOnly` (see its doc block). The
   // `shedDecisions.surplusOnlyByDevice` stamp is built from the INPUT devices,
   // not from this copy; this one rides the plan device for the readers that
   // have only the plan — the reason-flag validation and the settings UI.

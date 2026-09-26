@@ -12,6 +12,8 @@ import {
   isShedPostureBinaryRestoreCandidate,
 } from '../../lib/plan/restore/devices';
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
+import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
   DevicePlanDevice,
   TemperatureDiscriminantProbe,
@@ -137,7 +139,7 @@ describe('plan restore device helpers', () => {
     const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' });
     const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' });
     const history = new ShedDecisions();
-    history.recordPlannedShed([], [], Date.now());
+    history.recordPlannedShed([], buildIdentityDecorationBundle([]), createPendingBinaryCommandStore({}), true);
 
     expect(getRestoreCandidates([offDevice, onDevice], history).map(({ device }) => device.id))
       .toEqual(['off-at-start']);

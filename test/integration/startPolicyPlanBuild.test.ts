@@ -58,6 +58,7 @@ const decorateWithDecision = (
     deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
     admittedDeviceIds: new Set([deviceId]),
     drivingDeviceIds: new Set([deviceId]),
+    lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
   };
 };
 

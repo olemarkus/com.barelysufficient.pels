@@ -55,6 +55,11 @@ export type DeferredDecorationInput = {
  *   hour to the ordinary planner (`unclaimed`). This is the task's demand signal
  *   for diagnostics, including binary loads such as EV chargers that have no
  *   thermostat-style standing-demand fact.
+ * - `lentAuthorityDeviceIds`: devices PELS holds no authority over of its own,
+ *   to which a task lends it this cycle (any decision but `inactive`, unless
+ *   "Leave off until turned on again" holds the device). A shed made under a
+ *   lent authority is the task's: its lifecycle clock decides what happens when
+ *   the task lets go, so the planner never records it as one PELS undoes.
  */
 export type DeferredDecorationBundle = {
   admittedDevices: PlanInputDevice[];
@@ -63,4 +68,5 @@ export type DeferredDecorationBundle = {
   deferredReleaseIntentByDeviceId: Record<string, DeferredReleaseIntent>;
   admittedDeviceIds: ReadonlySet<string>;
   drivingDeviceIds: ReadonlySet<string>;
+  lentAuthorityDeviceIds: ReadonlySet<string>;
 };
