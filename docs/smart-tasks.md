@@ -63,14 +63,14 @@ The panel collapses itself when every revision came from a Flow card (the user a
 
 ## Power-Limit Control and Tasks
 
-Power-limit control changes what happens outside the task's planned hours.
+While a task is active, an hour outside its plotted plan can mean two different things: the task may be able to finish without that hour, or it may still need the hour even though the forecast could not book energy there. PELS treats those cases differently.
 
-| Device setup | Outside planned task hours | During planned task hours |
-| --- | --- | --- |
-| **Power-limit control on** | The device can still run as part of normal PELS behavior when there is available power | PELS gives the task a planned opportunity to run, still under the hard cap |
-| **Power-limit control off** | PELS keeps the device idle for the task unless another automation controls it | PELS makes the device available for the planned task hours |
+| Device setup | The task defers this hour | The task still needs an unbooked hour | The task planned this hour |
+| --- | --- | --- | --- |
+| **Power-limit control on** | PELS holds the device off, even if power is available. | The live planner may admit the device under capacity, budget, and priority rules. | PELS gives the task an opportunity to run under the hard cap and normal admission rules. |
+| **Power-limit control off** | PELS keeps the device idle in its release posture, unless another automation controls it. | The task hands the device to the live planner for admission. | PELS makes the device available for the planned task hour. |
 
-For EV charging, a common setup is to keep the charger managed by PELS but turn power-limit control off until a charging task or Flow-booked hour allows it to run. That prevents the charger from starting just because the home has available power in an expensive hour.
+For EV charging, a common setup is to keep the charger managed by PELS but turn power-limit control off. This prevents ordinary run-when-power-is-available behavior when no active task controls the charger. An active task can still use an unbooked hour when it needs it, if live admission allows it; turning power-limit control off does not restrict charging to only the hours shown in the plotted plan. A deferred hour is different: PELS keeps the device off during that hour.
 
 ## Budget and Task Interaction
 
@@ -218,7 +218,7 @@ Set the target battery percentage and ready-by time, for example `80 %` by `07:0
 Recommended charger setup:
 
 - **Managed by PELS** on
-- **Power-limit control** off by default if charging should only happen during planned task hours
+- **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still use an unbooked hour when it needs it; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
 - Current control configured as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
 - Battery reporting Flow configured when your car or charger app can provide it
 
@@ -241,7 +241,7 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | --- | --- |
 | The task stays pending | Check that price optimization is enabled and that prices are available through the ready-by time. |
 | The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, check the Flow using **EV charger current (A)**. |
-| The task starts too early | Check whether **Power-limit control** is on; with it on, normal PELS behavior can still run the device outside planned task hours. |
+| The device starts in an hour outside the plotted task plan | The task may still need an unbooked hour, which remains eligible through live planner admission. A deferred hour is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
 | A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |
 

@@ -494,9 +494,14 @@ Original design semantics (still authoritative for future slices):
   commanded target to `max(modeTarget + priceOptDelta, deadlineTargetC)` so the device's own
   thermostat can actually reach the deadline. The deadline target is never further adjusted by the
   price-opt delta.
-- Outside planned hours, the existing capacity-based control toggle decides the fallback behavior:
-  - toggle on: normal PELS behavior may still run the device outside the deadline plan
-  - toggle off: PELS keeps the device idle by plan outside the deadline plan **(shipped)**
+- An unclaimed hour is outside the plotted plan, but the task still needs it: forecast allocation
+  booked no energy, so admission hands the device to the live planner. It may run when capacity,
+  budget, and priority allow it, regardless of the Power-limit control setting.
+- A released hour is one the task can finish without, or has released for price deferral. During an
+  active task, the device is held off in that hour even when Power-limit control is on. With
+  authority borrowed by the task, it returns to its configured release posture.
+- When no active task controls the device, Power-limit control on allows normal capacity-based
+  behavior; with it off, PELS does not start the device through that lane.
 - Soft deadlines should still respect budget and capacity planning. Soft means the objective is not
   a separate hard-safety override; it does not mean PELS may ignore the deadline as the normal path.
 - Priority affects planning risk and normal PELS decisions, not whether the deadline card stores a
