@@ -27,6 +27,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   EV_CAR_ASSOCIATIONS,
+  EV_CAR_LINK_STATE,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import api from '../../api';
@@ -49,11 +50,12 @@ type LinkEvent = {
   deltaPct?: number | null;
 };
 
-const driveHomeEnergy = (netW: number): void => {
+const driveHomeEnergy = (netW: number | (() => number)): void => {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
-      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: netW } }] };
+      const W = typeof netW === 'number' ? netW : netW();
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W } }] };
     }
     return originalGet(path);
   });
@@ -235,6 +237,95 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
     // The car itself stays out of the managed snapshot entirely.
     expect(snapshot.find((device) => device.id === CAR_ID)).toBeUndefined();
+  });
+
+  /** Plug the pair in together, charge, and wait for the link to resolve. */
+  const plugInAndLink = async (
+    car: MockDevice,
+    charger: MockDevice,
+  ): Promise<void> => {
+    await pumpMinutes(2);
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
+    await charger.setCapabilityValue('evcharger_charging', true);
+    await charger.setCapabilityValue('measure_power', 7_000);
+    await pumpMinutes(40);
+    await drainUntil(() => of('ev_car_link_resolved').length > 0);
+  };
+
+  it('banks the car\'s stop when the charger ends the session with the car still plugged in', async () => {
+    // Production, 2026-09-26: at the car's own 70 % limit the Easee read
+    // `plugged_out` with the car still connected, and the car reported
+    // `plugged_in` after it. That tore the link down before the car said anything.
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    driveHomeEnergy(3_000);
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await plugInAndLink(car, charger);
+
+    await car.setCapabilityValue('measure_battery', 70);
+    await charger.setCapabilityValue('evcharger_charging', false);
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await charger.setCapabilityValue('measure_power', 0);
+    await pumpMinutes(1);
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in');
+    // The car must stay connected past the confirm window before its stop counts.
+    await pumpMinutes(15);
+    await drainUntil(() => of('ev_car_self_stopped').length > 0);
+
+    expect(of('ev_car_self_stopped')[0]).toMatchObject({
+      carId: CAR_ID,
+      chargerId: CHARGER_ID,
+      subReason: 'car_not_charging',
+      stoppedAtSocPct: 70,
+      chargerState: 'plugged_out',
+    });
+    await pumpMinutes(5);
+    expect(mockHomeyInstance.settings.get(EV_CAR_LINK_STATE)).toMatchObject({
+      version: 2,
+      cars: { [CAR_ID]: { stopSocPct: [70] } },
+    });
+  });
+
+  it('does not bank the car sitting idle after PELS paused the charger', async () => {
+    // A PELS pause reads exactly like a car stop from the car's side: the car
+    // reports connected-but-not-charging either way.
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    let homeW = 3_000;
+    driveHomeEnergy(() => homeW);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await plugInAndLink(car, charger);
+
+    // The home goes far over the 20 kW cap, so PELS turns the charger off.
+    homeW = 30_000;
+    await pumpMinutes(2);
+    const pauseWrites = putSpy.mock.calls.filter(([path, body]: unknown[]) => (
+      path === `manager/devices/device/${CHARGER_ID}/capability/evcharger_charging`
+      && (body as { value?: unknown } | undefined)?.value === false
+    ));
+    expect(pauseWrites.length).toBeGreaterThan(0);
+    await charger.setCapabilityValue('evcharger_charging', false);
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in');
+    await charger.setCapabilityValue('measure_power', 0);
+    await car.setCapabilityValue('measure_battery', 64);
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in');
+    await pumpMinutes(65);
+
+    expect(of('ev_car_self_stopped')).toEqual([]);
+    const persisted = mockHomeyInstance.settings.get(EV_CAR_LINK_STATE) as { cars?: Record<string, unknown> } | undefined;
+    expect(persisted?.cars?.[CAR_ID]).toBeUndefined();
   });
 
   it('reports a session elsewhere when the car plugs in with no charger transition', async () => {

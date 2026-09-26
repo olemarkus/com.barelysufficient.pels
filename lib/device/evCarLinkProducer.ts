@@ -46,7 +46,6 @@ import {
 import {
     EV_CAR_LINK_AWAY_VERDICT_MS,
     EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
-    EV_CAR_LINK_IDLE_POWER_W,
     type EvLinkAmbiguity,
     type EvLinkCoincidence,
     type EvLinkEdge,
@@ -126,12 +125,6 @@ export class EvCarLinkProducer {
     private readonly unavailableCars = new Map<string, string>();
     private readonly lastChargerState = new Map<string, EvChargingState>();
     private readonly activeLinks = new Map<string, ActiveLink>();
-    /**
-     * When each charger last STARTED reading idle. A single current idle sample
-     * does not prove a charge rise happened while idle — PELS pausing a charger
-     * right after the charge went up would otherwise read as an away session.
-     */
-    private readonly chargerIdleSinceMs = new Map<string, number>();
     /** Chargers first seen mid-session; resolved from the prior, never voted on. */
     private readonly coldStartChargerIds = new Set<string>();
     /** Chargers whose persisted session has already been resumed this run, so a
@@ -431,13 +424,8 @@ export class EvCarLinkProducer {
     }
 
     private ingestChargerEdges(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
+        this.selfStop.notePower(chargers, nowMs);
         for (const charger of chargers) {
-            const isIdle = charger.measuredPowerW !== undefined
-                && charger.measuredPowerW <= EV_CAR_LINK_IDLE_POWER_W;
-            if (!isIdle) this.chargerIdleSinceMs.delete(charger.id);
-            else if (!this.chargerIdleSinceMs.has(charger.id)) {
-                this.chargerIdleSinceMs.set(charger.id, nowMs);
-            }
             const previous = this.lastChargerState.get(charger.id);
             this.lastChargerState.set(charger.id, charger.evChargingState);
             // No prior record: a first reading is not a plug event. But a charger
@@ -453,9 +441,20 @@ export class EvCarLinkProducer {
             const kind = resolveEvLinkEdge(previous, charger.evChargingState);
             if (kind === null) continue;
             this.chargerEdges = appendEvLinkEdge(this.chargerEdges, { deviceId: charger.id, kind, atMs: nowMs });
-            if (kind === 'disconnect') this.clearSession(charger.id);
+            // The charger reported its car gone. When the linked car still reports
+            // connected, the charger may simply have ended the session at the
+            // car's limit (an Easee reads `plugged_out` then), so the self-stop
+            // watcher keeps watching that pair after the association ends.
+            if (kind !== 'disconnect') continue;
+            this.selfStop.linger(charger.id, this.clearSession(charger.id), this.cars, nowMs);
         }
     }
+
+    /**
+     * PELS told this charger to stop charging — a switch-off, or a step to its
+     * off step. Recorded so a stop that follows is not banked as the car's own.
+     */
+    noteStopCommand(chargerId: string, nowMs: number): void { this.selfStop.noteStopCommand(chargerId, nowMs); }
 
     private applyCoincidences(
         coincidences: readonly EvLinkCoincidence[],
@@ -746,7 +745,7 @@ export class EvCarLinkProducer {
     ): void {
         const { previousSocPct, socPct, socAtMs } = reading;
         const carName = this.carName(carId);
-        const idleSinceMs = this.chargerIdleSinceMs.get(charger.id);
+        const idleSinceMs = this.selfStop.chargerIdleSinceMs(charger.id);
         if (
             previousSocPct !== undefined
             // The idle reading must belong to THIS session. A charger that
@@ -793,9 +792,10 @@ export class EvCarLinkProducer {
         });
     }
 
-    /** Forget per-session state when the car unplugs; affinity votes survive. */
-    private clearSession(chargerId: string, preservePersistedSession = false): void {
-        if (this.activeLinks.has(chargerId)) this.deps.onAssociationEnded?.(chargerId);
+    /** Forget per-session state when the car unplugs; affinity votes survive. Returns the link it ended. */
+    private clearSession(chargerId: string, preservePersistedSession = false): ActiveLink | undefined {
+        const link = this.activeLinks.get(chargerId);
+        if (link) this.deps.onAssociationEnded?.(chargerId);
         this.activeLinks.delete(chargerId);
         if (!preservePersistedSession) {
             this.deps.setSnapshot(clearEvCarLinkSession({ snapshot: this.deps.getSnapshot(), chargerId }));
@@ -803,7 +803,7 @@ export class EvCarLinkProducer {
         this.resumedChargerIds.delete(chargerId);
         this.coldStartChargerIds.delete(chargerId);
         this.selfStop.forget(chargerId);
-        this.chargerIdleSinceMs.delete(chargerId);
+        return link;
     }
 
     private carName(carId: string): string {

@@ -4,6 +4,7 @@ import {
   EV_CAR_LINK_MAX_TRACKED_CARS,
   EV_CAR_LINK_VERSION,
   buildEvCarLinkPairKey,
+  clearEvCarObservedStops,
   createEmptyEvCarLinkSnapshot,
   getEvCarLinkVotes,
   isStrictlyValidPersistedEvCarLink,
@@ -13,6 +14,7 @@ import {
   pruneEvCarLinkSnapshot,
   recordEvCarLinkVote,
   recordEvCarSelfStopSoc,
+  resolveEvCarChargeLimit,
   summarizeEvCarObservedLimit,
 } from '../../lib/device/evCarLinkSnapshot';
 
@@ -113,7 +115,51 @@ describe('summarizeEvCarObservedLimit', () => {
   });
 });
 
+describe('resolveEvCarChargeLimit', () => {
+  const withStops = (stops: number[]) => stops.reduce(
+    (acc, socPct, index) => recordEvCarSelfStopSoc({ snapshot: acc, carId: 'car', socPct, nowMs: index + 1 }),
+    createEmptyEvCarLinkSnapshot(),
+  );
+
+  it('qualifies two agreeing stops as the car\'s limit, at the lowest of them', () => {
+    // The lowest is a level the car is known to reach: a task capped at 70.5
+    // would never read met for a car that stops at 70 tonight.
+    expect(resolveEvCarChargeLimit(withStops([70, 70]), 'car')).toBe(70);
+    expect(resolveEvCarChargeLimit(withStops([70, 71]), 'car')).toBe(70);
+    expect(resolveEvCarChargeLimit(withStops([81, 79, 80]), 'car')).toBe(79);
+  });
+
+  it('does not qualify one stop, or stops that disagree', () => {
+    expect(resolveEvCarChargeLimit(withStops([70]), 'car')).toBeNull();
+    expect(resolveEvCarChargeLimit(withStops([70, 73]), 'car')).toBeNull();
+  });
+
+  it('judges the newest stops, so a changed limit is relearned rather than outvoted', () => {
+    expect(resolveEvCarChargeLimit(withStops([80, 80, 80, 80, 70, 70]), 'car')).toBeNull();
+    expect(resolveEvCarChargeLimit(withStops([80, 80, 80, 80, 70, 70, 70]), 'car')).toBe(70);
+  });
+
+  it('forgets a car\'s stops when they are cleared', () => {
+    expect(resolveEvCarChargeLimit(clearEvCarObservedStops(withStops([70, 70]), 'car'), 'car')).toBeNull();
+  });
+});
+
 describe('normalizeEvCarLinkSnapshot', () => {
+  it('loads a version-1 blob without the stop samples it banked under the unsound rule', () => {
+    const legacy = {
+      version: 1,
+      pairs: { [buildEvCarLinkPairKey('car', 'charger')]: { votes: 43, lastVotedAtMs: 1_000 } },
+      cars: { car: { stopSocPct: [42, 29, 16], lastObservedAtMs: 1_000 } },
+      sessions: { charger: { carId: 'car', sinceMs: 500 } },
+    };
+    expect(isStrictlyValidPersistedEvCarLink(legacy)).toBe(true);
+    const normalized = normalizeEvCarLinkSnapshot(legacy);
+    expect(normalized.version).toBe(EV_CAR_LINK_VERSION);
+    expect(getEvCarLinkVotes(normalized, 'car', 'charger')).toBe(43);
+    expect(normalized.sessions).toEqual({ charger: { carId: 'car', sinceMs: 500 } });
+    expect(normalized.cars).toEqual({});
+  });
+
   it('degrades unknown shapes to empty rather than throwing', () => {
     expect(normalizeEvCarLinkSnapshot(undefined)).toEqual(createEmptyEvCarLinkSnapshot());
     expect(normalizeEvCarLinkSnapshot('nonsense')).toEqual(createEmptyEvCarLinkSnapshot());

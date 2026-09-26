@@ -12,7 +12,11 @@
  * this shape feeds planning, admission, or actuation.
  */
 
-export type EvCarLinkVersion = 1;
+/**
+ * 2 since stop samples must be the car's own (`classifyEvCarSelfStop`); a
+ * version-1 blob still loads, without its stop samples.
+ */
+export type EvCarLinkVersion = 2;
 
 /**
  * Accumulated evidence that one car belongs to one charger. Votes only ever

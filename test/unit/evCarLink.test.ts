@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
   EV_CAR_LINK_MAX_EDGES_PER_SIDE,
+  EV_CAR_LINK_PELS_STOP_LOOKBACK_MS,
   appendEvLinkEdge,
   classifyEvCarSelfStop,
   isChargingElsewhere,
@@ -9,6 +10,7 @@ import {
   pruneExpiredEvLinkEdges,
   resolveEvLinkEdge,
   resolveLinkForCharger,
+  type EvCarStopObservation,
   type EvLinkEdge,
 } from '../../lib/device/evCarLink';
 
@@ -324,14 +326,17 @@ describe('resolveLinkForCharger', () => {
 });
 
 describe('classifyEvCarSelfStop', () => {
-  const base = {
-    carState: 'plugged_in' as const,
-    chargerState: 'plugged_in_charging' as const,
-    chargerControlOn: false,
+  const deliveredAtMs = 1_000_000;
+  const base: EvCarStopObservation = {
+    carState: 'plugged_in',
+    chargerState: 'plugged_in_charging',
     chargerPowerW: 0,
+    chargerSwitchOn: true,
+    lastDeliveryReadingAtMs: deliveredAtMs,
+    lastStopCommandAtMs: undefined,
   };
 
-  it('classifies the car sitting connected-but-not-charging', () => {
+  it('classifies the car sitting connected-but-not-charging after the charger delivered', () => {
     expect(classifyEvCarSelfStop(base)).toBe('car_not_charging');
   });
 
@@ -339,18 +344,41 @@ describe('classifyEvCarSelfStop', () => {
     expect(classifyEvCarSelfStop({ ...base, carState: 'plugged_in_paused' })).toBe('car_schedule_hold');
   });
 
-  it('accepts an observed-on charger that has not reported charging yet', () => {
-    expect(classifyEvCarSelfStop({
-      ...base, chargerState: 'plugged_in_paused', chargerControlOn: true,
-    })).toBe('car_not_charging');
+  it('accepts a charger that ended the session and reads unplugged with the car still connected', () => {
+    // An Easee at the car's limit: `plugged_out`, switch off, car plugged in.
+    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_out', chargerSwitchOn: false }))
+      .toBe('car_not_charging');
+    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in' })).toBe('car_not_charging');
   });
 
   it('returns null while the charger is actually delivering', () => {
     expect(classifyEvCarSelfStop({ ...base, chargerPowerW: 7_000 })).toBeNull();
   });
 
-  it('returns null when the charger does not believe it is delivering', () => {
-    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in' })).toBeNull();
+  it('returns null for a charger that never delivered in this session', () => {
+    // An Easee waiting out its resume hold-off: PELS switched it on, nothing flows yet.
+    expect(classifyEvCarSelfStop({ ...base, lastDeliveryReadingAtMs: undefined })).toBeNull();
+  });
+
+  it('returns null when PELS told the charger to stop', () => {
+    // The command lands before delivery ends; the car reports the pause like a stop.
+    expect(classifyEvCarSelfStop({ ...base, lastStopCommandAtMs: deliveredAtMs - 5_000 })).toBeNull();
+    expect(classifyEvCarSelfStop({ ...base, lastStopCommandAtMs: deliveredAtMs + 60_000 })).toBeNull();
+  });
+
+  it('ignores a PELS stop from before this delivery', () => {
+    expect(classifyEvCarSelfStop({
+      ...base, lastStopCommandAtMs: deliveredAtMs - EV_CAR_LINK_PELS_STOP_LOOKBACK_MS - 1,
+    })).toBe('car_not_charging');
+  });
+
+  it('returns null for a connected charger someone else switched off', () => {
+    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in', chargerSwitchOn: false })).toBeNull();
+  });
+
+  it('returns null while the charger holds the session paused', () => {
+    // Where PELS's 0 A pause and a charger-app schedule both land.
+    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in_paused' })).toBeNull();
   });
 
   it('returns null while the car reports charging', () => {

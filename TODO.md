@@ -1024,21 +1024,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
-- [ ] **P2 — the car-link probe reads an Easee's resume hold as the car stopping by itself.**
-      An Easee under built-in control reads on for the ~5 minutes Easee holds a resumed charger in
-      `plugged_in_paused` before it offers current, so a linked car reporting `plugged_in` there
-      passes the 2-minute dwell, logs `car_not_charging` and banks a charge sample toward the
-      persisted observed charge limit. Nothing in planning reads that limit. **Where:**
-      `classifyEvCarSelfStop` (`lib/device/evCarLink.ts`) counts `chargerControlOn` as "the charger
-      believes it is delivering" even while the charger itself reports `plugged_in_paused`.
-      **What changes:** rule on whether a charger reporting `plugged_in_paused` while switched on
-      is ever evidence of a car-side stop (options: exclude it outright, which also drops a car
-      schedule hold on a charger that reports the car's pause as its own; or exclude it only for a
-      fixed window after the charger was switched on), then apply it in that one classifier,
-      keeping the probe free of vendor branching. **Done:** a linked car reporting `plugged_in`
-      beside a charger switched on but `plugged_in_paused` emits no self-stop and banks no sample,
-      pinned in the car-link self-stop spec.
-
 - [ ] **P2 — three transport writes of observed fields still never reach the observer projection.**
       Stage 6 made the plan input read every observed field off the projection, so a write that
       does not dispatch is a field frozen until the next 5-minute refresh. Two of the three have a

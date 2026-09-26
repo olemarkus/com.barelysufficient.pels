@@ -235,10 +235,61 @@ after they settle, so a short session's connect edge can be processed *after* it
 disconnect already cleared the session. Without that guard the link would be resurrected
 for an unplugged car and later charge readings attributed to it.
 
-**Self-stop** requires all of: the car reports connected-but-not-charging, the charger
-still believes it is delivering, measured draw is at or below the idle threshold, and the
-condition has held continuously for the dwell window (2 min). An unreadable power
-measurement is not evidence of idleness.
+**Self-stop** is the car stopping of its own accord, and it is banked as evidence of the car's
+charge limit, so it must be the car's and nobody else's. It requires all of
+(`classifyEvCarSelfStop`):
+
+- the charger **delivered in this session** (drew above the idle threshold on some pass since
+  the session began) and now draws at most the idle threshold — a charger that never
+  delivered did not stop, it never started;
+- **PELS did not tell it to stop**, from three minutes before the last delivery reading was
+  taken until now. The transport records every switch-off and every step to an off step PELS
+  requests (`noteStopCommand`), whatever reaches the SDK; a PELS pause reads exactly like a
+  car stop from the car's side, which reports both as connected-but-not-charging. The window
+  is anchored on when the reading was TAKEN, not on the pass that saw it: with a delayed power
+  report (the 5-minute device poll with the live feed down, or power reported by a Flow) passes
+  keep seeing the old draw after the pause. Whether that delivery belongs to this session is
+  decided from the pass, because a steady draw is not re-reported;
+- **nobody else switched it off**: a charger that still reads connected with its observed
+  switch off was stopped from outside (an owner's "car at 80 % → charger off" Flow would
+  otherwise bank 80 % every session). `plugged_out` is exempt, since that is how an Easee ends
+  the session at the car's limit;
+- the charger is **not holding the session paused** (`plugged_in_paused`), where PELS's own
+  0 A pause and a charger-app schedule both land;
+- the car reports connected-but-not-charging, continuously for the dwell window (2 min).
+
+An unreadable power measurement is not evidence of idleness, and neither history survives a
+restart, so no stop counts until delivery is seen again.
+
+The charger's own belief is **not** asked for. It used to be ("the charger still believes it
+is delivering", including `binaryControl.on`), and that was both too strict and too loose: an
+Easee ends the session at the car's limit and reads `plugged_out` with the car still
+connected, and an Easee switched on by PELS reads "on" through its roughly five-minute resume
+hold-off with nothing flowing. Production had both on record: the car's real stop at its 70 %
+limit (2026-09-26 03:15:59) was never banked, and the only sample ever banked (2026-09-15,
+42 %) came two minutes after PELS switched the charger on.
+
+**A charger that ends the session while the car stays connected** tears the link down before
+the car has reported anything (the Easee at 03:15:59, the car 17 s later). The watcher keeps
+such a link only to see that stop through. A physical unplug reads the same on the charger, and
+a car app can lag in reporting it, so a stop on a lingering link is banked only once the car
+has stayed connected for 10 minutes after the charger let go. The link goes the moment the car
+disconnects or links to another charger, and after 17 minutes (the confirm window, one device
+poll and the dwell).
+
+**The charge limit** (`resolveEvCarChargeLimit`) is the lowest of the newest three banked
+stops (or two, while only two exist), once every one of them lies within 2 percentage points.
+The lowest, because a smart task is capped at it and met on reaching it: a car that stops a
+point either side of its setting must reach its own limit every time.
+Judging only the newest stops is what lets a changed limit be relearned instead of outvoted.
+A car seen charging past its qualified limit + 1 on this charger, having been at or below it
+earlier in the same session, disproves it: its samples are dropped
+(`ev_car_observed_limit_disproven`) and the limit is learned again. A car that merely arrives
+above its limit (fast-charged on a trip) proves nothing.
+
+The persisted shape is version 2. A version-1 blob still loads with its pairs and sessions,
+but its stop samples are dropped: they were banked under the rule above that production
+showed to be unsound.
 
 ## Known limits (read these before trusting a log)
 
@@ -264,8 +315,9 @@ measurement is not evidence of idleness.
   edge still counts. The persisted-session resume above is what recovers the ASSOCIATION across
   a restart; it deliberately earns no vote, because no plug coincidence was observed.
 - **One stop proves nothing.** `summarizeEvCarObservedLimit` returns `null` below two
-  samples and always reports spread alongside the median. A tight cluster over many
-  sessions is a charge limit; a wide spread is just a user unplugging at varying levels.
+  samples and always reports spread alongside the median, and `resolveEvCarChargeLimit`
+  qualifies a limit only from agreeing recent stops. A tight cluster is a charge limit; a
+  wide spread is just a user unplugging at varying levels.
 
 ## Bounds
 
@@ -360,8 +412,11 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
    times (a bouncing plug) is not a contest and must not produce it.
 3. `ev_car_session_elsewhere` — should appear when charging away from home, and should
    *not* appear for home sessions.
-4. `ev_car_self_stopped` — does `stoppedAtSocPct` cluster? Compare `observedLimitPct` and
-   `observedLimitSpreadPct` against the limit actually set in the car.
+4. `ev_car_self_stopped` — does `stoppedAtSocPct` cluster? Compare `chargeLimitPct` (present
+   once the stops qualify) against the limit actually set in the car; `chargerState` says how
+   the charger read the stop (`plugged_out` for an Easee ending the session).
+   `ev_car_observed_limit_disproven` should be rare: it means agreeing stops were not the
+   limit.
 5. `ev_car_link_soc_shadow` — `deltaPct` against whatever the flow card reports is the
    accuracy measure for any future adoption.
 

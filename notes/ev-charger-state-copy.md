@@ -116,18 +116,18 @@ it into two, and PELS already makes the distinction in
 
 | Charger evidence | Car | Meaning | Copy |
 |---|---|---|---|
-| believes it is delivering (`plugged_in_charging`, or commanded on) **and** draw ≤ idle | `plugged_in` | It was going and the car stopped — `car_not_charging` | **Car stopped charging** |
-| believes it is delivering **and** draw ≤ idle | `plugged_in_paused` | The car's own schedule or smart-charging — `car_schedule_hold` | **Paused by the car** |
-| not asserting delivery (commanded off) | not charging | Nothing is on offer | **Not charging** |
+| delivered this session, now draws ≤ idle, not paused by PELS or holding `plugged_in_paused` | `plugged_in` | It was going and the car stopped — `car_not_charging` | **Car stopped charging** |
+| the same | `plugged_in_paused` | The car's own schedule or smart-charging — `car_schedule_hold` | **Paused by the car** |
+| never delivered this session, or PELS told it to stop | not charging | Nothing is on offer | **Not charging** |
 
-"Waiting" and "stopped" are different claims and the charger is what tells them
-apart: a charger that believes current is flowing while nothing is drawn has been
+"Waiting" and "stopped" are different claims and the session history is what tells
+them apart: a charger that was delivering, and that nobody told to stop, has been
 refused by the car. That is the strongest statement available — and it is as far
 as it goes, because *why* the car refused is exactly what the car cannot report.
 
 **The card cannot make the waiting/stopped distinction, and does not try.**
 Separating them needs the session history `classifyEvCarSelfStop` keeps (did
-current ever flow this session?); the card sees one instant, so a commanded-on
+current ever flow this session, and did PELS stop it?); the card sees one instant, so a commanded-on
 charger drawing nothing reads **Waiting for car** whether or not a session
 started earlier. `Car stopped charging` is the self-stop producer's vocabulary
 and is not card copy today.

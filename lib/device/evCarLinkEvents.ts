@@ -6,6 +6,7 @@
  * Optional numeric fields are OMITTED rather than nulled when unknown: a probe
  * whose whole purpose is measurement must not report a value it never observed.
  */
+import type { EvChargingState } from '../../packages/contracts/src/types';
 import type { EvCarSelfStopReason } from './evCarLink';
 
 export type EvCarLinkEvent =
@@ -37,12 +38,26 @@ export type EvCarLinkEvent =
         carId: string; carName: string; reason: string;
     }
     | {
+        // `chargerState` is the charger's plug state when the stop was reported:
+        // an Easee that ends the session at the car's limit reads `plugged_out`
+        // with the car still connected. `chargeLimitPct` is present only once
+        // the samples qualify as a limit (`resolveEvCarChargeLimit`); the
+        // `observedLimit*` fields summarise every retained sample, qualified or not.
         component: 'devices'; event: 'ev_car_self_stopped';
         carId: string; carName: string; chargerId: string; chargerName: string;
         subReason: EvCarSelfStopReason; stoppedAtSocPct?: number;
+        chargerState: EvChargingState;
         chargerPowerW: number; heldForMs: number;
         observedLimitPct?: number; observedLimitSpreadPct?: number;
         observedLimitSamples: number;
+        chargeLimitPct?: number;
+    }
+    | {
+        // The car charged past the limit its stops had qualified, so that limit
+        // was not the car's: its samples are discarded and it must be learned again.
+        component: 'devices'; event: 'ev_car_observed_limit_disproven';
+        carId: string; carName: string; chargerId: string;
+        chargeLimitPct: number; socPct: number;
     }
     | {
         component: 'devices'; event: 'ev_car_link_soc_shadow';
