@@ -83,9 +83,9 @@ For deadline charging, many homes use this default:
 - **Power-limit control**: off by default.
 - A Smart task makes the charger available during planned charging hours.
 
-That prevents the charger from starting in an expensive hour just because the home has available power. During the planned task hours, PELS can still make room for the charger while staying under the hard cap.
+That prevents ordinary run-when-power-is-available behavior when no active task controls the charger. During planned task hours, PELS can make room for it while staying under the hard cap. An active task can also use an unbooked hour when it still needs that hour and live admission allows it; a deferred hour is held off whether power-limit control is on or off.
 
-If you also want normal "charge when there is room" behavior outside Smart tasks, leave **Power-limit control** on. That is simpler, but the charger may run outside the selected deadline plan.
+If you also want normal "charge when there is room" behavior when no active Smart task controls the charger, leave **Power-limit control** on. During an active task, hours the task defers stay off; an unbooked hour the task still needs may run if live capacity, budget, and priority allow it.
 
 ## Step 2: Give PELS The Battery Percentage
 
@@ -198,7 +198,7 @@ Use deadline charging when the car's final battery level matters.
 | The charger is not offered in **New smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, use **Report battery level for charger**. |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
-| The charger starts outside the task hours | Turn **Power-limit control** off by default if charging should only happen during Smart task hours. |
+| The charger starts in an hour outside the plotted task plan | The task may still need an unbooked hour, which remains eligible through live planner admission. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, the hard cap leaves enough room, and the target is realistic for the time left. |
 | The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your grid tariff step is actually higher. |
 | Charging current does not change | For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, recheck the Flow from [Configure an EV Charger](/ev-charger) and use **EV charger current (A)**. |
