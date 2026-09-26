@@ -243,7 +243,8 @@ const isDeviceObjectiveProfile = (value: unknown): boolean => {
       (field) => isOptionalFiniteNumber(value[field]),
     )
     && isOptionalArrayOf(value.samples, isObjectiveProfileObservation)
-    && isOptionalArrayOf(value.bands, isObjectiveProfileBand);
+    && isOptionalArrayOf(value.bands, isObjectiveProfileBand)
+    && isOptional(value.baselineMidStep, (flag) => flag === true);
 };
 
 const isObjectiveProfileMap = (value: unknown): boolean => (

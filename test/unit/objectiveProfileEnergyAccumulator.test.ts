@@ -103,6 +103,23 @@ describe('objective profile energy accumulator', () => {
     expect(profile.pendingEnergyKWh).toBeUndefined();
   });
 
+  it('learns the first rise after a thermostat coasts down and powers on again, warm-up and all', () => {
+    // Heated up to 21.0, relay off, visibly cooled to 20.9, relay on. The
+    // pause re-anchors only a device paused mid-step with no change in between;
+    // a first rise after power-on carries the warm-up energy a task starting from
+    // a cold room needs, so it is learned exactly as before.
+    let profile = step(undefined, tempSample({ observedAtMs: startMs, value: 20.7, crediblePowerW: 1000 }));
+    profile = step(profile, tempSample({ observedAtMs: startMs + hourMs, value: 21, crediblePowerW: 1000 }));
+    expect(profile.acceptedSamples).toBe(1);
+    profile = step(profile, tempSample({ observedAtMs: startMs + hourMs + 60_000, value: 21 }));
+    profile = step(profile, tempSample({ observedAtMs: startMs + 2 * hourMs, value: 20.9 }));
+    profile = step(profile, tempSample({ observedAtMs: startMs + 2 * hourMs + 60_000, value: 20.9, crediblePowerW: 1000 }));
+    expect(profile.baselineMidStep).toBeUndefined();
+    profile = step(profile, tempSample({ observedAtMs: startMs + 3 * hourMs, value: 21.2, crediblePowerW: 1000 }));
+
+    expect(profile.acceptedSamples).toBe(2);
+  });
+
   it('drops a banked partial window when the value falls (refill / draw-off)', () => {
     let profile = step(undefined, tempSample({ observedAtMs: startMs, value: 50, crediblePowerW: 1000 }));
     profile = step(profile, tempSample({ observedAtMs: startMs + hourMs, value: 50.1, crediblePowerW: 3000 }));

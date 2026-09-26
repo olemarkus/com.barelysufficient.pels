@@ -128,6 +128,8 @@ describe('appTypeGuards plain-object handling', () => {
             },
             acceptedSamples: 4,
             rejectedSamples: 1,
+            // A heater paused mid-step, awaiting its re-anchoring change.
+            baselineMidStep: true,
             samples: [{
               observedAtMs: 1_750_000_030_000,
               inputValue: 55,
@@ -161,6 +163,17 @@ describe('appTypeGuards plain-object handling', () => {
             lastSample: { observedAtMs: 1, value: Number.NaN },
             acceptedSamples: 0,
             rejectedSamples: 0,
+          },
+        },
+      }],
+      ['an objective profile whose mid-step flag is not `true`', {
+        objectiveProfiles: {
+          heater: {
+            updatedAtMs: 1,
+            lastSample: { observedAtMs: 1, value: 55 },
+            acceptedSamples: 0,
+            rejectedSamples: 0,
+            baselineMidStep: false,
           },
         },
       }],
