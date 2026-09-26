@@ -113,7 +113,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getShedBehavior: deps.getShedBehavior,
     markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
     getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
-    logTargetRetryComparison: deps.logTargetRetryComparison,
     syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
     deviceDiagnostics: deps.deviceDiagnostics,
     pendingBinaryCommandStore,
@@ -222,7 +221,6 @@ export function createPlanEngineComposition(
     getSteppedLoadCommandSession: (deviceId) => (
       ctx.deviceControlHelpers.getSteppedLoadCommandSession(deviceId)
     ),
-    logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
     // Scope-owned so the sync targets THIS home's plan service (see HomeScope).
     syncLivePlanStateAfterTargetActuation: scope.syncLivePlanStateAfterTargetActuation,
     // Scope-owned diagnostics recorder, resolved LIVE at engine construction

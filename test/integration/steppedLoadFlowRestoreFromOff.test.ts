@@ -312,7 +312,6 @@ const buildHarness = (
     // it — the loop under test.
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
-    logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {

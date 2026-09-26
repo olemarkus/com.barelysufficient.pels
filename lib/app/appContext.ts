@@ -231,16 +231,6 @@ export type AppContext = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   computeDynamicSoftLimit: () => number;
   getDynamicSoftLimitOverride: () => number | null;
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],

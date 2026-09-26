@@ -238,7 +238,6 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
-    logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore,
   };
   const executor = new PlanExecutor(deps, state);

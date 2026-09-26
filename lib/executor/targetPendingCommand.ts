@@ -1,4 +1,3 @@
-import type { PendingTargetObservationSource } from '../plan/planTypes';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { PlanExecutorTargetContext } from './targetExecutorContext';
 
@@ -57,56 +56,19 @@ const hasMatchingPendingTargetCommand = (
 ): boolean => ctx.state.pendingTargetCommands[deviceId]?.target === 'temperature'
   && ctx.state.pendingTargetCommands[deviceId]?.desired === desired;
 
-export const logPendingTargetRetry = async (
-  ctx: PlanExecutorTargetContext,
-  params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-    retryCount: number;
-    retryDelaySec: number;
-    observedValue?: unknown;
-    observedSource?: PendingTargetObservationSource;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  },
-): Promise<void> => {
-  const {
-    deviceId,
-    name,
-    target,
-    desired,
-    retryCount,
-    retryDelaySec,
-    observedValue,
-    observedSource,
-    skipContext,
-  } = params;
+export const logPendingTargetRetry = (
+  name: string,
+  pending: NonNullable<PlanExecutorTargetContext['state']['pendingTargetCommands'][string]>,
+  retryDelaySec: number,
+): void => {
+  const { target, desired, retryCount, lastObservedValue, lastObservedSource } = pending;
   logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
-    + `${formatObservedTarget(observedValue)} `
-    + `via ${observedSource ?? 'unknown'}, retrying ${target} to ${desired}°C` });
+    + `${formatObservedTarget(lastObservedValue)} `
+    + `via ${lastObservedSource ?? 'unknown'}, retrying ${target} to ${desired}°C` });
   emitExecutorDebug({
     event: 'executor_target_log_debug',
     msg: `Capacity: retried ${target} for ${name} to ${desired}°C `
     + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
-  try {
-    await ctx.logTargetRetryComparison?.({
-      deviceId,
-      name,
-      target,
-      desired,
-      observedValue,
-      observedSource,
-      retryCount,
-      skipContext,
-    });
-  } catch (error) {
-    logger.error({
-      event: 'executor_target_error',
-      msg: `Failed to log target retry comparison for ${name}`,
-      err: error,
-    });
-  }
 };
 
 function formatObservedTarget(value: unknown): string {
