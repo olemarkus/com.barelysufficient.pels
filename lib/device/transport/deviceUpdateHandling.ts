@@ -163,6 +163,8 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
           emitDeviceDebug(event);
         },
         createObservationCursor: (nextDeviceId) => ingest.observationBridge.nextCursor(nextDeviceId),
+        // Call-local queues defer events until the snapshot commit.
+        /* eslint-disable functional/immutable-data */
         emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
         emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
         /* eslint-enable functional/immutable-data */

@@ -233,33 +233,28 @@ export async function logHomeyDeviceForDebug(params: {
 
 // Comparison logging intentionally fans in multiple Homey and PELS state channels.
 // eslint-disable-next-line complexity -- flat fan-in of independent state channels into one comparison payload.
-export async function logHomeyDeviceComparisonForDebug(params: {
-  deviceId: string;
-  reason: string;
-  expectedTarget?: number;
-  observedTarget?: unknown;
-  observedSource?: string;
-  deviceManager: DeviceTransportPort;
-  getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
-  error: (msg: string, err: Error) => void;
-}): Promise<boolean> {
-  const {
-    deviceId,
-    reason,
-    expectedTarget,
-    observedTarget,
-    observedSource,
-    deviceManager,
-    getPelsDeviceState,
-    error,
-  } = params;
+export async function logHomeyDeviceComparisonForDebugFromApp(
+  app: Homey.App,
+  deviceId: string,
+  reason: string,
+  expectedTarget?: number,
+  observedTarget?: unknown,
+  observedSource?: string,
+): Promise<boolean> {
+  const runtimeApp = app as Homey.App & {
+    deviceManager?: DeviceTransportPort;
+    planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
+    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
+  };
+  const deviceManager = runtimeApp.deviceManager;
+  if (!deviceManager) return false;
   if (!deviceId) return false;
 
   let devices: HomeyDeviceLike[];
   try {
     devices = await getHomeyDevicesForDebug({ deviceManager });
   } catch (err) {
-    error('Failed to fetch Homey devices for comparison debug', normalizeError(err));
+    runtimeApp.error?.('Failed to fetch Homey devices for comparison debug', normalizeError(err));
     return false;
   }
 
@@ -277,17 +272,18 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   const label = device.name;
   const safeLabel = sanitizeLogValue(label) || safeDeviceId;
   const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
-  const pelsState = typeof getPelsDeviceState === 'function'
-    ? getPelsDeviceState(deviceId)
-    : null;
-
+  const targetSnapshot = compactPelsTargetSnapshot(
+    deviceManager.getSnapshotByDeviceId?.(deviceId) ?? null,
+  );
+  const planDevice = compactPelsPlanDevice(
+    runtimeApp.planService?.getLatestPlanSnapshot?.()?.devices.find((entry) => entry.id === deviceId) ?? null,
+  );
   const comparisonPayload: DeviceStateComparison = {
     managerDevices: buildHomeyStateComparisonSource(rawManagerEntry),
-    pelsSnapshot: buildPelsSnapshotComparisonSource(pelsState?.targetSnapshot ?? null),
-    pelsPlan: buildPelsPlanComparisonSource(pelsState?.planDevice ?? null),
+    pelsSnapshot: buildPelsSnapshotComparisonSource(targetSnapshot),
+    pelsPlan: buildPelsPlanComparisonSource(planDevice),
   };
-  const observedSources = pelsState?.observedSources
-    ?? buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(deviceId));
+  const observedSources = buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(deviceId));
 
   debugLogger.info({
     event: 'homey_pels_device_state_comparison',
@@ -318,61 +314,6 @@ export async function logHomeyDeviceForDebugFromApp(params: {
   if (!runtimeApp.deviceManager) return false;
   return logHomeyDeviceForDebug({
     deviceId,
-    deviceManager: runtimeApp.deviceManager,
-    getPelsDeviceState: (targetDeviceId) => {
-      const targetSnapshot = compactPelsTargetSnapshot(
-        runtimeApp.deviceManager?.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
-      );
-      const planDevice = compactPelsPlanDevice(
-        runtimeApp.planService?.getLatestPlanSnapshot?.()
-          ?.devices.find((entry) => entry.id === targetDeviceId) ?? null,
-      );
-      const powerCalibration = getPelsPowerCalibration(
-        runtimeApp.powerCalibrationStore?.getSnapshot?.(),
-        targetDeviceId,
-      );
-      return {
-        present: Boolean(targetSnapshot || planDevice || powerCalibration),
-        targetSnapshot,
-        planDevice,
-        powerCalibration,
-        observedSources: buildObservedSourcesSummary(
-          runtimeApp.deviceManager?.getDebugObservedSources?.(targetDeviceId),
-        ),
-      };
-    },
-    error: (msg, err) => runtimeApp.error?.(msg, err),
-  });
-}
-
-export async function logHomeyDeviceComparisonForDebugFromApp(params: {
-  app: Homey.App;
-  deviceId: string;
-  reason: string;
-  expectedTarget?: number;
-  observedTarget?: unknown;
-  observedSource?: string;
-}): Promise<boolean> {
-  const {
-    app,
-    deviceId,
-    reason,
-    expectedTarget,
-    observedTarget,
-    observedSource,
-  } = params;
-  const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceTransportPort;
-    planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
-    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
-  };
-  if (!runtimeApp.deviceManager) return false;
-  return logHomeyDeviceComparisonForDebug({
-    deviceId,
-    reason,
-    expectedTarget,
-    observedTarget,
-    observedSource,
     deviceManager: runtimeApp.deviceManager,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(

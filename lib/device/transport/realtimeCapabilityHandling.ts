@@ -35,6 +35,7 @@ const resolveBinaryAxisOn = (snapshot: TransportDeviceSnapshot, capabilityId: st
     capabilityId === 'evcharger_charging' ? (snapshot.evCharging ?? fallback) : (snapshot.binaryControl?.on ?? fallback)
 );
 
+/* eslint-disable functional/immutable-data -- Event changes are accumulated per accepted realtime update. */
 function applyBinaryCapabilityUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -236,7 +237,6 @@ function dispatchTemperatureFacetRemoval(
     ingest.observationBridge.dispatchControlStateChanged({ deviceId, ...cursor, name: snapshot.name, changes });
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function dropDeviceWithoutRemainingControlFacet(
     ingest: RealtimeIngestService,
     snapshotIndex: number,
@@ -245,8 +245,8 @@ function dropDeviceWithoutRemainingControlFacet(
     if (snapshot.binaryCapabilityId || snapshot.steppedLoadProfile) return;
     ingest.reader.snapshotStore.removeSnapshotAt(snapshotIndex, snapshot.id);
 }
-/* eslint-enable functional/immutable-data */
-
+// Event changes and the held target update belong to this accepted report.
+/* eslint-disable functional/immutable-data */
 function handleTemperatureCapabilityUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -334,6 +334,7 @@ function handleBinaryCapabilityEvent(ingest: RealtimeIngestService, params: {
     return true;
 }
 
+/* eslint-disable functional/immutable-data -- Realtime writes update the transport-owned snapshot before dispatch. */
 function handleReconcileCapabilityUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;

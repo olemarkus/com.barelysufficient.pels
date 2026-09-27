@@ -1,9 +1,8 @@
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
-import { getDebugEmitter, getLogger } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
-const moduleLogger = getLogger('device/manager-fetch');
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 import {
   asLiveEnergyReport,

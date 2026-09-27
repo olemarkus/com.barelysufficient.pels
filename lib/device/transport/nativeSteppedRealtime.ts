@@ -105,6 +105,8 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
     });
 }
 
+// Transport owns the held snapshot and updates it before dispatch through the observer bridge.
+/* eslint-disable functional/immutable-data */
 function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;

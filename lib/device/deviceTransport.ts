@@ -35,7 +35,6 @@ import {
 } from './transport/carAssociation';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
-import { getLogger } from '../logging/logger';
 import { DeviceHomeySdk } from './transport/deviceHomeySdk';
 import type { LiveFeedHealth } from './liveFeed';
 import { ObservationBridge } from './transport/observationBridge';

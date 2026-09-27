@@ -90,15 +90,6 @@ export function resolveEaseeSwitchWrite(
   return currentA !== undefined && !holdsChargingCurrent(currentA) ? RESUME : SWITCH;
 }
 
-/**
- * Easee only accepts a start command from its `plugged_in` state. For other
- * reported states, use the safe current write; a stale `unplugged` report must
- * not start a new session.
- */
-function isSessionOpen(snapshot: Pick<TransportDeviceSnapshot, 'evChargingState'>): boolean {
-  return snapshot.evChargingState === 'plugged_in';
-}
-
 /** A current the charger charges at; below it (0-5 A) the charger pauses. */
 function holdsChargingCurrent(currentA: number): boolean {
   return currentA >= EASEE_MIN_CHARGING_CURRENT_A;

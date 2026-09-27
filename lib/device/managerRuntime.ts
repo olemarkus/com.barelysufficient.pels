@@ -7,7 +7,6 @@ import {
   formatTargetValue,
 } from './transport/managerRealtimeSupport';
 import type { TransportObservationState } from './transport/transportObservationState';
-import { getLogger } from '../logging/logger';
 import {
   applyExplicitBinaryObservation,
   preserveRejectedExplicitBinaryObservation,

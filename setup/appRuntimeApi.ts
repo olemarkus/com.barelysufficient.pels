@@ -198,14 +198,14 @@ abstract class AppRuntimeApi extends Base {
     deviceId: string; name: string; target: 'temperature'; desired: number; observedValue?: unknown;
     observedSource?: string; retryCount: number; skipContext: 'plan' | 'shedding' | 'overshoot';
   }): Promise<void> {
-    await logHomeyDeviceComparisonForDebugFromApp({
-      app: this,
-      deviceId: params.deviceId,
-      reason: `target_retry:${params.skipContext}:${params.target}`,
-      expectedTarget: params.desired,
-      observedTarget: params.observedValue,
-      observedSource: params.observedSource,
-    });
+    await logHomeyDeviceComparisonForDebugFromApp(
+      this,
+      params.deviceId,
+      `target_retry:${params.skipContext}:${params.target}`,
+      params.desired,
+      params.observedValue,
+      params.observedSource,
+    );
   }
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
     return this.requirePlanService().syncLivePlanStateInline(source);

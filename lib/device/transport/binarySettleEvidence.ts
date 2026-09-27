@@ -154,8 +154,6 @@ export class BinarySettleEvidenceService {
         this.applyCachedBinarySettleEvidenceToSnapshot(device);
     }
 }
-/* eslint-enable functional/immutable-data */
-
     applyFromDeviceUpdate(params: {
     deviceId: string;
     device: HomeyDeviceLike;
@@ -238,8 +236,6 @@ private isOlderEvCommandObservation(
         this.applyBinarySettleEvidenceToSnapshot(mutableSnapshot, evidence);
     }
 }
-/* eslint-enable functional/immutable-data */
-
     recordRealtimeCapabilityObservation(deviceId: string, capabilityIds: string[]): void {
     recordSnapshotCapabilityObservations({
         state: this.observationState.getObservationState(),
