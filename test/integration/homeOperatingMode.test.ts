@@ -765,6 +765,28 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
   });
 
+  it('holds an established pin when a listed key reads null', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
+    mockHomeyInstance.settings.set(pinKey, 'Cooler');
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
+      .mockImplementation((key: string) => (key === pinKey ? null : originalGet(key)));
+
+    rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
+    await drainPending();
+
+    expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
+    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    getSpy.mockRestore();
+  });
+
   it('a global mode change leaves every initialized area catalog independent', async () => {
     writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();

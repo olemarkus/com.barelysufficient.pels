@@ -29,18 +29,22 @@ import { readModeAliases } from '../../packages/shared-domain/src/settings/modeA
 import { readHomeModeSetting } from './homeModeSettingsRead';
 import { HomeModeDeviceResolver, type DeviceOperatingModeOutcome } from './homeModeDeviceRead';
 
-/** One accepted generation of mode settings for a single home. */
-export type HomeModeCatalogSnapshot = {
-  operatingMode: string;
+/** Persisted mode settings that the active mode is resolved against. */
+export type HomeModeCatalogConfiguration = {
   aliases: Record<string, string>;
   priorities: Record<string, Record<string, number>>;
   modePriorityCatalog: ModePriorityCatalog;
   targets: Record<string, Record<string, number>>;
 };
 
+/** One accepted generation of mode settings for a single home. */
+export type HomeModeCatalogSnapshot = HomeModeCatalogConfiguration & { operatingMode: string };
+
 /** Read and write surface for a home-owned mode catalog. */
 export type HomeModeCatalog = {
   getSnapshot: () => HomeModeCatalogSnapshot;
+  getOperatingMode: () => string;
+  getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   resolveModeName: (name: string) => string;
   getAllModes: () => Set<string>;
@@ -94,7 +98,7 @@ const ensureDefaultMode = (
     : { ...value, [DEFAULT_MODE]: {} }
 );
 
-const configuredModes = (snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode'>): Set<string> => {
+const configuredModes = (snapshot: HomeModeCatalogConfiguration): Set<string> => {
   // A mode is safe to activate only when it has a target record. Priorities
   // alone cannot provide the resume anchor a lowered thermostat needs.
   const modes = new Set(Object.keys(snapshot.targets));
@@ -103,26 +107,28 @@ const configuredModes = (snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode'
 };
 
 const removeModeShadowingAliases = (
-  aliases: Record<string, string>,
-  snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'modePriorityCatalog'>,
-): Record<string, string> => {
+  snapshot: HomeModeCatalogConfiguration,
+): HomeModeCatalogConfiguration => {
   const modeByLowerName = new Map(
     [...Object.keys(snapshot.priorities), ...Object.keys(snapshot.targets)]
       .map((mode) => [mode.toLowerCase(), mode]),
   );
-  return Object.fromEntries(
-    Object.entries(aliases).filter(([alias, target]) => {
-      const shadowedMode = modeByLowerName.get(alias.toLowerCase());
-      return shadowedMode === undefined
-        || shadowedMode.toLowerCase() === target.toLowerCase();
-    }),
-  );
+  return {
+    ...snapshot,
+    aliases: Object.fromEntries(
+      Object.entries(snapshot.aliases).filter(([alias, target]) => {
+        const shadowedMode = modeByLowerName.get(alias.toLowerCase());
+        return shadowedMode === undefined
+          || shadowedMode.toLowerCase() === target.toLowerCase();
+      }),
+    ),
+  };
 };
 
 const resolveActiveMode = (
   raw: unknown,
   fallback: string,
-  snapshot: Omit<HomeModeCatalogSnapshot, 'operatingMode'>,
+  snapshot: HomeModeCatalogConfiguration,
 ): string => {
   const modes = configuredModes(snapshot);
   const candidate = typeof raw === 'string' && raw.trim() ? raw : fallback;
@@ -247,12 +253,12 @@ const writeInitialCatalog = (
     managedDevices, main.targets, DEFAULT_MODE, homeId, membership,
   );
   const targets = ensureDefaultMode(filterDeviceEntries(main.targets, ownsDevice));
-  const catalog = {
-    aliases: removeModeShadowingAliases(main.aliases, { priorities, targets }),
+  const catalog = removeModeShadowingAliases({
+    aliases: main.aliases,
     priorities,
     modePriorityCatalog: new ModePriorityCatalog(priorities),
     targets,
-  };
+  });
   const existingMode = readHomeModeSetting(
     settings,
     homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId),
@@ -305,6 +311,10 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
       this.getMembership(),
     ),
   });
+
+  getOperatingMode = (): string => this.lastGood.operatingMode;
+
+  getModeDeviceTargets = (): Record<string, Record<string, number>> => this.lastGood.targets;
 
   getPrioritiesForDevices = (deviceIds: readonly string[]): ModePriorityOrder => (
     this.lastGood.modePriorityCatalog.getOrder(this.lastGood.operatingMode, deviceIds)

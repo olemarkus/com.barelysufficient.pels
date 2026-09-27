@@ -295,8 +295,8 @@ export function buildMainHomeScope(
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
-    getOperatingMode: () => ctx.homeModeCatalog.getSnapshot().operatingMode,
-    getModeDeviceTargets: () => ctx.homeModeCatalog.getSnapshot().targets,
+    getOperatingMode: ctx.homeModeCatalog.getOperatingMode,
+    getModeDeviceTargets: ctx.homeModeCatalog.getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`

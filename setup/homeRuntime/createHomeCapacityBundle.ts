@@ -323,8 +323,8 @@ function buildSubHomeScope(params: {
     // catalog adapter exposes one coherent last-good snapshot, and retains the
     // legacy Main snapshot only until the area's marker-last initialization
     // succeeds.
-    getOperatingMode: () => modeCatalog.getSnapshot().operatingMode,
-    getModeDeviceTargets: () => modeCatalog.getSnapshot().targets,
+    getOperatingMode: modeCatalog.getOperatingMode,
+    getModeDeviceTargets: modeCatalog.getModeDeviceTargets,
     // No smart tasks in a meter area (multi-home v1 defers them per home), so
     // the decoration seam is the identity one, named rather than omitted.
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,

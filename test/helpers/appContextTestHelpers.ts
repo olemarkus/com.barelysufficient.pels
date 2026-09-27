@@ -68,12 +68,12 @@ type AppContextMockOptions = Omit<Partial<AppContext>, 'latestTargetSnapshot' | 
   latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
-  modeCatalog?: Partial<Pick<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'priorities' | 'targets'>>;
+  modeCatalog?: Partial<HomeModeCatalogSnapshot>;
 };
 
 export function configureHomeModeCatalog(
   context: AppContext,
-  configuration: Partial<Pick<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'priorities' | 'targets'>>,
+  configuration: Partial<HomeModeCatalogSnapshot>,
 ): void {
   const { settings } = context.homey;
   if (configuration.operatingMode !== undefined) settings.set(OPERATING_MODE_SETTING, configuration.operatingMode);

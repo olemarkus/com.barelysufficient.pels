@@ -429,7 +429,7 @@ abstract class AppRuntimeApi extends Base {
       capacityGuard: this.context.capacityGuard,
       powerTracker: this.context.powerTracker,
       capacitySettings: this.context.capacitySettings,
-      operatingMode: this.context.homeModeCatalog.getSnapshot().operatingMode,
+      operatingMode: this.context.homeModeCatalog.getOperatingMode(),
       capacityDryRun: this.context.capacityDryRun,
       starvedDeviceCount: this.context.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
       capacityPaceKw: this.computeDynamicSoftLimit(),

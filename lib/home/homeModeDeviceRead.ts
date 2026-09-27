@@ -91,7 +91,7 @@ export class HomeModeDeviceResolver {
     }
     const homeId = effectiveMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
     if (homeId === MAIN_HOME_ID) {
-      const mainMode = this.mainCatalog.getSnapshot().operatingMode;
+      const mainMode = this.mainCatalog.getOperatingMode();
       const read = readMainOperatingMode(this.settings, this.mainCatalog.resolveModeName, mainMode);
       return read.state === 'resolved' ? read : { state: 'unavailable' };
     }

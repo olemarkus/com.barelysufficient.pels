@@ -13,11 +13,9 @@ export const readHomeModeSetting = (
       return { state: 'unavailable' };
     }
     if (!keys.includes(key)) return { state: 'resolved', value: undefined };
-    // A present null is an explicit optional value. A fulfilled undefined for
-    // a listed key remains suspect because the SDK did not resolve that read.
-    return value === null
-      ? { state: 'resolved', value }
-      : { state: 'unavailable' };
+    // A listed key with no value is a transient or malformed read. Mode
+    // catalog writers never store null, so it cannot be treated as a value.
+    return { state: 'unavailable' };
   } catch {
     return { state: 'unavailable' };
   }
