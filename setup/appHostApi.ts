@@ -48,7 +48,6 @@ import {
 import { requireConfiguredPowerSource } from './powerSourceSettings';
 import { assembleWeatherAdvisorReadout } from './appInit/weatherAdvisorReadoutAssembler';
 import { requirePlanService as requireInitializedPlanService } from './appInit/contextGuards';
-import { projectDeviceDescriptors } from '../lib/device/deviceDescriptorProjection';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
@@ -135,29 +134,28 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   public async getFlowSnapshot(): Promise<DecoratedDeviceSnapshot[]> {
-    if (this.latestTargetSnapshot.length === 0) await this.refreshTargetDevicesSnapshot();
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(
       readFlowDevices(
-        this.context.deviceReads.descriptors(),
+        await this.readFlowDeviceDescriptors(),
         (deviceId) => this.context.getObservedRecord(deviceId),
       ),
     );
   }
 
   /**
-   * The Flow-card device list as DESCRIPTORS: identity and config, no
-   * observations.
-   *
-   * Same underlying value and same lazy first-read refresh as `getFlowSnapshot`
-   * above — deliberately, so this is a pure narrowing of the declared surface
-   * with no behaviour change. Most Flow cards only ever wanted a descriptor:
-   * they resolve a device by id and filter with predicates that read
-   * `deviceClass`, `controlAdapter` or `targetPowerConfig`. Handing them the
-   * whole snapshot let them reach observations they never asked for, and is why
-   * `getSnapshot()` could not be sealed inside transport until stage 7.
+   * Flow cards that need only inventory metadata use descriptors directly.
+   * The read shares the lazy initial refresh with `getFlowSnapshot`, without
+   * joining Observer state or decorating planner input.
    */
   public async getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
-    return projectDeviceDescriptors(await this.getFlowSnapshot());
+    return this.readFlowDeviceDescriptors();
+  }
+
+  private async readFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
+    const descriptors = this.context.deviceReads.descriptors();
+    if (descriptors.length > 0) return descriptors;
+    await this.refreshTargetDevicesSnapshot();
+    return this.context.deviceReads.descriptors();
   }
 
   /** Device inventory metadata; runtime state comes from Observer. */

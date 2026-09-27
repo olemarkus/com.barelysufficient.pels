@@ -42,21 +42,18 @@ export type DeviceReads = {
     deviceIds(): string[];
 };
 
-export function createDeviceReads(deps: {
-    /** Lazy: the transport is wired during ordered startup, after this is built. */
-    getStore: () => DeviceReadStore;
-}): DeviceReads {
+export function createDeviceReads(getStore: () => DeviceReadStore): DeviceReads {
     return {
-        descriptors: () => deps.getStore().getSnapshot().map(projectDeviceDescriptor),
+        descriptors: () => getStore().getSnapshot().map(projectDeviceDescriptor),
         descriptor: (deviceId) => {
-            const snapshot = deps.getStore().getSnapshotByDeviceId(deviceId);
+            const snapshot = getStore().getSnapshotByDeviceId(deviceId);
             return snapshot ? projectDeviceDescriptor(snapshot) : undefined;
         },
-        hasProductionCandidate: () => hasSolarProductionCandidate(deps.getStore().getSnapshot()),
-        zoneMemberships: () => deps.getStore().getSnapshot().map((device) => ({
+        hasProductionCandidate: () => hasSolarProductionCandidate(getStore().getSnapshot()),
+        zoneMemberships: () => getStore().getSnapshot().map((device) => ({
             deviceId: device.id,
             zoneId: device.zoneId ?? null,
         })),
-        deviceIds: () => deps.getStore().getSnapshot().map((device) => device.id),
+        deviceIds: () => getStore().getSnapshot().map((device) => device.id),
     };
 }

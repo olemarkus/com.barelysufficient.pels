@@ -347,10 +347,9 @@ describe('post-refresh recompute through the transport seam', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctxStub as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctxStub.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctxStub as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctxStub.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctxStub, emitter);
 
     await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -383,10 +382,9 @@ describe('post-refresh recompute through the transport seam', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctxStub as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctxStub.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctxStub as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctxStub.deviceManager as unknown as DeviceReadStore,
+    );
     const onSubHomeMembershipChanged = vi.fn();
     const wiring = wireHomeMembership(
       ctxStub,
@@ -3143,10 +3141,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
 
     expect(resolveSmartTaskHomeScope(ctx, 'd-moving')).toBe('sub_home');
     expect(buildStarvedRescueDevices(ctx)).toEqual([]);
@@ -3399,10 +3396,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
       onOwnershipReadyBeforePlanWork: retryDeferredOvershootSeed,
       ownershipGenerationRuntime: {
@@ -3470,10 +3466,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, emitter);
     try {
       expect(wiring.service.getHomeIdForDevice('d-sub')).toBe('h_a');
@@ -3529,10 +3524,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter());
     try {
       expect(wiring.service.isMainHomeActuationFenced()).toBe(true);
@@ -3591,10 +3585,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter());
 
     try {
@@ -3655,10 +3648,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, emitter);
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     let failMainReadOnce = true;
@@ -3738,10 +3730,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     wiring = wireHomeMembership(ctx, emitter);
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
@@ -3807,10 +3798,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
@@ -3892,10 +3882,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
@@ -3989,10 +3978,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
     // throws above.
-    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads({
-      getStore: () => ctx.deviceManager as unknown as DeviceReadStore | undefined,
-      getObservedRecord: () => undefined,
-    });
+    (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
+      () => ctx.deviceManager as unknown as DeviceReadStore,
+    );
     const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => mainSample,

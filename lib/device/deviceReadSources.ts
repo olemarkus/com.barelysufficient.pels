@@ -9,6 +9,6 @@ export type DeviceReadSource = DeviceReadStore & {
 };
 
 export const createDeviceReadSources = (getStore: () => DeviceReadSource) => ({
-  deviceReads: createDeviceReads({ getStore }),
+  deviceReads: createDeviceReads(getStore),
   deviceConfiguration: createDeviceConfiguration(() => getStore().deviceConfigurationStore),
 });

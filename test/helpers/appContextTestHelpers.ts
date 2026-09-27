@@ -2,7 +2,7 @@ import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/se
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
-import { createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
+import { DeviceConfigurationStore, createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
@@ -225,11 +225,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getSnapshotByDeviceId: (deviceId) => (
       latestTargetSnapshot as unknown as TransportDeviceSnapshot[]
     ).find((device) => device.id === deviceId),
-    getUiPickerDevices: () => latestTargetSnapshot as unknown as TransportDeviceSnapshot[],
   };
-  const deviceReads = createDeviceReads({
-    getStore: () => deviceReadStore,
-  });
+  const deviceReads = createDeviceReads(() => deviceReadStore);
+  const deviceConfigurationStore = new DeviceConfigurationStore();
+  deviceConfigurationStore.replace(latestTargetSnapshot as unknown as TransportDeviceSnapshot[]);
   const settingsUiDeviceReads = new SettingsUiDeviceReads();
   settingsUiDeviceReads.connect({
     readChargerPhasePresets: () => ({ state: 'unavailable' }),
@@ -256,7 +255,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const context: AppContext = {
     homeModeCatalog,
     deviceReads,
-    deviceConfiguration: createDeviceConfiguration(() => deviceReadStore),
+    deviceConfiguration: createDeviceConfiguration(() => deviceConfigurationStore),
     getPlanInputSnapshot: () => context.latestTargetSnapshot,
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(

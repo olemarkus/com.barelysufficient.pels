@@ -289,7 +289,7 @@ function adoptCommittedDeviceList(
 }
 
 // Rebuild the realtime tracking map and (re)sync native stepped-load command
-// adapters from a device list. Side-effecting, so `refreshSnapshot` runs it
+// adapters from a device list. Side-effecting, so the refresh workflow runs it
 // ONLY after the abandon-grace guard has committed the snapshot: a transient
 // empty SDK read must not tear down tracking/adapters for devices that are
 // still present. The guard already preserves the snapshot on such a read, so
@@ -323,7 +323,7 @@ async function fetchDevicesForSnapshotRefresh(
 // exactly once so it propagates downstream without being re-run by
 // `resolveParseDeviceIdentity` inside `parseDevice`.
 // Parsing is side-effect-free; the realtime tracking map and native adapters
-// are (re)built separately via `syncTrackedDevices`, which `refreshSnapshot`
+// are (re)built separately via `syncTrackedDevices`, which the refresh workflow
 // runs only after the abandon-grace guard commits the snapshot.
 export function computePeriodicStatusMetrics(
     snapshotStore: TransportSnapshotStore,
@@ -339,7 +339,7 @@ export function computePeriodicStatusMetrics(
 // Zone tree rides the same refresh cycle (no timer of its own), fired
 // DETACHED after the snapshot commit so it can never stall the device
 // pipeline or its callers. The WHOLE body is contained: this function runs
-// fire-and-forget (`void refreshZoneTreeCache(refresh)`), so nothing here may
+// fire-and-forget from the refresh owner, so nothing here may
 // reject — `fetchZoneTree` resolves `null` on its own failure paths, but a
 // throwing logger call on one of those paths (or any future edit before the
 // commit) would otherwise become an unhandled rejection. A failed/junk/empty
@@ -416,148 +416,6 @@ async function resolveLivePowerForRefresh(
     };
 }
 
-export async function refreshSnapshot(
-    refresh: SnapshotRefreshService,
-    options: SnapshotRefreshOptions,
-): Promise<HomePowerSampleWithIdentity | null> {
-    const stopSpan = startRuntimeSpan('device_snapshot_refresh');
-    const start = Date.now();
-    try {
-        const previousSnapshot = refresh.reader.snapshotStore.getSnapshot();
-        const isTargetedRefresh = options.targetedRefresh === true && previousSnapshot.length > 0;
-        const fetchResult = await fetchDevicesForSnapshotRefresh(refresh, isTargetedRefresh);
-        if (!fetchResult) return null;
-        const { devices: list, fetchSource, failedIds } = fetchResult;
-        const { byDeviceId: livePowerByDeviceId, homePowerSample } = await resolveLivePowerForRefresh(
-            refresh,
-            options.includeLivePower !== false,
-            options.mainMeterSelection,
-        );
-        // The read contract, before anything reads a payload: a device whose read
-        // does not conform is ignored — its previous snapshot entry and raw entry
-        // stand, none of its values reach a producer, the parse or tracking, and
-        // the producers see it as present but unread.
-        const read = partitionConformingDeviceReads(
-            refresh.reader.snapshotStore,
-            refresh.reader.logger,
-            list.map((device) => refresh.reader.applyDeviceDriverOverride(device)),
-        );
-        const effectiveList = observeBatteryStateFromList(
-            refresh.observationProducers.battery,
-            refresh.observationProducers.solar,
-            read,
-            fetchSource,
-        );
-        const presentSnapshot = withIgnoredReadEntries(
-            refresh.reader.parseDeviceList(effectiveList, livePowerByDeviceId),
-            previousSnapshot,
-            read.ignoredIds,
-        );
-        // Carry the observations the realtime path made since the last refresh
-        // over a read that may be older than them.
-        mergeFresherCapabilityObservations({
-            state: refresh.observationBridge.state.getObservationState(),
-            previousSnapshot,
-            nextSnapshot: presentSnapshot,
-            devices: effectiveList,
-            logger: refresh.reader.logger,
-        });
-        // `fetchSource` resolves whether this committed read is a targeted
-        // overlay or a full read — a targeted refresh that fell back to full
-        // (every id failed) reports `raw_manager_devices`, so it is treated as
-        // authoritative here even though `isTargetedRefresh` was requested.
-        const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
-        const snapshot = resolveCommittedRefreshSnapshot(
-            refresh,
-            presentSnapshot,
-            previousSnapshot,
-            isTargetedOverlay ? failedIds : null,
-            start,
-        );
-        // Skip both the snapshot commit AND the raw-device cache update when the
-        // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
-        // doesn't briefly report zero devices during the blip we're masking.
-        const committed = commitRefreshedSnapshot(refresh, {
-            snapshot,
-            previousSnapshot,
-            rawWasEmpty: list.length === 0,
-            nowMs: start,
-        });
-        if (!committed) return homePowerSample;
-        adoptCommittedDeviceList(
-            refresh,
-            withIgnoredReadRawDevices(
-                refresh.reader.snapshotStore.getTrackedRawDevicesById(),
-                refresh.reader.snapshotStore.getLatestRawDevices(),
-                read,
-            ),
-            fetchSource,
-            snapshot,
-        );
-        // AFTER the commit, unlike the battery/solar producers above: the EV
-        // car-link probe resolves charger state by reading the committed
-        // snapshot, so running it pre-parse would pair a car transition read in
-        // THIS fetch against charger state from the previous one — putting the
-        // two sides of a genuine home session in different refreshes and, on the
-        // coarse fetch-only cadence, outside the coincidence window entirely.
-        // Class `car` devices are dropped by parse, so the probe still reads them
-        // from the raw list.
-        observeEvCarLinkAndResubscribe(
-            refresh.observationProducers.evCarLink,
-            (deviceIds) => refresh.deviceSdk.updateTrackedDevices(deviceIds),
-            read,
-            fetchSource,
-            snapshot,
-        );
-        recordSnapshotRefreshObservations({
-            state: refresh.observationBridge.state.getObservationState(),
-            snapshot,
-            fetchSource,
-        });
-        emitDeviceDebug({
-            event: 'device_snapshot_refresh_processed',
-            devicesTotal: snapshot.length,
-            targetedRefresh: isTargetedRefresh,
-            fetchSource,
-            ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
-            livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
-        });
-        const metrics = summarizeSnapshotRefreshMetrics(snapshot);
-        if (shouldEmitSnapshotRefreshLog(refresh, snapshot.length, metrics)) {
-            moduleLogger.info({
-                event: 'device_snapshot_refresh_completed',
-                durationMs: Date.now() - start,
-                devicesTotal: snapshot.length,
-                targetedRefresh: isTargetedRefresh,
-                ...metrics,
-            });
-        }
-        logEvSnapshotChanges({
-            logger: refresh.reader.logger,
-            previousSnapshot,
-            nextSnapshot: snapshot,
-        });
-        // DETACHED on purpose (fire-and-forget): the zone tree rides the
-        // refresh cycle but must never gate it — even a tail-position await
-        // would hold the refreshSnapshot PROMISE (post-write/post-actuation
-        // callers, the coalesced refresh queue) for up to the REST timeout
-        // when a degraded zones read hangs after a healthy device fetch.
-        // The detach is safe: `fetchZoneTree` never throws or rejects, the
-        // post-commit notification is contained in `refreshZoneTreeCache`,
-        // `zoneTreeCache.set` is a whole-tree last-writer-wins replacement, and
-        // refresh cycles are serialized by the coalescing guard, so a dangling
-        // fetch racing the next cycle's commit is benign for this dormant,
-        // eventually-consistent cache. Still fired only after a successful
-        // device fetch + committed snapshot; the grace-deferred empty-read
-        // path above skips it for the cycle (a degraded blip already).
-        void refreshZoneTreeCache(refresh);
-        return homePowerSample;
-    } finally {
-        stopSpan();
-        addPerfDuration('device_refresh_ms', Date.now() - start);
-    }
-}
-
 /** Owns device snapshot acquisition, parsing, refresh lifecycle and commit. */
 export class SnapshotRefreshService {
   // eslint-disable-next-line max-params -- Direct owner collaborators, not an argument bag.
@@ -582,7 +440,146 @@ export class SnapshotRefreshService {
   }
 
   refresh(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null> {
-    return refreshSnapshot(this, options);
+    return this.runRefresh(options);
+  }
+
+  private async runRefresh(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null> {
+    const stopSpan = startRuntimeSpan('device_snapshot_refresh');
+    const start = Date.now();
+    try {
+        const previousSnapshot = this.reader.snapshotStore.getSnapshot();
+        const isTargetedRefresh = options.targetedRefresh === true && previousSnapshot.length > 0;
+        const fetchResult = await fetchDevicesForSnapshotRefresh(this, isTargetedRefresh);
+        if (!fetchResult) return null;
+        const { devices: list, fetchSource, failedIds } = fetchResult;
+        const { byDeviceId: livePowerByDeviceId, homePowerSample } = await resolveLivePowerForRefresh(
+            this,
+            options.includeLivePower !== false,
+            options.mainMeterSelection,
+        );
+        // The read contract, before anything reads a payload: a device whose read
+        // does not conform is ignored — its previous snapshot entry and raw entry
+        // stand, none of its values reach a producer, the parse or tracking, and
+        // the producers see it as present but unread.
+        const read = partitionConformingDeviceReads(
+            this.reader.snapshotStore,
+            this.reader.logger,
+            list.map((device) => this.reader.applyDeviceDriverOverride(device)),
+        );
+        const effectiveList = observeBatteryStateFromList(
+            this.observationProducers.battery,
+            this.observationProducers.solar,
+            read,
+            fetchSource,
+        );
+        const presentSnapshot = withIgnoredReadEntries(
+            this.reader.parseDeviceList(effectiveList, livePowerByDeviceId),
+            previousSnapshot,
+            read.ignoredIds,
+        );
+        // Carry the observations the realtime path made since the last refresh
+        // over a read that may be older than them.
+        mergeFresherCapabilityObservations({
+            state: this.observationBridge.state.getObservationState(),
+            previousSnapshot,
+            nextSnapshot: presentSnapshot,
+            devices: effectiveList,
+            logger: this.reader.logger,
+        });
+        // `fetchSource` resolves whether this committed read is a targeted
+        // overlay or a full read — a targeted refresh that fell back to full
+        // (every id failed) reports `raw_manager_devices`, so it is treated as
+        // authoritative here even though `isTargetedRefresh` was requested.
+        const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
+        const snapshot = resolveCommittedRefreshSnapshot(
+            this,
+            presentSnapshot,
+            previousSnapshot,
+            isTargetedOverlay ? failedIds : null,
+            start,
+        );
+        // Skip both the snapshot commit AND the raw-device cache update when the
+        // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
+        // doesn't briefly report zero devices during the blip we're masking.
+        const committed = commitRefreshedSnapshot(this, {
+            snapshot,
+            previousSnapshot,
+            rawWasEmpty: list.length === 0,
+            nowMs: start,
+        });
+        if (!committed) return homePowerSample;
+        adoptCommittedDeviceList(
+            this,
+            withIgnoredReadRawDevices(
+                this.reader.snapshotStore.getTrackedRawDevicesById(),
+                this.reader.snapshotStore.getLatestRawDevices(),
+                read,
+            ),
+            fetchSource,
+            snapshot,
+        );
+        // AFTER the commit, unlike the battery/solar producers above: the EV
+        // car-link probe resolves charger state by reading the committed
+        // snapshot, so running it pre-parse would pair a car transition read in
+        // THIS fetch against charger state from the previous one — putting the
+        // two sides of a genuine home session in different refreshes and, on the
+        // coarse fetch-only cadence, outside the coincidence window entirely.
+        // Class `car` devices are dropped by parse, so the probe still reads them
+        // from the raw list.
+        observeEvCarLinkAndResubscribe(
+            this.observationProducers.evCarLink,
+            (deviceIds) => this.deviceSdk.updateTrackedDevices(deviceIds),
+            read,
+            fetchSource,
+            snapshot,
+        );
+        recordSnapshotRefreshObservations({
+            state: this.observationBridge.state.getObservationState(),
+            snapshot,
+            fetchSource,
+        });
+        emitDeviceDebug({
+            event: 'device_snapshot_refresh_processed',
+            devicesTotal: snapshot.length,
+            targetedRefresh: isTargetedRefresh,
+            fetchSource,
+            ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
+            livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
+        });
+        const metrics = summarizeSnapshotRefreshMetrics(snapshot);
+        if (shouldEmitSnapshotRefreshLog(this, snapshot.length, metrics)) {
+            moduleLogger.info({
+                event: 'device_snapshot_refresh_completed',
+                durationMs: Date.now() - start,
+                devicesTotal: snapshot.length,
+                targetedRefresh: isTargetedRefresh,
+                ...metrics,
+            });
+        }
+        logEvSnapshotChanges({
+            logger: this.reader.logger,
+            previousSnapshot,
+            nextSnapshot: snapshot,
+        });
+        // DETACHED on purpose (fire-and-forget): the zone tree rides the
+        // refresh cycle but must never gate it — even a tail-position await
+        // would hold the refresh PROMISE (post-write/post-actuation
+        // callers, the coalesced refresh queue) for up to the REST timeout
+        // when a degraded zones read hangs after a healthy device fetch.
+        // The detach is safe: `fetchZoneTree` never throws or rejects, the
+        // post-commit notification is contained in `refreshZoneTreeCache`,
+        // `zoneTreeCache.set` is a whole-tree last-writer-wins replacement, and
+        // refresh cycles are serialized by the coalescing guard, so a dangling
+        // fetch racing the next cycle's commit is benign for this dormant,
+        // eventually-consistent cache. Still fired only after a successful
+        // device fetch + committed snapshot; the grace-deferred empty-read
+        // path above skips it for the cycle (a degraded blip already).
+        void refreshZoneTreeCache(this);
+        return homePowerSample;
+    } finally {
+        stopSpan();
+        addPerfDuration('device_refresh_ms', Date.now() - start);
+    }
   }
 
 }

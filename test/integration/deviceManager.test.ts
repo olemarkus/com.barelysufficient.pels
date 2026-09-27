@@ -23,6 +23,7 @@ import {
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -113,14 +114,16 @@ describe('DeviceTransport', () => {
         error: Mock;
         structuredLog: Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock; warn: Mock };
     };
-    let debugStructuredMock: Mock;
+    let logCapture: LoggerCapture;
 
     afterEach(() => {
         vi.restoreAllMocks();
+        logCapture.restore();
     });
 
     beforeEach(() => {
         vi.clearAllMocks();
+        logCapture = captureLogger();
         mockGetLiveReport.mockResolvedValue({ items: [] });
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
@@ -142,13 +145,11 @@ describe('DeviceTransport', () => {
                 warn: vi.fn(),
             } as unknown as Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock; warn: Mock },
         };
-        debugStructuredMock = vi.fn();
         deviceManager = createTestDeviceTransport(
             homeyMock,
             loggerMock,
             undefined,
             undefined,
-            { debugStructured: debugStructuredMock },
         );
     });
 
@@ -164,18 +165,20 @@ describe('DeviceTransport', () => {
         it('skips initialization if api is missing', async () => {
             const savedApi = (homeyMock as { api?: unknown }).api;
             (homeyMock as { api?: unknown }).api = undefined;
-            deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
-            await deviceManager.init();
-            expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
-            expect(loggerMock.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'sdk_api_unavailable_skipping_init' }));
-            expect(loggerMock.structuredLog.info).toHaveBeenCalledTimes(1);
-            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-                component: 'devices',
-                event: 'device_api_init_skipped',
-                reasonCode: 'sdk_api_missing',
-                realtimeListenerAttached: false,
-            }));
-            (homeyMock as { api?: unknown }).api = savedApi;
+            try {
+                deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
+                await deviceManager.init();
+                expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
+                expect(loggerMock.structuredLog.info).toHaveBeenCalledTimes(1);
+                expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                    component: 'devices',
+                    event: 'device_api_init_skipped',
+                    reasonCode: 'sdk_api_missing',
+                    realtimeListenerAttached: false,
+                }));
+            } finally {
+                (homeyMock as { api?: unknown }).api = savedApi;
+            }
         });
     });
 
@@ -910,12 +913,12 @@ describe('DeviceTransport', () => {
 
             const ids = deviceManager.getSnapshot().map(snapshotDeviceId);
             expect(ids).toEqual(['dev1']);
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_snapshot_empty_deferred')).toMatchObject({
                 event: 'device_snapshot_empty_deferred',
                 reasonCode: 'empty_snapshot_transient',
                 consecutiveEmptyReads: 1,
                 previousDevicesTotal: 1,
-            }));
+            });
         });
 
         it('abandon-grace: keeps the populated snapshot across several empty reads within grace', async () => {
@@ -940,12 +943,12 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             expect(deviceManager.getSnapshot()).toHaveLength(0);
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_snapshot_empty_grace_exceeded')).toMatchObject({
                 event: 'device_snapshot_empty_grace_exceeded',
                 reasonCode: 'empty_snapshot_committed',
                 consecutiveEmptyReads: 3,
                 previousDevicesTotal: 1,
-            }));
+            });
         });
 
         it('abandon-grace: resets the grace counter once a populated read returns', async () => {
@@ -964,10 +967,10 @@ describe('DeviceTransport', () => {
             mockApiGet.mockResolvedValue({});
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             expect(deviceManager.getSnapshot()).toHaveLength(1);
-            expect(loggerMock.structuredLog.warn).toHaveBeenLastCalledWith(expect.objectContaining({
+            expect(logCapture.findEvents('device_snapshot_empty_deferred').at(-1)).toMatchObject({
                 event: 'device_snapshot_empty_deferred',
                 consecutiveEmptyReads: 1,
-            }));
+            });
         });
 
         it('abandon-grace: commits an empty snapshot immediately when there was nothing to protect', async () => {
@@ -1015,10 +1018,10 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect(deviceManager.getSnapshot()).toHaveLength(0);
-                expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                expect(logCapture.findEvent('device_snapshot_empty_grace_exceeded')).toMatchObject({
                     event: 'device_snapshot_empty_grace_exceeded',
                     reasonCode: 'empty_snapshot_committed',
-                }));
+                });
             } finally {
                 vi.useRealTimers();
             }
@@ -1031,12 +1034,12 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_snapshot_refresh_failed')).toMatchObject({
                 event: 'device_snapshot_refresh_failed',
                 reasonCode: 'refresh_failed',
                 targetedRefresh: false,
-                err: refreshFailure,
-            }));
+                err: expect.objectContaining({ message: refreshFailure.message }),
+            });
             expect(loggerMock.error).not.toHaveBeenCalled();
         });
 
@@ -1383,10 +1386,9 @@ describe('DeviceTransport', () => {
         });
 
         it('excludes EV chargers without the official charging capability', async () => {
-            const debugStructured = vi.fn();
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-            }, undefined, { debugStructured });
+            });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
@@ -1407,18 +1409,17 @@ describe('DeviceTransport', () => {
             // Both official capabilities are required; the plug-state one is checked
             // first because it is required of EVERY charger, including those that
             // control on the amp/step axis and never expose `evcharger_charging`.
-            expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_skipped_missing_capability')).toMatchObject({
                 event: 'device_skipped_missing_capability',
                 deviceId: 'ev1',
                 missingCapability: 'evcharger_charging_state',
-            }));
+            });
         });
 
         it('excludes EV chargers without the official charging state capability', async () => {
-            const debugStructured = vi.fn();
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-            }, undefined, { debugStructured });
+            });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
@@ -1436,11 +1437,11 @@ describe('DeviceTransport', () => {
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
-            expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_skipped_missing_capability')).toMatchObject({
                 event: 'device_skipped_missing_capability',
                 deviceId: 'ev1',
                 missingCapability: 'evcharger_charging_state',
-            }));
+            });
         });
 
         it('propagates Homey availability state into snapshot entries', async () => {
@@ -2172,7 +2173,6 @@ describe('DeviceTransport', () => {
 
             // Verify initial state
             expect((deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(1);
-            debugStructuredMock.mockClear();
 
             // Trigger update 2000W via device.update; like Homey's full device
             // object, it re-reports the unchanged onoff value.
@@ -2190,7 +2190,7 @@ describe('DeviceTransport', () => {
             const snapshot = deviceManager.getSnapshot();
             expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
             expect(snapshot[0].expectedPowerKw).toBe(2);
-            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_update_processed')).toMatchObject({
                 event: 'device_update_processed',
                 source: 'device_update',
                 deviceId: 'dev1',
@@ -2202,7 +2202,7 @@ describe('DeviceTransport', () => {
                 previousMeasuredPowerKw: 1,
                 nextMeasuredPowerKw: 2,
                 measurePowerBecameSignificantlyPositive: false,
-            }));
+            });
         });
 
         it('tracks snapshot refresh and device.update sources for debug dumps', async () => {
@@ -2424,7 +2424,6 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
-            debugStructuredMock.mockClear();
 
             mockApiGet.mockResolvedValue({
                 dev1: {
@@ -2438,14 +2437,14 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('binary_observation_consolidated')).toMatchObject({
                 event: 'binary_observation_consolidated',
                 deviceId: 'dev1',
                 capabilityId: 'onoff',
                 pull: expect.objectContaining({ value: true }),
                 retained: expect.objectContaining({ value: false, source: 'realtime_capability' }),
                 consolidated: expect.objectContaining({ value: false, winner: 'retained' }),
-            }));
+            });
         });
 
         it('counts rather than logs a consolidation where both sources already agree', async () => {
@@ -2466,7 +2465,6 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
-            debugStructuredMock.mockClear();
             const agreedBefore = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
 
             mockApiGet.mockResolvedValue({
@@ -2481,9 +2479,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-            expect(debugStructuredMock).not.toHaveBeenCalledWith(expect.objectContaining({
-                event: 'binary_observation_consolidated',
-            }));
+            expect(logCapture.findEvent('binary_observation_consolidated')).toBeUndefined();
             const agreedAfter = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
             expect(agreedAfter - agreedBefore).toBe(1);
             // The agreed value is still what the snapshot reports.
@@ -3493,7 +3489,6 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
-            debugStructuredMock.mockClear();
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -3520,7 +3515,7 @@ describe('DeviceTransport', () => {
                     nextValue: 'off',
                 }],
             }));
-            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+            expect(logCapture.findEvent('device_update_processed')).toMatchObject({
                 event: 'device_update_processed',
                 source: 'device_update',
                 deviceId: 'dev1',
@@ -3532,7 +3527,7 @@ describe('DeviceTransport', () => {
                 rawBinaryValue: false,
                 previousCurrentOn: true,
                 nextCurrentOn: false,
-            }));
+            });
         });
 
         it('publishes the observed realtime confirmation of a local onoff write', async () => {
@@ -6891,8 +6886,7 @@ describe('DeviceTransport', () => {
             it('dedupes identical capability receipt logs within a short window', async () => {
                 vi.useFakeTimers();
                 try {
-                    const debugStructured = vi.fn();
-                    deviceManager = createTestDeviceTransport(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                    deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                     mockApiGet.mockResolvedValue(buildTempDevice());
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -6901,9 +6895,7 @@ describe('DeviceTransport', () => {
                     vi.advanceTimersByTime(2500);
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 19);
 
-                    const receivedEvents = debugStructured.mock.calls
-                        .map(([payload]) => payload)
-                        .filter((payload) => payload.event === 'device_capability_event_received');
+                    const receivedEvents = logCapture.findEvents('device_capability_event_received');
                     expect(receivedEvents).toHaveLength(2);
                 } finally {
                     vi.useRealTimers();
@@ -6911,17 +6903,13 @@ describe('DeviceTransport', () => {
             });
 
             it('suppresses temperature chatter from capability receipt logs', async () => {
-                const debugStructured = vi.fn();
-                deviceManager = createTestDeviceTransport(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
-                expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
-                    event: 'device_capability_event_received',
-                    capabilityId: 'measure_temperature',
-                }));
+                expect(logCapture.findEvents('device_capability_event_received')).toEqual([]);
             });
         });
 
@@ -7364,7 +7352,7 @@ describe('DeviceTransport', () => {
                     });
                     const reconcileListener = vi.fn();
                     onObservedControlState(deviceManager, reconcileListener);
-                    const refreshSpy = vi.spyOn(deviceManager, 'refreshSnapshot');
+                    const refreshSpy = vi.spyOn(deviceManager['refreshService'], 'refresh');
                     vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 

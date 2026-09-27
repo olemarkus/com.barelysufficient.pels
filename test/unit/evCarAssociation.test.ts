@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AssociatedCarSnapshot } from '../../packages/contracts/src/types';
+import { updateStateOfChargeObservationFreshness } from '../../lib/device/transport/stateOfCharge';
 import {
   applyAssociatedCarStateOfCharge,
   resolveAssociatedCar,
@@ -109,14 +110,17 @@ describe('applyAssociatedCarStateOfCharge', () => {
     // the report re-derives it and a smart task's cap cannot drop out between
     // two car readings.
     const snapshot = charger();
-    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), { ...reading, chargeLimitPct: 70 })).toBe(true);
+    const store = storeSnapshot(snapshot);
+    expect(applyAssociatedCarStateOfCharge(
+      eligibleCarIds, matched, store, { ...reading, chargeLimitPct: 70 },
+    )).toBe(true);
     expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
 
     expect(updateStateOfChargeObservationFreshness({ snapshot, reportedAt: 9_000 })).toBe(true);
     expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
 
     // A limit that is disproved goes with the next reading, and that is a change.
-    expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading)).toBe(true);
+    expect(applyAssociatedCarStateOfCharge(eligibleCarIds, matched, store, reading)).toBe(true);
     const level = snapshot.stateOfCharge?.level;
     expect(level?.kind === 'known' ? level.carChargeLimitPercent : 'unavailable').toBeUndefined();
   });
