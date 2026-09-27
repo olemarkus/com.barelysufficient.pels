@@ -33,6 +33,7 @@
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
+import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, isEaseeChargerDevice } from '../nativeSteppedLoadWiring';
 import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
 import { resolveDeviceClassKey } from './managerHelpers';
 
@@ -99,6 +100,16 @@ const STATE_OF_CHARGE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
 ]);
 const STATE_OF_CHARGE_CLASS_KEYS: ReadonlySet<string> = new Set(['evcharger', 'battery']);
 
+/**
+ * An Easee charger is read for its charger current: it is the charger's level and,
+ * while paused, which way its switch is (`easeeChargingSwitch.ts`). A current
+ * Homey never set leaves the charger not yet readable, like any model capability,
+ * rather than a switch read against no current.
+ */
+const EASEE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = {
+    [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: 'number',
+};
+
 const isCar = (device: HomeyDeviceLike): boolean => (
     typeof device.class === 'string' && device.class.trim().toLowerCase() === 'car'
 );
@@ -119,10 +130,11 @@ function resolveModelCapabilityTypes(
     if (classKey === null) return NO_MODEL_CAPABILITIES;
     const withTemperatureFacet = readsTemperatureFacet(capabilities);
     const withStateOfCharge = STATE_OF_CHARGE_CLASS_KEYS.has(classKey);
-    return Object.fromEntries(Object.entries(DEVICE_MODEL_CAPABILITY_TYPES).filter(([capabilityId]) => (
+    const modelTypes = Object.fromEntries(Object.entries(DEVICE_MODEL_CAPABILITY_TYPES).filter(([capabilityId]) => (
         (withTemperatureFacet || !TEMPERATURE_FACET_CAPABILITY_IDS.has(capabilityId))
         && (withStateOfCharge || !STATE_OF_CHARGE_CAPABILITY_IDS.has(capabilityId))
     )));
+    return isEaseeChargerDevice(device) ? { ...modelTypes, ...EASEE_MODEL_CAPABILITY_TYPES } : modelTypes;
 }
 
 export type DeviceReadContractViolation =

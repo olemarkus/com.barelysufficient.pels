@@ -266,7 +266,7 @@ describe('Easee native charger current', () => {
 
   it('is not a built-in control candidate without a setable charger current', () => {
     const [parsed] = createEaseeTransport(true).parseDeviceListForTests([
-      buildEaseeCharger({ target_charger_current: { value: 16, setable: false } }),
+      buildEaseeCharger({ target_charger_current: { value: 16, setable: false, lastUpdated: READ_AT } }),
     ]);
 
     expect(parsed.controlAdapter).toBeUndefined();
@@ -630,6 +630,118 @@ describe('Easee native charger current', () => {
       }, true);
 
       expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+    });
+  });
+
+  describe('charging switch in the order Easee reports it', () => {
+    const triggerFlow = vi.fn();
+
+    // A charger PELS reads over REST and then hears about in realtime. `put` holds
+    // what PELS writes, as Homey does, so a later refresh reads it back.
+    const createLiveEasee = (capabilityOverrides: DeviceCapabilityMap = {}) => {
+      let capabilityObj = buildEaseeCapabilityObj(capabilityOverrides);
+      const get = vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') return { [EASEE_ID]: { ...buildEaseeCharger(), capabilitiesObj: capabilityObj } };
+        throw new Error(`unexpected device fetch: ${path}`);
+      });
+      const put = vi.fn(async (path: string, body: unknown) => {
+        const capabilityId = path.split('/').pop() ?? '';
+        const { value } = body as { value: unknown };
+        capabilityObj = { ...capabilityObj, [capabilityId]: { ...capabilityObj[capabilityId], value, lastUpdated: new Date().toISOString() } };
+      });
+      setRestClient({ get, put });
+      const deviceManager = createEaseeTransport(true);
+      const refresh = () => deviceManager.refreshSnapshot({
+        includeLivePower: false,
+        mainMeterSelection: { state: 'unavailable' },
+      });
+      // Easee publishes a mode change: Homey dates it, then PELS hears the event.
+      const report = (capabilityId: string, value: unknown): void => {
+        capabilityObj = { ...capabilityObj, [capabilityId]: { ...capabilityObj[capabilityId], value, lastUpdated: new Date(Date.now() - 50).toISOString() } };
+        deviceManager.injectCapabilityUpdateForTest(EASEE_ID, capabilityId, value);
+      };
+      const switchOn = () => deviceManager.getSnapshot()[0]?.binaryControl;
+      return { deviceManager, put, refresh, report, switchOn };
+    };
+
+    afterEach(() => { restoreMockRestClient(); });
+
+    it('reads its own 0 A pause as off when Easee reports it before any refresh', async () => {
+      // Production, 2026-09-25 10:29:13: PELS wrote 0 A to a charger charging at
+      // 16 A. Homey echoed the current at once, and Easee reported the pause 6 s
+      // later, before the refresh that follows every command.
+      const { deviceManager, refresh, report, switchOn } = createLiveEasee();
+      await refresh();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, false, triggerFlow);
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 0);
+      report('evcharger_charging_state', 'plugged_in_paused');
+      expect(switchOn()).toEqual({ on: false });
+
+      await refresh();
+      expect(switchOn()).toEqual({ on: false });
+    });
+
+    it('reads its own resumed charger as on when Easee pauses it again holding the current', async () => {
+      // Easee pauses a charger for its own reasons (its load balancer) while it
+      // holds 6 A: on, and drawing nothing, not turned off outside PELS.
+      const { deviceManager, refresh, report, switchOn } = createLiveEasee({
+        target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
+        evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
+        evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
+      });
+      await refresh();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+      report('evcharger_charging_state', 'plugged_in_charging');
+      report('evcharger_charging_state', 'plugged_in_paused');
+
+      expect(switchOn()).toEqual({ on: true });
+    });
+
+    it('reads its own resumed charger as on when a step write repeats the current before its echo lands', async () => {
+      // The executor writes the planned step in the same pass as the switch-on
+      // (`post_activation_step`), so PELS's 6 A step write can precede Homey's echo
+      // of the 6 A resume. The echo is still the current the charger holds.
+      const { deviceManager, refresh, report, switchOn } = createLiveEasee({
+        target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
+        evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
+        evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
+      });
+      await refresh();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+      await deviceManager.requestSteppedLoadStep({
+        deviceId: EASEE_ID,
+        profile: presetProfile,
+        desiredStepId: '6a',
+        planningPowerW: 1_380,
+        planningCurrentA: 6,
+      });
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+      report('evcharger_charging_state', 'plugged_in_charging');
+      report('evcharger_charging_state', 'plugged_in_paused');
+      expect(switchOn()).toEqual({ on: true });
+    });
+
+    it('resumes by current when the plug state is not one PELS knows, never by starting a session', async () => {
+      // A start on an open session begins a new one at 32 A. Only a session known
+      // to be stopped needs a start; a current is harmless on any other.
+      const { deviceManager, put, refresh } = createLiveEasee({
+        target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
+        evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
+        evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
+      });
+      await refresh();
+      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'unplugged');
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+      expect(put.mock.calls).toEqual([[
+        `manager/devices/device/${EASEE_ID}/capability/target_charger_current`,
+        { value: 6 },
+      ]]);
     });
   });
 

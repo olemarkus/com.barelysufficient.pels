@@ -39,6 +39,27 @@ const zaptec = (capabilitiesObj: Record<string, RawCapabilityEntry>): HomeyDevic
 });
 
 describe('device-read contract', () => {
+  it('reads an Easee charger for its current, so one Homey never set is not yet readable', () => {
+    const easee = (current: unknown): HomeyDeviceLike => asRead({
+      id: 'easee-1',
+      name: 'Elbillader',
+      class: 'evcharger',
+      driverId: 'homey:app:no.easee:charger',
+      ownerUri: 'homey:app:no.easee',
+      capabilities: ['evcharger_charging', 'evcharger_charging_state', 'target_charger_current', 'measure_power'],
+      capabilitiesObj: {
+        evcharger_charging: entry(false),
+        evcharger_charging_state: entry('plugged_in_paused'),
+        target_charger_current: entry(current),
+        measure_power: entry(0),
+      },
+    });
+
+    expect(findDeviceReadContractViolation(easee(6))).toBeNull();
+    expect(findDeviceReadContractViolation(easee(null)))
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'target_charger_current' });
+  });
+
   it('accepts a read that carries a value of the model type for every declared model capability', () => {
     expect(findDeviceReadContractViolation(heater())).toBeNull();
   });

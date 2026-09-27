@@ -36,12 +36,19 @@ import {
  * control:
  *
  * - **off** writes 0 A.
- * - **on**, for a charger whose session is still open, writes 6 A, the
- *   smallest current it charges at. PELS sets its planned level from there with
- *   its ordinary step commands.
- * - **on** for a stopped session goes to the switch, which starts a new one: a
- *   charger stopped outside PELS, in the Easee app or by the car, still gets
- *   its session started again.
+ * - **on** writes 6 A, the smallest current the charger charges at. PELS sets its
+ *   planned level from there with its ordinary step commands.
+ * - **on** for a session known to be stopped (`plugged_in`) goes to the switch,
+ *   which starts a new one: a charger stopped outside PELS, in the Easee app or
+ *   by the car, still gets its session started again.
+ *
+ * A start is kept for the one state that needs it because a start on an open
+ * session opens a new one at 32 A. Easee holds a charger about 5 minutes after a
+ * current is raised before it offers the car current (production, 2026-09-25:
+ * 08:11:26 to 08:16:27 and 08:50:58 to 08:55:55), longer than PELS waits for the
+ * switch to confirm, so a retry sent as a start in that hold reset the charger.
+ * A current is harmless on any session: a stopped one just does not start, and
+ * the retry comes once the plug state says why.
  *
  * Without built-in control the switch is the app's, with one exception: a
  * session paused below 6 A (PELS's own 0 A pause, say, from before built-in
@@ -73,7 +80,7 @@ export function resolveEaseeSwitchWrite(
 ): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot)) {
     if (!desired) return PAUSE;
-    return isSessionOpen(snapshot) ? RESUME : SWITCH;
+    return snapshot.evChargingState === 'plugged_in' ? SWITCH : RESUME;
   }
   const device = trackedDevices.get(snapshot.id);
   if (!desired || device === undefined || snapshot.evChargingState !== 'plugged_in_paused') return SWITCH;
@@ -81,17 +88,6 @@ export function resolveEaseeSwitchWrite(
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
   const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]);
   return currentA !== undefined && !holdsChargingCurrent(currentA) ? RESUME : SWITCH;
-}
-
-/**
- * The charging session is still open: paused, or charging. A current resumes a
- * paused one and a start command would open a new session instead, even while
- * the charger holds off after a current was raised. Easee waits about 5 minutes
- * before it offers the car current again (production, 2026-09-25: 08:11:26 to
- * 08:16:27 and 08:50:58 to 08:55:55), so a resume must never become a start.
- */
-function isSessionOpen(snapshot: Pick<TransportDeviceSnapshot, 'evChargingState'>): boolean {
-  return snapshot.evChargingState === 'plugged_in_paused' || snapshot.evChargingState === 'plugged_in_charging';
 }
 
 /** A current the charger charges at; below it (0-5 A) the charger pauses. */
@@ -135,8 +131,8 @@ export function isEaseeUnderBuiltInControl(
  * `capabilityObj` with its charging switch read the way `isChargingSwitchOn`
  * reads it, for a charger `isEaseeUnderBuiltInControl` admits. The switch is
  * dated by the facts it was read from: the plug state, and for a paused charger
- * the current too, whichever Homey updated last. A read without a valid plug
- * state is left as it is.
+ * the current too, whichever Homey updated last. The read contract admits no
+ * Easee read without both (`transport/deviceReadContract.ts`), so both are here.
  */
 export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): DeviceCapabilityMap {
   const charging = capabilityObj.evcharger_charging;
@@ -160,6 +156,12 @@ export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): D
  * it implies. A malformed plug state or current passes through alone, for the
  * handlers that drop it, and implies nothing. For a charger
  * `isEaseeUnderBuiltInControl` admits.
+ *
+ * A pause report is read against the current the charger holds, which is the
+ * level `reportedStepId` reads from it (0-5 A is the off step). Every current
+ * report sets that level, PELS's own included: Homey's echo of a current PELS
+ * wrote is the current the charger now holds (`transport/nativeSteppedRealtime.ts`).
+ * With no level read, a pause report says nothing about the switch.
  */
 export function resolveEaseeRealtimeUpdates(
   snapshot: Pick<TransportDeviceSnapshot, 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'>,
@@ -170,9 +172,13 @@ export function resolveEaseeRealtimeUpdates(
   switch (capabilityId) {
     case 'evcharger_charging':
       return [];
-    case 'evcharger_charging_state':
+    case 'evcharger_charging_state': {
       if (!isEvChargingState(value)) return [event];
-      return [event, switchEvent(isChargingSwitchOn(value, holdsChargingStep(snapshot)))];
+      if (value !== 'plugged_in_paused') return [event, switchEvent(isChargingSwitchOn(value, false))];
+      const { reportedStepId, steppedLoadProfile } = snapshot;
+      if (reportedStepId === undefined || steppedLoadProfile === undefined) return [event];
+      return [event, switchEvent(!isSteppedLoadOffStep(steppedLoadProfile, reportedStepId))];
+    }
     case EASEE_CHARGER_CURRENT_CAPABILITY_ID: {
       const currentA = readCurrentA({ value });
       const state = snapshot.evChargingState;
@@ -182,19 +188,6 @@ export function resolveEaseeRealtimeUpdates(
     default:
       return [event];
   }
-}
-
-/**
- * Whether the charger's reported level is a charging step: the level
- * `resolveNativeSteppedLoadReportedStepId` reads from the current, which puts
- * 0-5 A on the off step.
- */
-function holdsChargingStep(
-  snapshot: Pick<TransportDeviceSnapshot, 'reportedStepId' | 'steppedLoadProfile'>,
-): boolean {
-  const { reportedStepId, steppedLoadProfile } = snapshot;
-  if (reportedStepId === undefined || steppedLoadProfile === undefined) return false;
-  return !isSteppedLoadOffStep(steppedLoadProfile, reportedStepId);
 }
 
 function switchEvent(charging: boolean): { capabilityId: string; value: unknown } {

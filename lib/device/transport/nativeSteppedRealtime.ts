@@ -199,6 +199,24 @@ function resolveNativeReportedStepPowerW(
     return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
+/**
+ * PELS's own write echoed back is no observation of the device, with one
+ * exception: an Easee charger current. Homey's echo of it is the current the
+ * charger now holds, and a paused Easee's switch is read from that current
+ * (`easeeChargingSwitch.ts`). Suppressed, the level kept the old current until
+ * the next refresh, so Easee's pause report, 6 s after PELS wrote 0 A
+ * (production, 2026-09-25), read the charger as still on.
+ */
+function isOwnWriteEcho(
+    ctx: TransportContext,
+    deviceId: string,
+    capabilityId: string,
+    normalizedValue: unknown,
+): boolean {
+    return capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID
+        && hasMatchingRecentLocalWrite(ctx, deviceId, capabilityId, normalizedValue);
+}
+
 export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -231,7 +249,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return true;
 
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
-    if (hasMatchingRecentLocalWrite(ctx, deviceId, capabilityId, normalizedValue)) {
+    if (isOwnWriteEcho(ctx, deviceId, capabilityId, normalizedValue)) {
         return isNativePowerStepUpdate;
     }
 

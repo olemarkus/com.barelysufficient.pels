@@ -443,7 +443,7 @@ function isHoiaxDevice(device: HomeyDeviceLike): boolean {
 // The Easee app also ships an Equalizer driver. Matching the app is enough:
 // only the charger driver exposes `target_charger_current`, and the candidate
 // check gates on that capability.
-function isEaseeChargerDevice(device: HomeyDeviceLike): boolean {
+export function isEaseeChargerDevice(device: HomeyDeviceLike): boolean {
   if (EASEE_OWNER_URIS.has(normalizeText(device.ownerUri ?? device.driver?.owner_uri))) return true;
   if (EASEE_OWNER_URIS.has(normalizeText(device.driverUri ?? device.driver?.uri))) return true;
   return EASEE_CHARGER_DRIVER_IDS.has(normalizeText(device.driverId ?? device.driver?.id));

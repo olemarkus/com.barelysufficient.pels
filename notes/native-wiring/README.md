@@ -47,21 +47,23 @@ capabilities instead of round-tripping through user-authored Flow cards.
   `resolveEaseeSwitchWrite` (`lib/device/easeeChargingSwitch.ts`, called
   from `transport/deviceWrites.ts`) writes `false` as 0 A, which Easee
   answers with `Paused` (`plugged_in_paused`), the session still open.
-  `true` on a charger whose session is open (`plugged_in_paused` or
-  `plugged_in_charging`) writes 6 A, the smallest current it charges at;
-  `true` on a stopped session (stopped in the Easee app or by the car)
-  still goes to the switch and starts a new one: the plan decided the
+  `true` writes 6 A, the smallest current it charges at, except on a session
+  known to be stopped (`plugged_in`: stopped in the Easee app or by the car),
+  which still goes to the switch and starts a new one: the plan decided the
   charger should run, and no current can restart a session that is gone.
-  A paused session gets current, never a start, even while the charger
+  Every other session gets current, never a start, even while the charger
   holds off: Easee waits about 5 minutes after a current is raised before
   it offers the car current again (production, 2026-09-25: 08:11:26 to
   08:16:27 and 08:50:58 to 08:55:55), longer than PELS waits for the switch
-  to confirm, and a start in that window reset the charger to 32 A. The write changes
-  only what reaches the SDK: the local-write record and the settle evidence
-  stay on `evcharger_charging`, which is also what keeps PELS's own pause
-  from reading as an outside turn-off. The current actually written is
-  recorded as a local write as well, so its Homey echo is handled like any
-  built-in step write's, not taken as an observation of the charger.
+  to confirm, and a start in that window reset the charger to 32 A. That
+  includes a plug state PELS does not know (an out-of-enum report reads as
+  none): a current is harmless on a stopped session, a start is not on an open
+  one. The write changes only what reaches the SDK: the local-write record and
+  the settle evidence stay on `evcharger_charging`, which is also what keeps
+  PELS's own pause from reading as an outside turn-off. No echo of an Easee
+  current is taken as PELS's own, whether PELS wrote it for the switch or as a
+  step (`transport/nativeSteppedRealtime.ts`): Homey's echo is the current the
+  charger now holds, and it sets the charger's level like any current report.
 
   The switch is read back (`withEaseeObservedCharging` on a read,
   `resolveEaseeRealtimeUpdates` on realtime events, both in
@@ -80,7 +82,15 @@ capabilities instead of round-tripping through user-authored Flow cards.
   at 0-5 A is off. A realtime current or plug-state report carries the switch
   it implies (the realtime path reads the held current as the reported step,
   which puts 0-5 A on the off step); the app's switch events are dropped, and
-  a malformed plug state or current implies nothing. PELS's own write to the
+  a malformed plug state or current implies nothing, as does a paused report
+  while no level has been read. A read always has the current: the read
+  contract admits no Easee read without one (`transport/deviceReadContract.ts`),
+  so a current Homey never set leaves the charger not yet readable. The level
+  must follow PELS's own current writes for this to hold: Easee reports a pause
+  about 6 s after PELS writes 0 A (production, 2026-09-25, three pauses),
+  before the refresh that follows every command, and while the echo of the
+  0 A was marked as PELS's own the level still read the old current, so the
+  pause read as on and never confirmed. PELS's own write to the
   switch is no observation of it either (`readBackAsWritten` in
   `transport/deviceWrites.ts`): a recorded local write would otherwise win
   over any later read Homey dated before it (`observationMerge`,
