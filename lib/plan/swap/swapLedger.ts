@@ -281,14 +281,14 @@ export class SwapLedger {
       return deviceMap.get(holder.targetId);
     }
     if (this.reservations.has(dev.id)) return undefined;
-    const devPriority = dev.priority ?? 100;
+    const devPriority = dev.priority;
     for (const reservation of this.reservations.values()) {
       // `settleIfKept` owns "has this swap finished", absent target included —
       // a second, quieter definition here would drop the watermark prune and
       // the settle event that branch is responsible for.
       if (this.settleIfKept(reservation.targetId, deviceMap, undefined)) continue;
       const target = deviceMap.get(reservation.targetId);
-      if (target === undefined || (target.priority ?? 100) > devPriority) continue;
+      if (target === undefined || target.priority > devPriority) continue;
       return target;
     }
     return undefined;

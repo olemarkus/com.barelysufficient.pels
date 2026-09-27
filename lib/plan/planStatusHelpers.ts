@@ -110,15 +110,9 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
   };
 };
 
-export const normalizePelsStatus = (
-  status: PelsStatus,
-  powerBucketMs: number,
-): PelsStatus => {
-  const safeBucketMs = Math.max(1, powerBucketMs);
-  const lastPowerUpdate = typeof status.lastPowerUpdate === 'number' && Number.isFinite(status.lastPowerUpdate)
-    ? Math.floor(status.lastPowerUpdate / safeBucketMs) * safeBucketMs
-    : status.lastPowerUpdate;
-
+// `lastPowerUpdate` arrives already bucketed (`PlanStatusWriter.compute`), so it
+// passes through as-is.
+export const normalizePelsStatus = (status: PelsStatus): PelsStatus => {
   return {
     ...status,
     headroomKw: roundTo(status.headroomKw, PLAN_META_KW_STEP),
@@ -131,7 +125,6 @@ export const normalizePelsStatus = (
     totalKw: roundTo(status.totalKw, PLAN_META_KW_STEP),
     controlledKw: roundTo(status.controlledKw, PLAN_META_KW_STEP),
     uncontrolledKw: roundTo(status.uncontrolledKw, PLAN_META_KW_STEP),
-    lastPowerUpdate,
   };
 };
 

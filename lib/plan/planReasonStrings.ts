@@ -4,6 +4,7 @@ import {
   type DeviceReason,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 export type ClassifiedPlanReason = {
   code: PlanReasonCode;
@@ -36,10 +37,6 @@ export function classifyPlanReason(reason: DeviceReason | undefined): Classified
     reason,
   };
 }
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 function normalizeCountdownTiming(timing?: CountdownReasonTiming): CountdownReasonTiming {
   return {

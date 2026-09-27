@@ -199,7 +199,7 @@ export function getRestoreCandidates(
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];
   return candidates.slice().sort((a, b) => {
-    const byPriority = (a.device.priority ?? 999) - (b.device.priority ?? 999);
+    const byPriority = a.device.priority - b.device.priority;
     if (byPriority !== 0) return byPriority;
     // Defensive tiebreak for partial/legacy inputs, shared with shed. Normal
     // active-home plan inputs already carry unique relative ranks.

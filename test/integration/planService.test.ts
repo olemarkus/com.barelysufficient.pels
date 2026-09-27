@@ -49,6 +49,17 @@ import {
 import type { PendingBinaryLiveDevice } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
+import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
+
+// What the executor returns for one plan application; a case overrides the counts it cares about.
+const actuation = (counts: Partial<PlanActuationResult> = {}): PlanActuationResult => ({
+  deviceWriteCount: 0,
+  commandRequestCount: 0,
+  deviceApplyFailureCount: 0,
+  writtenDeviceIds: [],
+  ...counts,
+});
+
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
 const unavailableBinaryConfirmations = (
@@ -126,7 +137,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     }),
     getPlanDevices: () => [],
@@ -175,7 +186,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -236,7 +247,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -362,7 +373,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       loggers: { debugStructured },
@@ -403,7 +414,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -458,7 +469,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -522,7 +533,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -573,7 +584,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -606,7 +617,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -645,7 +656,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -697,7 +708,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured,
@@ -731,7 +742,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       overviewDebugStructured: undefined,
@@ -784,7 +795,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
@@ -966,7 +977,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockImplementation(async () => {
           currentOn = true;
-          return { deviceWriteCount: 1 };
+          return actuation({ deviceWriteCount: 1 });
         }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
@@ -1007,7 +1018,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -1063,7 +1074,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
       getPlanDevices: () => [],
@@ -1096,7 +1107,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -1125,7 +1136,7 @@ describe('PlanService', () => {
   });
 
   it('does not publish drifted live state as the committed snapshot', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const realtime = vi.fn().mockResolvedValue(undefined);
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
@@ -1213,7 +1224,7 @@ describe('PlanService', () => {
     // the queued body, at the point of use — must prevent the now-stale actuation
     // (R7b P1 TOCTOU), and `onAbort` must fire so the caller can tell an abort
     // from an ordinary no-op.
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const onAbort = vi.fn();
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
@@ -1338,7 +1349,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingTargetCommands: vi.fn(() => true),
         syncPendingTargetCommands: vi.fn(() => true),
@@ -1438,7 +1449,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingTargetCommands: vi.fn(() => hasPendingTargetCommands),
         syncPendingTargetCommands: vi.fn(() => {
@@ -1510,7 +1521,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
@@ -1591,7 +1602,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => hasPendingBinaryCommands),
         syncPendingBinaryCommands: vi.fn(() => {
@@ -1645,6 +1656,7 @@ describe('PlanService', () => {
         'dev-1': true,
         'dev-2': false,
       };
+      return actuation();
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
         withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
@@ -1788,6 +1800,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = true;
+      return actuation();
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
@@ -1876,6 +1889,7 @@ describe('PlanService', () => {
         'dev-1': true,
         'dev-2': false,
       };
+      return actuation();
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
         withFixtureResidualKw({ available: true, currentDrawKw: 0,
@@ -2017,6 +2031,7 @@ describe('PlanService', () => {
         'dev-1': true,
         'dev-2': false,
       };
+      return actuation();
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [
         withFixtureResidualKw({ currentDrawKw: 0,
@@ -2160,6 +2175,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = false;
+      return actuation();
     });
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
@@ -2244,8 +2260,8 @@ describe('PlanService', () => {
 
   it('queues external shedding behind an in-flight rebuild', async () => {
     let resolveApply: (() => void) | undefined;
-    const applyPlanActions = vi.fn().mockImplementation(async () => new Promise<void>((resolve) => {
-      resolveApply = resolve;
+    const applyPlanActions = vi.fn().mockImplementation(async () => new Promise<PlanActuationResult>((resolve) => {
+      resolveApply = () => resolve(actuation());
     }));
     const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
@@ -2309,7 +2325,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       hasPendingTargetCommands: vi.fn(() => true),
       syncPendingTargetCommands,
@@ -2405,7 +2421,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         syncPendingTargetCommands,
         syncPendingBinaryCommands,
@@ -2497,7 +2513,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands,
@@ -2546,7 +2562,7 @@ describe('PlanService', () => {
 
   it('skips applyPlanActions on identical rebuilds', async () => {
     const settingsSet = vi.fn();
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
@@ -2597,7 +2613,7 @@ describe('PlanService', () => {
     // breached the hard cap in production (inc_26449fb9). The observation that
     // moved is itself a rebuild trigger; the re-decide is the honest answer, so
     // this cycle must decline.
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const liveDeviceBase = {
       control: fixtureControlPosture({ controllable: true }), available: true,
       id: 'dev-1',
@@ -2695,7 +2711,7 @@ describe('PlanService', () => {
   });
 
   it('actuates on a detail-only rebuild when the device drifted from plan intent', async () => {
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const liveDeviceBase = {
       control: fixtureControlPosture({ controllable: true }), available: true,
       id: 'dev-1',
@@ -2847,7 +2863,7 @@ describe('PlanService', () => {
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(13);
-        return { deviceWriteCount: 1 };
+        return actuation({ deviceWriteCount: 1 });
       }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
@@ -2903,7 +2919,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -3013,7 +3029,7 @@ describe('PlanService', () => {
             computeShortfallThreshold: vi.fn(() => 0),
             handleShortfall: vi.fn().mockResolvedValue(undefined),
             handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-            applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+            applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
             applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
           },
         };
@@ -3131,7 +3147,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 2 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 2 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
     });
@@ -3170,7 +3186,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0, commandRequestCount: 1 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0, commandRequestCount: 1 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       }),
     });
@@ -3203,52 +3219,6 @@ describe('PlanService', () => {
     }));
   });
 
-  it('normalizes non-finite actuation counts to zero in rebuild logs and traces', async () => {
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
-      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi
-          .fn()
-          .mockResolvedValueOnce(buildPlan(20, 'keep'))
-          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({
-          deviceWriteCount: Number.NaN,
-          commandRequestCount: Number.POSITIVE_INFINITY,
-        }),
-        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      }),
-    });
-
-    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
-    structuredLog.info.mockClear();
-    structuredLog.debug.mockClear();
-
-    await service.rebuildPlanFromCache('power_delta');
-
-    expect((deps.planEngine.applyPlanActions as Mock)).toHaveBeenCalled();
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'plan_rebuild_completed',
-      reasonCode: 'power_delta',
-      appliedActions: false,
-      deviceWriteCount: 0,
-      commandRequestCount: 0,
-    }));
-
-    const trace = getRecentPlanRebuildTraces(1)[0];
-    expect(trace).toEqual(expect.objectContaining({
-      reason: 'power_delta',
-      appliedActions: false,
-      deviceWriteCount: 0,
-      commandRequestCount: 0,
-    }));
-  });
-
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
@@ -3270,7 +3240,7 @@ describe('PlanService', () => {
 
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
-    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1 });
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 1 }));
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3329,7 +3299,7 @@ describe('PlanService', () => {
 
   it('does not call schedulePostActuationRefresh after rebuild actuation when no writes occur', async () => {
     const schedulePostActuationRefresh = vi.fn();
-    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 }));
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3403,7 +3373,7 @@ describe('PlanService', () => {
       binaryControl: { on: true },
       currentOn: true,
     });
-    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 }));
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
@@ -3468,7 +3438,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     // Report a real device write so the rebuild resolves `appliedActions: true` —
     // the post-actuation refresh is gated on having actually written.
-    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1, commandRequestCount: 0 });
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 1, commandRequestCount: 0 }));
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3548,7 +3518,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         applySheddingToDevice,
       }),
       getPlanDevices: () => [],
@@ -3584,7 +3554,7 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice,
       }),
       getPlanDevices: () => [],
@@ -3628,7 +3598,7 @@ describe('rebuild ordering', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         syncPendingBinaryCommands,
       }),

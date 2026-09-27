@@ -252,8 +252,8 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
   const aPreemptive = a.kind === 'stepped' && a.preemptiveStepDown;
   const bPreemptive = b.kind === 'stepped' && b.preemptiveStepDown;
   if (aPreemptive !== bPreemptive) return Number(bPreemptive) - Number(aPreemptive);
-  const pa = a.priority ?? 100;
-  const pb = b.priority ?? 100;
+  const pa = a.priority;
+  const pb = b.priority;
   if (pa !== pb) return pb - pa; // Higher number sheds first
   if (a.recentlyRestored !== b.recentlyRestored) {
     return Number(a.recentlyRestored) - Number(b.recentlyRestored);

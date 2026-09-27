@@ -30,6 +30,7 @@ import {
   resolveHighestStepWithinKw,
   resolveStepPowerKw,
 } from './planSteppedLoad';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 // A surplus LIFT is a setpoint raise, so it only means anything on a device with
 // a temperature target to raise. This is the one place the question is asked;
@@ -53,12 +54,6 @@ export type PriceOptDeviceConfig = {
 };
 
 type SurplusConfig = Pick<PriceOptDeviceConfig, 'surplusWilling' | 'surplusDelta'>;
-
-// Local guard — kept off lib/utils so this new plan module stays self-contained
-// (per the lib/plan ↛ lib/utils path rule).
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const positiveOrZero = (value: unknown): number => (isFiniteNumber(value) && value > 0 ? value : 0);
 

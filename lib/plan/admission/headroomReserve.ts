@@ -50,7 +50,6 @@ import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionM
 
 const logger = getLogger('plan/headroom-reserve');
 
-const DEFAULT_PRIORITY = 100;
 
 // Fallback release test for devices with no step axis: a device counts as running once its
 // OBSERVED draw reaches half its startup power — comfortably past standby/trickle, yet tolerant of
@@ -165,7 +164,7 @@ function resolveReserveForDevice(params: {
     reserve: {
       deviceId: device.id,
       deviceName: device.name,
-      priority: device.priority ?? DEFAULT_PRIORITY,
+      priority: device.priority,
       kw: startupKw,
     },
   };
@@ -180,7 +179,7 @@ function claimingReserves(
   dev: Pick<DevicePlanDevice, 'id' | 'priority'>,
   reserves: readonly HeadroomReserve[],
 ): HeadroomReserve[] {
-  const devPriority = dev.priority ?? DEFAULT_PRIORITY;
+  const devPriority = dev.priority;
   // lower number = more important
   return reserves.filter((reserve) => reserve.deviceId !== dev.id && reserve.priority < devPriority);
 }

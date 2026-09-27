@@ -15,7 +15,6 @@ import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
-import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { getLogger, withRebuildContext } from '../logging/logger';
 import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
 import type { PublishedPlan } from './publishedPlan';
@@ -191,18 +190,14 @@ async function buildPlanForRebuild(
   const liveDevices = host.deps.getPlanDevices();
   planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
   const buildStart = Date.now();
-  if (planEngine.state) {
-    // Restore/target planning reads the active rebuild trigger from shared plan state so
-    // nested helpers do not need another plumbing parameter through the entire call stack.
-    planEngine.state.currentRebuildTrigger = trigger;
-  }
+  // Restore/target planning reads the active rebuild trigger from shared plan state so
+  // nested helpers do not need another plumbing parameter through the entire call stack.
+  planEngine.state.currentRebuildTrigger = trigger;
   let plan: DevicePlan;
   try {
     plan = await planEngine.buildDevicePlanSnapshot(liveDevices);
   } finally {
-    if (planEngine.state) {
-      planEngine.state.currentRebuildTrigger = null;
-    }
+    planEngine.state.currentRebuildTrigger = null;
   }
   planEngine.prunePendingTargetCommands(plan);
   plan = planEngine.decoratePlanWithPendingTargetCommands(plan);
@@ -333,14 +328,7 @@ async function maybeApplyPlanChanges(
   let writtenDeviceIds: string[] = [];
   try {
     const actuation = await host.deps.planEngine.applyPlanActions(plan);
-    const rawDeviceWriteCount = actuation?.deviceWriteCount;
-    const rawCommandRequestCount = actuation?.commandRequestCount;
-    deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);
-    commandRequestCount = sanitizeActuationCount(rawCommandRequestCount);
-    deviceApplyFailureCount = sanitizeActuationCount(actuation?.deviceApplyFailureCount);
-    writtenDeviceIds = Array.isArray(actuation?.writtenDeviceIds)
-      ? actuation.writtenDeviceIds.filter((id): id is string => typeof id === 'string')
-      : [];
+    ({ deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds } = actuation);
     appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
     if (appliedActions) {
       host.deps.schedulePostActuationRefresh?.();
@@ -395,6 +383,3 @@ function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): boolean {
   return true;
 }
 
-function sanitizeActuationCount(value: unknown): number {
-  return isFiniteNumber(value) ? Math.max(0, Math.trunc(value)) : 0;
-}

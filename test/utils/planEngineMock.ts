@@ -54,7 +54,9 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   computeShortfallThreshold: vi.fn(() => 0),
   handleShortfall: vi.fn().mockResolvedValue(undefined),
   handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-  applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0, commandRequestCount: 0, appliedActions: false }),
+  applyPlanActions: vi.fn().mockResolvedValue({
+    deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
+  }),
   applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
   hasPendingTargetCommands: vi.fn(() => false),
   hasPendingTargetCommandsOlderThan: vi.fn(() => false),

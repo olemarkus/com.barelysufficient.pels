@@ -165,7 +165,7 @@ export class PlanStatusWriter {
 
     return {
       status,
-      statusJson: JSON.stringify(normalizePelsStatus(status, STATUS_POWER_BUCKET_MS)),
+      statusJson: JSON.stringify(normalizePelsStatus(status)),
       dryRunEffective,
       powerIsMeasured: plan.meta.powerIsMeasured,
     };

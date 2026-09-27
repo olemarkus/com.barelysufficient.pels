@@ -29,13 +29,13 @@ export function compareDeviceIdAsc(a: { id: string }, b: { id: string }): number
 }
 
 function compareByPriorityAsc(a: DevicePlanDevice, b: DevicePlanDevice): number {
-  const byPriority = (a.priority ?? 999) - (b.priority ?? 999);
+  const byPriority = a.priority - b.priority;
   if (byPriority !== 0) return byPriority;
   return compareDeviceIdAsc(a, b);
 }
 
 function compareByPriorityDesc(a: DevicePlanDevice, b: DevicePlanDevice): number {
-  const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
+  const byPriority = b.priority - a.priority;
   if (byPriority !== 0) return byPriority;
   return compareDeviceIdAsc(a, b);
 }

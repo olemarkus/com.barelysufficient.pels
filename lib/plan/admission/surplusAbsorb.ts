@@ -1,13 +1,8 @@
 import type { PlanEngineState, SurplusEligibilityState } from '../planState';
 import { getLogger } from '../../logging/logger';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 const logger = getLogger('plan/surplus-absorb');
-
-// Local guard — kept off lib/utils so this admission module stays self-contained
-// (per the lib/plan ↛ lib/utils path rule).
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 /**
  * Surplus-absorb eligibility gate — "reverse admission".
