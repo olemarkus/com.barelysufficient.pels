@@ -98,58 +98,6 @@ export const applyTargetUpdate = async (
   return applyTargetUpdatePlan(ctx, action, options);
 };
 
-export const trySetShedTemperature = async (
-  ctx: PlanExecutorTargetContext,
-  params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature' | undefined;
-    shedTemp: number | null;
-    canSetShedTemp: boolean;
-  },
-): Promise<PlanActionHandleResult> => {
-  const {
-    deviceId,
-    name,
-    target,
-    shedTemp,
-    canSetShedTemp,
-  } = params;
-  if (!canSetShedTemp || !target || shedTemp === null) return { handled: false, wrote: false };
-  const now = Date.now();
-  try {
-    const observedValue = ctx.getObservedTemperatureValue(deviceId);
-    const result = await dispatchTargetCommand(ctx, {
-      deviceId,
-      name,
-      target,
-      desired: shedTemp,
-      observedValue,
-      skipContext: 'shedding',
-    });
-    if (!result.applied) return { handled: result.reason === 'skipped', wrote: false };
-    logger.info({
-      event: 'target_command_applied',
-      deviceId,
-      deviceName: name,
-      target,
-      targetValue: result.requestedValue,
-      previousValue: observedValue ?? null,
-      attemptType: result.attemptType,
-      reasonCode: 'shedding',
-    });
-    ctx.recordShedActuation(deviceId, name, now);
-    return { handled: true, wrote: true };
-  } catch (error) {
-    logger.error({
-      event: 'executor_target_error',
-      msg: `Failed to set shed temperature for ${name} via DeviceTransport`,
-      err: error,
-    });
-    return { handled: false, wrote: false };
-  }
-};
-
 export const dispatchTargetCommand = async (
   ctx: PlanExecutorTargetContext,
   params: {

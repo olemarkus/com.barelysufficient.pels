@@ -117,7 +117,7 @@ lib/executor/lifecycleFallbackDispatcher.ts 3
 lib/executor/lifecycleReleaseRecording.ts 1
 lib/executor/planExecutionDrift.ts 3
 lib/executor/planExecutor.ts 4
-lib/executor/planExecutorDispatch.ts 3
+lib/executor/planExecutorDispatch.ts 2
 lib/executor/shedReleaseActuation.ts 5
 lib/executor/steppedCommandAttempt.ts 1
 lib/executor/steppedCommandState.ts 6
@@ -127,7 +127,7 @@ lib/executor/steppedLoadExecutorCommand.ts 1
 lib/executor/steppedLoadExecutorContext.ts 2
 lib/executor/steppedLoadExecutorRestore.ts 4
 lib/executor/targetCommandRetry.ts 4
-lib/executor/targetExecutor.ts 4
+lib/executor/targetExecutor.ts 3
 lib/executor/targetPendingCommand.ts 1
 lib/executor/targetPowerReachability.ts 4
 lib/logging/deviationGate.ts 1

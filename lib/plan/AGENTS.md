@@ -157,15 +157,14 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   the change. The executor needs no lane of its own for this: in production `applyPlanActions` is
   reached only from `maybeApplyPlanChanges`, so every executor tick already IS a rebuild.
 
-  Two asymmetries to know about, and they are the same shape. `rebuildPlanFromCache` consults
-  `planBuildGate` while the public `buildDevicePlanSnapshot` on the same class does not; and
-  `maybeApplyPlanChanges` decides before actuating while the public `PlanService.applyPlanActions`
-  (re-exposed as `protected` on `AppRuntimeApi`) actuates a plan handed to it. Neither has a
-  production caller — `applyPlanActions` survives because `test/integration/plan.test.ts` drives the
-  executor through it with hand-built plans — so nothing is wrong today. But the second one is
-  literally an apply-without-decide door, and the difference is invisible at the call site. If you
-  reach for either, route it through the gate or make it non-public rather than adding a second
-  door; do not let a production caller grow onto `applyPlanActions`.
+  One asymmetry to know about: `rebuildPlanFromCache` consults `planBuildGate` while the public
+  `buildDevicePlanSnapshot` on the same class does not. It has no production caller, so nothing is
+  wrong today; if you reach for it, route it through the gate or make it non-public. No host or
+  API door actuates a plan handed in from outside: `PlanService.applyPlanActions` and
+  `applySheddingToDevice`, and their `protected` re-exposure on `AppRuntimeApi`, were test-only
+  apply-without-decide doors and are gone. A test that wants to drive the executor with a hand-built
+  plan calls the plan engine's `applyPlanActions`, which is the executor path the rebuild itself
+  uses. Do not reopen a door above it.
 
   `planLiveStateMerge.ts` is the trap adjacent to this rule: it merges observations onto a plan
   while carrying the decision fields through untouched, so its output is by construction the OLD

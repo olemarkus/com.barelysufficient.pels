@@ -2,6 +2,14 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type MyApp from '../../app.ts';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
+import type { PlanExecutor } from '../../lib/executor/planExecutor';
+
+// The engine's real executor. `ComposedPlanEngine` types its `executor` field as
+// the slice the engine calls, and the binary shed entry is reached through the
+// plan dispatch, not through the engine.
+const executorOf = (app: { planEngine: unknown }): PlanExecutor => (
+  (app.planEngine as ComposedPlanEngine)['executor'] as unknown as PlanExecutor
+);
 /**
  * @vitest-environment node
  */
@@ -1329,7 +1337,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     const spy = vi
-      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .spyOn(executorOf(app), 'applySheddingToDevice')
       .mockResolvedValue(false);
 
     const plan: DevicePlan = {
@@ -1347,30 +1355,8 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
-    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
-  });
-
-  it('applies shed temperature via actuator when configured to avoid turning off', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
-    await dev1.setCapabilityValue('measure_power', 1000);
-    await dev1.setCapabilityValue('target_temperature', 20);
-    await dev1.setCapabilityValue('onoff', true);
-
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [dev1]),
-    });
-
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
-    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 12 } });
-
-    const app = createApp();
-    await app.onInit();
-
-    await app['applySheddingToDevice']('dev-1', 'Heater A', 'test overshoot');
-
-    expect(await dev1.getCapabilityValue('target_temperature')).toBe(12);
-    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+    await app.planEngine.applyPlanActions(plan);
+    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A');
   });
 
   it('does not plan swaps using devices constrained to minimum temperature shedding', async () => {
@@ -1590,7 +1576,7 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
       { value: true },
@@ -1689,12 +1675,12 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 1;
 
     const shedSpy = vi
-      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .spyOn(executorOf(app), 'applySheddingToDevice')
       .mockResolvedValue(false);
 
     await app['powerSamplePipeline'].recordPowerSample(2000);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
     const plan = getLatestPlanSnapshotForTests();
     const planned = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(planned?.plannedState).toBe('shed');
@@ -1724,7 +1710,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 3.1;
 
     const shedSpy = vi
-      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .spyOn(executorOf(app), 'applySheddingToDevice')
       .mockResolvedValue(false);
 
     await app['powerSamplePipeline'].recordPowerSample(5630); // 5.63 kW total
@@ -1732,8 +1718,8 @@ describe('Device plan snapshot', () => {
     const plan = getLatestPlanSnapshotForTests();
     const shedIds = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
     expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
-    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined, { planDecidedBinaryOff: true });
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
+    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B');
   });
 
   it('does not shed additional devices without a new power sample after an initial shed', async () => {
@@ -1850,7 +1836,7 @@ describe('Device plan snapshot', () => {
       controllable: true,
     }]);
 
-    await app['applySheddingToDevice']('dev-1', 'Heater A');
+    await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
     app.deviceManager.setSnapshotForTests([{
       available: true,
@@ -1864,7 +1850,7 @@ describe('Device plan snapshot', () => {
       binaryControl: { on: true },
       controllable: true,
     }]);
-    await app['applySheddingToDevice']('dev-1', 'Heater A');
+    await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
@@ -1889,7 +1875,7 @@ describe('Device plan snapshot', () => {
       controllable: true,
     }]);
 
-    await app['applySheddingToDevice']('dev-1', 'No On/Off Device');
+    await executorOf(app).applySheddingToDevice('dev-1', 'No On/Off Device');
 
     expect(putSpy).not.toHaveBeenCalled();
     const after = app.planEngine.state.actuation.lastDeviceShedMs['dev-1'];
@@ -2007,13 +1993,15 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 3;
 
     const shedSpy = vi
-      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .spyOn(executorOf(app), 'applySheddingToDevice')
       .mockResolvedValue(false);
 
     await app['powerSamplePipeline'].recordPowerSample(6300);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined, { planDecidedBinaryOff: true });
-    expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
+    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device');
+    // The already-off device is dispatched too, because the plan holds it off;
+    // whether a write follows is the executor's convergence check, which this
+    // spy (mocked) does not exercise.
   });
 
   it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
@@ -2266,7 +2254,7 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -2315,7 +2303,7 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -3177,7 +3165,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Spy on applyPlanActions
-    const applyPlanSpy = vi.spyOn(app as unknown as Record<'applyPlanActions', (...args: never[]) => Promise<void>>, 'applyPlanActions');
+    const applyPlanSpy = vi.spyOn(app.planEngine, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
     app.deviceManager.setSnapshotForTests([
@@ -3295,7 +3283,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Directly call applySheddingToDevice
-    await app['applySheddingToDevice']('dev-1', 'Heater A', 'test');
+    await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
 
     // Device should still be on (no actual shedding)
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
@@ -3688,7 +3676,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -3742,7 +3730,7 @@ describe('Dry run mode', () => {
     // Now try to apply the plan
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     // The device should be restored because:
     // - Headroom: 2.2 kW
@@ -4090,7 +4078,7 @@ describe('Dry run mode', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -4158,7 +4146,7 @@ describe('Dry run mode', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -4233,7 +4221,7 @@ describe('Dry run mode', () => {
       ],
     };
 
-    await app['applyPlanActions'](plan);
+    await app.planEngine.applyPlanActions(plan);
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -4282,7 +4270,7 @@ describe('Dry run mode', () => {
       return undefined;
     });
 
-    vi.spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice').mockImplementation(callback);
+    vi.spyOn(executorOf(app), 'applySheddingToDevice').mockImplementation(callback);
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4312,13 +4300,13 @@ describe('Dry run mode', () => {
       ],
     };
 
-    await expect(app['applyPlanActions'](plan)).resolves.toEqual(expect.objectContaining({
+    await expect(app.planEngine.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
     expect(callback).toHaveBeenCalledTimes(2);
-    expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined, { planDecidedBinaryOff: true });
-    expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined, { planDecidedBinaryOff: true });
+    expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device');
+    expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device');
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority set-temperature device', async () => {

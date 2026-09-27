@@ -26,7 +26,7 @@ import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import { getDebugEmitter, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { StructuredDebugEmitter, Logger as PinoLogger } from '../lib/logging/logger';
-import type { DevicePlan, PendingTargetObservationSource } from '../lib/plan/planTypes';
+import type { PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
 import {
@@ -199,12 +199,6 @@ abstract class AppRuntimeApi extends Base {
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
     return this.requirePlanService().syncLivePlanStateInline(source);
   }
-  // Protected compatibility seams for integration coverage of plan execution.
-  // Production control enters through PlanService rebuilds, not the host API.
-  protected applyPlanActions = (plan: DevicePlan) => this.requirePlanService().applyPlanActions(plan);
-  protected applySheddingToDevice = (deviceId: string, deviceName: string, reason?: string) => (
-    this.requirePlanService().applySheddingToDevice(deviceId, deviceName, reason)
-  );
   public evaluateHeadroomForDevice(
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) {

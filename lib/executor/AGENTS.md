@@ -26,24 +26,25 @@
   saw `import type { ShedAction, ShedBehavior }` in `shedReleaseActuation.ts`. Policy is read at five
   sites today: `shedReleaseActuation.ts` (three `behavior.action` branches, plus the module comment
   that says outright "the executor resolves the concrete actuation primitive at apply time from
-  getShedBehavior()"), `lifecycleFallbackDispatcher.ts`, and `planExecutorDispatch.ts`
-  (`applySheddingToDeviceImpl`, which decides its own end state outside any plan — and the ordinary
-  plan-driven binary shed routes through it). `getShedBehavior` is a `PlanExecutorDeps` member.
+  getShedBehavior()"), `lifecycleFallbackDispatcher.ts`, and — until 2026-09-27, see below —
+  `planExecutorDispatch.ts` (`applySheddingToDeviceImpl`). `getShedBehavior` is a
+  `PlanExecutorDeps` member.
 
-  **PARTLY CLOSED (2026-09-10): the plan-driven binary shed no longer reads policy.**
-  `applySheddingToDeviceImpl` takes `{ planDecidedBinaryOff }`, set only by `applyBinaryShedIntent`,
-  and skips the `getShedBehavior` read entirely on that path. It had to: a binary shed intent exists
-  only when `plannedShedTargetKind` is not `target_value`, so re-reading the owner's configured
-  behaviour could only contradict the plan — and did. A thermostat with an on/off handle and a
+  **The binary shed dispatch no longer reads policy (2026-09-10, finished 2026-09-27).**
+  `applySheddingToDeviceImpl` (`planExecutorDispatch.ts`) only ever turns a device off: it is how a
+  plan's binary shed intent is carried out, and a binary shed intent exists only when
+  `plannedShedTargetKind` is not `target_value`, so re-reading the owner's configured behaviour
+  could only contradict the plan — and did. A thermostat with an on/off handle and a
   `set_temperature` floor was written to its setback and left running under a plan that said off,
-  which is how the "Only PELS starts this device" hold failed to turn one off at all. The plan-less
-  callers (the smart-task lifecycle release, the runtime API) still resolve policy here, because
-  they shed a device outside any plan and nothing has stamped their end state.
+  which is how the "Only PELS starts this device" hold failed to turn one off at all. The
+  policy-reading arm it kept for plan-less callers is gone with the one caller that used it, the
+  test-only runtime API seam; the smart-task lifecycle release never went through it.
 
-  Closing the rest is a stage of the planner/executor seam train: the planner stamps the shed end
-  state for the release path as it already does for the plan path (`plannedShedTargetKind`),
-  `getShedBehavior` leaves `PlanExecutorDeps`, and a `check-shed-policy-seam` guard replaces the
-  grep — a case-sensitive grep is not an enforcement mechanism. Do not add a sixth site meanwhile.
+  Policy is still read in `shedReleaseActuation.ts` and `lifecycleFallbackDispatcher.ts`. Closing
+  those is a stage of the planner/executor seam train: the planner stamps the shed end state for the
+  release path as it already does for the plan path (`plannedShedTargetKind`), `getShedBehavior`
+  leaves `PlanExecutorDeps`, and a `check-shed-policy-seam` guard replaces the grep — a
+  case-sensitive grep is not an enforcement mechanism. Do not add another site meanwhile.
 
 - **Converging observed state onto desired state is this layer's charter, and it is unconditional.**
   `executorConvergence.ts` answers "does the executor still have work to do?" (and the settle

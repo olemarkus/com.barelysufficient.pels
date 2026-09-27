@@ -132,8 +132,8 @@ const applyShedReleaseTemperature = async (params: {
     isRestoring: false,
   }, { forceAgainstReleasedOpposing });
   if (wrote) {
-    // applyTargetUpdate only records on the restore axis. Mirror trySetShedTemperature's
-    // diagnostics: the per-device `pels_shed` event must fire for the release write so
+    // applyTargetUpdate only records on the restore axis. Record the shed here too, as
+    // any shed write does: the per-device `pels_shed` event must fire for the release write so
     // forensic traces and per-device actuation counters stay accurate.
     deps.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
   }

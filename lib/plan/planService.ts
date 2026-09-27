@@ -75,7 +75,6 @@ import type {
   HeadroomCardQuery,
   HeadroomForDeviceDecision,
 } from './planHeadroomDevice';
-import type { PlanActuationResult } from '../planContract/planActuationResult';
 import { PlanChangeTracker } from './planChangeTracker';
 import { emitDeviceOverviewTransitions } from './planOverviewEmit';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
@@ -326,23 +325,6 @@ export class PlanService {
     this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
     this.emitPlanUpdated(refreshedPlan);
     return true;
-  }
-
-  applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
-    return this.withHomeLogContext(() => this.deps.planEngine.applyPlanActions(plan));
-  }
-
-  applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<void> {
-    return this.enqueuePlanOperation(
-      async () => {
-        const wrote = await this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
-        if (wrote) {
-          this.deps.schedulePostActuationRefresh?.();
-        }
-      },
-      `Failed to apply shedding to ${deviceName}`,
-      undefined,
-    );
   }
 
   evaluateHeadroomForDevice(query: HeadroomCardQuery): HeadroomForDeviceDecision {

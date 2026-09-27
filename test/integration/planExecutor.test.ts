@@ -1392,38 +1392,6 @@ describe('PlanExecutor pending target commands', () => {
     }));
   });
 
-  it('falls back to turn_off shedding when a shed temperature write fails', async () => {
-    const state = createPlanEngineState();
-    const failure = new Error('Device offline');
-    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
-      {
-        id: 'dev-1',
-        expectedPowerKw: 1,
-        name: 'Heater',
-        binaryCapabilityId: 'onoff',
-        canSetControl: true,
-        available: true,
-        binaryControl: { on: true },
-        targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
-      },
-    ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
-    });
-    deviceManager.setCapability.mockImplementation(async (_deviceId: string, capabilityId: string) => {
-      if (capabilityId === 'target_temperature') throw failure;
-    });
-
-    await executor.applySheddingToDevice('dev-1', 'Heater');
-
-    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(1, 'dev-1', 'target_temperature', 15);
-    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(2, 'dev-1', 'onoff', false);
-    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      target: 'temperature',
-      desired: 15,
-      status: 'temporary_unavailable',
-    });
-  });
-
   it('issues the binary off the plan decided, not the configured shed temperature', async () => {
     // "Only PELS starts this device" sheds to OFF, never to the owner's
     // power-limiting floor, and the plan says so: `plannedShedTargetKind` is
@@ -1472,27 +1440,6 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 16);
-  });
-
-  it('does not fall back to turn_off when shed temperature is already applied', async () => {
-    const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
-      {
-        id: 'dev-1',
-        expectedPowerKw: 1,
-        name: 'Heater',
-        binaryCapabilityId: 'onoff',
-        canSetControl: true,
-        available: true,
-        binaryControl: { on: true },
-        targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
-      },
-    ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
-    });
-
-    await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(false);
-
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
   it('sheds a device the planner escalated to off seconds after its last shed write', async () => {

@@ -52,8 +52,7 @@ export type PlanEngineComposition = {
     | 'hasStablePlanActuation'
     | 'handleConfirmedBinaryCommand'
     | 'driftObservationDeps'
-    | 'getObservationRevision'
-    | 'applySheddingToDevice'>;
+    | 'getObservationRevision'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   debugStructured?: StructuredDebugEmitter;
   structuredLog?: PinoLogger;
@@ -233,10 +232,6 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public syncHeadroomUsageObservation(deviceId: string, usageKw: number): void {
     syncHeadroomUsageObservation(this.state, deviceId, usageKw, Date.now(), this.deviceDiagnostics);
-  }
-
-  public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
-    return this.executor.applySheddingToDevice(deviceId, deviceName, reason);
   }
 
   public beginStartupRestoreStabilization(nowMs: number): void {

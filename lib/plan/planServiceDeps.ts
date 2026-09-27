@@ -41,7 +41,6 @@ type PlanServicePlanEngine = Pick<
   | 'decoratePlanWithPendingTargetCommands'
   | 'hasPendingTargetCommands'
   | 'hasPendingBinaryCommands'
-  | 'applySheddingToDevice'
   | 'evaluateHeadroomForDevice'
   | 'syncHeadroomCardState'
   | 'syncHeadroomUsageObservation'

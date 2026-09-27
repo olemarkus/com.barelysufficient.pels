@@ -29,7 +29,6 @@ import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   applyShedTemperaturePlan,
   applyTargetUpdate,
-  trySetShedTemperature,
   type PlanExecutorTargetContext,
 } from './targetExecutor';
 import {
@@ -75,11 +74,6 @@ const logger = getLogger('executor/plan');
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
-type PlanActionHandleResult = {
-  handled: boolean;
-  wrote: boolean;
-};
-
 /**
  * The capabilities the dispatch free functions need from the owning
  * `PlanExecutor`. Context builders, recorders, and snapshot/state reads stay on
@@ -107,12 +101,7 @@ export type PlanExecutorCore = {
   flushLastControlledPersistence: () => void;
   // Routes through the spyable instance method so `applyPlanActions` → binary shed
   // still hits any test spy on `executor.applySheddingToDevice`.
-  applySheddingToDevice: (
-    deviceId: string,
-    deviceName: string,
-    reason?: string,
-    options?: ShedDispatchOptions,
-  ) => Promise<boolean>;
+  applySheddingToDevice: (deviceId: string, deviceName: string) => Promise<boolean>;
 };
 
 /**
@@ -261,7 +250,7 @@ const applyBinaryShedIntent = async (
   // thermostat with an on/off handle and a `set_temperature` floor was written to
   // its setback and left running under a plan that said off, which is how the
   // start-policy hold failed to turn one off at all.
-  return core.applySheddingToDevice(intent.deviceId, intent.name, undefined, { planDecidedBinaryOff: true });
+  return core.applySheddingToDevice(intent.deviceId, intent.name);
 };
 
 const dispatchSteppedLoadCommand = async (
@@ -496,24 +485,16 @@ export const dispatchPlanActions = async (
 };
 
 /**
- * How much of the end state the CALLER has already decided.
- *
- * `planDecidedBinaryOff` is set only by the plan-driven binary shed, where
- * `plannedShedTargetKind` already resolved the axis. Every other caller (the
- * smart-task lifecycle release, the runtime API) sheds a device outside any plan
- * and still resolves the configured behaviour here — see `lib/executor/AGENTS.md`
- * § shed policy, whose stated direction is exactly this: the plan path stops
- * reading policy, the plan-less paths keep it until the planner stamps their end
- * state too.
+ * Carries out a plan's binary shed intent: turn the device off. The plan
+ * decided this end state (`plannedShedTargetKind` resolved the axis before a
+ * binary intent could exist), so nothing here reads the configured shed
+ * behaviour again; a setpoint shed reaches the device as a target update, not
+ * through this path.
  */
-export type ShedDispatchOptions = { planDecidedBinaryOff?: boolean };
-
 export const applySheddingToDeviceImpl = async (
   core: PlanExecutorCore,
   deviceId: string,
   deviceName: string,
-  reason?: string,
-  options?: ShedDispatchOptions,
 ): Promise<boolean> => {
   try {
     if (core.capacityDryRun()) return false;
@@ -526,36 +507,15 @@ export const applySheddingToDeviceImpl = async (
     })) {
       return false;
     }
-    const name = deviceName;
-    // A plan-decided binary off skips the policy read entirely: the setpoint arm
-    // below would otherwise handle the device and return `handled`, so the binary
-    // write the plan asked for would never be issued.
-    const shedBehavior = options?.planDecidedBinaryOff === true
-      ? { action: 'turn_off' as const }
-      : core.getShedBehavior(deviceId);
-    const target = snapshotState?.targets?.[0] ? 'temperature' as const : undefined;
-    const shedTemp = shedBehavior.action === 'set_temperature' ? shedBehavior.temperature : null;
-    const canSetShedTemp = Boolean(target && shedTemp !== null);
     // Mark as pending before async operation
     core.state.actuation.beginShed(deviceId);
     try {
-      const shedTemperatureResult = await dispatchTrySetShedTemperature(core, {
+      return await applyBinarySheddingToDevice(core.buildBinaryExecutorContext(), {
         deviceId,
-        name,
-        target,
-        shedTemp,
-        canSetShedTemp,
+        deviceName,
+        skipPrecheck: true,
+        trackPendingShed: false,
       });
-      if (!shedTemperatureResult.handled) {
-        return applyBinarySheddingToDevice(core.buildBinaryExecutorContext(), {
-          deviceId,
-          deviceName: name,
-          reason,
-          skipPrecheck: true,
-          trackPendingShed: false,
-        });
-      }
-      return shedTemperatureResult.wrote;
     } finally {
       core.state.actuation.endShed(deviceId);
     }
@@ -563,14 +523,3 @@ export const applySheddingToDeviceImpl = async (
     core.flushLastControlledPersistence();
   }
 };
-
-const dispatchTrySetShedTemperature = async (
-  core: PlanExecutorCore,
-  params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature' | undefined;
-    shedTemp: number | null;
-    canSetShedTemp: boolean;
-  },
-): Promise<PlanActionHandleResult> => trySetShedTemperature(core.buildTargetExecutorContext(), params);
