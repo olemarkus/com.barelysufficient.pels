@@ -9,7 +9,7 @@
  * `appInit/calibrationViews.buildEvChargerCalibrationView`; the same lookup applies here so
  * we don't duplicate the nameplate fallback.
  */
-import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
+import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';

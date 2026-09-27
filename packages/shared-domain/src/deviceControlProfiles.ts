@@ -3,10 +3,15 @@ import type {
   DeviceControlProfiles,
   SteppedLoadProfile,
   SteppedLoadStep,
-} from './types.js';
+} from '../../contracts/src/types';
 
+// The one owner of the stepped-load ladder: step lookup, ordering, the off rule
+// and the parse boundary for the persisted `device_control_profiles` map. The
+// runtime (planner, executor, device transport) and the settings UI both read a
+// ladder through it, so they cannot disagree on which step is off or which one a
+// device restores to.
 export const sortSteppedLoadSteps = (steps: SteppedLoadStep[]): SteppedLoadStep[] => (
-  steps.slice().sort((a, b) => a.planningPowerW - b.planningPowerW || a.id.localeCompare(b.id))
+  [...steps].sort((left, right) => left.planningPowerW - right.planningPowerW || left.id.localeCompare(right.id))
 );
 
 export const getSteppedLoadStep = (
@@ -18,8 +23,10 @@ export const getSteppedLoadStep = (
 };
 
 export const getSteppedLoadHighestStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => {
-  const sortedSteps = sortSteppedLoadSteps(profile.steps);
-  return sortedSteps[sortedSteps.length - 1] ?? null;
+  // ES2020-safe last-element access (no Array#at): shared-domain is bundled into
+  // the settings UI, which esbuild targets at es2020.
+  const sorted = sortSteppedLoadSteps(profile.steps);
+  return sorted[sorted.length - 1] ?? null;
 };
 
 export const getSteppedLoadLowestActiveStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
@@ -33,8 +40,8 @@ export const getSteppedLoadRestoreStep = (profile: SteppedLoadProfile): SteppedL
 );
 
 export const getSteppedLoadLowestStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => {
-  const [lowest] = sortSteppedLoadSteps(profile.steps);
-  return lowest ?? null;
+  const [firstStep] = sortSteppedLoadSteps(profile.steps);
+  return firstStep ?? null;
 };
 
 export const getSteppedLoadOffStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
@@ -51,12 +58,14 @@ export const getSteppedLoadOffStep = (profile: SteppedLoadProfile): SteppedLoadS
  * named `off` carrying positive power satisfy both at once: usable enough to
  * admit the profile, off enough that restoring to it never resumes the device.
  */
-const isOffStep = (step: SteppedLoadStep): boolean => step.planningPowerW <= 0 || step.id === 'off';
+export const isSteppedLoadStepOff = (step: SteppedLoadStep): boolean => (
+  step.planningPowerW <= 0 || step.id === 'off'
+);
 
 export const isSteppedLoadOffStep = (profile: SteppedLoadProfile, stepId?: string | null): boolean => {
   const step = getSteppedLoadStep(profile, stepId);
   if (!step) return false;
-  return isOffStep(step);
+  return isSteppedLoadStepOff(step);
 };
 
 /**
@@ -70,11 +79,11 @@ export const isSteppedLoadOffStep = (profile: SteppedLoadProfile, stepId?: strin
  * `null` back and has to invent an answer. So this is the admission test for
  * calling anything a stepped load: the normalizer below rejects a profile that
  * fails it, and the producers refuse to classify a device as stepped without
- * it. Mirrored in `lib/utils/deviceControlProfiles.ts`.
+ * it.
  */
 export const hasUsableSteppedLoadLadder = (
   profile: Pick<SteppedLoadProfile, 'steps'> | null | undefined,
-): boolean => profile?.steps.some((step) => !isOffStep(step)) === true;
+): boolean => profile?.steps.some((step) => !isSteppedLoadStepOff(step)) === true;
 
 export const resolveSteppedLoadPlanningPowerKw = (
   profile: SteppedLoadProfile,
@@ -83,48 +92,6 @@ export const resolveSteppedLoadPlanningPowerKw = (
   const step = getSteppedLoadStep(profile, stepId);
   if (!step) return undefined;
   return step.planningPowerW / 1000;
-};
-
-export const getSteppedLoadNextLowerStep = (params: {
-  profile: SteppedLoadProfile;
-  stepId?: string | null;
-  floorStepId?: string | null;
-}): SteppedLoadStep | null => {
-  const { profile, stepId, floorStepId } = params;
-  const sortedSteps = sortSteppedLoadSteps(profile.steps);
-  const current = getSteppedLoadStep(profile, stepId) ?? getSteppedLoadHighestStep(profile);
-  if (!current) return null;
-  const currentIndex = sortedSteps.findIndex((step) => step.id === current.id);
-  if (currentIndex <= 0) return null;
-  const floorIndex = floorStepId
-    ? sortedSteps.findIndex((step) => step.id === floorStepId)
-    : -1;
-  for (let index = currentIndex - 1; index >= 0; index -= 1) {
-    if (index < floorIndex) break;
-    return sortedSteps[index] ?? null;
-  }
-  return null;
-};
-
-export const getSteppedLoadNextHigherStep = (params: {
-  profile: SteppedLoadProfile;
-  stepId?: string | null;
-  ceilingStepId?: string | null;
-}): SteppedLoadStep | null => {
-  const { profile, stepId, ceilingStepId } = params;
-  const sortedSteps = sortSteppedLoadSteps(profile.steps);
-  const current = getSteppedLoadStep(profile, stepId) ?? getSteppedLoadRestoreStep(profile);
-  if (!current) return null;
-  const currentIndex = sortedSteps.findIndex((step) => step.id === current.id);
-  if (currentIndex < 0) return null;
-  const ceilingIndex = ceilingStepId
-    ? sortedSteps.findIndex((step) => step.id === ceilingStepId)
-    : Number.POSITIVE_INFINITY;
-  for (let index = currentIndex + 1; index < sortedSteps.length; index += 1) {
-    if (index > ceilingIndex) break;
-    return sortedSteps[index] ?? null;
-  }
-  return null;
 };
 
 /**
@@ -159,8 +126,7 @@ export const getSteppedLoadNextHigherStep = (params: {
  * If a SECOND profile type is ever added, its discriminator is read HERE, at this
  * `unknown` boundary, where the question is genuinely open — never downstream on
  * values this function has already typed. See the docblock on
- * `SteppedLoadProfile` in `./types.js`. Mirrored in
- * `lib/utils/deviceControlProfiles.ts`.
+ * `SteppedLoadProfile` in `packages/contracts/src/types.ts`.
  */
 export const normalizeSteppedLoadProfile = (
   value: unknown,
@@ -210,21 +176,22 @@ export const normalizeSteppedLoadProfile = (
   };
 };
 
-export const normalizeDeviceControlProfile = (
-  value: unknown,
-): DeviceControlProfile | null => {
-  return normalizeSteppedLoadProfile(value);
-};
+export const normalizeDeviceControlProfile = (value: unknown): DeviceControlProfile | null => (
+  normalizeSteppedLoadProfile(value)
+);
 
+// `null` for a value that is not a device map at all (absent, an array, a
+// scalar), so a caller can tell "no profiles" from "nothing readable". Entries
+// with a blank device id or no usable profile are dropped.
 export const normalizeDeviceControlProfiles = (
   value: unknown,
-): DeviceControlProfiles => {
-  if (!value || typeof value !== 'object') return {};
-  const entries = Object.entries(value as Record<string, unknown>)
-    .map(([deviceId, profile]) => {
-      const normalized = normalizeDeviceControlProfile(profile);
-      return normalized ? [deviceId, normalized] as const : null;
-    })
-    .filter((entry): entry is readonly [string, DeviceControlProfile] => entry !== null);
-  return Object.fromEntries(entries);
+): DeviceControlProfiles | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([deviceId, profileValue]) => {
+      if (!deviceId.trim()) return [];
+      const profile = normalizeDeviceControlProfile(profileValue);
+      return profile ? [[deviceId, profile]] : [];
+    }),
+  );
 };

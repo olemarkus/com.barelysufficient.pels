@@ -43,11 +43,11 @@ import {
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
-  getSteppedLoadNextLowerStep,
   getSteppedLoadOffStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../../utils/deviceControlProfiles';
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { buildTemperatureCandidate } from './candidateBuilders';
@@ -118,11 +118,7 @@ function buildSteppedShedDescentTargets(params: {
     // Bounded by the profile's own step count — the ladder cannot be longer than
     // the steps it is built from, so the walk cannot outrun the profile.
     for (let index = 0; index < profile.steps.length; index += 1) {
-      const next = getSteppedLoadNextLowerStep({
-        profile,
-        stepId: cursor.id,
-        floorStepId: lowestActiveStep.id,
-      });
+      const next = getSteppedLoadNextLowerStep(profile, cursor.id, lowestActiveStep.id);
       if (!next || next.id === cursor.id) break;
       targets.push(next);
       cursor = next;

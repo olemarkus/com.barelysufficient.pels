@@ -12,7 +12,7 @@ import { getLogger } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
-import { isSteppedLoadOffStep } from '../../utils/deviceControlProfiles';
+import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { clearLocalCapabilityWrite, recordLocalCapabilityWrite } from './managerRealtimeSupport';

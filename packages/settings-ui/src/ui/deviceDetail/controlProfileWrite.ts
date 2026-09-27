@@ -5,7 +5,7 @@ import type {
 import {
   normalizeDeviceControlProfile,
   normalizeDeviceControlProfiles,
-} from '../../../../contracts/src/deviceControlProfiles.ts';
+} from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import { applyLocalDeviceControlProfile } from '../deviceControlProfiles.ts';
 import { state } from '../state.ts';

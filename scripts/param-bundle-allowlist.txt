@@ -235,14 +235,12 @@ lib/solar/pvForecastSourceSelection.ts 1
 lib/utils/capacityHelpers.ts 1
 lib/utils/cpuSpikeMonitor.ts 1
 lib/utils/dateUtils.ts 1
-lib/utils/deviceControlProfiles.ts 2
 lib/weather/controlledKwhBackfill.ts 1
 lib/weather/dailyKwhResolve.ts 1
 lib/weather/energySignatureService.ts 1
 lib/weather/meterKwhBackfill.ts 1
 lib/weather/weatherAdvisorReadout.ts 1
 lib/weather/weatherHistory.ts 6
-packages/contracts/src/deviceControlProfiles.ts 2
 packages/settings-ui/src/ui/budgetPlanningPriceOverlay.ts 1
 packages/settings-ui/src/ui/budgetRedesignChartData.ts 2
 packages/settings-ui/src/ui/budgetRedesignChartOptions.ts 4

@@ -2,7 +2,7 @@ import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryCont
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { canTurnOnDevice } from '../plan/deviceCommandability';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type {

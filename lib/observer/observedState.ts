@@ -24,7 +24,7 @@
  * resolver here that returns 'unknown' is
  * `resolveObservedSteppedLoadCurrentState`, and only for that structural case.
  */
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 

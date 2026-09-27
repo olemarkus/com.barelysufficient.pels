@@ -12,7 +12,7 @@ import {
 } from '../lib/device/targetPowerReachability';
 import { resolveTargetPowerReachabilityTransition } from '../lib/executor/targetPowerReachability';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../lib/observer/controlCommandConfirmation';
-import { sortSteppedLoadSteps } from '../lib/utils/deviceControlProfiles';
+import { sortSteppedLoadSteps } from '../packages/shared-domain/src/deviceControlProfiles';
 import type {
   ReportedStepObservedProbe,
   SteppedLoadDescriptorProbe,

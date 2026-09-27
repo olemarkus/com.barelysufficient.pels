@@ -9,7 +9,10 @@ import { getLogger } from '../../logging/logger';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
 import { isSteppedLoadDevice, resolveStepPowerKw } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { HEADROOM_RESERVE_MAX_MS } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from './reserve';

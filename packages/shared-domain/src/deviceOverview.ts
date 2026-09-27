@@ -15,6 +15,7 @@ import {
   normalizeDeviceState,
 } from './deviceStatePredicates';
 import { isSatisfiedTargetOnlyDevice, resolvePlanStateKind } from './planStateLabels';
+import { isSteppedLoadStepOff } from './deviceControlProfiles';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 import type { PlannedTemperatureState } from './plannedTemperatureState';
 import { formatDeviceReasonUserFacingForDevice } from './planCardReasonLine';
@@ -296,20 +297,6 @@ const resolveParkedShedStep = (device: DeviceOverviewSnapshot): SteppedLoadStep 
   return steppedLoad.profile.steps.find((candidate) => candidate.id === targetStepId) ?? null;
 };
 
-/**
- * Whether a parked rung leaves the device running.
- *
- * Mirrors `isSteppedLoadOffStep` (`packages/contracts/src/deviceControlProfiles.ts`):
- * a rung is off when it draws nothing OR carries the reserved `off` id. Copied
- * rather than imported — shared-domain must not take a runtime VALUE dependency
- * on contracts (`no-runtime-value-deps-on-contracts`; contracts is stripped from
- * the packaged app, so a value import crashes it at boot). That duplication is
- * the sanctioned price of the packaging boundary.
- */
-const isRunningStep = (step: SteppedLoadStep): boolean => (
-  step.planningPowerW > 0 && step.id !== 'off'
-);
-
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   const parkedStep = resolveParkedShedStep(device);
   // Setpoint limiting is named BEFORE any rung. A stepped device can be limited
@@ -323,7 +310,7 @@ const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (isEvChargerDevice(device) && isOffLikeState(device.currentState)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
   // Same display formatter as the usage line and the card rail — one entry
   // must not read "Limited to 32a" beside "target: 32 A".
-  if (parkedStep !== null && isRunningStep(parkedStep)) {
+  if (parkedStep !== null && !isSteppedLoadStepOff(parkedStep)) {
     return deviceOverviewLimitedToStep(formatStepDisplayLabel(parkedStep.id));
   }
   if (isEvChargerDevice(device)) return DEVICE_OVERVIEW_CHARGING_PAUSED;

@@ -8,7 +8,7 @@ import { getCurrentDrawKw } from '../lib/observer/observedPower';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
-} from '../lib/utils/deviceControlProfiles';
+} from '../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../packages/contracts/src/types';
 import type { ShedBehavior } from '../lib/plan/planTypes';
 

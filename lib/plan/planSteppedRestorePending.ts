@@ -1,7 +1,7 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isPlanDeviceObservedOff, isSteppedLoadDevice } from './planSteppedLoad';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 

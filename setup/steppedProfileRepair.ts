@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import { getLogger } from '../lib/logging/logger';
-import { normalizeDeviceControlProfiles } from '../lib/utils/deviceControlProfiles';
+import { normalizeDeviceControlProfiles } from '../packages/shared-domain/src/deviceControlProfiles';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 

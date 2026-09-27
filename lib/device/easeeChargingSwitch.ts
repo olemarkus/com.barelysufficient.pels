@@ -12,7 +12,7 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap, DeviceCapabilityValue } from './managerControl';
 import { toCapabilityTimestampMs } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { EvChargingState } from '../../packages/contracts/src/types';
 import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import {

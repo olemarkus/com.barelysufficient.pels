@@ -16,7 +16,7 @@ import {
   hasUsableSteppedLoadLadder,
   isSteppedLoadOffStep,
   sortSteppedLoadSteps,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
 import type { DeviceCapabilityMap } from './managerControl';
 

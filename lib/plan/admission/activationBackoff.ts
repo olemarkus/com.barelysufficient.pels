@@ -8,7 +8,10 @@ import type {
 import type { DeviceDiagnosticsBackoffTransition } from '../../diagnostics/deviceDiagnosticsService';
 import { isActivelyDrawing } from '../../observer/observedPower';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from '../planConstants';
-import { isSteppedDeviceAtActiveStep, isSteppedDeviceAtOffStep } from '../../utils/deviceControlProfiles';
+import {
+  isSteppedDeviceAtActiveStep,
+  isSteppedDeviceAtOffStep,
+} from '../planSteppedDeviceStep';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 
 export type { ActivationAttemptSource } from '../planState';

@@ -64,8 +64,8 @@ export type SteppedLoadStep = {
  *
  * A future SECOND profile type reintroduces a discriminator at the `unknown`
  * parse boundary (`normalizeSteppedLoadProfile` in
- * `packages/contracts/src/deviceControlProfiles.ts` and its runtime mirror in
- * `lib/utils/deviceControlProfiles.ts`) — never downstream on typed values.
+ * `packages/shared-domain/src/deviceControlProfiles.ts`) — never downstream on
+ * typed values.
  */
 export type SteppedLoadProfile = {
   steps: SteppedLoadStep[];

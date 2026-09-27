@@ -2,7 +2,7 @@ import type { DevicePlanDevice } from '../planTypes';
 import { getInactiveReason, isRestoreLiveEligibleDevice } from './devices';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
-import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { ShedDecisions } from '../shedDecisions';
 

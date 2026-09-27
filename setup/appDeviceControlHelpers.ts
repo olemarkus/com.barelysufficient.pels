@@ -3,7 +3,7 @@ import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
   hasUsableSteppedLoadLadder,
   normalizeDeviceControlProfiles, resolveSteppedLoadPlanningPowerKw,
-} from '../lib/utils/deviceControlProfiles';
+} from '../packages/shared-domain/src/deviceControlProfiles';
 import { resolveCurrentOn } from '../lib/observer/observedState';
 import { isBinaryOnOrUnknown } from '../packages/shared-domain/src/binaryControlState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';

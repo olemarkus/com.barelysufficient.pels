@@ -1,18 +1,22 @@
 import {
   getSteppedLoadHighestStep,
   getSteppedLoadLowestActiveStep,
-  getSteppedLoadNextLowerStep,
-  getSteppedLoadNextHigherStep,
   getSteppedLoadOffStep,
   getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   getSteppedLoadLowestStep,
-  isSteppedDeviceAtActiveStep,
-  isSteppedDeviceAtOffStep,
   isSteppedLoadOffStep,
   resolveSteppedLoadPlanningPowerKw,
   sortSteppedLoadSteps,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  isSteppedDeviceAtActiveStep,
+  isSteppedDeviceAtOffStep,
+} from './planSteppedDeviceStep';
+import {
+  getSteppedLoadNextLowerStep,
+  getSteppedLoadNextHigherStep,
+} from '../utils/steppedLoadLadder';
 import type {
   SteppedLoadProfile,
   SteppedLoadStep,
@@ -458,11 +462,7 @@ export const getSteppedLoadNextRestoreStep = (
   }
 
   const highestStepId = getSteppedLoadHighestStep(profile)?.id;
-  return getSteppedLoadNextHigherStep({
-    profile,
-    stepId: resolvePlannerEffectiveStepId(device),
-    ceilingStepId: highestStepId,
-  });
+  return getSteppedLoadNextHigherStep(profile, resolvePlannerEffectiveStepId(device), highestStepId);
 };
 
 export const getSteppedLoadShedTargetStep = (params: {
@@ -492,11 +492,7 @@ export const getSteppedLoadShedTargetStep = (params: {
 
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   const nextLowerStep = lowestActiveStep
-    ? getSteppedLoadNextLowerStep({
-      profile,
-      stepId: currentStep.id,
-      floorStepId: lowestActiveStep.id,
-    })
+    ? getSteppedLoadNextLowerStep(profile, currentStep.id, lowestActiveStep.id)
     : null;
   if (nextLowerStep) return nextLowerStep;
 

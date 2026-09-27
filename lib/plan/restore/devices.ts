@@ -2,7 +2,7 @@ import {
   getSteppedLoadHighestStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../../utils/deviceControlProfiles';
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
 import type {

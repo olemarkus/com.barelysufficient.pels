@@ -27,7 +27,7 @@ import type {
 import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveSteppedStepActuationState } from './steppedLoadActuation';
 import { getDebugEmitter } from '../logging/logger';
 

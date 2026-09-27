@@ -4,7 +4,7 @@ import { isOffSteppedRestoreCandidate } from './devices';
 import {
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
-} from '../../utils/deviceControlProfiles';
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 

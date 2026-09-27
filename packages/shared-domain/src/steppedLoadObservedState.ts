@@ -20,7 +20,7 @@ import type {
  * being a stepped load, by construction.
  *
  * A future second profile model is discriminated at
- * `normalizeSteppedLoadProfile` (`packages/contracts/src/deviceControlProfiles.ts`),
+ * `normalizeSteppedLoadProfile` (`packages/shared-domain/src/deviceControlProfiles.ts`),
  * which takes `value: unknown` at the parse boundary — that is the only place the
  * question is genuinely open. The storage slot is single-typed either way
  * (`DeviceControlProfile` IS `SteppedLoadProfile`, and `DeviceControlProfiles` is

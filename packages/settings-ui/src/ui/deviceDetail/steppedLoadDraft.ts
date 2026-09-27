@@ -2,7 +2,7 @@ import {
   getSteppedLoadLowestActiveStep,
   normalizeSteppedLoadProfile,
   sortSteppedLoadSteps,
-} from '../../../../contracts/src/deviceControlProfiles.ts';
+} from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import { formatStepDisplayLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';

@@ -3,7 +3,7 @@ import {
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { isBinaryDrivenIntent } from './executableDesiredState';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,

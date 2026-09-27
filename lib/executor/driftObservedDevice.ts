@@ -29,7 +29,7 @@ import { resolveCommandableNow } from '../../packages/shared-domain/src/commanda
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import type {
   EvObservedProbe,
   MeasuredPowerObservedProbe,

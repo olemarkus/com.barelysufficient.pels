@@ -24,7 +24,7 @@ import { resolveBoostActive } from './planBoost';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   isSteppedLoadDevice,
   resolveHighestStepWithinKw,

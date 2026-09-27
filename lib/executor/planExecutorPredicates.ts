@@ -14,7 +14,7 @@ import {
   resolveSteppedLoadTransition,
 } from '../plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,

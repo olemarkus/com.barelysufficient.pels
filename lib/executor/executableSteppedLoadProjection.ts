@@ -35,7 +35,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 
 type PlanDevice = DevicePlan['devices'][number];
 

@@ -1,5 +1,5 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import { getSteppedLoadLowestActiveStep } from '../../../contracts/src/deviceControlProfiles.ts';
+import { getSteppedLoadLowestActiveStep } from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
   DeviceObjectiveProfile,
   ObjectiveProfileConfidence,

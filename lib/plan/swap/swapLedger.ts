@@ -2,7 +2,7 @@ import type { Logger as PinoLogger } from '../../logging/logger';
 import { SWAP_RESERVATION_MAX_MS, SWAP_TIMEOUT_MS } from '../planConstants';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { DevicePlanDevice } from '../planTypes';
 
 /**

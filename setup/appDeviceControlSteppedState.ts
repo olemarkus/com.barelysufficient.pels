@@ -1,7 +1,7 @@
 import {
   getSteppedLoadStep,
   hasUsableSteppedLoadLadder,
-} from '../lib/utils/deviceControlProfiles';
+} from '../packages/shared-domain/src/deviceControlProfiles';
 import { serializeLegacyStepFieldsFromEvidence } from '../lib/plan/planSteppedLoadState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type {

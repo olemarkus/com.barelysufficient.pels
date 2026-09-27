@@ -1,8 +1,6 @@
 import {
   getSteppedLoadHighestStep,
   getSteppedLoadLowestStep,
-  getSteppedLoadNextHigherStep,
-  getSteppedLoadNextLowerStep,
   getSteppedLoadOffStep,
   getSteppedLoadRestoreStep,
   getSteppedLoadStep,
@@ -11,7 +9,11 @@ import {
   normalizeSteppedLoadProfile,
   resolveSteppedLoadPlanningPowerKw,
   sortSteppedLoadSteps,
-} from '../../lib/utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  getSteppedLoadNextHigherStep,
+  getSteppedLoadNextLowerStep,
+} from '../../lib/utils/steppedLoadLadder';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const buildProfile = (): SteppedLoadProfile => ({
@@ -51,16 +53,16 @@ describe('deviceControlProfiles', () => {
     };
     const emptyProfile = { steps: [] } as unknown as SteppedLoadProfile;
 
-    expect(getSteppedLoadNextHigherStep({ profile, stepId: 'off' })?.id).toBe('low');
-    expect(getSteppedLoadNextHigherStep({ profile, stepId: 'low', ceilingStepId: 'max' })?.id).toBe('max');
-    expect(getSteppedLoadNextHigherStep({ profile, stepId: 'max' })).toBeNull();
-    expect(getSteppedLoadNextHigherStep({ profile, stepId: undefined })?.id).toBe('max');
+    expect(getSteppedLoadNextHigherStep(profile, 'off')?.id).toBe('low');
+    expect(getSteppedLoadNextHigherStep(profile, 'low', 'max')?.id).toBe('max');
+    expect(getSteppedLoadNextHigherStep(profile, 'max')).toBeNull();
+    expect(getSteppedLoadNextHigherStep(profile, undefined)?.id).toBe('max');
     expect(getSteppedLoadRestoreStep(offOnlyProfile)?.id).toBe('idle');
     expect(getSteppedLoadOffStep(offOnlyProfile)?.id).toBe('idle');
     expect(isSteppedLoadOffStep(offOnlyProfile, 'idle')).toBe(true);
     expect(getSteppedLoadHighestStep(emptyProfile)).toBeNull();
     expect(getSteppedLoadLowestStep(emptyProfile)).toBeNull();
-    expect(getSteppedLoadNextHigherStep({ profile: emptyProfile, stepId: undefined })).toBeNull();
+    expect(getSteppedLoadNextHigherStep(emptyProfile, undefined)).toBeNull();
   });
 
   it('resolves the next lower step using fallback start points and respects a valid floor', () => {
@@ -69,12 +71,12 @@ describe('deviceControlProfiles', () => {
       steps: [{ id: 'idle', planningPowerW: 0 }],
     };
 
-    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max' })?.id).toBe('low');
-    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max', floorStepId: 'low' })?.id).toBe('low');
-    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'low', floorStepId: 'low' })).toBeNull();
-    expect(getSteppedLoadNextLowerStep({ profile, stepId: undefined })?.id).toBe('off');
-    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max', floorStepId: 'missing' })).toBeNull();
-    expect(getSteppedLoadNextLowerStep({ profile: offOnlyProfile, stepId: undefined })).toBeNull();
+    expect(getSteppedLoadNextLowerStep(profile, 'max')?.id).toBe('low');
+    expect(getSteppedLoadNextLowerStep(profile, 'max', 'low')?.id).toBe('low');
+    expect(getSteppedLoadNextLowerStep(profile, 'low', 'low')).toBeNull();
+    expect(getSteppedLoadNextLowerStep(profile, undefined)?.id).toBe('off');
+    expect(getSteppedLoadNextLowerStep(profile, 'max', 'missing')).toBeNull();
+    expect(getSteppedLoadNextLowerStep(offOnlyProfile, undefined)).toBeNull();
   });
 
   it('normalizes valid stepped-load profiles and rejects invalid ones', () => {

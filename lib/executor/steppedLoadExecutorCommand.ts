@@ -1,6 +1,6 @@
 import {
   getSteppedLoadStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import {
   recordActivationAttemptStarted,

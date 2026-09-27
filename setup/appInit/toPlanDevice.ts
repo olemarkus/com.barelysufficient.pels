@@ -50,7 +50,7 @@ import type { SteppedClusterFields } from '../../lib/plan/planTypes';
 import {
   getSteppedLoadLowestActiveStep,
   resolveSteppedLoadPlanningPowerKw,
-} from '../../lib/utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { projectTemperatureDeniedDevice } from '../temperatureControlDenial';
 import {
   resolveSurplusOnlyPosture,

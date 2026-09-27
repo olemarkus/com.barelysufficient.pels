@@ -2,7 +2,7 @@ import type { PendingTargetCommandState } from '../plan/planState';
 import type { ShedBehavior } from '../plan/planTypes';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import { getPendingTargetCommandDecision } from './targetCommandRetry';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { getLogger } from '../logging/logger';
 import type {
   DeviceControlAdapterSnapshot,

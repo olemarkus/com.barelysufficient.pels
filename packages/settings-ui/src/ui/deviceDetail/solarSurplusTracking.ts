@@ -21,7 +21,7 @@ import {
 import { showToastError } from '../toast.ts';
 import { resolveDeviceDetailKind } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
-import { hasUsableSteppedLoadLadder } from '../../../../contracts/src/deviceControlProfiles.ts';
+import { hasUsableSteppedLoadLadder } from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import {
   SURPLUS_TRACKING_HINTS,
   SURPLUS_TRACKING_LABELS,

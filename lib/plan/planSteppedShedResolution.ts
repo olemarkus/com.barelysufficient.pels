@@ -11,7 +11,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 
 /**
  * The step this cycle's shed parks a stepped device at.

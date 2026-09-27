@@ -39,7 +39,7 @@ export {
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 
 // Trust gates (`getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`)
 // live in `lib/utils/observationTrust.ts` so both this module and

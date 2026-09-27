@@ -1,6 +1,6 @@
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { ResidualKwShedBehavior } from './deviceResidualKw';
-import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type {
   DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot, ThermalDirection,
 } from '../../packages/contracts/src/types';

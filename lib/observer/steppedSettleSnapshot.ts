@@ -44,7 +44,10 @@ export type SteppedSettleDevice = {
   observedOn: boolean;
   steppedCommandConfirmation: SteppedCommandConfirmation;
 };
-import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveCurrentOn } from './observedState';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 

@@ -13,7 +13,10 @@ import {
   getSteppedLoadNextRestoreStep,
   resolveStepChangeKw,
 } from '../planSteppedLoad';
-import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   resolveActivationRestoreBlock,

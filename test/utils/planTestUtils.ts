@@ -58,7 +58,7 @@ import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import { resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { getSteppedLoadLowestActiveStep } from '../../lib/utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   TARGET_TEMPERATURE_CAPABILITY_ID,
   resolveTemperatureObservation,

@@ -35,7 +35,7 @@
  * `no-device-to-peer-except-power` rule). Likewise the producer must not
  * depend on `lib/plan/**`, so the stepped-load logic is implemented here
  * using only the pure step-shape helpers in
- * `lib/utils/deviceControlProfiles.ts`. Caller-side step-state pre-resolution
+ * `packages/shared-domain/src/deviceControlProfiles.ts`. Caller-side step-state pre-resolution
  * (e.g. `resolveKnownEffectiveStepId` in `lib/plan/planSteppedLoadState.ts`)
  * is funnelled in via `hasKnownEffectiveStep`. For restore, the observer-
  * resolved `currentState !== 'off'` decision and the `getHighestKnownPowerKw`
@@ -53,12 +53,12 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
-  getSteppedLoadNextLowerStep,
   getSteppedLoadOffStep,
   getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadNextLowerStep } from '../utils/steppedLoadLadder';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 
 export type ResidualKwShedBehavior =
@@ -220,11 +220,7 @@ function resolveSteppedShedTargetStepResidual(params: {
   if (!targetStep) return null;
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   const nextLowerStep = lowestActiveStep
-    ? getSteppedLoadNextLowerStep({
-      profile,
-      stepId: currentStep.id,
-      floorStepId: lowestActiveStep.id,
-    })
+    ? getSteppedLoadNextLowerStep(profile, currentStep.id, lowestActiveStep.id)
     : null;
   if (nextLowerStep) return nextLowerStep;
   return currentStep.planningPowerW <= targetStep.planningPowerW ? currentStep : targetStep;

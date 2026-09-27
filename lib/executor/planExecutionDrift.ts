@@ -11,7 +11,7 @@ import {
   hasSteppedCommand,
   hasTargetCommand,
 } from './executablePlan';
-import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 import type {
   ExecutableDeviceIntent,

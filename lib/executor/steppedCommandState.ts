@@ -1,4 +1,4 @@
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';

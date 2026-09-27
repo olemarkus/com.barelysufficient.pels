@@ -8,7 +8,7 @@ import type {
 import {
   normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
 } from './temperatureBoost';
-import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
+import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { normalizeEvBoostSettings as normalizeEvBoostSettingsRuntime } from './evBoost';
 
 export function isFiniteNumber(value: unknown): value is number {

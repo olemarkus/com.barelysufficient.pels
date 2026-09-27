@@ -1,7 +1,7 @@
 import type { ShedActionIntent } from '../device/deviceActionProjection';
 import type { PlannedDeviceState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { PlannedShedTargetKind, ShedAction } from './planTypes';
-import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 
 /**
  * Materialises the snapshot-side shed-action triple

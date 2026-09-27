@@ -3,7 +3,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { getSteppedLoadStep } from '../lib/utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../packages/shared-domain/src/deviceControlProfiles';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../packages/contracts/src/types';
 import type { SteppedLoadDesiredRuntimeState } from '../lib/executor/steppedCommandState';

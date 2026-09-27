@@ -2,7 +2,7 @@ import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
   isSteppedDeviceAtActiveStep,
   isSteppedDeviceAtOffStep,
-} from '../../lib/utils/deviceControlProfiles';
+} from '../../lib/plan/planSteppedDeviceStep';
 import {
   isPlanDeviceObservedOff,
   isPlanDeviceObservedOn,

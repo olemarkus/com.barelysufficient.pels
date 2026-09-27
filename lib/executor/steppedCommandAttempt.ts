@@ -1,5 +1,5 @@
 import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { ExecutableSteppedLoadRestoreAttempt } from './executablePlan';
 
 /**

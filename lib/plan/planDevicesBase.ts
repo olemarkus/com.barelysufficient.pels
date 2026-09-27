@@ -30,7 +30,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 
 // For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
 // positive step so that restore planning uses a realistic power estimate rather than zero.

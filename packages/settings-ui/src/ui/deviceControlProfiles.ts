@@ -2,7 +2,7 @@ import {
   getSteppedLoadHighestStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
-} from '../../../contracts/src/deviceControlProfiles.ts';
+} from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
   DeviceControlModel,
   DeviceTargetPowerConfigs,

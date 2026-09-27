@@ -4,7 +4,7 @@ import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../observer/observedState';
 import {
