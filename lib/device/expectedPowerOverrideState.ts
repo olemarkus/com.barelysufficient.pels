@@ -47,6 +47,7 @@ export type ExpectedOverrideAuthority = 'held' | 'persisted';
  * adoption) says so with an explicit empty callback, so a caller that MEANT to
  * react and forgot is a compile error instead of a silent no-op.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const applyExpectedPowerOverrides = (params: {
   read: ExpectedPowerOverridesRead;
   target: ExpectedPowerOverridesByDeviceId;
@@ -75,3 +76,4 @@ export const applyExpectedPowerOverrides = (params: {
   for (const [deviceId, entry] of changed) onOverrideChanged(deviceId, entry.kw);
   return true;
 };
+/* eslint-enable functional/immutable-data */

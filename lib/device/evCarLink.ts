@@ -174,6 +174,7 @@ export type EvLinkMatchResult = {
  * refused. Earlier edges still count as explained, so they are never reported
  * as away sessions.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const matchCoincidentEdges = (params: {
     carEdges: readonly EvLinkEdge[];
     /** ALL retained charger edges — settled or not. See the contention note. */
@@ -249,6 +250,7 @@ export const matchCoincidentEdges = (params: {
             .map((entry) => entry.chargerEdge),
     };
 };
+/* eslint-enable functional/immutable-data */
 
 const buildEdgeKey = (edge: EvLinkEdge): string => `${edge.deviceId}|${edge.kind}|${edge.atMs}`;
 
@@ -281,6 +283,7 @@ type ChargerEdgeBurst = {
  * always share their charger edge's kind, so a shared car edge implies the same
  * kind too.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const resolveChargerEdgeBurst = (
     entry: ScoredChargerEdge,
     scored: readonly ScoredChargerEdge[],
@@ -301,14 +304,17 @@ const resolveChargerEdgeBurst = (
     }
     return { restingEdge: latestEdge(chargerEdgesOf(members, entry)), candidates };
 };
+/* eslint-enable functional/immutable-data */
 
 const chargerEdgesOf = (members: readonly ScoredChargerEdge[], entry: ScoredChargerEdge): EvLinkEdges => (
     [entry.chargerEdge, ...members.map((member) => member.chargerEdge)]
 );
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const addEdges = (target: EvLinkEdge[], edges: EvLinkEdges): void => {
     for (const edge of edges) target.push(edge);
 };
+/* eslint-enable functional/immutable-data */
 
 const sharesCarEdge = (a: ScoredChargerEdge, b: ScoredChargerEdge): boolean => (
     a.chargerEdge.deviceId === b.chargerEdge.deviceId

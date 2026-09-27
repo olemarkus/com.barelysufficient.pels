@@ -29,6 +29,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  * shallow copy would hand the observer a live alias of exactly the fields the
  * transport's mutators rewrite.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function projectObservedState(snapshot: TransportDeviceSnapshot): ProjectedObservedDeviceState {
     // Probe-widened locally so the projection can copy the observed cluster
     // fields the base type omits (`evChargingState` / atomic `temperature` /
@@ -82,6 +83,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
     if (snapshot.lastUpdated !== undefined) projected.lastUpdated = snapshot.lastUpdated;
     return projected;
 }
+/* eslint-enable functional/immutable-data */
 
 function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): ReportedStepObservedProbe {
     return {

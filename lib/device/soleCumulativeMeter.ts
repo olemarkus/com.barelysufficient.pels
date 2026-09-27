@@ -41,6 +41,7 @@ const resolveCumulativeMeterRow = (item: UnknownRecord): CumulativeMeterRow | nu
  * Repeated rows for one id are one meter; a finite reading on any of them is
  * that meter's reading, so a warming first row never hides a later one.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterRow[] => {
   const byDeviceId = new Map<string, CumulativeMeterRow>();
   const unnamed: CumulativeMeterRow[] = [];
@@ -58,6 +59,7 @@ const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterR
   }
   return [...byDeviceId.values(), ...unnamed];
 };
+/* eslint-enable functional/immutable-data */
 
 /**
  * Does this live report carry exactly one usable cumulative meter, and does it

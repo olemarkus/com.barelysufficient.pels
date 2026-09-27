@@ -62,6 +62,7 @@ export function createLearnedPowerPeakState(params: {
    * resolved-and-empty is a real answer here (nothing learned yet) and lifts the
    * suppression exactly like a populated one.
    */
+  /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
   const readIntoStore = (): boolean => {
     const read = persistence.loadLearnedPeaks();
     if (read.state === 'unavailable') return false;
@@ -77,6 +78,7 @@ export function createLearnedPowerPeakState(params: {
     writeBackSuppressed = false;
     return true;
   };
+  /* eslint-enable functional/immutable-data */
 
   const write = (nowMs: number): void => {
     const peaks = getPeaks();

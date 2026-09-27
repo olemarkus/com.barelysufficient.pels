@@ -98,6 +98,7 @@ export type AssociatedCarLevel = {
  * already sent its update. Serving it from the association rather than from a
  * change notification is what lets an associated charger always have a level.
  */
+/* eslint-disable functional/immutable-data -- In-place accumulation avoids another state or accumulator copy. */
 export const collectAssociatedCarLevels = (
     cars: ReadonlyMap<string, CarObservation>,
     links: ReadonlyMap<string, ActiveLinkView>,
@@ -117,3 +118,4 @@ export const collectAssociatedCarLevels = (
     }
     return readings;
 };
+/* eslint-enable functional/immutable-data */

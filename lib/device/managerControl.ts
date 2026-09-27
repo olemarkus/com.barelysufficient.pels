@@ -273,6 +273,7 @@ function getEvSnapshotEntries(snapshot: TransportDeviceSnapshot[]): Map<string, 
   );
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function buildEvSnapshotChangeLines(
   previousEv: TransportDeviceSnapshot,
   nextEv: TransportDeviceSnapshot,
@@ -300,6 +301,7 @@ function buildEvSnapshotChangeLines(
   }
   return changes;
 }
+/* eslint-enable functional/immutable-data */
 
 function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
   return [
@@ -311,6 +313,7 @@ function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
   ].join(', ');
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function formatEvSnapshotDetails(
   snapshot: TransportDeviceSnapshot | undefined,
   includePower: boolean,
@@ -325,3 +328,4 @@ function formatEvSnapshotDetails(
   }
   return details.join(', ');
 }
+/* eslint-enable functional/immutable-data */

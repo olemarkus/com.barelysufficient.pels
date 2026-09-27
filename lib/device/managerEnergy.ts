@@ -97,6 +97,7 @@ export type LiveMeterItem = { id: string; type: LiveMeterItemType };
  * here — the report has none;
  * the adapter joins id→name from the device list.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
   const report = asRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return [];
@@ -112,6 +113,7 @@ export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
   }
   return items;
 };
+/* eslint-enable functional/immutable-data */
 
 /**
  * The parsed shape of one `manager/energy/live` payload: a record carrying an

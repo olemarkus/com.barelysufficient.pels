@@ -106,6 +106,7 @@ export const nextLearnedPeak = (
  * accumulate devices the user removed years ago; NOT used on the read path,
  * where `resolveLearnedPeakKw` already answers `null` for an expired entry.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const pruneExpiredLearnedPeaks = (
   peaks: LearnedPeaksByDeviceId,
   nowMs: number,
@@ -116,6 +117,7 @@ export const pruneExpiredLearnedPeaks = (
   }
   return kept;
 };
+/* eslint-enable functional/immutable-data */
 
 export type ExpectedPowerOverride = { kw: number; ts: number };
 export type ExpectedPowerOverridesByDeviceId = Record<string, ExpectedPowerOverride>;
@@ -145,6 +147,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
  * entry keyed on `''` is corruption; keeping it would put a peak in the record
  * that nothing can ever look up and that the prune can only drop by expiry.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
   const record = asRecord(raw);
   if (!record) return {};
@@ -158,6 +161,7 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
   }
   return parsed;
 };
+/* eslint-enable functional/immutable-data */
 
 /**
  * Validate a persisted manual-override record at the settings boundary. Same
@@ -165,6 +169,7 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
  * owner's own figure for a device, and one bad neighbour must not erase it.
  * The empty device id is rejected here too, and for the same reason.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const parseExpectedPowerOverrides = (raw: unknown): ExpectedPowerOverridesByDeviceId => {
   const record = asRecord(raw);
   if (!record) return {};
@@ -178,6 +183,7 @@ export const parseExpectedPowerOverrides = (raw: unknown): ExpectedPowerOverride
   }
   return parsed;
 };
+/* eslint-enable functional/immutable-data */
 
 /**
  * What one settings read of a persisted power record actually saw.
@@ -303,6 +309,7 @@ export const classifyExpectedPowerOverridesSetting = (
  * the anchor is a day old (so never backward), and lets a lower held reading win
  * only once the persisted entry's window has closed unmatched.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const adoptPersistedLearnedPeaks = (
   persisted: LearnedPeaksByDeviceId,
   held: LearnedPeaksByDeviceId,
@@ -314,3 +321,4 @@ export const adoptPersistedLearnedPeaks = (
   }
   return merged;
 };
+/* eslint-enable functional/immutable-data */

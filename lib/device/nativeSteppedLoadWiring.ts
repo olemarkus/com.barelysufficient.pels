@@ -300,6 +300,7 @@ export function buildNativeSteppedLoadControlAdapter(params: {
   };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function resolveNativeSteppedLoadReportedStepId(params: {
   profile: SteppedLoadProfile;
   capabilities: readonly string[];
@@ -344,6 +345,7 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
   }
   return undefined;
 }
+/* eslint-enable functional/immutable-data */
 
 /** One SDK capability write: the capability and the value it receives. */
 export type CapabilityWrite = { capabilityId: string; value: unknown };

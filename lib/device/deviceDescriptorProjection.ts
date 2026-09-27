@@ -68,10 +68,12 @@ export function projectDeviceDescriptor(source: DeviceDescriptorRead): DeviceDes
     };
     // Generic over the key so the assignment type-checks per key rather than
     // across the union of every descriptor value type.
+    /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
     const copyDefined = <K extends keyof DeviceDescriptorRead>(key: K): void => {
         const value = source[key];
         if (value !== undefined) descriptor[key] = value;
     };
+    /* eslint-enable functional/immutable-data */
     for (const key of DESCRIPTOR_KEYS) copyDefined(key);
     return descriptor;
 }

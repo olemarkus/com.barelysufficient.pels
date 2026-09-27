@@ -202,6 +202,7 @@ export const createRetainedPowerStore = (db: UserdataDatabase): RetainedPowerSto
       // back write must not leave them claiming rows the database never got.
       const readingWrites: Array<[string, RetainedPowerReading | null]> = [];
       const anchorWrites: Array<[string, MeterEnergyReading | null]> = [];
+      /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
       db.transaction(() => {
         for (const deviceId of presentIds) {
           const reading = state.readings.get(deviceId);
@@ -226,6 +227,7 @@ export const createRetainedPowerStore = (db: UserdataDatabase): RetainedPowerSto
           }
         }
       });
+      /* eslint-enable functional/immutable-data */
       applyWrites(heldReadings, readingWrites, nowMs);
       applyWrites(heldAnchors, anchorWrites, nowMs);
     },

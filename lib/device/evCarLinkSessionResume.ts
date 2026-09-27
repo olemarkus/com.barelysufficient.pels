@@ -45,6 +45,7 @@ export type SessionResumeVerdict = {
     forget: string[];
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const resolveResumableSessions = (params: {
     sessions: Readonly<Record<string, EvCarLinkSession>> | undefined;
     chargers: readonly EvCarLinkChargerView[];
@@ -74,3 +75,4 @@ export const resolveResumableSessions = (params: {
     }
     return { resume, forget };
 };
+/* eslint-enable functional/immutable-data */

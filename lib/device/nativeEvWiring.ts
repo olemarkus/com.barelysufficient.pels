@@ -168,6 +168,7 @@ function resolveZaptecChargingStateLastUpdated(capabilityObj: DeviceCapabilityMa
   );
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyNativeEvWiringOverlay(params: {
   device: HomeyDeviceLike;
   capabilities: string[];
@@ -241,6 +242,7 @@ export function applyNativeEvWiringOverlay(params: {
     binaryObservationCapabilityId,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 export function normalizeNativeEvCapabilityUpdate(params: {
   snapshot: Pick<
@@ -303,6 +305,7 @@ export function normalizeNativeEvCapabilityUpdate(params: {
   return [{ capabilityId, value }];
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildNativeEvObservationCapabilityObj(params: {
   device: HomeyDeviceLike;
   previousSnapshot: Pick<
@@ -341,6 +344,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
 
   return nextCapabilityObj;
 }
+/* eslint-enable functional/immutable-data */
 
 export function buildNativeEvObservationDevice(params: {
   device: HomeyDeviceLike;

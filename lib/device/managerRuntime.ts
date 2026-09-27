@@ -46,6 +46,7 @@ type RealtimeReconcileResult = {
  * when PELS took the reading — see that module for why the window must not be
  * anchored on the capability's `lastUpdated`.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateLastKnownPower(params: {
   state: {
     lastKnownPowerKw: LearnedPeaksByDeviceId;
@@ -103,7 +104,9 @@ export function updateLastKnownPower(params: {
     peakKw,
   });
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function reconcileRealtimeDeviceUpdate(params: {
   latestSnapshot: TransportDeviceSnapshot[];
   device: HomeyDeviceLike;
@@ -194,6 +197,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     currentSnapshot: resolvedParsed,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function applyExplicitControlObservationFromUpdate(params: {
   device: HomeyDeviceLike;
@@ -275,6 +279,7 @@ function getPreservedBinaryControlObservation(
   return undefined;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyBinaryControlObservation(params: {
   parsed: TransportDeviceSnapshot;
   previous: TransportDeviceSnapshot | null;
@@ -306,6 +311,7 @@ function applyBinaryControlObservation(params: {
     observedCapabilityIds: [...observation.observedCapabilityIds],
   };
 }
+/* eslint-enable functional/immutable-data */
 
 type ExplicitBinaryObservation = Pick<ExplicitControlObservation, 'value' | 'observedCapabilityId'>;
 
@@ -359,6 +365,7 @@ function getExplicitObservedBinaryObservation(params: {
     : undefined;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function preserveRecentLocalBinaryState(params: {
   previous: TransportDeviceSnapshot | null;
   parsed: TransportDeviceSnapshot;
@@ -397,6 +404,7 @@ function preserveRecentLocalBinaryState(params: {
     parsed.evChargingObservedAtMs = previous.evChargingObservedAtMs;
   }
 }
+/* eslint-enable functional/immutable-data */
 
 function resolveBinaryReconcileChange(
   previous: TransportDeviceSnapshot,
@@ -469,6 +477,7 @@ function resolveThermostatModeChanges(
   }];
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function getControlRelevantRealtimeChanges(
   previous: TransportDeviceSnapshot | null,
   next: TransportDeviceSnapshot,
@@ -501,6 +510,7 @@ function getControlRelevantRealtimeChanges(
 
   return changes;
 }
+/* eslint-enable functional/immutable-data */
 
 function getObservedCapabilityIds(
   previous: TransportDeviceSnapshot | null,

@@ -190,6 +190,7 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
       await setCapability(command.capabilityId, command.value);
       return true;
     },
+    /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
     observeCapabilityUpdate({ capabilityId, value }) {
       if (!capabilities.includes(capabilityId)) return false;
       capabilityObj[capabilityId] = {
@@ -198,6 +199,7 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
       };
       return true;
     },
+    /* eslint-enable functional/immutable-data */
     getReportedStepId(profile) {
       if (!profile) return undefined;
       return resolveNativeSteppedLoadReportedStepId({
