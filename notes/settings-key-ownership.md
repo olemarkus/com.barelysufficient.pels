@@ -134,13 +134,10 @@ way is that PELS refuses to price at all without it, so it is the app's own
 mission-critical configuration mirror rather than a cache of fetched data — and
 it is one short string, rewritten perhaps once a year, so the write cost the
 `/userdata` store exists to avoid does not arise. The prices themselves stay
-out: `combined_prices` and the raw slot payloads are the bulk, and they are the
-ones named below as the next to move. The Power by the Hour payloads
-(`powerhour_prices_today`/`_tomorrow`, plus its `_currency` and `_device`
-markers) are part of that family and move with it — they are stored beside the
-flow and Homey Energy slot pairs because every one of those keys rotates
-through the same code, not because a fresh cache was judged to belong in
-`homey.settings`.
+out: the raw slot payloads of every payload-fed source (Flow, Homey Energy and
+Power by the Hour, with their currencies and Power by the Hour's device marker)
+live in the price cache, and `combined_prices` is the one named below as the
+next to move.
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership
@@ -164,9 +161,10 @@ through the same code, not because a fresh cache was judged to belong in
   after them, and the device transport's retained power readings and meter
   anchors (`lib/device/retainedPowerStore.ts`, one row per device, diffed and
   saved at most once a minute) so a restart does not erase the last reading,
-  and the grid tariff and spot price caches (`lib/price/priceCacheStore.ts`,
-  one row per cache, one tariff entry per hour); calibration and the remaining
-  price caches follow. A cache belongs here whatever its size (owner, 2026-09-27):
+  and the price caches (`lib/price/priceCacheStore.ts`, one row per cache: the
+  grid tariff one entry per hour, the spot prices with their area, and the
+  payload-fed sources' day payloads and markers); calibration and the combined
+  prices follow. A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`

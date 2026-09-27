@@ -767,21 +767,29 @@ export type PowerhourSourceUiStatus =
   /** Prices are being read from `selected`. */
   | { kind: 'reading'; selected: PowerhourDeviceUiOption; devices: PowerhourDeviceUiOption[] };
 
-export type SettingsUiPricesPayload = {
-  combinedPrices: unknown | null;
-  priceArea: string | null;
+/**
+ * The day payloads and currencies the payload-fed price sources (Flow, Homey
+ * Energy, Power by the Hour) have stored, as the settings UI reports on them.
+ * Each is `null` while nothing is stored.
+ */
+export type SettingsUiPriceSourcePayloads = {
   flowToday: unknown | null;
   flowTomorrow: unknown | null;
   homeyCurrency: string | null;
   homeyToday: unknown | null;
   homeyTomorrow: unknown | null;
+  powerhourCurrency: string | null;
+  powerhourToday: unknown | null;
+  powerhourTomorrow: unknown | null;
+};
+
+export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
+  combinedPrices: unknown | null;
+  priceArea: string | null;
   /** `{ kind: 'unknown' }` during the boot window before the forecast selector is wired. */
   pvForecastSource: PvForecastSourceUiStatus;
   /** `{ kind: 'unknown' }` before the price seam is wired, or off the Homey source. */
   homeyPriceFormula: HomeyPriceFormulaUiStatus;
-  powerhourCurrency: string | null;
-  powerhourToday: unknown | null;
-  powerhourTomorrow: unknown | null;
   /** `{ kind: 'unknown' }` before the price seam is wired, or off the Power by the Hour source. */
   powerhourSource: PowerhourSourceUiStatus;
   /** Price-domain-classified setup facts; never a raw settings blob. */

@@ -1,3 +1,4 @@
+import type { PricePayloadKey } from './priceCacheStore';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -45,14 +46,14 @@ export const buildHomeyEnergyDateInfo = (timeZone: string, now = new Date()): Ho
 export const shouldUseHomeyEnergyCache = (params: {
   info: HomeyEnergyDateInfo;
   forceRefresh: boolean;
-  getSettingValue: (key: string) => unknown;
+  readCachedPayload: (key: PricePayloadKey) => unknown;
   debugStructured: StructuredDebugEmitter;
   updateCombinedPrices: () => void;
 }): boolean => {
-  const { info, forceRefresh, getSettingValue, debugStructured, updateCombinedPrices } = params;
+  const { info, forceRefresh, readCachedPayload, debugStructured, updateCombinedPrices } = params;
   if (forceRefresh) return false;
-  const cachedToday = getFlowPricePayload(getSettingValue(HOMEY_PRICES_TODAY));
-  const cachedTomorrow = getFlowPricePayload(getSettingValue(HOMEY_PRICES_TOMORROW));
+  const cachedToday = getFlowPricePayload(readCachedPayload(HOMEY_PRICES_TODAY));
+  const cachedTomorrow = getFlowPricePayload(readCachedPayload(HOMEY_PRICES_TOMORROW));
   if (cachedToday?.dateKey === info.todayKey && cachedTomorrow?.dateKey === info.tomorrowKey) {
     debugStructured({ event: 'homey_energy_cache_used' });
     updateCombinedPrices();
@@ -144,7 +145,7 @@ export const updateHomeyEnergyCurrency = (
 
 export const storeHomeyEnergyPayloads = (params: {
   results: HomeyEnergyResults;
-  writeFlowPayload: (key: string, payload: FlowPricePayload | null) => void;
+  writeFlowPayload: (key: PricePayloadKey, payload: FlowPricePayload | null) => void;
 }): number => {
   const { results, writeFlowPayload } = params;
   let stored = 0;

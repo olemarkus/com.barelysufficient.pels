@@ -76,17 +76,6 @@ export const PRICE_SCHEME = 'price_scheme';
 // cannot import lib) — keep both in sync.
 export const PV_FORECAST_SOURCE = 'pv_forecast_source';
 export const NORWAY_PRICE_MODEL = 'norway_price_model';
-export const FLOW_PRICES_TODAY = 'flow_prices_today';
-export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
-export const HOMEY_PRICES_TODAY = 'homey_prices_today';
-export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
-export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
-// Power by the Hour's prices, mirrored per local day from the app's
-// `/dap-prices` app-to-app route. Same shape and same rotation as the flow and
-// Homey slot pairs; owned by lib/price/powerhourScheme.ts (the settings UI cannot import lib) — keep both in sync.
-export const POWERHOUR_PRICES_TODAY = 'powerhour_prices_today';
-export const POWERHOUR_PRICES_TOMORROW = 'powerhour_prices_tomorrow';
-export const POWERHOUR_PRICES_CURRENCY = 'powerhour_prices_currency';
 // Which of the app's price devices this home is priced from. The owner picks
 // it in the settings UI, so both sides read it — the shared read policy lives
 // in packages/shared-domain/src/settings/priceScheme.ts.

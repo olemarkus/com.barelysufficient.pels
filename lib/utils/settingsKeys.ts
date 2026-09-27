@@ -195,6 +195,11 @@ export const NETTLEIE_DATA = 'nettleie_data';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
 export const PRICE_SCHEME = 'price_scheme';
 export const NORWAY_PRICE_MODEL = 'norway_price_model';
+// The payload-fed price sources' day payloads, currencies and device marker
+// (Flow, Homey Energy, Power by the Hour) live in the userdata price cache
+// (lib/price/priceCacheStore.ts), whose rows are named after these keys, so
+// lib/price uses these constants as row keys too. As settings keys they are
+// only read by the legacy import.
 export const FLOW_PRICES_TODAY = 'flow_prices_today';
 export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
 export const FLOW_REPORTED_DEVICE_CAPABILITIES = 'flow_reported_device_capabilities';

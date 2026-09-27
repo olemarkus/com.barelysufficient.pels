@@ -10,6 +10,7 @@ import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { NO_PRICE_SOURCE_PAYLOADS } from '../../lib/ports/settingsUiStatusSeams';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
 import { createInertPlanRebuildThrottle } from './powerRebuildScheduler';
@@ -280,6 +281,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),
     getPowerhourSourceUiStatus: () => ({ kind: 'unknown' as const }),
+    getPriceSourcePayloadsForUi: () => NO_PRICE_SOURCE_PAYLOADS,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,
     combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),

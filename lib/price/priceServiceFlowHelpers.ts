@@ -1,3 +1,4 @@
+import type { PricePayloadKey } from './priceCacheStore';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   getDateKeyInTimeZone,
@@ -136,7 +137,7 @@ type StoreFlowPriceParams = {
   raw: unknown;
   timeZone: string;
   debugStructured: StructuredDebugEmitter;
-  writeFlowPayload: (key: string, payload: FlowPricePayload | null) => void;
+  writeFlowPayload: (key: PricePayloadKey, payload: FlowPricePayload | null) => void;
   updateCombinedPrices: () => void;
 };
 

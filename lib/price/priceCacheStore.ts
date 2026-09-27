@@ -20,19 +20,47 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
 import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
-import { ELECTRICITY_PRICES, ELECTRICITY_PRICES_AREA, NETTLEIE_DATA } from '../utils/settingsKeys';
+import {
+  ELECTRICITY_PRICES,
+  ELECTRICITY_PRICES_AREA,
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_CURRENCY,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
+  NETTLEIE_DATA,
+  POWERHOUR_PRICES_CURRENCY,
+  POWERHOUR_PRICES_DEVICE,
+  POWERHOUR_PRICES_TODAY,
+  POWERHOUR_PRICES_TOMORROW,
+} from '../utils/settingsKeys';
 import { isGridTariffFallbackData, oneGridTariffEntryPerHour } from './gridTariffUtils';
 
 const storeLogger = getLogger('price/cache-store');
 
+/**
+ * The day payloads a payload-fed price source stores (Flow, Homey Energy,
+ * Power by the Hour). Each row keeps the name its settings key had, as do the
+ * currency and device-marker rows stored beside them.
+ */
+export type PricePayloadKey =
+  | typeof FLOW_PRICES_TODAY | typeof FLOW_PRICES_TOMORROW
+  | typeof HOMEY_PRICES_TODAY | typeof HOMEY_PRICES_TOMORROW
+  | typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW;
+
 /** The caches this store holds, one row each. */
-export type PriceCacheKey = 'grid_tariff' | 'spot_prices' | 'spot_price_area';
+export type PriceCacheKey =
+  | 'grid_tariff' | 'spot_prices' | 'spot_price_area'
+  | PricePayloadKey
+  | typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY | typeof POWERHOUR_PRICES_DEVICE;
 
 export type PriceCacheStore = {
   /** The cached value, or `null` when the store holds none. Throws only on I/O. */
   read(key: PriceCacheKey): unknown;
   /** Replace the cached value. A value equal to the one held writes nothing. */
   write(key: PriceCacheKey, value: unknown): void;
+  /** Drop the cached value, so a read answers `null`. */
+  remove(key: PriceCacheKey): void;
 };
 
 const SCHEMA = `
@@ -80,6 +108,11 @@ export const createPriceCacheStore = (db: UserdataDatabase): PriceCacheStore => 
       s.upsert.run(key, json);
       held.set(key, { json, value: JSON.parse(json) as unknown });
     },
+    remove: (key) => {
+      if (held.has(key) && held.get(key) === null) return;
+      s.remove.run(key);
+      held.set(key, null);
+    },
   };
 };
 
@@ -108,6 +141,22 @@ type LegacyPriceCache = {
   toStored: (raw: unknown) => unknown;
 };
 
+const payloadCache = (key: PricePayloadKey): LegacyPriceCache => ({
+  settingsKey: key,
+  cacheKey: key,
+  storeWins: (held) => held !== null,
+  toStored: (raw) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null),
+});
+
+const markerCache = (
+  key: typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY | typeof POWERHOUR_PRICES_DEVICE,
+): LegacyPriceCache => ({
+  settingsKey: key,
+  cacheKey: key,
+  storeWins: (held) => typeof held === 'string',
+  toStored: (raw) => (typeof raw === 'string' ? raw : null),
+});
+
 const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
   {
     settingsKey: NETTLEIE_DATA,
@@ -127,11 +176,40 @@ const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
     storeWins: (held) => typeof held === 'string' && held !== '',
     toStored: (raw) => (typeof raw === 'string' && raw !== '' ? raw : null),
   },
+  payloadCache(FLOW_PRICES_TODAY),
+  payloadCache(FLOW_PRICES_TOMORROW),
+  payloadCache(HOMEY_PRICES_TODAY),
+  payloadCache(HOMEY_PRICES_TOMORROW),
+  payloadCache(POWERHOUR_PRICES_TODAY),
+  payloadCache(POWERHOUR_PRICES_TOMORROW),
+  markerCache(HOMEY_PRICES_CURRENCY),
+  markerCache(POWERHOUR_PRICES_CURRENCY),
+  markerCache(POWERHOUR_PRICES_DEVICE),
 ];
+
+/**
+ * Retire the key unread when the store already holds a value that beats it.
+ * Checked before the key is read, so a key the old code left holding `null`
+ * (the Flow and Homey rotations cleared days that way) is retired once a newer
+ * row lands, instead of deferring as a possible transient miss on every boot.
+ */
+const retireBeatenKey = (settings: SettingsPort, cache: PriceCacheStore, legacy: LegacyPriceCache): boolean => {
+  try {
+    if (!legacy.storeWins(cache.read(legacy.cacheKey))) return false;
+    settings.unset(legacy.settingsKey);
+  } catch {
+    return false;
+  }
+  storeLogger.info({
+    event: 'legacy_price_cache_key_retired', settingsKey: legacy.settingsKey, reason: 'store_already_holds',
+  });
+  return true;
+};
 
 const importLegacyPriceCache = (settings: SettingsPort, cache: PriceCacheStore, legacy: LegacyPriceCache): void => {
   const { settingsKey, cacheKey } = legacy;
   if (isLegacySettingsKeyListed(settings, settingsKey) !== true) return;
+  if (retireBeatenKey(settings, cache, legacy)) return;
   const result = importLegacySettingsKey(settings, settingsKey, {
     holds: () => legacy.storeWins(cache.read(cacheKey)),
     adopt: (raw) => {
@@ -164,4 +242,17 @@ const importLegacyPriceCache = (settings: SettingsPort, cache: PriceCacheStore, 
  */
 export const importLegacyPriceCaches = (settings: SettingsPort, cache: PriceCacheStore): void => {
   for (const legacy of LEGACY_PRICE_CACHES) importLegacyPriceCache(settings, cache, legacy);
+};
+
+/**
+ * Retry the import of one cache's legacy key, for a reader that finds no row
+ * while the key may still be pending. A no-op once the key is gone.
+ */
+export const importPendingLegacyPriceCache = (
+  settings: SettingsPort,
+  cache: PriceCacheStore,
+  cacheKey: PriceCacheKey,
+): void => {
+  const legacy = LEGACY_PRICE_CACHES.find((entry) => entry.cacheKey === cacheKey);
+  if (legacy !== undefined) importLegacyPriceCache(settings, cache, legacy);
 };

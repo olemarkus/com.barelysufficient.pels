@@ -29,12 +29,7 @@ import {
   EXPORT_PRICE_ENABLED,
   EXPORT_PRICE_SOURCE,
   EXPORT_SPOT_FACTOR,
-  FLOW_PRICES_TODAY,
-  FLOW_PRICES_TOMORROW,
-  HOMEY_PRICES_CURRENCY,
   NORWAY_PRICE_MODEL,
-  HOMEY_PRICES_TODAY,
-  HOMEY_PRICES_TOMORROW,
   HOMES_CONFIG,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
@@ -527,21 +522,6 @@ function buildPriceSettingsHandlers(
       // already holds; the kicked probe's own completion hook recomputes again
       // when fresh Homey points land.
       deps.onPvForecastSourceObserved();
-      await refreshPriceDerivedState(deps);
-    },
-    [FLOW_PRICES_TODAY]: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    [FLOW_PRICES_TOMORROW]: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    [HOMEY_PRICES_TODAY]: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    [HOMEY_PRICES_TOMORROW]: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    [HOMEY_PRICES_CURRENCY]: async () => {
       await refreshPriceDerivedState(deps);
     },
     [NORWAY_PRICE_MODEL]: async () => {

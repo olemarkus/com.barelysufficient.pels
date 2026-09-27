@@ -2,6 +2,7 @@ import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
+import type { PriceCacheKey } from '../../lib/price/priceCacheStore';
 import { mockHomeyInstance, setMockApiApp } from '../mocks/homey';
 import {
   POWERHOUR_DEVICE_ID,
@@ -26,12 +27,24 @@ const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceL
   ...overrides,
 });
 
+// The price cache the service under test reads; each test starts on an empty one.
+let priceCache = createInMemoryPriceCache();
+
+/** Make every read of `key` fail, as a userdata read that throws does: `unreadable`, not absent. */
+const failReadsOf = (key: PriceCacheKey) => {
+  const read = priceCache.read.bind(priceCache);
+  return vi.spyOn(priceCache, 'read').mockImplementation((candidate) => {
+    if (candidate === key) throw new Error('userdata read failed');
+    return read(candidate);
+  });
+};
+
 const buildService = () => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   sinks(),
   () => 'Europe/Oslo',
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+  createPriceDataStore(mockHomeyInstance.settings, priceCache),
   () => ({}),
   noHomeyWebApi,
 );
@@ -66,6 +79,7 @@ describe('Power by the Hour price service', () => {
   };
 
   beforeEach(() => {
+    priceCache = createInMemoryPriceCache();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.api.clearRealtimeEvents();
@@ -87,13 +101,13 @@ describe('Power by the Hour price service', () => {
 
     await buildService().refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const stored = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       dateKey?: string; pricesByHour?: Record<string, number>;
     };
     expect(stored?.dateKey).toBe(todayKey);
     expect(stored?.pricesByHour?.['14']).toBeCloseTo(0.14);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_CURRENCY)).toBe('€');
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
+    expect(priceCache.read(POWERHOUR_PRICES_CURRENCY)).toBe('€');
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
   });
 
   it('serves the stored days to the planner as hourly prices', async () => {
@@ -141,7 +155,7 @@ describe('Power by the Hour price service', () => {
     });
     await service.refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const stored = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       pricesByHour?: Record<string, number>;
     };
     expect(Object.keys(stored?.pricesByHour ?? {})).toHaveLength(24);
@@ -168,7 +182,7 @@ describe('Power by the Hour price service', () => {
 
     await buildService().refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TOMORROW) as { dateKey?: string };
+    const stored = priceCache.read(POWERHOUR_PRICES_TOMORROW) as { dateKey?: string };
     expect(stored?.dateKey).toBe(tomorrowKey);
   });
 
@@ -187,9 +201,9 @@ describe('Power by the Hour price service', () => {
     });
     // Yesterday in the today slot, and today's full day still in tomorrow's —
     // exactly what a home that has not rotated since midnight holds.
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, fullDay(nightKey));
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TOMORROW, fullDay(todayKey));
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    priceCache.write(POWERHOUR_PRICES_TODAY, fullDay(nightKey));
+    priceCache.write(POWERHOUR_PRICES_TOMORROW, fullDay(todayKey));
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no2-device');
     setMockApiApp(POWERHOUR_APP_ID, {
       installed: true,
       get: async () => dapPrices(todayKey, 14, (hour) => hour),
@@ -197,7 +211,7 @@ describe('Power by the Hour price service', () => {
 
     await buildService().refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const stored = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       dateKey?: string; pricesByHour?: Record<string, number>;
     };
     expect(stored?.dateKey).toBe(todayKey);
@@ -214,7 +228,7 @@ describe('Power by the Hour price service', () => {
     });
     const service = buildService();
     await service.refreshSpotPrices(true);
-    const before = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY);
+    const before = priceCache.read(POWERHOUR_PRICES_TODAY);
 
     setMockApiApp(POWERHOUR_APP_ID, {
       installed: true,
@@ -222,7 +236,7 @@ describe('Power by the Hour price service', () => {
     });
     await service.refreshSpotPrices(true);
 
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toEqual(before);
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toEqual(before);
     expect(service.getPowerhourSourceUiStatus()).toEqual({ kind: 'app_unavailable' });
   });
 
@@ -236,7 +250,7 @@ describe('Power by the Hour price service', () => {
     });
     const service = buildService();
     await service.refreshSpotPrices(true);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toBeTruthy();
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeTruthy();
 
     // The owner's device is gone from the app, and another is in its place.
     setMockApiApp(POWERHOUR_APP_ID, {
@@ -249,13 +263,13 @@ describe('Power by the Hour price service', () => {
     });
     await service.refreshSpotPrices(true);
 
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toBeFalsy();
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeFalsy();
     expect(service.getCombinedHourlyPrices()).toEqual([]);
   });
 
-  // Regression, found on the SHS test Homey: clearing a day by STORING null left
-  // the key listed, the next read called it `unreadable`, and the source never
-  // stored that day again — the home stayed unpriced for good.
+  // Regression, found on the SHS test Homey: a day cleared on a device change was
+  // later read as `unreadable`, and the source never stored that day again — the
+  // home stayed unpriced for good. A cleared day is now no row at all.
   it('prices the home again after the device is changed', async () => {
     mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no2-device');
     const twoDevices = async () => {
@@ -269,46 +283,78 @@ describe('Power by the Hour price service', () => {
     setMockApiApp(POWERHOUR_APP_ID, { installed: true, get: twoDevices });
     const service = buildService();
     await service.refreshSpotPrices(true);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toBeTruthy();
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeTruthy();
 
     // The owner un-chooses: the previous device's days are dropped.
     mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, '');
     await service.refreshSpotPrices(true);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toBeFalsy();
-    // ...and the key is GONE, not stored as null — a listed-but-empty key is how
-    // a transient miss is recognised, and this was a deliberate clear.
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain(POWERHOUR_PRICES_TODAY);
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeNull();
 
     // They pick the other one; prices must come back.
     mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no1-device');
     await service.refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as { dateKey?: string };
+    const stored = priceCache.read(POWERHOUR_PRICES_TODAY) as { dateKey?: string };
     expect(stored?.dateKey).toBe(todayKey);
     expect(service.getCombinedHourlyPrices().length).toBeGreaterThan(0);
-  });
-
-  // The state an older build could leave behind: the key LISTED with a `null`
-  // value. `null` is what the SDK answers for an unset key, so it is absence —
-  // reading it as a failed read made the source refuse to write for good.
-  it('stores over a day left behind as a stored null', async () => {
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, null);
-    expect(mockHomeyInstance.settings.getKeys()).toContain(POWERHOUR_PRICES_TODAY);
-    setMockApiApp(POWERHOUR_APP_ID, {
-      installed: true,
-      get: async () => dapPrices(todayKey, 14, () => 1),
-    });
-
-    await buildService().refreshSpotPrices(true);
-
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as { dateKey?: string };
-    expect(stored?.dateKey).toBe(todayKey);
   });
 
   // Codex P1 on #2462. With today stale and the tomorrow slot unreadable, a pass
   // that writes anything is fatal: it puts this device's future-only answer in
   // the today slot, and the NEXT pass — seeing today as current — clears the
   // tomorrow copy that still held the elapsed hours. So the pass decides nothing.
+  // A boot whose import of a day came back empty leaves the day only in its old
+  // settings key. The next pass must pick it up from there rather than merge the
+  // app's future-only answer onto an empty day and lose this morning's hours.
+  it('picks a day still pending its import up from the old settings key before merging', async () => {
+    const wholeToday = {
+      dateKey: todayKey,
+      pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), hour])),
+      updatedAt: fixedNow.toISOString(),
+    };
+    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, wholeToday);
+    mockHomeyInstance.settings.set(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    setMockApiApp(POWERHOUR_APP_ID, {
+      installed: true,
+      get: async () => dapPrices(todayKey, 14, (hour) => hour),
+    });
+
+    await buildService().refreshSpotPrices(true);
+
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as { pricesByHour?: Record<string, number> };
+    expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
+    expect(today?.pricesByHour?.['3']).toBe(3);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(POWERHOUR_PRICES_TODAY);
+  });
+
+  it('writes nothing over a day whose pending old key does not come back', async () => {
+    const wholeToday = {
+      dateKey: todayKey,
+      pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), hour])),
+      updatedAt: fixedNow.toISOString(),
+    };
+    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, wholeToday);
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    setMockApiApp(POWERHOUR_APP_ID, {
+      installed: true,
+      get: async () => dapPrices(todayKey, 14, (hour) => hour),
+    });
+    const service = buildService();
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const get = vi.spyOn(mockHomeyInstance.settings, 'get')
+      .mockImplementation((key: string) => (key === POWERHOUR_PRICES_TODAY ? undefined : originalGet(key)));
+
+    await service.refreshSpotPrices(true);
+    get.mockRestore();
+
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeNull();
+    expect(mockHomeyInstance.settings.getKeys()).toContain(POWERHOUR_PRICES_TODAY);
+
+    await service.refreshSpotPrices(true);
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as { pricesByHour?: Record<string, number> };
+    expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
+  });
+
   it('keeps the elapsed hours when a stored day cannot be read', async () => {
     const nightKey = shiftDateKey(todayKey, -1);
     const fullDay = (dateKey: string) => ({
@@ -317,27 +363,28 @@ describe('Power by the Hour price service', () => {
       updatedAt: fixedNow.toISOString(),
     });
     const wholeToday = fullDay(todayKey);
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, fullDay(nightKey));
-    // Listed, but this read does not produce it — the transient the guard is for.
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TOMORROW, undefined);
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    priceCache.write(POWERHOUR_PRICES_TODAY, fullDay(nightKey));
+    // Stored, but this read does not produce it — the transient the guard is for.
+    priceCache.write(POWERHOUR_PRICES_TOMORROW, wholeToday);
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no2-device');
     setMockApiApp(POWERHOUR_APP_ID, {
       installed: true,
       get: async () => dapPrices(todayKey, 14, (hour) => hour),
     });
     const service = buildService();
 
+    const blind = failReadsOf(POWERHOUR_PRICES_TOMORROW);
     await service.refreshSpotPrices(true);
+    blind.mockRestore();
 
     // Nothing was written while the cache could not be read.
-    const afterBlind = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as { dateKey?: string };
+    const afterBlind = priceCache.read(POWERHOUR_PRICES_TODAY) as { dateKey?: string };
     expect(afterBlind?.dateKey).toBe(nightKey);
 
     // The read recovers, with the full copy of today where it always was.
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TOMORROW, wholeToday);
     await service.refreshSpotPrices(true);
 
-    const today = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       dateKey?: string; pricesByHour?: Record<string, number>;
     };
     expect(today?.dateKey).toBe(todayKey);
@@ -354,7 +401,7 @@ describe('Power by the Hour price service', () => {
     });
     const service = buildService();
     await service.refreshSpotPrices(true);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_CURRENCY)).toBe('€');
+    expect(priceCache.read(POWERHOUR_PRICES_CURRENCY)).toBe('€');
 
     setMockApiApp(POWERHOUR_APP_ID, {
       installed: true,
@@ -366,7 +413,7 @@ describe('Power by the Hour price service', () => {
     });
     await service.refreshSpotPrices(true);
 
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_CURRENCY)).toBeFalsy();
+    expect(priceCache.read(POWERHOUR_PRICES_CURRENCY)).toBeFalsy();
     // ...and the label falls back to the modelled unknown, not the stale unit.
     expect(service.getPriceUnitLabel()).toBe('price units');
   });
@@ -381,30 +428,31 @@ describe('Power by the Hour price service', () => {
       updatedAt: fixedNow.toISOString(),
     };
     mockHomeyInstance.settings.set(POWERHOUR_DEVICE_ID, 'no2-device');
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_DEVICE, 'no1-device');
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, undefined);
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TOMORROW, stale);
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no1-device');
+    priceCache.write(POWERHOUR_PRICES_TODAY, stale);
+    priceCache.write(POWERHOUR_PRICES_TOMORROW, stale);
     setMockApiApp(POWERHOUR_APP_ID, {
       installed: true,
       get: async () => dapPrices(todayKey, 14, () => 1),
     });
     const service = buildService();
 
+    const blind = failReadsOf(POWERHOUR_PRICES_TODAY);
     await service.refreshSpotPrices(true);
+    blind.mockRestore();
     // The pass decided nothing (today unreadable), so the marker still names the
     // device that actually wrote what is stored.
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_DEVICE)).toBe('no1-device');
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe('no1-device');
 
     // Today becomes readable and is plainly the other device's. It must be
     // dropped, not merged, and only then may the marker move.
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, stale);
     await service.refreshSpotPrices(true);
 
-    const today = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       pricesByHour?: Record<string, number>;
     };
     expect(today?.pricesByHour?.['0']).toBeUndefined();
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
   });
 
   it('reports no status at all off this price source', async () => {
@@ -422,14 +470,14 @@ describe('Power by the Hour price service', () => {
 
   it('writes nothing when the app is not installed', async () => {
     setMockApiApp(POWERHOUR_APP_ID, { installed: false, get: async () => ({ prices: [] }) });
-    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, {
+    priceCache.write(POWERHOUR_PRICES_TODAY, {
       dateKey: todayKey, pricesByHour: { 14: 9 }, updatedAt: fixedNow.toISOString(),
     });
 
     const service = buildService();
     await service.refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY) as {
+    const stored = priceCache.read(POWERHOUR_PRICES_TODAY) as {
       pricesByHour?: Record<string, number>;
     };
     expect(stored?.pricesByHour?.['14']).toBe(9);
@@ -460,7 +508,7 @@ describe('Power by the Hour price service', () => {
     const service = buildService();
     await service.refreshSpotPrices(true);
 
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toBeFalsy();
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeFalsy();
     const status = service.getPowerhourSourceUiStatus();
     expect(status.kind).toBe('device_missing');
     expect(status.kind === 'device_missing' && status.devices).toHaveLength(2);
@@ -492,6 +540,6 @@ describe('Power by the Hour price service', () => {
     await service.refreshSpotPrices(true);
 
     expect(service.getCombinedHourlyPrices()[0]?.totalPrice).toBe(7);
-    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_DEVICE)).toBe('no1-device');
+    expect(priceCache.read(POWERHOUR_PRICES_DEVICE)).toBe('no1-device');
   });
 });

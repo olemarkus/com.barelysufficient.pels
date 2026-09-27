@@ -135,14 +135,6 @@ const PRICE_REFRESH_KEYS = new Set([
   // The runtime's source re-selection changes the provenance carried on the
   // prices payload, so a source write must invalidate the cached read model.
   PV_FORECAST_SOURCE,
-  'flow_prices_today',
-  'flow_prices_tomorrow',
-  'homey_prices_today',
-  'homey_prices_tomorrow',
-  'homey_prices_currency',
-  'powerhour_prices_today',
-  'powerhour_prices_tomorrow',
-  'powerhour_prices_currency',
   // The runtime re-reads the peer app on this write, so the source account it
   // carries on the prices payload moves with it.
   POWERHOUR_DEVICE_ID,

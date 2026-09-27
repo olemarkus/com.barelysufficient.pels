@@ -50,11 +50,15 @@ const buildIntervals = (startUtcMs: number, values: number[], intervalMinutes: n
   })
 );
 
+// The price cache the service under test reads; each test starts on an empty one.
+let priceCache = createInMemoryPriceCache();
+
 describe('Homey price service', () => {
   const timeZone = 'Europe/Oslo';
   const fixedNow = new Date(Date.UTC(2026, 0, 19, 12, 0, 0));
 
   beforeEach(() => {
+    priceCache = createInMemoryPriceCache();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.api.clearRealtimeEvents();
@@ -93,16 +97,16 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    const storedToday = mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY) as { dateKey?: string };
-    const storedTomorrow = mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW) as { dateKey?: string };
-    const currency = mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY);
+    const storedToday = priceCache.read(HOMEY_PRICES_TODAY) as { dateKey?: string };
+    const storedTomorrow = priceCache.read(HOMEY_PRICES_TOMORROW) as { dateKey?: string };
+    const currency = priceCache.read(HOMEY_PRICES_CURRENCY);
 
     expect(storedToday?.dateKey).toBe(todayKey);
     expect(storedTomorrow?.dateKey).toBe(tomorrowKey);
@@ -117,8 +121,8 @@ describe('Homey price service', () => {
     const tomorrowKey = shiftDateKey(todayKey, 1);
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: new Date().toISOString() });
-    mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, { dateKey: tomorrowKey, pricesByHour: { '0': 2 }, updatedAt: new Date().toISOString() });
+    priceCache.write(HOMEY_PRICES_TODAY, { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: new Date().toISOString() });
+    priceCache.write(HOMEY_PRICES_TOMORROW, { dateKey: tomorrowKey, pricesByHour: { '0': 2 }, updatedAt: new Date().toISOString() });
 
     const energyApi: HomeyEnergyApi = {
       fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
@@ -130,7 +134,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -156,7 +160,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -191,7 +195,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -200,9 +204,9 @@ describe('Homey price service', () => {
 
     expect(capture.findEvent('homey_prices_fetch_failed')).toBeUndefined();
     expect(capture.findEvent('homey_prices_missing_tomorrow') !== undefined).toBe(missingTomorrowLogged);
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
+    expect(priceCache.read(HOMEY_PRICES_TODAY)).toBeTruthy();
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_PRICES_TOMORROW);
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('EUR');
+    expect(priceCache.read(HOMEY_PRICES_CURRENCY)).toBe('EUR');
     capture.restore();
   });
 
@@ -229,16 +233,16 @@ describe('Homey price service', () => {
       sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
+    expect(priceCache.read(HOMEY_PRICES_TODAY)).toBeTruthy();
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(HOMEY_PRICES_TOMORROW);
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('NOK');
+    expect(priceCache.read(HOMEY_PRICES_CURRENCY)).toBe('NOK');
     expect(structuredLog.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_prices_stored', dayCount: 1 }),
     );
@@ -257,7 +261,7 @@ describe('Homey price service', () => {
       sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -275,7 +279,7 @@ describe('Homey price service', () => {
     const wrongKey = shiftDateKey(todayKey, -1);
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
+    priceCache.write(HOMEY_PRICES_TODAY, {
       dateKey: wrongKey,
       pricesByHour: { '0': 1 },
       updatedAt: new Date().toISOString(),
@@ -287,7 +291,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -302,7 +306,7 @@ describe('Homey price service', () => {
       action: 'cleared',
       from: wrongKey,
     }));
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeNull();
+    expect(priceCache.read(HOMEY_PRICES_TODAY)).toBeNull();
   });
 
   it('promotes a stale Flow tomorrow payload dated today into the today slot', () => {
@@ -316,7 +320,7 @@ describe('Homey price service', () => {
       pricesByHour: { '0': 1.1, '1': 2.2 },
       updatedAt: fixedNow.toISOString(),
     };
-    mockHomeyInstance.settings.set(FLOW_PRICES_TOMORROW, stalePayload);
+    priceCache.write(FLOW_PRICES_TOMORROW, stalePayload);
 
     const debugStructured = vi.fn();
     const service = new PriceService(
@@ -324,7 +328,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -332,8 +336,8 @@ describe('Homey price service', () => {
     const prices = service.getCombinedHourlyPrices();
 
     expect(prices.length).toBeGreaterThan(0);
-    expect(mockHomeyInstance.settings.get(FLOW_PRICES_TODAY)).toEqual(stalePayload);
-    expect(mockHomeyInstance.settings.get(FLOW_PRICES_TOMORROW)).toBeNull();
+    expect(priceCache.read(FLOW_PRICES_TODAY)).toEqual(stalePayload);
+    expect(priceCache.read(FLOW_PRICES_TOMORROW)).toBeNull();
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_price_slot_rotated',
       priceSource: 'Flow prices',
@@ -363,8 +367,8 @@ describe('Homey price service', () => {
       pricesByHour: { '0': 1.1, '1': 2.2 },
       updatedAt: fixedNow.toISOString(),
     };
-    mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, yesterdayPayload);
-    mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, stalePayload);
+    priceCache.write(HOMEY_PRICES_TODAY, yesterdayPayload);
+    priceCache.write(HOMEY_PRICES_TOMORROW, stalePayload);
     // This spec is about slot rotation: the owner has no price formula, so the
     // stored prices are the prices.
     mirrorNoHomeyPriceFormula(mockHomeyInstance.settings);
@@ -375,7 +379,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -383,8 +387,8 @@ describe('Homey price service', () => {
     const prices = service.getCombinedHourlyPrices();
 
     expect(prices.length).toBeGreaterThan(0);
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toEqual(stalePayload);
-    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeNull();
+    expect(priceCache.read(HOMEY_PRICES_TODAY)).toEqual(stalePayload);
+    expect(priceCache.read(HOMEY_PRICES_TOMORROW)).toBeNull();
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_price_slot_rotated',
       priceSource: 'Homey prices',
@@ -397,7 +401,7 @@ describe('Homey price service', () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: todayKey,
       pricesByHour: { '0': 1.5, '1': 1.7 },
       updatedAt: fixedNow.toISOString(),
@@ -408,7 +412,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -431,7 +435,7 @@ describe('Homey price service', () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: todayKey,
       pricesByHour: { '0': 1.5, '1': 1.7 },
       updatedAt: fixedNow.toISOString(),
@@ -442,7 +446,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -450,7 +454,7 @@ describe('Homey price service', () => {
 
     service.updateCombinedPrices();
 
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: todayKey,
       pricesByHour: { '0': 2.5, '1': 2.7 },
       updatedAt: new Date(fixedNow.getTime() + 1000).toISOString(),
@@ -493,14 +497,14 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    const stored = mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY) as {
+    const stored = priceCache.read(HOMEY_PRICES_TODAY) as {
       pricesBySlot?: Array<{ durationMinutes?: number }>;
       pricesByPeriod?: Array<{ durationMinutes?: number }>;
     };
@@ -548,7 +552,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -595,7 +599,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       noHomeyWebApi,
     );
@@ -625,7 +629,7 @@ describe('Homey price service', () => {
     const storeTodayPrices = (values: Record<string, number>): void => {
       const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
       mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-      mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
+      priceCache.write(HOMEY_PRICES_TODAY, {
         dateKey: todayKey,
         pricesByHour: values,
         updatedAt: fixedNow.toISOString(),
@@ -660,7 +664,7 @@ describe('Homey price service', () => {
       sinks(overrides),
       () => timeZone,
       ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       homeyWebApiGet,
     );
@@ -888,7 +892,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
-      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      createPriceDataStore(mockHomeyInstance.settings, priceCache),
       () => ({}),
       webApiGet,
     );
@@ -897,7 +901,7 @@ describe('Homey price service', () => {
       mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
       mockHomeyInstance.settings.set(EXPORT_PRICE_SOURCE, 'homey_energy');
       mockHomeyInstance.settings.set(EXPORT_PRICE_ENABLED, true);
-      mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
+      priceCache.write(HOMEY_PRICES_TODAY, {
         dateKey: getDateKeyInTimeZone(fixedNow, timeZone),
         pricesByHour: values,
         updatedAt: fixedNow.toISOString(),
@@ -978,7 +982,7 @@ describe('Homey price service', () => {
       // Only the Homey series carries Homey's feed-in price. Switching import
       // scheme must not leave the manual fields visible but powerless.
       mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
-      mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+      priceCache.write(FLOW_PRICES_TODAY, {
         dateKey: getDateKeyInTimeZone(fixedNow, timeZone),
         pricesByHour: { '13': 1 },
         updatedAt: fixedNow.toISOString(),

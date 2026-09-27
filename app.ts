@@ -51,7 +51,7 @@ import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import { createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
 import type {
-  HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus,
+  HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
 } from './packages/contracts/src/settingsUiApi';
 import {
   createModeTargetPersistence,
@@ -346,6 +346,20 @@ class PelsApp extends PelsAppBase implements AppContext {
   // Replaced when the price coordinator is wired; `unknown` until then is the
   // union's own member for "PELS has not asked the app yet".
   public getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus = () => ({ kind: 'unknown' });
+
+  // The payload-fed price sources' stored days and currencies, which live in the
+  // userdata price cache. Replaced when the price coordinator is wired; nothing
+  // stored until then.
+  public getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads = () => ({
+    flowToday: null,
+    flowTomorrow: null,
+    homeyCurrency: null,
+    homeyToday: null,
+    homeyTomorrow: null,
+    powerhourCurrency: null,
+    powerhourToday: null,
+    powerhourTomorrow: null,
+  });
 
   // "Not started" is a named lifecycle state, not an absent field: the
   // controller is built by the post-startup background step, while the

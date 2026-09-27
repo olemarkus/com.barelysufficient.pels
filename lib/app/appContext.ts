@@ -83,7 +83,7 @@ import type {
 } from '../device/transport/flowReportedCapabilities';
 import type {
   HomeyPriceFormulaUiStatus,
-  PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot,
+  PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot, SettingsUiPriceSourcePayloads,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
@@ -409,6 +409,8 @@ export type AppContext = {
    * and which of its price devices the owner can choose between.
    */
   getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus;
+  /** The payload-fed price sources' stored days and currencies, for the settings UI. */
+  getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

@@ -51,8 +51,8 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
 - `combinedPricesReader.ts` / `priceStore.ts` — typed read boundary for the persisted combined-prices store + its pure derivations.
 - `priceDataStore.ts` / `priceOptimizationSettingsStore.ts` — typed producer-side persistence boundaries.
 - `priceCacheStore.ts` — the price caches in the userdata database, one JSON row each, with the
-  one-shot import of each legacy settings key. The grid tariff and the spot prices are here; the
-  caches `priceDataStore.ts` still writes to settings follow. Do not add a new cache to settings.
+  one-shot import of each legacy settings key. Every price cache is here except the combined prices,
+  which `priceDataStore.ts` still writes to settings until they move too. Do not add a new cache to settings.
 - `nettleieFallbackData.generated.ts` — **generated** (`npm run build:nettleie-fallback`); never edit by hand.
 
 ## Invariants
@@ -72,7 +72,8 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
   only `rotateFlowPriceSlots` moves a `tomorrow` payload that has become today into the today slot;
   merging against the raw pair after a midnight rollover writes the app's future-only answer as the
   whole day. And **a read that did not come back is not an empty day** — `readPowerhourCache` tells
-  the two apart with `getKeys()`, and an unreadable day is left exactly as it is
+  the two apart (a row the price cache does not hold is absence, a read that throws is `unreadable`),
+  and an unreadable day is left exactly as it is
   (`PowerhourCachedDay`). Both were live data-loss bugs during review; neither has a symptom before
   the hours are already gone.
 - **A Power by the Hour forecast slot is not a price, and never crosses the adapter.** With

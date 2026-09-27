@@ -206,16 +206,17 @@ export type PowerhourPayloads = {
  *
  * `unreadable` is the member that earns this type. This source MERGES into the
  * stored day rather than replacing it, which makes the read half load-bearing:
- * a transient settings miss that read as "nothing stored" would let the fresh
- * read — future slots only — be written as the whole day, and this morning's
- * prices would be gone for good. So a key that is listed but did not come back
- * settles nothing, and the day is left exactly as it is.
+ * a failed read that looked like "nothing stored" would let the fresh read —
+ * future slots only — be written as the whole day, and this morning's prices
+ * would be gone for good. So a day the store could not read (a cache read that
+ * threw, or a legacy settings key still pending its import that did not come
+ * back) settles nothing, and the day is left exactly as it is.
  */
 export type PowerhourCachedDay =
   | { kind: 'stored'; payload: unknown }
-  /** The key is not there: nothing has ever been stored for this day. */
+  /** Nothing is stored for this day. */
   | { kind: 'absent' }
-  /** Listed, but this read did not produce it. */
+  /** Stored or possibly stored, but this read did not produce it. */
   | { kind: 'unreadable' };
 
 /**

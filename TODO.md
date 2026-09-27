@@ -1653,13 +1653,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
       the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
       (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
-      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the grid tariff and spot price caches
+      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the price caches
       (`lib/price/priceCacheStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~36 kB of the ~52 kB object:
-      the price caches `combined_prices` (21 kB) and the Flow, Homey and Power by the Hour
-      price payloads (`flow_prices_today`/`_tomorrow` 4 kB, and the `homey_prices_*` and
-      `powerhour_prices_*` pairs on homes with those schemes) (`lib/price/priceDataStore.ts`,
-      `lib/price/combinedPricesReader.ts`; they join the tariff and spot prices in `priceCacheStore.ts`), the
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~32 kB of the ~48 kB object:
+      `combined_prices` (21 kB, `lib/price/priceDataStore.ts`, `lib/price/combinedPricesReader.ts`;
+      its settings handler schedules the daily budget's price sync, which moves to the price
+      coordinator's `onCombinedPricesUpdated`), the
       learned hourly profiles in `daily_budget_state` (7 of its 8 kB,
       `setup/dailyBudgetStateAdapter.ts`), `power_calibration` (2 kB,
       `lib/device/devicePowerCalibrationStore.ts`), `device_power_peaks` (1 kB,
@@ -1678,7 +1677,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
       the `settings_set.*` perf counters, which cover only `daily_budget_state` and
       `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
-      gone (the tracker key, `pels_status`, `app_heartbeat` and `target_devices_snapshot`):
+      gone (the tracker key, `pels_status`, `app_heartbeat`, `target_devices_snapshot` and the price
+      payload keys):
       `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload` and the device list) and the
       fixture in `scripts/benchmark-settings-ui-boot.mjs`, by pointing them at the `ui_power` and
       device API payloads.

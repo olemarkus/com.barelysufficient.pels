@@ -24,6 +24,8 @@ import {
   hasHomeyPriceFormulaSeam,
   hasPowerhourSourceSeam,
   hasPriceOptimizationSetupSeam,
+  hasPriceSourcePayloadsSeam,
+  NO_PRICE_SOURCE_PAYLOADS,
   hasPvForecastSourceSeam,
 } from '../lib/ports/settingsUiStatusSeams';
 import type {
@@ -416,20 +418,13 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   return {
     combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
     priceArea: stringOrNull(homey.settings.get('price_area')),
-    flowToday: homey.settings.get('flow_prices_today') as unknown ?? null,
-    flowTomorrow: homey.settings.get('flow_prices_tomorrow') as unknown ?? null,
-    homeyCurrency: stringOrNull(homey.settings.get('homey_prices_currency')),
-    homeyToday: homey.settings.get('homey_prices_today') as unknown ?? null,
-    homeyTomorrow: homey.settings.get('homey_prices_tomorrow') as unknown ?? null,
+    ...(hasPriceSourcePayloadsSeam(app) ? app.getPriceSourcePayloadsForUi() : NO_PRICE_SOURCE_PAYLOADS),
     pvForecastSource: hasPvForecastSourceSeam(app)
       ? app.getPvForecastSourceUiStatus()
       : { kind: 'unknown' },
     homeyPriceFormula: hasHomeyPriceFormulaSeam(app)
       ? app.getHomeyPriceFormulaUiStatus()
       : { kind: 'unknown' },
-    powerhourCurrency: stringOrNull(homey.settings.get('powerhour_prices_currency')),
-    powerhourToday: homey.settings.get('powerhour_prices_today') as unknown ?? null,
-    powerhourTomorrow: homey.settings.get('powerhour_prices_tomorrow') as unknown ?? null,
     powerhourSource: hasPowerhourSourceSeam(app)
       ? app.getPowerhourSourceUiStatus()
       : { kind: 'unknown' },

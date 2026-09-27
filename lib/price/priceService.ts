@@ -3,10 +3,8 @@ import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dat
 import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
-  HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
-  POWERHOUR_PRICES_CURRENCY,
   POWERHOUR_PRICES_TODAY,
   POWERHOUR_PRICES_TOMORROW,
   PRICE_SCHEME,
@@ -64,6 +62,7 @@ import {
 import type { HomeyPriceResolution } from './homeyScheme';
 import type { HomeyWebApiGet } from './homeyWebApiPort';
 import type { PriceDataStore } from './priceDataStore';
+import type { PricePayloadKey } from './priceCacheStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
@@ -128,15 +127,14 @@ export default class PriceService {
   getPriceUnitLabel(): string {
     const scheme = this.getPriceScheme();
     if (scheme === 'norway') return 'øre/kWh';
-    if (scheme === 'homey') return this.currencyLabel(HOMEY_PRICES_CURRENCY);
-    if (scheme === 'powerhour') return this.currencyLabel(POWERHOUR_PRICES_CURRENCY);
+    if (scheme === 'homey') return this.currencyLabel(this.priceDataStore.readHomeyPricesCurrency());
+    if (scheme === 'powerhour') return this.currencyLabel(this.priceDataStore.readPowerhourCurrency());
     return 'price units';
   }
 
   /** A mirrored currency label, or the unit-less fallback when none was stored. */
-  private currencyLabel(key: string): string {
-    const currency = this.getSettingValue(key);
-    return typeof currency === 'string' && currency.trim() ? currency : 'price units';
+  private currencyLabel(currency: string | null): string {
+    return currency ?? 'price units';
   }
 
   private shouldUseSpotPriceCache(params: {
@@ -461,8 +459,8 @@ export default class PriceService {
   private rotateFlowPriceSlots(params: {
     now: Date;
     timeZone: string;
-    todaySettingKey: string;
-    tomorrowSettingKey: string;
+    todaySettingKey: PricePayloadKey;
+    tomorrowSettingKey: PricePayloadKey;
     label: PriceSourceLabel;
   }): { todayPayload: FlowPricePayload | null; tomorrowPayload: FlowPricePayload | null } {
     const { now, timeZone, todaySettingKey, tomorrowSettingKey, label } = params;
@@ -494,8 +492,8 @@ export default class PriceService {
    * else.
    */
   private getPricePeriodsFromPayloads(
-    todaySettingKey: string,
-    tomorrowSettingKey: string,
+    todaySettingKey: PricePayloadKey,
+    tomorrowSettingKey: PricePayloadKey,
     label: PriceSourceLabel,
   ): CombinedPricePeriod[] {
     const now = new Date();
@@ -603,7 +601,7 @@ export default class PriceService {
     if (shouldUseHomeyEnergyCache({
       info,
       forceRefresh,
-      getSettingValue: (key) => this.getSettingValue(key),
+      readCachedPayload: (key) => this.priceDataStore.readFlowPayload(key),
       debugStructured: this.sinks.debugStructured,
       updateCombinedPrices: () => this.updateCombinedPrices(),
     })) {

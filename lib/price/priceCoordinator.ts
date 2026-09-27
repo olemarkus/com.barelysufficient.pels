@@ -17,7 +17,11 @@ import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
-import type { HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  HomeyPriceFormulaUiStatus,
+  PowerhourSourceUiStatus,
+  SettingsUiPriceSourcePayloads,
+} from '../../packages/contracts/src/settingsUiApi';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
@@ -27,6 +31,14 @@ import type {
 } from './priceOptimizationSettingsStore';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PriceDataStore } from './priceDataStore';
+import {
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
+  POWERHOUR_PRICES_TODAY,
+  POWERHOUR_PRICES_TOMORROW,
+} from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
@@ -62,6 +74,22 @@ export type PriceCoordinatorDeps = {
   structuredLog?: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
 };
+
+/**
+ * The payload-fed sources' stored day payloads and currencies, for the settings
+ * UI. They live in the userdata price cache, so the UI reaches them through the
+ * app rather than through a settings key.
+ */
+const readPriceSourcePayloads = (store: PriceDataStore): SettingsUiPriceSourcePayloads => ({
+  flowToday: store.readFlowPayload(FLOW_PRICES_TODAY),
+  flowTomorrow: store.readFlowPayload(FLOW_PRICES_TOMORROW),
+  homeyCurrency: store.readHomeyPricesCurrency(),
+  homeyToday: store.readFlowPayload(HOMEY_PRICES_TODAY),
+  homeyTomorrow: store.readFlowPayload(HOMEY_PRICES_TOMORROW),
+  powerhourCurrency: store.readPowerhourCurrency(),
+  powerhourToday: store.readFlowPayload(POWERHOUR_PRICES_TODAY),
+  powerhourTomorrow: store.readFlowPayload(POWERHOUR_PRICES_TOMORROW),
+});
 
 export class PriceCoordinator {
   private lastGoodHourPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
@@ -228,9 +256,13 @@ export class PriceCoordinator {
    * same-day payload is left untouched (never clobber persisted state on a
    * transient/empty read).
    *
-   * Flow-scheme only: for norway/homey the periodic refresher already rebuilds
-   * combined_prices, and running this before `startup_price_bootstrap` could
-   * misfire on a transient/empty scheme read. For non-flow schemes this no-ops.
+   * Payload-fed schemes only (Flow, Homey Energy, Power by the Hour): their
+   * day payloads rotate inside a price build, and a restart across midnight
+   * can leave combined_prices built from yesterday until a refresh that may
+   * fail. The payloads are local (the userdata price cache), so the rebuild
+   * reads no transient source, and `updateCombinedPrices` keeps persisted
+   * prices over an empty rebuild. The Norwegian scheme's periodic refresher
+   * rebuilds on its own.
    *
    * Legacy V1 payloads are skipped: rebuilding here would write a fresh V2 and
    * bypass the combined-prices reader's V1→V2 migration (which carries the V1's
@@ -239,7 +271,7 @@ export class PriceCoordinator {
    * picks up the local-day rollover afterwards.
    */
   catchUpCombinedPricesRotation(): void {
-    if (this.priceService.getPriceScheme() !== 'flow') return;
+    if (this.priceService.getPriceScheme() === 'norway') return;
     const existingPayload = this.deps.priceDataStore.readCombinedRaw();
     // A persisted V1 shape must run through the combined-prices reader's
     // migration first; rebuilding it here would clobber that path. Leave it.
@@ -288,6 +320,11 @@ export class PriceCoordinator {
    */
   getPowerhourSourceUiStatus(): PowerhourSourceUiStatus {
     return this.priceService.getPowerhourSourceUiStatus();
+  }
+
+  /** The payload-fed sources' stored days and currencies, for the settings UI. */
+  getPriceSourcePayloadsForUi(): SettingsUiPriceSourcePayloads {
+    return readPriceSourcePayloads(this.deps.priceDataStore);
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {

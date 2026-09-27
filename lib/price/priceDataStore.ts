@@ -18,15 +18,15 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
-import type { PriceCacheStore } from './priceCacheStore';
+import { importPendingLegacyPriceCache, type PriceCacheStore, type PricePayloadKey } from './priceCacheStore';
+import { isLegacySettingsKeyListed } from '../store/legacySettingsImport';
 
 /**
  * The persisted form of a priced period. The duration is omitted when the
  * period is an hour long, because that is exactly what the read boundary gives
- * a period that carries none (`normalizeFlowSlotEntries`), and because the SDK
- * ships the whole settings object on every write of any key — so an hourly
- * source stores what it always stored, and only a sub-hourly source pays the
- * bytes for saying how long its periods are.
+ * a period that carries none (`normalizeFlowSlotEntries`) — so an hourly source
+ * stores what it always stored, and only a sub-hourly source pays the bytes for
+ * saying how long its periods are.
  */
 type StoredFlowPricePeriod = {
   startsAt: string;
@@ -57,45 +57,78 @@ const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPriceP
 };
 
 /**
- * One Power by the Hour cache key, resolved.
- *
- * The `getKeys()` cross-check is what makes this more than a `settings.get`:
- * the Power by the Hour source MERGES into the day it already holds, so
- * "nothing came back" has to be told apart from "nothing is there". Absence
- * stays with the caller, as `notes/settings-key-ownership.md` requires — this
- * IS the caller, and it is the side that can ask `getKeys()`.
- *
- * `null` is ABSENCE, not a failed read: it is precisely what the SDK's
- * `ManagerSettings.get()` answers for a key that was never written or was
- * `unset`. Only a key the store still LISTS while answering `undefined` is
- * inconsistent enough to settle nothing. Reading a listed `null` as unreadable
- * is what broke the SHS test Homey — a day cleared on a device change was
- * stored as `null`, every later pass called it unreadable and refused to write,
- * and the home never got prices again.
+ * A Power by the Hour row the cache does not hold, while its legacy settings
+ * key may still be pending its one-shot import: the old key's own
+ * classification, so the merge guards behave exactly as they did before the
+ * move. A key that reads back `undefined` settles nothing (`unreadable`); a
+ * listed `null` is absence, which is what the SDK answers for an unset key and
+ * what reading it otherwise turned into a home that never got prices again.
  */
-const readCachedDay = (settings: SettingsPort, key: string): PowerhourCachedDay => {
-  const value = settings.get(key);
-  if (value !== undefined && value !== null) return { kind: 'stored', payload: value };
-  if (value === undefined && settings.getKeys().includes(key)) return { kind: 'unreadable' };
-  return { kind: 'absent' };
+const classifyPendingLegacyKey = (settings: SettingsPort, key: string): 'absent' | 'unreadable' => {
+  try {
+    if (isLegacySettingsKeyListed(settings, key) === false) return 'absent';
+    return settings.get(key) === undefined ? 'unreadable' : 'absent';
+  } catch {
+    return 'unreadable';
+  }
 };
 
-const readCacheDevice = (settings: SettingsPort): PowerhourCacheDevice => {
-  const value = settings.get(POWERHOUR_PRICES_DEVICE);
-  const deviceId = readPowerhourDeviceIdSetting(value);
-  if (deviceId !== null) return { kind: 'device', deviceId };
-  // Same rule as a day: only a listed key answering `undefined` settles nothing.
-  if (value === undefined && settings.getKeys().includes(POWERHOUR_PRICES_DEVICE)) {
+/**
+ * One Power by the Hour cache row. The source MERGES into the day it already
+ * holds, so "nothing came back" has to be told apart from "nothing is there".
+ * A read that throws is `unreadable`. A missing row first retries the key's
+ * import (a boot whose read of the old key came back empty leaves it pending),
+ * so a day PELS still holds only in the old key is never written over with the
+ * app's future-only answer.
+ */
+const readPowerhourRow = (
+  settings: SettingsPort,
+  cache: PriceCacheStore,
+  key: typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW | typeof POWERHOUR_PRICES_DEVICE,
+): { kind: 'stored'; value: unknown } | { kind: 'absent' } | { kind: 'unreadable' } => {
+  let value: unknown;
+  try {
+    value = cache.read(key);
+    if (value === null) {
+      importPendingLegacyPriceCache(settings, cache, key);
+      value = cache.read(key);
+    }
+  } catch {
     return { kind: 'unreadable' };
   }
-  return { kind: 'absent' };
+  return value === null ? { kind: classifyPendingLegacyKey(settings, key) } : { kind: 'stored', value };
 };
 
-const readPowerhourCacheFrom = (settings: SettingsPort): PowerhourCache => ({
-  today: readCachedDay(settings, POWERHOUR_PRICES_TODAY),
-  tomorrow: readCachedDay(settings, POWERHOUR_PRICES_TOMORROW),
-  device: readCacheDevice(settings),
+const readCachedDay = (
+  settings: SettingsPort,
+  cache: PriceCacheStore,
+  key: typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW,
+): PowerhourCachedDay => {
+  const row = readPowerhourRow(settings, cache, key);
+  return row.kind === 'stored' ? { kind: 'stored', payload: row.value } : row;
+};
+
+const readCacheDevice = (settings: SettingsPort, cache: PriceCacheStore): PowerhourCacheDevice => {
+  const row = readPowerhourRow(settings, cache, POWERHOUR_PRICES_DEVICE);
+  if (row.kind !== 'stored') return row;
+  const deviceId = readPowerhourDeviceIdSetting(row.value);
+  return deviceId === null ? { kind: 'absent' } : { kind: 'device', deviceId };
+};
+
+const readPowerhourCacheFrom = (settings: SettingsPort, cache: PriceCacheStore): PowerhourCache => ({
+  today: readCachedDay(settings, cache, POWERHOUR_PRICES_TODAY),
+  tomorrow: readCachedDay(settings, cache, POWERHOUR_PRICES_TOMORROW),
+  device: readCacheDevice(settings, cache),
 });
+
+/** A stored currency label, or `null` when none is stored or it is blank. */
+const readCurrency = (
+  cache: PriceCacheStore,
+  key: typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY,
+): string | null => {
+  const value = cache.read(key);
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+};
 
 /**
  * Producer-side typed boundary for PriceService's cached price data
@@ -120,9 +153,11 @@ export type PriceDataStore = {
   writeSpotPriceArea(area: string): void;
   readNettleie(): unknown;
   writeNettleie(data: Array<Record<string, unknown>>): void;
-  readFlowPayload(key: string): unknown;
-  writeFlowPayload(key: string, payload: FlowPricePayload | null): void;
+  readFlowPayload(key: PricePayloadKey): unknown;
+  writeFlowPayload(key: PricePayloadKey, payload: FlowPricePayload | null): void;
+  readHomeyPricesCurrency(): string | null;
   writeHomeyPricesCurrency(unit: string): void;
+  readPowerhourCurrency(): string | null;
   writePowerhourCurrency(unit: string | null): void;
   /** Everything already stored from the Power by the Hour source, as one concept. */
   readPowerhourCache(): PowerhourCache;
@@ -136,9 +171,9 @@ export type PriceDataStore = {
  * The {@link PriceDataStore} over settings and the userdata price cache. It
  * lives beside the port it implements because the reads and the keys they use
  * are the price module's own: `setup/` hands over a {@link SettingsPort} and the
- * cache and knows nothing about which store backs which field. The grid tariff
- * and the spot prices are in the cache (`priceCacheStore.ts`); the rest still
- * rides settings until it moves the same way.
+ * cache and knows nothing about which store backs which field. Every price
+ * cache is in the userdata store (`priceCacheStore.ts`) except the combined
+ * prices, which still ride settings until they move the same way.
  */
 export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => ({
   readSpotPrices: () => cache.read('spot_prices'),
@@ -147,28 +182,25 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
   writeSpotPriceArea: (area) => cache.write('spot_price_area', area),
   readNettleie: () => cache.read('grid_tariff'),
   writeNettleie: (data) => cache.write('grid_tariff', data),
-  readFlowPayload: (key) => settings.get(key),
-  writeFlowPayload: (key, payload) => settings.set(key, toStoredFlowPayload(payload)),
-  writeHomeyPricesCurrency: (unit) => settings.set(HOMEY_PRICES_CURRENCY, unit),
-  writePowerhourCurrency: (unit) => (
-    unit === null ? settings.unset(POWERHOUR_PRICES_CURRENCY) : settings.set(POWERHOUR_PRICES_CURRENCY, unit)
+  readFlowPayload: (key) => cache.read(key),
+  // A cleared day or marker is no row at all, never a stored `null`.
+  writeFlowPayload: (key, payload) => (
+    payload === null ? cache.remove(key) : cache.write(key, toStoredFlowPayload(payload))
   ),
-  readPowerhourCache: () => readPowerhourCacheFrom(settings),
+  readHomeyPricesCurrency: () => readCurrency(cache, HOMEY_PRICES_CURRENCY),
+  writeHomeyPricesCurrency: (unit) => cache.write(HOMEY_PRICES_CURRENCY, unit),
+  readPowerhourCurrency: () => readCurrency(cache, POWERHOUR_PRICES_CURRENCY),
+  writePowerhourCurrency: (unit) => (
+    unit === null ? cache.remove(POWERHOUR_PRICES_CURRENCY) : cache.write(POWERHOUR_PRICES_CURRENCY, unit)
+  ),
+  readPowerhourCache: () => readPowerhourCacheFrom(settings, cache),
   writePowerhourDay: (day, payload) => {
     const key = day === 'today' ? POWERHOUR_PRICES_TODAY : POWERHOUR_PRICES_TOMORROW;
-    // REMOVE the key rather than storing `null`. `settings.set(key, null)` leaves
-    // the key LISTED, and a listed key that reads back empty is exactly how
-    // `readCachedDay` recognises a transient miss — so a day cleared on purpose
-    // would come back as `unreadable` on every later pass, and the source would
-    // never store that day again. Seen on the SHS test Homey: clearing the price
-    // device left the home permanently unpriced.
-    if (payload === null) settings.unset(key);
-    else settings.set(key, toStoredFlowPayload(payload));
+    if (payload === null) cache.remove(key);
+    else cache.write(key, toStoredFlowPayload(payload));
   },
-  // Same rule for the marker: no device is no key, never an empty string that a
-  // later read has to interpret.
   writePowerhourCacheDevice: (deviceId) => (
-    deviceId === null ? settings.unset(POWERHOUR_PRICES_DEVICE) : settings.set(POWERHOUR_PRICES_DEVICE, deviceId)
+    deviceId === null ? cache.remove(POWERHOUR_PRICES_DEVICE) : cache.write(POWERHOUR_PRICES_DEVICE, deviceId)
   ),
   readCombinedRaw: () => settings.get(COMBINED_PRICES),
   writeCombined: (payload) => settings.set(COMBINED_PRICES, payload),

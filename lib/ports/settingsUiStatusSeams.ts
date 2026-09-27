@@ -9,6 +9,7 @@ import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus,
   PvForecastSourceUiStatus,
+  SettingsUiPriceSourcePayloads,
   SettingsUiHardCapConfigurationRead,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
@@ -19,6 +20,8 @@ type PvForecastSourceSeam = { getPvForecastSourceUiStatus: () => PvForecastSourc
 type HomeyPriceFormulaSeam = { getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus };
 
 type PowerhourSourceSeam = { getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus };
+
+type PriceSourcePayloadsSeam = { getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads };
 
 type HardCapConfigurationSeam = { readHardCapConfiguration: () => SettingsUiHardCapConfigurationRead };
 
@@ -47,6 +50,28 @@ export const hasPowerhourSourceSeam = (app: unknown): app is PowerhourSourceSeam
   && app !== null
   && 'getPowerhourSourceUiStatus' in app
   && typeof app.getPowerhourSourceUiStatus === 'function'
+);
+
+/**
+ * What the settings UI is told before the price coordinator is wired, or when
+ * the app does not carry the seam: nothing stored.
+ */
+export const NO_PRICE_SOURCE_PAYLOADS: SettingsUiPriceSourcePayloads = {
+  flowToday: null,
+  flowTomorrow: null,
+  homeyCurrency: null,
+  homeyToday: null,
+  homeyTomorrow: null,
+  powerhourCurrency: null,
+  powerhourToday: null,
+  powerhourTomorrow: null,
+};
+
+export const hasPriceSourcePayloadsSeam = (app: unknown): app is PriceSourcePayloadsSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getPriceSourcePayloadsForUi' in app
+  && typeof app.getPriceSourcePayloadsForUi === 'function'
 );
 
 export const hasHardCapConfigurationSeam = (app: unknown): app is HardCapConfigurationSeam => (

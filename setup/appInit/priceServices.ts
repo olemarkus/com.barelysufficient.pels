@@ -37,6 +37,10 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   // only to the component that asked it.
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getPowerhourSourceUiStatus = () => coordinator.getPowerhourSourceUiStatus();
+  // Same seam: the payload-fed sources' days now live in the price cache, which
+  // only the coordinator reaches.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.getPriceSourcePayloadsForUi = () => coordinator.getPriceSourcePayloadsForUi();
   return coordinator;
 }
 

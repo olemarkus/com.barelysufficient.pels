@@ -3,7 +3,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { ELECTRICITY_PRICES, ELECTRICITY_PRICES_AREA, NETTLEIE_DATA } from '../../lib/utils/settingsKeys';
+import {
+  ELECTRICITY_PRICES,
+  ELECTRICITY_PRICES_AREA,
+  FLOW_PRICES_TODAY,
+  HOMEY_PRICES_CURRENCY,
+  NETTLEIE_DATA,
+  POWERHOUR_PRICES_DEVICE,
+  POWERHOUR_PRICES_TOMORROW,
+} from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
 
 const open = () => {
@@ -59,6 +67,14 @@ describe('priceCacheStore', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('removes a cached value, so a read answers null, including from a fresh store on the same file', () => {
+    const { db, store } = open();
+    store.write('grid_tariff', TARIFF);
+    store.remove('grid_tariff');
+    expect(store.read('grid_tariff')).toBeNull();
+    expect(createPriceCacheStore(db).read('grid_tariff')).toBeNull();
   });
 
   it('quarantines a row that does not parse, so it neither lingers nor blocks the next write', () => {
@@ -189,5 +205,56 @@ describe('importLegacyPriceCaches: spot prices', () => {
     expect(store.read('spot_price_area')).toBeNull();
     expect(settings.get(ELECTRICITY_PRICES)).toEqual({ not: 'a list' });
     expect(settings.get(ELECTRICITY_PRICES_AREA)).toBe('');
+  });
+});
+
+describe('importLegacyPriceCaches: payload-fed sources', () => {
+  const PAYLOAD = { dateKey: '2026-09-27', pricesByHour: { 0: 1.2 }, updatedAt: '2026-09-27T00:00:00.000Z' };
+  const rig = () => {
+    const settings = new MockSettings();
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    return { settings, ...open() };
+  };
+
+  it('imports day payloads and markers into rows of the same name and retires the keys', () => {
+    const { settings, store } = rig();
+    settings.set(FLOW_PRICES_TODAY, PAYLOAD);
+    settings.set(HOMEY_PRICES_CURRENCY, 'NOK');
+    settings.set(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    importLegacyPriceCaches(settings, store);
+    expect(store.read(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
+    expect(store.read(HOMEY_PRICES_CURRENCY)).toBe('NOK');
+    expect(store.read(POWERHOUR_PRICES_DEVICE)).toBe('no2-device');
+    for (const key of [FLOW_PRICES_TODAY, HOMEY_PRICES_CURRENCY, POWERHOUR_PRICES_DEVICE]) {
+      expect(settings.getKeys()).not.toContain(key);
+    }
+  });
+
+  // A listed key reading back null may be a transient miss, so it is not
+  // retired on that read alone; once the store holds a newer row, it is.
+  it('defers a key that reads back null, and retires it unread once the store holds a newer row', () => {
+    const { settings, store } = rig();
+    settings.set(POWERHOUR_PRICES_TOMORROW, null);
+    importLegacyPriceCaches(settings, store);
+    expect(settings.getKeys()).toContain(POWERHOUR_PRICES_TOMORROW);
+    expect(store.read(POWERHOUR_PRICES_TOMORROW)).toBeNull();
+
+    store.write(POWERHOUR_PRICES_TOMORROW, PAYLOAD);
+    const get = vi.spyOn(settings, 'get');
+    importLegacyPriceCaches(settings, store);
+    expect(get).not.toHaveBeenCalledWith(POWERHOUR_PRICES_TOMORROW);
+    expect(settings.getKeys()).not.toContain(POWERHOUR_PRICES_TOMORROW);
+    expect(store.read(POWERHOUR_PRICES_TOMORROW)).toEqual(PAYLOAD);
+  });
+
+  it('leaves a key that reads back undefined for the next boot', () => {
+    const { settings, store } = rig();
+    settings.set(FLOW_PRICES_TODAY, PAYLOAD);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === FLOW_PRICES_TODAY ? undefined : originalGet(key)));
+    importLegacyPriceCaches(settings, store);
+    get.mockRestore();
+    expect(settings.getKeys()).toContain(FLOW_PRICES_TODAY);
+    expect(store.read(FLOW_PRICES_TODAY)).toBeNull();
   });
 });

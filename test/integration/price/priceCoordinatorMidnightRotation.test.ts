@@ -5,13 +5,18 @@ import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOp
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
 import { PriceLevel } from '../../../lib/price/priceLevels';
-import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
+import {
+  COMBINED_PRICES, FLOW_PRICES_TODAY, POWERHOUR_PRICES_TODAY, PRICE_SCHEME,
+} from '../../../lib/utils/settingsKeys';
 import { noHomeyWebApi } from '../../helpers/homeyWebApiStub';
+
+// The price cache the service under test reads; each test starts on an empty one.
+let priceCache = createInMemoryPriceCache();
 
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
   priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-  priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+  priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
@@ -23,6 +28,7 @@ const createCoordinator = () => new PriceCoordinator({
 
 describe('PriceCoordinator midnight rotation scheduler', () => {
   beforeEach(() => {
+    priceCache = createInMemoryPriceCache();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
@@ -79,7 +85,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
@@ -184,7 +190,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const pricesByHour = Object.fromEntries(
       Array.from({ length: 24 }, (_, hour) => [String(hour), 0.10 + hour * 0.01]),
     );
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: '2026-05-11',
       pricesByHour,
       updatedAt: '2026-05-11T05:00:00.000Z',
@@ -255,6 +261,27 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     coordinator.stop();
   });
 
+  // The day payloads of every payload-fed scheme rotate inside a price build, and
+  // a restart across midnight followed by a refresh that fails would otherwise
+  // leave yesterday's combined prices standing until the next midnight.
+  it('catches up the rotation on boot for the Power by the Hour scheme too', () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'powerhour');
+    priceCache.write(POWERHOUR_PRICES_TODAY, {
+      dateKey: '2026-05-11',
+      pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), 0.10 + hour * 0.01])),
+      updatedAt: '2026-05-11T05:00:00.000Z',
+    });
+    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
+
+    const coordinator = createCoordinator();
+    coordinator.startPriceRefresh();
+
+    expect(getStoredLastFetched()).toBe('2026-05-11T06:00:00.000Z');
+
+    coordinator.stop();
+  });
+
   it('does not abort startup when the boot catch-up rotation throws', () => {
     // Eligible prior-day flow payload; if updateCombinedPrices throws, startPriceRefresh
     // must swallow it (mirrors the midnight timer's guard) so app boot is not aborted.
@@ -265,7 +292,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
@@ -298,7 +325,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const pricesByHour = Object.fromEntries(
       Array.from({ length: 24 }, (_, hour) => [String(hour), 0.10 + hour * 0.01]),
     );
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: '2026-05-11',
       pricesByHour,
       updatedAt: '2026-05-11T05:00:00.000Z',
@@ -383,7 +410,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const pricesByHour = Object.fromEntries(
       Array.from({ length: 24 }, (_, hour) => [String(hour), 0.10 + hour * 0.01]),
     );
-    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+    priceCache.write(FLOW_PRICES_TODAY, {
       dateKey: '2026-05-10',
       pricesByHour,
       updatedAt: '2026-05-10T20:00:00.000Z',
