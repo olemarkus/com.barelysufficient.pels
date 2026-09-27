@@ -212,6 +212,7 @@ function bestSplitWithinRange(
   return best;
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function applySplit(
   sorted: SortedSamples,
   bands: ObjectiveProfileBand[],
@@ -243,6 +244,7 @@ function applySplit(
   }
   return next;
 }
+/* eslint-enable functional/immutable-data */
 
 
 function sliceRangeForBand(

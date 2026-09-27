@@ -43,6 +43,7 @@ const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
  * win, and every keyed family keeps the stored entries the run has not
  * touched.
  */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTrackerState): PowerTrackerState => {
   const merged: PowerTrackerState & Record<string, unknown> = { ...stored, ...current };
   for (const [key, storedValue] of Object.entries(stored)) {
@@ -54,6 +55,7 @@ export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTracke
   }
   return merged;
 };
+/* eslint-enable functional/immutable-data */
 
 const mergeLateCapacityQuarter = (
   current: PowerTrackerState['capacityQuarter'],
@@ -105,6 +107,7 @@ const isKeyedFamily = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const mergeDeviceBuckets = (stored: DeviceBuckets, current: DeviceBuckets): DeviceBuckets => {
   const merged: DeviceBuckets = { ...stored };
   for (const [deviceId, hours] of Object.entries(current)) {
@@ -112,6 +115,7 @@ const mergeDeviceBuckets = (stored: DeviceBuckets, current: DeviceBuckets): Devi
   }
   return merged;
 };
+/* eslint-enable functional/immutable-data */
 
 const crossesHourBoundary = (
   previous: PowerTrackerState,

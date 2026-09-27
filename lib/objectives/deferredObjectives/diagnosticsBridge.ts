@@ -83,6 +83,7 @@ export {
   type DeferredObjectiveAnnounce,
 } from './diagnosticAnnounce';
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredObjectiveDiagnostics = (params: {
   nowMs: number;
   timeZone: string;
@@ -246,6 +247,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   }));
   return diagnostics;
 };
+/* eslint-enable functional/immutable-data */
 
 const shouldForceFreshAllocation = (
   higherTaskBootstrapped: boolean, legacyCommitmentNeedsMigration: boolean, previewForced: boolean,

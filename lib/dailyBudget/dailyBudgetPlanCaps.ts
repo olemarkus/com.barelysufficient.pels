@@ -138,6 +138,7 @@ export function resolveRemainingFloors(params: {
 
   const floors = bucketStartUtcMs
     .slice(remainingStartIndex)
+    /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
     .map((bucketStartMs, index) => {
       const bucketIndex = remainingStartIndex + index;
       const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
@@ -159,6 +160,7 @@ export function resolveRemainingFloors(params: {
       }
       return Math.max(0, totalFloor);
     });
+    /* eslint-enable functional/immutable-data */
   const uncontrolledReserves = buildUncontrolledReserveFloors({
     bucketStartUtcMs,
     timeZone,

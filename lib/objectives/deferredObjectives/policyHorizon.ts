@@ -196,6 +196,7 @@ const floorToHourMs = (ms: number): number => Math.floor(ms / PRICE_WINDOW_HOUR_
 // an empty array when no priced buckets fall in the window.
 // The preview reader still sources price from the daily-budget snapshot rather
 // than the price horizon; the preview migration is what closes that gap.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredObjectivePolicyWindowPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
   nowMs: number,
@@ -231,6 +232,7 @@ export const buildDeferredObjectivePolicyWindowPrices = (
   }
   return series;
 };
+/* eslint-enable functional/immutable-data */
 
 const unavailable = (
   reasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
@@ -518,6 +520,7 @@ const prorateNullableEnergy = (
 // fields are prorated; price and the stable source identity remain unchanged.
 // Consecutive boundaries pair up into `[start, end)` parts; the final boundary
 // is an end only, so it opens nothing.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const boundaryParts = (ordered: readonly number[]): Array<{ startMs: number; endMs: number }> => {
   const parts: Array<{ startMs: number; endMs: number }> = [];
   for (const [index, startMs] of ordered.entries()) {
@@ -527,6 +530,7 @@ const boundaryParts = (ordered: readonly number[]): Array<{ startMs: number; end
   }
   return parts;
 };
+/* eslint-enable functional/immutable-data */
 
 const splitPolicyBucketsAtReservationBoundaries = (
   buckets: readonly PolicyBucketSource[],
@@ -571,6 +575,7 @@ const overlapsBucket = (
   segment: { startMs: number; endMs: number },
 ): boolean => segment.startMs < bucket.endMs && segment.endMs > bucket.startMs;
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const resolveReservationsForBucket = (
   bucket: PolicyBucketSource,
   reservations: readonly DeferredObjectivePriorityReservation[],
@@ -595,6 +600,7 @@ const resolveReservationsForBucket = (
     energySegments,
   };
 };
+/* eslint-enable functional/immutable-data */
 
 // Residual physical room after gross background and every higher-priority
 // smart-task step reservation. Clamped at zero; null means the physical inputs

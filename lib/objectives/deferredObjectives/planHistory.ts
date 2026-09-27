@@ -582,6 +582,7 @@ const mergeMeteredDelivery = (
   };
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const mergeRecoveredEntries = (
   durable: readonly DeferredObjectivePlanHistoryRecord[],
   local: readonly DeferredObjectivePlanHistoryRecord[],
@@ -607,3 +608,4 @@ const mergeRecoveredEntries = (
   }
   return merged;
 };
+/* eslint-enable functional/immutable-data */

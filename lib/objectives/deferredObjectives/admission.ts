@@ -334,6 +334,7 @@ export const applyDeferredAdmissionToInput = (
 // planned hour. EV objectives and non-planned diagnostics are skipped. Consumed by
 // `resolvePlannedTarget` to lift the mode setpoint above the configured operating-mode target so
 // the device's own thermostat can actually reach the deadline.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredTargetOverrides = (
   diagnostics: readonly DeferredObjectiveDiagnostic[],
 ): Record<string, number> => {
@@ -355,7 +356,9 @@ export const buildDeferredTargetOverrides = (
   }
   return overrides;
 };
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredReleaseIntents = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): Record<string, DeferredReleaseIntent> => {
@@ -366,3 +369,4 @@ export const buildDeferredReleaseIntents = (
   }
   return intents;
 };
+/* eslint-enable functional/immutable-data */

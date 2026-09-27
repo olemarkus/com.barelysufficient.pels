@@ -103,6 +103,7 @@ export function allocateBudgetWithCaps(params: {
   return allocations;
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function distributeActiveAllocations(params: {
   active: number[];
   remaining: number;
@@ -142,6 +143,7 @@ function distributeActiveAllocations(params: {
   }
   return { overflow, nextActive };
 }
+/* eslint-enable functional/immutable-data */
 
 export function allocateBudgetWithCapsAndFloors(params: {
   weights: number[];

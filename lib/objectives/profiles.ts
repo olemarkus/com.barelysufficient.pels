@@ -78,6 +78,7 @@ type ProfileSampleRejection = {
   energy?: { kwhPerUnit: number; band: EnergyPerUnitBand };
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function updateObjectiveProfilesFromSnapshot(params: {
   state: PowerTrackerState;
   devices: ObjectiveSampleDevice[];
@@ -137,6 +138,7 @@ export function updateObjectiveProfilesFromSnapshot(params: {
 
   return changed ? { ...state, objectiveProfiles: nextProfiles } : state;
 }
+/* eslint-enable functional/immutable-data */
 
 export function updateDeviceObjectiveProfile(params: {
   previous: DeviceObjectiveProfile | undefined;
@@ -284,6 +286,7 @@ function accrueSubInterval(params: {
   };
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function buildAcceptedProfileSample(params: {
   previous: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
@@ -360,6 +363,7 @@ function buildAcceptedProfileSample(params: {
   });
   return nextProfile;
 }
+/* eslint-enable functional/immutable-data */
 
 function buildRejectedProfileSample(params: {
   previous: DeviceObjectiveProfile;
@@ -606,6 +610,7 @@ function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObject
 }
 
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function pruneObjectiveProfiles(params: {
   profiles: Record<string, DeviceObjectiveProfile>;
   activeDeviceIds: Set<string>;
@@ -628,6 +633,7 @@ function pruneObjectiveProfiles(params: {
   const sortedEntries = entries.sort((left, right) => right[1].updatedAtMs - left[1].updatedAtMs);
   return Object.fromEntries(sortedEntries.slice(0, OBJECTIVE_PROFILE_MAX_DEVICES));
 }
+/* eslint-enable functional/immutable-data */
 
 function hasTooManyObjectiveProfiles(
   profiles: Record<string, DeviceObjectiveProfile>,

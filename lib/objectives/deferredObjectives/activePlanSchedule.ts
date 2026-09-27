@@ -12,6 +12,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // essentially nothing into is not a real deferral target.
 const PLANNED_EPSILON_KWH = 0.001;
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildHoursFromHorizonPlan = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanHourV1[] | null => {
@@ -67,6 +68,7 @@ export const buildHoursFromHorizonPlan = (
   // recorder calls `stampUnitMilestones` on the merged `effectiveHours` instead.
   return hours;
 };
+/* eslint-enable functional/immutable-data */
 
 const segmentHourStart = (segment: Pick<DeferredObjectiveActivePlanReservationSegmentV1, 'startMs'>): number => (
   Math.floor(segment.startMs / ONE_HOUR_MS) * ONE_HOUR_MS

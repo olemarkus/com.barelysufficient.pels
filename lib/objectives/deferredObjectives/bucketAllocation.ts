@@ -148,6 +148,7 @@ export type BucketAllocationResult = {
   usesDeadlineReserve: boolean;
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const normalizeHorizonBuckets = (params: {
   nowMs: number;
   deadlineAtMs: number;
@@ -175,6 +176,7 @@ export const normalizeHorizonBuckets = (params: {
 
   return normalized.sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
 };
+/* eslint-enable functional/immutable-data */
 
 export const allocateEnergyToBuckets = (params: {
   buckets: NormalizedBucket[];
@@ -410,6 +412,7 @@ const buildCommittedHourSet = (
   return set;
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const appendNormalizedBucketSegments = (params: {
   bucket: DeferredObjectiveHorizonBucket;
   nowMs: number;
@@ -466,6 +469,7 @@ const appendNormalizedBucketSegments = (params: {
     originalEndMs: bucket.endMs,
   }));
 };
+/* eslint-enable functional/immutable-data */
 
 const buildBucketSegment = (params: {
   bucket: DeferredObjectiveHorizonBucket;

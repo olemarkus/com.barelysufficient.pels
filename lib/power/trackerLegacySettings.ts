@@ -89,6 +89,7 @@ const importHome = (
  * Import every legacy tracker blob the settings still carry into the store,
  * retiring each key as it goes.
  */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const importLegacyPowerTrackers = (
   settings: SettingsPort,
   store: TrackerStore,
@@ -105,3 +106,4 @@ export const importLegacyPowerTrackers = (
   }
   return result;
 };
+/* eslint-enable functional/immutable-data */

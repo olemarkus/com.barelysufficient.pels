@@ -138,6 +138,7 @@ export function computeBacktestedConfidence(params: {
   };
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function collectValidDays(params: {
   nowMs: number;
   timeZone: string;
@@ -164,6 +165,7 @@ function collectValidDays(params: {
 
   return days;
 }
+/* eslint-enable functional/immutable-data */
 
 function buildDayData(params: {
   prevDayStartUtcMs: number;
@@ -201,6 +203,7 @@ function buildDayData(params: {
   };
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function aggregateHourlyBins(
   bucketStartUtcMs: number[],
   timeZone: string,
@@ -237,6 +240,7 @@ function aggregateHourlyBins(
   const hasPlanData = planBucketCount >= bucketStartUtcMs.length * 0.9;
   return { total, controlled, planned, hasPlanData };
 }
+/* eslint-enable functional/immutable-data */
 
 function getPreviousLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
   return resolvePreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -256,6 +260,7 @@ function l1Distance(a: HourProfile, b: HourProfile): number {
   return sum;
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function computeCentroid(days: DayData[]): HourProfile {
   const n = days.length;
   const centroid = zeroHourProfile();
@@ -269,7 +274,9 @@ function computeCentroid(days: DayData[]): HourProfile {
   }
   return centroid;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function computeRegularityScore(days: DayData[]): {
   score: number;
   dayScores: number[];
@@ -301,6 +308,7 @@ function computeRegularityScore(days: DayData[]): {
   const ramp = clamp(n / RAMP_DAYS, 0, 1);
   return { score: meanScore * ramp, dayScores, centroid };
 }
+/* eslint-enable functional/immutable-data */
 
 function computeAdaptabilityScore(days: DayData[], centroid: HourProfile): {
   score: number;
@@ -354,6 +362,7 @@ function computeAdaptabilityScore(days: DayData[], centroid: HourProfile): {
   };
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function computeBootstrapInterval(days: DayData[]): { low: number; high: number } {
   const n = days.length;
   if (n === 0) return { low: 0, high: 0 };
@@ -385,6 +394,7 @@ function computeBootstrapInterval(days: DayData[]): { low: number; high: number 
     high: clamp(high, 0, 1),
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function createSeededRandom(initialSeed: number): () => number {
   let seed = initialSeed;
@@ -398,6 +408,7 @@ export function sampleDayIndex(randomValue: number, dayCount: number): number {
   return Math.min(dayCount - 1, Math.max(0, Math.floor(randomValue * dayCount)));
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
   const sampled: DayData[] = [];
   for (let draw = 0; draw < days.length; draw += 1) {
@@ -407,6 +418,7 @@ function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
   }
   return sampled;
 }
+/* eslint-enable functional/immutable-data */
 
 function getConfidenceWindowBounds(nowMs: number, timeZone: string): {
   dayStartUtcMs: number;
@@ -544,6 +556,7 @@ export function getCachedConfidence(params: {
   return withProfileBlendConfidence(cache.result, profileBlendConfidence);
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function resolveConfidence(params: {
   cache: ConfidenceCache;
   nowMs: number;
@@ -591,3 +604,4 @@ export function resolveConfidence(params: {
   });
   return result;
 }
+/* eslint-enable functional/immutable-data */

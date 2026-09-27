@@ -385,6 +385,7 @@ const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHist
 // `revisionSnapshot.kwhPerUnitMean`) are all optional, so v3 entries
 // satisfy the legacy validator. v3/v4 → v5 also compacts the kind-split values
 // while retaining every validated optional extension.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord[] => {
   const normalized: DeferredObjectivePlanHistoryRecord[] = [];
   for (const entry of entries) {
@@ -396,6 +397,7 @@ const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord
   }
   return normalized;
 };
+/* eslint-enable functional/immutable-data */
 
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,

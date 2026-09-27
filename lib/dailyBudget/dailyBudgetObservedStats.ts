@@ -119,6 +119,7 @@ const resolveHourlyReserveStats = (
   };
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildObservedHourlyStatsFromWindow = (params: {
   powerTracker: PowerTrackerState;
   timeZone: string;
@@ -206,6 +207,7 @@ export const buildObservedHourlyStatsFromWindow = (params: {
     windowBucketCount,
   };
 };
+/* eslint-enable functional/immutable-data */
 
 const hasAnyPositive = (values?: number[]): boolean => (
   Array.isArray(values) && values.some((value) => typeof value === 'number' && value > 0)

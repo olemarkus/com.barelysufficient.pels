@@ -250,6 +250,7 @@ const parseScalar = (json: string): { ok: true; value: unknown } | { ok: false }
   }
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const loadRows = (s: Statements, homeId: HomeId): LoadedRows => {
   const state: Record<string, unknown> = {};
   let rows = 0;
@@ -288,8 +289,10 @@ const loadRows = (s: Statements, homeId: HomeId): LoadedRows => {
   const scalars = loadScalarRows(s, homeId);
   return { state: { ...state, ...scalars.values }, rows: rows + scalars.rows, unparseable: scalars.unparseable };
 };
+/* eslint-enable functional/immutable-data */
 
 /** The home's scalar rows: the parsed values, and the keys whose row did not parse. */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const loadScalarRows = (s: Statements, homeId: HomeId) => {
   const values: Record<string, unknown> = {};
   const unparseable: string[] = [];
@@ -304,6 +307,7 @@ const loadScalarRows = (s: Statements, homeId: HomeId) => {
   }
   return { values, rows, unparseable };
 };
+/* eslint-enable functional/immutable-data */
 
 const without = (state: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> => (
   Object.fromEntries(Object.entries(state).filter(([key]) => !keys.includes(key)))

@@ -174,6 +174,7 @@ const resolveLearningTotals = (params: {
   };
 };
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const buildHourlyTotals = (params: {
   bucketStartUtcMs: number[];
   timeZone: string;
@@ -192,6 +193,7 @@ const buildHourlyTotals = (params: {
   }
   return { hourlyUncontrolled, hourlyControlled };
 };
+/* eslint-enable functional/immutable-data */
 
 const buildDayWeights = (params: {
   hourlyUncontrolled: number[];

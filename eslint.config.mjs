@@ -384,8 +384,6 @@ export default tseslint.config(
   {
     files: ['lib/device/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts', 'lib/objectives/**/*.ts', 'lib/power/**/*.ts'],
     rules: {
-      // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
-      'functional/immutable-data': 'off',
       'unicorn/no-for-each': 'error',
       // Tighten to { allowSimpleOperations: false } once the remaining reducers are migrated;
       // simple operations are allowed only because those callers still exist.
@@ -404,6 +402,16 @@ export default tseslint.config(
         // lib/** gets this via the sibling block below the leaf rules.
         HOMEY_DYNAMIC_IMPORT_BAN,
       ],
+    },
+  },
+  // Temporary migration boundary: the other runtime hot-path domains have
+  // returned to the repository-wide immutable-data rule. Keep this exception
+  // only for plan and device code until their existing owned-state updates and
+  // accumulators have been reviewed individually.
+  {
+    files: ['lib/plan/**/*.ts', 'lib/device/**/*.ts'],
+    rules: {
+      'functional/immutable-data': 'off',
     },
   },
   // Keep the Homey SDK at the leaf. The runtime SDK object (`homey.settings` /

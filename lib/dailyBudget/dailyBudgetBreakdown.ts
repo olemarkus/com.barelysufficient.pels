@@ -1,5 +1,6 @@
 import { getZonedParts } from '../utils/dateUtils';
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function buildPlanBreakdown(params: {
   bucketStartUtcMs: number[];
   timeZone: string;
@@ -35,3 +36,4 @@ export function buildPlanBreakdown(params: {
   }
   return { plannedUncontrolledKWh, plannedControlledKWh };
 }
+/* eslint-enable functional/immutable-data */

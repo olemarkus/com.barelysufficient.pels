@@ -43,6 +43,7 @@ export function normalizeDevicePowerWById(
   return Object.fromEntries(entries);
 }
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function serializeDeviceBuckets(
   previous: PowerTrackerState['deviceBuckets'],
   incrementsByDeviceId: Map<string, Map<string, number>>,
@@ -59,6 +60,7 @@ export function serializeDeviceBuckets(
   }
   return Object.keys(next).length > 0 ? next : undefined;
 }
+/* eslint-enable functional/immutable-data */
 
 export function pruneHourlyBucketsOnly(params: {
   buckets?: Record<string, number>;

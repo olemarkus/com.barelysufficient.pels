@@ -120,6 +120,7 @@ export const objectiveKeyListIsTrustworthy = (store: ObjectiveSettingsStore): bo
  * cycle (no objectives shown) with NO persisted damage; the next read recovers
  * once the SDK returns the real key list.
  */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObjectiveSettingsV1 => {
   const result = createEmptyDeferredObjectiveSettings();
   for (const key of store.getKeys()) {
@@ -132,6 +133,7 @@ export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObject
   }
   return result;
 };
+/* eslint-enable functional/immutable-data */
 
 export type DeferredObjectiveRosterRead = {
   status: 'resolved';
@@ -146,6 +148,7 @@ export type DeferredObjectiveRosterRead = {
  * thrown list, or an unreadable listed objective value, becomes an explicit
  * unavailable result instead of an optimistic empty roster.
  */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const readDeferredObjectiveRoster = (
   store: ObjectiveSettingsStore,
 ): DeferredObjectiveRosterRead => {
@@ -182,6 +185,7 @@ export const readDeferredObjectiveRoster = (
   }
   return { status: 'resolved', settings };
 };
+/* eslint-enable functional/immutable-data */
 
 /** Persist one device's objective under its own key. */
 export const writeObjectiveForDevice = (

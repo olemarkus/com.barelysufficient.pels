@@ -77,6 +77,7 @@ const isCrossingLatchEntry = (value: unknown): value is CrossingLatchEntry => {
 // else (missing, wrong version, corrupt entries) so a single bad read cannot
 // pollute the in-memory map with garbage — the caller treats `null` as "no
 // persisted state" and falls back to first-observation seeding.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const parsePersistedLatch = (raw: unknown): PersistedHoursRemainingLatch | null => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const candidate = raw as Partial<PersistedHoursRemainingLatch>;
@@ -97,6 +98,7 @@ const parsePersistedLatch = (raw: unknown): PersistedHoursRemainingLatch | null 
     entriesByDeviceId: Object.fromEntries(entries),
   };
 };
+/* eslint-enable functional/immutable-data */
 
 const serializeLatch = (latch: Map<string, CrossingLatchEntry>): PersistedHoursRemainingLatch => ({
   version: HOURS_REMAINING_LATCH_VERSION,

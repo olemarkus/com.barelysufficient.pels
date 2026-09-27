@@ -6,6 +6,7 @@
  * Only the touched hours are enumerated, without history-sized entry arrays or
  * Maps. A changed flat dictionary still needs a shallow copy of its own keys.
  */
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function addToHourlyBuckets(
   previous: Record<string, number> | undefined,
   increments: ReadonlyMap<string, number>,
@@ -20,7 +21,9 @@ export function addToHourlyBuckets(
   }
   return next;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function updateHourlyBuckets(
   previous: Record<string, number> | undefined,
   replacements: ReadonlyMap<string, number>,
@@ -34,3 +37,4 @@ export function updateHourlyBuckets(
   }
   return next;
 }
+/* eslint-enable functional/immutable-data */

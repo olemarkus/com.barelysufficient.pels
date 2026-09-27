@@ -244,6 +244,7 @@ const buildLearnedResolution = (params: {
 //
 // Producer-side per `feedback_layering_resolution_in_producer.md`: the UI
 // consumes the flat value and never branches on bands or per-band fields.
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const resolveDisplayConfidence = (params: {
   bands: ObjectiveProfileBand[] | undefined;
   globalConfidence: ObjectiveProfileConfidence;
@@ -276,6 +277,7 @@ export const resolveDisplayConfidence = (params: {
   if (coveredUnits + COVERAGE_TOLERANCE < remainingUnits) return globalConfidence;
   return minConfidence(overlappingConfidences);
 };
+/* eslint-enable functional/immutable-data */
 
 const CONFIDENCE_RANK: Record<ObjectiveProfileConfidence, number> = {
   low: 0,
