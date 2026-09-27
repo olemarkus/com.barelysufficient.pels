@@ -33,6 +33,18 @@
  */
 export const PEAK_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * How old the standing anchor must be before a reading that merely MATCHES the
+ * peak moves it. Against a 30-day window, moving the anchor by less than a day
+ * buys nothing: the peak still expires 29 to 30 days after it was last matched.
+ * Every move changes the record, though, and a changed record is a settings
+ * write that ships the whole settings object to Homey. A device sitting at its
+ * rated power matches its peak on every reading, so moving the anchor on each
+ * match made the peaks record the busiest settings writer in production (about
+ * 38 writes an hour on 2026-09-26, the kW figures never changing).
+ */
+export const PEAK_REANCHOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 export type LearnedPeak = {
   kw: number;
   observedAtMs: number;
@@ -63,10 +75,12 @@ export const resolveLearnedPeakKw = (
 /**
  * The entry to store for a new reading, or `null` to leave the store untouched.
  *
- * Three cases, and the third is the whole point of the window:
+ * Four cases, and the last is the whole point of the window:
  * - no entry yet → the reading anchors one;
- * - reading at or above the standing peak → it IS the peak, and re-anchors the
- *   window (so a device that keeps reaching its peak never expires);
+ * - reading above the standing peak → it IS the peak, and re-anchors the window;
+ * - reading that matches the standing peak → re-anchors the window once the
+ *   anchor is {@link PEAK_REANCHOR_INTERVAL_MS} old, so a device that keeps
+ *   reaching its peak never expires, and is otherwise ignored;
  * - reading below the standing peak → normally ignored, because a duty cycle
  *   dipping is not evidence the device got smaller. Once the standing peak has
  *   gone a whole window without being matched, the lower reading re-anchors
@@ -79,7 +93,10 @@ export const nextLearnedPeak = (
 ): LearnedPeak | null => {
   if (!Number.isFinite(measuredKw) || measuredKw <= 0) return null;
   if (!peak) return { kw: measuredKw, observedAtMs: nowMs };
-  if (measuredKw >= peak.kw) return { kw: measuredKw, observedAtMs: nowMs };
+  if (measuredKw > peak.kw) return { kw: measuredKw, observedAtMs: nowMs };
+  if (measuredKw === peak.kw) {
+    return nowMs - peak.observedAtMs >= PEAK_REANCHOR_INTERVAL_MS ? { kw: measuredKw, observedAtMs: nowMs } : null;
+  }
   return isExpired(peak, nowMs) ? { kw: measuredKw, observedAtMs: nowMs } : null;
 };
 
@@ -282,9 +299,9 @@ export const classifyExpectedPowerOverridesSetting = (
  * loses something real: the persisted side carries devices this run has not seen
  * draw power yet, and the held side carries what it just measured. So each
  * device is decided by the SAME standing-peak policy the ingest path uses —
- * `nextLearnedPeak` — which keeps the higher figure, re-anchors on a match, and
- * lets a lower held reading win only once the persisted entry's window has
- * closed unmatched.
+ * `nextLearnedPeak` — which keeps the higher figure, re-anchors on a match once
+ * the anchor is a day old (so never backward), and lets a lower held reading win
+ * only once the persisted entry's window has closed unmatched.
  */
 export const adoptPersistedLearnedPeaks = (
   persisted: LearnedPeaksByDeviceId,

@@ -13,6 +13,12 @@ const PEAK_PERSIST_MIN_INTERVAL_MS = 60_000;
 /** Registry name for the single trailing flush. */
 const PEAK_TRAILING_FLUSH_TIMER = 'learnedPeakTrailingFlush';
 
+/** How often a boot read that came back unavailable is retried. */
+const PEAK_LOAD_RETRY_MS = 60_000;
+
+/** Registry name for the failed boot read's retry. */
+const PEAK_LOAD_RETRY_TIMER = 'learnedPeakLoadRetry';
+
 export type LearnedPowerPeakState = {
   /** Restore the learned peaks at boot. */
   load: () => void;
@@ -98,11 +104,33 @@ export function createLearnedPowerPeakState(params: {
   };
 
   const attemptWrite = (nowMs: number): void => {
-    // The boot read may have failed; retry it here, because a learned peak is the
-    // only event that reaches this module and so the only chance to find out the
-    // key became readable. Still unreadable means still no write.
+    // The boot read may have failed; a learned peak retries it here as well as on
+    // the load-retry timer, so its write never waits for the timer. Still
+    // unreadable means still no write.
     if (writeBackSuppressed && !readIntoStore()) return;
     write(nowMs);
+  };
+
+  /**
+   * Retry a boot read that came back unavailable on its own clock. A learned
+   * peak retries it too (`attemptWrite`), but a home whose running devices sit
+   * steady at their peaks learns nothing new for hours, and until the read lands
+   * the persisted peaks of the devices that are off are missing from the
+   * expected-power ladder.
+   */
+  const scheduleLoadRetry = (): void => {
+    if (timers.has(PEAK_LOAD_RETRY_TIMER)) return;
+    const handle = setTimeout(() => {
+      timers.clear(PEAK_LOAD_RETRY_TIMER);
+      if (!writeBackSuppressed) return;
+      if (!readIntoStore()) {
+        scheduleLoadRetry();
+        return;
+      }
+      if (dirty) attemptWrite(Date.now());
+    }, PEAK_LOAD_RETRY_MS);
+    (handle as { unref?: () => void }).unref?.();
+    timers.registerTimeout(PEAK_LOAD_RETRY_TIMER, handle);
   };
 
   /**
@@ -132,6 +160,7 @@ export function createLearnedPowerPeakState(params: {
     load: () => {
       if (readIntoStore()) return;
       writeBackSuppressed = true;
+      scheduleLoadRetry();
       if (loadUnavailableWarned) return;
       loadUnavailableWarned = true;
       getStructuredLogger?.()?.warn({

@@ -4,10 +4,11 @@ import { SettingsRepository } from '../../setup/settingsRepository';
 import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakState';
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
 const PERSIST_MIN_INTERVAL_MS = 60_000;
+const LOAD_RETRY_MS = 60_000;
 
 /**
  * The write-back layer for the learned peaks, over the real `SettingsRepository`
@@ -110,6 +111,33 @@ describe('learned power peak persistence', () => {
     });
   });
 
+  it('retries a failed boot read on its own clock, with no new peak to prompt it', () => {
+    // Devices steady at their peaks move nothing on the ingest path, so without
+    // this an off charger's persisted peak stays out of the expected-power ladder
+    // until something in the home changes.
+    mockHomeyInstance.settings.set(DEVICE_POWER_PEAKS, { charger: { kw: 7.4, observedAtMs: NOW - 1000 } });
+    let readable = false;
+    const flakyHomey = {
+      settings: {
+        get: (key: string) => {
+          if (!readable) throw new Error('transient read failure');
+          return mockHomeyInstance.settings.get(key);
+        },
+        getKeys: () => mockHomeyInstance.settings.getKeys(),
+        set: (key: string, value: unknown) => mockHomeyInstance.settings.set(key, value),
+      },
+    } as unknown as Homey.App['homey'];
+    const state = buildState(flakyHomey);
+
+    state.load();
+    vi.advanceTimersByTime(LOAD_RETRY_MS);
+    expect(peaks).toEqual({});
+
+    readable = true;
+    vi.advanceTimersByTime(LOAD_RETRY_MS);
+    expect(peaks).toEqual({ charger: { kw: 7.4, observedAtMs: NOW - 1000 } });
+  });
+
   it('writes a resolved-empty boot read like any other answer', () => {
     // A home that has never learned a peak must still be able to store its first.
     const state = buildState();
@@ -187,16 +215,18 @@ describe('learned power peak persistence', () => {
     // A reading equal to the standing peak changes no calibration input, so the
     // seam this used to hang off never fired — and the window of the steadiest
     // devices expired in settings while memory said it was fresh.
+    // The policy moves a matched anchor at most once per re-anchor interval, so
+    // that is the step replayed here.
     const state = buildState();
     state.load();
     peaks.heater = { kw: 2, observedAtMs: NOW };
     state.persist();
 
-    vi.advanceTimersByTime(PERSIST_MIN_INTERVAL_MS);
-    peaks.heater = { kw: 2, observedAtMs: NOW + PERSIST_MIN_INTERVAL_MS };
+    vi.advanceTimersByTime(PEAK_REANCHOR_INTERVAL_MS);
+    peaks.heater = { kw: 2, observedAtMs: NOW + PEAK_REANCHOR_INTERVAL_MS };
     state.persist();
 
     expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 2, observedAtMs: NOW + PERSIST_MIN_INTERVAL_MS } });
+      .toEqual({ heater: { kw: 2, observedAtMs: NOW + PEAK_REANCHOR_INTERVAL_MS } });
   });
 });

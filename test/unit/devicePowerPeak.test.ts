@@ -1,4 +1,5 @@
 import {
+  PEAK_REANCHOR_INTERVAL_MS,
   PEAK_WINDOW_MS,
   adoptPersistedLearnedPeaks,
   classifyExpectedPowerOverridesSetting,
@@ -44,6 +45,20 @@ describe('nextLearnedPeak', () => {
     // A device that keeps reaching its peak must never expire for holding
     // steady — this is the arm that keeps a healthy device's estimate alive.
     expect(nextLearnedPeak(withinWindow, 2, NOW)).toEqual({ kw: 2, observedAtMs: NOW });
+  });
+
+  it('leaves a match alone until the anchor is a re-anchor interval old', () => {
+    // A device at its rated power matches its peak on every reading; moving the
+    // anchor each time rewrote the persisted record once a minute for nothing.
+    const fresh = { kw: 2, observedAtMs: NOW - PEAK_REANCHOR_INTERVAL_MS + 1 };
+    expect(nextLearnedPeak(fresh, 2, NOW)).toBeNull();
+    const due = { kw: 2, observedAtMs: NOW - PEAK_REANCHOR_INTERVAL_MS };
+    expect(nextLearnedPeak(due, 2, NOW)).toEqual({ kw: 2, observedAtMs: NOW });
+  });
+
+  it('raises the peak at once however fresh the anchor', () => {
+    const fresh = { kw: 2, observedAtMs: NOW - 1000 };
+    expect(nextLearnedPeak(fresh, 2.1, NOW)).toEqual({ kw: 2.1, observedAtMs: NOW });
   });
 
   it('ignores a lower reading while the window is open', () => {
@@ -221,6 +236,16 @@ describe('adoptPersistedLearnedPeaks', () => {
       onlyHeld: { kw: 1, observedAtMs: NOW },
       both: { kw: 3, observedAtMs: NOW - 1000 },
     });
+  });
+
+  it('keeps the persisted anchor when a held match is older or less than a day newer', () => {
+    // Each side matched the same figure; the merge never moves an anchor backward,
+    // and moves it forward only as far as the ingest path itself would have.
+    const persisted = { kw: 2, observedAtMs: NOW - 1000 };
+    expect(adoptPersistedLearnedPeaks(
+      { older: persisted, newer: persisted },
+      { older: { kw: 2, observedAtMs: NOW - 5000 }, newer: { kw: 2, observedAtMs: NOW } },
+    )).toEqual({ older: persisted, newer: persisted });
   });
 
   it('lets a held reading re-anchor a persisted entry whose window has closed', () => {

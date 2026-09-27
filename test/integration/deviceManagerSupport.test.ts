@@ -40,7 +40,7 @@ import {
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
 import type Homey from 'homey';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { mockHomeyInstance } from '../mocks/homey';
 
 const createLogger = () => ({
@@ -308,15 +308,21 @@ describe('device manager support helpers', () => {
     };
     const onPeakChanged = vi.fn();
 
+    // A match before the anchor is a re-anchor interval old moves nothing.
     updateLastKnownPower({
       state, logger, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
     });
-    expect(state.lastKnownPowerKw.dev1?.observedAtMs).toBe(60_000);
+    expect(onPeakChanged).not.toHaveBeenCalled();
+
+    updateLastKnownPower({
+      state, logger, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS, onPeakChanged,
+    });
+    expect(state.lastKnownPowerKw.dev1?.observedAtMs).toBe(PEAK_REANCHOR_INTERVAL_MS);
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
 
     // A lower reading inside the open window moves nothing, so it announces nothing.
     updateLastKnownPower({
-      state, logger, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: 61_000, onPeakChanged,
+      state, logger, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000, onPeakChanged,
     });
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
   });
