@@ -17,7 +17,8 @@ export function prunePendingTargetCommandsForPlan(params: {
   debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const { state, plan, debugStructured } = params;
-  const planById = new Map(plan.devices.map((device) => [device.id, device]));
+  const planById = new Map<string, DevicePlan['devices'][number]>();
+  for (const device of plan.devices) planById.set(device.id, device);
   let changed = false;
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const device = planById.get(deviceId);
@@ -51,11 +52,12 @@ export function syncPendingTargetCommands(params: {
   const {
     state,
     liveDevices,
-    source,
-    structuredInfo,
-    debugStructured,
-  } = params;
-  const liveById = new Map(liveDevices.map((device) => [device.id, device]));
+  source,
+  structuredInfo,
+  debugStructured,
+} = params;
+  const liveById = new Map<string, PlanInputDevice>();
+  for (const device of liveDevices) liveById.set(device.id, device);
   let changed = false;
 
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {

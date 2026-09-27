@@ -47,26 +47,15 @@ function applyControlCapabilityObservation(
     if (typeof observation.value !== 'boolean') return false;
     const previousCurrentOn = snapshot.binaryControl?.on;
     const previousEvCharging = snapshot.evCharging;
-    if (snapshot.binaryCapabilityId === 'evcharger_charging') {
+    const controlChanged = previousCurrentOn !== observation.value;
+    const isEvChargingControl = snapshot.binaryCapabilityId === 'evcharger_charging';
+    const evChargingChanged = isEvChargingControl && previousEvCharging !== observation.value;
+    if (isEvChargingControl) {
         snapshot.evCharging = observation.value;
         snapshot.evChargingObservedAtMs = observation.observedAt;
-        snapshot.binaryControl = { on: observation.value };
-    } else {
-        snapshot.binaryControl = { on: observation.value };
     }
-    if (
-        previousCurrentOn === snapshot.binaryControl?.on
-        && snapshot.binaryCapabilityId !== 'evcharger_charging'
-    ) {
-        return false;
-    }
-    if (
-        previousCurrentOn === snapshot.binaryControl?.on
-        && snapshot.binaryCapabilityId === 'evcharger_charging'
-        && previousEvCharging === snapshot.evCharging
-    ) {
-        return false;
-    }
+    if (controlChanged) snapshot.binaryControl = { on: observation.value };
+    if (!controlChanged && !evChargingChanged) return false;
     if (observation.source === 'local_write') {
         snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
         return true;
@@ -158,26 +147,25 @@ function applyTargetCapabilityObservation(
     if (!target) {
         return false;
     }
-    let nextValue: number | undefined | null;
+    let nextValue: number | undefined;
     if (typeof observation.value === 'number' && Number.isFinite(observation.value)) {
         nextValue = observation.value;
     } else if (observation.value === undefined) {
         nextValue = undefined;
     } else {
-        nextValue = null;
+        return false;
     }
-    if (nextValue === null) return false;
     const targetChanged = !Object.is(target.value, nextValue);
     if (targetChanged) {
         if (nextValue === undefined) delete target.value;
         else target.value = nextValue;
     }
-    const exactObservationChanged = applyExactTargetPowerObservation({
+    const exactObservationChanged = applyExactTargetPowerObservation(
         snapshot,
         capabilityId,
         observation,
         nextValue,
-    });
+    );
     if (!targetChanged && !exactObservationChanged) return false;
     if (observation.source === 'local_write') {
         snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
@@ -211,18 +199,12 @@ function applyTemperatureTargetObservation(
 /* eslint-enable functional/immutable-data */
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function applyExactTargetPowerObservation(params: {
-    snapshot: TransportDeviceSnapshot;
-    capabilityId: string;
-    observation: CapabilityObservation;
-    nextValue: number | undefined;
-}): boolean {
-    const {
-        snapshot,
-        capabilityId,
-        observation,
-        nextValue,
-    } = params;
+function applyExactTargetPowerObservation(
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    observation: CapabilityObservation,
+    nextValue: number | undefined,
+): boolean {
     if (capabilityId !== 'target_power' || observation.source === 'local_write' || nextValue === undefined) {
         return false;
     }
@@ -237,9 +219,10 @@ function applyExactTargetPowerObservation(params: {
     ) {
         return false;
     }
-    snapshot.reportedStepId = exactStep.id;
-    snapshot.reportedStepPowerW = exactStep.planningPowerW;
-    snapshot.reportedStepObservedAtMs = observation.observedAt;
+    const mutableSnapshot = snapshot;
+    mutableSnapshot.reportedStepId = exactStep.id;
+    mutableSnapshot.reportedStepPowerW = exactStep.planningPowerW;
+    mutableSnapshot.reportedStepObservedAtMs = observation.observedAt;
     return true;
 }
 /* eslint-enable functional/immutable-data */
