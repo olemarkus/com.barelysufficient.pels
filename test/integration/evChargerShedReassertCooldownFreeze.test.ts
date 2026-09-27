@@ -101,7 +101,6 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver({
     logger,
-    lastPositiveMeasuredPowerKw: {},
   }),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
   isPowerCapable: (device, capsStatus, measuredPower, retainedReading) => (

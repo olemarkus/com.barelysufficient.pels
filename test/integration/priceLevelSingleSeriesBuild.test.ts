@@ -13,10 +13,10 @@ import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 /**
  * `getCombinedPricePeriods()` has no cache: every call re-reads ~12 settings,
  * runs one `Intl.DateTimeFormat.formatToParts` per spot period, and walks the
- * whole grid-tariff table — ~25 ms on a Homey Pro. Asking `isCurrentHourCheap()`
- * and `isCurrentHourExpensive()` back to back therefore rebuilt the entire
- * series twice to answer one question, on both hot paths (the plan builder's
- * per-cycle price level and the status writer's compute).
+ * whole grid-tariff table — ~25 ms on a Homey Pro. Asking for the cheap and the
+ * expensive flag separately rebuilt the entire series twice to answer one
+ * question, on both hot paths (the plan builder's per-cycle price level and the
+ * status writer's compute).
  *
  * `getCurrentHourPriceLevel()` answers the resolved level from a single build.
  * This suite pins the build count, because nothing else would notice it
@@ -85,33 +85,6 @@ describe('current-hour price level resolves from a single series build', () => {
 
     expect(level).toEqual(PriceLevel.CHEAP);
     expect(buildSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('agrees with the two single-flag predicates it replaces', () => {
-    const service = createService();
-
-    // The predicates are the pre-existing behaviour; the resolved level must not
-    // change any answer, only the number of builds it takes to get there — and
-    // it applies the cheap-first precedence every caller used to apply itself.
-    const resolveExpected = (): PriceLevel => {
-      if (service.isCurrentHourCheap()) return PriceLevel.CHEAP;
-      if (service.isCurrentHourExpensive()) return PriceLevel.EXPENSIVE;
-      return PriceLevel.NORMAL;
-    };
-    expect(service.getCurrentHourPriceLevel()).toEqual(resolveExpected());
-  });
-
-  it('costs two builds when the single-flag predicates are used back to back', () => {
-    const service = createService();
-    const buildSpy = vi.spyOn(service, 'getCombinedPricePeriods');
-
-    // Pins the cost this change removes: without the combined resolver, the two
-    // hot callers paid this. If a future refactor makes the predicates share a
-    // build, this expectation is the thing to update — not to delete.
-    service.isCurrentHourCheap();
-    service.isCurrentHourExpensive();
-
-    expect(buildSpy).toHaveBeenCalledTimes(2);
   });
 
   it('answers UNKNOWN when the current hour has no price', () => {

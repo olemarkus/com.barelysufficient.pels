@@ -83,14 +83,3 @@ export const getPriceLevelFlags = (params: {
   };
 };
 
-export const isPriceAtLevel = (params: {
-  price: number;
-  avgPrice: number;
-  thresholds: PriceThresholds;
-  minDiff: number;
-  level: 'cheap' | 'expensive';
-}): boolean => {
-  const { level, ...rest } = params;
-  const flags = getPriceLevelFlags(rest);
-  return level === 'cheap' ? flags.isCheap : flags.isExpensive;
-};

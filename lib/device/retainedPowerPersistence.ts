@@ -35,9 +35,8 @@ export class RetainedPowerPersistence {
   constructor(
     private readonly store: RetainedPowerStore,
     logger: Logger,
-    lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }>,
   ) {
-    this.resolver = new DeviceMeasuredPowerResolver({ logger, lastPositiveMeasuredPowerKw });
+    this.resolver = new DeviceMeasuredPowerResolver({ logger });
     const state = loadOrStartEmpty(store);
     this.restored = new Map(state.readings);
     this.resolver.seedMeterAnchors(state.meterAnchors);

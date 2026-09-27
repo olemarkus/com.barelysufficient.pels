@@ -163,7 +163,6 @@ const buildContext = (): AppContext => {
     set defaultComputeDynamicSoftLimit(_value) {},
     get lastKnownPowerKw() { return {}; },
     get expectedPowerKwOverrides() { return {}; },
-    get lastPositiveMeasuredPowerKw() { return {}; },
     get lastNotifiedOperatingMode() { return 'Home'; },
     set lastNotifiedOperatingMode(_value) {},
     get planRebuildThrottle() { return createInertPlanRebuildThrottle(); },

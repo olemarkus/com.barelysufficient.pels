@@ -238,10 +238,6 @@ export class PlanService {
     return serializePlanForUi(this.getLatestPlanSnapshot(), this.deps, this.idleClassifier);
   }
 
-  serializePlanSnapshotForUi(plan: DevicePlan | null): SettingsUiPlanSnapshot | null {
-    return serializePlanForUi(plan, this.deps, this.idleClassifier);
-  }
-
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
     return this.latestPublishedPlan?.publishedAtMs ?? null;
   }

@@ -287,7 +287,6 @@ describe('Expected power flow card', () => {
 
     // Clear overrides and measurements -> fallback to 1kW
     Object.keys(app.expectedPowerKwOverrides).forEach((k) => delete app.expectedPowerKwOverrides[k]);
-    Object.keys(app.lastPositiveMeasuredPowerKw).forEach((k) => delete app.lastPositiveMeasuredPowerKw[k]);
     Object.keys(app.lastKnownPowerKw).forEach((k) => delete app.lastKnownPowerKw[k]);
     // A conforming read: every declared capability dated and valued, the meter
     // reading no draw, so no rung above the default has anything to offer.

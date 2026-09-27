@@ -47,9 +47,7 @@ export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
  */
 type LearnedPeakChangedListener = { onLearnedPeakChanged?: () => void };
 
-export type DeviceTransportPowerState = PowerEstimateState & LearnedPeakChangedListener & {
-    lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
-};
+export type DeviceTransportPowerState = PowerEstimateState & LearnedPeakChangedListener;
 
 /**
  * The transport's own power bag: every estimator field resolved, plus the

@@ -262,7 +262,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   public expectedPowerKwOverrides: ExpectedPowerOverridesByDeviceId = {};
   protected overheadToken?: Homey.FlowToken;
-  public lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   public lastNotifiedOperatingMode = 'Home';
   private readonly settingsRepository = new SettingsRepository(this.homey);
   // Declared before every field that arms a timer. It depends on nothing, and

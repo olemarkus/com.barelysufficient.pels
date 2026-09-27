@@ -229,13 +229,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getTimeZone = (): string => this.homey.clock.getTimezone();
   public getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
   public getNow = (): Date => new Date();
-  public findCheapestHours = (count: number): string[] => this.requirePriceCoordinator().findCheapestHours(count);
-  public isCurrentHourCheap = (): boolean => this.requirePriceCoordinator().isCurrentHourCheap();
   public getCurrentHourPriceLevel = (): PriceLevel => (
     this.requirePriceCoordinator().getCurrentHourPriceLevel()
   );
-  public isCurrentHourExpensive = (): boolean => this.requirePriceCoordinator().isCurrentHourExpensive();
-  public getCurrentHourPriceInfo = (): string => this.requirePriceCoordinator().getCurrentHourPriceInfo();
 
   public storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
     dateKey: string; storedCount: number; missingHours: number[];

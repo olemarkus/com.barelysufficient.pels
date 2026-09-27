@@ -1,11 +1,12 @@
 // Unit coverage for the live cheap/expensive level classification
-// (`isCurrentPeriodAtLevel`) over the PLANNING price (`budgetPrice ?? totalPrice`).
+// (`resolveCurrentPricePeriodLevel`) over the PLANNING price (`budgetPrice ?? totalPrice`).
 // This feeds thermostat price-opt deltas, the `price_level` flow trigger, and the
 // pels_insights level capability — all deliberately scheduling-consistent with the
 // planner. Includes the non-prosumer invariance pins: absent or total-equal
 // budgetPrice must classify byte-identically to the historical total-only path.
 import { describe, expect, it } from 'vitest';
-import { isCurrentPeriodAtLevel } from '../../lib/price/priceLevelUtils';
+import { resolveCurrentPricePeriodLevel } from '../../lib/price/priceLevelUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const HOUR_MS = 60 * 60 * 1000;
 const BASE_MS = Date.parse('2026-06-01T00:00:00Z');
@@ -23,15 +24,14 @@ const entry = (hour: number, totalPrice: number, budgetPrice?: number): {
 });
 
 const classify = (prices: Array<ReturnType<typeof entry>>, level: 'cheap' | 'expensive'): boolean => (
-  isCurrentPeriodAtLevel(
+  resolveCurrentPricePeriodLevel(
     prices,
     { thresholdPercent: 25, minDiff: 0 },
-    level,
     BASE_MS + 30 * 60 * 1000, // mid hour 0
-  )
+  ) === (level === 'cheap' ? PriceLevel.CHEAP : PriceLevel.EXPENSIVE)
 );
 
-describe('isCurrentPeriodAtLevel — planning price', () => {
+describe('resolveCurrentPricePeriodLevel — planning price', () => {
   it('classifies over budgetPrice when present: a flat-total hour with surplus becomes cheap', () => {
     // Totals are flat (no hour is cheap on total), but hour 0 carries a low
     // planning price. Average over planning prices = (10+100+100+100)/4 = 77.5;

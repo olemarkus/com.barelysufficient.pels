@@ -303,14 +303,6 @@ export class PriceCoordinator {
     return this.priceService.getPriceUnitLabel();
   }
 
-  findCheapestHours(count: number): string[] {
-    return this.priceService.findCheapestHours(count);
-  }
-
-  isCurrentHourCheap(): boolean {
-    return this.priceService.isCurrentHourCheap();
-  }
-
   /**
    * The resolved level from one combined-series build — see
    * `PriceService.getCurrentHourPriceLevel`. The build reads a dozen settings
@@ -326,18 +318,6 @@ export class PriceCoordinator {
       moduleLogger.warn({ event: 'price_level_read_failed', err: normalizeError(error) });
     }
     return this.lastGoodHourPriceLevel;
-  }
-
-  isCurrentHourExpensive(): boolean {
-    return this.priceService.isCurrentHourExpensive();
-  }
-
-  getCurrentHourPriceInfo(): string {
-    return this.priceService.getCurrentHourPriceInfo();
-  }
-
-  getCurrentHourStartMs(): number {
-    return this.priceService.getCurrentHourStartMs();
   }
 
   private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {

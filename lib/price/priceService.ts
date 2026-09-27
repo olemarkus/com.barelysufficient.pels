@@ -14,7 +14,6 @@ import {
 import {
   addDays,
   fetchGridTariffWithDateFallback,
-  findCheapestHoursFromCombined,
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
@@ -55,13 +54,7 @@ import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhour
 import { applyExportPrices } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
-import {
-  describeCurrentPrice,
-  isCurrentPeriodAtLevel,
-  resolveCurrentPricePeriodLevel,
-  resolveCurrentPriceStartMs,
-  type PriceLevelBand,
-} from './priceLevelUtils';
+import { resolveCurrentPricePeriodLevel, type PriceLevelBand } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
 import { readPriceSchemeSetting } from './priceTypes';
 import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
@@ -539,18 +532,6 @@ export default class PriceService {
     });
   }
 
-  findCheapestHours(count: number): string[] {
-    return findCheapestHoursFromCombined(this.getCombinedHourlyPrices(), count, Date.now());
-  }
-
-  isCurrentHourCheap(): boolean {
-    return isCurrentPeriodAtLevel(this.getCombinedPricePeriods(), this.priceLevelBand, 'cheap');
-  }
-
-  isCurrentHourExpensive(): boolean {
-    return isCurrentPeriodAtLevel(this.getCombinedPricePeriods(), this.priceLevelBand, 'expensive');
-  }
-
   private get priceLevelBand(): PriceLevelBand {
     return {
       thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
@@ -559,9 +540,7 @@ export default class PriceService {
   }
 
   /**
-   * The RESOLVED price level in force, from a SINGLE series build — use this
-   * rather than calling `isCurrentHourCheap()` and `isCurrentHourExpensive()`
-   * back to back, which builds the series twice for one question. See
+   * The RESOLVED price level in force, from a SINGLE series build. See
    * `resolveCurrentPricePeriodLevel` for what that build costs and why it has
    * no cache.
    */
@@ -569,20 +548,8 @@ export default class PriceService {
     return resolveCurrentPricePeriodLevel(this.getCombinedPricePeriods(), this.priceLevelBand);
   }
 
-  getCurrentHourPriceInfo(): string {
-    return describeCurrentPrice(
-      this.getCombinedPricePeriods(),
-      this.getPriceScheme(),
-      this.getPriceUnitLabel(),
-    );
-  }
-
   private get norwaySchemeSettings(): NorwaySchemeSettings {
     return readNorwaySchemeSettings({ getRaw: (key) => this.getSettingValue(key) });
-  }
-
-  getCurrentHourStartMs(): number {
-    return resolveCurrentPriceStartMs(this.getCombinedPricePeriods(), this.getTimeZone());
   }
 
   /**

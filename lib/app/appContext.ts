@@ -147,12 +147,9 @@ export type AppContext = {
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   /**
-   * Both current-hour price flags from ONE combined-series build — see
-   * `PriceService.getCurrentHourPriceLevel`. Replaces the separate
-   * `isCurrentHourCheap`/`isCurrentHourExpensive` wiring fields: every consumer
-   * through this context wanted both, and the two predicates rebuilt the
-   * uncached series once each. The single-flag accessors still exist on
-   * `PriceCoordinator`/`PriceService` for callers that genuinely need one.
+   * The current-hour price level from ONE combined-series build — see
+   * `PriceService.getCurrentHourPriceLevel`. The series is uncached, so asking
+   * for the cheap and expensive flags separately would build it twice.
    */
   getCurrentHourPriceLevel: () => PriceLevel;
   areFlowBackedCardsAvailable: () => boolean;
@@ -283,7 +280,6 @@ export type AppContext = {
   set defaultComputeDynamicSoftLimit(value: (() => number) | undefined);
   get lastKnownPowerKw(): LearnedPeaksByDeviceId;
   get expectedPowerKwOverrides(): ExpectedPowerOverridesByDeviceId;
-  get lastPositiveMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
   get lastNotifiedOperatingMode(): string;
   set lastNotifiedOperatingMode(value: string);
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */

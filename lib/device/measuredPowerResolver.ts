@@ -40,7 +40,6 @@ export class DeviceMeasuredPowerResolver {
 
   constructor(private readonly deps: {
     logger: Logger;
-    lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
     getNow?: () => number;
   }) {}
 
@@ -77,9 +76,9 @@ export class DeviceMeasuredPowerResolver {
 
     if (!selected) return {};
     if (selected.source === 'meter_power') {
-      return this.resolveMeterDelta(deviceId, deviceLabel, selected.reading, now);
+      return this.resolveMeterDelta(deviceId, deviceLabel, selected.reading);
     }
-    return this.resolveDirectWatts(deviceId, selected.reading, now);
+    return this.resolveDirectWatts(deviceId, selected.reading);
   }
 
   // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
@@ -101,7 +100,6 @@ export class DeviceMeasuredPowerResolver {
   private resolveDirectWatts(
     deviceId: string,
     direct: DirectPowerReading,
-    now: number,
   ): DeviceMeasuredPowerResolution {
     const { watts, observedAtMs } = direct;
     const normalized = normalizeMeasuredPowerKw(watts / 1000);
@@ -119,9 +117,6 @@ export class DeviceMeasuredPowerResolver {
     // Missing or rejected readings return above and leave the anchor untouched.
     delete this.lastMeterEnergy[deviceId];
     const measuredPowerKw = normalized;
-    if (measuredPowerKw > 0) {
-      this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
-    }
     return {
       measuredPowerKw,
       observedAtMs,
@@ -167,7 +162,6 @@ export class DeviceMeasuredPowerResolver {
     deviceId: string,
     deviceLabel: string,
     reading: MeterEnergyReading,
-    now: number,
   ): DeviceMeasuredPowerResolution {
     const { kwh, observedAtMs } = reading;
     const previous = this.lastMeterEnergy[deviceId];
@@ -211,7 +205,6 @@ export class DeviceMeasuredPowerResolver {
     // As in `resolveDirectWatts`: a small but real delta is reported, not
     // dropped. Dropping it produced absence, and absence is what licenses a
     // consumer to substitute rated power.
-    this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
     return {
       measuredPowerKw,
       observedAtMs,

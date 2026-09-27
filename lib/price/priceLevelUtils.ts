@@ -2,13 +2,9 @@ import {
   calculateDurationWeightedAveragePrice,
   calculateThresholds,
   getPriceLevelFlags,
-  isPriceAtLevel,
 } from './priceMath';
 import { resolvePlanningPrice } from './budgetPrice';
-import { getHourStartInTimeZone } from '../utils/hourBuckets';
-import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import { PriceLevel } from './priceLevels';
-import type { CombinedPricePeriod, PriceScheme } from './priceTypes';
 
 /** The owner's cheap/expensive band, as they configured it. */
 export type PriceLevelBand = {
@@ -43,48 +39,19 @@ export const getCurrentPricePeriod = (prices: PriceEntry[], nowMs: number = Date
 };
 
 /**
- * Cheap/expensive classification of the current period. Deliberately computed
- * over the PLANNING price (`budgetPrice ?? totalPrice`) — both the average and
- * the current period's value — so the price level agrees with what the planner
- * schedules against (thermostat price-opt deltas, the `price_level` flow
- * trigger, the pels_insights level capability). Identical to a total-based
- * classification when no export price is configured. Money strings never come
- * from here.
- */
-export const isCurrentPeriodAtLevel = (
-  prices: PriceEntry[],
-  band: PriceLevelBand,
-  level: 'cheap' | 'expensive',
-  nowMs?: number,
-): boolean => {
-  const { thresholdPercent, minDiff } = band;
-  const currentPrice = getCurrentPricePeriod(prices, nowMs);
-  if (!currentPrice) return false;
-  const avgPrice = calculateDurationWeightedAveragePrice(
-    prices,
-    (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
-    (entry) => entry.durationMinutes,
-  );
-  const thresholds = calculateThresholds(avgPrice, thresholdPercent);
-  return isPriceAtLevel({
-    price: resolvePlanningPrice(currentPrice.budgetPrice, currentPrice.totalPrice),
-    avgPrice,
-    thresholds,
-    minDiff,
-    level,
-  });
-};
-
-/**
  * The RESOLVED price level right now, from ONE pass over the series.
  *
- * `getPriceLevelFlags` already computes `isCheap` and `isExpensive` together, so
- * asking `isCurrentPeriodAtLevel` twice re-derives the current period, the
- * average, and the thresholds for an answer it had in hand. That is cheap here —
- * but the caller has to hand in `prices`, and on the PELS runtime the only
- * source is `PriceService.getCombinedPricePeriods()`, which is uncached and
- * rebuilds the whole series from settings (~25 ms on a Homey Pro). Two predicate
- * calls meant two rebuilds. See `PriceService.getCurrentHourPriceLevel`.
+ * Computed over the PLANNING price (`budgetPrice ?? totalPrice`), the average
+ * and the current period alike, so the level agrees with what the planner
+ * schedules against (thermostat price deltas, the `price_level` flow trigger,
+ * the pels_insights level capability). Identical to a total-based
+ * classification when no export price is configured.
+ *
+ * `getPriceLevelFlags` computes `isCheap` and `isExpensive` together, so one
+ * pass answers both. The caller hands in `prices`, and on the PELS runtime the
+ * only source is `PriceService.getCombinedPricePeriods()`, which is uncached and
+ * rebuilds the whole series from settings (~25 ms on a Homey Pro). See
+ * `PriceService.getCurrentHourPriceLevel`.
  *
  * One `PriceLevel`, not the two raw flags. The flags are not mutually exclusive
  * — `price <= low` and `price >= high`, so at `thresholdPercent` 0 a price
@@ -118,30 +85,3 @@ export const resolveCurrentPricePeriodLevel = (
   return PriceLevel.NORMAL;
 };
 
-/** The owner-facing one-liner for the price in force, in the scheme's own terms. */
-export const describeCurrentPrice = (
-  periods: CombinedPricePeriod[],
-  scheme: PriceScheme,
-  unitLabel: string,
-): string => {
-  const current = getCurrentPricePeriod(periods);
-  if (!current) return 'price unknown';
-  return scheme === 'norway'
-    ? formatNorwayPriceInfo(current)
-    : formatFlowPriceInfo(current, unitLabel);
-};
-
-/**
- * When the price now in force began — the start of the current period, which is
- * the start of the current quarter on a 15-minute zone. Falls back to the hour
- * when no series reaches now, because an hour is the only boundary that exists
- * without prices.
- */
-export const resolveCurrentPriceStartMs = (
-  periods: CombinedPricePeriod[],
-  timeZone: string,
-): number => {
-  const current = getCurrentPricePeriod(periods);
-  if (current) return new Date(current.startsAt).getTime();
-  return getHourStartInTimeZone(new Date(), timeZone);
-};

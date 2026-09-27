@@ -2,7 +2,6 @@ import {
   calculateAveragePrice,
   calculateThresholds,
   getPriceLevelFlags,
-  isPriceAtLevel,
 } from '../../lib/price/priceMath';
 
 describe('priceMath', () => {
@@ -87,30 +86,5 @@ describe('priceMath', () => {
     });
     expect(expensive.isCheap).toBe(false);
     expect(expensive.isExpensive).toBe(true);
-  });
-
-  it('isPriceAtLevel matches cheap/expensive', () => {
-    const thresholds = { low: 75, high: 125 };
-    expect(isPriceAtLevel({
-      price: 70,
-      avgPrice: 100,
-      thresholds,
-      minDiff: 10,
-      level: 'cheap',
-    })).toBe(true);
-    expect(isPriceAtLevel({
-      price: 130,
-      avgPrice: 100,
-      thresholds,
-      minDiff: 10,
-      level: 'expensive',
-    })).toBe(true);
-    expect(isPriceAtLevel({
-      price: 80,
-      avgPrice: 100,
-      thresholds,
-      minDiff: 30,
-      level: 'cheap',
-    })).toBe(false);
   });
 });

@@ -69,7 +69,7 @@ lib/device/managerNativeEv.ts 7
 lib/device/managerNativeSteppedCommand.ts 7
 lib/device/managerRuntime.ts 8
 lib/device/measuredPowerReader.ts 1
-lib/device/measuredPowerResolver.ts 2
+lib/device/measuredPowerResolver.ts 1
 lib/device/nativeEvWiring.ts 2
 lib/device/nativeSteppedLoadWiring.ts 8
 lib/device/observationProducers.ts 1
@@ -224,7 +224,7 @@ lib/price/gridTariffUtils.ts 2
 lib/price/homeyEnergyPriceFetch.ts 2
 lib/price/homeyEnergyRefresh.ts 1
 lib/price/priceLowestFlowEvaluator.ts 6
-lib/price/priceMath.ts 2
+lib/price/priceMath.ts 1
 lib/price/priceService.ts 2
 lib/price/priceServiceCombined.ts 1
 lib/price/priceServiceNorway.ts 4

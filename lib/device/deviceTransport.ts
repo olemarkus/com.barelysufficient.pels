@@ -255,7 +255,7 @@ export class DeviceTransport {
         // The measured-power resolver, built with what it retains restored from the
         // store before the first read (`retainedPowerPersistence.ts`).
         this.retainedPower = new RetainedPowerPersistence(
-            options.retainedPowerStore, this.logger, powerState?.lastPositiveMeasuredPowerKw ?? {},
+            options.retainedPowerStore, this.logger,
         );
         this.ctx = this.createContext();
     }

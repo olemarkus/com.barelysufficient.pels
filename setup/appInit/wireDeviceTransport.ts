@@ -147,7 +147,6 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   }), {
     expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
     lastKnownPowerKw: ctx.lastKnownPowerKw,
-    lastPositiveMeasuredPowerKw: ctx.lastPositiveMeasuredPowerKw,
     // Driven off the learned-peak mutation, NOT the snapshot-mutation seam
     // below. That seam fires on a changed calibration input, and a reading equal
     // to the standing peak changes none of them while still re-anchoring the

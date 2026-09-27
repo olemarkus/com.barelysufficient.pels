@@ -16,10 +16,8 @@ describe('DeviceMeasuredPowerResolver', () => {
   });
 
   it('prefers measure_power over Homey Energy live watts', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 1000,
     });
 
@@ -34,15 +32,12 @@ describe('DeviceMeasuredPowerResolver', () => {
 
     expect(measuredPower.measuredPowerKw).toBeCloseTo(0.08, 6);
     expect(measuredPower.observedAtMs).toBe(900);
-    expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.08, ts: 1000 });
   });
 
   it('uses meter_power when measure_power is absent and does not fall through to Homey Energy first', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     let now = 0;
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => now,
     });
 
@@ -78,7 +73,6 @@ describe('DeviceMeasuredPowerResolver', () => {
         startMs: anchorMs, endMs: oneHourLaterMs,
       },
     });
-    expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 1, ts: now });
   });
 
   // The production defect (a ~3.8 kW air conditioner reporting 226 kW). The
@@ -87,11 +81,9 @@ describe('DeviceMeasuredPowerResolver', () => {
   // apart. Pairing the poll's energy with the refresh's elapsed time overstates
   // the rate 60x. Both terms must come from the observation clock.
   it('derives the rate from observation time, not from how often it is asked', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     let now = Date.parse('2026-01-01T00:00:00.000Z');
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => now,
     });
 
@@ -120,11 +112,9 @@ describe('DeviceMeasuredPowerResolver', () => {
   // cumulative value has not moved, and the old arithmetic divided that zero by
   // real elapsed time to credit the device a measured 0 kW while it was running.
   it('reports absence, not a measured zero, when the meter has not been re-observed', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     let now = Date.parse('2026-01-01T00:00:00.000Z');
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => now,
     });
 
@@ -150,10 +140,8 @@ describe('DeviceMeasuredPowerResolver', () => {
   // its observation clock, so the pair spans a real window over zero energy.
   // That IS a measured zero and must be reported as one.
   it('reports a true zero when an unchanged meter is re-published', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 0,
     });
 
@@ -177,7 +165,6 @@ describe('DeviceMeasuredPowerResolver', () => {
         startMs: firstMs, endMs: republishedMs,
       },
     });
-    expect(lastPositiveMeasuredPowerKw).toEqual({});
   });
 
   // A refresh on which the meter did not resolve to a reading (the reader
@@ -185,10 +172,8 @@ describe('DeviceMeasuredPowerResolver', () => {
   // pairs with the standing one, so the energy is counted across the whole
   // span it accrued over.
   it('leaves the anchor standing across an observation with no meter reading', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 0,
     });
 
@@ -223,10 +208,8 @@ describe('DeviceMeasuredPowerResolver', () => {
   // Skipping a too-close pair must not consume it: advancing the anchor on a
   // skip would drop that interval's energy for good.
   it('carries energy forward when two observations land inside the same second', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 0,
     });
 
@@ -261,10 +244,8 @@ describe('DeviceMeasuredPowerResolver', () => {
   });
 
   it('falls back to Homey Energy live watts when no direct capabilities are available', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 2000,
     });
 
@@ -278,14 +259,11 @@ describe('DeviceMeasuredPowerResolver', () => {
 
     expect(measuredPower.measuredPowerKw).toBeCloseTo(0.125, 6);
     expect(measuredPower.observedAtMs).toBe(1500);
-    expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.125, ts: 2000 });
   });
 
   it('reports a few watts of standby as its own value instead of dropping it', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
     const resolver = new DeviceMeasuredPowerResolver({
       logger,
-      lastPositiveMeasuredPowerKw,
       getNow: () => 5000,
     });
 
@@ -306,12 +284,10 @@ describe('DeviceMeasuredPowerResolver', () => {
       observedAtMs: 1234,
       reading: { kind: 'instantaneous', powerKw: 0.003, observedAtMs: 1234 },
     });
-    expect(lastPositiveMeasuredPowerKw['dev-1']).toEqual({ kw: 0.003, ts: 5000 });
   });
 
   it('reports a measured zero as a reading, not as absence', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
-    const resolver = new DeviceMeasuredPowerResolver({ logger, lastPositiveMeasuredPowerKw });
+    const resolver = new DeviceMeasuredPowerResolver({ logger });
 
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
@@ -325,12 +301,10 @@ describe('DeviceMeasuredPowerResolver', () => {
       reading: { kind: 'instantaneous', powerKw: 0, observedAtMs: 1234 },
     });
     // Zero is a draw of nothing, not a positive reading.
-    expect(lastPositiveMeasuredPowerKw).toEqual({});
   });
 
   it('drops a negative measure_power reading rather than reporting it as a draw', () => {
-    const lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
-    const resolver = new DeviceMeasuredPowerResolver({ logger, lastPositiveMeasuredPowerKw });
+    const resolver = new DeviceMeasuredPowerResolver({ logger });
 
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
@@ -341,6 +315,5 @@ describe('DeviceMeasuredPowerResolver', () => {
     // Negative is generation, not consumption. The producer states "not a draw"
     // so the contract's "present implies non-negative" holds for consumers.
     expect(measuredPower).toEqual({ observedAtMs: 1234 });
-    expect(lastPositiveMeasuredPowerKw).toEqual({});
   });
 });

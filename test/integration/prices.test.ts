@@ -46,13 +46,6 @@ vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
-type HvaKosterRow = {
-  NOK_per_kWh: number;
-  EUR_per_kWh: number;
-  EXR: number;
-  time_start: string;
-  time_end: string;
-};
 
 type GridTariffRow = {
   dateKey: string;
@@ -1601,124 +1594,6 @@ describe('Price optimization', () => {
     expect(firstPrice.totalPrice).toBeCloseTo(151.79, 2);
   });
 
-  it('finds the cheapest hours correctly', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [waterHeater]),
-    });
-
-    // Create prices starting from "now" into the future
-    // The function filters to only future hours, so we need prices that start at or after "now"
-    const now = new Date();
-    now.setMinutes(0, 0, 0); // Start of current hour
-
-    // Generate 24 hours of prices starting from NOW
-    const generate24HoursFromNow = () => {
-      const prices: HvaKosterRow[] = [];
-      for (let i = 0; i < 24; i++) {
-        const date = new Date(now.getTime() + i * 60 * 60 * 1000);
-        const hour = date.getHours();
-        // Make specific hours clearly cheapest: hours that match 2-5 in any day
-        let priceNok = 0.30;
-        if (hour >= 2 && hour <= 5) priceNok = 0.10; // very cheap
-        else if ((hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)) priceNok = 0.60; // expensive
-
-        prices.push({
-          NOK_per_kWh: priceNok,
-          EUR_per_kWh: priceNok / 11.5,
-          EXR: 11.5,
-          time_start: date.toISOString(),
-          time_end: new Date(date.getTime() + 60 * 60 * 1000).toISOString(),
-        });
-      }
-      return prices;
-    };
-
-    const rawPrices = generate24HoursFromNow();
-    const spotPrices = rawPrices.map((p) => ({
-      startsAt: p.time_start,
-      spotPriceExVat: p.NOK_per_kWh * 100,
-      currency: 'NOK',
-    }));
-    const gridTariffData = generateMockGridTariffFor24Hours();
-
-    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
-
-    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
-      const response = createMockHttpsResponse(200, rawPrices);
-      callback(response);
-      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
-    });
-
-    const app = createApp();
-    await app.onInit();
-    await flushPromises();
-
-    // Find 4 cheapest hours
-    const cheapestHours = app.priceCoordinator.findCheapestHours(4);
-
-    // Should get up to 4 hours (or fewer if not enough cheap hours exist in next 24h)
-    expect(cheapestHours.length).toBeGreaterThan(0);
-    expect(cheapestHours.length).toBeLessThanOrEqual(4);
-
-    // Verify the returned hours are sorted by price (cheapest first)
-    const combinedPrices = app.priceCoordinator.getCombinedHourlyPrices();
-    const cheapestPrices = cheapestHours.map((hourStr: string) => {
-      const price = combinedPrices.find((p) => p.startsAt === hourStr);
-      return price ? price.totalPrice : Infinity;
-    });
-
-    // Verify prices are in ascending order
-    for (let i = 1; i < cheapestPrices.length; i++) {
-      expect(cheapestPrices[i]).toBeGreaterThanOrEqual(cheapestPrices[i - 1]);
-    }
-  });
-
-  it('ranks cheapest hours by the planning price when a solar surplus is forecast', async () => {
-    // Fixed non-DST instant, app-local hour start.
-    const now = new Date('2026-06-15T10:00:00.000Z');
-    const hourStartMs = now.getTime();
-    const surplusHourMs = hourStartMs + 2 * HOUR_MS;
-    const surplusHourIso = new Date(surplusHourMs).toISOString();
-    const cheapestTotalIso = new Date(hourStartMs).toISOString();
-    // Hour 0 has by far the lowest spot (cheapest total); the surplus hour has
-    // by far the highest. The gaps dwarf any per-hour tariff variation.
-    const spotByHour = [10, 200, 400, 200, 200, 200];
-    mockHomeyInstance.settings.set('electricity_prices', spotByHour.map((spotPriceExVat, hour) => ({
-      startsAt: new Date(hourStartMs + hour * HOUR_MS).toISOString(),
-      spotPriceExVat,
-      currency: 'NOK',
-    })));
-    mockHomeyInstance.settings.set('nettleie_data', []);
-    // Pure fixed feed-in tariff of 1 øre ⇒ every hour's exportPrice is 1.
-    mockHomeyInstance.settings.set('export_price_enabled', true);
-    mockHomeyInstance.settings.set('export_spot_factor', 0);
-    mockHomeyInstance.settings.set('export_fixed', 1);
-
-    await withMockedNow(now, async () => {
-      const coordinator = createPriceCoordinatorForTest();
-
-      // Invariance leg: no budget-price inputs ⇒ ranking is by total, exactly
-      // as before — the lowest-spot hour wins.
-      expect(coordinator.findCheapestHours(1)).toEqual([cheapestTotalIso]);
-
-      // Full surplus coverage for the surplus hour ⇒ its planning price is the
-      // export price (1 øre), far below every total.
-      coordinator.setBudgetPriceInputs({
-        expectedManagedDrawKwh: 5,
-        getSurplusKwh: (startsAtMs) => (startsAtMs === surplusHourMs ? 5 : undefined),
-      });
-      expect(coordinator.findCheapestHours(1)).toEqual([surplusHourIso]);
-      // Sanity: the surplus hour really is the most expensive by total.
-      const combined = coordinator.getCombinedHourlyPrices();
-      const surplusEntry = combined.find((entry) => entry.startsAt === surplusHourIso);
-      const maxTotal = Math.max(...combined.map((entry) => entry.totalPrice));
-      expect(surplusEntry?.totalPrice).toBe(maxTotal);
-      expect(surplusEntry?.budgetPrice).toBe(1);
-    });
-  });
-
   it('persists budgetPrice end-to-end: producer → settings payload → reader → daily-budget shaping', async () => {
     // Pins the full chain against a future field-whitelisting re-map: the
     // producer's budgetPrice must survive the persisted `combined_prices`
@@ -2070,85 +1945,6 @@ describe('Price optimization', () => {
 
     // Verify it's now enabled
     expect(app['priceOptimizationEnabled']).toBe(true);
-  });
-
-  it('getCurrentHourPriceInfo returns formatted price string', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [waterHeater]),
-    });
-
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    const spotPrices = generateMockPricesForAppDay(now).map((p) => ({
-      startsAt: p.time_start,
-      spotPriceExVat: p.NOK_per_kWh * 100,
-      currency: 'NOK',
-    }));
-
-    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', generateMockGridTariffFor24Hours());
-
-    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
-      const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
-      callback(response);
-      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
-    });
-
-
-    const app = createApp();
-    await app.onInit();
-    await flushPromises();
-
-    const priceInfo = app.priceCoordinator.getCurrentHourPriceInfo();
-
-    expect(typeof priceInfo).toBe('string');
-    expect(priceInfo).toContain('øre/kWh');
-    expect(priceInfo).toContain('spot');
-    expect(priceInfo).toContain('grid tariff');
-  });
-
-  it('formats norgespris adjustment segment with explicit sign', async () => {
-    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [waterHeater]),
-    });
-
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    const spotPrices = [{
-      startsAt: now.toISOString(),
-      spotPriceExVat: 160,
-      currency: 'NOK',
-    }];
-
-    mockHomeyInstance.settings.set('price_scheme', 'norway');
-    mockHomeyInstance.settings.set('norway_price_model', 'norgespris');
-    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
-    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', [{
-      dateKey: formatDateInOslo(now),
-      time: getHourInOslo(now),
-      energyFeeExVat: 28,
-    }]);
-    mockHomeyInstance.settings.set('power_tracker_state', {
-      dailyTotals: { [now.toISOString().slice(0, 10)]: 0 },
-      lastPowerW: 1000,
-    });
-
-    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
-      const response = createMockHttpsResponse(200, []);
-      callback(response);
-      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
-    });
-
-    const app = createApp();
-    await app.onInit();
-    await flushPromises();
-
-    const priceInfo = app.priceCoordinator.getCurrentHourPriceInfo();
-    expect(priceInfo).toContain(' - norgespris adjustment ');
-    expect(priceInfo).not.toContain('+ norgespris adjustment -');
   });
 
   it('stores flow price data from single-quote JSON and builds combined prices', async () => {
@@ -2556,7 +2352,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Verify that it's detected as expensive hour
-      expect(app['isCurrentHourExpensive']()).toBe(true);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE)).toBe(true);
 
       // The price-shifted setpoint arrives with the first reading once prices are
       // loaded: a price change does not rebuild the plan on its own.
@@ -2571,7 +2367,7 @@ describe('Price optimization', () => {
     }
   });
 
-  it('isCurrentHourCheap returns true when price is 25% below average', async () => {
+  it('reads the hour as cheap when its price is 25% below average', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
@@ -2594,12 +2390,12 @@ describe('Price optimization', () => {
       await app.onInit();
       await flushPromises();
 
-      const isCheap = app['isCurrentHourCheap']();
+      const isCheap = (app.getCurrentHourPriceLevel() === PriceLevel.CHEAP);
       expect(isCheap).toBe(true);
     });
   });
 
-  it('isCurrentHourExpensive returns true when price is 25% above average', async () => {
+  it('reads the hour as expensive when its price is 25% above average', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
@@ -2625,7 +2421,7 @@ describe('Price optimization', () => {
       await app.onInit();
       await flushPromises();
 
-      const isExpensive = app['isCurrentHourExpensive']();
+      const isExpensive = (app.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE);
       expect(isExpensive).toBe(true);
     });
   });
@@ -2654,11 +2450,11 @@ describe('Price optimization', () => {
       // With default 25% threshold, 20% deviation is NOT cheap
       await app.onInit();
       await flushPromises();
-      expect(app['isCurrentHourCheap']()).toBe(false);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
 
       // Set threshold to 15% - now 20% deviation IS cheap
       mockHomeyInstance.settings.set('price_threshold_percent', 15);
-      expect(app['isCurrentHourCheap']()).toBe(true);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
     });
   });
 
@@ -2688,15 +2484,15 @@ describe('Price optimization', () => {
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);
       await app.onInit();
       await flushPromises();
-      expect(app['isCurrentHourCheap']()).toBe(true);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
 
       // With 20 øre min diff, 15 øre difference is NOT enough to be cheap
       mockHomeyInstance.settings.set('price_min_diff_ore', 20);
-      expect(app['isCurrentHourCheap']()).toBe(false);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
 
       // With 10 øre min diff, 15 øre difference IS enough
       mockHomeyInstance.settings.set('price_min_diff_ore', 10);
-      expect(app['isCurrentHourCheap']()).toBe(true);
+      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
     });
   });
 
@@ -2715,7 +2511,7 @@ describe('Price optimization', () => {
 
       await withMockedNow(now, async () => {
         const coordinator = createPriceCoordinatorForTest();
-        expect(coordinator.isCurrentHourCheap()).toBe(true);
+        expect(coordinator.getCurrentHourPriceLevel()).toBe(PriceLevel.CHEAP);
       });
     },
   );
@@ -2736,10 +2532,10 @@ describe('Price optimization', () => {
 
         mockHomeyInstance.settings.set('price_threshold_percent', 25);
         mockHomeyInstance.settings.set('price_min_diff_ore', 0);
-        expect(coordinator.isCurrentHourCheap()).toBe(false);
+        expect(coordinator.getCurrentHourPriceLevel()).not.toBe(PriceLevel.CHEAP);
 
         mockHomeyInstance.settings.set('price_threshold_percent', 15);
-        expect(coordinator.isCurrentHourCheap()).toBe(true);
+        expect(coordinator.getCurrentHourPriceLevel()).toBe(PriceLevel.CHEAP);
       });
     },
   );

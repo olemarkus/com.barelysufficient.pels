@@ -556,7 +556,6 @@ describe('Homey price service', () => {
 
     vi.setSystemTime(new Date(cheapQuarterStartMs + 60_000));
     expect(service.getCurrentHourPriceLevel()).toBe(PriceLevel.CHEAP);
-    expect(service.getCurrentHourStartMs()).toBe(cheapQuarterStartMs);
 
     // The next quarter is back to the flat price, and the level says so at once.
     vi.setSystemTime(new Date(cheapQuarterStartMs + 15 * 60_000 + 60_000));

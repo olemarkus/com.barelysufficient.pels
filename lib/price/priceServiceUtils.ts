@@ -1,7 +1,6 @@
 import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { fetchAndNormalizeGridTariff, type GridTariffSettings } from './gridTariffUtils';
-import { resolvePlanningPrice } from './budgetPrice';
 
 type SpotPriceCacheDecisionParams = {
   cachedArea: unknown;
@@ -48,33 +47,6 @@ export const getSpotPriceCacheDecision = (params: SpotPriceCacheDecisionParams):
   const shouldFetchTomorrow = shouldFetchTomorrowPrices(now, hasTomorrowPrices);
   const useCache = hasTodayPrices && !shouldFetchTomorrow;
   return { useCache, shouldFetchTomorrow, areaChanged };
-};
-
-/**
- * Rank the hours starting within `[nowMs, nowMs + 24h)` by the PLANNING price
- * (`budgetPrice ?? totalPrice`) and return the `count` cheapest hour starts.
- * A planning surface: the cheapest-hours flow answers follow what the planner
- * schedules against — identical to a total ranking when no entry carries a
- * `budgetPrice` (no export configured). Money strings never come from here.
- */
-export const findCheapestHoursFromCombined = (
-  prices: Array<{ startsAt: string; totalPrice: number; budgetPrice?: number }>,
-  count: number,
-  nowMs: number,
-): string[] => {
-  const windowEndMs = nowMs + 24 * 60 * 60 * 1000;
-  const planningPrice = (p: { totalPrice: number; budgetPrice?: number }): number => (
-    resolvePlanningPrice(p.budgetPrice, p.totalPrice)
-  );
-  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-  return prices
-    .map((p) => ({ entry: p, timeMs: new Date(p.startsAt).getTime(), price: planningPrice(p) }))
-    .filter(({ timeMs, price }) => (
-      timeMs >= nowMs && timeMs < windowEndMs && Number.isFinite(price)
-    ))
-    .sort((a, b) => a.price - b.price || a.timeMs - b.timeMs)
-    .slice(0, safeCount)
-    .map(({ entry }) => entry.startsAt);
 };
 
 export const subtractMonths = (date: Date, months: number): Date => {
