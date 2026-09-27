@@ -58,6 +58,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Settings UI must only consume shared contracts and shared-domain — never import runtime backend directly.
 - Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`, `lib/weather`, `lib/solar`, `lib/home`, `lib/thermostat`) must not import `lib/app/**` (`no-domain-to-app-layer`). Those thirteen are the domain peer set the rule matches — keep this list and the `from` path in `.dependency-cruiser.cjs` in step.
 - `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
+- `lib/utils/**` may not import `lib/device`, `lib/power` or `lib/plan` (`no-utils-to-device-power-plan`, which sees value imports only; a type-only import is held by review).
 - **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
 - **A logging call whose visibility you cannot read is banned.** `.debug()` outside `lib/logging/`
   is dark on a pino module logger (the root runs at `info`), topic-gated prose on the injected SDK
@@ -85,8 +86,6 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
   domain object: trace its concept, owner, construction, and callers. A passing
   guard is not evidence of semantic compliance. Full rule: the header of
   `scripts/check-param-bundles.mjs`.
-
-**Known transitional allowance:** `lib/utils/**` still has one import from `lib/power` (`todo-tighten-utils-layering`, registered at warn severity in `.dependency-cruiser.cjs` — that rule is the tracking, there is no `TODO.md` entry). It is type-only: `appTypeGuards.ts` → `PowerTrackerState`. The `capacityHelpers.ts` → `lib/plan` edge went when `overshoot_behaviors` got its shared-domain owner (`packages/shared-domain/src/settings/shedBehaviors.ts`). The `lib/device` edge is gone, and so is the last value import — `settingsHandlers.ts` → `CapacityGuard` went with the guard's settings mirror, since the capacity scalars now have one owner and nothing copies them. Do not expand the set.
 
 **Clean and trusted interfaces between layers (convention, not cruiser-enforced):**
 

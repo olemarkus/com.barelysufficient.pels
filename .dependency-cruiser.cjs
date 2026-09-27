@@ -208,9 +208,12 @@ module.exports = {
       to: { path: '^(app\\.ts|api\\.ts|flowCards/|drivers/|lib/)' },
     },
     {
-      name: 'todo-tighten-utils-layering',
-      comment: 'Transitional: the remaining utils -> device/power/plan dependencies are type-only and must not grow.',
-      severity: 'warn',
+      name: 'no-utils-to-device-power-plan',
+      comment: 'lib/utils may not value-import lib/device, lib/power or lib/plan. Like the '
+        + 'sibling rules, this cruise does not see type-only imports, so the last such edge '
+        + '(appTypeGuards importing the PowerTrackerState type) was only ever held by review; '
+        + 'it went when the power-tracker guards moved to lib/power.',
+      severity: 'error',
       from: { path: '^lib/utils/' },
       to: { path: '^lib/(device|power|plan)/' },
     },

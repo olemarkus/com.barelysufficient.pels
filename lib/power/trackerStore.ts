@@ -31,7 +31,10 @@ import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatab
 import { getLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
 import type { PowerTrackerState } from './trackerTypes';
-import { isPlausiblePowerTrackerState, sanitizePowerTrackerSolarFields } from '../utils/appTypeGuards';
+import {
+  isPlausiblePowerTrackerState,
+  sanitizePowerTrackerSolarFields,
+} from './trackerStateGuards';
 
 const storeLogger = getLogger('power/tracker-store');
 

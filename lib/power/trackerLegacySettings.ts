@@ -25,7 +25,7 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   importLegacySettingsKey, listLegacySettingsKeys, type LegacyImportResult,
 } from '../store/legacySettingsImport';
-import { salvagePowerTrackerState } from '../utils/appTypeGuards';
+import { salvagePowerTrackerState } from './trackerStateGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { MAIN_HOME_ID, POWER_TRACKER_STATE, type HomeId } from '../utils/settingsKeys';
 import { withHistoryUnder } from './homeTrackerPersistence';
