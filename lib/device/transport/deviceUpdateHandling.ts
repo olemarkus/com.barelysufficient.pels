@@ -116,7 +116,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // payload: an update that does not conform is ignored whole. No producer,
     // tracking entry, parse or settle evidence sees it, and the device's entry
     // stands as it was — a no-op, never a partial merge.
-    const contractEmitter = ctx.logger.structuredLog ?? moduleLogger;
+    const contractEmitter = ctx.logger.structuredLog;
     if (isIgnoredDeviceRead(ctx.owner, effectiveDevice, 'device_update', contractEmitter)) return;
     // Keep the battery membership set non-empty for a present battery even before
     // the first full refresh — the realtime path parses the battery (stamped

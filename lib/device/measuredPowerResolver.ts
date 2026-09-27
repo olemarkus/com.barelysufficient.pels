@@ -5,11 +5,8 @@ import type {
   DirectPowerReading,
   MeterEnergyReading,
 } from './measuredPowerReader';
-import { getLogger } from '../logging/logger';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { MeteredPowerReading } from './transportDeviceSnapshot';
-
-const moduleLogger = getLogger('device/measured-power');
 
 // Require at least 1 second of OBSERVED time between the two readings a rate is
 // derived from, so a pair stamped inside the same second cannot divide by a
@@ -241,7 +238,7 @@ export class DeviceMeasuredPowerResolver {
       return;
     }
 
-    (this.deps.logger.structuredLog ?? moduleLogger).debug({
+    this.deps.logger.structuredLog.debug({
       event: 'device_measured_power_source_changed',
       deviceId,
       deviceName: deviceLabel,

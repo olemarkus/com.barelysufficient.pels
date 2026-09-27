@@ -140,7 +140,7 @@ export async function fetchDevicesByIds(params: {
     return fetchDevicesWithFallback({ logger });
   }
   if (failedIds.length > 0) {
-    (logger.structuredLog ?? moduleLogger).warn({
+    logger.structuredLog.warn({
       event: 'targeted_fetch_partial',
       succeeded: devices.length,
       failed: failedIds.length,

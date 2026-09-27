@@ -8,7 +8,6 @@ import {
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
 } from './transport/managerRealtimeSupport';
-import { getLogger } from '../logging/logger';
 import {
   applyExplicitBinaryObservation,
   preserveRejectedExplicitBinaryObservation,
@@ -18,8 +17,6 @@ import {
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
-
-const moduleLogger = getLogger('device/manager-runtime');
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
@@ -96,7 +93,7 @@ export function updateLastKnownPower(params: {
   })) {
     return;
   }
-  (logger.structuredLog ?? moduleLogger).debug({
+  logger.structuredLog.debug({
     event: 'power_estimate_peak_updated',
     deviceId,
     deviceName: deviceLabel,

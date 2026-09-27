@@ -37,7 +37,6 @@ import { createObservationProducers, type ObservationProducers } from './observa
 import type { RecentLocalCapabilityWrites } from './transport/managerRealtimeSupport';
 import { initHomeyHttpClient, resolveHomeyInstance } from './transport/managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
 import type {
   ObservationCursor,
@@ -103,8 +102,6 @@ import {
     resolveChargerPhasePresetsRead,
 } from './settingsUiDeviceReads';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-
-const moduleLogger = getLogger('device/transport');
 
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 export type {
@@ -237,7 +234,7 @@ export class DeviceTransport {
         this.onSnapshotMutated = options.onSnapshotMutated;
         this.observedStateDispatcher = options.observedStateDispatcher;
         this.observationProducers = createObservationProducers({
-            emit: (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
+            emit: (p) => this.logger.structuredLog.info(p),
             getSnapshots: () => this.latestSnapshot,
             evCarLinkSnapshotAccess: options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
@@ -491,7 +488,7 @@ export class DeviceTransport {
             || !homeyInstance.platform
             || !homeyInstance.platformVersion
         ) {
-            (this.logger.structuredLog ?? moduleLogger).info({
+            this.logger.structuredLog.info({
                 component: 'devices',
                 event: 'device_api_init_skipped',
                 reasonCode: 'sdk_api_missing',
@@ -505,7 +502,7 @@ export class DeviceTransport {
             await initHomeyHttpClient(this.homey);
         } catch (error) {
             const normalizedError = normalizeError(error);
-            (this.logger.structuredLog ?? moduleLogger).error({
+            this.logger.structuredLog.error({
                 event: 'device_api_http_client_init_failed',
                 reasonCode: 'http_client_init_failed',
                 realtimeListenerAttached: false,
@@ -526,7 +523,7 @@ export class DeviceTransport {
             },
         });
         await this.liveFeed.start();
-        (this.logger.structuredLog ?? moduleLogger).info({
+        this.logger.structuredLog.info({
             component: 'devices',
             event: 'device_api_initialized',
         });

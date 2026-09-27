@@ -9,7 +9,6 @@
  */
 import type { TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import { getLogger } from '../../logging/logger';
 import { recordCapabilityObservation } from './managerObservation';
 import {
   observeNativeSteppedLoadCapabilityUpdate,
@@ -32,8 +31,6 @@ import {
   normalizeRealtimeCapabilityEventValue,
 } from './realtimeCapabilityShared';
 import type { TransportContext } from './transportContext';
-
-const moduleLogger = getLogger('device/transport');
 
 function resolveNativeSteppedCapabilityUpdateKind(params: {
     capabilityId: string;
@@ -85,7 +82,7 @@ function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params:
         nextReportedStepId ?? 'unknown',
     );
     const cursor = ctx.nextObservationCursor(deviceId);
-    (ctx.logger.structuredLog ?? moduleLogger).info({
+    ctx.logger.structuredLog.info({
         event: 'realtime_capability_drift',
         deviceId,
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,

@@ -3,9 +3,6 @@ import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { DeviceCapabilityMap } from './managerControl';
 import { TARGET_POWER_CAPABILITY_ID } from './nativeSteppedLoadWiring';
 import { assessTargetPowerLadderOptions } from '../../packages/shared-domain/src/targetPowerLadder';
-import { getLogger } from '../logging/logger';
-
-const moduleLogger = getLogger('device/target-power-warn');
 
 const targetPowerContractLogState = new Map<string, { signature: string; emittedAt: number }>();
 const TARGET_POWER_CONTRACT_LOG_REPEAT_AFTER_MS = 60 * 60 * 1000;
@@ -39,7 +36,7 @@ export function warnIfTargetPowerCapabilityViolatesContract(params: {
     issue: assessment.issue,
     optionSnapshot,
   })) return;
-  (logger.structuredLog ?? moduleLogger).warn({
+  logger.structuredLog.warn({
     event: 'target_power_contract_violation',
     deviceId: device.id,
     deviceName: device.name,

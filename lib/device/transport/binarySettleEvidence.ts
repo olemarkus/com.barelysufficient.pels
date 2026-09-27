@@ -11,11 +11,9 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import { resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
 import { recordSnapshotCapabilityObservations } from './managerObservation';
 import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
-import { getLogger } from '../../logging/logger';
 import { cloneBinaryControlObservation } from './transportTypes';
 import type { TransportContext } from './transportContext';
 
-const moduleLogger = getLogger('device/transport');
 type SettleCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
 
 export function readCapabilityValue(device: HomeyDeviceLike, capabilityId: string | undefined): {
@@ -92,7 +90,7 @@ export function clearBinarySettleEvidenceForInvalidControlPayload(ctx: Transport
     const existing = ctx.latestBinarySettleEvidenceByDeviceId.get(deviceId);
     if (!existing || existing.capabilityId !== capabilityId) return;
     clearBinarySettleEvidence(ctx, deviceId);
-    (ctx.logger.structuredLog ?? moduleLogger).error({
+    ctx.logger.structuredLog.error({
         event: 'binary_settle_evidence_cleared',
         reasonCode: 'invalid_control_payload',
         deviceId,

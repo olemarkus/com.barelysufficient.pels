@@ -17,6 +17,17 @@ import type { TransportContext } from '../../lib/device/transport/transportConte
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targetedSnapshotMerge';
 import type { Logger } from '../../lib/utils/types';
+import { PassThrough } from 'node:stream';
+import { createRootLogger } from '../../lib/logging/logger';
+
+// A complete `Logger`: the transport logs through `structuredLog`, which is
+// required, so a fixture without one crashes where production cannot.
+const makeLogger = (): Logger => ({
+  log: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
+  structuredLog: createRootLogger(new PassThrough()),
+});
 
 describe('extractLiveMeterPowerWatts', () => {
   it('matches the id in a cumulative item (Homey-marked whole-home meter)', () => {
@@ -145,7 +156,7 @@ describe('extractLiveMeterItems', () => {
 });
 
 describe('fetchLivePowerReport', () => {
-  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+  const logger = makeLogger();
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -282,7 +293,7 @@ describe('fetchLivePowerReport', () => {
 });
 
 describe('transport Main-meter authority', () => {
-  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+  const logger = makeLogger();
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -363,7 +374,7 @@ describe('transport Main-meter authority', () => {
 // discarded (post-actuation refresh, post-write re-read, superseded poll)
 // claims nothing — by construction, not by a gate.
 describe('resolved home meter identity on the sample', () => {
-  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+  const logger = makeLogger();
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -548,7 +559,7 @@ describe('fetchLiveMeterItems', () => {
 // empty raw list at boot is the transient blip the fetch normalizes into
 // success (`feedback_homey_sdk_unreliable`).
 describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
-  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+  const logger = makeLogger();
 
   afterEach(() => {
     vi.restoreAllMocks();

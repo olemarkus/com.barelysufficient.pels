@@ -270,7 +270,7 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
             // that knows the command's direction and which clocks it stamped.
             // Two layers emitting one event name would double-count every Flow
             // device in any triage that tallies unknown outcomes.
-            (ctx.logger.structuredLog ?? moduleLogger).warn({
+            ctx.logger.structuredLog.warn({
                 event: 'stepped_load_flow_trigger_unacknowledged',
                 reasonCode: 'flow_trigger_timeout',
                 deviceId,
@@ -285,7 +285,7 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
         return { requested: true, transport: 'flow' };
     } catch (error: unknown) {
         const normalizedError = normalizeError(error);
-        (ctx.logger.structuredLog ?? moduleLogger).error({
+        ctx.logger.structuredLog.error({
             event: 'stepped_load_command_failed',
             reasonCode: 'flow_trigger_failed',
             deviceId,

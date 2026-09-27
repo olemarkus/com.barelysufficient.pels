@@ -8,11 +8,8 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceListRead } from '../deviceListRead';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { TransportContext } from './transportContext';
-import { getLogger } from '../../logging/logger';
 import { isIgnoredDeviceRead } from './deviceReadContract';
 import { getDeviceId } from './managerHelpers';
-
-const moduleLogger = getLogger('device/transport');
 
 /**
  * Split a fetched list by the read contract (`deviceReadContract.ts`). The
@@ -26,7 +23,7 @@ export function partitionConformingDeviceReads(
 ): DeviceListRead {
     const devices: HomeyDeviceLike[] = [];
     const ignoredIds = new Set<string>();
-    const emitter = ctx.logger.structuredLog ?? moduleLogger;
+    const emitter = ctx.logger.structuredLog;
     for (const device of list) {
         if (isIgnoredDeviceRead(ctx.owner, device, 'device_fetch', emitter)) ignoredIds.add(getDeviceId(device));
         else devices.push(device);

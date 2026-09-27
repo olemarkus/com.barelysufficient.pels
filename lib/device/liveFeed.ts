@@ -38,9 +38,6 @@ import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';
 import { resolveHomeyInstance } from './transport/managerHomeyApi';
 import { normalizeError } from '../utils/errorUtils';
-import { getLogger } from '../logging/logger';
-
-const moduleLogger = getLogger('device/live-feed');
 
 const DEVICES_URI = 'homey:manager:devices';
 const DEVICE_UPDATE_EVENT = 'device.update';
@@ -124,7 +121,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       await this.connect();
     } catch (error) {
       this.health.subscriptionState = 'disconnected';
-      (this.logger.structuredLog ?? moduleLogger).error({
+      this.logger.structuredLog.error({
         component: 'devices',
         source: 'web_api_subscription',
         event: 'device_live_feed_connect_failed',
@@ -153,7 +150,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     this.rootSocket = null;
     this.namespacedSocket = null;
     this.health.subscriptionState = 'disconnected';
-    (this.logger.structuredLog ?? moduleLogger).info({
+    this.logger.structuredLog.info({
       component: 'devices',
       source: 'web_api_subscription',
       event: 'device_live_feed_stopped',
@@ -203,7 +200,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     const details = await this.resolveConnectionDetails();
     if (!details) {
       this.health.subscriptionState = 'disconnected';
-      (this.logger.structuredLog ?? moduleLogger).info({
+      this.logger.structuredLog.info({
         component: 'devices',
         source: 'web_api_subscription',
         event: 'device_live_feed_stopped',
@@ -212,7 +209,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       return;
     }
     const { baseUrl, token, homeyId } = details;
-    (this.logger.structuredLog ?? moduleLogger).info({
+    this.logger.structuredLog.info({
       component: 'devices',
       source: 'web_api_subscription',
       event: 'device_live_feed_started',
@@ -233,7 +230,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       if (!this.stopped) {
         this.health.reconnectCount += 1;
         this.health.lastReconnectMs = Date.now();
-        (this.logger.structuredLog ?? moduleLogger).info({
+        this.logger.structuredLog.info({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_reconnect_scheduled',
           reason, reconnectAttempt: this.health.reconnectCount,
@@ -244,7 +241,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
 
     this.rootSocket.io.on('reconnect', () => {
       if (this.stopped) return;
-      (this.logger.structuredLog ?? moduleLogger).info({
+      this.logger.structuredLog.info({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_reconnected',
         reconnectAttempt: this.health.reconnectCount,
@@ -254,7 +251,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     });
 
     this.rootSocket.on('connect_error', (err: Error) => {
-      (this.logger.structuredLog ?? moduleLogger).error({
+      this.logger.structuredLog.error({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_connect_error',
         err: normalizeError(err), subscriptionState: this.health.subscriptionState,
@@ -275,7 +272,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       this.rootSocket!.once('connect_error', (err: Error) => { clearTimeout(timer); reject(err); });
       this.rootSocket!.connect();
     });
-    (this.logger.structuredLog ?? moduleLogger).info({
+    this.logger.structuredLog.info({
       component: 'devices', source: 'web_api_subscription',
       event: 'device_live_feed_root_connected', baseUrl,
     });
@@ -302,7 +299,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     this.health.subscriptionState = 'subscribed';
     this.health.lastSuccessfulSubscriptionMs = Date.now();
     this.attachDeviceUpdateListener(sub);
-    (this.logger.structuredLog ?? moduleLogger).info({
+    this.logger.structuredLog.info({
       component: 'devices', source: 'web_api_subscription',
       event: 'device_live_feed_started',
       namespace: handshake.namespace, uri: DEVICES_URI,
@@ -318,7 +315,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         await this.handshakeAndSubscribe(details);
       }
     } catch (error) {
-      (this.logger.structuredLog ?? moduleLogger).error({
+      this.logger.structuredLog.error({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_reconnect_failed',
         err: normalizeError(error),
@@ -397,7 +394,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         // The two ignore reasons underneath stay at info: those are payloads that
         // claimed to be a device update and were not, which is a contract
         // violation at the seam rather than ordinary feed traffic.
-        (this.logger.structuredLog ?? moduleLogger).debug({
+        this.logger.structuredLog.debug({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_event_ignored',
           eventName, ignoreReason: 'not_device_update',
@@ -405,7 +402,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         });
         return;
       }
-      (this.logger.structuredLog ?? moduleLogger).debug({
+      this.logger.structuredLog.debug({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_event_received',
         eventName, deviceId: extractDeviceId(data),
@@ -413,7 +410,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       });
       if (!data || typeof data !== 'object') {
         this.health.ignoredLiveEventCount += 1;
-        (this.logger.structuredLog ?? moduleLogger).info({
+        this.logger.structuredLog.info({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_event_ignored',
           eventName, ignoreReason: 'invalid_payload',
@@ -423,7 +420,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       }
       if (!isHomeyDeviceLike(data)) {
         this.health.ignoredLiveEventCount += 1;
-        (this.logger.structuredLog ?? moduleLogger).info({
+        this.logger.structuredLog.info({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_event_ignored',
           eventName, ignoreReason: 'missing_device_identity',
@@ -468,7 +465,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       });
     } catch (error) {
       if (this.pendingDeviceSubscriptions.get(deviceId) !== attempt) return;
-      (this.logger.structuredLog ?? moduleLogger).error({
+      this.logger.structuredLog.error({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_device_subscribe_failed',
         deviceId, err: normalizeError(error),
@@ -500,7 +497,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         && (now - this.quietEmittedAt < QUIET_FEED_THRESHOLD_MS * 2);
       if (isQuiet && !alreadyEmitted) {
         this.quietEmittedAt = now;
-        (this.logger.structuredLog ?? moduleLogger).info({
+        this.logger.structuredLog.info({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_quiet',
           lastEventAt: lastEvent ? new Date(lastEvent).toISOString() : null,

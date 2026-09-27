@@ -125,7 +125,7 @@ function shouldDeferEmptySnapshotCommit(
     const elapsedMs = nowMs - grace.firstSeenMs;
     if (elapsedMs >= EMPTY_SNAPSHOT_ABANDON_GRACE_MS
         || grace.reads >= EMPTY_SNAPSHOT_ABANDON_GRACE_READS) {
-        (ctx.logger.structuredLog ?? moduleLogger).warn({
+        ctx.logger.structuredLog.warn({
             component: 'devices',
             event: 'device_snapshot_empty_grace_exceeded',
             reasonCode: 'empty_snapshot_committed',
@@ -136,7 +136,7 @@ function shouldDeferEmptySnapshotCommit(
         ctx.setEmptySnapshotGrace(null);
         return false;
     }
-    (ctx.logger.structuredLog ?? moduleLogger).warn({
+    ctx.logger.structuredLog.warn({
         component: 'devices',
         event: 'device_snapshot_empty_deferred',
         reasonCode: 'empty_snapshot_transient',
@@ -179,7 +179,7 @@ function resolveCommittedRefreshSnapshot(
     });
     appendRecoveredTemperatureDevices(ctx, presentSnapshot, snapshot);
     for (const deviceId of graceExceededIds) {
-        (ctx.logger.structuredLog ?? moduleLogger).warn({
+        ctx.logger.structuredLog.warn({
             component: 'devices',
             event: 'targeted_device_miss_grace_exceeded',
             deviceId,
@@ -326,7 +326,7 @@ async function fetchDevicesForSnapshotRefresh(
             : await ctx.fetchDevicesForSnapshot();
     } catch (error) {
         const normalizedError = normalizeError(error);
-        (ctx.logger.structuredLog ?? moduleLogger).error({
+        ctx.logger.structuredLog.error({
             event: 'device_snapshot_refresh_failed',
             reasonCode: 'refresh_failed',
             targetedRefresh: isTargetedRefresh,
@@ -637,17 +637,15 @@ export async function refreshSnapshot(
             ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
             livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
         });
-        if (ctx.logger.structuredLog) {
-            const metrics = summarizeSnapshotRefreshMetrics(snapshot);
-            if (shouldEmitSnapshotRefreshLog(ctx, snapshot.length, metrics)) {
-                ctx.logger.structuredLog.info({
-                    event: 'device_snapshot_refresh_completed',
-                    durationMs: Date.now() - start,
-                    devicesTotal: snapshot.length,
-                    targetedRefresh: isTargetedRefresh,
-                    ...metrics,
-                });
-            }
+        const metrics = summarizeSnapshotRefreshMetrics(snapshot);
+        if (shouldEmitSnapshotRefreshLog(ctx, snapshot.length, metrics)) {
+            ctx.logger.structuredLog.info({
+                event: 'device_snapshot_refresh_completed',
+                durationMs: Date.now() - start,
+                devicesTotal: snapshot.length,
+                targetedRefresh: isTargetedRefresh,
+                ...metrics,
+            });
         }
         logEvSnapshotChanges({
             logger: ctx.logger,

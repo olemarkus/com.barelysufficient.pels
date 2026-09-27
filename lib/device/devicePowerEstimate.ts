@@ -3,9 +3,6 @@ import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePower
 import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { resolveSettingsEnergyWatts } from './managerEnergy';
-import { getLogger } from '../logging/logger';
-
-const moduleLogger = getLogger('device/power-estimate');
 
 /**
  * What PELS assumes a device draws while running when no source describes it.
@@ -243,7 +240,7 @@ function emitEstimateDecisionLog(params: {
   })) {
     return;
   }
-  (logger.structuredLog ?? moduleLogger).debug({
+  logger.structuredLog.debug({
     event: 'power_estimate_source_changed',
     deviceId,
     deviceName: deviceLabel,

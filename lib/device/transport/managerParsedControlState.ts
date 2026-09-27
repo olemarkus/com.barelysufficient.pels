@@ -1,5 +1,4 @@
 import type { StructuredDebugEmitter } from '../../logging/logger';
-import { getLogger } from '../../logging/logger';
 import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { Logger } from '../../utils/types';
 import {
@@ -9,8 +8,6 @@ import {
 import { resolveParsedControlState } from './managerParseSnapshot';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-
-const moduleLogger = getLogger('device/parsed-control-state');
 
 export type ParsedControlStateResult = {
   resolvedOn?: boolean;
@@ -265,7 +262,7 @@ function logDroppedControlState(params: {
     capabilityObj,
   } = params;
   const rawValue = capabilityObj[binaryCapabilityId]?.value;
-  (logger.structuredLog ?? moduleLogger).error({
+  logger.structuredLog.error({
     event: 'device_snapshot_control_state_dropped',
     reasonCode: binaryCapabilityId === 'evcharger_charging'
       ? 'missing_ev_charging_state'
