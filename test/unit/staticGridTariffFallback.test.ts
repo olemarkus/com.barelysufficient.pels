@@ -69,7 +69,6 @@ describe('buildStaticGridTariffFallback', () => {
     expect(first.source).toBe(GRID_TARIFF_SOURCE_FALLBACK);
     expect(first.dateKey).toBe('2026-01-05T00:00:00');
     expect(first.energyFeeIncVat).toBeCloseTo(first.energyFeeExVat * 1.25, 5);
-    expect(first.fixedFeeExVat).toBe(0);
   });
 
   it('skips the weekday-only peak on a weekend but keeps all-day surcharges', () => {

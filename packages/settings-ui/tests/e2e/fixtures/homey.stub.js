@@ -1036,7 +1036,6 @@
       combinedPrices: settings.combined_prices ?? null,
       electricityPrices: settings.electricity_prices ?? null,
       priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
-      gridTariffData: settings.nettleie_data ?? null,
       flowToday: settings.flow_prices_today ?? null,
       flowTomorrow: settings.flow_prices_tomorrow ?? null,
       homeyCurrency: typeof settings.homey_prices_currency === 'string' ? settings.homey_prices_currency : null,

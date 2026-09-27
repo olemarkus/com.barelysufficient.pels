@@ -246,11 +246,6 @@ const buildFixture = () => {
       priceUnit: 'ore/kWh',
       priceScheme: 'norway',
     },
-    nettleie_data: {
-      updatedAt: new Date().toISOString(),
-      tariffName: 'Standard',
-      hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, cost: 0.2 + ((hour >= 6 && hour <= 22) ? 0.08 : 0.02) })),
-    },
   };
 
   const dailyBudget = {
@@ -314,7 +309,6 @@ const buildFixture = () => {
         combinedPrices: settings.combined_prices,
         electricityPrices: null,
         priceArea: settings.price_area,
-        gridTariffData: settings.nettleie_data,
         flowToday: null,
         flowTomorrow: null,
         homeyCurrency: settings.homey_prices_currency,
@@ -343,7 +337,6 @@ const buildFixture = () => {
       combinedPrices: settings.combined_prices,
       electricityPrices: null,
       priceArea: settings.price_area,
-      gridTariffData: settings.nettleie_data,
       flowToday: null,
       flowTomorrow: null,
       homeyCurrency: settings.homey_prices_currency,

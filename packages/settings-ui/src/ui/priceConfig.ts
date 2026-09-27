@@ -523,7 +523,7 @@ const refreshStatusInfo = async () => {
       getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
     ]);
     const payload = pricesPayload ?? {
-      combinedPrices: null, electricityPrices: null, priceArea: null, gridTariffData: null,
+      combinedPrices: null, electricityPrices: null, priceArea: null,
       flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },

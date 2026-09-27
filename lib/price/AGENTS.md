@@ -50,6 +50,9 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
 - `hourlyPriceProjection.ts` — the period → hour projection every hour-shaped consumer is served through.
 - `combinedPricesReader.ts` / `priceStore.ts` — typed read boundary for the persisted combined-prices store + its pure derivations.
 - `priceDataStore.ts` / `priceOptimizationSettingsStore.ts` — typed producer-side persistence boundaries.
+- `priceCacheStore.ts` — the price caches in the userdata database, one JSON row each, with the
+  one-shot import of each legacy settings key. The grid tariff is here; the caches `priceDataStore.ts`
+  still writes to settings follow. Do not add a new cache to settings.
 - `nettleieFallbackData.generated.ts` — **generated** (`npm run build:nettleie-fallback`); never edit by hand.
 
 ## Invariants

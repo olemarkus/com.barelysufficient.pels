@@ -417,7 +417,6 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
     electricityPrices: homey.settings.get('electricity_prices') as unknown ?? null,
     priceArea: stringOrNull(homey.settings.get('price_area')),
-    gridTariffData: homey.settings.get('nettleie_data') as unknown ?? null,
     flowToday: homey.settings.get('flow_prices_today') as unknown ?? null,
     flowTomorrow: homey.settings.get('flow_prices_tomorrow') as unknown ?? null,
     homeyCurrency: stringOrNull(homey.settings.get('homey_prices_currency')),

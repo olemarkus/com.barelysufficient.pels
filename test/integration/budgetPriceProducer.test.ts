@@ -9,6 +9,7 @@ import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME } from '../../lib/utils/settingsKeys';
@@ -21,7 +22,7 @@ const createService = (): PriceService => new PriceService(
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings),
+  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
   () => ({}),
   noHomeyWebApi,
 );
@@ -41,7 +42,6 @@ describe('budgetPrice layered onto the producer from injected forecast surplus',
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
     mockHomeyInstance.settings.set('provider_surcharge', 0);
-    mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('electricity_prices', [
       { startsAt: hourA, spotPriceExVat: 100, currency: 'NOK' },
       { startsAt: hourB, spotPriceExVat: 100, currency: 'NOK' },

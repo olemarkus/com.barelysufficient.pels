@@ -3,6 +3,7 @@ import { mockHomeyInstance } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
 import { PriceLevel } from '../../../lib/price/priceLevels';
 import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
 import { noHomeyWebApi } from '../../helpers/homeyWebApiStub';
@@ -10,7 +11,7 @@ import { noHomeyWebApi } from '../../helpers/homeyWebApiStub';
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
   priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-  priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
+  priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
@@ -78,7 +79,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-      priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
@@ -264,7 +265,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-      priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,

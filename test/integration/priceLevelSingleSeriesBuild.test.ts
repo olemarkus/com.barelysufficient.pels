@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import {
@@ -25,12 +26,14 @@ import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 const TZ = 'Europe/Oslo';
 const NOW = new Date('2026-03-11T10:30:00.000Z');
 
+let priceCache = createInMemoryPriceCache();
+
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings),
+  createPriceDataStore(mockHomeyInstance.settings, priceCache),
   () => ({}),
   noHomeyWebApi,
 );
@@ -57,7 +60,7 @@ const seedCheapCurrentHour = (): void => {
   mockHomeyInstance.settings.set('price_threshold_percent', 25);
   mockHomeyInstance.settings.set('price_min_diff_ore', 0);
   mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-  mockHomeyInstance.settings.set('nettleie_data', [{
+  priceCache.write('grid_tariff', [{
     dateKey: getDateKeyInTimeZone(NOW, TZ),
     time: getZonedParts(NOW, TZ).hour,
     energyFeeExVat: 28,
@@ -69,6 +72,7 @@ describe('current-hour price level resolves from a single series build', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     mockHomeyInstance.settings.clear?.();
+    priceCache = createInMemoryPriceCache();
     seedCheapCurrentHour();
   });
 

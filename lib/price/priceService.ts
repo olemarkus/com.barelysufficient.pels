@@ -280,7 +280,7 @@ export default class PriceService {
     }
     if (outcome.kind === 'fallbackCurrent') {
       // Fallback already matches today; recompute combined prices in memory but
-      // skip the redundant settings write (flash wear) while NVE stays down.
+      // skip the redundant cache write while NVE stays down.
       this.updateCombinedPrices();
       return;
     }

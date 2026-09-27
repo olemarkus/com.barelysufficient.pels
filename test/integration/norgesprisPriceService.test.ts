@@ -2,6 +2,7 @@ import type { PowerTrackerReadout } from '../../lib/price/priceServiceNorgespris
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   CONSUMPTION_TAX_STANDARD_EX_VAT,
@@ -33,12 +34,14 @@ const buildExpectedNorgesprisAdjustment = (share: number): number => (
   (NORGESPRIS_TARGET_INC_VAT_STANDARD - SPOT_PRICE_EX_VAT * VAT_MULTIPLIER_STANDARD) * share
 );
 
+let priceCache = createInMemoryPriceCache();
+
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => mockHomeyInstance.clock.getTimezone(),
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings),
+  createPriceDataStore(mockHomeyInstance.settings, priceCache),
   // The live tracker, as these specs seed it: through the mock settings key.
   () => (mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerReadout | null) ?? {},
   noHomeyWebApi,
@@ -93,7 +96,7 @@ const setNorwayNorgesprisSettings = (params: {
   mockHomeyInstance.settings.set('nettleie_tariffgruppe', tariffGroup);
   mockHomeyInstance.settings.set('provider_surcharge', 0);
   mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-  mockHomeyInstance.settings.set('nettleie_data', [{
+  priceCache.write('grid_tariff', [{
     dateKey: tariffDateKey,
     time: typeof gridTariffHour === 'number' ? gridTariffHour : norwayHour,
     energyFeeExVat: GRID_TARIFF_EX_VAT,
@@ -105,6 +108,7 @@ describe('Norway norgespris pricing', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    priceCache = createInMemoryPriceCache();
   });
 
   afterEach(() => {

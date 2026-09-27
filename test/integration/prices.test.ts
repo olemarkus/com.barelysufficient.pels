@@ -7,7 +7,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredGridTariffForTests } from '../utils/appTestUtils';
 import {
   ELECTRICITY_SUPPORT_COVERAGE,
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
@@ -15,6 +15,7 @@ import {
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { flattenAllHours, readCombinedPriceData } from '../../lib/price/priceStore';
 import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
@@ -794,7 +795,7 @@ describe('Grid tariff fetching', () => {
     await flushPromises();
 
     // Check that grid tariff data was stored
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
+    const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData.length).toBe(3);
 
@@ -803,8 +804,8 @@ describe('Grid tariff fetching', () => {
     expect(firstEntry).toHaveProperty('time', 0);
     expect(firstEntry).toHaveProperty('energyFeeExVat', 19.12);
     expect(firstEntry).toHaveProperty('energyFeeIncVat', 35.79);
-    expect(firstEntry).toHaveProperty('fixedFeeExVat', 244.0);
-    expect(firstEntry).toHaveProperty('fixedFeeIncVat', 305.0);
+    // The fixed fee is per capacity step and nothing reads it; it is not stored.
+    expect(firstEntry).not.toHaveProperty('fixedFeeExVat');
     expect(firstEntry).toHaveProperty('dateKey');
   });
 
@@ -861,7 +862,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // A full day of static fallback data is seeded so prices still work.
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as GridTariffEntryWithSource[];
+    const gridTariffData = getStoredGridTariffForTests() as GridTariffEntryWithSource[];
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData).toHaveLength(24);
     expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
@@ -905,7 +906,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // No fallback available and nothing cached → nothing stored.
-    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
+    const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
     expect(gridTariffData).toBeNull();
   });
 
@@ -948,7 +949,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // Stale fallback for the wrong operator is cleared, not left serving.
-    expect(mockHomeyInstance.settings.get('nettleie_data')).toEqual([]);
+    expect(getStoredGridTariffForTests()).toEqual([]);
   });
 
   it('uses correct URL format with encoded parameters', async () => {
@@ -1034,7 +1035,7 @@ describe('Grid tariff fetching', () => {
       await flushPromises();
 
       expect(requestedDates).toEqual([today, yesterday, week]);
-      const gridTariffData = mockHomeyInstance.settings.get('nettleie_data') as Array<Record<string, unknown>>;
+      const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
       expect(Array.isArray(gridTariffData)).toBe(true);
       expect(gridTariffData.length).toBe(mockNveGridTariffResponse.length);
     } finally {
@@ -1121,7 +1122,7 @@ describe('Grid tariff fetching', () => {
         { label: 'month', date: month },
       ]);
       // The real cache is preserved untouched — not overwritten by the fallback.
-      expect(mockHomeyInstance.settings.get('nettleie_data')).toEqual(realCache);
+      expect(getStoredGridTariffForTests()).toEqual(realCache);
     } finally {
       errorSpy.mockRestore();
       global.Date = originalDate;
@@ -1335,7 +1336,7 @@ describe('Price optimization', () => {
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-    priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
+    priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
@@ -1610,7 +1611,6 @@ describe('Price optimization', () => {
       spotPriceExVat: 50,
       currency: 'NOK',
     })));
-    mockHomeyInstance.settings.set('nettleie_data', []);
     // Pure fixed feed-in tariff of 1 øre ⇒ every hour's exportPrice is 1.
     mockHomeyInstance.settings.set('export_price_enabled', true);
     mockHomeyInstance.settings.set('export_spot_factor', 0);
@@ -2505,7 +2505,6 @@ describe('Price optimization', () => {
         defaultPriceExVat: 50,
       });
       mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-      mockHomeyInstance.settings.set('nettleie_data', []);
       mockHomeyInstance.settings.set('price_threshold_percent', 25);
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);
 
@@ -2525,7 +2524,6 @@ describe('Price optimization', () => {
         defaultPriceExVat: 50,
       });
       mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-      mockHomeyInstance.settings.set('nettleie_data', []);
 
       await withMockedNow(now, async () => {
         const coordinator = createPriceCoordinatorForTest();

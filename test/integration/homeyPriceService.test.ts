@@ -1,6 +1,7 @@
 import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   COMBINED_PRICES,
@@ -92,7 +93,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -129,7 +130,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -155,7 +156,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -190,7 +191,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -228,7 +229,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -256,7 +257,7 @@ describe('Homey price service', () => {
       sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -286,7 +287,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -323,7 +324,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -374,7 +375,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -407,7 +408,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -441,7 +442,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -492,7 +493,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -547,7 +548,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -594,7 +595,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       energyApi,
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       noHomeyWebApi,
     );
@@ -659,7 +660,7 @@ describe('Homey price service', () => {
       sinks(overrides),
       () => timeZone,
       ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       homeyWebApiGet,
     );
@@ -887,7 +888,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       ({ fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]) }),
-      createPriceDataStore(mockHomeyInstance.settings),
+      createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
       () => ({}),
       webApiGet,
     );

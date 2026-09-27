@@ -1652,15 +1652,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each
       write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
       the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
-      (`lib/objectives/deferredObjectives/planHistoryStore.ts`) and the device diagnostics
-      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~80 kB of the ~108 kB object:
-      the tariff/price caches `nettleie_data` (48 kB), `combined_prices` (21 kB) and
-      `electricity_prices` (4 kB) (`lib/price/priceDataStore.ts`,
-      `lib/price/combinedPricesReader.ts`), `deferred_objective_active_plans` (4 kB,
-      `setup/appInit/deferredRecorders.ts`), `power_calibration` (2 kB,
-      `lib/device/devicePowerCalibrationStore.ts`) and `device_power_peaks` (1 kB,
-      `lib/device/learnedPowerPeakState.ts`). The size is what matters, because the small live
+      (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
+      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the grid tariff cache
+      (`lib/price/priceCacheStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~40 kB of the ~56 kB object:
+      the price caches `combined_prices` (21 kB), `electricity_prices` (4 kB) and
+      `flow_prices_today`/`_tomorrow` (4 kB) (`lib/price/priceDataStore.ts`,
+      `lib/price/combinedPricesReader.ts`; they join the grid tariff in `priceCacheStore.ts`), the
+      learned hourly profiles in `daily_budget_state` (7 of its 8 kB,
+      `setup/dailyBudgetStateAdapter.ts`), `power_calibration` (2 kB,
+      `lib/device/devicePowerCalibrationStore.ts`), `device_power_peaks` (1 kB,
+      `lib/device/learnedPowerPeakState.ts`) and `deferred_objective_active_plans`
+      (`setup/appInit/deferredRecorders.ts`). The size is what matters, because the small live
       latches stay in settings by ruling and keep writing: measured on production on 2026-09-26,
       `device_last_controlled_ms` writes ~19 times an hour (every executor actuation batch,
       `setup/homeRuntime/homeSignalWriters.ts`), `deferred_objective_observation_watermark` 12
@@ -1669,8 +1672,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       open database (the tracker and weather stores are the pattern: rows or one JSON row per
       event, diffed writes, the legacy key imported once at boot through
       `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
-      Done when `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production
-      Homey is under ~40 kB. Count writes by diffing successive reads of that endpoint, not with
+      Done when none of the keys listed above is left in
+      `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
+      leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
       the `settings_set.*` perf counters, which cover only `daily_budget_state` and
       `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
       gone (the tracker key, `pels_status`, `app_heartbeat` and `target_devices_snapshot`):

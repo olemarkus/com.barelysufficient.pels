@@ -1,6 +1,7 @@
 import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance, setMockApiApp } from '../mocks/homey';
 import {
   POWERHOUR_DEVICE_ID,
@@ -30,7 +31,7 @@ const buildService = () => new PriceService(
   sinks(),
   () => 'Europe/Oslo',
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings),
+  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
   () => ({}),
   noHomeyWebApi,
 );

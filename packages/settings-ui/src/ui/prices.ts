@@ -9,7 +9,6 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
   electricityPrices: null,
   priceArea: null,
-  gridTariffData: null,
   flowToday: null,
   flowTomorrow: null,
   homeyCurrency: null,

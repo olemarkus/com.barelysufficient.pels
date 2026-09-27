@@ -6,7 +6,7 @@ export type GridTariffSettings = {
   tariffGroup: string;
 };
 
-// Marks `nettleie_data` entries produced by the static fallback rather than the
+// Marks cached grid-tariff entries produced by the static fallback rather than the
 // NVE API, so the cache layer can tell a real fetch from a stopgap.
 export const GRID_TARIFF_SOURCE_FALLBACK = 'fallback' as const;
 
@@ -14,8 +14,6 @@ export type GridTariffEntryWithSource = {
   time: number;
   energyFeeExVat: number;
   energyFeeIncVat: number;
-  fixedFeeExVat: number;
-  fixedFeeIncVat: number;
   dateKey: string;
   source: typeof GRID_TARIFF_SOURCE_FALLBACK;
 };
@@ -92,15 +90,43 @@ export const fetchGridTariffData = async (
   }
 };
 
+const hasEnergyFee = (entry: Record<string, unknown>): boolean => (
+  [entry.energyFeeExVat, entry.energyFeeIncVat, entry.energileddEks, entry.energileddInk]
+    .some((fee) => typeof fee === 'number' && Number.isFinite(fee))
+);
+
+/**
+ * One tariff entry per hour: the last one that carries an energy fee, or the
+ * last one given when none does. NVE answers with one row per hour per capacity
+ * step, and the energy fee does not depend on the step, so a day came back as
+ * 360 rows carrying 24 prices. Only the energy fee per hour is read, by
+ * `buildGridTariffByHour`, which lets the last row of an hour with a fee win;
+ * keeping that row changes no price and drops the rest.
+ */
+export const oneGridTariffEntryPerHour = (
+  entries: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> => {
+  const byHour = new Map<string, Record<string, unknown>>();
+  for (const entry of entries) {
+    const hour = String(entry.time);
+    const held = byHour.get(hour);
+    if (held === undefined || hasEnergyFee(entry) || !hasEnergyFee(held)) byHour.set(hour, entry);
+  }
+  return [...byHour.values()];
+};
+
+/**
+ * The NVE rows in the shape the price module stores. The fixed fee is per
+ * capacity step and nothing reads it, so it is not carried once the rows are
+ * one per hour.
+ */
 export const normalizeGridTariffData = (data: Array<Record<string, unknown>>): Array<Record<string, unknown>> => (
-  data.map((entry) => ({
+  oneGridTariffEntryPerHour(data.map((entry) => ({
     time: entry.time,
     energyFeeExVat: entry.energileddEks,
     energyFeeIncVat: entry.energileddInk,
-    fixedFeeExVat: entry.fastleddEks,
-    fixedFeeIncVat: entry.fastleddInk,
     dateKey: entry.datoId,
-  }))
+  })))
 );
 
 export const fetchAndNormalizeGridTariff = async (params: {

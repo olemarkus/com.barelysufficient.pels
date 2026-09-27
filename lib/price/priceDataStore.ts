@@ -4,7 +4,6 @@ import {
   ELECTRICITY_PRICES,
   ELECTRICITY_PRICES_AREA,
   HOMEY_PRICES_CURRENCY,
-  NETTLEIE_DATA,
   POWERHOUR_PRICES_CURRENCY,
   POWERHOUR_PRICES_DEVICE,
   POWERHOUR_PRICES_TODAY,
@@ -21,6 +20,7 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
+import type { PriceCacheStore } from './priceCacheStore';
 
 /**
  * The persisted form of a priced period. The duration is omitted when the
@@ -100,7 +100,7 @@ const readPowerhourCacheFrom = (settings: SettingsPort): PowerhourCache => ({
 });
 
 /**
- * Producer-side typed boundary for PriceService's cached price-data settings
+ * Producer-side typed boundary for PriceService's cached price data
  * (spot prices, grid tariff, the flow/homey/powerhour flow-price slot payloads,
  * and the homey- and powerhour-prices currencies). Writes are typed so a wrong shape can't be persisted;
  * reads return the raw persisted value (callers validate/cast as before). The
@@ -135,18 +135,20 @@ export type PriceDataStore = {
 };
 
 /**
- * The settings-backed {@link PriceDataStore}. It lives beside the port it
- * implements because the reads and the keys they use are the price module's
- * own: `setup/` hands over a {@link SettingsPort} and knows nothing about which
- * keys back which field.
+ * The {@link PriceDataStore} over settings and the userdata price cache. It
+ * lives beside the port it implements because the reads and the keys they use
+ * are the price module's own: `setup/` hands over a {@link SettingsPort} and the
+ * cache and knows nothing about which store backs which field. The grid tariff
+ * is in the cache (`priceCacheStore.ts`); the rest still rides settings until
+ * it moves the same way.
  */
-export const createPriceDataStore = (settings: SettingsPort): PriceDataStore => ({
+export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => ({
   readSpotPrices: () => settings.get(ELECTRICITY_PRICES),
   writeSpotPrices: (prices) => settings.set(ELECTRICITY_PRICES, prices),
   readSpotPriceArea: () => settings.get(ELECTRICITY_PRICES_AREA),
   writeSpotPriceArea: (area) => settings.set(ELECTRICITY_PRICES_AREA, area),
-  readNettleie: () => settings.get(NETTLEIE_DATA),
-  writeNettleie: (data) => settings.set(NETTLEIE_DATA, data),
+  readNettleie: () => cache.read('grid_tariff'),
+  writeNettleie: (data) => cache.write('grid_tariff', data),
   readFlowPayload: (key) => settings.get(key),
   writeFlowPayload: (key, payload) => settings.set(key, toStoredFlowPayload(payload)),
   writeHomeyPricesCurrency: (unit) => settings.set(HOMEY_PRICES_CURRENCY, unit),

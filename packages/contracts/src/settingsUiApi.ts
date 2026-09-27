@@ -771,7 +771,6 @@ export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
   electricityPrices: unknown | null;
   priceArea: string | null;
-  gridTariffData: unknown | null;
   flowToday: unknown | null;
   flowTomorrow: unknown | null;
   homeyCurrency: string | null;

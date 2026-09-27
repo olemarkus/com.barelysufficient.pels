@@ -20,6 +20,7 @@ import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import {
@@ -42,7 +43,7 @@ const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceSer
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   energyApi ?? noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings),
+  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
   () => ({}),
   noHomeyWebApi,
 );
@@ -78,7 +79,6 @@ describe('Export (feed-in) pricing applied independently of the import scheme', 
       mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
       mockHomeyInstance.settings.set('provider_surcharge', 0);
       mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-      mockHomeyInstance.settings.set('nettleie_data', []);
     };
 
     it('links export to the wholesale spot (×factor), tracking it negative under negative spot', () => {

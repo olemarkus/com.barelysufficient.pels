@@ -542,7 +542,6 @@ describe('settings script', () => {
             combinedPrices: null,
             electricityPrices: null,
             priceArea: null,
-            gridTariffData: null,
             flowToday: null,
             flowTomorrow: null,
             homeyCurrency: null,

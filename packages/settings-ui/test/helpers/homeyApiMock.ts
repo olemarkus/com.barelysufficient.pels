@@ -328,7 +328,6 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
     combinedPrices: await getHomeySetting(homey, 'combined_prices') || null,
     electricityPrices: await getHomeySetting(homey, 'electricity_prices') || null,
     priceArea: await getHomeySetting(homey, 'price_area') || null,
-    gridTariffData: await getHomeySetting(homey, 'nettleie_data') || null,
     flowToday: await getHomeySetting(homey, 'flow_prices_today') || null,
     flowTomorrow: await getHomeySetting(homey, 'flow_prices_tomorrow') || null,
     homeyCurrency: await getHomeySetting(homey, 'homey_prices_currency') || null,

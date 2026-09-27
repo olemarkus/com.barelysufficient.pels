@@ -48,7 +48,6 @@ describe('settingsUiApi', () => {
       ['homey_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
       ['flow_prices_today', { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' }],
       ['flow_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
-      ['nettleie_data', [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }]],
       ['price_area', 'NO1'],
       ...Object.entries(options.settings ?? {}),
     ]);
@@ -474,13 +473,13 @@ describe('settingsUiApi', () => {
     expect(result.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
   });
 
-  it('returns refreshed grid tariff data from the app wrapper', async () => {
+  it('refreshes the grid tariff through the app wrapper and returns the prices payload', async () => {
     const homey = createHomey();
 
     const result = await refreshSettingsUiGridTariff({ homey: homey as never });
 
     expect(homey.refreshGridTariffData).toHaveBeenCalledWith(true);
-    expect(result.gridTariffData).toEqual([{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }]);
+    expect(result.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
   });
 
   it('returns reset power state and refreshed daily budget payload', async () => {
@@ -639,7 +638,6 @@ describe('settingsUiApi', () => {
       // window), and each answers with its own "nothing to report yet" member.
       pvForecastSource: { kind: 'unknown' },
       homeyPriceFormula: { kind: 'unknown' },
-      gridTariffData: [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }],
       flowToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
       flowTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
       homeyCurrency: 'NOK',

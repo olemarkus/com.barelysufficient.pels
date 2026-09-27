@@ -22,7 +22,7 @@ export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated
 
 // Last-resort static grid-tariff fallback. Used only when the NVE API is
 // unreachable AND no live tariff has been cached yet (new user). The shape it
-// produces matches the normalized `nettleie_data` entries written from NVE, so
+// produces matches the normalized grid-tariff entries cached from NVE, so
 // the rest of the price pipeline consumes it unchanged — only the per-hour
 // `energyFeeExVat` is actually read downstream (see priceServiceNorway.ts).
 //
@@ -131,10 +131,6 @@ export const buildStaticGridTariffFallback = (params: {
       // inc-VAT is cosmetic only (downstream reads ex-VAT); mainland VAT is a
       // fair nominal default and the value is unused for VAT-exempt areas.
       energyFeeIncVat: Math.round(energyFeeExVat * VAT_MULTIPLIER_STANDARD * 100) / 100,
-      // fri-nettleie fixed charges use a different unit (NOK/year per capacity
-      // step) and PELS does not consume fixed fees in price combining, so 0.
-      fixedFeeExVat: 0,
-      fixedFeeIncVat: 0,
       dateKey: `${dateKey}T00:00:00`,
       source: GRID_TARIFF_SOURCE_FALLBACK,
     };
@@ -151,7 +147,7 @@ export type GridTariffFallbackOutcome =
 // Decides what to do once every NVE attempt has failed:
 //  - real cached data exists → keep serving it;
 //  - a static fallback exists and already matches today's values → keep it (no
-//    redundant settings write while NVE stays down);
+//    redundant cache write while NVE stays down);
 //  - a static fallback exists and differs → seed it;
 //  - stale fallback data is cached but the operator no longer has one (e.g. the
 //    org number was changed to an untabled operator) → clear it so we never

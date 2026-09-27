@@ -163,8 +163,11 @@ through the same code, not because a fresh cache was judged to belong in
   (`lib/diagnostics/deviceDiagnosticsStateStore.ts`, one row per device-day)
   after them, and the device transport's retained power readings and meter
   anchors (`lib/device/retainedPowerStore.ts`, one row per device, diffed and
-  saved at most once a minute) so a restart does not erase the last reading;
-  calibration and the price/tariff caches follow.
+  saved at most once a minute) so a restart does not erase the last reading,
+  and the grid tariff cache (`lib/price/priceCacheStore.ts`, one row per
+  cache, one tariff entry per hour); calibration and the remaining price
+  caches follow. A cache belongs here whatever its size (owner, 2026-09-27):
+  shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`
   keys) is held in memory by `lib/plan/planStatusRegistry.ts`: every reader —

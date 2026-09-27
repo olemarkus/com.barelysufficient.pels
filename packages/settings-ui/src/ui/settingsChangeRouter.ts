@@ -147,7 +147,6 @@ const PRICE_REFRESH_KEYS = new Set([
   // The runtime re-reads the peer app on this write, so the source account it
   // carries on the prices payload moves with it.
   POWERHOUR_DEVICE_ID,
-  'nettleie_data',
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
 ]);
