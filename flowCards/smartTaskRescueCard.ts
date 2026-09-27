@@ -5,7 +5,6 @@ import {
 } from '../lib/objectives/deferredObjectives';
 import {
   getDropdownId,
-  requireSettingsRead,
   type DropdownArg,
 } from './deadlineObjectiveCards';
 import {
@@ -78,7 +77,7 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     if (!deviceId) throw new Error(SMART_TASK_RESCUE_MISSING_DEVICE);
     const key = RESCUE_PROPERTY_KEYS[resolveRescuePropertyId(payload?.property)];
     const mode = resolveWhen(payload?.when);
-    const settings = requireSettingsRead(deps)();
+    const settings = deps.getDeferredObjectiveSettings();
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     if (!prevEntry) {
       throw new Error(SMART_TASK_RESCUE_NO_TASK);

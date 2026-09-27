@@ -1,4 +1,5 @@
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
+import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
@@ -96,6 +97,12 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
       },
       settings: { get: vi.fn(), set: vi.fn(), unset: vi.fn(), getKeys: vi.fn(() => []) },
     },
+    // What production always wires; a case that needs another answer overrides it.
+    areFlowBackedCardsAvailable: () => true,
+    isDeviceInMainHome: () => true,
+    hasMainHomeSmartTaskAuthority: () => true,
+    getDeferredObjectiveActivePlans: () => null,
+    getDeferredObjectiveSettings: () => readAllObjectives(deps.homey.settings),
     structuredLog: { info: vi.fn() },
     resolveModeName: (mode) => mode,
     getAllModes: () => new Set(['Home']),

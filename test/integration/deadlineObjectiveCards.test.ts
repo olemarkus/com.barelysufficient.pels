@@ -30,6 +30,7 @@ import type {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
+import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
@@ -316,12 +317,13 @@ const buildDeps = (overrides: {
       overrides.structuredError ? { error: overrides.structuredError } : undefined
     ),
     debugStructured: () => {},
-    ...(overrides.isDeviceInMainHome === undefined
-      ? {}
-      : { isDeviceInMainHome: overrides.isDeviceInMainHome }),
-    ...(overrides.hasMainHomeSmartTaskAuthority === undefined
-      ? {}
-      : { hasMainHomeSmartTaskAuthority: overrides.hasMainHomeSmartTaskAuthority }),
+    // Production always wires these; a case that does not override them gets a
+    // main-home device, and the authority check follows membership.
+    isDeviceInMainHome: overrides.isDeviceInMainHome ?? (() => true),
+    hasMainHomeSmartTaskAuthority: overrides.hasMainHomeSmartTaskAuthority
+      ?? overrides.isDeviceInMainHome
+      ?? (() => true),
+    getDeferredObjectiveSettings: () => readAllObjectives(mock.homey.settings),
     getDeferredObjectiveActivePlans: () => (
       Object.prototype.hasOwnProperty.call(overrides, 'activePlans')
         ? overrides.activePlans

@@ -62,7 +62,7 @@ export type ClearDeferredObjectiveForDevice = (params: {
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
-  areFlowBackedCardsAvailable?: () => boolean;
+  areFlowBackedCardsAvailable: () => boolean;
   structuredLog?: {
     info: (payload: Record<string, unknown>) => void;
   };
@@ -109,7 +109,7 @@ export type FlowCardDeps = {
     storedCount: number;
     missingHours: number[];
   };
-  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1;
   // Required — the deadline / clear / rescue cards write each device's own
   // settings key through these (a per-key write cannot clobber a sibling).
   // Non-optional so a missing wiring is a build error, not a silent no-op.
@@ -119,14 +119,13 @@ export type FlowCardDeps = {
   // Durable multi-home membership used by the live `deadline_status_is`
   // guard. A transient Main-authority fence must not erase the status of an
   // existing task; only confirmed separate-meter membership returns false.
-  isDeviceInMainHome?: (deviceId: string) => boolean;
+  isDeviceInMainHome: (deviceId: string) => boolean;
   // Current Main-home smart-task authority used by the task-creating card
   // autocompletes. This is stricter than durable membership: a transient
   // unresolved authority read returns false so a new task is not offered
-  // while its enforcing write would be refused. Optional bare test wiring
-  // falls back to `isDeviceInMainHome`.
-  hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
-  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
+  // while its enforcing write would be refused.
+  hasMainHomeSmartTaskAuthority: (deviceId: string) => boolean;
+  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;
   getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;
@@ -158,7 +157,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
     registerEvSocCard(deps);
-    if (deps.areFlowBackedCardsAvailable?.() !== false) {
+    if (deps.areFlowBackedCardsAvailable()) {
       registerFlowBackedDeviceCards(deps);
     }
     registerSteppedLoadCards(deps);

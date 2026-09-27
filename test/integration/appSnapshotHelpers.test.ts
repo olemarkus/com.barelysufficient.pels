@@ -362,6 +362,9 @@ describe('appSnapshotHelpers', () => {
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
+        resolveOperatingModeForDevice: () => ({
+          state: 'resolved', mode: null, homeId: 'main', catalogHomeId: 'main',
+        }),
       }),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
@@ -423,6 +426,9 @@ describe('appSnapshotHelpers', () => {
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
+        resolveOperatingModeForDevice: () => ({
+          state: 'resolved', mode: null, homeId: 'main', catalogHomeId: 'main',
+        }),
       }),
       persistFilledModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),

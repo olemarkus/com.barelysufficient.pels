@@ -292,7 +292,7 @@ describe('power tracker solar accounting', () => {
       vi.useFakeTimers();
       try {
         vi.setSystemTime(start + 60 * 60 * 1000);
-        const pruned = aggregateAndPruneHistory(state);
+        const pruned = aggregateAndPruneHistory(state, 'UTC');
         for (const key of SOLAR_STATE_KEYS) {
           expect(`${key} in pruned state: ${key in pruned}`).toBe(`${key} in pruned state: false`);
         }
@@ -339,7 +339,7 @@ describe('power tracker solar accounting', () => {
         const pruned = aggregateAndPruneHistory({
           buckets: {},
           generationBuckets: { [isoHour(agedUtcMs)]: 2.4, [isoHour(agedUtcMs + 60 * 60 * 1000)]: 1.6 },
-        }, { timeZone: 'Europe/Oslo' });
+        }, 'Europe/Oslo');
 
         expect(pruned.generationBuckets).toEqual({});
         expect(pruned.generationDailyTotals).toEqual({ [dateKey]: 4 });
@@ -362,7 +362,7 @@ describe('power tracker solar accounting', () => {
         const pruned = aggregateAndPruneHistory({
           buckets: {},
           exportBuckets: { [isoHour(recentUtcMs)]: 0.8 },
-        }, { timeZone: 'Europe/Oslo' });
+        }, 'Europe/Oslo');
         expect(pruned.exportBuckets).toEqual({ [isoHour(recentUtcMs)]: 0.8 });
         expect(pruned.exportDailyTotals).toEqual({});
       } finally {

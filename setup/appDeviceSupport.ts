@@ -89,9 +89,8 @@ export function seedTemperatureShedFloorDefaults(params: {
    * Per-device active-mode resolution for the overshoot default seed (a
    * sub-home member's default must follow ITS home's mode, and an `unavailable`
    * outcome skips the seed instead of writing one under the global mode).
-   * Absent (tests, legacy callers) = the historical raw global-mode read.
    */
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): void {
   const { snapshot, settings, debugStructured, resolveOperatingModeForDevice } = params;
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);

@@ -37,7 +37,7 @@ describe('aggregateAndPruneHistory — solar family DST prune folds', () => {
     expect(Object.keys(generationBuckets)).toHaveLength(23);
 
     vi.setSystemTime(endUtc + HOURLY_RETENTION_MS + 24 * HOUR_MS);
-    const pruned = aggregateAndPruneHistory({ buckets: {}, generationBuckets }, { timeZone: OSLO });
+    const pruned = aggregateAndPruneHistory({ buckets: {}, generationBuckets }, OSLO);
 
     expect(pruned.generationBuckets).toEqual({});
     expect(pruned.generationDailyTotals?.['2026-03-29']).toBeCloseTo(2.3, 6);
@@ -54,7 +54,7 @@ describe('aggregateAndPruneHistory — solar family DST prune folds', () => {
     expect(Object.keys(exportBuckets)).toHaveLength(25);
 
     vi.setSystemTime(endUtc + HOURLY_RETENTION_MS + 24 * HOUR_MS);
-    const pruned = aggregateAndPruneHistory({ buckets: {}, exportBuckets }, { timeZone: OSLO });
+    const pruned = aggregateAndPruneHistory({ buckets: {}, exportBuckets }, OSLO);
 
     expect(pruned.exportBuckets).toEqual({});
     expect(pruned.exportDailyTotals?.['2026-10-25']).toBeCloseTo(2.5, 6);

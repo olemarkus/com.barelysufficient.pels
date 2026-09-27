@@ -5,13 +5,23 @@ import {
   isManagedFilterActive,
   persistFilledModeTargets,
   __resetModeTargetFillDedupeForTests,
+  type ResolveOperatingModeForDevice,
 } from '../../setup/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_SETTINGS,
 } from '../../lib/utils/settingsKeys';
+
+// The main home's mode, as production's resolver reports it for a main-home device.
+const mainHomeMode = (mode: string | null): ResolveOperatingModeForDevice => () => ({
+  state: 'resolved',
+  mode,
+  homeId: MAIN_HOME_ID,
+  catalogHomeId: MAIN_HOME_ID,
+});
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
@@ -62,6 +72,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
       snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
+      resolveOperatingModeForDevice: mainHomeMode(null),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -95,6 +106,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
       }],
       settings: asAppSettings(settings),
       debugStructured: vi.fn(),
+      resolveOperatingModeForDevice: mainHomeMode('Home'),
     });
 
     expect(settings.set).toHaveBeenCalledWith('overshoot_behaviors', expect.objectContaining({
@@ -116,6 +128,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
       snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
+      resolveOperatingModeForDevice: mainHomeMode(null),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -136,6 +149,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
       snapshot: [buildUnsupportedThermostat()],
       settings: asAppSettings(settings),
       debugStructured,
+      resolveOperatingModeForDevice: mainHomeMode(null),
     });
 
     expect(settings.set).not.toHaveBeenCalled();

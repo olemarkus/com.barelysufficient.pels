@@ -37,7 +37,7 @@ describe('aggregateAndPruneHistory — Homey-local dailyTotals keying (DST regre
 
     const pruned = aggregateAndPruneHistory(
       { buckets: { [isoHour(sampleUtcMs)]: 1.5 } },
-      { timeZone: OSLO },
+      OSLO,
     );
 
     expect(pruned.dailyTotals).toEqual({ '2026-01-16': 1.5 });
@@ -52,7 +52,7 @@ describe('aggregateAndPruneHistory — Homey-local dailyTotals keying (DST regre
 
     const pruned = aggregateAndPruneHistory(
       { buckets: { [isoHour(sampleUtcMs)]: 2 } },
-      { timeZone: OSLO },
+      OSLO,
     );
 
     expect(pruned.dailyTotals).toEqual({ '2026-07-16': 2 });
@@ -73,7 +73,7 @@ describe('aggregateAndPruneHistory — Homey-local dailyTotals keying (DST regre
     const now = sampleUtcEnd + HOURLY_RETENTION_MS + 24 * 60 * 60 * 1000;
     vi.setSystemTime(now);
 
-    const pruned = aggregateAndPruneHistory({ buckets }, { timeZone: OSLO });
+    const pruned = aggregateAndPruneHistory({ buckets }, OSLO);
 
     // Some samples land on 2026-03-29 local; one or two may straddle into 2026-03-30 local.
     // The invariant: total kWh preserved, and 2026-03-29 has exactly 23h worth (2.3 kWh)
@@ -98,23 +98,12 @@ describe('aggregateAndPruneHistory — Homey-local dailyTotals keying (DST regre
     const now = sampleUtcEnd + HOURLY_RETENTION_MS + 24 * 60 * 60 * 1000;
     vi.setSystemTime(now);
 
-    const pruned = aggregateAndPruneHistory({ buckets }, { timeZone: OSLO });
+    const pruned = aggregateAndPruneHistory({ buckets }, OSLO);
 
     const total = Object.values(pruned.dailyTotals ?? {}).reduce((acc, v) => acc + v, 0);
     expect(total).toBeCloseTo(Object.values(buckets).reduce((acc, v) => acc + v, 0), 6);
     // 25 samples should all land on 2026-10-25 local = 2.5 kWh.
     expect(pruned.dailyTotals?.['2026-10-25']).toBeCloseTo(2.5, 6);
-  });
-
-  it('falls back to UTC date keys when no timezone is supplied (back-compat)', () => {
-    // Same boundary sample as the first case: UTC-keyed code attributes it to 2026-01-15.
-    const sampleUtcMs = Date.UTC(2026, 0, 15, 23, 0, 0);
-    const now = sampleUtcMs + HOURLY_RETENTION_MS + 24 * 60 * 60 * 1000;
-    vi.setSystemTime(now);
-
-    const pruned = aggregateAndPruneHistory({ buckets: { [isoHour(sampleUtcMs)]: 1.5 } });
-
-    expect(pruned.dailyTotals).toEqual({ '2026-01-15': 1.5 });
   });
 });
 
@@ -135,7 +124,7 @@ describe('aggregateAndPruneHistory — local hour-of-day for hourlyAverages', ()
 
     const pruned = aggregateAndPruneHistory(
       { buckets: { [isoHour(sampleUtcMs)]: 1 } },
-      { timeZone: OSLO },
+      OSLO,
     );
 
     // 2026-01-16 was a Friday (dayOfWeek=5).

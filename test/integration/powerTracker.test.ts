@@ -6,9 +6,7 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
-  formatDateUtc,
   getUtcDayOfWeek,
-  getUtcHour,
   aggregateAndPruneHistory,
   recordPowerSample,
   type PowerTrackerState,
@@ -71,8 +69,6 @@ describe('power tracker integration', () => {
     // Mock Homey reports Europe/Oslo, so the runtime now keys dailyTotals and
     // hourlyAverages by the local calendar date / hour, not by UTC.
     const oldDateKey = getDateKeyInTimeZone(new Date(oldHourStart), 'Europe/Oslo');
-    // formatDateUtc is still exported and used by back-compat callers; keep it imported.
-    void formatDateUtc;
 
     // Manually set old data in powerTracker
     app['powerTracker'] = {
@@ -103,7 +99,6 @@ describe('power tracker integration', () => {
     const localDayOfWeek = new Date(`${oldDateKey}T00:00:00.000Z`).getUTCDay();
     const patternKey = `${localDayOfWeek}_${localHour}`;
     void getUtcDayOfWeek;
-    void getUtcHour;
     expect(state?.hourlyAverages?.[patternKey]).toBeDefined();
     expect(state?.hourlyAverages?.[patternKey].sum).toBeCloseTo(1.5, 3);
     expect(state?.hourlyAverages?.[patternKey].count).toBe(1);
@@ -460,7 +455,7 @@ describe('power tracker integration', () => {
           ev: { [staleBucket]: 2 },
         },
         lastDevicePowerWById: { heater: 1200, ev: 0 },
-      });
+      }, 'UTC');
 
       expect(pruned.deviceBuckets).toEqual({ heater: { [freshBucket]: 0.5 } });
       expect(pruned.lastDevicePowerWById).toEqual({ heater: 1200, ev: 0 });
@@ -487,7 +482,7 @@ describe('power tracker integration', () => {
         buckets: { [hour(0)]: 1, [hour(1)]: 2, [hour(2)]: 3, [hour(3)]: 4 },
         dailyTotals: {},
         hourlyAverages: {},
-      });
+      }, 'UTC');
 
       expect(firstRun.hourlyAverages![`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
       expect(firstRun.hourlyAverages![`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
@@ -500,7 +495,7 @@ describe('power tracker integration', () => {
         buckets: firstRun.buckets,
         dailyTotals: firstRun.dailyTotals,
         hourlyAverages: firstRun.hourlyAverages,
-      });
+      }, 'UTC');
 
       // Each hour slot contributed exactly once total — no zero-sum double counting.
       expect(secondRun.hourlyAverages![`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
@@ -525,7 +520,7 @@ describe('power tracker integration', () => {
           heater: { [staleBucket]: 1.2 },
           ev: { [staleBucket]: 2 },
         },
-      });
+      }, 'UTC');
 
       expect(pruned.deviceBuckets).toBeUndefined();
     } finally {

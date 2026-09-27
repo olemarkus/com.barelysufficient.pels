@@ -1505,6 +1505,32 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **The horizon planner accepts looser inputs than its one producer sends.**
+      `planDeferredObjectiveHorizon`'s only production caller (`rescueReplan.ts`) always passes
+      `committed` and, on the nested objective, `fullyReserved` and `deadlineMarginMs`, and never
+      passes `epsilonKWh`, so `resolveCommittedFlag`'s legacy length-based branch
+      (`horizonPlanner.ts`), `normalizeEpsilon` / `normalizeDeadlineMarginMs` and the optional
+      markers in `types.ts` guard states nothing produces. `aheadOfHourMilestone` is optional one
+      level up (the rescue replan's own params), so trace its producer before tightening it.
+      **What changes:** make the three required, drop `epsilonKWh` (the planner's own constant is
+      the only value it ever takes) and delete the fallbacks; 36 cases in
+      `test/unit/deferredObjectiveHorizon.test.ts` omit `committed` and lean on the legacy branch,
+      and five integration/e2e callers need the same fixture update. **Done when:**
+      `DeferredObjectiveHorizonInput` has no optional field the producer always sets, and no
+      `epsilonKWh` input. [P2]
+
+- [ ] **The device transport's parse providers are optional though production sets all 13.**
+      13 members of `DeviceTransportParseProviders` (`lib/device/transport/managerParseDevice.ts`)
+      are optional, and each parse site carries a default (`getManaged?.(id) ?? true`,
+      `isManagedFilterActive?.() ?? true`, ...), yet `setup/appInit/buildDeviceParseProviders.ts`
+      supplies all of them; the `DeviceTransport` constructor likewise accepts `providers` and
+      `powerState` as `| undefined`, with `?? {}` defaults for the injected maps that only tests
+      reach. **What changes:** make those 13 providers and the injected maps required and delete
+      their defaults. The two log states (`createEstimateDecisionLogState()`,
+      `createPeakPowerLogState()`) are the transport's own state, created there in production too:
+      they stay created by the transport rather than moving to the caller. **Done when:** no
+      parse-provider call site defaults a missing provider. [P2]
+
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns
       `this.structuredLogger?.child(...)`, so every dep it feeds declares `structuredLog?:` and its

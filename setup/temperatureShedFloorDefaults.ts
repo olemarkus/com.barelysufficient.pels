@@ -12,11 +12,7 @@ import { readModeDeviceTarget } from '../lib/home/modeDeviceTargetsRead';
 import { readShedBehaviorsSetting } from '../lib/home/shedBehaviorsRead';
 import type { DeviceOperatingModeOutcome } from '../lib/home/homeModeDeviceRead';
 import { isTemperatureControlDevice } from '../packages/shared-domain/src/temperatureDeviceKind';
-import {
-  MAIN_HOME_ID,
-  OPERATING_MODE_SETTING,
-  OVERSHOOT_BEHAVIORS,
-} from '../lib/utils/settingsKeys';
+import { OVERSHOOT_BEHAVIORS } from '../lib/utils/settingsKeys';
 import {
   AIRTREATMENT_SHED_FLOOR_C,
   COOLING_SHED_DEFAULT_C,
@@ -53,27 +49,17 @@ function resolveTemperatureShedFloor(device: TargetDeviceSnapshot): number {
 }
 
 /**
- * The active mode governing one device's mode target. Default: the historical
- * raw unsuffixed read (main-home behaviour). The app wires
- * `resolveOperatingModeForDevice` (`lib/home/homeModeDeviceRead.ts`) so
- * a sub-home member resolves through ITS home's effective mode instead of
- * silently using the global one.
+ * The active mode governing one device's mode target, through
+ * `resolveOperatingModeForDevice` (`lib/home/homeModeDeviceRead.ts`), so a
+ * sub-home member resolves through ITS home's effective mode rather than the
+ * global one.
  */
 function resolveModeForDeviceTarget(params: {
   settings: Homey.App['homey']['settings'];
   deviceId: string;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): DeviceOperatingModeOutcome {
-  if (params.resolveOperatingModeForDevice) {
-    return params.resolveOperatingModeForDevice(params.deviceId);
-  }
-  const operatingModeRaw = params.settings.get(OPERATING_MODE_SETTING) as unknown;
-  return {
-    state: 'resolved',
-    mode: typeof operatingModeRaw === 'string' && operatingModeRaw.trim() ? operatingModeRaw : null,
-    homeId: MAIN_HOME_ID,
-    catalogHomeId: MAIN_HOME_ID,
-  };
+  return params.resolveOperatingModeForDevice(params.deviceId);
 }
 
 /**
@@ -90,7 +76,7 @@ type ModeTargetRead =
 function readModeTarget(params: {
   settings: Homey.App['homey']['settings'];
   deviceId: string;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): ModeTargetRead {
   const operatingMode = resolveModeForDeviceTarget(params);
   if (operatingMode.state === 'unavailable') return { state: 'unavailable' };
@@ -127,7 +113,7 @@ function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
   settings: Homey.App['homey']['settings'];
   device: TargetDeviceSnapshot;
   existing: ConfiguredShedBehavior;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): OvershootSeed {
   const { settings, device, existing, resolveOperatingModeForDevice } = params;
   const minFloorC = resolveTemperatureShedFloor(device);
@@ -173,7 +159,7 @@ export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
   snapshot: TargetDeviceSnapshot[];
   managed: BooleanMap;
   controllable: BooleanMap;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): number {
   const {
     settings, snapshot, managed, controllable, resolveOperatingModeForDevice,

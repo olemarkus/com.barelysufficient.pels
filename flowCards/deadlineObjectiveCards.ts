@@ -1,9 +1,7 @@
 import {
-  readAllObjectives,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectiveSettingsEntry,
-  type DeferredObjectiveSettingsV1,
 } from '../lib/objectives/deferredObjectives';
 import type { ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
 import type {
@@ -46,17 +44,6 @@ export const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
 
-// Read-only accessor for the persisted objectives map, assembled from the
-// per-device keys (`readAllObjectives`). The condition/trigger/autocomplete
-// cards and the create/rescue cards' pre-write checks read through this; ALL
-// writes go through the device-scoped ops on `deps`
-// (`upsertDeferredObjectiveForDevice` / `clearDeferredObjectiveForDevice`),
-// which write each device's own settings key.
-export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjectiveSettingsV1 => (
-  deps.getDeferredObjectiveSettings
-    ?? (() => readAllObjectives(deps.homey.settings))
-);
-
 // A device-scoped write can refuse to persist on a transient un-confirmable
 // migration / untrustworthy settings read / provisional ownership fence. The Flow-card run listeners are
 // async, so throwing here lets Homey surface a retryable failure to the user
@@ -71,14 +58,11 @@ const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
 // Autocomplete filter for the two set-deadline (task-creating) cards: offer
 // main-home devices only (multi-home v1 — smart tasks plan against the main
 // home's meter budget), mirroring the write gate so the picker never offers a
-// device whose card run would then reject with the scope error. An absent dep
-// (bare test wiring) — like a device the membership resolves to main — keeps
-// the device offered. The clear and trigger cards stay unfiltered: an existing
-// task on a relocated device must remain clearable and observable.
+// device whose card run would then reject with the scope error. The clear and
+// trigger cards stay unfiltered: an existing task on a relocated device must
+// remain clearable and observable.
 const isOfferedDevice = (deps: FlowCardDeps) => (device: TargetDeviceSnapshot): boolean => (
-  deps.hasMainHomeSmartTaskAuthority?.(device.id)
-    ?? deps.isDeviceInMainHome?.(device.id)
-    ?? true
+  deps.hasMainHomeSmartTaskAuthority(device.id)
 );
 
 // Resolve the condition's device against current membership before it can
@@ -90,7 +74,7 @@ const resolveStatusConditionDeviceId = (
   rawDevice: RawFlowDeviceArg | undefined,
 ): string | null => {
   const deviceId = getDeviceIdFromFlowArg(rawDevice);
-  if (!deviceId || deps.isDeviceInMainHome?.(deviceId) === false) return null;
+  if (!deviceId || !deps.isDeviceInMainHome(deviceId)) return null;
   return deviceId;
 };
 
@@ -365,7 +349,7 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) throw new Error('Device must be provided.');
-    const hadEntry = Boolean(requireSettingsRead(deps)().objectivesByDeviceId[deviceId]);
+    const hadEntry = Boolean(deps.getDeferredObjectiveSettings().objectivesByDeviceId[deviceId]);
     // Device-scoped op unsets this device's own settings key plus runs the
     // shared notify/flush chokepoint. A per-key unset cannot drop a
     // sibling task, so there is no refusal branch.
@@ -386,7 +370,7 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    const settings = requireSettingsRead(deps)();
+    const settings = deps.getDeferredObjectiveSettings();
     const activeIds = new Set(Object.keys(settings.objectivesByDeviceId));
     const candidates = activeIds.size > 0
       ? snapshot.filter((device) => activeIds.has(device.id))
@@ -587,14 +571,14 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     const deviceId = resolveStatusConditionDeviceId(deps, payload?.device);
     if (!deviceId) return false;
     const rawStatus = getDropdownId(payload?.status);
-    const settings = requireSettingsRead(deps)();
+    const settings = deps.getDeferredObjectiveSettings();
     const entry = settings.objectivesByDeviceId[deviceId];
     const hasEntry = Boolean(entry?.enabled);
     const legacyNoneMatch = isLegacyNoneStatusMatch(rawStatus, hasEntry);
     if (legacyNoneMatch !== null) return legacyNoneMatch;
     const wantedStatus = normalizeSmartTaskStatusArg(payload?.status);
     if (!wantedStatus) return false;
-    const activePlans = deps.getDeferredObjectiveActivePlans?.() ?? null;
+    const activePlans = deps.getDeferredObjectiveActivePlans();
     if (activePlans === null) return false;
     const plan = activePlans.plansByDeviceId[deviceId] ?? null;
     const effectiveStatus = resolveEffectiveStatus(
@@ -653,7 +637,7 @@ function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) return false;
-    const settings = requireSettingsRead(deps)();
+    const settings = deps.getDeferredObjectiveSettings();
     return Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

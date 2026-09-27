@@ -223,16 +223,6 @@ function resolveUnreliablePeriods(params: {
     : state.unreliablePeriods;
 }
 
-export function formatDateUtc(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-export function getUtcHour(date: Date): number {
-  return date.getUTCHours();
-}
-
 export function getUtcDayOfWeek(date: Date): number {
   return date.getUTCDay();
 }
@@ -276,30 +266,24 @@ const pruneDailyTotals = (
   }
   return next;
 };
-function resolveDayHourKey(date: Date, timeZone?: string): { dateKey: string; hourOfDay: number } {
-  if (timeZone) {
-    // Call getZonedParts once — each call allocates an Intl.DateTimeFormat; avoid the
-    // double allocation that would result from calling getDateKeyInTimeZone + getZonedParts
-    // separately (getDateKeyInTimeZone already calls getZonedParts internally).
-    const { year, month, day, hour } = getZonedParts(date, timeZone);
-    const yyyy = year.toString().padStart(4, '0');
-    const mm = month.toString().padStart(2, '0');
-    const dd = day.toString().padStart(2, '0');
-    const dateKey = `${yyyy}-${mm}-${dd}`;
-    return { dateKey, hourOfDay: hour };
-  }
-  return { dateKey: formatDateUtc(date), hourOfDay: getUtcHour(date) };
+function resolveDayHourKey(date: Date, timeZone: string): { dateKey: string; hourOfDay: number } {
+  // Call getZonedParts once — each call allocates an Intl.DateTimeFormat; avoid the
+  // double allocation that would result from calling getDateKeyInTimeZone + getZonedParts
+  // separately (getDateKeyInTimeZone already calls getZonedParts internally).
+  const { year, month, day, hour } = getZonedParts(date, timeZone);
+  const yyyy = year.toString().padStart(4, '0');
+  const mm = month.toString().padStart(2, '0');
+  const dd = day.toString().padStart(2, '0');
+  const dateKey = `${yyyy}-${mm}-${dd}`;
+  return { dateKey, hourOfDay: hour };
 }
 
 export function aggregateAndPruneHistory(
   state: PowerTrackerState,
-  options?: { timeZone?: string },
+  // dailyTotals/hourlyAverages buckets are keyed by the Homey-local calendar date and
+  // hour-of-day.
+  timeZone: string,
 ): PowerTrackerState {
-  // When `timeZone` is provided, dailyTotals/hourlyAverages buckets are keyed by the
-  // Homey-local calendar date and hour-of-day. Without it we fall back to UTC keys
-  // (the historical behaviour, preserved so existing callers and persisted state
-  // continue to work without a forced migration).
-  const timeZone = options?.timeZone;
   const now = Date.now();
   const hourlyRetentionMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const hourlyThreshold = now - hourlyRetentionMs;

@@ -285,17 +285,15 @@ export function prunePowerTrackerHistoryForApp(params: {
   powerTracker: PowerTrackerState;
   debugStructured: StructuredDebugEmitter;
   error: (msg: string, err: Error) => void;
-  // Optional Homey timezone — when present, dailyTotals/hourlyAverages are aggregated
-  // by the Homey-local calendar day instead of UTC. Without it, in non-UTC zones,
-  // UTC-keyed dailyTotals were off by one day for samples that straddled the
-  // UTC/local midnight boundary.
-  timeZone?: string;
+  // Homey's time zone: dailyTotals/hourlyAverages are aggregated by the Homey-local
+  // calendar day. (UTC keys put samples straddling local midnight on the wrong day.)
+  timeZone: string;
 }): PowerTrackerState {
   const { powerTracker, debugStructured, error, timeZone } = params;
   debugStructured({ event: 'power_tracker_history_pruned' });
   const pruneStart = Date.now();
   try {
-    const pruned = aggregateAndPruneHistory(powerTracker, { timeZone });
+    const pruned = aggregateAndPruneHistory(powerTracker, timeZone);
     addPerfDuration('power_tracker_prune_ms', Date.now() - pruneStart);
     incPerfCounter('power_tracker_save_total');
     return pruned;
