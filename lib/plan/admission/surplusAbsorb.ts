@@ -119,6 +119,7 @@ type ReleaseCause = 'dwell_elapsed' | 'hard_off' | null;
 // has persisted past the settle window AND either the current state has held the
 // min dwell or — release direction only — the hard-off condition has been
 // sustained for a full settle window. Mutates `working` in place.
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const advanceFlip = (params: {
   working: SurplusEligibilityState;
   entry: SurplusEligibilityState | undefined;
@@ -164,6 +165,7 @@ const advanceFlip = (params: {
   }
   return null;
 };
+/* eslint-enable functional/immutable-data */
 
 // A settled-off entry with nothing pending is idle and droppable — UNLESS it
 // came from a hard_off release and its dwell floor is still running: dropping
@@ -180,6 +182,7 @@ const isDroppableIdleEntry = (working: SurplusEligibilityState, nowTs: number): 
 // too, in `advanceFlip`). Only a hard-off held at every observation across a
 // settle window can bypass the dwell — a brief import blip between plan builds
 // cannot.
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const trackHardOffClock = (params: {
   working: SurplusEligibilityState;
   currentEligible: boolean;
@@ -193,6 +196,7 @@ const trackHardOffClock = (params: {
     delete working.hardOffSinceMs;
   }
 };
+/* eslint-enable functional/immutable-data */
 
 // Structured release record. 'hard_off' = the sustained hard-off condition
 // drove the release (entry retained, dwell owed — whether or not the dwell had
@@ -219,6 +223,7 @@ const emitReleaseLog = (params: {
  * against the surplus the allocator has reserved for it. Pure over
  * `(state, inputs)` apart from the in-place `PlanEngineState` update.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function syncSurplusEligibilityState(params: {
   state: PlanEngineState;
   deviceId: string;
@@ -277,16 +282,19 @@ export function syncSurplusEligibilityState(params: {
   map[deviceId] = working;
   return { eligible: working.eligible === true };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Prune a device's surplus-absorb state. Called from the lockstep per-device
  * cleanup when a device leaves the plan snapshot, alongside the sibling maps,
  * and from the delta-application path when a device is no longer willing.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearSurplusEligibility(state: PlanEngineState, deviceId: string): void {
   const map = state.surplusEligibilityByDevice;
   delete map[deviceId];
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Prune a device's surplus-TRACKING decision. Separate from
@@ -294,12 +302,14 @@ export function clearSurplusEligibility(state: PlanEngineState, deviceId: string
  * eligibility is "may this device absorb", the decision is "which rung, or
  * stopped" — and clearing one must not silently clear the other.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearSurplusTracking(state: PlanEngineState, deviceId: string): void {
   const map = state.surplusTrackingByDevice;
   delete map[deviceId];
   const raised = state.surplusTrackingRaisedMs;
   delete raised[deviceId];
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Minimum interval between UPWARD moves of a tracking device's ceiling.

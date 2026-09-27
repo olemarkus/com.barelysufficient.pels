@@ -408,7 +408,7 @@ export default tseslint.config(
   // have returned to the repository-wide immutable-data rule. Remaining plan
   // subsystems and device code are migrated in subsequent layers.
   {
-    files: ['lib/plan/admission/**/*.ts', 'lib/plan/restore/**/*.ts', 'lib/plan/shedding/**/*.ts', 'lib/plan/swap/**/*.ts', 'lib/device/**/*.ts'],
+    files: ['lib/plan/restore/**/*.ts', 'lib/plan/shedding/**/*.ts', 'lib/plan/swap/**/*.ts', 'lib/device/**/*.ts'],
     rules: {
       'functional/immutable-data': 'off',
     },

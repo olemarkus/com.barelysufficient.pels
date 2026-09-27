@@ -81,6 +81,7 @@ const RELEASED = -1;
  * behind. A reserve that expires keeps its stamp (it must stay expired, not re-arm and flap); one
  * that is satisfied or withdrawn drops its stamp, so a later start gets a fresh window.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function resolveHeadroomReserves(params: {
   devices: readonly DevicePlanDevice[];
   state: Pick<PlanEngineState, 'headroomReserveArmedMs'>;
@@ -114,6 +115,7 @@ export function resolveHeadroomReserves(params: {
   state.headroomReserveArmedMs = nextArmedMs;
   return reserves;
 }
+/* eslint-enable functional/immutable-data */
 
 type ReserveDecision = {
   outcome: ReserveOutcome;

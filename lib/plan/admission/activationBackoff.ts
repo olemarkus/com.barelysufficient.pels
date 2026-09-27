@@ -86,27 +86,35 @@ const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => (
   getPenalty(state, deviceId)?.level ?? 0
 );
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const closeAttempt = (state: PlanEngineState, deviceId: string): boolean => {
   const attempts = state.activationAttemptByDevice;
   if (!(deviceId in attempts)) return false;
   delete attempts[deviceId];
   return true;
 };
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const clearPenalty = (state: PlanEngineState, deviceId: string): void => {
   const penalties = state.activationPenaltyByDevice;
   delete penalties[deviceId];
 };
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const setPenalty = (state: PlanEngineState, deviceId: string, penalty: ActivationPenalty): void => {
   const penalties = state.activationPenaltyByDevice;
   penalties[deviceId] = penalty;
 };
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const openAttempt = (state: PlanEngineState, deviceId: string, attempt: ActivationAttempt): void => {
   const attempts = state.activationAttemptByDevice;
   attempts[deviceId] = attempt;
 };
+/* eslint-enable functional/immutable-data */
 
 const elapsedMs = (startedMs: number, nowTs: number): number => Math.max(0, nowTs - startedMs);
 
@@ -262,6 +270,7 @@ export function syncActivationPenaltyState(
  * reads to decide the cautious admission proved itself. Tracked step-ups earn
  * no release this way. Answers whether the attempt changed.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordCleanWholeHomeSample(
   state: PlanEngineState,
   deviceId: string,
@@ -278,6 +287,7 @@ export function recordCleanWholeHomeSample(
   attempt.cleanWholeHomeSampleSeen = true;
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
 /** Open an attempt for a device with none open. Null when one is already open. */
 export function recordActivationAttemptStart(
