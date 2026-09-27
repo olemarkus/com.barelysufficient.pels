@@ -143,6 +143,7 @@ describe('power tracker integration', () => {
     const nowMs = 1700000000000;
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -168,6 +169,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -179,6 +181,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -203,6 +206,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 10);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -212,6 +216,7 @@ describe('power tracker integration', () => {
       saveState,
     });
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -236,6 +241,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -248,6 +254,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -272,6 +279,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -284,6 +292,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -307,6 +316,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -319,6 +329,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -344,6 +355,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -356,6 +368,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -381,6 +394,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -393,6 +407,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -416,6 +431,7 @@ describe('power tracker integration', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -427,6 +443,7 @@ describe('power tracker integration', () => {
     });
 
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,

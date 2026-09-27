@@ -149,7 +149,7 @@ describe('main silent-meter escalation', () => {
     await vi.advanceTimersByTimeAsync(2 * 60_000);
     await drainPending();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(ctx.meterSilenceMonitor.shouldRunShedPass()).toBe(true);
+    expect(ctx.meterSilenceMonitor.shedPassOwedFor()).not.toBeNull();
     expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
 
     // The poll commits a full read: the next tick spends the pass.
@@ -168,7 +168,7 @@ describe('main silent-meter escalation', () => {
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
     await drainPending();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(ctx.meterSilenceMonitor.shouldRunShedPass()).toBe(true);
+    expect(ctx.meterSilenceMonitor.shedPassOwedFor()).not.toBeNull();
 
     gates.actuationFenced = false;
     await vi.advanceTimersByTimeAsync(60_000);
@@ -192,7 +192,7 @@ describe('main silent-meter escalation', () => {
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
     await drainPending();
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(ctx.meterSilenceMonitor.shouldRunShedPass()).toBe(true);
+    expect(ctx.meterSilenceMonitor.shedPassOwedFor()).not.toBeNull();
     expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
 
     // Seam reopens: the next tick spends the pass for real.

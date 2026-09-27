@@ -32,6 +32,7 @@ describe('DeviceMeasuredPowerResolver', () => {
 
     expect(measuredPower.measuredPowerKw).toBeCloseTo(0.08, 6);
     expect(measuredPower.observedAtMs).toBe(900);
+    expect(measuredPower.source).toBe('measure_power');
   });
 
   it('uses meter_power when measure_power is absent and does not fall through to Homey Energy first', () => {
@@ -72,6 +73,7 @@ describe('DeviceMeasuredPowerResolver', () => {
         kind: 'interval_average', powerKw: 1,
         startMs: anchorMs, endMs: oneHourLaterMs,
       },
+      source: 'meter_power',
     });
   });
 
@@ -164,6 +166,7 @@ describe('DeviceMeasuredPowerResolver', () => {
         kind: 'interval_average', powerKw: 0,
         startMs: firstMs, endMs: republishedMs,
       },
+      source: 'meter_power',
     });
   });
 
@@ -202,6 +205,7 @@ describe('DeviceMeasuredPowerResolver', () => {
         kind: 'interval_average', powerKw: 2,
         startMs: anchorMs, endMs: laterMs,
       },
+      source: 'meter_power',
     });
   });
 
@@ -240,6 +244,7 @@ describe('DeviceMeasuredPowerResolver', () => {
         kind: 'interval_average', powerKw: 1,
         startMs: anchorMs, endMs: laterMs,
       },
+      source: 'meter_power',
     });
   });
 
@@ -259,6 +264,8 @@ describe('DeviceMeasuredPowerResolver', () => {
 
     expect(measuredPower.measuredPowerKw).toBeCloseTo(0.125, 6);
     expect(measuredPower.observedAtMs).toBe(1500);
+    // An estimate for a device with no meter: never evidence a grid meter must follow.
+    expect(measuredPower.source).toBe('homey_energy');
   });
 
   it('reports a few watts of standby as its own value instead of dropping it', () => {
@@ -283,6 +290,7 @@ describe('DeviceMeasuredPowerResolver', () => {
       measuredPowerKw: 0.003,
       observedAtMs: 1234,
       reading: { kind: 'instantaneous', powerKw: 0.003, observedAtMs: 1234 },
+      source: 'measure_power',
     });
   });
 
@@ -299,6 +307,7 @@ describe('DeviceMeasuredPowerResolver', () => {
       measuredPowerKw: 0,
       observedAtMs: 1234,
       reading: { kind: 'instantaneous', powerKw: 0, observedAtMs: 1234 },
+      source: 'measure_power',
     });
     // Zero is a draw of nothing, not a positive reading.
   });

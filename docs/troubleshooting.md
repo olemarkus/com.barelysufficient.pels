@@ -139,9 +139,9 @@ PELS plans on a live whole-home power reading. If the Overview shows nothing:
 - **Using Homey Energy?** Confirm **Power source** is set to **Power meter**
   and a meter is chosen under **Whole-home meter** (Settings → Limits &
   safety). See [Using Homey Energy](/homey-energy).
-- **Meter chosen?** Check that it is available and still reporting power in
-  Homey Energy — a selected meter that stops reporting is never silently
-  replaced by another one.
+- **Meter chosen?** Check that it is available in Homey Energy and its
+  reading is still changing. A selected meter that stops reporting is never
+  silently replaced by another one.
 - **Using a Flow?** Make sure a Flow calls **Report power usage** (in watts)
   every time your meter updates.
 
@@ -152,11 +152,28 @@ seconds**, and beyond that it carries the last good one forward and keeps
 acting on the decision it already made. A missing reading is never counted as
 zero.
 
-After **10 minutes with no reading**, PELS fails closed rather than keep
+After **10 minutes with no new reading**, PELS fails closed rather than keep
 trusting a decision it made before the meter went quiet. It limits every
 managed device to its floor (lowest step, limited setpoint, or off) and pauses
-planning until a reading arrives. Devices stay limited until the meter reports
-again, so a meter that has quietly stopped is worth fixing promptly.
+planning until a new reading arrives, so a meter that has quietly stopped is
+worth fixing promptly.
+
+A meter that keeps reporting exactly the same number can count as stopped too,
+when your devices show it should have moved. PELS watches the managed devices
+that measure their own power. If their combined draw changes by a kilowatt or
+more and stays that way while the whole-home reading keeps exactly the same
+value, the banner warns you after two minutes, and after ten minutes PELS
+treats the meter as stopped. That is a meter that has stopped updating, for
+example a HAN/P1 reader that lost contact with the electricity meter while its
+app keeps showing the last value. A steady reading on its own is never treated
+as stopped, and nor is exactly 0 W, which a meter that cannot show export
+reports for as long as your home exports. So a meter stuck at 0 W is not
+caught, and nor is one that freezes while none of your managed devices measures
+its own power (an estimate from Homey's Energy settings does not count). A
+meter that normally holds a value for twenty minutes or more (one that reports
+only on change) is not checked this way, and nor is any meter while a battery,
+or a solar inverter that is producing, is connected to Homey: either can keep
+the grid reading still while a device switches.
 
 In **Simulation mode** nothing is switched. PELS still shows what it would
 limit, and planning carries on as usual.
@@ -166,8 +183,8 @@ The banner above the Overview tells you which state you are in:
 | Banner | Meaning |
 | --- | --- |
 | **No power readings yet.** | PELS has never received a reading. |
-| **No power readings in the last minute.** | Readings have stopped. |
-| **No power readings for over 10 minutes. Managed devices stay limited until readings return.** | The fail-closed pass has run. |
+| **No new power readings in the last minute.** | Readings have stopped, or keep the same value while your devices' power changes. |
+| **No new power readings for over 10 minutes. Managed devices stay limited until a new reading arrives.** | PELS has limited every managed device and is waiting for a new reading. |
 
 ## No price data, or cheap hours aren't being used
 

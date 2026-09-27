@@ -413,7 +413,8 @@ function createBundlePlanningRuntime(params: {
   // (via the scope), the pipeline's admitted-sample push, and the freshness
   // escalation's shed-pass protocol.
   const meterSilenceMonitor = new MeterSilenceMonitor({
-    getLastSampleAtMs: () => params.tracker.getState().lastTimestamp,
+    homeId: params.homeId,
+    getPowerTracker: params.tracker.getState,
     nowMs: () => Date.now(),
     structuredLog: () => params.ctx.getStructuredLogger('power'),
   });
@@ -596,7 +597,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     markPreparedOwnershipGenerationReconciled,
   } = installBundleReadinessAndFreshness({
     ctx, homeId, timerKey, logger, planService,
-    getTrackerState: tracker.getState,
     meterSilence: meterSilenceMonitor,
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
     beginPreparedOwnershipReconcile,

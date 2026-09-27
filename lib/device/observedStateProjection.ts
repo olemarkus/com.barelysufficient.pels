@@ -1,4 +1,5 @@
 import type {
+    MeasuredPowerObservedProbe,
     ProjectedObservedDeviceState,
     ReportedStepObservedProbe,
 } from '../../packages/contracts/src/types';
@@ -43,6 +44,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         targets: snapshot.targets.map((target) => ({ ...target })),
         available: snapshot.available,
         ...projectReportedStepObservation(snapshot),
+        ...projectMeasuredPowerObservation(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
@@ -68,10 +70,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
             target: { ...snapshot.temperature.target },
         };
     }
-    if (snapshot.measuredPowerKw !== undefined) projected.measuredPowerKw = snapshot.measuredPowerKw;
-    if (snapshot.measuredPowerObservedAtMs !== undefined) {
-        projected.measuredPowerObservedAtMs = snapshot.measuredPowerObservedAtMs;
-    }
     if (snapshot.binaryControlObservation !== undefined) {
         projected.binaryControlObservation = {
             ...snapshot.binaryControlObservation,
@@ -84,6 +82,22 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
     return projected;
 }
 /* eslint-enable functional/immutable-data */
+
+/**
+ * The measured-power cluster as consumers may read it: the reading, when it
+ * was observed, and whether it is the device's own measurement of its draw
+ * now. The source itself stays in the device layer.
+ */
+function projectMeasuredPowerObservation(snapshot: TransportDeviceSnapshot): MeasuredPowerObservedProbe {
+    return {
+        ...(snapshot.measuredPowerKw !== undefined ? {
+            measuredPowerKw: snapshot.measuredPowerKw,
+            measuredPowerIsDirectMeasurement: snapshot.measuredPowerSource === 'measure_power',
+        } : {}),
+        ...(snapshot.measuredPowerObservedAtMs !== undefined
+            ? { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs } : {}),
+    };
+}
 
 function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): ReportedStepObservedProbe {
     return {

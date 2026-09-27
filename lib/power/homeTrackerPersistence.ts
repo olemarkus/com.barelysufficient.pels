@@ -34,6 +34,7 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import type { HomeId } from '../utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import type { TrackerStore } from './trackerStore';
+import { withHeldReadingAfterRestart } from './heldReading';
 
 const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -291,7 +292,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       });
       return;
     }
-    if (stored !== null) this.state = this.stamp(stored);
+    if (stored !== null) this.state = this.stamp(withHeldReadingAfterRestart(stored));
     deps.observeExportEvidence(this.state);
   };
 
@@ -300,6 +301,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       ...this.state,
       lastTimestamp: undefined,
       lastPowerW: undefined,
+      heldReading: undefined,
       capacityQuarter: undefined,
     };
     const persisted = this.persist('write');
@@ -370,7 +372,9 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
     if (!this.hydrationOwed) return true;
     const stored = deps.getStore().load(homeId);
     this.hydrationOwed = false;
-    if (stored !== null) this.state = this.stamp(withLateHydratedEvidence(this.state, stored));
+    if (stored !== null) {
+      this.state = this.stamp(withLateHydratedEvidence(this.state, withHeldReadingAfterRestart(stored)));
+    }
     deps.observeExportEvidence(this.state);
     deps.getLogger()?.info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
     return true;

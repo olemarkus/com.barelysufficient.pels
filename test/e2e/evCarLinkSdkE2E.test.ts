@@ -61,6 +61,19 @@ const driveHomeEnergy = (netW: number | (() => number)): void => {
   });
 };
 
+/**
+ * A live whole-home meter: its reading moves by a few watts on every poll. A
+ * constant feed under a charger switching 7 kW on and off is a frozen meter,
+ * which PELS answers with its fail-closed pass (`lib/power/heldReading.ts`).
+ */
+const liveHomeW = (baseW: number): (() => number) => {
+  let poll = 0;
+  return () => {
+    poll += 1;
+    return baseW + (poll % 5);
+  };
+};
+
 const flushDetached = async (rounds = 12): Promise<void> => {
   for (let i = 0; i < rounds; i += 1) {
     await vi.advanceTimersByTimeAsync(0);
@@ -176,7 +189,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
     seedSettings();
-    driveHomeEnergy(3_000);
+    driveHomeEnergy(liveHomeW(3_000));
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
@@ -262,7 +275,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
     seedSettings();
-    driveHomeEnergy(3_000);
+    driveHomeEnergy(liveHomeW(3_000));
     const app = createApp();
     spyLogs(app);
     await app.onInit();
@@ -334,7 +347,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
     seedSettings();
-    driveHomeEnergy(3_000);
+    driveHomeEnergy(liveHomeW(3_000));
 
     const app = createApp();
     spyLogs(app);
@@ -360,7 +373,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     // The user ticks this car for this charger BEFORE the session, which is the
     // only difference from the first scenario.
     mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
-    driveHomeEnergy(3_000);
+    driveHomeEnergy(liveHomeW(3_000));
 
     const app = createApp();
     spyLogs(app);
@@ -415,7 +428,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
     seedSettings();
-    driveHomeEnergy(3_000);
+    driveHomeEnergy(liveHomeW(3_000));
 
     const app = createApp();
     spyLogs(app);

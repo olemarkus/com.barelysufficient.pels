@@ -31,7 +31,6 @@ export type FreshnessEscalationParams = {
    * pass this clock runs is exactly the one the gate lets through.
    */
   meterSilence: MeterSilenceMonitor;
-  getLastSampleAtMs: () => number | undefined;
   isTornDown: () => boolean;
   /**
    * Whether this home's meter is being sampled at all right now. Escalation is
@@ -81,14 +80,14 @@ export type FreshnessEscalationParams = {
  *
  * Bounded by design: an in-flight latch (no overlapping rebuild), and exactly one
  * rebuild per stale period, latched in the home's `MeterSilenceMonitor` against
- * the sample timestamp the escalation was taken against — the same monitor the
+ * the evidence stamp the escalation was taken against — the same monitor the
  * composed plan-build gate reads, so after the pass every further rebuild is
- * blocked until an admitted sample returns. It polls on an interval only to
+ * blocked until a new reading returns. It polls on an interval only to
  * notice the window opening; the escalation itself is the one-shot.
  */
 export function installPowerSampleFreshnessEscalation(params: FreshnessEscalationParams): void {
   const {
-    ctx, homeId, timerKey, logger, rebuild, meterSilence, getLastSampleAtMs, isTornDown, isMeterSampled,
+    ctx, homeId, timerKey, logger, rebuild, meterSilence, isTornDown, isMeterSampled,
     isSnapshotWarm, isActuationFenced,
   } = params;
   let inFlight = false;
@@ -99,7 +98,8 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
     // The one-shot policy — silence past the timeout on the stamp's own clock
     // (a restart does not reset it), exactly one owed pass — lives in the
     // monitor, shared with the composed plan-build gate.
-    if (!meterSilence.shouldRunShedPass()) return;
+    const passFor = meterSilence.shedPassOwedFor();
+    if (passFor === null) return;
     // The pass exists to shed. Refuse it — it stays owed and the next tick
     // retries — while it provably could not: no full device read has committed
     // (a boot-time SDK failure leaves an empty snapshot until the 5-minute poll),
@@ -112,8 +112,6 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
       logger()?.warn({ event: 'home_freshness_heartbeat_actuation_fenced', homeId });
       return;
     }
-    const lastTs = getLastSampleAtMs();
-    if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return;
     inFlight = true;
     void rebuild()
       .then((outcome) => {
@@ -156,10 +154,11 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
           logger()?.warn({ event: 'home_freshness_heartbeat_precondition_lost', homeId });
           return;
         }
-        // Still stale on completion (a sample racing in would have moved the
-        // timestamp): latch the pass, which also engages the block until data
-        // returns.
-        if (getLastSampleAtMs() === lastTs) meterSilence.noteShedPassCompleted(lastTs);
+        // Latch the pass against the silence it was taken for, which engages
+        // the block until data returns. A reading that raced in during the
+        // pass has moved the stamp, and the monitor then reads this latch as
+        // spent on the old silence rather than the new one.
+        meterSilence.noteShedPassCompleted(passFor);
       })
       .catch((error: unknown) => {
         logger()?.error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });

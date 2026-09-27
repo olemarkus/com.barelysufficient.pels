@@ -1,5 +1,6 @@
 import {
   MAX_POWER_SAMPLE_GAP_MS,
+  type HeldReading,
   type PowerTrackerState,
   type RecordPowerSampleParams,
 } from './trackerTypes';
@@ -20,6 +21,7 @@ import {
 import { accrueCapacityQuarter, startCapacityQuarterTracking } from './capacityQuarterTracking';
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
 import { addToHourlyBuckets, updateHourlyBuckets } from './trackerBucketChanges';
+import { resolveNextHeldReading, withEndedSuspectStretch, withSuspectStretchBeforeReset } from './heldReading';
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
@@ -58,6 +60,7 @@ function buildNextPowerState(params: {
   currentExemptPowerW?: number;
   currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
+  heldReading: HeldReading;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   capacityQuarter: PowerTrackerState['capacityQuarter'];
   capacityMonthlyPeak: PowerTrackerState['capacityMonthlyPeak'];
@@ -80,6 +83,7 @@ function buildNextPowerState(params: {
     currentExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById,
+    heldReading,
     unreliablePeriods,
     capacityQuarter,
     capacityMonthlyPeak,
@@ -114,6 +118,7 @@ function buildNextPowerState(params: {
     lastDevicePowerWById: currentDevicePowerWById,
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
+    heldReading,
     lastControlledPowerW: currentControlledPowerW,
     lastUncontrolledPowerW: currentUncontrolledPowerW,
     lastExemptPowerW: currentExemptPowerW,
@@ -434,12 +439,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextExportBuckets,
     nextDeviceBuckets,
   } = createSampleBucketChanges();
-  const budgetKWh = applyCurrentHourSample({
-    nextHourlySampleCounts,
-    nextBudgets,
-    nowMs,
-    hourBudgetKWh,
-  });
+  const budgetKWh = applyCurrentHourSample({ nextHourlySampleCounts, nextBudgets, nowMs, hourBudgetKWh });
 
   const {
     controlledPowerW: boundedControlledPowerW,
@@ -458,6 +458,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
   const resetSampling = shouldResetSamplingState(state, nowMs);
+  const heldReading = resolveNextHeldReading(state, currentPowerW, params.managedDraw, nowMs, resetSampling);
   // Shared next-state args for both the reset path (no accrual — the current
   // readings, including the generation latch, are recorded as-is) and the
   // normal accrual path below.
@@ -479,6 +480,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentExemptPowerW: boundedExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById: normalizedDevicePowerWById,
+    heldReading,
   };
 
   if (resetSampling) {
@@ -486,6 +488,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       ...nextStateArgs,
       capacityQuarter: startCapacityQuarterTracking(nowMs),
       capacityMonthlyPeak: state.capacityMonthlyPeak,
+      unreliablePeriods: withSuspectStretchBeforeReset(state.unreliablePeriods, state.heldReading),
     });
     addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
     await persistPowerSample({ nextState, saveState, rebuildPlanFromCache });
@@ -494,7 +497,8 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
 
   const previousTs = state.lastTimestamp as number;
   const previousPower = state.lastPowerW as number;
-  const unreliablePeriods = resolveUnreliablePeriods({ state, previousTs, nowMs });
+  const unreliablePeriods = withEndedSuspectStretch(
+    resolveUnreliablePeriods({ state, previousTs, nowMs }), state.heldReading, heldReading);
 
   calculateEnergyAcrossBoundaries({
     startTs: previousTs,

@@ -96,6 +96,7 @@ describe('On/off device integration', () => {
       targets?: Array<unknown>;
       binaryControl?: { on: boolean };
       expectedPowerKw?: number;
+      measuredPowerIsDirectMeasurement?: boolean;
     }>;
     const entry = snapshot.find((snap) => snap.id === 'device-a');
 
@@ -104,6 +105,8 @@ describe('On/off device integration', () => {
     expect(entry?.targets?.length ?? 0).toBe(0);
     expect(entry?.binaryControl?.on).toBe(true);
     expect(entry?.expectedPowerKw).toBeCloseTo(1.2, 2);
+    // Its own `measure_power`, ahead of its cumulative meter.
+    expect(entry?.measuredPowerIsDirectMeasurement).toBe(true);
   });
 
   it('does not apply mode targets for on/off devices', async () => {
@@ -247,6 +250,7 @@ describe('On/off device integration', () => {
       powerCapable?: boolean;
       expectedPowerKw?: number;
       measuredPowerKw?: number;
+      measuredPowerIsDirectMeasurement?: boolean;
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
@@ -254,6 +258,8 @@ describe('On/off device integration', () => {
     expect(entry?.powerCapable).toBe(true);
     expect(entry?.expectedPowerSource).toBe('measured-peak');
     expect(entry?.measuredPowerKw).toBeCloseTo(0.125, 6);
+    // Homey Energy's figure for a device with no meter: not its own measurement.
+    expect(entry?.measuredPowerIsDirectMeasurement).toBe(false);
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
   });

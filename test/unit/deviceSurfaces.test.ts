@@ -59,7 +59,7 @@ describe('projectDeviceSurfaces', () => {
     const [surfaces] = projectDeviceSurfaces([parsed]);
     expect(Object.keys(surfaces!).sort()).toEqual([
       'available', 'binaryControl', 'capabilities', 'deviceClass', 'expectedPowerKw',
-      'expectedPowerSource', 'id', 'measuredPowerKw', 'name', 'targets',
+      'expectedPowerSource', 'id', 'measuredPowerIsDirectMeasurement', 'measuredPowerKw', 'name', 'targets',
     ]);
     expect(surfaces).not.toBe(parsed);
     expect(projectDeviceSurfaces([])).toEqual([]);

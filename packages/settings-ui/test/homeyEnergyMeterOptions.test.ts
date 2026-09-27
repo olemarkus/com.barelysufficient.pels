@@ -86,7 +86,7 @@ describe('resolvePowerReadingsBannerContent', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: false,
     })).toEqual({
-      text: 'No power readings in the last minute. Check the Flow that runs Report power usage.',
+      text: 'No new power readings in the last minute. Check the Flow that runs Report power usage and the meter it reads from.',
       actionLabel: 'Check power source',
     });
   });
@@ -94,8 +94,8 @@ describe('resolvePowerReadingsBannerContent', () => {
   it('points a Homey Energy home at its chosen meter, or at the picker before one is chosen', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'homey_energy', meterChosen: true, planUnmeasured: false,
-    })?.text).toBe('No power readings in the last minute. Check that the selected whole-home '
-      + 'meter is available and reporting power in Homey Energy.');
+    })?.text).toBe('No new power readings in the last minute. Check that the selected whole-home '
+      + 'meter is available in Homey Energy and its reading is changing.');
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'never' }, source: 'homey_energy', meterChosen: false, planUnmeasured: false,
     })?.text).toBe('No power readings yet. Pick a whole-home meter under Limits & safety.');
@@ -108,8 +108,8 @@ describe('resolvePowerReadingsBannerContent', () => {
     expect(resolvePowerReadingsBannerContent({
       ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false, planUnmeasured: true,
     })).toEqual({
-      text: 'No power readings for over 10 minutes. Managed devices stay limited until readings return. '
-        + 'Check the Flow that runs Report power usage.',
+      text: 'No new power readings for over 10 minutes. Managed devices stay limited until a new reading arrives. '
+        + 'Check the Flow that runs Report power usage and the meter it reads from.',
       actionLabel: 'Check power source',
     });
     // Fresh readings still win: the next admitted sample rebuilds, and a plan

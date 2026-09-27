@@ -36,7 +36,6 @@ import type {
   SettingsUiPlanPayload,
   SettingsUiPlanSnapshot,
   SettingsUiPowerPayload,
-  SettingsUiPowerReadings,
   SettingsUiPowerStatusRead,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
@@ -57,6 +56,7 @@ import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import {
   projectCapacityPeakForUi,
   projectPowerTrackerForUi,
+  resolvePowerReadingsForUi,
 } from '../lib/power/trackerUiProjection';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
@@ -362,22 +362,6 @@ const classifyMainPowerStatus = (homey: ApiContext['homey']): SettingsUiPowerSta
   );
 };
 
-/**
- * The readings fact, resolved once at this producer from the tracker's own
- * stamp: ingest writes `lastPowerW` and `lastTimestamp` together, so a finite
- * stamp IS "a reading has been received". The UI never re-derives this from
- * tracker fields or persisted-blob fallbacks.
- */
-const resolvePowerReadings = (tracker: PowerTrackerState): SettingsUiPowerReadings => (
-  // BOTH halves of the latch, matching the measurement gate: ingest stamps
-  // them together, so a persisted blob carrying one without the other is a
-  // half-latch no real sample produced — never reported as received.
-  typeof tracker.lastTimestamp === 'number' && Number.isFinite(tracker.lastTimestamp)
-  && typeof tracker.lastPowerW === 'number' && Number.isFinite(tracker.lastPowerW)
-    ? { state: 'received', lastPowerUpdateMs: tracker.lastTimestamp }
-    : { state: 'never' }
-);
-
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
   // The tracker keeps the persisted fallback: it carries usage HISTORY
@@ -390,7 +374,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     : {};
   return {
     tracker: projectPowerTrackerForUi(tracker),
-    readings: resolvePowerReadings(tracker),
+    readings: resolvePowerReadingsForUi(tracker),
     status: classifyMainPowerStatus(homey),
     capacityScalars: hasCapacityScalarsSeam(app)
       ? { state: 'resolved', scalars: app.getCapacityScalars() }
@@ -553,7 +537,7 @@ const powerPayloadForHome = (
   // `resolved`/`absent` reach the classifier.
   return {
     tracker: projectPowerTrackerForUi(reading.powerTracker),
-    readings: resolvePowerReadings(reading.powerTracker),
+    readings: resolvePowerReadingsForUi(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
     capacityScalars: { state: 'resolved', scalars: reading.diagnostics.capacityScalars },

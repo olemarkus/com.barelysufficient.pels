@@ -6,18 +6,19 @@ import type {
   MeterEnergyReading,
 } from './measuredPowerReader';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
-import type { MeteredPowerReading } from './transportDeviceSnapshot';
+import type { MeasuredPowerSource, MeteredPowerReading } from './transportDeviceSnapshot';
 
 // Require at least 1 second of OBSERVED time between the two readings a rate is
 // derived from, so a pair stamped inside the same second cannot divide by a
 // denominator too small to mean anything.
 const MIN_METER_DELTA_HOURS = 1 / 3600;
 
-type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energy';
-type DeviceMeasuredPowerResolution = {
+export type DeviceMeasuredPowerResolution = {
   measuredPowerKw?: number;
   observedAtMs?: number;
   reading?: MeteredPowerReading;
+  /** Where `measuredPowerKw` came from; present exactly when it is. */
+  source?: MeasuredPowerSource;
 };
 
 /**
@@ -28,8 +29,9 @@ type DeviceMeasuredPowerResolution = {
  * given.
  */
 type SelectedReading =
-  | { source: 'measure_power' | 'homey_energy'; reading: DirectPowerReading }
+  | DirectSelectedReading
   | { source: 'meter_power'; reading: MeterEnergyReading };
+type DirectSelectedReading = { source: 'measure_power' | 'homey_energy'; reading: DirectPowerReading };
 
 export class DeviceMeasuredPowerResolver {
   // The anchor a rate is measured FROM: one dated cumulative reading per device.
@@ -78,7 +80,7 @@ export class DeviceMeasuredPowerResolver {
     if (selected.source === 'meter_power') {
       return this.resolveMeterDelta(deviceId, deviceLabel, selected.reading);
     }
-    return this.resolveDirectWatts(deviceId, selected.reading);
+    return this.resolveDirectWatts(deviceId, selected);
   }
 
   // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
@@ -99,9 +101,9 @@ export class DeviceMeasuredPowerResolver {
   // freshness bookkeeping downstream relies on.
   private resolveDirectWatts(
     deviceId: string,
-    direct: DirectPowerReading,
+    selected: DirectSelectedReading,
   ): DeviceMeasuredPowerResolution {
-    const { watts, observedAtMs } = direct;
+    const { watts, observedAtMs } = selected.reading;
     const normalized = normalizeMeasuredPowerKw(watts / 1000);
     if (normalized === null) {
       return { observedAtMs };
@@ -121,6 +123,7 @@ export class DeviceMeasuredPowerResolver {
       measuredPowerKw,
       observedAtMs,
       reading: { kind: 'instantaneous', powerKw: measuredPowerKw, observedAtMs },
+      source: selected.source,
     };
   }
 
@@ -199,6 +202,7 @@ export class DeviceMeasuredPowerResolver {
           kind: 'interval_average', powerKw: 0,
           startMs: previous.observedAtMs, endMs: observedAtMs,
         },
+        source: 'meter_power',
       };
     }
 
@@ -212,6 +216,7 @@ export class DeviceMeasuredPowerResolver {
         kind: 'interval_average', powerKw: measuredPowerKw,
         startMs: previous.observedAtMs, endMs: observedAtMs,
       },
+      source: 'meter_power',
     };
   }
 

@@ -7,7 +7,6 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
-import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanService } from '../../lib/plan/planService';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { StableSampleRevision } from '../powerSamplePipeline';
@@ -35,7 +34,6 @@ export type InstallBundleReadinessParams = {
   timerKey: (suffix: string) => string;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   planService: PlanService;
-  getTrackerState: () => PowerTrackerState;
   /** This bundle's silence policy — shared with its composed plan-build gate. */
   meterSilence: MeterSilenceMonitor;
   /** Teardown fence: true once `teardown()` ran (all continuations must bail). */
@@ -139,7 +137,7 @@ export function installBundleReadinessAndFreshness(
   markPreparedOwnershipGenerationReconciled: () => void;
 } {
   const {
-    ctx, homeId, timerKey, logger, planService, getTrackerState, meterSilence,
+    ctx, homeId, timerKey, logger, planService, meterSilence,
     isTornDown, getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect,
     isMembershipReady, isMeterSourceAuthorized, isActuationFenced,
@@ -233,7 +231,6 @@ export function installBundleReadinessAndFreshness(
     logger,
     rebuild: () => planService.rebuildPlanFromCache('freshness_heartbeat'),
     meterSilence,
-    getLastSampleAtMs: () => getTrackerState().lastTimestamp,
     isTornDown,
     // Sub-home meters are fanned out ONLY by the Homey Energy poll
     // (`routeMeterReadings` drops readings under flow), so a bundle whose source

@@ -338,7 +338,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set powerTracker(value) { powerTracker = value; surplusPoolReachability.observeExportEvidence(value); },
     resetMainPowerTrackerFreshness: vi.fn(),
     meterSilenceMonitor: new MeterSilenceMonitor({
-      getLastSampleAtMs: () => powerTracker.lastTimestamp,
+      homeId: MAIN_HOME_ID,
+      getPowerTracker: () => powerTracker,
       nowMs: () => Date.now(),
       structuredLog: () => undefined,
     }),

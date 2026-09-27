@@ -7,7 +7,7 @@ import type {
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
-import type { MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
     isReportedThermostatMode,
     normalizeReportedThermostatMode,
@@ -151,7 +151,11 @@ function resolveRetainedReading(
     previousSnapshot: TransportDeviceSnapshot | undefined,
     restored: RetainedPowerReading | undefined,
 ): RetainedMeasurement | undefined {
-    if (previousSnapshot === undefined) return restored;
+    if (previousSnapshot === undefined) {
+        // The store keeps only readings a cumulative meter resolved
+        // (`retainedPowerPersistence.ts`): a direct one is re-read at once.
+        return restored === undefined ? undefined : { ...restored, source: 'meter_power' };
+    }
     if (!hasObservedMeasuredPower(previousSnapshot)) return undefined;
     return {
         measuredPowerKw: previousSnapshot.measuredPowerKw,
@@ -159,6 +163,8 @@ function resolveRetainedReading(
             ? { observedAtMs: previousSnapshot.measuredPowerObservedAtMs } : {}),
         ...(previousSnapshot.measuredPowerReading !== undefined
             ? { reading: previousSnapshot.measuredPowerReading } : {}),
+        ...(previousSnapshot.measuredPowerSource !== undefined
+            ? { source: previousSnapshot.measuredPowerSource } : {}),
     };
 }
 
@@ -175,6 +181,7 @@ function resolveRetainedMeasuredPower(
         measuredPowerKw: retained.measuredPowerKw,
         observedAtMs: retained.observedAtMs,
         reading: retained.reading,
+        source: retained.source,
     };
 }
 
@@ -323,6 +330,7 @@ export function assembleDeviceSnapshot(params: {
         binaryCapabilityId: control.binaryCapabilityId,
         powerEstimate,
         measuredPowerKw: resolvedMeasuredPower.measuredPowerKw, measuredPowerReading: resolvedMeasuredPower.reading,
+        measuredPowerSource: resolvedMeasuredPower.source,
         powerCapable: control.powerCapable,
         binaryControl: control.binaryControl,
         evCharging: control.evCharging,
@@ -417,6 +425,7 @@ function buildParsedDeviceSnapshot(params: {
     reportedStepId?: string; reportedStepPowerW?: number; reportedStepObservedAtMs?: number;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
     measuredPowerKw?: number; measuredPowerObservedAtMs?: number; measuredPowerReading?: MeteredPowerReading;
+    measuredPowerSource?: MeasuredPowerSource;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
 }): TransportDeviceSnapshot {
@@ -450,7 +459,7 @@ function buildParsedDeviceSnapshot(params: {
         available,
         reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
-        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading,
+        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading, measuredPowerSource,
         lastFreshDataMs,
         lastLocalWriteMs,
     } = params;
@@ -483,7 +492,7 @@ function buildParsedDeviceSnapshot(params: {
         thermostatMode: params.thermostatMode,
         stateOfCharge,
         temperature,
-        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading,
+        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading, measuredPowerSource,
         zone: resolveZoneLabel(device),
         zoneId: resolveZoneId(device),
         capabilities,

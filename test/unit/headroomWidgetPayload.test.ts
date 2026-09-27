@@ -37,7 +37,7 @@ describe('buildHeadroomWidgetPayload', () => {
       status: { state: 'live', status: { powerKnown: false, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
       nowMs: NOW,
     });
-    expect(payload).toEqual({ state: 'empty', subtitle: 'No power readings' });
+    expect(payload).toEqual({ state: 'empty', subtitle: 'No new power readings' });
   });
 
   test('derives current draw from hourly limit minus headroom', () => {

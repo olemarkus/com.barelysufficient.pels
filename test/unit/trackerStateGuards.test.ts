@@ -146,6 +146,28 @@ describe('isPlausiblePowerTrackerState — persisted core shape', () => {
       },
     })).toBe(false);
   });
+
+  it('accepts a held reading only while it describes the latch it was written with', () => {
+    const atMs = 1_750_000_000_000;
+    const held = {
+      powerW: 1100,
+      sinceMs: atMs - 30 * 60 * 1000,
+      atMs,
+      baseline: { totalW: 2000, loadKey: 7 },
+      contradictedAtMs: atMs - 5 * 60 * 1000,
+      longHoldEndedAtMs: null,
+    };
+    expect(isPlausiblePowerTrackerState({ lastPowerW: 1100, lastTimestamp: atMs, heldReading: held })).toBe(true);
+    // A build that sampled without writing the hold moved the latch on: the
+    // row describes a sample that is no longer there, even at the same watts.
+    expect(isPlausiblePowerTrackerState({
+      lastPowerW: 1100, lastTimestamp: atMs + 60_000, heldReading: held,
+    })).toBe(false);
+    expect(isPlausiblePowerTrackerState({ lastPowerW: 2500, lastTimestamp: atMs, heldReading: held })).toBe(false);
+    expect(isPlausiblePowerTrackerState({
+      lastPowerW: 1100, lastTimestamp: atMs, heldReading: { ...held, contradictedAtMs: atMs + 1 },
+    })).toBe(false);
+  });
 });
 
 describe('sanitizePowerTrackerSolarFields', () => {

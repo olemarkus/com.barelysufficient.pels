@@ -317,6 +317,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: 4 }),
             measuredPowerKw: 1.5,
             measuredPowerObservedAtMs: 5,
+            measuredPowerSource: 'measure_power',
             reportedStepId: 'low',
             reportedStepPowerW: 500,
             reportedStepObservedAtMs: 6,
@@ -328,9 +329,14 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         // DESCRIPTOR fields, and the observed projection is right not to copy them.
         const descriptorOnly = new Set(['expectedPowerKw', 'expectedPowerSource']);
         const projected = projectObservedState(everyObservedField);
-        expect(Object.keys(projected).sort()).toEqual(
-            Object.keys(everyObservedField).filter((key) => !descriptorOnly.has(key)).sort(),
-        );
+        // The one field the projection exchanges rather than copies: where the
+        // reading came from stays in the device layer, and consumers get what it
+        // means instead.
+        expect(projected.measuredPowerIsDirectMeasurement).toBe(true);
+        expect(Object.keys(projected).sort()).toEqual([
+            ...Object.keys(everyObservedField).filter((key) => !descriptorOnly.has(key) && key !== 'measuredPowerSource'),
+            'measuredPowerIsDirectMeasurement',
+        ].sort());
     });
 
     it('advances the measured-power observation stamp on a REPEATED identical reading', async () => {

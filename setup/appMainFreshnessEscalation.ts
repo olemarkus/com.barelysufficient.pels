@@ -11,7 +11,7 @@ import type { AppContext } from '../lib/app/appContext';
  * this one clock and the one silence policy behind it
  * (`lib/power/meterSilence.ts`): a silent Flow and a dead meter are the same
  * absence, answered the same way — one fail-closed shed pass, then the
- * composed plan-build gate blocks until an admitted sample returns.
+ * composed plan-build gate blocks until a new reading returns.
  */
 export function installMainFreshnessEscalation(
   ctx: AppContext,
@@ -25,7 +25,6 @@ export function installMainFreshnessEscalation(
     logger: () => ctx.getStructuredLogger('power'),
     rebuild: () => requirePlanService(ctx).rebuildPlanFromCache('freshness_heartbeat'),
     meterSilence: ctx.meterSilenceMonitor,
-    getLastSampleAtMs: () => ctx.powerTracker.lastTimestamp,
     isTornDown,
     isMeterSampled: () => true,
     isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),

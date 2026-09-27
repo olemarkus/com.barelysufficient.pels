@@ -287,7 +287,8 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected readonly planRebuildScheduler: PlanRebuildScheduler = this.rebuildRuntime.scheduler;
   public readonly planRebuildThrottle: PlanRebuildThrottle = this.rebuildRuntime.throttle;
   public readonly meterSilenceMonitor = createMeterSilenceMonitor({
-    getLastSampleAtMs: () => this.powerTracker.lastTimestamp,
+    homeId: MAIN_HOME_ID,
+    getPowerTracker: () => this.powerTracker,
     nowMs: () => Date.now(),
     structuredLog: () => this.getStructuredLogger('power'),
   });

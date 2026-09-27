@@ -32,6 +32,7 @@ const makeRecorder = () => {
   };
   const record = async (currentPowerW: number, nowMs: number, overrides: SampleOverrides = {}) => {
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       state,
       currentPowerW,
       nowMs,
@@ -281,6 +282,15 @@ describe('power tracker solar accounting', () => {
         exemptBuckets: {},
         lastTimestamp: start + 30 * 60 * 1000,
         lastPowerW: 1000,
+        // Both samples read 1000 W with nothing measured against it: one hold.
+        heldReading: {
+          powerW: 1000,
+          sinceMs: start,
+          atMs: start + 30 * 60 * 1000,
+          baseline: { totalW: 0, loadKey: 0 },
+          contradictedAtMs: null,
+          longHoldEndedAtMs: null,
+        },
         capacityQuarter: {
           startMs: start + 30 * 60 * 1000,
           energyKWh: 0,
@@ -314,6 +324,14 @@ describe('power tracker solar accounting', () => {
           exemptHourlyAverages: {},
           lastTimestamp: start + 30 * 60 * 1000,
           lastPowerW: 1000,
+          heldReading: {
+            powerW: 1000,
+            sinceMs: start,
+            atMs: start + 30 * 60 * 1000,
+            baseline: { totalW: 0, loadKey: 0 },
+            contradictedAtMs: null,
+            longHoldEndedAtMs: null,
+          },
           unreliablePeriods: [],
           capacityQuarter: {
             startMs: start + 30 * 60 * 1000,

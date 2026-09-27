@@ -26,6 +26,56 @@ export type CapacityMonthlyPeak = {
   peakKw: number;
 };
 
+/**
+ * The home's measured load at one sample, and which loads it sums: every
+ * device whose reading is its own direct measurement, and none at all while a
+ * battery or a producing PV inverter may be covering a load's move and holding
+ * the grid reading still (`resolveManagedLoadDraw`, `sampleIngest.ts`).
+ * Unclamped by the whole-home total, so a meter frozen at 1.1 kW cannot hide a
+ * 3 kW heater.
+ */
+export type ManagedLoadDraw = {
+  /** W; `0` when no load is measured. */
+  totalW: number;
+  /**
+   * A key over the summed loads' ids, equal exactly when the set is: two draws
+   * are comparable only over the same loads, so a device joining the sum (the
+   * snapshot loading after a restart, say) is not read as load moving.
+   */
+  loadKey: number;
+};
+
+/** See `PowerTrackerState.heldReading` and `lib/power/heldReading.ts`. */
+export type HeldReading = {
+  /** The watts held: the latch's `lastPowerW`. */
+  powerW: number;
+  /** When the reading took this value. */
+  sinceMs: number;
+  /** The sample this hold describes: the latch's `lastTimestamp` when it was written. */
+  atMs: number;
+  /**
+   * The measured load the reading is held against. It follows the load
+   * through the settle window after the reading took its value, while the
+   * meter is one seen to hold values of its own accord, and whenever the
+   * loads summed change.
+   */
+  baseline: ManagedLoadDraw;
+  /**
+   * The first of the unbroken run of samples, up to `atMs`, whose load sat far
+   * enough from the baseline that the reading should have followed; `null`
+   * while the latest did not. Once the run has lasted long enough to freeze
+   * the reading it no longer ends: the hold carries until the watts change.
+   */
+  contradictedAtMs: number | null;
+  /**
+   * When one of this meter's holds last ended clean after lasting as long as
+   * it takes to freeze a reading, or `null` if none has: a meter seen holding
+   * a value that long, and moving on, reports only on change, and for a day
+   * its holds are not judged.
+   */
+  longHoldEndedAtMs: number | null;
+};
+
 export type PowerTrackerState = {
   /** Sub-home-only provenance for the freshness latch; absent on legacy/main trackers. */
   meterIdentity?: PowerTrackerMeterIdentity;
@@ -41,6 +91,14 @@ export type PowerTrackerState = {
    */
   lastGenerationW?: number;
   lastTimestamp?: number;
+  /**
+   * The whole-home reading as it has held since it last changed, and whether
+   * the home's measured load has since said it should have moved. What makes a
+   * reading that stopped changing a suspect or dead meter rather than a quiet
+   * home is `lib/power/heldReading.ts`'s rule. Written with `lastTimestamp` on
+   * every sample and cleared with it on a freshness reset.
+   */
+  heldReading?: HeldReading;
   buckets?: Record<string, number>;
   capacityQuarter?: CapacityQuarter;
   capacityMonthlyPeak?: CapacityMonthlyPeak;
@@ -116,6 +174,8 @@ export type RecordPowerSampleParams = {
   controlledPowerW?: number;
   exemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;
+  /** The evidence a held reading is checked against (`lib/power/heldReading.ts`). */
+  managedDraw: ManagedLoadDraw;
   nowMs?: number;
   hourBudgetKWh?: number;
   /** IANA timezone used to assign completed quarters to their local billing month. */

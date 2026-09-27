@@ -256,6 +256,32 @@ const isOptionalCapacityMonthlyPeak = (value: unknown): boolean => (
   value === undefined || isCapacityMonthlyPeak(value)
 );
 
+const isStampWithin = (value: unknown, fromMs: number, toMs: number): boolean => (
+  isFiniteNumber(value) && value >= fromMs && value <= toMs
+);
+
+/**
+ * A held reading describes the latch it was written with: the same watts and
+ * the same sample. A row left behind by a build that sampled without writing
+ * it describes a latch that no longer exists, and would otherwise read as
+ * contradicted (or frozen) on the first sample it happened to match.
+ */
+const isHeldReadingOnLatch = (value: unknown, lastPowerW: unknown, lastTimestamp: unknown): boolean => {
+  if (!isPlainObjectRecord(value) || !isFiniteNumber(value.sinceMs) || !isFiniteNumber(value.atMs)) return false;
+  const { sinceMs, atMs, baseline } = value;
+  return isFiniteNumber(value.powerW) && value.powerW === lastPowerW && atMs === lastTimestamp && sinceMs <= atMs
+    && isPlainObjectRecord(baseline) && isFiniteNumber(baseline.totalW) && isFiniteNumber(baseline.loadKey)
+    && (value.contradictedAtMs === null || isStampWithin(value.contradictedAtMs, sinceMs, atMs))
+    && (value.longHoldEndedAtMs === null || isStampWithin(value.longHoldEndedAtMs, 0, atMs));
+};
+
+/** The records written beside the sample latch: the open quarter, the month's peak, the held reading. */
+const hasPlausibleLatchRecords = (value: Record<string, unknown>): boolean => (
+  isOptionalCapacityQuarterOnSamplingTimeline(value.capacityQuarter, value.lastTimestamp)
+  && isOptionalCapacityMonthlyPeak(value.capacityMonthlyPeak)
+  && (value.heldReading === undefined || isHeldReadingOnLatch(value.heldReading, value.lastPowerW, value.lastTimestamp))
+);
+
 const HOURLY_AVERAGE_MAP_FIELDS = [
   'hourlyAverages',
   'controlledHourlyAverages',
@@ -284,8 +310,7 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
     && NUMBER_MAP_FIELDS.every((field) => isOptionalNumberMap(value[field]))
     && HOURLY_AVERAGE_MAP_FIELDS.every((field) => isOptionalHourlyAverageMap(value[field]))
     && FINITE_NUMBER_FIELDS.every((field) => isOptionalFiniteNumber(value[field]))
-    && isOptionalCapacityQuarterOnSamplingTimeline(value.capacityQuarter, value.lastTimestamp)
-    && isOptionalCapacityMonthlyPeak(value.capacityMonthlyPeak)
+    && hasPlausibleLatchRecords(value)
     && (value.deviceBuckets === undefined || isDeviceBucketMap(value.deviceBuckets))
     && (
       value.unreliablePeriods === undefined

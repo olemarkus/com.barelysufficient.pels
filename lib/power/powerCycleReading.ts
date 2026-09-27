@@ -1,9 +1,6 @@
 import type { PowerTrackerState } from './tracker';
-import { resolveLastTotalPowerKw } from './lastTotalPower';
-import {
-  POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
-  resolvePowerSampleFreshness,
-} from './sampleFreshness';
+import { resolveMeterEvidenceAtMs, resolveLastTotalPowerKw } from './lastTotalPower';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from './sampleFreshness';
 
 /**
  * What one plan cycle is allowed to know about power: a MEASURED reading, or
@@ -44,10 +41,12 @@ export type SilentMeterReading = {
 export type PowerCycleReading = MeasuredPowerReading | SilentMeterReading;
 
 /**
- * The reading's display projection — the facts the owner is entitled to see,
+ * The reading's display projection — the reading as this cycle planned on it,
  * written outward onto the plan snapshot and never read back as a control
  * input. Both variants carry it: a plan build exists only behind the
- * measurement gate, so a reading (measured, or carried) always exists.
+ * measurement gate, so a reading (measured, or carried) always exists. Its
+ * stamp is control's evidence stamp; the owner-facing surfaces that warn of
+ * missing readings age the displayed one (`resolveDisplayedPowerUpdateMs`).
  */
 export type PowerCycleDisplay = {
   totalKw: number;
@@ -73,12 +72,15 @@ export const resolvePowerCycleReading = (params: {
   // violation (`lib/power/powerMeasurementGate.ts` holds every ungated home), so
   // it fails loud here instead of planning on a fabricated number.
   const totalKw = resolveLastTotalPowerKw(powerTracker);
-  const freshness = resolvePowerSampleFreshness(powerTracker, nowMs);
-  if (totalKw === null || freshness.lastPowerUpdateMs === null || freshness.powerSampleAgeMs === null) {
+  // The age of the newest EVIDENCE, not of the newest delivery: a dead meter
+  // behind a live driver keeps delivering its last value, and once the home's
+  // metered load has contradicted it for ten minutes that repeat is no more a
+  // reading than silence is (`lib/power/heldReading.ts`).
+  const lastPowerUpdateMs = resolveMeterEvidenceAtMs(powerTracker);
+  if (totalKw === null || lastPowerUpdateMs === undefined) {
     throw new Error('power cycle reading requires a latched sample — a build reached past the measurement gate');
   }
-  const lastPowerUpdateMs = freshness.lastPowerUpdateMs;
-  if (freshness.powerSampleAgeMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
+  if (nowMs - lastPowerUpdateMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
     return { isMeasured: false, totalKw, lastPowerUpdateMs };
   }
   return {

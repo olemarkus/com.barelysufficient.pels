@@ -74,6 +74,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     snapshot.measuredPowerReading = {
       kind: 'instantaneous', powerKw: measuredKw, observedAtMs,
     };
+    snapshot.measuredPowerSource = 'measure_power';
     if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
       return { changed: false, observationAdvanced: true, normalizedValue: measuredKw };
     }

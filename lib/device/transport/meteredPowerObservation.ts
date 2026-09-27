@@ -19,5 +19,6 @@ export function preserveNewerMeteredPowerReading(
   snapshot.measuredPowerReading = retained;
   snapshot.measuredPowerKw = retained.powerKw;
   snapshot.measuredPowerObservedAtMs = previous.measuredPowerObservedAtMs;
+  snapshot.measuredPowerSource = previous.measuredPowerSource;
 }
 /* eslint-enable functional/immutable-data */

@@ -743,20 +743,31 @@ export type StateOfChargeObservedProbe = {
  * hard compile error (TS2339); consumers pass through `hasObservedMeasuredPower`
  * (or hold an already-narrowed value) first.
  *
- * The two fields travel together (a measurement and the time it was observed),
- * so they are kept in one cluster. The guard gates on `measuredPowerKw` only —
- * `measuredPowerObservedAtMs` stays optional on the narrowed shape, and the one
- * staleness-sensitive consumer (`lib/power/sampleIngest.ts`) still checks it
- * independently. `measuredPowerKw` is REQUIRED on the narrowed shape, AND present
- * implies finite + non-negative: every producer write seam (`managerMeasuredPower`
- * at parse, `managerObservation` at refresh, the `measure_power` branch of
- * `applyFreshnessOnlyCapabilityUpdate` at realtime) writes the field only for a
- * `Number.isFinite` reading. So a narrowed consumer reads a usable `number`
- * without re-checking finiteness.
+ * The fields travel together (a measurement, the time it was observed, and
+ * what kind of measurement it is), so they are kept in one cluster. The guard
+ * gates on `measuredPowerKw` only — `measuredPowerObservedAtMs` stays optional
+ * on the narrowed shape. `measuredPowerKw` is REQUIRED on the narrowed shape, AND
+ * present implies finite + non-negative: every producer write seam
+ * (`managerMeasuredPower` at parse, `managerObservation` at refresh, the
+ * `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate` at realtime)
+ * writes the field only for a `Number.isFinite` reading. So a narrowed consumer
+ * reads a usable `number` without re-checking finiteness. The device layer's
+ * projection publishes `measuredPowerIsDirectMeasurement` with every reading,
+ * so it is required on the narrowed shape too.
  */
 export type MeasuredPowerObservedFields = {
     measuredPowerKw: number;
     measuredPowerObservedAtMs?: number;
+    /**
+     * The device's own meter reported this draw as it is now. False for a
+     * rate the device layer derived from a cumulative energy counter, which
+     * trails by the device app's report interval, and for Homey Energy's
+     * figure for a device with no meter of its own, which is an estimate from
+     * the owner's Energy settings that steps with on/off whatever the device
+     * draws. Resolved by the device layer, which alone knows where a reading
+     * came from.
+     */
+    measuredPowerIsDirectMeasurement: boolean;
 };
 
 /**
@@ -771,6 +782,7 @@ export type MeasuredPowerObservedFields = {
 export type MeasuredPowerObservedProbe = {
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
+    measuredPowerIsDirectMeasurement?: boolean;
 };
 
 /**

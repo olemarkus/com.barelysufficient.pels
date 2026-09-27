@@ -1,4 +1,5 @@
 import { applyFreshnessOnlyCapabilityUpdate } from '../../lib/device/transport/managerFreshness';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type {
   EvObservedProbe,
   MeasuredPowerObservedProbe,
@@ -92,11 +93,12 @@ describe('applyFreshnessOnlyCapabilityUpdate — evcharger_charging_state', () =
 // only ever holds finite values. Sibling of the measure_temperature P1 fix; this
 // block seals the whole class, not just the one capability.
 describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present implies finite)', () => {
-  it('writes a finite measure_power value (in kW)', () => {
-    const snapshot = numericSnapshot({ measuredPowerKw: 1 });
+  it('writes a finite measure_power value (in kW), as the device\'s own reading', () => {
+    const snapshot: TransportDeviceSnapshot = numericSnapshot({ measuredPowerKw: 1 });
     const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_power', value: 2000 });
     expect(result.changed).toBe(true);
     expect(snapshot.measuredPowerKw).toBe(2);
+    expect(snapshot.measuredPowerSource).toBe('measure_power');
   });
 
   it.each(NON_FINITE)('drops a non-finite measure_power value (%s) — no write, no change', (_label, value) => {

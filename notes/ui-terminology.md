@@ -540,7 +540,7 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 
 - **Held-back count** reads **"N held back"** (e.g. `2 held back`), not "N paused" or "N limited", so the count word matches the dedicated **Held-back devices** widget above. Helper: `headroomHeldBackLabel`.
 - **Not-current line** reads **"No recent power reading"** (`HEADROOM_WIDGET_COPY.notCurrentNote`): shown as the meta line when the widget's own aging of the status's `lastPowerUpdate` says the reading is not current — a dead meter leaves the last published status behind. It REPLACES the available-power/held-back claims, and the bar/state-label tones go neutral with it: every current-state claim is withdrawn together, only the dimmed last-known numbers remain. Never "stale", never "data outdated" — say what happens.
-- **No-measurement empty state** reads **"No power readings"** (`HEADROOM_WIDGET_COPY.noReadingsSubtitle`), in the value slot beside "No data yet" / "Reopen the dashboard": shown when the status behind the tile was the silent-meter fail-closed pass (`powerKnown: false`, meter silent past the 10-minute shed timeout). The blob carries no headroom then and nothing derived from it is drawn, not even dimmed (owner ruling 2026-09-02); the bare lead matches the Overview's no-readings banner without its time qualifier.
+- **No-measurement empty state** reads **"No new power readings"** (`HEADROOM_WIDGET_COPY.noReadingsSubtitle`), in the value slot beside "No data yet" / "Reopen the dashboard": shown when the status behind the tile was the silent-meter fail-closed pass (`powerKnown: false`, meter silent, or stuck on one value, past the 10-minute shed timeout). The blob carries no headroom then and nothing derived from it is drawn, not even dimmed (owner ruling 2026-09-02); the bare lead matches the Overview's no-readings banner without its time qualifier.
 - **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
 
 ## Solar surplus vocabulary
@@ -1573,15 +1573,21 @@ payload's producer-resolved readings fact (`never` | `received` + stamp) aged
 against the 60-second freshness threshold — the UI never re-derives the fact
 from tracker fields or persisted-blob fallbacks.
 
-- Leads: `No power readings yet.` (never received) / `No power readings in
-  the last minute.` (stopped). Say what happens — never "stale", "outdated",
-  or an age readout.
+- Leads: `No power readings yet.` (never received) / `No new power readings
+  in the last minute.` (stopped, or suspect: a meter repeating one value while
+  the metered load has moved for two minutes counts as stopped here, and it
+  still shows that value in Homey, so "no readings" would contradict it) / `No new power readings for over 10
+  minutes. Managed devices stay limited until a new reading arrives.` (the
+  fail-closed pass has run). Say what happens — never "stale", "outdated", or
+  an age readout.
 - Hints name the remedy and the real control: the Flow card by its
   registered name (**Report power usage** — `… or set up a Flow with the
-  Report power usage action.` / `Check the Flow that runs Report power usage.`),
-  the picker as `Pick a whole-home meter under Limits & safety.`, a chosen
-  meter as `Check that the selected whole-home meter is available and
-  reporting power in Homey Energy.`
+  Report power usage action.` / `Check the Flow that runs Report power usage
+  and the meter it reads from.`), the picker as `Pick a whole-home meter under
+  Limits & safety.`, a chosen meter as `Check that the selected whole-home
+  meter is available in Homey Energy and its reading is changing.` A frozen
+  meter is available and reports power, so the stopped hints name the reading
+  moving, which is what it fails.
 - The never-received Flow arm names BOTH remedies, **meter first** (`Pick a
   whole-home meter under Limits & safety, or set up a Flow with the Report
   power usage action.`) — the one state where the install has nothing

@@ -12,7 +12,8 @@ import type { AppContext } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
-import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
+import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from '../lib/power/lastTotalPower';
+import { resolvePowerReadingsForUi } from '../lib/power/trackerUiProjection';
 import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
@@ -89,11 +90,12 @@ export const getPlanStatusForUiFromApp = (homey: Homey.App['homey'], homeId: Hom
  *   shut, and nothing this run vouches for a stored blob.
  * - `latched` — a measurement is latched (`hasPowerMeasurement`); the pull
  *   composers' evidence.
- * - `sample_recorded` — a sample just landed, with its own stamp; the realtime
- *   push's evidence. The stamp overlays `lastPowerUpdate`, and an absent blob
- *   still yields a live minimal status carrying just the stamp — the
- *   stale-data banner reads it during the first-sample-before-first-plan
- *   window.
+ * - `sample_recorded` — a sample just landed; the realtime push's evidence.
+ *   Its stamp is the displayed power-update stamp: the sample's own, or when
+ *   a suspect reading took its value. The stamp overlays `lastPowerUpdate`,
+ *   and an absent blob still yields a live minimal status carrying just the
+ *   stamp — the stale-data banner reads it during the
+ *   first-sample-before-first-plan window.
  */
 export type PowerMeasurementEvidence =
   | { readonly state: 'none' }
@@ -125,16 +127,19 @@ export const classifyPowerStatusRead = (
 
 /**
  * The push's evidence: it rides a recorded sample, so the tracker handed in is
- * the live one. `recordPowerSample` stamps `lastPowerW` and `lastTimestamp`
- * together, so a latched tracker without a finite stamp is a torn state real
- * ingest cannot produce — it degrades to plain `latched` evidence and answers
- * exactly as the pull composers would for the same tracker.
+ * the live one. Its stamp is the displayed power-update stamp
+ * (`resolveDisplayedPowerUpdateMs`), the one the published status carries
+ * (`requireDisplayedPowerUpdateMs`), so `lastPowerUpdate` means the same on the
+ * push as on the pull: the sample's own stamp, or when a suspect reading took
+ * its value. A latched tracker without one is a torn state real ingest cannot
+ * produce — it degrades to plain `latched` evidence and answers exactly as the
+ * pull composers would for the same tracker.
  */
 const toRealtimeMeasurementEvidence = (powerTracker: PowerTrackerState): PowerMeasurementEvidence => {
   if (!hasPowerMeasurement(powerTracker)) return { state: 'none' };
-  const lastTimestamp = powerTracker.lastTimestamp;
-  return typeof lastTimestamp === 'number' && Number.isFinite(lastTimestamp)
-    ? { state: 'sample_recorded', sampleAtMs: lastTimestamp }
+  const evidenceAtMs = resolveDisplayedPowerUpdateMs(powerTracker);
+  return evidenceAtMs !== undefined
+    ? { state: 'sample_recorded', sampleAtMs: evidenceAtMs }
     : { state: 'latched' };
 };
 
@@ -279,14 +284,13 @@ export const emitSettingsUiPowerUpdatedForApp = (
   if (typeof realtime !== 'function') return;
   const status = getPlanStatusForUiFromApp(homey, MAIN_HOME_ID);
   // Status-only push: no tracker (the WebView preserves its cached one). The
-  // readings stamp resolves from the same tracker the status rode in on;
-  // with no finite stamp (a half-latch) the field is omitted, and the
-  // WebView keeps its last-known readings fact.
+  // readings fact resolves from the same tracker the status rode in on, by
+  // the pull's own resolver; with no measurement latched the field is
+  // omitted, and the WebView keeps its last-known readings fact.
+  const readings = resolvePowerReadingsForUi(powerTracker);
   realtime.call(api, 'power_updated', {
     status: resolveRealtimePowerStatus(status, powerTracker),
-    ...(typeof powerTracker.lastTimestamp === 'number' && Number.isFinite(powerTracker.lastTimestamp)
-      ? { readings: { state: 'received', lastPowerUpdateMs: powerTracker.lastTimestamp } }
-      : {}),
+    ...(readings.state === 'received' ? { readings } : {}),
   })
     .catch((error: unknown) => onError('Failed to emit power_updated event', error as Error));
 };

@@ -54,6 +54,7 @@ describe('solar-export calculation floors', () => {
   it('recordPowerSample bounds exempt usage by GROSS consumption, not net (no managed leak under solar)', async () => {
     let saved: PowerTrackerState | undefined;
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state: {} as PowerTrackerState,

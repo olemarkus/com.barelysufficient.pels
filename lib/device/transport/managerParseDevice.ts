@@ -5,7 +5,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
-import type { MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import type { ResolvedTransportPowerState } from './transportTypes';
@@ -38,6 +38,7 @@ export type RetainedMeasurement = {
     measuredPowerKw: number;
     observedAtMs?: number;
     reading?: MeteredPowerReading;
+    source?: MeasuredPowerSource;
 };
 
 export type DeviceTransportParseProviders = {

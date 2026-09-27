@@ -1,15 +1,16 @@
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PowerTrackerState } from './trackerTypes';
+import { resolveFrozenSinceMs, resolveSuspectSinceMs } from './heldReading';
 
 /**
  * The one reader of the latched whole-home total for the capacity path.
  *
  * `PowerTrackerState.lastPowerW` is the single latch: `recordPowerSample`
- * writes it from the same sample that stamps `lastTimestamp`, so a consumer
- * that reads the value here and its freshness from `resolvePowerSampleFreshness`
- * is describing one sample rather than joining two. It used to be copied into
- * `CapacityGuard.mainPowerKw` as well, which is exactly the join that could
- * disagree.
+ * writes it from the same sample that stamps `lastTimestamp` and the held
+ * reading, so a consumer that reads the value here and its age from
+ * `resolveMeterEvidenceAtMs` is describing one sample rather than joining
+ * two. It used to be copied into `CapacityGuard.mainPowerKw` as well, which is
+ * exactly the join that could disagree.
  *
  * `null` means no trustworthy reading: either no sample has landed yet, or the
  * meter identity changed and the freshness reset cleared the latch
@@ -64,7 +65,7 @@ export function hasPowerMeasurement(
  * card via `readFlowNumberArg`, Homey Energy via `extractLiveMeterPowerWatts`).
  * So absence here is a contract violation, not a reading to interpret, and it
  * fails loud rather than handing a nullable — or a fabricated stand-in — onward.
- * The twin of `requireLastSampleAtMs` below, and of `resolvePowerCycleReading`.
+ * The twin of `requireDisplayedPowerUpdateMs` below, and of `resolvePowerCycleReading`.
  */
 export function requireLastTotalPowerKw(
   powerTracker: Pick<PowerTrackerState, 'lastPowerW'>,
@@ -77,18 +78,42 @@ export function requireLastTotalPowerKw(
 }
 
 /**
- * The latched sample's stamp, for consumers that exist only behind the
- * measurement gate (a plan build, a status write computed from one). The gate
- * (`hasPowerMeasurement`) implies a latched sample, and ingest stamps
- * `lastTimestamp` with `lastPowerW` on the same write — so absence here is a
- * gate violation, and it fails loud instead of handing a nullable onward.
+ * The displayed power-update stamp (`resolveDisplayedPowerUpdateMs`), for
+ * consumers that exist only behind the measurement gate (a status write
+ * computed from a plan build). The gate (`hasPowerMeasurement`) implies a
+ * latched sample, so absence here is a gate violation, and it fails loud
+ * instead of handing a nullable onward.
  */
-export function requireLastSampleAtMs(
-  powerTracker: Pick<PowerTrackerState, 'lastPowerW' | 'lastTimestamp'>,
-): number {
-  const lastTimestamp = powerTracker.lastTimestamp;
-  if (!isFiniteNumber(lastTimestamp)) {
-    throw new Error('power sample stamp required — a gated consumer read an unsampled tracker');
+export function requireDisplayedPowerUpdateMs(powerTracker: PowerTrackerState): number {
+  const stamp = resolveDisplayedPowerUpdateMs(powerTracker);
+  if (stamp === undefined) {
+    throw new Error('power update stamp required — a gated consumer read an unsampled tracker');
   }
-  return lastTimestamp;
+  return stamp;
+}
+
+/**
+ * The newest evidence that the whole-home meter is alive, as control counts it
+ * — the stamp the silence policy and the cycle reading age. Every admitted
+ * sample is that evidence, except once the reading is frozen: held on one value
+ * the home's measured load has contradicted for ten minutes
+ * (`lib/power/heldReading.ts`). Then it is only as current as the moment the
+ * reading took that value. `undefined` when nothing is latched.
+ */
+export function resolveMeterEvidenceAtMs(powerTracker: PowerTrackerState): number | undefined {
+  const stamp = resolveFrozenSinceMs(powerTracker) ?? powerTracker.lastTimestamp;
+  return isFiniteNumber(stamp) ? stamp : undefined;
+}
+
+/**
+ * The same stamp as the owner is shown it — by the no-readings banner, the
+ * headroom widget and the published status. It moves back to when the reading
+ * took its value as soon as the reading is suspect, well before control treats
+ * it as silent, so the owner hears of a meter that looks dead before PELS acts
+ * on it, and hears of one control never acts on (a load that came back before
+ * the reading froze). `undefined` when nothing is latched.
+ */
+export function resolveDisplayedPowerUpdateMs(powerTracker: PowerTrackerState): number | undefined {
+  const stamp = resolveSuspectSinceMs(powerTracker) ?? powerTracker.lastTimestamp;
+  return isFiniteNumber(stamp) ? stamp : undefined;
 }

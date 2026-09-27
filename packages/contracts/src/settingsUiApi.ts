@@ -285,7 +285,12 @@ export type SettingsUiPlanMetaSnapshotBase = {
   /** Genuinely absent until the hour has bucket data. */
   hourControlledKWh?: number;
   hourUncontrolledKWh?: number;
-  /** The sample stamp behind this cycle — always present (see `totalKw`). */
+  /**
+   * The meter evidence stamp this cycle planned against — always present (see
+   * `totalKw`): the latest sample's own stamp, or, once the reading is judged
+   * frozen, when it took its value. The no-readings banner ages the readings
+   * fact instead, which moves back earlier, as soon as the reading is suspect.
+   */
   lastPowerUpdateMs: number;
 };
 

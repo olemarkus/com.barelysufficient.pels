@@ -1,5 +1,6 @@
 import type { PowerTrackerState } from './tracker';
-import type { GenerationSegment } from './trackerTypes';
+import type { GenerationSegment, ManagedLoadDraw } from './trackerTypes';
+import { resolveManagedLoadKey } from './heldReading';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw } from './capacityModel';
@@ -10,6 +11,7 @@ import {
   normalizeMeasuredPowerKw,
 } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import {
   splitControlledUsageKw,
   sumBudgetExemptMeasuredUsageKw,
@@ -69,6 +71,48 @@ export function recordDailyBudgetCap(params: {
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
 
+const NO_LOAD_EVIDENCE: ManagedLoadDraw = { totalW: 0, loadKey: resolveManagedLoadKey([]) };
+
+/**
+ * Whether something behind the meter may be covering a load's move and holding
+ * the grid reading still: a battery at any time, and PV while it produces. The
+ * co-sampled production reading decides that; with none, a PV device in the
+ * home may be producing unseen. A grid-tied inverter at night covers nothing,
+ * so a PV home is judged like any other then.
+ */
+const mayCoverLoad = (
+  devices: readonly TargetDeviceSnapshot[],
+  generationW: number | undefined,
+): boolean => (
+  devices.some((device) => device.deviceClass === 'battery')
+  || (generationW === undefined ? devices.some((device) => device.deviceClass === 'solarpanel') : generationW > 0)
+);
+
+/**
+ * The home's measured load (`ManagedLoadDraw`), UNCLAMPED: the evidence a held
+ * whole-home reading is checked against (`lib/power/heldReading.ts`). A device
+ * counts, power-limited or not, when its reading is its own direct measurement
+ * (`measuredPowerIsDirectMeasurement`): neither a rate derived from a
+ * cumulative counter nor an estimate is a move the grid meter must follow. A
+ * battery or PV inverter is not a load, and never counts. Availability is
+ * not asked. Homey keeps an offline device's last value,
+ * which cannot move, and dropping the device from the sum would restart the
+ * run each time a flaky one blinks. Nothing counts while a battery or a
+ * producing PV inverter may be covering the load.
+ */
+const resolveManagedLoadDraw = (
+  devices: readonly (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[],
+  generationW: number | undefined,
+): ManagedLoadDraw => {
+  if (mayCoverLoad(devices, generationW)) return NO_LOAD_EVIDENCE;
+  const measured = devices
+    .filter(hasObservedMeasuredPower)
+    .filter((device) => device.measuredPowerIsDirectMeasurement && !isObserveOnlyRoleClassKey(device.deviceClass));
+  let totalW = 0;
+  for (const device of measured) totalW += device.measuredPowerKw * 1000;
+  return { totalW, loadKey: resolveManagedLoadKey(measured.map((device) => device.id)) };
+};
+
 const buildMeasuredDevicePowerWById = (params: {
   devices: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[];
 }): Record<string, number> | undefined => {
@@ -105,10 +149,10 @@ const buildMeasuredDevicePowerWById = (params: {
     // longer a reading stayed stable the less PELS trusted it, and dropped a
     // legitimately-unchanging device out of its own energy bucket for as long as
     // it stayed correct (confirmed on a real thermostat holding a true 0 W for
-    // 16 h). Freshness still guards the WHOLE-HOME sample
-    // (this module's own `sampleFreshness` gate) and observation trust —
-    // those ask "is the pipeline alive", which is a different question from "is
-    // this capability value current". Do not conflate them again.
+    // 16 h). Freshness still guards the WHOLE-HOME reading (the silence policy
+    // ages its evidence stamp, `resolveMeterEvidenceAtMs`) and observation
+    // trust — those ask "is the meter alive", which is a different question
+    // from "is this capability value current". Do not conflate them again.
     // Availability IS still consulted, and it is a different question from age.
     // Homey retains the last capability value when a device goes offline, so
     // without this an unavailable device's final positive reading would be
@@ -254,6 +298,7 @@ export async function recordPowerSampleForApp(params: {
   // (`notes/safe-pace-two-constraints.md`).
   const exemptKw = snapshot.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
+  const managedDraw = resolveManagedLoadDraw(snapshot, generationW);
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
   const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices: snapshot });
   const profilingState = updateObjectiveProfiles({
@@ -273,6 +318,7 @@ export async function recordPowerSampleForApp(params: {
     controlledPowerW,
     exemptPowerW,
     currentDevicePowerWById,
+    managedDraw,
     nowMs,
     hourBudgetKWh,
     timeZone,

@@ -1,14 +1,41 @@
 import type { Logger as PinoLogger } from '../logging/logger';
+import type { HomeId } from '../utils/settingsKeys';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from './sampleFreshness';
+import { resolveMeterEvidenceAtMs } from './lastTotalPower';
+import { resolveFrozenSinceMs } from './heldReading';
+import type { PowerTrackerState } from './trackerTypes';
 
 export type MeterSilenceLogger = Pick<PinoLogger, 'info' | 'warn'>;
 
 export type MeterSilenceMonitorDeps = {
-  /** The home's tracker latch (`lastTimestamp`); absent = never sampled. */
-  getLastSampleAtMs: () => number | undefined;
+  /** The home this monitor watches, named on its events. */
+  homeId: HomeId;
+  /**
+   * The home's tracker. The monitor ages its evidence stamp
+   * (`resolveMeterEvidenceAtMs`), the one the reading resolver ages too, so
+   * the pass the gate lets through is the pass that finds the meter silent.
+   */
+  getPowerTracker: () => PowerTrackerState;
   nowMs: () => number;
   structuredLog: () => MeterSilenceLogger | undefined;
 };
+
+/**
+ * One silence: since when the meter has given no evidence, and whether its
+ * samples stopped or its reading froze under them. Both name it. A frozen
+ * reading dates from when the reading took its value, which can be the very
+ * stamp an earlier silence ended on (samples stop after a new value, resume
+ * on the same one, and the reading then freezes): the same stamp, a different
+ * silence, owed a pass of its own.
+ */
+export type MeterSilence = {
+  silentSinceMs: number;
+  cause: 'no_samples' | 'frozen_reading';
+};
+
+const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
+  a !== null && a.silentSinceMs === b.silentSinceMs && a.cause === b.cause
+);
 
 /**
  * The 10-minute meter-silence policy, one instance per home, for BOTH power
@@ -19,15 +46,26 @@ export type MeterSilenceMonitorDeps = {
  * Owns two connected facts:
  * - the plan-build BLOCK: engaged once a home's meter has been silent past
  *   `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS` and the one shed pass has run,
- *   cleared by the next ADMITTED sample — the ingest moves the tracker
- *   latch this monitor reads, so nothing has to be pushed at it;
+ *   cleared by the next ADMITTED sample that carries a new reading — the
+ *   ingest moves the tracker stamp this monitor reads, so nothing has to be
+ *   pushed at it;
  * - the ONE fail-closed shed pass the silence window is owed: the escalation
- *   clock asks `shouldRunShedPass()`, runs the rebuild (the reading resolves
+ *   clock asks `shedPassOwedFor()`, runs the rebuild (the reading resolves
  *   to its silent-meter variant and the planner takes the shed-everything
  *   directive, `lib/plan/planBuilderSilentMeter.ts`), and reports
  *   `noteShedPassCompleted` — after which the block holds until data returns.
  *
- * The outage clock is the sample stamp, and nothing else (owner ruling
+ * "Silent" means no evidence the meter is alive, which is more than no
+ * delivery. A whole-home meter that has died behind a live driver can keep
+ * delivering its last value — Homey retains a capability value, and a poll or a
+ * timer-driven Flow keeps handing it over — and a HAN outage left one home
+ * running on a frozen 1.1 kW for three days (2026-09-14) with its hard cap
+ * unenforced. Once the home's metered load has contradicted the held value for
+ * ten minutes, the stamp is when the reading took it
+ * (`resolveMeterEvidenceAtMs`, `lib/power/heldReading.ts`), so a frozen feed
+ * and a dead one are the same outage. The events below name which it was.
+ *
+ * The outage clock is the evidence stamp, and nothing else (owner ruling
  * 2026-09-02): ten minutes without a reading is a ten-minute outage whether or
  * not this process was running for all of it. (The stamp a restart hands back
  * is the last PERSISTED one, up to a write-throttle window behind the last
@@ -81,13 +119,8 @@ export type MeterSilenceMonitorDeps = {
  * gate owns it ("no plan for a home whose meter never reported").
  */
 export class MeterSilenceMonitor {
-  /**
-   * The sample timestamp the one shed pass was completed against. `0` = no
-   * pass completed for the current silence (a real ingest stamp is a wall
-   * clock, never 0), replacing the escalation closure's old nullable latch
-   * one-for-one.
-   */
-  private shedPassDoneForTs = 0;
+  /** The silence the one shed pass was completed against; `null` = none yet. */
+  private shedPassDoneFor: MeterSilence | null = null;
 
   private blockLogged = false;
 
@@ -95,47 +128,58 @@ export class MeterSilenceMonitor {
 
   /**
    * The block, judged at READ time: silence past the timeout, and the one
-   * shed pass already run against this stamp. Composed into `planBuildGate`
+   * shed pass already run against this silence. Composed into `planBuildGate`
    * by the wiring.
    */
   isBlocked(): boolean {
-    if (!this.silentPastTimeout()) {
+    const silence = this.currentSilence();
+    if (silence === null) {
       this.logBlockCleared();
       return false;
     }
-    const blocked = this.shedPassDoneForTs === this.deps.getLastSampleAtMs();
+    const blocked = isSameSilence(this.shedPassDoneFor, silence);
     if (blocked && !this.blockLogged) {
       this.blockLogged = true;
-      this.deps.structuredLog()?.warn({ event: 'meter_silence_block_engaged' });
+      this.deps.structuredLog()?.warn({ event: 'meter_silence_block_engaged', homeId: this.deps.homeId, ...silence });
     }
     return blocked;
   }
 
-  /** Escalation protocol: is the one fail-closed pass still owed for this silence? */
-  shouldRunShedPass(): boolean {
-    return this.silentPastTimeout() && this.shedPassDoneForTs !== this.deps.getLastSampleAtMs();
+  /**
+   * Escalation protocol: the silence whose one fail-closed pass is still
+   * owed, or `null` when none is — the meter is not silent, or this silence
+   * has had its pass. The escalation latches the pass against it.
+   */
+  shedPassOwedFor(): MeterSilence | null {
+    const silence = this.currentSilence();
+    return silence !== null && !isSameSilence(this.shedPassDoneFor, silence) ? silence : null;
   }
 
   /**
-   * Latch the completed pass against the timestamp it was taken for, so a
-   * sample racing in (which moves the timestamp) re-arms the protocol for the
-   * NEXT silence instead of being swallowed by this one's latch.
+   * Latch the completed pass against the silence it was taken for. The block
+   * compares the latch with the CURRENT silence at read time, so a reading
+   * racing in during the pass (which ends that silence) re-arms the protocol
+   * for the NEXT silence instead of being swallowed by this one's latch.
    */
-  noteShedPassCompleted(forTs: number): void {
-    this.shedPassDoneForTs = forTs;
-    this.deps.structuredLog()?.warn({ event: 'meter_silence_shed_pass_completed' });
+  noteShedPassCompleted(silence: MeterSilence): void {
+    this.shedPassDoneFor = silence;
+    this.deps.structuredLog()?.warn({
+      event: 'meter_silence_shed_pass_completed', homeId: this.deps.homeId, ...silence,
+    });
   }
 
   private logBlockCleared(): void {
     if (!this.blockLogged) return;
     this.blockLogged = false;
-    this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared' });
+    this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared', homeId: this.deps.homeId });
   }
 
-  private silentPastTimeout(): boolean {
-    const lastTs = this.deps.getLastSampleAtMs();
+  /** The silence under way when the evidence stamp is older than the timeout, else `null`. */
+  private currentSilence(): MeterSilence | null {
+    const tracker = this.deps.getPowerTracker();
+    const lastTs = resolveMeterEvidenceAtMs(tracker);
     // Never sampled: the measurement gate owns that answer, not this monitor.
-    if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return false;
-    return this.deps.nowMs() - lastTs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+    if (lastTs === undefined || this.deps.nowMs() - lastTs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) return null;
+    return { silentSinceMs: lastTs, cause: resolveFrozenSinceMs(tracker) === null ? 'no_samples' : 'frozen_reading' };
   }
 }

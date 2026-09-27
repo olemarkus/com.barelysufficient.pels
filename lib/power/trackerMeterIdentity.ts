@@ -13,6 +13,7 @@
 import type { PowerTrackerMeterIdentity, PowerTrackerState } from './trackerTypes';
 import type { HomeId } from '../utils/settingsKeys';
 import type { TrackerStore } from './trackerStore';
+import { withHeldReadingAfterRestart } from './heldReading';
 
 export const powerTrackerMeterIdentityMatches = (
   actual: PowerTrackerMeterIdentity | undefined,
@@ -30,6 +31,7 @@ const withoutFreshness = (
   ...(meterIdentity === undefined ? {} : { meterIdentity }),
   lastTimestamp: undefined,
   lastPowerW: undefined,
+  heldReading: undefined,
   // An unfinished quarter is evidence from the old meter too. Keep compacted
   // completed peaks, but never join the next meter's sample onto this period.
   capacityQuarter: undefined,
@@ -59,7 +61,9 @@ export const prepareTrackerForMeter = (
     return { ok: false };
   }
   if (stored === null) return { ok: true, state: { meterIdentity } };
-  if (powerTrackerMeterIdentityMatches(stored.meterIdentity, meterIdentity)) return { ok: true, state: stored };
+  if (powerTrackerMeterIdentityMatches(stored.meterIdentity, meterIdentity)) {
+    return { ok: true, state: withHeldReadingAfterRestart(stored) };
+  }
   const state = withoutFreshness(stored, meterIdentity);
   try {
     store.save(homeId, state);

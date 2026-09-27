@@ -10,6 +10,7 @@ describe('periodic status used kWh', () => {
 
     const sampleStart = Date.UTC(2025, 0, 1, 0, 30, 0);
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,
@@ -20,6 +21,7 @@ describe('periodic status used kWh', () => {
       saveState,
     });
     await recordPowerSample({
+      managedDraw: { totalW: 0, loadKey: 0 },
       generationSegments: [],
       timeZone: 'UTC',
       state,

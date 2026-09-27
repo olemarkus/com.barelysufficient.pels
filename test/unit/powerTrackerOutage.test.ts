@@ -32,6 +32,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,
@@ -51,6 +52,7 @@ describe('PowerTracker Outage Tracking', () => {
         const nextTime = now + gapMs;
 
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,
@@ -73,6 +75,7 @@ describe('PowerTracker Outage Tracking', () => {
         // First outage
         const time1 = now + 2 * 3600 * 1000;
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,
@@ -88,6 +91,7 @@ describe('PowerTracker Outage Tracking', () => {
         // Normal update
         const time2 = time1 + 10 * 60 * 1000;
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state: savedState,
@@ -103,6 +107,7 @@ describe('PowerTracker Outage Tracking', () => {
         // Second outage
         const time3 = time2 + 3 * 3600 * 1000;
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state: savedState,
@@ -129,6 +134,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,
@@ -153,6 +159,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,
@@ -176,6 +183,7 @@ describe('PowerTracker Outage Tracking', () => {
         state.lastPowerW = 1000;
 
         await recordPowerSample({
+            managedDraw: { totalW: 0, loadKey: 0 },
             generationSegments: [],
             timeZone: 'UTC',
             state,

@@ -9,6 +9,7 @@ const HISTORY = new Date(START - 3600000).toISOString();
 const sample = async (state: PowerTrackerState, nowMs = START + 10000): Promise<PowerTrackerState> => {
   let saved = state;
   await recordPowerSample({
+    managedDraw: { totalW: 0, loadKey: 0 },
     generationSegments: [],
     timeZone: 'UTC',
     state, nowMs, currentPowerW: 1000, controlledPowerW: 1000, exemptPowerW: 0, hourBudgetKWh: 5,

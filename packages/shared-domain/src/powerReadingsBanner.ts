@@ -8,7 +8,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from './powerFreshness';
  * warning banner above the home-scope bar.
  *
  * Copy rules (`notes/ui-terminology.md` § "The no-readings banner"): say
- * what happens ("No power readings…", never "stale"/"data outdated"); name
+ * what happens ("No new power readings…", never "stale"/"data outdated"); name
  * controls as settings ("Whole-home meter" under "Limits & safety"); name the
  * Flow card by its registered name — **Report power usage** — so the words on
  * the banner are findable in the Flow editor. There is no separate
@@ -22,23 +22,29 @@ export type PowerReadingsBannerContent = { text: string; actionLabel: string };
 type BannerPowerSource = 'homey_energy' | 'flow';
 
 const NONE_YET_LEAD = 'No power readings yet.';
-const STALE_LEAD = 'No power readings in the last minute.';
+// "New", because the stamp this ages is when the reading last CHANGED: a meter
+// whose driver keeps repeating one frozen value still shows that value in
+// Homey, so "no readings" would contradict what the owner can see there.
+const STALE_LEAD = 'No new power readings in the last minute.';
 // The plan behind the page was built without a measurement: the meter has been
 // silent past the 10-minute shed timeout and PELS ran its one fail-closed pass.
 // The hero draws nothing for that cycle (owner ruling 2026-09-02), so this is
 // the only line on the page that connects the cause (no readings) to what the
 // owner sees below it (every managed device `Limited`). "Limited" is the
 // canonical word (`notes/ui-terminology.md`); "stay" says nothing will change
-// until readings return, which is exactly the silence block's rule.
-const UNMEASURED_LEAD = 'No power readings for over 10 minutes. Managed devices stay limited until readings return.';
+// until a new reading arrives, which is exactly the silence block's rule.
+const UNMEASURED_LEAD = 'No new power readings for over 10 minutes. '
+  + 'Managed devices stay limited until a new reading arrives.';
 const ACTION_LABEL = 'Check power source';
 
 // Meter first: it is the path with nothing to build, and most homes have one.
 const HINT_FLOW_NONE_YET = 'Pick a whole-home meter under Limits & safety, or set up a Flow '
   + 'with the Report power usage action.';
-const HINT_FLOW_STALE = 'Check the Flow that runs Report power usage.';
-const HINT_METER_CHOSEN = 'Check that the selected whole-home meter is available '
-  + 'and reporting power in Homey Energy.';
+// A meter that keeps repeating one frozen value is still "available" and still
+// "reporting power", so both stopped-hints name what it fails: the reading moving.
+const HINT_FLOW_STALE = 'Check the Flow that runs Report power usage and the meter it reads from.';
+const HINT_METER_CHOSEN = 'Check that the selected whole-home meter is available in Homey Energy '
+  + 'and its reading is changing.';
 const HINT_METER_NOT_CHOSEN = 'Pick a whole-home meter under Limits & safety.';
 
 type BannerHintInput = {
