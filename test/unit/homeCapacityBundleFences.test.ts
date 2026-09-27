@@ -20,6 +20,7 @@ const acceptedTargetOutcome = (): ActuatorOutcome => ({
 });
 const testActuator = (apply: Actuator['apply']): Actuator => ({
   apply,
+  canTurnOnDevice: () => true,
   resolveTemperatureTarget: (_deviceId, desired) => desired,
 });
 

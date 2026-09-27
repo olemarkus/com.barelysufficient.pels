@@ -34,7 +34,7 @@ export const cancelDeferredObjectiveForContext = (
   if (objectiveAbsenceIsTrustworthy(settings, deviceId)) {
     return { ok: false, reason: 'task_not_found' };
   }
-  const deviceName = ctx.latestTargetSnapshot.find((entry) => entry.id === deviceId)?.name ?? null;
+  const deviceName = ctx.deviceConfiguration.get(deviceId)?.name ?? null;
   const outcome = clearObjectiveForDevice(
     buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
     { deviceId, deviceName },

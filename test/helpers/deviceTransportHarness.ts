@@ -84,17 +84,24 @@ export function createTestDeviceTransport(
   // reading as "caller injected nothing" — a transport that throws on its first
   // dispatch AND a subscribe helper attached to an emitter nothing reaches.
   const { observedStateDispatcher: injected, retainedPowerStore, ...rest } = options ?? {};
+  const onSnapshotMutated = options?.onSnapshotMutated ?? (() => undefined);
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
   const store = retainedPowerStore ?? createRetainedPowerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   if (injected) {
     return new DeviceTransport(homey, logger, providers, powerState, {
-      ...rest, observedStateDispatcher: injected, retainedPowerStore: store,
+      ...rest,
+      onSnapshotMutated,
+      observedStateDispatcher: injected,
+      retainedPowerStore: store,
     });
   }
   const emitter = new ObservedStateEmitter();
   const transport = new DeviceTransport(homey, logger, providers, powerState, {
-    ...rest, observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()), retainedPowerStore: store,
+    ...rest,
+    onSnapshotMutated,
+    observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
+    retainedPowerStore: store,
   });
   emitterByTransport.set(transport, emitter);
   return transport;

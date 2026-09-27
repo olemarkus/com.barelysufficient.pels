@@ -1,21 +1,19 @@
 /**
- * Device write seam for `DeviceTransport`, extracted as homey-free free
- * functions over a shared `TransportContext`. Applies capability writes without
+ * Device write service for `DeviceTransport`. Applies capability writes without
  * fabricating observed truth, plus target batches, previews, and stepped-load
  * step requests. The actual SDK write lands in
  * `managerHomeyApi.setRawCapabilityValue`, which already takes plain data.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
-import { getLogger } from '../../logging/logger';
+import type { SteppedLoadWrite } from '../../ports/steppedLoadWrite';
+import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
-import { clearLocalCapabilityWrite, recordLocalCapabilityWrite } from './managerRealtimeSupport';
 import { recordLocalWriteObservation } from './managerObservation';
 import { setObservedNativeSteppedLoadStep } from '../managerNativeSteppedCommand';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
@@ -25,41 +23,44 @@ import type {
 } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { TransportContext } from './transportContext';
+import type { HomeyDeviceLike } from '../../utils/types';
+import type { Logger } from '../../utils/types';
+import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
+import { isCanSetControl } from '../deviceActionProjection';
+import { TransportSnapshotStore } from './transportSnapshotStore';
+import { TransportObservationState } from './transportObservationState';
 
-const moduleLogger = getLogger('device/transport');
+const emitTransportDebug = getDebugEmitter('devices', 'devices');
 const FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS = 10_000;
 
 function normalizeCapabilityValue(
-    ctx: TransportContext,
+    snapshotStore: TransportSnapshotStore,
     deviceId: string,
     capabilityId: string,
     value: unknown,
 ): unknown {
     if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-    const snapshot = ctx.latestSnapshot.find((device) => device.id === deviceId);
+    const snapshot = snapshotStore.getSnapshotByDeviceId(deviceId);
     const target = snapshot?.targets.find((entry) => entry.id === capabilityId);
     if (!target) return value;
     return normalizeTargetCapabilityValue({ target, value });
 }
 
-function emitCapabilityWriteDebug(ctx: TransportContext, params: {
-    event: 'device_capability_write_requested' | 'device_capability_write_accepted';
-    deviceId: string;
-    deviceName?: string;
-    capabilityId: string;
-    value: unknown;
-    write: CapabilityWrite;
-}): void {
-    (ctx.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
-        event: params.event,
-        deviceId: params.deviceId,
-        deviceName: params.deviceName ?? null,
-        capabilityId: params.capabilityId,
-        writeCapabilityId: params.write.capabilityId,
-        value: params.value,
-        valueType: typeof params.value,
-        writeValue: params.write.value,
+function emitCapabilityWriteDebug(
+    event: 'device_capability_write_requested' | 'device_capability_write_accepted',
+    deviceId: string,
+    capabilityId: string,
+    value: unknown,
+    write: CapabilityWrite,
+): void {
+    emitTransportDebug({
+        event,
+        deviceId,
+        capabilityId,
+        writeCapabilityId: write.capabilityId,
+        value,
+        valueType: typeof value,
+        writeValue: write.value,
     });
 }
 
@@ -84,38 +85,60 @@ type SdkWrite = {
  * it, so PELS's own write to the switch is no observation of it either.
  */
 function resolveSwitchSdkWrite(
-    ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
+    trackedDevice: HomeyDeviceLike | undefined,
     requested: CapabilityWrite,
 ): SdkWrite {
-    const routed = routeSwitchWrite(snapshot, requested);
-    if (typeof requested.value !== 'boolean') return { write: routed, readBackAsWritten: true };
-    const easeeWrite = resolveEaseeSwitchWrite(snapshot, ctx.getTrackedDevicesById(), requested.value);
-    return {
-        write: easeeWrite.kind === 'current' ? easeeWrite.write : routed,
-        readBackAsWritten: !isEaseeUnderBuiltInControl(snapshot),
+    const plain: SdkWrite = {
+        write: routeSwitchWrite(snapshot, requested),
+        readBackAsWritten: true,
     };
+    if (typeof requested.value !== 'boolean') return plain;
+    const easeeWrite = resolveEaseeSwitchWrite(snapshot, trackedDevice, requested.value);
+    const readBackAsWritten = !isEaseeUnderBuiltInControl(snapshot);
+    if (easeeWrite.kind === 'current') {
+        return { write: easeeWrite.write, readBackAsWritten };
+    }
+    return { ...plain, readBackAsWritten };
 }
 
 function routeSwitchWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): CapabilityWrite {
     return { capabilityId: snapshot.binaryWriteCapabilityId ?? requested.capabilityId, value: requested.value };
 }
 
-export async function setCapability(
-    ctx: TransportContext,
-    deviceId: string,
-    capabilityId: string,
-    value: unknown,
-): Promise<unknown> {
+export class DeviceWriteService {
+  constructor(
+    private readonly snapshotStore: TransportSnapshotStore,
+    private readonly observationState: TransportObservationState,
+    private readonly logger: Logger,
+    private readonly temperatureAdjustments: TemperatureAdjustmentObserver,
+    private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
+    private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
+    private readonly noteStopCommand: (deviceId: string, nowMs: number) => void,
+  ) {}
+
+  /** Actuator preflight, resolved against the current transport snapshot. */
+  canTurnOnDevice(deviceId: string): boolean {
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    return snapshot !== undefined
+      && snapshot.available !== false
+      && isCanSetControl(snapshot);
+  }
+
+  async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
-    const normalizedValue = normalizeCapabilityValue(ctx, deviceId, capabilityId, value);
-    const snapshotBefore = ctx.latestSnapshot.find((device) => device.id === deviceId);
+    const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
+    const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     const { write, readBackAsWritten }: SdkWrite = snapshotBefore?.binaryCapabilityId === capabilityId
-        ? resolveSwitchSdkWrite(ctx, snapshotBefore, requested)
+        ? resolveSwitchSdkWrite(
+          snapshotBefore,
+          this.snapshotStore.getTrackedRawDevice(deviceId),
+          requested,
+        )
         : { write: requested, readBackAsWritten: true };
     logEvCapabilityRequest({
-        logger: ctx.logger,
+        logger: this.logger,
         snapshotBefore,
         deviceId,
         capabilityId,
@@ -123,47 +146,36 @@ export async function setCapability(
     });
 
     if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
-        ctx.temperatureAdjustments.recordCommand(deviceId, normalizedValue, Date.now());
+        this.temperatureAdjustments.recordCommand(deviceId, normalizedValue, Date.now());
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
-    recordLocalCapabilityWrite({
-        recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
+    this.observationState.recordLocalCapabilityWrite(deviceId, capabilityId, normalizedValue);
+    emitCapabilityWriteDebug(
+        'device_capability_write_requested',
         deviceId,
         capabilityId,
-        value: normalizedValue,
-    });
-    emitCapabilityWriteDebug(ctx, {
-        event: 'device_capability_write_requested',
-        deviceId,
-        deviceName: snapshotBefore?.name,
-        capabilityId,
-        value: normalizedValue,
+        normalizedValue,
         write,
-    });
+    );
     try {
         await setRawCapabilityValue(deviceId, write.capabilityId, write.value);
     } catch (error) {
-        clearLocalCapabilityWrite({
-            recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
-            deviceId,
-            capabilityId,
-        });
+        this.observationState.clearLocalCapabilityWrite(deviceId, capabilityId);
         throw error;
     }
-    emitCapabilityWriteDebug(ctx, {
-        event: 'device_capability_write_accepted',
+    emitCapabilityWriteDebug(
+        'device_capability_write_accepted',
         deviceId,
-        deviceName: snapshotBefore?.name,
         capabilityId,
-        value: normalizedValue,
+        normalizedValue,
         write,
-    });
+    );
 
     if (readBackAsWritten) {
         recordLocalWriteObservation({
-            state: ctx.observationState,
-            latestSnapshot: ctx.latestSnapshot,
+            state: this.observationState.getObservationState(),
+            latestSnapshot: this.snapshotStore.getSnapshot(),
             deviceId,
             capabilityId,
             value: normalizedValue,
@@ -178,22 +190,85 @@ export async function setCapability(
     // value (`observationMerge`, `retained_fresher`) until a newer observation
     // arrives.
     if (snapshotBefore?.binaryCapabilityId === capabilityId) {
-        ctx.dispatchObservedStateForDevice(deviceId, capabilityId);
+        this.dispatchObservedStateForDevice(deviceId, capabilityId);
     }
 
-    const snapshotAfter = ctx.latestSnapshot.find((device) => device.id === deviceId);
+    const snapshotAfter = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     logEvCapabilityAccepted({
-        logger: ctx.logger,
+        logger: this.logger,
         snapshotAfter,
         deviceId,
         capabilityId,
         value: normalizedValue,
     });
     return normalizedValue;
-}
+  }
 
-function resolveSteppedLoadFlowTriggerCard(ctx: TransportContext): SteppedLoadFlowTriggerCard | undefined {
-    return ctx.getFlowTriggerCard?.('desired_stepped_load_changed');
+  async requestSteppedLoadStep(
+    params: SteppedLoadWrite,
+  ): Promise<SteppedLoadStepRequestResult> {
+    const {
+      deviceId,
+      profile,
+      desiredStepId,
+      planningPowerW,
+      planningCurrentA,
+      previousStepId,
+    } = params;
+    if (isSteppedLoadOffStep(profile, desiredStepId)) this.noteStopCommand(deviceId, Date.now());
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
+      const nativeRequested = await setObservedNativeSteppedLoadStep({
+        owner: this.snapshotStore,
+        deviceId,
+        profile,
+        desiredStepId,
+        setCapability: (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
+        logger: this.logger,
+      });
+      return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
+    }
+
+    const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');
+    if (!triggerCard?.trigger) return { requested: false };
+
+    try {
+      const outcome = await awaitFlowTriggerAcceptance(() => triggerCard.trigger({
+        step_id: desiredStepId,
+        planning_power_w: planningPowerW,
+        planning_current_a: planningCurrentA,
+        previous_step_id: previousStepId ?? '',
+      }, {
+        deviceId,
+      }));
+      if (outcome === 'timed_out') {
+        this.logger.structuredLog.warn({
+          event: 'stepped_load_flow_trigger_unacknowledged',
+          reasonCode: 'flow_trigger_timeout',
+          deviceId,
+          deviceName: snapshot?.name,
+          desiredStepId,
+          planningPowerW,
+          commandTransport: 'flow',
+          timeoutMs: FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS,
+        });
+        return { requested: false, reason: 'flow_trigger_timeout' };
+      }
+      return { requested: true, transport: 'flow' };
+    } catch (error: unknown) {
+      this.logger.structuredLog.error({
+        event: 'stepped_load_command_failed',
+        reasonCode: 'flow_trigger_failed',
+        deviceId,
+        deviceName: snapshot?.name,
+        desiredStepId,
+        planningPowerW,
+        commandTransport: 'flow',
+        err: normalizeError(error),
+      });
+      return { requested: false };
+    }
+  }
 }
 
 async function awaitFlowTriggerAcceptance(
@@ -211,90 +286,5 @@ async function awaitFlowTriggerAcceptance(
         return await Promise.race([triggerResult, timeoutResult]);
     } finally {
         if (acceptanceTimeout) clearTimeout(acceptanceTimeout);
-    }
-}
-
-export async function requestSteppedLoadStep(ctx: TransportContext, params: {
-    deviceId: string;
-    profile: SteppedLoadProfile;
-    desiredStepId: string;
-    planningPowerW: number;
-    planningCurrentA: number;
-    previousStepId?: string;
-}): Promise<SteppedLoadStepRequestResult> {
-    const {
-        deviceId,
-        profile,
-        desiredStepId,
-        planningPowerW,
-        planningCurrentA,
-        previousStepId,
-    } = params;
-    // A step to the off step is PELS stopping the device: a car-link stop that
-    // follows it is PELS's, not the car's.
-    if (isSteppedLoadOffStep(profile, desiredStepId)) {
-        ctx.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
-    }
-    const snapshot = ctx.latestSnapshotById.get(deviceId);
-    if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
-        const nativeRequested = await setObservedNativeSteppedLoadStep({
-            owner: ctx.owner,
-            deviceId,
-            profile,
-            desiredStepId,
-            setCapability: (capabilityId, value) => setCapability(ctx, deviceId, capabilityId, value),
-            logger: ctx.logger,
-        });
-        return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
-    }
-
-    const triggerCard = resolveSteppedLoadFlowTriggerCard(ctx);
-    if (!triggerCard?.trigger) return { requested: false };
-
-    try {
-        const outcome = await awaitFlowTriggerAcceptance(() => triggerCard.trigger({
-            step_id: desiredStepId,
-            planning_power_w: planningPowerW,
-            planning_current_a: planningCurrentA,
-            previous_step_id: previousStepId ?? '',
-        }, {
-            deviceId,
-        }));
-        if (outcome === 'timed_out') {
-            // Unacknowledged, not failed: the trigger went out and nothing came
-            // back. The executor resolves it like a slow success and waits for
-            // telemetry, so this must not claim the command definitely failed.
-            //
-            // Its OWN event, not `stepped_load_command_outcome_unknown`: the
-            // executor emits that one for this same trigger, and it is the layer
-            // that knows the command's direction and which clocks it stamped.
-            // Two layers emitting one event name would double-count every Flow
-            // device in any triage that tallies unknown outcomes.
-            ctx.logger.structuredLog.warn({
-                event: 'stepped_load_flow_trigger_unacknowledged',
-                reasonCode: 'flow_trigger_timeout',
-                deviceId,
-                deviceName: snapshot?.name,
-                desiredStepId,
-                planningPowerW,
-                commandTransport: 'flow',
-                timeoutMs: FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS,
-            });
-            return { requested: false, reason: 'flow_trigger_timeout' };
-        }
-        return { requested: true, transport: 'flow' };
-    } catch (error: unknown) {
-        const normalizedError = normalizeError(error);
-        ctx.logger.structuredLog.error({
-            event: 'stepped_load_command_failed',
-            reasonCode: 'flow_trigger_failed',
-            deviceId,
-            deviceName: snapshot?.name,
-            desiredStepId,
-            planningPowerW,
-            commandTransport: 'flow',
-            err: normalizedError,
-        });
-        return { requested: false };
     }
 }

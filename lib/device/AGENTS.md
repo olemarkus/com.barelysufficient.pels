@@ -1,11 +1,17 @@
 # Device Layer — Orientation and State Invariants
 
-`lib/device` owns observed current device state and device-specific actuation transport. The planner imports this module only through the producer seams allowlisted by `no-plan-to-device` (`deviceActionProjection.ts`, `deviceResidualKw.ts`); planning inputs cross that boundary as producer-resolved flat values. The executor imports nothing from here at all: its device reads are the transport's descriptors and the observer projection, joined in `lib/executor/executorDeviceRead.ts`.
+`lib/device` owns device runtime configuration and the Homey-facing transport. The planner imports this module only through the producer seams allowlisted by `no-plan-to-device` (`deviceActionProjection.ts`, `deviceResidualKw.ts`); planning inputs cross that boundary as producer-resolved flat values. Planner and executor setup read narrow `DeviceConfiguration` values plus Observer state; `DeviceReads` is for inventory and UI metadata.
 
 ## Map
 
-- `deviceTransport.ts` — the hub class: syncs Homey state back, detects external changes, owns the actuation transport (splitting the two halves is still open work).
-- `transport/` — snapshot fetch/parse, realtime capability handlers, freshness, and retained-observation accounting (`managerObservation.ts`).
+- `transport/deviceHomeySdk.ts` — Homey's SDK boundary; initializes the REST client and owns the realtime socket lifecycle.
+- `deviceTransport.ts` — device transport owner; syncs snapshots and push events, routes device writes, and coordinates transport services.
+- `transport/snapshotCommit.ts` — accepted-snapshot transaction across the snapshot, runtime configuration, settle evidence and retained power owners.
+- `transport/observationBridge.ts` — orders observation events and publishes the consolidated transport view to Observer.
+- `deviceConfiguration.ts` — runtime config required by plan/execution, with identity and control/power settings only. It omits inventory-only class, zone, native-write capability and Flow-conflict metadata.
+- `deviceRuntimeRead.ts` — joins that configuration with an Observer record for the shared plan/executor input.
+- `deviceReads.ts` — inventory metadata, including device class, zone, native-write capabilities and Flow conflicts. The unmanaged picker read belongs to `settingsUiDeviceReads.ts`.
+- `transport/` — `SnapshotRefreshService` owns pull refresh and `RealtimeIngestService` owns pushed device events; both use the focused `DeviceSnapshotReader`, `TransportNotifications`, snapshot store and observation owners they need. Freshness and retained-observation accounting live in their own services.
 - `deviceActionProjection.ts` — the producer that resolves observed/planner-facing bits onto `PlanInputDevice`; consumers must not re-branch on source/provenance/evidence.
 - `devicePowerEstimate.ts` / `devicePowerCalibration*.ts` / `deviceResidualKw.ts` — expected-power estimation and step calibration.
 - `manager*.ts` — transport halves (control, energy, flow support, measured power, native EV, native stepped command).

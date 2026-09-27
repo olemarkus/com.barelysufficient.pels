@@ -341,14 +341,18 @@ describe('classifyEvCarSelfStop', () => {
   });
 
   it('classifies the car holding on its own schedule', () => {
-    expect(classifyEvCarSelfStop({ ...base, carState: 'plugged_in_paused' })).toBe('car_schedule_hold');
+    expect(classifyEvCarSelfStop({
+      ...base,
+      carState: 'plugged_in_paused',
+      chargerState: 'plugged_in_paused',
+      chargerControlOn: true,
+    })).toBe('car_schedule_hold');
   });
 
-  it('accepts a charger that ended the session and reads unplugged with the car still connected', () => {
-    // An Easee at the car's limit: `plugged_out`, switch off, car plugged in.
-    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_out', chargerSwitchOn: false }))
-      .toBe('car_not_charging');
-    expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in' })).toBe('car_not_charging');
+  it('does not call a paused charger a car self-stop during resume hold', () => {
+    expect(classifyEvCarSelfStop({
+      ...base, chargerState: 'plugged_in_paused', chargerControlOn: true,
+    })).toBeNull();
   });
 
   it('returns null while the charger is actually delivering', () => {

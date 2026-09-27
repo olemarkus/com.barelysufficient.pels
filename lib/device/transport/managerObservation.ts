@@ -5,8 +5,9 @@ export {
     createObservationState,
     type DeviceDebugObservedSource,
     type DeviceDebugObservedSources,
-    type DeviceTransportObservationState,
 } from './observationState';
+
+export { TemperatureRecoveryService } from './temperatureRecovery';
 
 export {
     getDebugObservedSources,

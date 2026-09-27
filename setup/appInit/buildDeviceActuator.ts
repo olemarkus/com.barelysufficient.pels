@@ -42,6 +42,7 @@ export const createTemperatureControlFencedActuator = (
   base: Actuator,
   shouldFence: (command: DeviceCommand) => boolean,
 ): Actuator => ({
+  canTurnOnDevice: base.canTurnOnDevice.bind(base),
   resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
     isTemperatureTargetCommand(command) && shouldFence(command)
@@ -73,6 +74,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
   const transport = ctx.deviceManager;
   if (!transport) return null;
   const actuatorTransport: ActuatorTransport = {
+    canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
     requestBinaryControl: (deviceId, desired) => transport.requestBinaryControl(
       deviceId,
       desired,

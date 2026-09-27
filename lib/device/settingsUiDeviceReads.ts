@@ -3,8 +3,11 @@ import type {
     SettingsUiRecommendationCarsRead,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceSurfaces } from './deviceSurfaces';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveChargerPhasePresets } from './chargerPhasePreset';
 import { resolveCarAssociationCandidates } from './evCarLinkObservation';
+import { projectDeviceSurfaces } from './deviceSurfaces';
 
 export { resolveChargerPhasePresets };
 
@@ -28,8 +31,9 @@ export const resolveCarAssociationCandidatesRead = (
 
 /** Trusted tagged metadata reads supplied by the live device transport. */
 export type SettingsUiDeviceReadSource = {
-    readChargerPhasePresets: () => ChargerPhasePresetsRead;
-    readCarAssociationCandidates: () => SettingsUiRecommendationCarsRead;
+  readChargerPhasePresets: () => ChargerPhasePresetsRead;
+  readCarAssociationCandidates: () => SettingsUiRecommendationCarsRead;
+  getUiPickerDevices: () => TransportDeviceSnapshot[];
 };
 
 type SettingsUiDeviceReadSourceState =
@@ -74,11 +78,18 @@ export class SettingsUiDeviceReads {
             : { state: 'unavailable' };
     }
 
-    readCarAssociationCandidates(): SettingsUiRecommendationCarsRead {
+  readCarAssociationCandidates(): SettingsUiRecommendationCarsRead {
         return this.sourceState.state === 'resolved'
             ? this.sourceState.source.readCarAssociationCandidates()
             : { state: 'unavailable' };
-    }
+  }
+
+  getUiPickerDevices(): DeviceSurfaces[] {
+    return this.sourceState.state === 'resolved'
+      ? projectDeviceSurfaces(this.sourceState.source.getUiPickerDevices())
+      : [];
+  }
+
 }
 
 /** Resolve the untrusted Homey app shell at the device-owned read boundary. */

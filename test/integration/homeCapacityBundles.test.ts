@@ -99,6 +99,7 @@ const buildRig = (): Rig => {
       getAssociatedCar: () => undefined,
       requestBinaryControl: vi.fn(async () => undefined),
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
     } as unknown as AppContext['deviceManager'],
@@ -309,16 +310,12 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     const first = rig.registry.readHome('h_a');
     if (first.state !== 'resolved') throw new Error('expected h_a to resolve');
-    // `scope.getPlanDevices()` seeds observed state and decorates the whole
-    // device snapshot. A read that touched it would turn a UI poll into a
-    // snapshot rebuild, so the seed must not fire and the commit stamp must
-    // not move between two reads.
-    vi.mocked(rig.ctx.seedObservedStateFromSnapshot).mockClear();
+    // A read that touched the plan-device source would rebuild the snapshot,
+    // so it must not move the commit stamp between two reads.
     await vi.advanceTimersByTimeAsync(5_000);
     const second = rig.registry.readHome('h_a');
     if (second.state !== 'resolved') throw new Error('expected h_a to resolve');
 
-    expect(rig.ctx.seedObservedStateFromSnapshot).not.toHaveBeenCalled();
     expect(second.reading.planUpdatedAtMs).toBe(first.reading.planUpdatedAtMs);
   });
 
@@ -1437,6 +1434,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
         setCapability(deviceId, 'onoff', desired).then(() => undefined)
       ),
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId: string, desired: number) => desired,
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
       applyDeviceTargets: vi.fn(async () => undefined),

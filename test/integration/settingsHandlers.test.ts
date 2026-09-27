@@ -206,6 +206,7 @@ describe('createSettingsHandler', () => {
     const actuator = createTemperatureControlFencedActuator(
       {
         apply,
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
       },
       () => temperatureControlDisabled,

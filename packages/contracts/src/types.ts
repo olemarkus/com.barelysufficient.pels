@@ -841,7 +841,8 @@ export type ProjectedObservedDeviceState = ObservedDeviceState
     & TemperatureObservedProbe
     & StateOfChargeObservedProbe
     & MeasuredPowerObservedProbe
-    & ReportedStepObservedProbe;
+    & ReportedStepObservedProbe
+    & { steppedLoadProfile?: SteppedLoadProfile };
 
 /**
  * Step-command / planning state the app-layer decorator

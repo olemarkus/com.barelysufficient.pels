@@ -13,7 +13,6 @@
  * mid-flight selection change) publishes nothing, and the ownership fence can
  * only ever move together with the watts it governs.
  */
-import type { TransportContext } from './transportContext';
 import type { LivePowerReport } from './managerFetch';
 
 /** One whole-home power sample, carrying the identity of the meter it came from. */
@@ -31,7 +30,7 @@ export type HomePowerSampleWithIdentity = {
 };
 
 export function updateHomePowerFromReport(
-    ctx: TransportContext,
+    setGenerationW: (watts: number | null, observedAtMs: number) => void,
     report: LivePowerReport,
 ): HomePowerSampleWithIdentity | null {
     // A FAILED read is not a measurement and must not be published: this
@@ -55,7 +54,7 @@ export function updateHomePowerFromReport(
     // nothing so the held reading carries forward.
     const { home, generation } = report;
     if (generation.state !== 'unavailable') {
-      ctx.observedStateDispatcher.setGenerationW(
+      setGenerationW(
         generation.state === 'measured' ? generation.watts : null,
         Date.now(),
       );

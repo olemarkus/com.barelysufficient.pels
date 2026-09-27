@@ -39,6 +39,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
       getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {

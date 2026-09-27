@@ -2,7 +2,7 @@ import type { ObservedDeviceState } from '../../../packages/contracts/src/types'
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { ObservedDeviceStateRefreshPayload } from '../../../packages/contracts/src/observedDeviceState';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
+import type { TransportObservationState } from './transportObservationState';
 import {
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
@@ -100,7 +100,7 @@ export type HandleRealtimeDeviceUpdateResult = {
 export function handleRealtimeDeviceUpdate(params: {
   device: HomeyDeviceLike;
   latestSnapshot: TransportDeviceSnapshot[];
-  recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
+  observationState: TransportObservationState;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TransportDeviceSnapshot | null;
   minSignificantPowerW?: number;
@@ -113,7 +113,7 @@ export function handleRealtimeDeviceUpdate(params: {
   const {
     device,
     latestSnapshot,
-    recentLocalCapabilityWrites,
+    observationState,
     shouldTrackRealtimeDevice,
     parseDevice,
     minSignificantPowerW = 0,
@@ -141,7 +141,7 @@ export function handleRealtimeDeviceUpdate(params: {
   const result = reconcileRealtimeDeviceUpdate({
     latestSnapshot,
     device,
-    recentLocalCapabilityWrites,
+    observationState,
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
   });
   const observedControlStateChanged = result.changes.length > 0;

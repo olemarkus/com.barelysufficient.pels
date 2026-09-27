@@ -187,6 +187,7 @@ const createTestActuator = (
   });
   return {
     apply,
+    canTurnOnDevice: () => true,
     resolveTemperatureTarget: (_deviceId, desired) => desired,
   };
 };

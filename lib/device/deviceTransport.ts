@@ -12,90 +12,73 @@
  * changes here must surface planner-facing data
  * through those seams, never as new exports for `lib/plan` to import.
  *
- * This class is the Homey-SDK leaf. It keeps SDK wiring (`init`), snapshot
- * orchestration, and the dispatcher/projection bridge; the cohesive,
- * homey-free behaviour (realtime capability handling, binary-settle evidence,
- * device-update reconciliation, device writes) lives in `transport/*` modules
- * that operate over the shared `TransportContext` this class builds. See
+ * The transport owns snapshot orchestration, device writes, and the
+ * dispatcher/projection bridge. SDK setup and the realtime socket are owned by
+ * `DeviceHomeySdk`; observation dispatch, snapshot commit, and writes have
+ * separate owners. Snapshot refresh and realtime ingestion have separate
+ * services, each composed from only the collaborators its workflow uses. See
  * `notes/state-management/observer-transport-split.md`.
  */
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
+import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type {
   AssociatedCarSnapshot,
   BinaryControlObservation,
-  SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { projectObservedState } from './observedStateProjection';
-import { createCarStateOfChargeAdoption, resolveAssociatedCar } from './transport/carAssociation';
-import type { HomeyDeviceLike, Logger } from '../utils/types';
-import type { TargetedMissState } from './transport/targetedSnapshotMerge';
-import type { LiveDevicePowerWatts } from './managerEnergy';
-import { createObservationProducers, type ObservationProducers } from './observationProducers';
-import type { RecentLocalCapabilityWrites } from './transport/managerRealtimeSupport';
-import { initHomeyHttpClient, resolveHomeyInstance } from './transport/managerHomeyApi';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
-import type {
-  ObservationCursor,
-  ObservedDeviceStateEvent,
-  ObservedDeviceStateRefreshEvent,
-  PlanRealtimeUpdateEvent,
-} from './transport/managerRealtimeHandlers';
-import { normalizeError } from '../utils/errorUtils';
 import {
-  createObservationState,
+  applyAssociatedCarStateOfCharge,
+  clearAssociatedCarStateOfCharge,
+  resolveAssociatedCar,
+} from './transport/carAssociation';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
+import { createObservationProducers, type ObservationProducers } from './observationProducers';
+import { getLogger } from '../logging/logger';
+import { DeviceHomeySdk } from './transport/deviceHomeySdk';
+import type { LiveFeedHealth } from './liveFeed';
+import { ObservationBridge } from './transport/observationBridge';
+import { SnapshotCommit } from './transport/snapshotCommit';
+import {
   getDebugObservedSources,
   reportFlowSteppedObservation,
+  TemperatureRecoveryService,
   type DeviceDebugObservedSources,
-  type DeviceTransportObservationState,
   type FlowSteppedLoadObservation,
 } from './transport/managerObservation';
 import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
-import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
-import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
-import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
-import type { HomePowerSampleWithIdentity } from './transport/resolvedHomeMeterDispatch';
 import {
-  cloneBinaryControlObservation,
   createEstimateDecisionLogState,
   createPeakPowerLogState,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
   type ResolvedTransportPowerState,
   type SnapshotRefreshMetrics,
-  type TransportObservedStateDispatcher,
+  type SnapshotRefreshOptions,
 } from './transport/transportTypes';
-import { reconcileBinarySettleEvidenceWithSnapshot } from './transport/binarySettleEvidence';
+import { BinarySettleEvidenceService } from './transport/binarySettleEvidence';
 import {
     buildBinaryCommandConfirmationSnapshot, resolveTemperatureTarget,
 } from './transport/semanticControlResolution';
 import {
-  handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
-import { handleRealtimeDeviceUpdateEvent } from './transport/deviceUpdateHandling';
-import {
-  requestSteppedLoadStep as runRequestSteppedLoadStep,
-  setCapability as runSetCapability,
-} from './transport/deviceWrites';
-import type { DeviceFetchResult } from './transport/managerFetch';
+import { DeviceWriteService } from './transport/deviceWrites';
 import type { ZoneTree } from './transport/managerZones';
-import { ZoneTreeCache } from './transport/zoneTreeCache';
+import { TransportSnapshotStore } from './transport/transportSnapshotStore';
+import { DeviceConfigurationStore } from './deviceConfiguration';
 import {
   computePeriodicStatusMetrics,
   fetchLiveGenerationW as runFetchLiveGenerationW,
   type LiveGenerationRead,
-  fetchDevicesByKnownIds as runFetchDevicesByKnownIds,
-  fetchDevicesForDebug,
-  fetchDevicesForSnapshot as runFetchDevicesForSnapshot,
-  getSnapshotUiPickerDevices,
-  parseSnapshotDevice,
-  parseConformingDeviceListForTests,
+  type HomePowerSampleWithIdentity,
+  SnapshotRefreshService,
+  SnapshotRefreshState,
   pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
-  refreshSnapshot as runRefreshSnapshot,
 } from './transport/snapshotRefresh';
+import { DeviceSnapshotReader } from './transport/deviceSnapshotReader';
+import { RealtimeIngestService } from './transport/transportServices';
+import { TransportNotifications } from './transport/transportNotifications';
 import {
     resolveCarAssociationCandidatesRead,
     resolveChargerPhasePresets,
@@ -124,75 +107,37 @@ export type {
 export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
 
 export class DeviceTransport {
-    private sdkReady = false;
-    private liveFeed: DeviceLiveFeed | null = null;
-    private logger: Logger;
-    private homey: Homey.App;
+    private readonly deviceSdk: DeviceHomeySdk;
+    private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
     // kinds (incl. the EV plug-state the consumer-facing snapshot type omits).
-    private latestSnapshot: TransportDeviceSnapshot[] = [];
-    private latestSnapshotById: Map<string, TransportDeviceSnapshot> = new Map();
+    private readonly snapshotStore = new TransportSnapshotStore();
+    private readonly refreshState = new SnapshotRefreshState();
+    readonly deviceConfigurationStore = new DeviceConfigurationStore();
     // Per-device transient-miss state for targeted (by-id) refreshes. A device
     // present in the targeted request set but absent from the read result this
     // cycle advances its {misses,firstMissMs}; a successful read (or any full
     // refresh) resets it. Owned here, mutated by `mergeTargetedRefreshSnapshot`,
     // which drives the read-count + wall-clock retain-vs-drop grace.
-    private readonly targetedMissByDeviceId: Map<string, TargetedMissState> = new Map();
-    private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
-    // Reassignable snapshot-refresh scalars threaded to `snapshotRefresh.ts`
-    // through a stable holder so the captured accessor closures mutate this object
-    // (never the `assembleContext` parameter). `emptySnapshotGrace` tracks a run of
-    // transient empty SDK reads while a populated snapshot is held (abandon-grace);
-    // `latestRawDevices` is the last full picker list; `lastSnapshotRefreshMetricsKey`
-    // dedupes the refresh-completed log; `snapshotWarm` says whether the LAST
-    // committed full device read listed any raw device (see `hasWarmSnapshot`).
-    private readonly refreshScalars: {
-        emptySnapshotGrace: { firstSeenMs: number; reads: number } | null;
-        latestRawDevices: HomeyDeviceLike[];
-        lastSnapshotRefreshMetricsKey: string | null;
-        snapshotWarm: boolean;
-    } = {
-        emptySnapshotGrace: null,
-        latestRawDevices: [],
-        lastSnapshotRefreshMetricsKey: null,
-        snapshotWarm: false,
-    };
-    // Zone-tree cache + fetch-generation guard (see `zoneTreeCache.ts`).
-    private readonly zoneTreeCache = new ZoneTreeCache();
-    // Zone-tree COMMIT notification seam (multi-home membership recompute).
-    // Transport-owned like the observed-state dispatcher, but set-after-
-    // construction: wiring subscribes via `setOnZoneTreeCommitted` once the
-    // consumer exists and detaches with `undefined` at uninit. Invoked only on
-    // a SUCCESSFUL generation-guarded commit (`snapshotRefresh.ts`), contained
-    // there so a subscriber throw can never surface on the detached chain.
-    private onZoneTreeCommitted?: () => void;
-    // Realtime zone-move seam (same shape/lifecycle as `onZoneTreeCommitted`):
-    // fires when a realtime device.update commits an entry with a changed
-    // `zoneId`; invoked contained in `deviceUpdateHandling.ts`.
-    private onDeviceZoneChanged?: () => void;
     private powerState: ResolvedTransportPowerState;
     private readonly retainedPower: RetainedPowerPersistence;
-    private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
-    private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
-    private observationState: DeviceTransportObservationState = createObservationState();
-    private observationSeqByDeviceId: Map<string, number> = new Map();
-    private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
+    private readonly observationBridge: ObservationBridge;
+    private readonly binaryEvidence: BinarySettleEvidenceService;
+    private readonly snapshotCommit: SnapshotCommit;
     // Pre-wiring boot placeholder only: `initializeDeviceApi` wiring always
     // replaces it. `unavailable` is the honest pre-wiring answer — never a
     // fabricated selection.
     private providers: DeviceTransportParseProviders = {
         getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
     };
-    private getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'] | undefined;
-    private onSnapshotMutated: DeviceTransportOptions['onSnapshotMutated'] | undefined;
-    private debugStructured: StructuredDebugEmitter | undefined;
-    private readonly observedStateDispatcher: TransportObservedStateDispatcher;
+    private readonly getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'];
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
     // resolution consults) and emits `battery_state_observed`; never feeds the
     // hard-cap import path. See `batteryStateProducer.ts`. Constructed in the
     // constructor body (its emit needs the already-assigned logger).
     private readonly observationProducers: ObservationProducers;
+    private readonly writeService: DeviceWriteService;
     // Read-only PV / solar production awareness producer. Holds the detected solar-id
     // set (the authoritative role-membership set the app's managed/controllable
     // resolution consults) and emits `solar_production_observed`; never feeds the
@@ -202,22 +147,22 @@ export class DeviceTransport {
     // (invisible to the rest of PELS) against charger plug edges and emits
     // structured events only — no planning, admission, or actuation consumer.
     // See `evCarLinkProducer.ts`.
-    // One shared context handed to the homey-free transport collaborators; built
-    // once so the extracted free functions mutate the SAME snapshot / evidence
-    // maps this class owns (object identity preserved).
-    private readonly ctx: TransportContext;
+    private readonly notifications: TransportNotifications;
+    private readonly reader: DeviceSnapshotReader;
+    private readonly refreshService: SnapshotRefreshService;
+    private readonly realtimeIngest: RealtimeIngestService;
 
     private readonly handleRealtimeCapabilityUpdate = (
         deviceId: string, capabilityId: string, value: unknown,
     ): void => {
-        runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
+        this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value);
     };
 
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
     tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
-        handleRealtimeDeviceUpdateEvent(this.ctx, device);
+        this.realtimeIngest.handleDeviceUpdate(device);
     };
 
     constructor(
@@ -227,23 +172,49 @@ export class DeviceTransport {
         powerState: DeviceTransportPowerState | undefined,
         options: DeviceTransportOptions,
     ) {
-        this.homey = homey;
         this.logger = logger;
-        this.debugStructured = options.debugStructured;
         this.getFlowTriggerCard = options.getFlowTriggerCard;
-        this.onSnapshotMutated = options.onSnapshotMutated;
-        this.observedStateDispatcher = options.observedStateDispatcher;
+        if (providers) this.providers = providers;
+        this.notifications = new TransportNotifications(options.onSnapshotMutated);
+        this.deviceSdk = new DeviceHomeySdk(
+            homey,
+            this.logger,
+            this.handleRealtimeDeviceUpdate,
+            this.handleRealtimeCapabilityUpdate,
+        );
         this.observationProducers = createObservationProducers({
             emit: (p) => this.logger.structuredLog.info(p),
-            getSnapshots: () => this.latestSnapshot,
+            getSnapshots: () => this.snapshotStore.getSnapshot(),
             evCarLinkSnapshotAccess: options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
-            ...createCarStateOfChargeAdoption({
-                getCtx: () => this.ctx,
-                dispatch: (id, cap) => this.dispatchObservedStateForDevice(id, cap),
-            }),
+            onAssociatedCarStateOfCharge: (reading) => {
+                if (!applyAssociatedCarStateOfCharge(
+                    this.providers.getEvCarAssociationCarIds?.(reading.chargerId) ?? [],
+                    this.observationProducers.evCarLink.getAssociatedCarForCharger(reading.chargerId),
+                    this.snapshotStore,
+                    reading,
+                )) return;
+                this.dispatchObservedStateForDevice(reading.chargerId, 'measure_battery');
+            },
+            onAssociationEnded: (chargerId) => {
+                if (!clearAssociatedCarStateOfCharge(this.snapshotStore, chargerId)) return;
+                this.dispatchObservedStateForDevice(chargerId, 'measure_battery');
+            },
         });
-        if (providers) this.providers = providers;
+        this.observationBridge = new ObservationBridge(
+            this.snapshotStore,
+            options.observedStateDispatcher,
+            this.observationProducers.temperature,
+        );
+        this.writeService = new DeviceWriteService(
+            this.snapshotStore,
+            this.observationBridge.state,
+            this.logger,
+            this.observationProducers.temperature,
+            (cardId) => this.getFlowTriggerCard?.(cardId),
+            (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
+            (deviceId, nowMs) => this.observationProducers.evCarLink.noteStopCommand(deviceId, nowMs),
+        );
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
             lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
@@ -257,73 +228,53 @@ export class DeviceTransport {
         this.retainedPower = new RetainedPowerPersistence(
             options.retainedPowerStore, this.logger,
         );
-        this.ctx = this.createContext();
-    }
-
-    private createContext(): TransportContext {
-        return DeviceTransport.assembleContext(this);
-    }
-
-    // Static so the getters/closures reference `t` (a parameter) rather than an
-    // aliased `this`; `t`'s private members are reachable from a static method of
-    // the same class. The getters resolve the leaf-reassigned `latestSnapshot` /
-    // `latestSnapshotById` lazily so collaborators always see the current array.
-    private static assembleContext(t: DeviceTransport): TransportContext {
-        const { refreshScalars } = t;
-        return {
-            owner: t,
-            logger: t.logger,
-            debugStructured: t.debugStructured,
-            onSnapshotMutated: t.onSnapshotMutated,
-            get latestSnapshot() { return t.latestSnapshot; },
-            get latestSnapshotById() { return t.latestSnapshotById; },
-            latestBinarySettleEvidenceByDeviceId: t.latestBinarySettleEvidenceByDeviceId,
-            observationState: t.observationState,
-            recentLocalCapabilityWrites: t.recentLocalCapabilityWrites,
-            recentRealtimeCapabilityEventLogByKey: t.recentRealtimeCapabilityEventLogByKey,
-            observationProducers: t.observationProducers,
-            getFlowTriggerCard: t.getFlowTriggerCard,
-            nextObservationCursor: (deviceId, nowMs) => t.nextObservationCursor(deviceId, nowMs),
-            dispatchObservedStateChanged: (event) => t.dispatchObservedStateChanged(event),
-            dispatchObservedControlStateChanged: (event) => t.dispatchObservedControlStateChanged(event),
-            emitObservedControlStateChangedEvent: (event) => t.emitObservedControlStateChangedEvent(event),
-            shouldTrackRealtimeDevice: (deviceId) => t.shouldTrackRealtimeDevice(deviceId),
-            applyDeviceDriverOverride: (device) => (
-                applyDeviceDriverOverride(device, t.providers.getDeviceDriverIdOverride)
-            ),
-            parseDevice: (device, now, livePowerWByDeviceId) => t.parseDevice(device, now, livePowerWByDeviceId),
-            syncTrackedNativeSteppedLoadAdapters: () => t.syncTrackedNativeSteppedLoadAdapters(),
-            setTrackedDevice: (deviceId, device) => { t.latestTrackedDevicesById.set(deviceId, device); },
-            deleteTrackedDevice: (deviceId) => { t.latestTrackedDevicesById.delete(deviceId); },
-            isSdkReady: () => t.sdkReady,
-            dispatchObservedStateForDevice: (deviceId, capabilityId) => (
-                t.dispatchObservedStateForDevice(deviceId, capabilityId)
-            ),
-            refreshSnapshot: (options) => t.refreshSnapshot(options),
-            providers: t.providers,
-            resolveMainMeterSelection: () => t.providers.getHomeyEnergyMeterSelection(),
-            powerState: t.powerState,
-            retainedPower: t.retainedPower,
-            observedStateDispatcher: t.observedStateDispatcher,
-            temperatureAdjustments: t.observationProducers.temperature,
-            targetedMissByDeviceId: t.targetedMissByDeviceId,
-            getEmptySnapshotGrace: () => refreshScalars.emptySnapshotGrace,
-            setEmptySnapshotGrace: (value) => { refreshScalars.emptySnapshotGrace = value; },
-            getLastSnapshotRefreshMetricsKey: () => refreshScalars.lastSnapshotRefreshMetricsKey,
-            setLastSnapshotRefreshMetricsKey: (value) => { refreshScalars.lastSnapshotRefreshMetricsKey = value; },
-            setSnapshotWarm: (warm) => { refreshScalars.snapshotWarm = warm; },
-            getLatestRawDevices: () => refreshScalars.latestRawDevices,
-            setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
-            zoneTreeCache: t.zoneTreeCache,
-            notifyZoneTreeCommitted: () => { t.onZoneTreeCommitted?.(); },
-            notifyDeviceZoneChanged: () => { t.onDeviceZoneChanged?.(); },
-            getTrackedDevicesById: () => t.latestTrackedDevicesById,
-            fetchDevicesForSnapshot: () => t.fetchDevicesForSnapshot(),
-            fetchDevicesByKnownIds: () => t.fetchDevicesByKnownIds(),
-            setSnapshot: (snapshot) => t.setSnapshot(snapshot),
-            dispatchObservedStateRefresh: (snapshot) => t.dispatchObservedStateRefresh(snapshot),
-            updateLiveFeedTrackedDevices: (deviceIds) => { t.liveFeed?.updateTrackedDevices(deviceIds); },
-        };
+        this.binaryEvidence = new BinarySettleEvidenceService(
+            this.snapshotStore,
+            this.observationBridge.state,
+            this.logger,
+            (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+        );
+        this.snapshotCommit = new SnapshotCommit(
+            this.snapshotStore,
+            this.deviceConfigurationStore,
+            this.binaryEvidence,
+            this.retainedPower,
+        );
+        const temperatureRecovery = new TemperatureRecoveryService(
+            this.observationBridge.state,
+            this.snapshotStore,
+            (refreshOptions) => this.refreshService.refresh(refreshOptions),
+            this.providers,
+            (deviceId) => this.observationBridge.nextCursor(deviceId),
+            (event) => this.observationBridge.dispatchControlStateChanged(event),
+        );
+        this.reader = new DeviceSnapshotReader(
+            this.snapshotStore,
+            this.observationBridge,
+            this.providers,
+            this.powerState,
+            this.retainedPower,
+            this.logger,
+        );
+        this.refreshService = new SnapshotRefreshService(
+            this.refreshState,
+            this.snapshotCommit,
+            this.observationBridge,
+            this.observationProducers,
+            temperatureRecovery,
+            this.reader,
+            this.deviceSdk,
+            this.notifications,
+        );
+        this.realtimeIngest = new RealtimeIngestService(
+            this.binaryEvidence,
+            this.observationBridge,
+            this.observationProducers,
+            temperatureRecovery,
+            this.reader,
+            this.notifications,
+            this.deviceConfigurationStore,
+        );
     }
 
     // Read-only producer seams, single-line like the fetch seams above.
@@ -338,33 +289,28 @@ export class DeviceTransport {
      * narrowed to the cars the user allowed for it. Resolved per call rather than
      * held on the snapshot; see `transport/carAssociation.ts`.
      */
-    getAssociatedCar(id: string): AssociatedCarSnapshot | undefined { return resolveAssociatedCar(this.ctx, id); }
-
-    private nextObservationCursor(deviceId: string, nowMs: number = Date.now()): ObservationCursor {
-        const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
-        this.observationSeqByDeviceId.set(deviceId, observationSeq);
-        return {
-            observationSeq,
-            observedAtMs: nowMs,
-        };
-    }
-
-    private emitObservedControlStateChangedEvent(event: PlanRealtimeUpdateEvent): void {
-        const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
-            ? this.nextObservationCursor(event.deviceId)
-            : {};
-        this.dispatchObservedControlStateChanged({
-            ...event,
-            ...cursor,
-        });
+    getAssociatedCar(id: string): AssociatedCarSnapshot | undefined {
+        const eligibleCarIds = this.providers.getEvCarAssociationCarIds?.(id) ?? [];
+        const associatedCar = this.observationProducers.evCarLink.getAssociatedCarForCharger(id);
+        return resolveAssociatedCar(eligibleCarIds, associatedCar);
     }
 
     /** Admit trusted Flow step feedback into the transport-owned observation snapshot. */
     reportFlowSteppedLoadObservation(params: FlowSteppedLoadObservation): boolean {
-        return reportFlowSteppedObservation(this.ctx, params);
+        return reportFlowSteppedObservation(
+            this.snapshotStore,
+            (snapshot, nowMs) => this.notifications.snapshotChanged(snapshot, nowMs),
+            (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
+            params,
+        );
     }
 
-    getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    getSnapshot(): TargetDeviceSnapshot[] { return this.snapshotStore.getSnapshot(); }
+
+    /** Actuator preflight: writeability is resolved beside the transport binding. */
+    canTurnOnDevice(deviceId: string): boolean {
+        return this.writeService.canTurnOnDevice(deviceId);
+    }
 
     /**
      * Whether the LAST committed FULL device read listed at least one raw
@@ -379,10 +325,10 @@ export class DeviceTransport {
      * The silent-meter escalation refuses to spend its one fail-closed shed
      * pass while this is false (`setup/powerSampleFreshnessEscalation.ts`).
      */
-    hasWarmSnapshot(): boolean { return this.refreshScalars.snapshotWarm; }
+    hasWarmSnapshot(): boolean { return this.refreshState.isWarm(); }
 
     getBinaryCommandConfirmationSnapshot() {
-        return buildBinaryCommandConfirmationSnapshot(this.latestSnapshot);
+        return buildBinaryCommandConfirmationSnapshot(this.snapshotStore.getSnapshot());
     }
     /**
      * `TransportDeviceSnapshot`, not the narrower `TargetDeviceSnapshot`: the map
@@ -392,17 +338,19 @@ export class DeviceTransport {
      * because the object happens to be physically wider, which is the failure
      * `deviceDescriptorProjection.ts` was written to stop repeating.
      */
-    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
-    getUiPickerDevices(): TransportDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
+    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined {
+        return this.snapshotStore.getSnapshotByDeviceId(id);
+    }
+    getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
     /** Reported charger wiring, over the same raw list the picker parses, so unmanaged chargers count. */
-    getChargerPhasePresets() { return resolveChargerPhasePresets(this.ctx.getLatestRawDevices()); }
+    getChargerPhasePresets() { return resolveChargerPhasePresets(this.snapshotStore.getLatestRawDevices()); }
     /** Reported charger wiring after the first trusted full device read. */
     readChargerPhasePresets() {
-        return resolveChargerPhasePresetsRead(this.hasWarmSnapshot(), this.ctx.getLatestRawDevices());
+        return resolveChargerPhasePresetsRead(this.hasWarmSnapshot(), this.snapshotStore.getLatestRawDevices());
     }
     /** Association-capable cars from the last trusted full read; never starts another SDK fetch. */
     readCarAssociationCandidates() {
-        return resolveCarAssociationCandidatesRead(this.hasWarmSnapshot(), this.ctx.getLatestRawDevices());
+        return resolveCarAssociationCandidatesRead(this.hasWarmSnapshot(), this.snapshotStore.getLatestRawDevices());
     }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home
@@ -413,7 +361,13 @@ export class DeviceTransport {
     async pollHomePowerW(
         authorizeFanOut?: () => boolean,
     ): Promise<HomePowerSampleWithIdentity | null> {
-        return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
+        return runPollHomePowerWithMeterFanOut(
+            this.logger,
+            this.providers,
+            (watts, observedAtMs) => this.observationBridge.setGenerationW(watts, observedAtMs),
+            this.providers.getHomeyEnergyMeterSelection(),
+            authorizeFanOut,
+        );
     }
     /**
      * Gross PV production for the flow source's companion poll
@@ -439,13 +393,10 @@ export class DeviceTransport {
         // so any reader routed onto the projection would silently fall back to the
         // snapshot and the projection path would never be exercised by the suite.
         this.setSnapshot(snapshot);
-        this.dispatchObservedStateRefresh(snapshot);
+        this.observationBridge.dispatchStateRefresh(snapshot);
     }
     setSnapshot(s: TransportDeviceSnapshot[]): void {
-        this.latestSnapshot = s;
-        this.syncLatestSnapshotIndex();
-        reconcileBinarySettleEvidenceWithSnapshot(this.ctx, s);
-        this.retainedPower.persist(s, Date.now());
+        this.snapshotCommit.commit(s);
     }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
@@ -455,88 +406,29 @@ export class DeviceTransport {
     // snapshot parse pipeline produces) so test assertions can read the
     // stepped-descriptor + reported-step probe fields the base type omits.
     parseDeviceListForTests(list: HomeyDeviceLike[]): TransportDeviceSnapshot[] {
-        const resolveOverride = this.providers.getDeviceDriverIdOverride;
-        return parseConformingDeviceListForTests(
-            this.ctx,
-            list.map((device) => applyDeviceDriverOverride(device, resolveOverride)),
+        return this.reader.parseConformingDeviceListForTests(
+            list.map((device) => this.reader.applyDeviceDriverOverride(device)),
         );
     }
-    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return fetchDevicesForDebug(this.ctx); }
-    // Thin fetch seams: the snapshot pipeline calls these via `TransportContext`
-    // (not the impls directly) so a test spy on the instance method is honored.
-    private fetchDevicesForSnapshot(): Promise<DeviceFetchResult> { return runFetchDevicesForSnapshot(this.ctx); }
-    private fetchDevicesByKnownIds(): Promise<DeviceFetchResult> { return runFetchDevicesByKnownIds(this.ctx); }
+    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
+        return (await this.deviceSdk.fetchDevices()).devices;
+    }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
-        return getDebugObservedSources(this.observationState, deviceId);
+        return getDebugObservedSources(this.observationBridge.state.getObservationState(), deviceId);
     }
     getBinarySettleEvidenceByDeviceId(id: string): BinaryControlObservation | undefined {
-        const found = this.latestBinarySettleEvidenceByDeviceId.get(id);
-        return found ? cloneBinaryControlObservation(found) : undefined; }
+        return this.observationBridge.state.getBinarySettleEvidence(id); }
 
-    async init(): Promise<void> {
-        if (this.sdkReady) return;
-
-        const homeyInstance = resolveHomeyInstance(this.homey);
-
-        if (
-            !homeyInstance
-            || !homeyInstance.api
-            || typeof homeyInstance.api.getOwnerApiToken !== 'function'
-            || typeof homeyInstance.api.getLocalUrl !== 'function'
-            || !homeyInstance.cloud
-            || typeof homeyInstance.cloud.getHomeyId !== 'function'
-            || !homeyInstance.platform
-            || !homeyInstance.platformVersion
-        ) {
-            this.logger.structuredLog.info({
-                component: 'devices',
-                event: 'device_api_init_skipped',
-                reasonCode: 'sdk_api_missing',
-                realtimeListenerAttached: false,
-            });
-            this.logger.debug({ event: 'sdk_api_unavailable_skipping_init' });
-            return;
-        }
-
-        try {
-            await initHomeyHttpClient(this.homey);
-        } catch (error) {
-            const normalizedError = normalizeError(error);
-            this.logger.structuredLog.error({
-                event: 'device_api_http_client_init_failed',
-                reasonCode: 'http_client_init_failed',
-                realtimeListenerAttached: false,
-                err: normalizedError,
-            });
-            return;
-        }
-
-        this.sdkReady = true;
-        this.liveFeed = createDeviceLiveFeed({
-            homey: this.homey,
-            logger: this.logger,
-            callbacks: {
-                onDeviceUpdate: (device) => this.handleRealtimeDeviceUpdate(device),
-                onCapabilityUpdate: (deviceId, capabilityId, value) => (
-                    this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value)
-                ),
-            },
-        });
-        await this.liveFeed.start();
-        this.logger.structuredLog.info({
-            component: 'devices',
-            event: 'device_api_initialized',
-        });
-    }
+    async init(): Promise<void> { await this.deviceSdk.initialize(); }
 
     async refreshSnapshot(
         options: SnapshotRefreshOptions,
     ): Promise<HomePowerSampleWithIdentity | null> {
-        return runRefreshSnapshot(this.ctx, options);
+        return this.refreshService.refresh(options);
     }
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
-        return computePeriodicStatusMetrics(this.ctx);
+        return computePeriodicStatusMetrics(this.snapshotStore);
     }
 
     /**
@@ -546,7 +438,7 @@ export class DeviceTransport {
      * dormant: no runtime consumer yet — multi-home membership will join
      * device `zoneId`s against it.
      */
-    getZoneTree(): ZoneTree | null { return this.zoneTreeCache.get(); }
+    getZoneTree(): ZoneTree | null { return this.refreshState.getZoneTree(); }
 
     /**
      * Subscribe/detach the zone-tree commit notification (see the field doc on
@@ -554,13 +446,17 @@ export class DeviceTransport {
      * wiring subscribes after construction and detaches with `undefined` at
      * uninit so a late detached commit cannot recompute a torn-down consumer.
      */
-    setOnZoneTreeCommitted(callback: (() => void) | undefined): void { this.onZoneTreeCommitted = callback; }
+    setOnZoneTreeCommitted(callback: (() => void) | undefined): void {
+        this.notifications.setZoneTreeCommitted(callback);
+    }
 
     /** Realtime zone-move subscription; same single-consumer lifecycle as `setOnZoneTreeCommitted`. */
-    setOnDeviceZoneChanged(callback: (() => void) | undefined): void { this.onDeviceZoneChanged = callback; }
+    setOnDeviceZoneChanged(callback: (() => void) | undefined): void {
+        this.notifications.setDeviceZoneChanged(callback);
+    }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
-        return runSetCapability(this.ctx, deviceId, capabilityId, value);
+        return this.writeService.setCapability(deviceId, capabilityId, value);
     }
 
     /**
@@ -578,7 +474,7 @@ export class DeviceTransport {
         // deletes, the capability-drop path does both). The `?? find` that used to
         // sit here was a hedge against a divergence that cannot happen, and a
         // hedging consumer is a symptom — root `AGENTS.md`.
-        const snapshot = this.latestSnapshotById.get(deviceId);
+        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
         const capabilityId = snapshot?.binaryCapabilityId;
         if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
         // The switch PELS asked for, whatever reaches the SDK (an Easee under
@@ -589,62 +485,45 @@ export class DeviceTransport {
             await triggerFlow(deviceId, capabilityId, desired);
             return;
         }
-        await runSetCapability(this.ctx, deviceId, capabilityId, desired);
+        await this.writeService.setCapability(deviceId, capabilityId, desired);
     }
 
     /** Resolve the exact semantic setpoint before executor pending/retry preflight. */
     resolveTemperatureTarget(deviceId: string, desired: number): number {
-        return resolveTemperatureTarget(this.latestSnapshot, deviceId, desired);
+        return resolveTemperatureTarget(this.snapshotStore.getSnapshot(), deviceId, desired);
     }
 
     /** Semantic primary-temperature write; transport resolves the SDK target. */
     async requestTemperatureTarget(deviceId: string, desired: number): Promise<number> {
-        const snapshot = this.latestSnapshotById.get(deviceId);
+        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
         const target = snapshot?.targets.find((entry) => entry.id.startsWith('target_temperature'));
         if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
-        const requested = await runSetCapability(this.ctx, deviceId, target.id, desired);
+        const requested = await this.writeService.setCapability(deviceId, target.id, desired);
         if (typeof requested !== 'number') throw new Error(`Invalid temperature request for device ${deviceId}`);
         return requested;
     }
 
     isFlowBackedCapability(deviceId: string, capabilityId: string): boolean {
-        const snapshot = this.latestSnapshotById.get(deviceId);
+        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
         return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
     }
 
-    async requestSteppedLoadStep(params: {
-        deviceId: string;
-        profile: SteppedLoadProfile;
-        desiredStepId: string;
-        planningPowerW: number;
-        planningCurrentA: number;
-        previousStepId?: string;
-    }): Promise<SteppedLoadStepRequestResult> {
-        return runRequestSteppedLoadStep(this.ctx, params);
+    async requestSteppedLoadStep(
+        request: SteppedLoadWrite,
+    ): Promise<SteppedLoadStepRequestResult> {
+        return this.writeService.requestSteppedLoadStep(request);
     }
 
-    getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
+    getLiveFeedHealth(): LiveFeedHealth | null { return this.deviceSdk.getHealth(); }
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
     }
 
     public destroy(): void {
         this.observationProducers.destroy();
-        void this.liveFeed?.stop();
-        this.liveFeed = null;
-        this.latestBinarySettleEvidenceByDeviceId.clear();
-        this.latestTrackedDevicesById.clear();
-    }
-
-    // Single-device parse seam consumed by the realtime device-update collaborator
-    // via `TransportContext.parseDevice`. Delegates to the snapshot parse pipeline
-    // so the deps assembly lives in one place (`snapshotRefresh.ts`).
-    private parseDevice(
-        device: HomeyDeviceLike,
-        now: number,
-        livePowerWByDeviceId: LiveDevicePowerWatts,
-    ): TargetDeviceSnapshot | null {
-        return parseSnapshotDevice(this.ctx, device, now, livePowerWByDeviceId);
+        this.deviceSdk.stop();
+        this.observationBridge.state.clear();
+        this.snapshotStore.clearTrackedRawDevices();
     }
 
     /**
@@ -658,90 +537,7 @@ export class DeviceTransport {
      * device isn't in the current snapshot.
      */
     dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void {
-        if (!this.latestSnapshotById.has(deviceId)) return;
-        this.dispatchObservedStateChanged({
-            source: 'realtime_capability',
-            deviceId,
-            ...this.nextObservationCursor(deviceId),
-            ...(capabilityId !== undefined ? { capabilityId } : {}),
-        });
+        this.observationBridge.dispatchStateForDevice(deviceId, capabilityId);
     }
 
-    /**
-     * Post-translation fan-out of an `observed-state-changed` event.
-     *
-     * Observer owns the emitter; transport routes every event through the
-     * injected dispatcher and has no second surface of its own. Per PR #5 of
-     * the observer/transport split, transport never statically imports
-     * observer; the dispatcher is just a callback set passed in at
-     * construction time (notes/state-management/observer-transport-split.md).
-     */
-    private dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void {
-        // Attach the decided observed value once, at the single dispatch funnel,
-        // rather than at each of the 4 call sites. The observer projection
-        // records this merged value; it never re-runs the fresher-wins merge.
-        // Stage 4a of the snapshot decomposition.
-        const snapshot = this.latestSnapshotById.get(event.deviceId);
-        const enriched: ObservedDeviceStateEvent = snapshot
-            ? { ...event, observed: projectObservedState(snapshot) }
-            : event;
-        this.observedStateDispatcher.observedStateChanged(enriched);
-    }
-
-    /**
-     * Fan-out of the refresh batch. Built from the just-committed snapshot:
-     * each device gets a FRESH per-device cursor (so the refresh supersedes any
-     * in-flight per-capability delta) and the decided observed value. Fired from
-     * `commitRefreshedSnapshot` only after `setSnapshot`, so the grace-deferred
-     * path (commit returns false before `setSnapshot`) never fires it.
-     * Stage 4a of the snapshot decomposition.
-     *
-     * The committed snapshot is always complete truth for the known device set (a
-     * full read, or a targeted overlay with the per-device grace already applied),
-     * so `applyRefresh` prunes devices absent from this batch unconditionally.
-     */
-    private dispatchObservedStateRefresh(snapshot: TargetDeviceSnapshot[]): void {
-        // One timestamp for the whole batch: every entry in a single refresh
-        // shares the same observedAtMs so the projection's defensive
-        // timestamp-fallback ordering can't reorder devices within one commit.
-        this.observationProducers.temperature.retainDevices(new Set(snapshot.map((device) => device.id)));
-        const nowMs = Date.now();
-        const event: ObservedDeviceStateRefreshEvent = {
-            entries: snapshot.map((device) => {
-                const cursor = this.nextObservationCursor(device.id, nowMs);
-                return {
-                    observationSeq: cursor.observationSeq,
-                    observedAtMs: cursor.observedAtMs,
-                    observed: projectObservedState(device),
-                };
-            }),
-        };
-        this.observedStateDispatcher.observedStateRefresh(event);
-    }
-
-    /**
-     * Post-translation fan-out of a `observed-control-state-changed` event.
-     * See `dispatchObservedStateChanged` for the dispatcher contract.
-     */
-    private dispatchObservedControlStateChanged(event: PlanRealtimeUpdateEvent): void {
-        const adjustment = this.observationProducers.temperature.observeControlChange(
-            this.latestSnapshotById.get(event.deviceId), event,
-        );
-        if (adjustment) {
-            this.observedStateDispatcher.externalTemperatureAdjusted(adjustment);
-        }
-        this.observedStateDispatcher.observedControlStateChanged(event);
-    }
-
-    private syncLatestSnapshotIndex(): void { this.latestSnapshotById
-        = new Map(this.latestSnapshot.map((device) => [device.id, device])); }
-
-    private syncTrackedNativeSteppedLoadAdapters(): void {
-        syncNativeSteppedLoadCommandAdapters({
-            owner: this,
-            devices: [...this.latestTrackedDevicesById.values()],
-            shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
-            logger: this.logger,
-        });
-    }
 }

@@ -214,11 +214,12 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceDescriptors: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceConfigurations: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
         await deviceManager.setCapability(deviceId, 'evcharger_charging', desired);

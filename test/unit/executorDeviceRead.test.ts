@@ -4,19 +4,14 @@ import {
   readExecutorDevice,
   readExecutorDevices,
 } from '../../lib/executor/executorDeviceRead';
-import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
+import type { DeviceConfigurationRead } from '../../lib/device/deviceConfiguration';
 import type { ObserverDeviceRead } from '../../lib/executor/driftObservedDevice';
-import { getBinaryControlPlan } from '../../lib/device/deviceActionProjection';
-import { canTurnOnDevice } from '../../lib/plan/deviceCommandability';
 
-// The executor's device is the transport's descriptor joined with the observer's
-// record. These pin the join and nothing else: presence rules, precedence, and
-// that the composed object carries both halves.
+// The executor joins runtime configuration with the observer's record.
 
-const descriptor = (id: string): DeviceDescriptorRead => ({
+const configuration = (id: string): DeviceConfigurationRead => ({
   id,
-  name: `${id} (descriptor)`,
-  deviceClass: 'heater',
+  name: `${id} (configuration)`,
   capabilities: ['onoff'],
   canSetControl: true,
   expectedPowerKw: 2,
@@ -34,26 +29,21 @@ const observed = (id: string): ObserverDeviceRead => ({
 });
 
 const deps = (
-  descriptors: DeviceDescriptorRead[],
+  configurations: DeviceConfigurationRead[],
   observedById: Record<string, ObserverDeviceRead>,
 ): ExecutorDeviceReadDeps => ({
-  getDeviceDescriptor: (id) => descriptors.find((entry) => entry.id === id),
-  getDeviceDescriptors: () => descriptors,
+  getDeviceConfiguration: (id) => configurations.find((entry) => entry.id === id),
+  getDeviceConfigurations: () => configurations,
   getObservedState: (id) => observedById[id],
 });
 
 describe('readExecutorDevice', () => {
-  it('joins the descriptor with the observed record, descriptor last', () => {
-    const device = readExecutorDevice(deps([descriptor('a')], { a: observed('a') }), 'a');
+  it('joins runtime configuration with the observed record, configuration last', () => {
+    const device = readExecutorDevice(deps([configuration('a')], { a: observed('a') }), 'a');
     expect(device).toMatchObject({
       id: 'a',
-      // Identity is the transport's: a rename arrives as a device.update with no
-      // observed change, which the projection is not told about. (The fixture
-      // names differ only to make the order visible.)
-      name: 'a (descriptor)',
-      deviceClass: 'heater',
-      capabilities: ['onoff'],
-      canSetControl: true,
+      // Identity comes from configuration; observation cannot overwrite it.
+      name: 'a (configuration)',
       binaryControl: { on: true },
       available: true,
       reportedStepId: 'low',
@@ -66,27 +56,22 @@ describe('readExecutorDevice', () => {
   });
 
   it('is undefined for a device the observer has not recorded', () => {
-    expect(readExecutorDevice(deps([descriptor('a')], {}), 'a')).toBeUndefined();
+    expect(readExecutorDevice(deps([configuration('a')], {}), 'a')).toBeUndefined();
   });
 
-  it('admits a binary device for restore from the two halves alone — no currentOn rides along', () => {
-    // `currentOn` is a plan-device decoration on neither surface. The raw
-    // snapshot used to carry it into the executor by accident of being spread
-    // whole; the admission gates must answer from `binaryControl` and the
-    // descriptor's writeability, or a narrowed descriptor silently un-admits
-    // every binary device.
-    const device = readExecutorDevice(deps([descriptor('a')], { a: observed('a') }), 'a');
+  it('keeps device writeability out of the executor read', () => {
+    const device = readExecutorDevice(deps([configuration('a')], { a: observed('a') }), 'a');
     expect(device).toBeDefined();
     expect('currentOn' in device!).toBe(false);
-    expect(getBinaryControlPlan(device)).not.toBeNull();
-    expect(canTurnOnDevice(device)).toBe(true);
+    expect(device).not.toHaveProperty('capabilities');
+    expect(device).not.toHaveProperty('canSetControl');
   });
 });
 
 describe('readExecutorDevices', () => {
-  it('keeps descriptor order and drops devices with no observed record', () => {
+  it('keeps configuration order and drops devices with no observed record', () => {
     const devices = readExecutorDevices(deps(
-      [descriptor('a'), descriptor('b'), descriptor('c')],
+      [configuration('a'), configuration('b'), configuration('c')],
       { a: observed('a'), c: observed('c') },
     ));
     expect(devices.map((device) => device.id)).toEqual(['a', 'c']);

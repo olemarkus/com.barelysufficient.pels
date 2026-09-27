@@ -5,9 +5,9 @@ import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
   formatBinaryState,
   formatTargetValue,
-  getRecentLocalCapabilityWrite,
-  type RecentLocalCapabilityWrites,
 } from './transport/managerRealtimeSupport';
+import type { TransportObservationState } from './transport/transportObservationState';
+import { getLogger } from '../logging/logger';
 import {
   applyExplicitBinaryObservation,
   preserveRejectedExplicitBinaryObservation,
@@ -108,13 +108,13 @@ export function reconcileRealtimeDeviceUpdate(params: {
   latestSnapshot: TransportDeviceSnapshot[];
   device: HomeyDeviceLike;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TransportDeviceSnapshot | null;
-  recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
+  observationState: TransportObservationState;
 }): RealtimeReconcileResult {
   const {
     latestSnapshot,
     device,
     parseDevice,
-    recentLocalCapabilityWrites,
+    observationState,
   } = params;
   const deviceId = device.id;
   if (!deviceId) return {
@@ -165,7 +165,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     previous,
     parsed,
     deviceId,
-    recentLocalCapabilityWrites,
+    observationState,
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   if (previous) preserveNewerReportedStepObservation(previous, parsed);
@@ -367,28 +367,24 @@ function preserveRecentLocalBinaryState(params: {
   previous: TransportDeviceSnapshot | null;
   parsed: TransportDeviceSnapshot;
   deviceId: string;
-  recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
+  observationState: TransportObservationState;
   binaryValueExplicitlyObserved?: boolean;
 }): void {
   const {
     previous,
     parsed,
     deviceId,
-    recentLocalCapabilityWrites,
+    observationState,
     binaryValueExplicitlyObserved,
   } = params;
-  if (!previous || !recentLocalCapabilityWrites) return;
+  if (!previous) return;
   const capabilityId = parsed.binaryCapabilityId ?? previous.binaryCapabilityId;
   if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return;
   // Without an explicit observation, parseDevice may synthesize a default that
   // must not be treated as stronger than a recent local write. Once the payload
   // carries an explicit binary value, that observed value wins.
   if (binaryValueExplicitlyObserved) return;
-  const localWrite = getRecentLocalCapabilityWrite({
-    recentLocalCapabilityWrites,
-    deviceId,
-    capabilityId,
-  });
+  const localWrite = observationState.getRecentLocalCapabilityWrite(deviceId, capabilityId);
   if (!localWrite || typeof localWrite.value !== 'boolean') return;
   const parsedBinary = parsed.binaryControl;
   if (parsedBinary === undefined) return;

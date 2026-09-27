@@ -1027,7 +1027,7 @@ describe('DeviceTransport', () => {
         it('includes the normalized error in the structured refresh failure log', async () => {
             await deviceManager.init();
             const refreshFailure = new Error('refresh failed');
-            vi.spyOn(deviceManager as unknown as { fetchDevicesForSnapshot: () => Promise<unknown> }, 'fetchDevicesForSnapshot').mockRejectedValueOnce(refreshFailure);
+            vi.spyOn(deviceManager['deviceSdk'], 'fetchDevices').mockRejectedValueOnce(refreshFailure);
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 

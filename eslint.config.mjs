@@ -107,6 +107,7 @@ const browserTypeScriptRules = {
 const HOMEY_LEAF_ALLOWLIST = [
   'lib/app/appContext.ts',                   // AppContext type — the injection seam (AGENTS.md: long-term inhabitant)
   'lib/device/deviceTransport.ts',           // the SDK transport leaf
+  'lib/device/transport/deviceHomeySdk.ts',  // REST client and realtime socket lifecycle
   'lib/device/liveFeed.ts',                  // local Web API socket.io subscription
   'lib/device/transport/managerHomeyApi.ts', // local HTTP API client
 ];

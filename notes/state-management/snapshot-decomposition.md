@@ -1,5 +1,21 @@
 # Snapshot Decomposition — finishing the observer/transport split
 
+> **Current runtime boundary (2026-09-27).** Planner and executor inputs do not
+> use `DeviceReads`: `lib/device/deviceRuntimeRead.ts` joins narrow
+> `DeviceConfiguration` values with Observer records. `DeviceReads` serves inventory metadata such as class,
+> zone, native-write and Flow-conflict details. The settings UI's unmanaged
+> picker uses `SettingsUiDeviceReads`, since those devices have no Observer
+> record. The observer projection
+> carries the resolved stepped-load profile with the reported rung. The old
+> stage-5/6 joins below record how the earlier decomposition was built; where
+> they say runtime consumers join `DeviceDescriptorRead`, this current boundary
+> supersedes them. The pull refresh populates Observer before the startup warmup
+> gate admits a plan, so the old lazy snapshot-seed path has been removed.
+> `TransportContext` has been removed. `SnapshotRefreshService` owns pull
+> refresh, `RealtimeIngestService` owns pushed events, and `DeviceSnapshotReader`
+> owns parsing and raw-device tracking. `DeviceTransport` composes these owners
+> directly; it no longer assembles or passes a shared context bag.
+
 Design-of-record for the last leg of the observer/transport split. **Supersedes
 the deferred PR2b "snapshot store → observer" bullet** (that was the wrong handle —
 moving the store wholesale is a risky dual-store with no behavior change). This is
@@ -344,19 +360,19 @@ store, because:
    between planning and dispatch. It never happens for a tracked device: the
    projection subscribes to the emitter before the bootstrap refresh
    (`wireDeviceTransport.ts`), so the first committed snapshot's refresh batch lands in
-   it, and every realtime add dispatches enriched after its commit; the boot seed
-   (`seedMissing`, run before every plan build) is a belt over those braces.
+   it, and every realtime add dispatches enriched after its commit. The former
+   lazy seed path was removed once startup ordering guaranteed the first refresh
+   reaches the projection before a plan can run.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
-   **DONE, in the form that turned out to matter.** The zip is
-   `readDeviceSurfaces` (`lib/device/deviceSurfaces.ts`): every tracked device's
-   projected descriptor joined with the observer's record, and
-   `AppHostApi.latestTargetSnapshot` decorates THAT rather than the transport's raw
-   list. The picker list (unmanaged devices with no observer record) is bounded the
-   same way from its own parse (`projectDeviceSurfaces`). So `ToPlanDeviceInput` is
-   `DeviceSurfaces & SteppedLoadDecoration & AssociatedCarDecoration` — and that is
-   what the object physically carries, not only its type: the transport's binding
-   ids (`binaryCapabilityId` and kin) are no longer on the input, so the producer
+   **DONE, in the form that turned out to matter.** Planner and executor runtime
+   input is built by `DeviceConfiguration` joined with an accepted Observer record
+   (`readRuntimeDevices` in `lib/device/deviceRuntimeRead.ts`). `DeviceReads` remains
+   the inventory surface; it is not used to assemble planner or executor inputs.
+   Flow cards that need both inventory metadata and observed state use the explicit
+   Flow projection (`readFlowDevices` in `lib/device/deviceFlowRead.ts`). The picker
+   list remains a separate settings-UI view. The transport binding ids
+   (`binaryCapabilityId` and kin) are no longer on planner input, so the producer
    no longer strips them and `PlanDeviceStrippedKey` lost four names.
    The "explicit copies instead of `...device`" half is NOT done and is no longer
    the point: with the input physically bounded and the carried set pinned by the
@@ -364,12 +380,13 @@ store, because:
    carries exactly the declared 47 keys, and 47 explicit copies would restate the
    gate by hand. The signature stays `(ctx, device, opts)`; what changed is what
    `device` is.
-   One deliberate asymmetry with the executor's read: a tracked device the observer
-   has no record for is NOT dropped here — its observed half falls back to the
-   projection of the snapshot itself, the same source and values the boot seed uses.
-   For the executor, "no observation" means do not command the device, which is safe
-   by default; for the plan input and the settings-UI list it would mean the device
-   silently disappears from planning and from the owner's screen. (An earlier draft
+   At this stage, the plan input and settings-UI list shared this fallback: a
+   tracked device with no Observer record used state projected from the accepted
+   transport snapshot. The current boundary supersedes that plan-input behavior:
+   planner/executor inputs now require an Observer record, and bootstrap refresh
+   populates it before planning starts. The settings-UI inventory view keeps its
+   transport-snapshot fallback so an item is not hidden before its first Observer
+   record. (An earlier draft
    justified this with a hot-plug emitting no observation event — not true: a first
    `device.update` has no previous snapshot, so the availability comparison added in
    stage 5 cannot match and always dispatches. The real justifications are the
@@ -475,10 +492,11 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    rather than a rule someone has to remember: `AppContext.deviceManager` is
    `DeviceTransportPort` (`Omit<DeviceTransport, 'getSnapshot'>`), so the method is
    not on the type anything but the composition root holds.
-   The reads that array served now have one owner, `lib/device/deviceReads.ts`,
-   named for the questions consumers actually asked: `descriptors()`,
-   `descriptor(id)`, `surfaces()`, `surface(id)`, `pickerSurfaces()`,
-   `observedSeed()`, `hasProductionCandidate()`, `zoneMemberships()`, `deviceIds()`.
+   Inventory reads have one owner, `lib/device/deviceReads.ts`, named for the
+   questions consumers actually ask: `descriptors()`, `descriptor(id)`,
+   `hasProductionCandidate()`, `zoneMemberships()`, and `deviceIds()`. Runtime
+   configuration is owned by `DeviceConfiguration`; accepted runtime observations
+   are owned by `Observer`. Neither exposes the transport's raw snapshot.
    `app.ts` builds it from the concrete transport and hands it over on the context
    — not because it is the only holder (`wireDeviceTransport.ts` constructs one),
    but because the reads must exist from field-init time: the target-power probe
@@ -506,15 +524,11 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    `no-restricted-imports` rather than merging, so a standalone block silently
    matched nothing. Both now take the port and ask the read surface instead: the
    generation poll asks `hasProductionCandidate()`, which answers from `deviceClass`
-   without projecting a device, because it runs every 10 s on every flow home; the
-   snapshot refresh takes `surfaces()` undecorated, because the reachability pass
-   reads the observed `reportedStepId` AND must not be priced against a decoration
-   resolved from the very reachability state it is about to update.
-   Folded away as redundant once the owner existed: `readDeviceDescriptor(s)`,
-   `readDeviceSurface(s)`, and `setup/appInit/seedObservedStateFromSnapshot.ts`.
-   What is deliberately NOT sealed: `getSnapshotByDeviceId` stays on the port. It
-   is the authoritative by-id read, it hands out one device rather than the corpus,
-   and the executor and control helpers depend on it.
+   without projecting a device, because it runs every 10 s on every flow home. The
+   old `surfaces()` APIs and snapshot-seeding path were removed when planner and
+   executor moved to `DeviceConfiguration + Observer`; refresh remains inside
+   transport. `getSnapshotByDeviceId` stays on the port for transport-owned control
+   helpers that need one current entry rather than the corpus.
 
 ## Invariants the implementation + tests must preserve
 

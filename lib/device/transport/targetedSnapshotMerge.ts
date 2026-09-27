@@ -129,7 +129,7 @@ export function mergeTargetedRefreshSnapshot(params: {
 export function overlayRetainedTrackedDevices(params: {
     effectiveList: HomeyDeviceLike[];
     committedSnapshot: readonly TargetDeviceSnapshot[];
-    priorRawById: Map<string, HomeyDeviceLike>;
+    priorRawById: ReadonlyMap<string, HomeyDeviceLike>;
 }): HomeyDeviceLike[] {
     const { effectiveList, committedSnapshot, priorRawById } = params;
     const presentIds = new Set(effectiveList.map((device) => getDeviceId(device)));

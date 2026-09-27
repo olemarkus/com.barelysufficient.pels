@@ -12,14 +12,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { updateHomePowerFromReport } from '../../lib/device/transport/resolvedHomeMeterDispatch';
 import type { LivePowerReport } from '../../lib/device/transport/managerFetch';
-import type { TransportContext } from '../../lib/device/transport/transportContext';
 
-const buildCtx = () => {
+const buildGenerationDispatcher = () => {
   const dispatcher = {
     setGenerationW: vi.fn(),
   };
   return {
-    ctx: { observedStateDispatcher: dispatcher } as unknown as TransportContext,
+    setGenerationW: dispatcher.setGenerationW,
     dispatcher,
   };
 };
@@ -38,43 +37,43 @@ const measuredReport = (overrides: Partial<Omit<MeasuredReport, 'state'>>): Live
 
 describe('updateHomePowerFromReport generation publication', () => {
   it('publishes generation from a measured report', () => {
-    const { ctx, dispatcher } = buildCtx();
-    updateHomePowerFromReport(ctx, measuredReport({ generation: { state: 'measured', watts: 4_200 } }));
+    const { setGenerationW, dispatcher } = buildGenerationDispatcher();
+    updateHomePowerFromReport(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 4_200 } }));
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(4_200, expect.any(Number));
   });
 
   it('publishes "no generator" from a measured report — it is an observation', () => {
-    const { ctx, dispatcher } = buildCtx();
-    updateHomePowerFromReport(ctx, measuredReport({ generation: { state: 'none' } }));
+    const { setGenerationW, dispatcher } = buildGenerationDispatcher();
+    updateHomePowerFromReport(setGenerationW, measuredReport({ generation: { state: 'none' } }));
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
   });
 
   it('publishes NOTHING for a malformed generation signal, but still yields the net sample', () => {
-    const { ctx, dispatcher } = buildCtx();
-    const sample = updateHomePowerFromReport(ctx, measuredReport({ generation: { state: 'unavailable' } }));
+    const { setGenerationW, dispatcher } = buildGenerationDispatcher();
+    const sample = updateHomePowerFromReport(setGenerationW, measuredReport({ generation: { state: 'unavailable' } }));
     expect(dispatcher.setGenerationW).not.toHaveBeenCalled();
     expect(sample).toEqual({ powerW: 1_200, meterDeviceId: 'meter-main' });
   });
 
   it('publishes NOTHING from a failed read, leaving the held value to age out', () => {
-    const { ctx, dispatcher } = buildCtx();
-    expect(updateHomePowerFromReport(ctx, { state: 'unavailable' })).toBeNull();
+    const { setGenerationW, dispatcher } = buildGenerationDispatcher();
+    expect(updateHomePowerFromReport(setGenerationW, { state: 'unavailable' })).toBeNull();
     expect(dispatcher.setGenerationW).not.toHaveBeenCalled();
   });
 });
 
 describe('updateHomePowerFromReport sample', () => {
   it('builds the sample from the resolved reading, identity included', () => {
-    const { ctx } = buildCtx();
-    expect(updateHomePowerFromReport(ctx, measuredReport({ generation: { state: 'measured', watts: 300 } })))
+    const { setGenerationW } = buildGenerationDispatcher();
+    expect(updateHomePowerFromReport(setGenerationW, measuredReport({ generation: { state: 'measured', watts: 300 } })))
       .toEqual({ powerW: 1_200, generationW: 300, meterDeviceId: 'meter-main' });
-    expect(updateHomePowerFromReport(ctx, measuredReport({})))
+    expect(updateHomePowerFromReport(setGenerationW, measuredReport({})))
       .toEqual({ powerW: 1_200, meterDeviceId: 'meter-main' });
   });
 
   it('yields no sample when the whole-home reading is unavailable, but still publishes generation', () => {
-    const { ctx, dispatcher } = buildCtx();
-    const sample = updateHomePowerFromReport(ctx, measuredReport({
+    const { setGenerationW, dispatcher } = buildGenerationDispatcher();
+    const sample = updateHomePowerFromReport(setGenerationW, measuredReport({
       home: { state: 'unavailable' },
       generation: { state: 'measured', watts: 900 },
     }));

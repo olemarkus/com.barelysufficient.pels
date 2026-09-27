@@ -27,6 +27,7 @@ import {
   reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,
 } from '../../lib/device/managerRuntime';
+import { TransportObservationState } from '../../lib/device/transport/transportObservationState';
 import {
   getRawDevice,
   getRawDevices,
@@ -392,6 +393,7 @@ describe('device manager support helpers', () => {
 
     const result = reconcileRealtimeDeviceUpdate({
       latestSnapshot,
+      observationState: new TransportObservationState(),
       device: {
         id: 'dev-1',
         expectedPowerKw: 1,
@@ -424,6 +426,7 @@ describe('device manager support helpers', () => {
 
     reconcileRealtimeDeviceUpdate({
       latestSnapshot,
+      observationState: new TransportObservationState(),
       device: { id: 'ev-1', name: 'Charger' },
       parseDevice: () => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
         id: 'ev-1',

@@ -93,7 +93,6 @@ describe('device reads', () => {
     it('resolves reads whose callers run before wiring and cannot surface a throw', () => {
       expect(absent.descriptors()).toEqual([]);
       expect(absent.surfaces()).toEqual([]);
-      expect(absent.observedSeed()).toEqual([]);
       expect(absent.deviceIds()).toEqual([]);
       expect(absent.zoneMemberships()).toEqual([]);
       expect(absent.pickerSurfaces()).toEqual([]);

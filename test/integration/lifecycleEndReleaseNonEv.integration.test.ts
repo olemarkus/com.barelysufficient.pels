@@ -64,6 +64,7 @@ type SetCapabilityCall = {
 const buildActuatorTransport = (
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>,
 ): ActuatorTransport => ({
+  canTurnOnDevice: () => true,
   resolveTemperatureTarget: (_deviceId, desired) => desired,
   requestBinaryControl: async (deviceId, desired) => {
     await setCapability(deviceId, 'onoff', desired);

@@ -1,15 +1,13 @@
 /**
- * Snapshot-acquisition pipeline for `DeviceTransport`, extracted as homey-free
- * free functions over the shared `TransportContext`. Owns the SDK-free
- * orchestration the leaf used to inline: fetch (full / targeted-by-id), live
- * power read, battery/solar role detection, parse, fresher-wins observation
+ * Pull refresh pipeline for `DeviceTransport`, extracted as homey-free
+ * functions owned by `SnapshotRefreshService`. It coordinates device fetches,
+ * live power reads, battery/solar role detection, parsing, fresher-wins observation
  * merge, the empty-snapshot + targeted-miss abandon-grace logic, the snapshot
  * commit + refresh-event dispatch, and the post-commit device-list adoption.
  *
- * The leaf keeps only the SDK wiring (`init`, the `homey` field) and the
- * EventEmitter/projection bridge; it threads its mutable snapshot/grace/tracking
- * state in through the `TransportContext` accessors so these functions mutate the
- * SAME maps and snapshot object the class owns (object identity preserved).
+ * `SnapshotRefreshService` holds the collaborators for this workflow. Parsing
+ * and raw-device tracking belong to `DeviceSnapshotReader`; commit, observation
+ * and refresh lifecycle remain with their owners.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
@@ -24,9 +22,10 @@ import type {
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
+export { SnapshotRefreshState } from './snapshotRefreshState';
 import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
-import { getDeviceId } from './managerHelpers';
+export type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import {
   SNAPSHOT_ABANDON_GRACE_MS,
   SNAPSHOT_ABANDON_GRACE_READS,
@@ -35,48 +34,44 @@ import {
 } from './targetedSnapshotMerge';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { startRuntimeSpan } from '../../utils/runtimeTrace';
-import { logEvSnapshotChanges, type DeviceCapabilityMap } from '../managerControl';
+import { logEvSnapshotChanges } from '../managerControl';
 import { type LiveDevicePowerWatts } from '../managerEnergy';
 export {
   fetchLiveGenerationW,
   type LiveGenerationRead,
 } from './managerFetch';
+export type { DeviceFetchResult } from './managerFetch';
 import {
-  fetchDevicesByIds,
-  fetchDevicesWithFallback,
-  type DeviceFetchResult,
   type DeviceFetchSource,
 } from './managerFetch';
+import type { DeviceFetchResult } from './managerFetch';
 import { fetchLivePowerReport } from './livePowerReport';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
-export { fetchLivePowerReport } from './livePowerReport';
 export { pollHomePowerWithMeterFanOut } from './homePowerPoll';
 import { fetchZoneTree } from './managerZones';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
   mergeFresherCapabilityObservations,
   recordSnapshotRefreshObservations,
-  resolveLatestLocalWriteMs,
 } from './managerObservation';
-import {
-  isDevicePowerCapable,
-  parseDevice,
-  parseDeviceList,
-  type ParseDevicePurpose,
-  type RetainedMeasurement,
-} from './managerParseDevice';
 import {
   summarizeSnapshotRefreshMetrics,
   type SnapshotRefreshMetrics,
+  type SnapshotRefreshOptions,
 } from './transportTypes';
 import { fireSnapshotMutatedForRefresh } from './deviceUpdateHandling';
-import {
-    completePendingTemperatureRecoveriesAfterRefresh,
-    getPendingTemperatureRecoveryDeviceIds,
-} from './temperatureRecovery';
+import { DeviceSnapshotReader } from './deviceSnapshotReader';
+import type { DeviceHomeySdk } from './deviceHomeySdk';
+import type { SnapshotCommit } from './snapshotCommit';
+import type { SnapshotRefreshState } from './snapshotRefreshState';
+import type { ObservationBridge } from './observationBridge';
+import type { ObservationProducers } from '../observationProducers';
+import type { TemperatureRecoveryService } from './temperatureRecovery';
+import type { TransportNotifications } from './transportNotifications';
 
 const moduleLogger = getLogger('device/transport');
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 // Homey SDK device reads can transiently return an empty list without throwing
 // (see lib/device/transport/managerFetch.ts, which normalizes `[]`/`{}` into an
@@ -104,7 +99,7 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function shouldDeferEmptySnapshotCommit(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     snapshot: readonly TargetDeviceSnapshot[],
     previousSnapshot: readonly TargetDeviceSnapshot[],
     rawWasEmpty: boolean,
@@ -116,16 +111,19 @@ function shouldDeferEmptySnapshotCommit(
     // commit immediately — deferring it would keep controlling a now-stale device
     // until the grace window or read threshold elapses.
     if (snapshot.length > 0 || previousSnapshot.length === 0 || !rawWasEmpty) {
-        ctx.setEmptySnapshotGrace(null);
+        refresh.refreshState.setEmptySnapshotGrace(null);
         return false;
     }
-    const grace = ctx.getEmptySnapshotGrace() ?? { firstSeenMs: nowMs, reads: 0 };
+    const grace = refresh.refreshState.getEmptySnapshotGrace() ?? {
+        firstSeenMs: nowMs,
+        reads: 0,
+    };
     grace.reads += 1;
-    ctx.setEmptySnapshotGrace(grace);
+    refresh.refreshState.setEmptySnapshotGrace(grace);
     const elapsedMs = nowMs - grace.firstSeenMs;
     if (elapsedMs >= EMPTY_SNAPSHOT_ABANDON_GRACE_MS
         || grace.reads >= EMPTY_SNAPSHOT_ABANDON_GRACE_READS) {
-        ctx.logger.structuredLog.warn({
+        moduleLogger.warn({
             component: 'devices',
             event: 'device_snapshot_empty_grace_exceeded',
             reasonCode: 'empty_snapshot_committed',
@@ -133,10 +131,10 @@ function shouldDeferEmptySnapshotCommit(
             graceElapsedMs: elapsedMs,
             previousDevicesTotal: previousSnapshot.length,
         });
-        ctx.setEmptySnapshotGrace(null);
+        refresh.refreshState.setEmptySnapshotGrace(null);
         return false;
     }
-    ctx.logger.structuredLog.warn({
+    moduleLogger.warn({
         component: 'devices',
         event: 'device_snapshot_empty_deferred',
         reasonCode: 'empty_snapshot_transient',
@@ -160,26 +158,26 @@ function shouldDeferEmptySnapshotCommit(
  * complete truth for the known device set, so the projection prunes to match.
  */
 function resolveCommittedRefreshSnapshot(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     presentSnapshot: TransportDeviceSnapshot[],
     previousSnapshot: readonly TransportDeviceSnapshot[],
     failedIds: readonly string[] | null,
     nowMs: number,
 ): TransportDeviceSnapshot[] {
     if (failedIds === null) {
-        ctx.targetedMissByDeviceId.clear();
+        refresh.refreshState.getTargetedMisses().clear();
         return presentSnapshot;
     }
     const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
         presentSnapshot,
         previousSnapshot,
         failedIds,
-        missByDeviceId: ctx.targetedMissByDeviceId,
+        missByDeviceId: refresh.refreshState.getTargetedMisses(),
         nowMs,
     });
-    appendRecoveredTemperatureDevices(ctx, presentSnapshot, snapshot);
+    appendRecoveredTemperatureDevices(refresh, presentSnapshot, snapshot);
     for (const deviceId of graceExceededIds) {
-        ctx.logger.structuredLog.warn({
+        moduleLogger.warn({
             component: 'devices',
             event: 'targeted_device_miss_grace_exceeded',
             deviceId,
@@ -190,11 +188,11 @@ function resolveCommittedRefreshSnapshot(
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function appendRecoveredTemperatureDevices(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     presentSnapshot: readonly TransportDeviceSnapshot[],
     committedSnapshot: TransportDeviceSnapshot[],
 ): void {
-    const pendingIds = new Set(getPendingTemperatureRecoveryDeviceIds(ctx));
+    const pendingIds = new Set(refresh.temperatureRecovery.getPendingDeviceIds());
     const committedIds = new Set(committedSnapshot.map((device) => device.id));
     for (const device of presentSnapshot) {
         if (!pendingIds.has(device.id) || committedIds.has(device.id)) continue;
@@ -208,15 +206,15 @@ function appendRecoveredTemperatureDevices(
  * Returns `true` when committed, `false` when a transient empty read was held
  * back so the caller can skip the post-commit recording/logging.
  */
-function commitRefreshedSnapshot(ctx: TransportContext, params: {
+function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     snapshot: TargetDeviceSnapshot[];
     previousSnapshot: readonly TargetDeviceSnapshot[];
     rawWasEmpty: boolean;
     nowMs: number;
 }): boolean {
     const { snapshot, previousSnapshot, rawWasEmpty, nowMs } = params;
-    if (shouldDeferEmptySnapshotCommit(ctx, snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
-    ctx.setSnapshot(snapshot);
+    if (shouldDeferEmptySnapshotCommit(refresh, snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
+    refresh.snapshotCommit.commit(snapshot);
     // Warm iff this read returned at least one RAW device, re-judged on every
     // full commit. With no previous snapshot the guard above commits an empty
     // raw read at once (nothing to clobber), so that commit cannot prove the
@@ -225,28 +223,28 @@ function commitRefreshedSnapshot(ctx: TransportContext, params: {
     // success. An empty streak that outlasts the grace commits `[]` and goes
     // cold for the same reason. Devices that all filtered out (none managed)
     // still count — the SDK spoke.
-    ctx.setSnapshotWarm(!rawWasEmpty);
+    refresh.refreshState.markWarm(!rawWasEmpty);
     // After setSnapshot so latestSnapshotById is current. The grace-deferred
     // path returns above (before setSnapshot), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
-    ctx.dispatchObservedStateRefresh(snapshot);
-    completePendingTemperatureRecoveriesAfterRefresh(ctx);
+    refresh.observationBridge.dispatchStateRefresh(snapshot);
+    refresh.temperatureRecovery.completeAfterRefresh();
     // Managed devices PLUS the cars the EV car-link probe tracks. Per-device
     // capability subscriptions (`homey:device:<id>`) are the ONLY realtime source
     // of capability VALUE changes; the manager-level `device.update` stream does
     // not carry them. A class `car` device never survives parse, so without this
     // union the probe would never see a plug transition in realtime and would be
     // limited to the device poll — far coarser than its 90 s coincidence window.
-    ctx.updateLiveFeedTrackedDevices([
+    refresh.deviceSdk.updateTrackedDevices([
         ...snapshot.map((d) => d.id),
-        ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+        ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
     ]);
-    fireSnapshotMutatedForRefresh(ctx, snapshot, previousSnapshot);
+    fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
     return true;
 }
 
 function shouldEmitSnapshotRefreshLog(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     devicesTotal: number,
     metrics: SnapshotRefreshMetrics,
 ): boolean {
@@ -257,9 +255,7 @@ function shouldEmitSnapshotRefreshLog(
         metrics.temperatureUnknownDevices,
         metrics.unavailableDevices,
     ].join(':');
-    if (ctx.getLastSnapshotRefreshMetricsKey() === nextKey) return false;
-    ctx.setLastSnapshotRefreshMetricsKey(nextKey);
-    return true;
+    return !refresh.refreshState.hasEmittedMetrics(nextKey);
 }
 
 // Adopt the side effects of a committed snapshot: rebuild the tracking map /
@@ -275,7 +271,7 @@ function shouldEmitSnapshotRefreshLog(
 // `effectiveList`, so its tracking is overlaid from the prior raw entries and
 // the raw cache is left intact (the partial read isn't the full picker list).
 function adoptCommittedDeviceList(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     effectiveList: HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
     committedSnapshot: readonly TargetDeviceSnapshot[],
@@ -286,10 +282,10 @@ function adoptCommittedDeviceList(
         : overlayRetainedTrackedDevices({
             effectiveList,
             committedSnapshot,
-            priorRawById: ctx.getTrackedDevicesById(),
+            priorRawById: refresh.reader.snapshotStore.getTrackedRawDevicesById(),
         });
-    syncTrackedDevices(ctx, trackingList);
-    if (isFullRead) ctx.setLatestRawDevices(effectiveList);
+    refresh.reader.syncTrackedDevices(trackingList);
+    if (isFullRead) refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
 }
 
 // Rebuild the realtime tracking map and (re)sync native stepped-load command
@@ -301,32 +297,17 @@ function adoptCommittedDeviceList(
 // native stepped-load command (e.g. a Høiax heater) would silently no-op
 // (`setObservedNativeSteppedLoadStep` returns false with no adapter) until the
 // next good read re-registered it.
-export function syncTrackedDevices(ctx: TransportContext, effectiveList: HomeyDeviceLike[]): void {
-    // Rebuild in place (clear + repopulate in list order) so the tracking-map
-    // reference the leaf reads elsewhere (`destroy`, native-adapter sync) stays
-    // stable; the entry set/order matches the prior `new Map(...)` build.
-    const tracked = ctx.getTrackedDevicesById();
-    tracked.clear();
-    for (const device of effectiveList) {
-        const deviceId = getDeviceId(device);
-        if (deviceId && ctx.shouldTrackRealtimeDevice(deviceId)) tracked.set(deviceId, device);
-    }
-    ctx.syncTrackedNativeSteppedLoadAdapters();
-}
-
 async function fetchDevicesForSnapshotRefresh(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     isTargetedRefresh: boolean,
 ): Promise<DeviceFetchResult | null> {
     try {
-        // Route through the leaf's instance methods (not the impls directly) so a
-        // test spy on `DeviceTransport.fetchDevicesForSnapshot` is honored.
         return isTargetedRefresh
-            ? await ctx.fetchDevicesByKnownIds()
-            : await ctx.fetchDevicesForSnapshot();
+            ? await refresh.fetchDevicesByKnownIds()
+            : await refresh.deviceSdk.fetchDevices();
     } catch (error) {
         const normalizedError = normalizeError(error);
-        ctx.logger.structuredLog.error({
+        moduleLogger.error({
             event: 'device_snapshot_refresh_failed',
             reasonCode: 'refresh_failed',
             targetedRefresh: isTargetedRefresh,
@@ -336,141 +317,18 @@ async function fetchDevicesForSnapshotRefresh(
     }
 }
 
-export async function fetchDevicesForSnapshot(ctx: TransportContext): Promise<DeviceFetchResult> {
-    const start = Date.now();
-    try {
-        return await fetchDevicesWithFallback({
-            logger: ctx.logger,
-        });
-    } finally {
-        const durationMs = Date.now() - start;
-        addPerfDuration('device_fetch_ms', durationMs);
-        addPerfDuration('device_fetch_full_ms', durationMs);
-    }
-}
-
-export async function fetchDevicesByKnownIds(ctx: TransportContext): Promise<DeviceFetchResult> {
-    const start = Date.now();
-    try {
-        // Parsed devices, plus the cars the EV link probe tracks. Cars are dropped
-        // by parse so they never reach `latestSnapshot`, which would otherwise make
-        // the first full fetch their only read on this path. They are additive to
-        // the request only: parse still drops them, so they never enter the
-        // snapshot and the targeted-miss grace (keyed on `latestSnapshot`) is
-        // unaffected.
-        const deviceIds = [...new Set([
-            ...ctx.latestSnapshot.map((d) => d.id),
-            ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
-            ...getPendingTemperatureRecoveryDeviceIds(ctx),
-        ])];
-        return await fetchDevicesByIds({
-            deviceIds,
-            logger: ctx.logger,
-        });
-    } finally {
-        const durationMs = Date.now() - start;
-        addPerfDuration('device_fetch_ms', durationMs);
-        addPerfDuration('device_fetch_targeted_ms', durationMs);
-    }
-}
-
-export async function fetchDevicesForDebug(ctx: TransportContext): Promise<HomeyDeviceLike[]> {
-    return (await ctx.fetchDevicesForSnapshot()).devices;
-}
-
-function getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
-    return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
-        ? device.capabilitiesObj as DeviceCapabilityMap
-        : {};
-}
-
-function buildParseDeviceDeps(ctx: TransportContext) {
-    return {
-        logger: ctx.logger,
-        providers: ctx.providers,
-        debugStructured: ctx.debugStructured,
-        powerState: ctx.powerState,
-        measuredPowerResolver: ctx.retainedPower.resolver,
-        getCapabilityObj: (device: HomeyDeviceLike) => getCapabilityObj(device),
-        isPowerCapable: (
-            device: HomeyDeviceLike,
-            capsStatus: { hasPower: boolean },
-            measuredPower: { measuredPowerKw?: number },
-            retainedReading: RetainedMeasurement | undefined,
-        ) => isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading }),
-        getRestoredPowerReading: (deviceId: string) => ctx.retainedPower.restoredReading(deviceId),
-        resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(ctx.observationState, deviceId),
-    };
-}
-
 // Snapshot pipeline contract: callers must pass an already-effective device
 // list (compatibility metadata + driver-id override pre-applied via
-// `ctx.applyDeviceDriverOverride`). `refreshSnapshot` and
-// `parseDeviceListForTests` are the two entry points; both pre-apply the
-// override exactly once so it propagates downstream without being re-run by
-// this wrapper or by `resolveParseDeviceIdentity` inside `parseDevice`.
+// `refresh.reader.applyDeviceDriverOverride`). Refresh applies the override
+// exactly once so it propagates downstream without being re-run by
+// `resolveParseDeviceIdentity` inside `parseDevice`.
 // Parsing is side-effect-free; the realtime tracking map and native adapters
 // are (re)built separately via `syncTrackedDevices`, which `refreshSnapshot`
 // runs only after the abandon-grace guard commits the snapshot.
-export function parseSnapshotDeviceList(
-    ctx: TransportContext,
-    effectiveList: HomeyDeviceLike[],
-    livePowerWByDeviceId: LiveDevicePowerWatts = {},
-    purpose: ParseDevicePurpose = 'runtime',
-): TransportDeviceSnapshot[] {
-    return parseDeviceList({
-        list: effectiveList,
-        livePowerWByDeviceId,
-        previousSnapshotById: ctx.latestSnapshotById,
-        deps: buildParseDeviceDeps(ctx),
-        purpose,
-    });
-}
-
-export function parseSnapshotDevice(
-    ctx: TransportContext,
-    device: HomeyDeviceLike,
-    now: number,
-    livePowerWByDeviceId: LiveDevicePowerWatts,
-): TargetDeviceSnapshot | null {
-    return parseDevice({
-        device,
-        now,
-        livePowerWByDeviceId,
-        previousSnapshot: ctx.latestSnapshotById.get(getDeviceId(device)),
-        deps: buildParseDeviceDeps(ctx),
-    });
-}
-
-/**
- * The test seam's parse, through the device-read contract like every
- * production read: no test can pin what a parse does with a payload production
- * never parses.
- */
-export function parseConformingDeviceListForTests(
-    ctx: TransportContext,
-    list: readonly HomeyDeviceLike[],
-): TransportDeviceSnapshot[] {
-    const { devices } = partitionConformingDeviceReads(ctx, list);
-    syncTrackedDevices(ctx, devices);
-    return parseSnapshotDeviceList(ctx, devices, {}, 'unfiltered');
-}
-
-export function getSnapshotUiPickerDevices(ctx: TransportContext): TransportDeviceSnapshot[] {
-    const rawDevices = ctx.getLatestRawDevices();
-    if (rawDevices.length === 0) return [];
-    return parseDeviceList({
-        list: rawDevices,
-        previousSnapshotById: ctx.latestSnapshotById,
-        deps: buildParseDeviceDeps(ctx),
-        purpose: 'ui_picker',
-    });
-}
-
 export function computePeriodicStatusMetrics(
-    ctx: TransportContext,
+    snapshotStore: TransportSnapshotStore,
 ): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
-    const snapshot = ctx.latestSnapshot;
+    const snapshot = snapshotStore.getSnapshot();
     if (snapshot.length === 0) return null;
     return {
         devicesTotal: snapshot.length,
@@ -481,37 +339,37 @@ export function computePeriodicStatusMetrics(
 // Zone tree rides the same refresh cycle (no timer of its own), fired
 // DETACHED after the snapshot commit so it can never stall the device
 // pipeline or its callers. The WHOLE body is contained: this function runs
-// fire-and-forget (`void refreshZoneTreeCache(ctx)`), so nothing here may
+// fire-and-forget (`void refreshZoneTreeCache(refresh)`), so nothing here may
 // reject — `fetchZoneTree` resolves `null` on its own failure paths, but a
 // throwing logger call on one of those paths (or any future edit before the
 // commit) would otherwise become an unhandled rejection. A failed/junk/empty
 // read commits nothing and the cached tree — like the snapshot on that path —
 // stays untouched (abandon-grace).
-async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
+async function refreshZoneTreeCache(refresh: SnapshotRefreshService): Promise<void> {
     try {
-        const generation = ctx.zoneTreeCache.bumpGeneration();
-        const zoneTree = await fetchZoneTree({ logger: ctx.logger });
+        const generation = refresh.refreshState.beginZoneTreeRefresh();
+        const zoneTree = await fetchZoneTree({ logger: refresh.reader.logger });
         if (zoneTree === null) return;
         // Generation guard: detached fetches can resolve out of order — commit
         // only if newer than the last COMMITTED generation. A stale fetch
         // resolving after a newer commit drops, but a superseded-yet-fresher
         // result still lands when the newer fetch failed and committed nothing.
-        if (generation <= ctx.zoneTreeCache.getLastCommittedGeneration()) {
-            ctx.logger.debug({
+        if (generation <= refresh.refreshState.lastCommittedZoneTreeGeneration()) {
+            emitDeviceDebug({
                 event: 'zone_tree_fetch_superseded',
                 generation,
-                lastCommittedGeneration: ctx.zoneTreeCache.getLastCommittedGeneration(),
+                lastCommittedGeneration: refresh.refreshState.lastCommittedZoneTreeGeneration(),
             });
             return;
         }
-        ctx.zoneTreeCache.set(zoneTree, generation);
+        refresh.refreshState.commitZoneTree(zoneTree, generation);
         // Commit notification (multi-home membership recompute). Guarded
         // separately from the outer catch so a subscriber throw is attributed
         // to the subscriber, not misread as a zone refresh failure.
         try {
-            ctx.notifyZoneTreeCommitted();
+            refresh.notifications.notifyZoneTreeCommitted();
         } catch (error) {
-            ctx.logger.debug({
+            emitDeviceDebug({
                 event: 'zone_tree_commit_notify_failed',
                 error: normalizeError(error).message,
             });
@@ -520,7 +378,7 @@ async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
         // Last-resort containment; the guard itself must never throw, so the
         // logging attempt is swallowed on failure.
         try {
-            ctx.logger.debug({
+            emitDeviceDebug({
                 event: 'zone_tree_refresh_failed',
                 error: normalizeError(error).message,
             });
@@ -539,32 +397,39 @@ type RefreshLivePower = {
 };
 
 async function resolveLivePowerForRefresh(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     includeLivePower: boolean,
     mainMeterSelection: MainMeterSelection,
 ): Promise<RefreshLivePower> {
     if (!includeLivePower) return { byDeviceId: {}, homePowerSample: null };
-    const report = await fetchLivePowerReport(ctx, mainMeterSelection);
+    const report = await fetchLivePowerReport(
+        refresh.reader.logger,
+        refresh.reader.providers,
+        mainMeterSelection,
+    );
     return {
         byDeviceId: report.state === 'measured' ? report.byDeviceId : {},
-        homePowerSample: updateHomePowerFromReport(ctx, report),
+        homePowerSample: updateHomePowerFromReport(
+            (watts, observedAtMs) => refresh.observationBridge.setGenerationW(watts, observedAtMs),
+            report,
+        ),
     };
 }
 
 export async function refreshSnapshot(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     options: SnapshotRefreshOptions,
 ): Promise<HomePowerSampleWithIdentity | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
     try {
-        const previousSnapshot = ctx.latestSnapshot;
-        const isTargetedRefresh = options.targetedRefresh === true && ctx.latestSnapshot.length > 0;
-        const fetchResult = await fetchDevicesForSnapshotRefresh(ctx, isTargetedRefresh);
+        const previousSnapshot = refresh.reader.snapshotStore.getSnapshot();
+        const isTargetedRefresh = options.targetedRefresh === true && previousSnapshot.length > 0;
+        const fetchResult = await fetchDevicesForSnapshotRefresh(refresh, isTargetedRefresh);
         if (!fetchResult) return null;
         const { devices: list, fetchSource, failedIds } = fetchResult;
         const { byDeviceId: livePowerByDeviceId, homePowerSample } = await resolveLivePowerForRefresh(
-            ctx,
+            refresh,
             options.includeLivePower !== false,
             options.mainMeterSelection,
         );
@@ -573,24 +438,29 @@ export async function refreshSnapshot(
         // stand, none of its values reach a producer, the parse or tracking, and
         // the producers see it as present but unread.
         const read = partitionConformingDeviceReads(
-            ctx,
-            list.map((device) => ctx.applyDeviceDriverOverride(device)),
+            refresh.reader.snapshotStore,
+            refresh.reader.logger,
+            list.map((device) => refresh.reader.applyDeviceDriverOverride(device)),
         );
-        const effectiveList = observeBatteryStateFromList(ctx, read, fetchSource);
+        const effectiveList = observeBatteryStateFromList(
+            refresh.observationProducers.battery,
+            refresh.observationProducers.solar,
+            read,
+            fetchSource,
+        );
         const presentSnapshot = withIgnoredReadEntries(
-            parseSnapshotDeviceList(ctx, effectiveList, livePowerByDeviceId),
+            refresh.reader.parseDeviceList(effectiveList, livePowerByDeviceId),
             previousSnapshot,
             read.ignoredIds,
         );
         // Carry the observations the realtime path made since the last refresh
         // over a read that may be older than them.
         mergeFresherCapabilityObservations({
-            state: ctx.observationState,
+            state: refresh.observationBridge.state.getObservationState(),
             previousSnapshot,
             nextSnapshot: presentSnapshot,
             devices: effectiveList,
-            logger: ctx.logger,
-            debugStructured: ctx.debugStructured,
+            logger: refresh.reader.logger,
         });
         // `fetchSource` resolves whether this committed read is a targeted
         // overlay or a full read — a targeted refresh that fell back to full
@@ -598,7 +468,7 @@ export async function refreshSnapshot(
         // authoritative here even though `isTargetedRefresh` was requested.
         const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
         const snapshot = resolveCommittedRefreshSnapshot(
-            ctx,
+            refresh,
             presentSnapshot,
             previousSnapshot,
             isTargetedOverlay ? failedIds : null,
@@ -607,14 +477,23 @@ export async function refreshSnapshot(
         // Skip both the snapshot commit AND the raw-device cache update when the
         // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
         // doesn't briefly report zero devices during the blip we're masking.
-        const committed = commitRefreshedSnapshot(ctx, {
+        const committed = commitRefreshedSnapshot(refresh, {
             snapshot,
             previousSnapshot,
             rawWasEmpty: list.length === 0,
             nowMs: start,
         });
         if (!committed) return homePowerSample;
-        adoptCommittedDeviceList(ctx, withIgnoredReadRawDevices(ctx, read), fetchSource, snapshot);
+        adoptCommittedDeviceList(
+            refresh,
+            withIgnoredReadRawDevices(
+                refresh.reader.snapshotStore.getTrackedRawDevicesById(),
+                refresh.reader.snapshotStore.getLatestRawDevices(),
+                read,
+            ),
+            fetchSource,
+            snapshot,
+        );
         // AFTER the commit, unlike the battery/solar producers above: the EV
         // car-link probe resolves charger state by reading the committed
         // snapshot, so running it pre-parse would pair a car transition read in
@@ -623,13 +502,19 @@ export async function refreshSnapshot(
         // coarse fetch-only cadence, outside the coincidence window entirely.
         // Class `car` devices are dropped by parse, so the probe still reads them
         // from the raw list.
-        observeEvCarLinkAndResubscribe(ctx, read, fetchSource, snapshot);
+        observeEvCarLinkAndResubscribe(
+            refresh.observationProducers.evCarLink,
+            (deviceIds) => refresh.deviceSdk.updateTrackedDevices(deviceIds),
+            read,
+            fetchSource,
+            snapshot,
+        );
         recordSnapshotRefreshObservations({
-            state: ctx.observationState,
+            state: refresh.observationBridge.state.getObservationState(),
             snapshot,
             fetchSource,
         });
-        (ctx.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
+        emitDeviceDebug({
             event: 'device_snapshot_refresh_processed',
             devicesTotal: snapshot.length,
             targetedRefresh: isTargetedRefresh,
@@ -638,8 +523,8 @@ export async function refreshSnapshot(
             livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
         });
         const metrics = summarizeSnapshotRefreshMetrics(snapshot);
-        if (shouldEmitSnapshotRefreshLog(ctx, snapshot.length, metrics)) {
-            ctx.logger.structuredLog.info({
+        if (shouldEmitSnapshotRefreshLog(refresh, snapshot.length, metrics)) {
+            moduleLogger.info({
                 event: 'device_snapshot_refresh_completed',
                 durationMs: Date.now() - start,
                 devicesTotal: snapshot.length,
@@ -648,7 +533,7 @@ export async function refreshSnapshot(
             });
         }
         logEvSnapshotChanges({
-            logger: ctx.logger,
+            logger: refresh.reader.logger,
             previousSnapshot,
             nextSnapshot: snapshot,
         });
@@ -665,10 +550,39 @@ export async function refreshSnapshot(
         // eventually-consistent cache. Still fired only after a successful
         // device fetch + committed snapshot; the grace-deferred empty-read
         // path above skips it for the cycle (a degraded blip already).
-        void refreshZoneTreeCache(ctx);
+        void refreshZoneTreeCache(refresh);
         return homePowerSample;
     } finally {
         stopSpan();
         addPerfDuration('device_refresh_ms', Date.now() - start);
     }
+}
+
+/** Owns device snapshot acquisition, parsing, refresh lifecycle and commit. */
+export class SnapshotRefreshService {
+  // eslint-disable-next-line max-params -- Direct owner collaborators, not an argument bag.
+  constructor(
+    readonly refreshState: SnapshotRefreshState,
+    readonly snapshotCommit: SnapshotCommit,
+    readonly observationBridge: ObservationBridge,
+    readonly observationProducers: ObservationProducers,
+    readonly temperatureRecovery: TemperatureRecoveryService,
+    readonly reader: DeviceSnapshotReader,
+    readonly deviceSdk: DeviceHomeySdk,
+    readonly notifications: TransportNotifications,
+  ) {}
+
+  fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {
+    const ids = new Set([
+      ...this.reader.snapshotStore.getSnapshot().map((device) => device.id),
+      ...this.observationProducers.evCarLink.getObservedCarDeviceIds(),
+      ...this.temperatureRecovery.getPendingDeviceIds(),
+    ]);
+    return this.deviceSdk.fetchDevicesByIds([...ids]);
+  }
+
+  refresh(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null> {
+    return refreshSnapshot(this, options);
+  }
+
 }

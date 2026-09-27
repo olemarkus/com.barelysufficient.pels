@@ -8,6 +8,7 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
+import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { recordCapabilityObservation } from './managerObservation';
 import {
@@ -30,7 +31,9 @@ import {
   hasMatchingRecentLocalWrite,
   normalizeRealtimeCapabilityEventValue,
 } from './realtimeCapabilityShared';
-import type { TransportContext } from './transportContext';
+import type { RealtimeIngestService } from './transportServices';
+
+const moduleLogger = getLogger('device/transport');
 
 function resolveNativeSteppedCapabilityUpdateKind(params: {
     capabilityId: string;
@@ -58,7 +61,7 @@ function resolveNativeSteppedCapabilityUpdateKind(params: {
     };
 }
 
-function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params: {
+function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService, params: {
     deviceId: string;
     deviceName: string;
     previousReportedStepId: string | undefined;
@@ -76,25 +79,25 @@ function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params:
         nextValue: nextReportedStepId ?? 'unknown',
     };
     emitCapabilityEventReceived(
-        ctx,
+        ingest.observationBridge.state,
         deviceId,
         PELS_MEASURE_STEP_CAPABILITY_ID,
         nextReportedStepId ?? 'unknown',
     );
-    const cursor = ctx.nextObservationCursor(deviceId);
-    ctx.logger.structuredLog.info({
+    const cursor = ingest.observationBridge.nextCursor(deviceId);
+    moduleLogger.info({
         event: 'realtime_capability_drift',
         deviceId,
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
         changes: [change],
     });
-    ctx.dispatchObservedStateChanged({
+    ingest.observationBridge.dispatchStateChanged({
         source: 'realtime_capability',
         deviceId,
         ...cursor,
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     });
-    ctx.dispatchObservedControlStateChanged({
+    ingest.observationBridge.dispatchControlStateChanged({
         deviceId,
         ...cursor,
         name: deviceName,
@@ -102,8 +105,7 @@ function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params:
     });
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
+function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;
     capabilityId: string;
@@ -121,7 +123,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
         reportedStepPowerW,
         reportedStepObservedAtMs,
     } = params;
-    const currentSnapshot = ctx.latestSnapshot[snapshotIndex];
+    const currentSnapshot = ingest.reader.snapshotStore.getSnapshot()[snapshotIndex];
     // The index was resolved against this same snapshot array by the caller, so a miss
     // cannot happen; there is nothing to update if it ever did.
     if (currentSnapshot === undefined) return;
@@ -140,7 +142,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
     }
     const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
     if (reportedStepChanged) {
-        emitNativeSteppedLoadReportedStepChanged(ctx, {
+        emitNativeSteppedLoadReportedStepChanged(ingest, {
             deviceId,
             deviceName: currentSnapshot.name,
             previousReportedStepId,
@@ -152,7 +154,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
         || previousReportedStepObservedAtMs !== reportedStepObservedAtMs
     );
     if (reportedStepChanged || exactPowerObservationChanged) {
-        ctx.onSnapshotMutated?.(currentSnapshot, Date.now());
+        ingest.notifications.snapshotChanged(currentSnapshot, Date.now());
     }
     // A power-step that does NOT change the reported step still advances
     // lastFreshDataMs/lastUpdated in place but skips the dispatch funnel (the
@@ -163,10 +165,10 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
     // step changed, emitNativeSteppedLoadReportedStepChanged already dispatched
     // the (freshness-inclusive) delta, so this guards against a double push.
     if (isNativePowerStepUpdate && !reportedStepChanged) {
-        ctx.dispatchObservedStateChanged({
+        ingest.observationBridge.dispatchStateChanged({
             source: 'realtime_capability',
             deviceId,
-            ...ctx.nextObservationCursor(deviceId),
+            ...ingest.observationBridge.nextCursor(deviceId),
             capabilityId,
         });
     }
@@ -198,25 +200,7 @@ function resolveNativeReportedStepPowerW(
     return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
-/**
- * PELS's own write echoed back is no observation of the device, with one
- * exception: an Easee charger current. Homey's echo of it is the current the
- * charger now holds, and a paused Easee's switch is read from that current
- * (`easeeChargingSwitch.ts`). Suppressed, the level kept the old current until
- * the next refresh, so Easee's pause report, 6 s after PELS wrote 0 A
- * (production, 2026-09-25), read the charger as still on.
- */
-function isOwnWriteEcho(
-    ctx: TransportContext,
-    deviceId: string,
-    capabilityId: string,
-    normalizedValue: unknown,
-): boolean {
-    return capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID
-        && hasMatchingRecentLocalWrite(ctx, deviceId, capabilityId, normalizedValue);
-}
-
-export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, params: {
+export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;
     capabilityId: string;
@@ -248,14 +232,17 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return true;
 
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
-    if (isOwnWriteEcho(ctx, deviceId, capabilityId, normalizedValue)) {
+    // An Easee current echo is also the only source for its reported rung and
+    // derived charging switch. Let the adapter consume it even though it echoes
+    // PELS's write; suppressing it leaves the prior rung cached until refresh.
+    if (shouldSuppressOwnNativeStepEcho(ingest, deviceId, capabilityId, normalizedValue)) {
         return isNativePowerStepUpdate;
     }
 
     if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
         recordCapabilityObservation({
-            state: ctx.observationState,
-            latestSnapshot: ctx.latestSnapshot,
+            state: ingest.observationBridge.state.getObservationState(),
+            latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
             deviceId,
             capabilityId,
             value: normalizedValue,
@@ -265,11 +252,11 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
     }
 
     observeNativeSteppedLoadCapabilityUpdate({
-        owner: ctx.owner,
+        owner: ingest.reader.snapshotStore,
         deviceId,
         capabilityId,
         value,
-        logger: ctx.logger,
+        logger: ingest.reader.logger,
     });
 
     const fallbackReportedStepId = profile && value === false
@@ -282,13 +269,13 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
         })
         : undefined;
     const nextReportedStepId = resolveObservedNativeSteppedLoadReportedStepId({
-        owner: ctx.owner,
+        owner: ingest.reader.snapshotStore,
         deviceId,
         profile,
     }) ?? fallbackReportedStepId;
     const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
 
-    applyNativeSteppedLoadSnapshotUpdate(ctx, {
+    applyNativeSteppedLoadSnapshotUpdate(ingest, {
         snapshotIndex,
         deviceId,
         capabilityId,
@@ -300,7 +287,17 @@ export function handleNativeSteppedLoadCapabilityUpdate(ctx: TransportContext, p
     return isNativePowerStepUpdate;
 }
 
-export function handleTargetPowerSourceCapabilityUpdate(ctx: TransportContext, params: {
+function shouldSuppressOwnNativeStepEcho(
+    ingest: RealtimeIngestService,
+    deviceId: string,
+    capabilityId: string,
+    normalizedValue: unknown,
+): boolean {
+    return capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID
+        && hasMatchingRecentLocalWrite(ingest.observationBridge.state, deviceId, capabilityId, normalizedValue);
+}
+
+export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestService, params: {
     snapshotIndex: number;
     deviceId: string;
     capabilityId: string;
@@ -330,15 +327,15 @@ export function handleTargetPowerSourceCapabilityUpdate(ctx: TransportContext, p
         },
     });
     recordCapabilityObservation({
-        state: ctx.observationState,
-        latestSnapshot: ctx.latestSnapshot,
+        state: ingest.observationBridge.state.getObservationState(),
+        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
         deviceId,
         capabilityId,
         value,
         source: 'realtime_capability',
         countsTowardDeviceFreshness: true,
     });
-    applyNativeSteppedLoadSnapshotUpdate(ctx, {
+    applyNativeSteppedLoadSnapshotUpdate(ingest, {
         snapshotIndex,
         deviceId,
         capabilityId,

@@ -29,20 +29,16 @@
 # reach the log, they just carry no `event` field to filter or count on.
 # `managerZones.ts` documents the distinction in its own comment.
 lib/device/devicePowerEstimate.ts 1
-lib/device/deviceTransport.ts 1
 lib/device/evCarLinkStore.ts 1
 lib/device/liveFeed.ts 2
 lib/device/managerControl.ts 5
 lib/device/managerRuntime.ts 1
 lib/device/measuredPowerResolver.ts 2
-lib/device/transport/deviceUpdateHandling.ts 2
-lib/device/transport/deviceWrites.ts 1
 lib/device/transport/homePowerPoll.ts 1
-lib/device/transport/managerFetch.ts 6
+lib/device/transport/managerFetch.ts 5
 lib/device/transport/managerParseSnapshot.ts 2
 lib/device/transport/managerZones.ts 4
 lib/device/transport/observationMerge.ts 1
-lib/device/transport/snapshotRefresh.ts 4
 
 # --- Entry points and wiring ------------------------------------------------
 # `api.ts` is NOT here: its console.error runs before a root logger exists and is

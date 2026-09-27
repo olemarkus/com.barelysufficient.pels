@@ -94,12 +94,9 @@ export type DeviceTransportWiringDeps = {
  * previous one (stage 4b). Splitting the subscription in two PRESERVES that
  * order — the plan-side listeners can only ever register later.
  *
- * NB: the projection is seeded lazily on the first plan build
- * (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`),
- * not here: right after this wiring the transport's `getSnapshot()` is still
- * empty (transport `init()` only attaches the live feed; the first snapshot
- * arrives with the bootstrap refresh, which dispatches its own refresh into
- * the projection). Seeding here would be a guaranteed no-op.
+ * The first snapshot arrives with the bootstrap refresh, which dispatches its
+ * refresh into the projection before the warmup gate admits a plan build. No
+ * separate snapshot seed path is needed.
  */
 function subscribeObservedStateProjection(deps: DeviceTransportWiringDeps): void {
   const emitter = deps.getObservedStateEmitter();
@@ -155,7 +152,6 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     // The persist is itself rate-limited and change-gated.
     onLearnedPeakChanged: () => deps.persistLearnedPowerPeaks(),
   }, {
-    debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
     onSnapshotMutated: (snapshot, nowMs) => {
       observeCalibrationSnapshotMutation(snapshot, nowMs);

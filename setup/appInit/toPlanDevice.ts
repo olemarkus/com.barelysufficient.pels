@@ -26,6 +26,7 @@ import type {
   EvBoostConfig,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  ProjectedObservedDeviceState,
   StateOfChargeObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadProfile,
@@ -39,7 +40,7 @@ import type {
   TemperaturePlanInputKind,
 } from '../../packages/planner-types/src/planInputDevice';
 import type { AppContext } from '../../lib/app/appContext';
-import type { DeviceSurfaces } from '../../lib/device/deviceSurfaces';
+import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
 import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
 import {
   buildStepPowerCalibrationView,
@@ -131,7 +132,7 @@ function resolvePlanCommandability(
  */
 export function resolveExternalOffHoldActive(
   ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+  device: ProjectedObservedDeviceState & EvObservedProbe,
 ): boolean {
   if (device.binaryControl === undefined) return false;
   if (ctx.externalOffHold?.isHeld(device.id) !== true) return false;
@@ -155,9 +156,9 @@ export function holdExternalOffOnRelease(ctx: AppContext, deviceId: string): Rel
  * cannot see).
  */
 export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): boolean {
-  const snapshot = ctx.deviceManager?.getSnapshotByDeviceId(deviceId);
-  if (!snapshot) return ctx.externalOffHold?.isHeld(deviceId) === true;
-  return resolveExternalOffHoldActive(ctx, snapshot);
+  const observed = ctx.getObservedRecord(deviceId);
+  if (!observed) return ctx.externalOffHold?.isHeld(deviceId) === true;
+  return resolveExternalOffHoldActive(ctx, observed);
 }
 
 /**
@@ -485,14 +486,15 @@ export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
  * PARAMETER's own type, not a restatement beside it: declared separately the two
  * drift, and the assertion goes on passing while a new field rides the spread.
  *
- * Both surfaces of the split plus the stepped decoration — and, since stage 6,
- * that is also what the object PHYSICALLY carries: `latestTargetSnapshot` and
- * the picker list are built from the two projections (`lib/device/deviceSurfaces.ts`),
- * so a transport-internal field is not on the object for the rest-spread to
- * sweep up. The binding ids the destructure below used to strip are gone with
- * it.
+ * Runtime configuration, Observer state and stepped decoration. The runtime
+ * producer joins the narrow `DeviceConfiguration` projection to the Observer
+ * record; inventory fields never enter this input, and transport-internal
+ * fields cannot ride the rest-spread onto a plan device.
  */
-export type ToPlanDeviceInput = DeviceSurfaces & SteppedLoadDecoration & AssociatedCarDecoration;
+export type ToPlanDeviceInput = DeviceConfigurationRead
+  & ProjectedObservedDeviceState
+  & SteppedLoadDecoration
+  & AssociatedCarDecoration;
 
 export function toPlanDevice(
   ctx: AppContext,
@@ -795,9 +797,9 @@ function evictMissingFromRecord<V>(
  */
 export function evictMissingDeviceCacheEntries(
   ctx: AppContext,
-  snapshot: ReadonlyArray<TargetDeviceSnapshot>,
+  presentDeviceIds: ReadonlyArray<string>,
 ): void {
-  if (snapshot.length === 0) return;
-  const presentIds = new Set<string>(snapshot.map((device) => device.id));
+  if (presentDeviceIds.length === 0) return;
+  const presentIds = new Set<string>(presentDeviceIds);
   evictMissingFromRecord(ctx.lastKnownPowerKw, presentIds);
 }

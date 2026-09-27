@@ -1,7 +1,7 @@
 import { preserveNewerMeteredPowerReading } from './meteredPowerObservation';
 import { toCapabilityTimestampMs } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import { EV_SOC_NATIVE_CAPABILITY_IDS } from './stateOfCharge';
@@ -16,13 +16,14 @@ import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from 
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
+
 export function mergeFresherCapabilityObservations(params: {
     state: DeviceTransportObservationState;
     previousSnapshot: TransportDeviceSnapshot[];
     nextSnapshot: TransportDeviceSnapshot[];
     devices: HomeyDeviceLike[];
     logger: { debug: (...args: unknown[]) => void };
-    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -30,7 +31,6 @@ export function mergeFresherCapabilityObservations(params: {
         nextSnapshot,
         devices,
         logger,
-        debugStructured,
     } = params;
     const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
     const devicesById = new Map<string, HomeyDeviceLike>();
@@ -64,7 +64,6 @@ export function mergeFresherCapabilityObservations(params: {
                 previous,
                 sourceDevice,
                 logger,
-                debugStructured,
             });
         } else {
             mergeTemperatureRejectionObservations({
@@ -72,7 +71,7 @@ export function mergeFresherCapabilityObservations(params: {
                 snapshot,
                 sourceDevice,
                 logger,
-            });
+        });
         }
         if (
             hadTemperature
@@ -121,7 +120,6 @@ function mergeSnapshotObservationsForDevice(params: {
     previous: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
     logger: { debug: (...args: unknown[]) => void };
-    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -129,7 +127,6 @@ function mergeSnapshotObservationsForDevice(params: {
         previous,
         sourceDevice,
         logger,
-        debugStructured,
     } = params;
     const snapshot = nextSnapshot;
     snapshot.lastLocalWriteMs = Math.max(
@@ -157,8 +154,7 @@ function mergeSnapshotObservationsForDevice(params: {
             sourceDevice,
             nextSnapshot: snapshot,
             logger,
-            debugStructured,
-        });
+            });
     }
 
     for (const target of snapshot.targets) {
@@ -295,7 +291,6 @@ function mergeCapabilityObservation(params: {
     sourceDevice: HomeyDeviceLike;
     nextSnapshot: TransportDeviceSnapshot;
     logger: { debug: (...args: unknown[]) => void };
-    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -305,7 +300,6 @@ function mergeCapabilityObservation(params: {
         sourceDevice,
         nextSnapshot,
         logger,
-        debugStructured,
     } = params;
     const observationKey = buildCapabilityObservationKey(deviceId, capabilityId);
     const observation = state.capabilityObservations.get(observationKey);
@@ -327,17 +321,39 @@ function mergeCapabilityObservation(params: {
     // there is no reconciliation, so that case is counted instead. Both helpers
     // no-op for non-control capabilities.
     const fetchedValue = sourceDevice.capabilitiesObj?.[capabilityId]?.value;
-    const consolidationCtx: ConsolidationContext = {
-        debugStructured,
-        nextSnapshot,
-        deviceId,
-        deviceName,
-        capabilityId,
-        fetchedValue,
-        fetchedLastUpdatedMs,
-        observation,
+    const emitConsolidation = (
+        consolidatedValue: unknown,
+        winner: ConsolidationWinner,
+        reason: ConsolidationReason,
+    ): void => {
+        if (capabilityId !== nextSnapshot.binaryCapabilityId) return;
+        emitDeviceDebug({
+            event: 'binary_observation_consolidated',
+            deviceId,
+            deviceName,
+            capabilityId,
+            pull: {
+                value: fetchedValue ?? null,
+                observedAtMs: fetchedLastUpdatedMs ?? null,
+            },
+            retained: {
+                value: observation.value ?? null,
+                observedAtMs: observation.observedAt,
+                source: observation.source,
+            },
+            consolidated: { value: consolidatedValue ?? null, winner, reason },
+        });
+    };
+    const recordUnchangedConsolidation = (): void => {
+        if (capabilityId !== nextSnapshot.binaryCapabilityId) return;
+        if (fetchedValue !== observation.value) {
+            emitConsolidation(observation.value, 'retained', 'retained_over_disagreeing_pull');
+            return;
+        }
+        incPerfCounter('binary_observation_agreed_total');
     };
     if (fetchedIsFreshEnough) {
+        emitConsolidation(fetchedValue, 'pull', 'pull_fresher_or_equal');
         acceptFreshCapabilityPull({
             state,
             observationKey,
@@ -346,7 +362,6 @@ function mergeCapabilityObservation(params: {
             deviceId,
             nextSnapshot,
             observation,
-            consolidationCtx,
         });
         return;
     }
@@ -358,14 +373,14 @@ function mergeCapabilityObservation(params: {
         preserveWithoutFetchedFreshness: isRejectedTemperatureObservation(capabilityId, observation),
     });
     if (!shouldPreserveObservation) {
-        emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'retained_not_preserved');
+        emitConsolidation(fetchedValue, 'pull', 'retained_not_preserved');
         return;
     }
     if (!applyCapabilityObservation(nextSnapshot, capabilityId, observation)) {
-        recordBinaryConsolidationUnchanged(consolidationCtx);
+        recordUnchangedConsolidation();
         return;
     }
-    emitBinaryConsolidation(consolidationCtx, observation.value, 'retained', 'retained_fresher');
+    emitConsolidation(observation.value, 'retained', 'retained_fresher');
     logger.debug({
         event: 'snapshot_refresh_preserved_newer',
         deviceId,
@@ -387,13 +402,11 @@ function acceptFreshCapabilityPull(params: {
     deviceId: string;
     nextSnapshot: TransportDeviceSnapshot;
     observation: CapabilityObservation;
-    consolidationCtx: ConsolidationContext;
 }): void {
     const {
-        state, observationKey, capabilityId, fetchedValue, deviceId,
-        nextSnapshot, observation, consolidationCtx,
+    state, observationKey, capabilityId, fetchedValue, deviceId,
+        nextSnapshot, observation,
     } = params;
-    emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'pull_fresher_or_equal');
     if (isRejectedTemperatureObservation(capabilityId, observation) && isFiniteNumber(fetchedValue)) {
         state.capabilityObservations.delete(observationKey);
         return;
@@ -430,8 +443,7 @@ function shouldPreserveRetainedObservation(params: {
 }
 
 // Only a source that actually won carries a decision. The case where both
-// sources already hold the same value is counted, not logged — see
-// `recordBinaryConsolidationUnchanged`.
+// sources already hold the same value is counted, not logged.
 type ConsolidationWinner = 'pull' | 'retained';
 
 type ConsolidationReason =
@@ -439,89 +451,6 @@ type ConsolidationReason =
     | 'retained_fresher'
     | 'pull_fresher_or_equal'
     | 'retained_over_disagreeing_pull';
-
-type ConsolidationContext = {
-    debugStructured?: StructuredDebugEmitter;
-    nextSnapshot: TransportDeviceSnapshot;
-    deviceId: string;
-    deviceName: string;
-    capabilityId: string;
-    fetchedValue: unknown;
-    fetchedLastUpdatedMs?: number;
-    observation: CapabilityObservation;
-};
-
-function isBinaryControlConsolidation(ctx: ConsolidationContext): boolean {
-    return ctx.capabilityId === ctx.nextSnapshot.binaryCapabilityId;
-}
-
-/**
- * The retained observation left the snapshot unchanged. That is not on its own
- * an agreement, so the two sources are compared before one is claimed.
- *
- * When they hold the same value nothing was reconciled and there is no decision
- * to record — the steady state of a working merge, not an event. When they do
- * not, the snapshot is unchanged for the opposite reason: the pull carried
- * something the parse seam would not take (a malformed `onoff`, or none at all)
- * and the retained observation is what stands. That IS a decision, and the
- * payload's `pull` field is the only place the mismatch is visible, so it keeps
- * its line.
- *
- * The comparison costs nothing: across one 16 h production window all 3,088
- * agreeing lines carried `pull.value === retained.value`, so the guard reintroduces
- * no volume while keeping `binary_observation_agreed_total` honest.
- *
- * The mirror case — a retained observation that is not a boolean — needs no
- * check here. `applyControlCapabilityObservation` refuses one, but none can be
- * retained: the realtime path diverts a non-boolean control payload before it is
- * ever recorded, `device_update` records malformed temperature entries only, and
- * a local write stores PELS's own normalized boolean. Re-deriving that guard is
- * the hedge `AGENTS.md` § "Clean and trusted interfaces" rules out.
- *
- * Agreement is counted rather than logged. All 3,088 lines in that window were
- * this case — 1.36 MB, 6% of structured stdout — and not one recorded a choice
- * between the two sources. The counter keeps "the merge ran and the sources
- * agreed" visible in `perf_counters`, where it costs one map entry per window
- * instead of ~440 bytes per observation.
- */
-function recordBinaryConsolidationUnchanged(ctx: ConsolidationContext): void {
-    if (!isBinaryControlConsolidation(ctx)) return;
-    if (ctx.fetchedValue !== ctx.observation.value) {
-        emitBinaryConsolidation(
-            ctx,
-            ctx.observation.value,
-            'retained',
-            'retained_over_disagreeing_pull',
-        );
-        return;
-    }
-    incPerfCounter('binary_observation_agreed_total');
-}
-
-function emitBinaryConsolidation(
-    ctx: ConsolidationContext,
-    consolidatedValue: unknown,
-    winner: ConsolidationWinner,
-    reason: ConsolidationReason,
-): void {
-    if (!isBinaryControlConsolidation(ctx)) return;
-    ctx.debugStructured?.({
-        event: 'binary_observation_consolidated',
-        deviceId: ctx.deviceId,
-        deviceName: ctx.deviceName,
-        capabilityId: ctx.capabilityId,
-        pull: {
-            value: ctx.fetchedValue ?? null,
-            observedAtMs: ctx.fetchedLastUpdatedMs ?? null,
-        },
-        retained: {
-            value: ctx.observation.value ?? null,
-            observedAtMs: ctx.observation.observedAt,
-            source: ctx.observation.source,
-        },
-        consolidated: { value: consolidatedValue ?? null, winner, reason },
-    });
-}
 
 function deviceSupportsCapability(device: HomeyDeviceLike, capabilityId: string): boolean {
     return device.capabilities?.includes(capabilityId) === true

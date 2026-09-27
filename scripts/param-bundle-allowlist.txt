@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-27: 357 files, 894 bundles.
+# Seeded 2026-09-27: 353 files, 882 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -21,7 +21,6 @@ flowCards/headroomAndEvSocCards.ts 2
 flowCards/registerFlowCards.ts 2
 flowCards/steppedLoadFlowCards.ts 1
 flowCards/steppedLoadReport.ts 5
-lib/actuator/deviceCommand.ts 1
 lib/app/appContext.ts 1
 lib/dailyBudget/dailyBudgetAllocation.ts 6
 lib/dailyBudget/dailyBudgetBreakdown.ts 1
@@ -48,7 +47,6 @@ lib/dailyBudget/dailyBudgetStoredPlanBreakdown.ts 2
 lib/device/devicePowerCalibrationStore.ts 5
 lib/device/devicePowerEstimate.ts 4
 lib/device/deviceResidualKw.ts 2
-lib/device/deviceTransport.ts 1
 lib/device/evCarLink.ts 3
 lib/device/evCarLinkObservation.ts 2
 lib/device/evCarLinkProducer.ts 1
@@ -65,7 +63,7 @@ lib/device/liveFeed.ts 2
 lib/device/managerControl.ts 4
 lib/device/managerFlowSupport.ts 3
 lib/device/managerMeasuredPower.ts 1
-lib/device/managerNativeEv.ts 7
+lib/device/managerNativeEv.ts 6
 lib/device/managerNativeSteppedCommand.ts 7
 lib/device/managerRuntime.ts 8
 lib/device/measuredPowerReader.ts 1
@@ -76,9 +74,8 @@ lib/device/observationProducers.ts 1
 lib/device/targetPowerContractWarn.ts 2
 lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
-lib/device/transport/binarySettleEvidence.ts 3
+lib/device/transport/binarySettleEvidence.ts 1
 lib/device/transport/deviceUpdateHandling.ts 1
-lib/device/transport/deviceWrites.ts 2
 lib/device/transport/flowReportedCapabilities.ts 6
 lib/device/transport/managerExplicitBinaryObservation.ts 4
 lib/device/transport/managerFetch.ts 1
@@ -93,7 +90,6 @@ lib/device/transport/managerParsePowerState.ts 1
 lib/device/transport/managerParseSnapshot.ts 4
 lib/device/transport/managerParsedControlState.ts 4
 lib/device/transport/managerRealtimeHandlers.ts 3
-lib/device/transport/managerRealtimeSupport.ts 3
 lib/device/transport/nativeSteppedRealtime.ts 5
 lib/device/transport/observationDebugSources.ts 2
 lib/device/transport/observationMerge.ts 7
@@ -130,7 +126,7 @@ lib/executor/targetExecutor.ts 3
 lib/executor/targetPendingCommand.ts 1
 lib/executor/targetPowerReachability.ts 4
 lib/logging/deviationGate.ts 1
-lib/logging/logDedupe.ts 2
+lib/logging/logDedupe.ts 1
 lib/objectives/deferredObjectives/activePlanDuration.ts 1
 lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/activePlanRevisionBuild.ts 7
@@ -325,7 +321,7 @@ packages/shared-domain/src/solar/solarMoney.ts 1
 packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
-setup/appDebugHelpers.ts 2
+setup/appDebugHelpers.ts 4
 setup/appDeviceControlFeedback.ts 5
 setup/appDeviceControlHelpers.ts 5
 setup/appDeviceControlSteppedState.ts 2
@@ -341,7 +337,7 @@ setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
 setup/appObservedControlStateRuntime.ts 2
 setup/appPriceLowestTrigger.ts 1
-setup/appRuntimeApi.ts 1
+setup/appRuntimeApi.ts 2
 setup/appSettingsHelpers.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/appTargetPowerReachability.ts 8

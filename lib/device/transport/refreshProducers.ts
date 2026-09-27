@@ -5,8 +5,10 @@
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceListRead } from '../deviceListRead';
+import type { BatteryStateProducer } from '../batteryStateProducer';
+import type { SolarProductionProducer } from '../solarProductionProducer';
+import type { EvCarLinkProducer } from '../evCarLinkProducer';
 import type { DeviceFetchSource } from './managerFetch';
-import type { TransportContext } from './transportContext';
 
 /**
  * Run the EV car-link probe after the snapshot commit, then re-sync the realtime
@@ -21,18 +23,19 @@ import type { TransportContext } from './transportContext';
  * until the next fetch: half an hour of blindness at every boot.
  */
 export function observeEvCarLinkAndResubscribe(
-    ctx: TransportContext,
+    evCarLink: EvCarLinkProducer,
+    updateLiveFeedTrackedDevices: (deviceIds: string[]) => void,
     read: DeviceListRead,
     fetchSource: DeviceFetchSource,
     snapshot: readonly TargetDeviceSnapshot[],
 ): void {
-    ctx.observationProducers.evCarLink.observe(read, {
+    evCarLink.observe(read, {
         fullRefresh: fetchSource === 'raw_manager_devices',
         nowMs: Date.now(),
     });
-    ctx.updateLiveFeedTrackedDevices([
+    updateLiveFeedTrackedDevices([
         ...snapshot.map((device) => device.id),
-        ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+        ...evCarLink.getObservedCarDeviceIds(),
     ]);
 }
 
@@ -46,13 +49,14 @@ export function observeEvCarLinkAndResubscribe(
 // (`raw_manager_devices`) re-derives the sets; a targeted by-id read re-reads the
 // SAME known ids and must not narrow them.
 export function observeBatteryStateFromList(
-    ctx: TransportContext,
+    battery: BatteryStateProducer,
+    solar: SolarProductionProducer,
     read: DeviceListRead,
     fetchSource: DeviceFetchSource,
 ): HomeyDeviceLike[] {
     const fullRefresh = fetchSource === 'raw_manager_devices';
-    ctx.observationProducers.battery.observe(read, { fullRefresh });
-    ctx.observationProducers.solar.observe(read, { fullRefresh });
+    battery.observe(read, { fullRefresh });
+    solar.observe(read, { fullRefresh });
     // The EV car-link probe is deliberately NOT observed here — it runs after the
     // snapshot commit (see `refreshSnapshot`), because it resolves charger state
     // from the committed snapshot. Observing it here as well would give it one

@@ -1,65 +1,69 @@
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
-import type { TransportContext } from './transportContext';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { SnapshotRefreshOptions } from './transportTypes';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
+import type { TransportObservationState, TransportObservationCursor } from './transportObservationState';
+import type { PlanRealtimeUpdateEvent } from './managerRealtimeHandlers';
+import type { DeviceTransportParseProviders } from './managerParseDevice';
 import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
 
 const moduleLogger = getLogger('device/transport');
-type TemperatureRecoveryState = {
-  pendingDeviceIds: Set<string>;
-  refreshInFlightDeviceIds: Set<string>;
-};
 
-const temperatureRecoveryStateByOwner = new WeakMap<object, TemperatureRecoveryState>();
+type TemperatureRefresh = (options: SnapshotRefreshOptions) => Promise<unknown>;
+/** Owns targeted recovery from an invalid temperature observation. */
+export class TemperatureRecoveryService {
+  constructor(
+    private readonly state: TransportObservationState,
+    private readonly snapshotStore: TransportSnapshotStore,
+    private readonly refreshSnapshot: TemperatureRefresh,
+    private readonly providers: DeviceTransportParseProviders,
+    private readonly nextCursor: (deviceId: string) => TransportObservationCursor,
+    private readonly dispatchControlStateChanged: (event: PlanRealtimeUpdateEvent) => void,
+  ) {}
 
-export function requestTemperatureRecovery(ctx: TransportContext, deviceId: string): void {
-  const state = getTemperatureRecoveryState(ctx.owner);
-  state.pendingDeviceIds.add(deviceId);
-  if (state.refreshInFlightDeviceIds.has(deviceId)) return;
-  state.refreshInFlightDeviceIds.add(deviceId);
-  void ctx.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: ctx.resolveMainMeterSelection() })
-    .catch((error: unknown) => {
-      moduleLogger.error({
-        event: 'temperature_observation_recovery_failed',
-        deviceId,
-        err: normalizeError(error),
-      });
+  request(deviceId: string): void {
+    if (!this.state.requestTemperatureRecovery(deviceId)) return;
+    void this.refreshSnapshot({
+      targetedRefresh: true,
+      mainMeterSelection: this.providers.getHomeyEnergyMeterSelection(),
     })
-    .finally(() => {
-      state.refreshInFlightDeviceIds.delete(deviceId);
-    });
-}
+      .catch((error: unknown) => {
+        moduleLogger.error({
+          event: 'temperature_observation_recovery_failed',
+          deviceId,
+          err: normalizeError(error),
+        });
+      })
+      .finally(() => this.state.finishTemperatureRecoveryRefresh(deviceId));
+  }
 
-export function completePendingTemperatureRecoveriesAfterRefresh(ctx: TransportContext): void {
-  const state = getTemperatureRecoveryState(ctx.owner);
-  for (const deviceId of state.pendingDeviceIds) {
-    const recovered = ctx.latestSnapshotById.get(deviceId);
-    if (!recovered?.temperature) continue;
-    state.pendingDeviceIds.delete(deviceId);
-    dispatchRecoveredTemperature(ctx, deviceId, recovered.name);
+  completeAfterRefresh(): void {
+    for (const deviceId of this.state.getPendingTemperatureRecoveryDeviceIds()) {
+      const recovered = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+      if (!hasRecoveredTemperature(recovered)) continue;
+      this.state.completeTemperatureRecovery(deviceId);
+      this.dispatchRecoveredTemperature(deviceId, recovered.name);
+    }
+  }
+
+  getPendingDeviceIds(): string[] {
+    return this.state.getPendingTemperatureRecoveryDeviceIds();
+  }
+
+  private dispatchRecoveredTemperature(deviceId: string, deviceName: string): void {
+    const cursor = this.nextCursor(deviceId);
+    this.dispatchControlStateChanged({
+      deviceId,
+      ...cursor,
+      name: deviceName,
+      capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
+    });
   }
 }
 
-export function getPendingTemperatureRecoveryDeviceIds(ctx: TransportContext): string[] {
-  return [...getTemperatureRecoveryState(ctx.owner).pendingDeviceIds];
-}
-
-function dispatchRecoveredTemperature(ctx: TransportContext, deviceId: string, deviceName: string): void {
-  const cursor = ctx.nextObservationCursor(deviceId);
-  ctx.dispatchObservedControlStateChanged({
-    deviceId,
-    ...cursor,
-    name: deviceName,
-    capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
-  });
-}
-
-function getTemperatureRecoveryState(owner: object): TemperatureRecoveryState {
-  const existing = temperatureRecoveryStateByOwner.get(owner);
-  if (existing) return existing;
-  const created: TemperatureRecoveryState = {
-    pendingDeviceIds: new Set(),
-    refreshInFlightDeviceIds: new Set(),
-  };
-  temperatureRecoveryStateByOwner.set(owner, created);
-  return created;
+function hasRecoveredTemperature(
+  snapshot: TransportDeviceSnapshot | undefined,
+): snapshot is TransportDeviceSnapshot & { temperature: NonNullable<TransportDeviceSnapshot['temperature']> } {
+  return snapshot?.temperature !== undefined;
 }

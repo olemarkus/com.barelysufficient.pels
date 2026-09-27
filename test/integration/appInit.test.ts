@@ -91,6 +91,7 @@ describe('app init plan service wiring', () => {
           await setCapability('heater-1', 'target_temperature', desired);
           return desired;
         },
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId: string, desired: number) => desired,
         requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       } as unknown as AppContext['deviceManager'],

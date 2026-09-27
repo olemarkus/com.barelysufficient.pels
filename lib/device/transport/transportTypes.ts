@@ -1,5 +1,6 @@
 import type { RetainedPowerStore } from '../retainedPowerStore';
 import type { ExternalTemperatureAdjustment } from '../../../packages/contracts/src/temperatureAdjustment';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
  * homey-free collaborator modules. Extracted from `deviceTransport.ts` so the
@@ -10,7 +11,6 @@ import type { ExternalTemperatureAdjustment } from '../../../packages/contracts/
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type {
   ObservedDeviceStateEvent,
@@ -62,6 +62,12 @@ export type SnapshotRefreshMetrics = {
     unavailableDevices: number;
 };
 
+export type SnapshotRefreshOptions = {
+    includeLivePower?: boolean;
+    targetedRefresh?: boolean;
+    mainMeterSelection: MainMeterSelection;
+};
+
 export type SteppedLoadFlowTriggerCard = {
     trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;
 };
@@ -92,7 +98,6 @@ export type TransportObservedStateDispatcher = {
 };
 
 export type DeviceTransportOptions = {
-    debugStructured?: StructuredDebugEmitter;
     /**
      * Persistence port for the EV car-link probe, supplied by the wiring layer.
      * Omitted in tests and any construction path that does not persist: the probe
@@ -105,7 +110,7 @@ export type DeviceTransportOptions = {
      * for a stepped-load device (measure_power value changed, or reportedStepId
      * changed). Consumers are responsible for their own eligibility checks.
      */
-    onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
+    onSnapshotMutated: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
     /**
      * Observer-owned dispatcher consulted by transport after translation of each
      * realtime event. REQUIRED: observer is the single source of truth for the

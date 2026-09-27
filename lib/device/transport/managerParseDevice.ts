@@ -18,6 +18,7 @@ import {
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
+export { applyDeviceDriverOverride } from './managerParseIdentity';
 import {
     resolveManagedFilterDecision,
     shouldDropEarly,
@@ -45,8 +46,8 @@ export type DeviceTransportParseProviders = {
     /**
      * Producer-resolved Main selection. REQUIRED: the transport's live-power
      * paths may not invent an authority, and `unavailable` is a real answer a
-     * wired producer gives — never a default anything falls back to. Read it
-     * through `ctx.resolveMainMeterSelection`, never directly.
+     * wired producer gives — never a default anything falls back to. Refresh
+     * and recovery paths read it from these parse providers.
      */
     getHomeyEnergyMeterSelection: () => MainMeterSelection;
     /**

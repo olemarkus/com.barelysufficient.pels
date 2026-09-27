@@ -194,13 +194,14 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceDescriptors: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceConfigurations: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the SDK-boundary behavior this e2e asserts.
     actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
         await deviceManager.setCapability(deviceId, 'onoff', desired);

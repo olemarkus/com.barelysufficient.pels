@@ -7,7 +7,7 @@
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceListRead } from '../deviceListRead';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { TransportContext } from './transportContext';
+import type { Logger } from '../../utils/types';
 import { isIgnoredDeviceRead } from './deviceReadContract';
 import { getDeviceId } from './managerHelpers';
 
@@ -18,14 +18,15 @@ import { getDeviceId } from './managerHelpers';
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function partitionConformingDeviceReads(
-    ctx: TransportContext,
+    owner: object,
+    logger: Logger,
     list: readonly HomeyDeviceLike[],
 ): DeviceListRead {
     const devices: HomeyDeviceLike[] = [];
     const ignoredIds = new Set<string>();
-    const emitter = ctx.logger.structuredLog;
+    const emitter = logger.structuredLog;
     for (const device of list) {
-        if (isIgnoredDeviceRead(ctx.owner, device, 'device_fetch', emitter)) ignoredIds.add(getDeviceId(device));
+        if (isIgnoredDeviceRead(owner, device, 'device_fetch', emitter)) ignoredIds.add(getDeviceId(device));
         else devices.push(device);
     }
     return { devices, ignoredIds };
@@ -46,14 +47,17 @@ export function withIgnoredReadEntries(
 
 // The same for the raw device the tracking map and the UI picker hold: the last
 // conforming read of an ignored device, never the payload that was ignored.
-export function withIgnoredReadRawDevices(ctx: TransportContext, read: DeviceListRead): HomeyDeviceLike[] {
+export function withIgnoredReadRawDevices(
+    trackedById: ReadonlyMap<string, HomeyDeviceLike>,
+    latestRawDevices: readonly HomeyDeviceLike[],
+    read: DeviceListRead,
+): HomeyDeviceLike[] {
     const { devices: conformingList, ignoredIds } = read;
     if (ignoredIds.size === 0) return conformingList;
     // The realtime tracking map first (it holds the newest conforming read of a
     // tracked device, a `device.update` included), then the last full raw list
     // (every device, managed or not, for the UI picker).
-    const priorRawById = new Map(ctx.getLatestRawDevices().map((device) => [getDeviceId(device), device]));
-    const trackedById = ctx.getTrackedDevicesById();
+    const priorRawById = new Map(latestRawDevices.map((device) => [getDeviceId(device), device]));
     const retained = [...ignoredIds].flatMap((deviceId) => {
         const prior = trackedById.get(deviceId) ?? priorRawById.get(deviceId);
         return prior === undefined ? [] : [prior];

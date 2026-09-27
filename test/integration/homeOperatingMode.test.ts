@@ -106,6 +106,7 @@ const buildRig = (): Rig => {
       getAssociatedCar: () => undefined,
       requestBinaryControl: vi.fn(async () => undefined),
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
     } as unknown as AppContext['deviceManager'],

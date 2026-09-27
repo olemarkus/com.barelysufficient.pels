@@ -1,5 +1,6 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 
 /**
  * A channel-blind control intent — what control outcome the caller wants, named
@@ -43,6 +44,7 @@ export type DeviceCommand =
  * actuator layer carries no peer dependency on `lib/device/**`.
  */
 export type ActuatorTransport = {
+  canTurnOnDevice: (deviceId: string) => boolean;
   requestBinaryControl: (
     deviceId: string,
     desired: boolean,
@@ -50,14 +52,7 @@ export type ActuatorTransport = {
   requestTemperatureTarget: (deviceId: string, desired: number) => Promise<number>;
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
-  requestSteppedLoadStep: (params: {
-    deviceId: string;
-    profile: SteppedLoadProfile;
-    desiredStepId: string;
-    planningPowerW: number;
-    planningCurrentA: number;
-    previousStepId?: string;
-  }) => Promise<SteppedLoadStepRequestResult>;
+  requestSteppedLoadStep: (request: SteppedLoadWrite) => Promise<SteppedLoadStepRequestResult>;
 };
 
 /**

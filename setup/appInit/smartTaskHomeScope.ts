@@ -127,7 +127,7 @@ export const readCreateSmartTaskCandidateDevices = (
   if (meterSources.state === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
-    devices: selectMeteredSnapshots(ctx.latestTargetSnapshot).filter(isRuntimePlannedDevice)
+    devices: selectMeteredSnapshots(ctx.getPlanInputSnapshot()).filter(isRuntimePlannedDevice)
       .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id))
       .filter((device) => !meterSources.deviceIds.has(device.id)),
   };
@@ -152,7 +152,7 @@ export const mapObjectiveWriteRefusalReason = (
 // live starvation state (`getStarvedRescueEntries`, which mirrors the overview
 // `getOverviewStarvation` freshness/eligibility gate) and joined against the
 // runtime-planned snapshot for the device name — a starved device is by
-// definition managed + capacity-controlled, so it is in `latestTargetSnapshot`.
+// definition managed + capacity-controlled, so it is in `getPlanInputSnapshot`.
 // Entries are dropped when the device is no longer in the snapshot (e.g.
 // removed mid-cycle — never shown with a stale name) and when it is durably in
 // a sub-home or is an active source device. A transient Main authority fence
@@ -161,7 +161,7 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
   const entries = ctx.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
   // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
   // entry — the live snapshot can be sizeable on busy installs.
-  const snapshotById = new Map(ctx.latestTargetSnapshot.map((device) => [device.id, device]));
+  const snapshotById = new Map(ctx.getPlanInputSnapshot().map((device) => [device.id, device]));
   const nowMs = ctx.getNow().getTime();
   return entries.flatMap((entry): StarvationRescueDevice[] => {
     const device = snapshotById.get(entry.deviceId);

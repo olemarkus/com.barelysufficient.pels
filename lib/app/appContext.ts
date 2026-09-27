@@ -14,6 +14,8 @@ import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '.
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceReads } from '../device/deviceReads';
+import type { DeviceConfiguration } from '../device/deviceConfiguration';
+import type { SettingsUiDeviceReads } from '../device/settingsUiDeviceReads';
 import type { DeviceTransportPort } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
@@ -186,8 +188,7 @@ export type AppContext = {
   resolveManagedState: (deviceId: string) => boolean;
   // Observer-owned maintained observed truth for a device, fed by the dispatcher
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
-  // first observation lands OR the boot/hot-plug seed fills it (see
-  // `seedObservedStateFromSnapshot`).
+  // first observation lands.
   getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
   // One named read per observed cluster, each returning what the observer
   // RESOLVED. `getObservedState` above deliberately carries none of them: while
@@ -210,14 +211,6 @@ export type AppContext = {
   getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
   getObservationRevision: () => number;
-  // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the
-  // RAW cached device snapshot so a reader (the settings-UI EV chip,
-  // `toPlanDevice` freshness) sees the device's real state for cycle 1, before
-  // the first dispatcher delta/refresh lands. Strictly additive — never clobbers
-  // a recorded observation (see `ObservedDeviceStateProjection.seedMissing`). No
-  // re-decoration, no device-manager re-entry: it reads `getSnapshot()` (the
-  // cached array) and projects each entry via `projectObservedState`.
-  seedObservedStateFromSnapshot: () => void;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
@@ -285,6 +278,8 @@ export type AppContext = {
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
   get planRebuildThrottle(): PlanRebuildThrottle;
   get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
+  /** Plan/executor runtime inputs joined from DeviceConfiguration and Observer. */
+  getPlanInputSnapshot(): DecoratedDeviceSnapshot[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];
   /**
    * The Flow-card device list as descriptors — identity and config, no
@@ -300,14 +295,14 @@ export type AppContext = {
   /** One device's descriptor, or `undefined` for an untracked id. */
   getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined;
   /**
-   * Every device read, in one place (`lib/device/deviceReads.ts`). Consumers ask
-   * it the question they have — descriptors, the joined surface, the picker list,
-   * the observed seed, "is there a PV candidate" — instead of pulling the
-   * transport's cached array and taking what they want out of a ~58-field struct.
-   * That array is no longer reachable from here: `deviceManager` below is a port
-   * without `getSnapshot`.
+   * Inventory metadata reads (`lib/device/deviceReads.ts`). Runtime observations
+   * are read from Observer; configuration is read from `deviceConfiguration`.
+   * The raw snapshot stays private behind the device transport port.
    */
   readonly deviceReads: DeviceReads;
+  readonly settingsUiDeviceReads: SettingsUiDeviceReads;
+  /** Runtime configuration source, separate from inventory reads and observations. */
+  readonly deviceConfiguration: DeviceConfiguration;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;

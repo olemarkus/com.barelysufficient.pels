@@ -37,29 +37,6 @@ export function shouldEmitOnChange(params: {
   return false;
 }
 
-export function shouldEmitWindowed(params: {
-  state: Map<string, number>;
-  key: string;
-  now: number;
-  windowMs: number;
-  pruneOlderThanMs?: number;
-}): boolean {
-  const {
-    state,
-    key,
-    now,
-    windowMs,
-    pruneOlderThanMs,
-  } = params;
-  pruneWindowedEntries(state, now, pruneOlderThanMs);
-  const previous = state.get(key);
-  if (typeof previous === 'number' && now - previous < windowMs) {
-    return false;
-  }
-  state.set(key, now);
-  return true;
-}
-
 function pruneWindowedEntries<T extends number | LogDedupeEntry>(
   state: Map<string, T>,
   now: number,

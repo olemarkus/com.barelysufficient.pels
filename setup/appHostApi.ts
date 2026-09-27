@@ -2,6 +2,8 @@ import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureC
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
+import { readRuntimeDevice, readRuntimeDevices } from '../lib/device/deviceRuntimeRead';
+import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { PowerSource } from '../lib/power/powerSource';
@@ -134,7 +136,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public async getFlowSnapshot(): Promise<DecoratedDeviceSnapshot[]> {
     if (this.latestTargetSnapshot.length === 0) await this.refreshTargetDevicesSnapshot();
-    return this.latestTargetSnapshot;
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(
+      readFlowDevices(
+        this.context.deviceReads.descriptors(),
+        (deviceId) => this.context.getObservedRecord(deviceId),
+      ),
+    );
   }
 
   /**
@@ -153,47 +160,47 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return projectDeviceDescriptors(await this.getFlowSnapshot());
   }
 
-  /**
-   * The device DESCRIPTORS, synchronously — identity and config, no observations.
-   *
-   * Surface 2 of the observer/transport split
-   * (`notes/state-management/snapshot-decomposition.md`). Most wiring that
-   * reaches for `getSnapshot()` wants only this: a device's id, its zone, what it
-   * can natively write, what class it is. PROJECTED, not merely narrowed
-   * (`projectDeviceDescriptor`): the executor spreads a descriptor into its own
-   * read, and a spread copies what the object physically carries, so the served
-   * object must carry no observation — the property stage 7's seal rests on.
-   *
-   * A pure delegation: the read, the projection, and what an absent transport
-   * means all belong to `lib/device/deviceReads.ts`.
-   */
+  /** Device inventory metadata; runtime state comes from Observer. */
   public getDeviceDescriptors(): DeviceDescriptorRead[] {
     return this.context.deviceReads.descriptors();
   }
 
-  /** The by-id form; same owner, and it asserts the transport. See `deviceReads`. */
+  /** The by-id form of the inventory read. */
   public getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined {
     return this.context.deviceReads.descriptor(deviceId);
   }
 
-  /**
-   * The plan-input view: `deviceReads.surfaces()` — every tracked device as its
-   * descriptor joined with the observer's record — decorated with the stepped
-   * command state. What the plan-input producer gets is the union of the two
-   * declared surfaces and nothing else, so the carried-key gate on `toPlanDevice`
-   * is a statement about the object, not just its type.
-   *
-   * Still a getter that re-projects and re-decorates on every access, so a
-   * per-device lookup inside a loop is O(n²) — read it once per pass.
-   */
+  /** Runtime view: configuration joined with Observer state. */
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.context.deviceReads.surfaces());
+    return this.getPlanInputSnapshot();
   }
 
-  /** The picker list, bounded the same way — see `deviceReads.pickerSurfaces`. */
+  /** Plan/executor input, composed only from their two owners. */
+  public getPlanInputSnapshot(): DecoratedDeviceSnapshot[] {
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.getRuntimeDevices());
+  }
+
+  private getRuntimeDevices() {
+    return readRuntimeDevices(
+      this.context.deviceConfiguration.getAll(),
+      (deviceId) => this.context.getObservedRecord(deviceId),
+    );
+  }
+
+  private getRuntimeDevice(deviceId: string): DecoratedDeviceSnapshot | undefined {
+    const device = readRuntimeDevice(
+      this.context.deviceConfiguration.get(deviceId),
+      this.context.getObservedRecord(deviceId),
+    );
+    return device
+      ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0]
+      : undefined;
+  }
+
+  /** Picker view for unmanaged devices; runtime planning reads from Observer. */
   public getUiPickerDevices(): DecoratedDeviceSnapshot[] {
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(
-      this.context.deviceReads.pickerSurfaces(),
+      this.context.settingsUiDeviceReads.getUiPickerDevices(),
     );
   }
 
@@ -265,7 +272,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     resolveShedBehavior(this.context.shedBehaviors, deviceId),
     // Lazy and single-device: this runs several times per device per plan build,
     // and `latestTargetSnapshot` rebuilds the whole list on every access.
-    () => this.decorateOneDevice(deviceId),
+    () => this.getRuntimeDevice(deviceId),
     this.context.observedTemperatureModeUpdates.allowsLimiting(deviceId),
     // The observer's answer, so the configured pair collapses to the one limit
     // for the direction the device is moving demand in — the same resolution
@@ -273,11 +280,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.context.getThermalDirection(deviceId),
   );
 
-  /** One device through the same join + decoration `latestTargetSnapshot` applies to all of them. */
-  private decorateOneDevice(deviceId: string): DecoratedDeviceSnapshot | undefined {
-    const device = this.context.deviceReads.surface(deviceId);
-    return device ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0] : undefined;
-  }
   public computeDynamicSoftLimit = (): number => this.requirePlanService().computeDynamicSoftLimit();
   protected computeShortfallThreshold = (): number => this.requirePlanService().computeShortfallThreshold();
 

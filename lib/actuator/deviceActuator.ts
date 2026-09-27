@@ -12,6 +12,7 @@ import type { ActuatorOutcome, ActuatorTransport, DeviceCommand } from './device
  * See `notes/state-management/actuator-write-seam.md`.
  */
 export type Actuator = {
+  canTurnOnDevice: (deviceId: string) => boolean;
   apply: (command: DeviceCommand) => Promise<ActuatorOutcome>;
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
 };
@@ -76,6 +77,7 @@ const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Pro
  * `lib/device/**` itself.
  */
 export const createDeviceActuator = (transport: ActuatorTransport): Actuator => ({
+  canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
   apply: (command) => applyCommand(transport, command),
   resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),
 });

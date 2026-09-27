@@ -50,7 +50,7 @@ export const applyBinaryRestore = async (
   if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
   const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
-    canApplyRestoreSnapshot({
+    canApplyRestoreSnapshot(ctx, {
       snapshot,
       deviceId: intent.deviceId,
       name: intent.name,
@@ -59,7 +59,7 @@ export const applyBinaryRestore = async (
     return false;
   }
   if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot({
+  if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,
     name: intent.name,
@@ -80,7 +80,7 @@ export const applyUncontrolledBinaryRestore = async (
   if (!ctx.state.shedDecisions.standingShedIds.has(intent.deviceId)) return false;
   const entry = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
-    canApplyRestoreSnapshot({
+    canApplyRestoreSnapshot(ctx, {
       snapshot: entry,
       deviceId: intent.deviceId,
       name: intent.name,
@@ -89,7 +89,7 @@ export const applyUncontrolledBinaryRestore = async (
     return false;
   }
   if (isBinaryOnOrUnknown(entry)) return false;
-  if (!canApplyRestoreSnapshot({
+  if (!canApplyRestoreSnapshot(ctx, {
     snapshot: entry,
     deviceId: intent.deviceId,
     name: intent.name,
@@ -228,7 +228,7 @@ export const applyDeferredBinaryCommand = async (
   // through `canTurnOnDevice` and logs the skip, so a second silent copy of it
   // only added a way for the two to disagree.
   if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot({
+  if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,
     name: intent.name,

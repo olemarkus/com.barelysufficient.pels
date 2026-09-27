@@ -168,13 +168,8 @@ export class AppSmartTaskApi {
         includeGrantedRescuePermissions: false,
       });
     }
-    // The settings-UI device list spans managed devices AND unmanaged-but-
-    // eligible picker devices (see `getSettingsUiDevicesPayload`). A preview is most
-    // useful precisely for a candidate that is not managed yet, so fall back to
-    // the picker snapshot before treating the device as missing — otherwise
-    // every new-smart-task preview would come back `unavailable`.
-    const snapshotDevice = this.ctx.latestTargetSnapshot.find((device) => device.id === deviceId)
-      ?? this.ctx.getUiPickerDevices().find((device) => device.id === deviceId);
+    // Preview uses the same configuration + Observer inputs as runtime planning.
+    const snapshotDevice = this.ctx.getPlanInputSnapshot().find((device) => device.id === deviceId);
     // Gate opt-in extra permissions the same way the create lane does, so the
     // preview reflects exactly what would persist (preview ≡ persist).
     const gatedCandidate = gateCandidateExtraPermissions(snapshotDevice, candidate, {
@@ -245,7 +240,7 @@ export class AppSmartTaskApi {
     // filter is inactive), is reported as `device_not_planned`, not silently
     // persisted. Uses the SAME predicate the plan service and the candidate
     // listing use so the three never diverge.
-    const device = this.ctx.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    const device = this.ctx.getPlanInputSnapshot().find((entry) => entry.id === deviceId);
     const meteredDevice = device && asMeteredSnapshot(device);
     if (!meteredDevice || !isRuntimePlannedDevice(meteredDevice)) {
       const inPickerOrSnapshot = device !== undefined
@@ -307,7 +302,7 @@ export class AppSmartTaskApi {
   // the live snapshot the same way the Flow cards check it.
   //
   // PLANNED-SET HONESTY: persistence is restricted to devices in
-  // `latestTargetSnapshot` — the managed, runtime-planned set. The planner only
+  // `getPlanInputSnapshot` — the managed, runtime-planned set. The planner only
   // evaluates objectives whose device is in that snapshot (see
   // `buildDeferredObjectiveDiagnostics`: a missing device yields
   // `objective_missing_device` and is never planned). When the managed-device
@@ -317,8 +312,8 @@ export class AppSmartTaskApi {
   // device autocomplete is sourced from the same runtime snapshot — so to match
   // it we reject picker-only devices with `device_not_planned` rather than
   // inventing a promotion mechanism neither path has. (The preview at
-  // `previewDeferredObjectivePlan` keeps its picker fallback: previewing an
-  // unmanaged device is harmless and read-only.)
+  // `previewDeferredObjectivePlan` uses the same managed runtime snapshot, so
+  // preview and execution agree about which devices can be planned.)
   //
   // The candidate's `deadlineAtMs` is resolved by the caller (the widget API
   // handler, server-side, via `resolveDeferredObjectiveDeadline` against the

@@ -11,9 +11,9 @@ import { mockHomeyInstance } from '../mocks/homey';
 import { fetchLiveGenerationW, fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import {
   fetchLivePowerReport as fetchTransportLivePowerReport,
-} from '../../lib/device/transport/snapshotRefresh';
+} from '../../lib/device/transport/livePowerReport';
 import { pollHomePowerWithMeterFanOut } from '../../lib/device/transport/homePowerPoll';
-import type { TransportContext } from '../../lib/device/transport/transportContext';
+import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targetedSnapshotMerge';
 import type { Logger } from '../../lib/utils/types';
@@ -306,18 +306,11 @@ describe('transport Main-meter authority', () => {
         { type: 'device', id: 'sub-meter', values: { W: 1_200 } },
       ],
     });
-    const ctx = {
-      logger,
-      automaticHomeMeterState: { preferredDeviceId: null },
-      // The live authority has recovered by the time the SDK call starts, but
-      // the refresh cycle must remain bound to its captured start selection.
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      providers: {
-        getAdditionalMeterDeviceIds: () => ['sub-meter'],
-      },
-    } as unknown as TransportContext;
-
-    const report = await fetchTransportLivePowerReport(ctx, { state: 'unavailable' });
+    const providers: DeviceTransportParseProviders = {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getAdditionalMeterDeviceIds: () => ['sub-meter'],
+    };
+    const report = await fetchTransportLivePowerReport(logger, providers, { state: 'unavailable' });
 
     expect(report).toMatchObject({
       state: 'measured',
@@ -331,14 +324,18 @@ describe('transport Main-meter authority', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3_000 } }],
     });
-    const ctx = {
-      logger,
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
-      providers: {},
-      observedStateDispatcher: createTestObservedStateDispatcher(),
-    } as unknown as TransportContext;
+    const dispatcher = createTestObservedStateDispatcher();
+    const providers: DeviceTransportParseProviders = {
+      getHomeyEnergyMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }),
+    };
 
-    await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toEqual({
+    await expect(pollHomePowerWithMeterFanOut(
+      logger,
+      providers,
+      dispatcher.setGenerationW,
+      providers.getHomeyEnergyMeterSelection(),
+      () => true,
+    )).resolves.toEqual({
       powerW: 3_000,
       meterDeviceId: 'meter-main',
     });
@@ -352,17 +349,20 @@ describe('transport Main-meter authority', () => {
       ],
     });
     const onAdditionalMeterReadings = vi.fn();
-    const ctx = {
-      logger,
-      resolveMainMeterSelection: () => ({ state: 'unavailable' as const }),
-      providers: {
-        getAdditionalMeterDeviceIds: () => ['meter-area'],
-        onAdditionalMeterReadings,
-      },
-      observedStateDispatcher: createTestObservedStateDispatcher(),
-    } as unknown as TransportContext;
+    const dispatcher = createTestObservedStateDispatcher();
+    const providers: DeviceTransportParseProviders = {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getAdditionalMeterDeviceIds: () => ['meter-area'],
+      onAdditionalMeterReadings,
+    };
 
-    await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toBeNull();
+    await expect(pollHomePowerWithMeterFanOut(
+      logger,
+      providers,
+      dispatcher.setGenerationW,
+      providers.getHomeyEnergyMeterSelection(),
+      () => true,
+    )).resolves.toBeNull();
     expect(onAdditionalMeterReadings).toHaveBeenCalledWith({ 'meter-area': 1_200 }, expect.any(Number));
   });
 });

@@ -1,6 +1,7 @@
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { isNativeSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
-import type { TransportContext } from './transportContext';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
 
 export type FlowSteppedLoadObservation = {
     deviceId: string;
@@ -12,10 +13,12 @@ export type FlowSteppedLoadObservation = {
 /** Admit validated Flow exact-step evidence into transport-owned observed state. */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function reportFlowSteppedObservation(
-    ctx: TransportContext,
+    snapshotStore: TransportSnapshotStore,
+    onSnapshotMutated: ((snapshot: TargetDeviceSnapshot, nowMs: number) => void) | undefined,
+    dispatchObservedStateForDevice: (deviceId: string, capabilityId: string) => void,
     observation: FlowSteppedLoadObservation,
 ): boolean {
-    const snapshot = ctx.latestSnapshotById.get(observation.deviceId);
+    const snapshot = snapshotStore.getSnapshotByDeviceId(observation.deviceId);
     const planningPowerW = Math.round(observation.planningPowerW);
     if (
         !snapshot
@@ -38,8 +41,8 @@ export function reportFlowSteppedObservation(
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAtMs);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     if (!changed) return false;
-    ctx.onSnapshotMutated?.(snapshot, observation.observedAtMs);
-    ctx.dispatchObservedStateForDevice(observation.deviceId, PELS_MEASURE_STEP_CAPABILITY_ID);
+    onSnapshotMutated?.(snapshot, observation.observedAtMs);
+    dispatchObservedStateForDevice(observation.deviceId, PELS_MEASURE_STEP_CAPABILITY_ID);
     return true;
 }
 /* eslint-enable functional/immutable-data */

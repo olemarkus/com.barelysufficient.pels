@@ -3,7 +3,6 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
-import { canTurnOnDevice } from '../plan/deviceCommandability';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
@@ -23,7 +22,6 @@ const logger = getLogger('executor/stepped-load');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const logSteppedLoadRestoreSkip = (
-  _ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
     reasonCode:
@@ -54,7 +52,6 @@ export const logSteppedLoadRestoreSkip = (
 };
 
 const logSteppedLoadStepViolation = (
-  _ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   name: string,
   desiredStepId?: string,
@@ -69,7 +66,6 @@ const logSteppedLoadStepViolation = (
 };
 
 export const logSteppedLoadRestoreViolations = (
-  ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   name: string,
   params: {
@@ -79,12 +75,11 @@ export const logSteppedLoadRestoreViolations = (
 ): void => {
   const { desiredStepId, stepNeedsAdjustment } = params;
   if (stepNeedsAdjustment) {
-    logSteppedLoadStepViolation(ctx, action, name, desiredStepId);
+    logSteppedLoadStepViolation(action, name, desiredStepId);
   }
 };
 
 export const logSteppedLoadRestoreAttemptSkip = (
-  ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
     matchingRestoreAttempt: NonNullable<ExecutableSteppedLoadDevice['matchingRestoreAttempt']>;
@@ -94,7 +89,7 @@ export const logSteppedLoadRestoreAttemptSkip = (
     action,
     matchingRestoreAttempt,
   } = params;
-  return logSteppedLoadRestoreSkip(ctx, {
+  return logSteppedLoadRestoreSkip({
     action,
     reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
       ? 'waiting_for_confirmation'
@@ -117,26 +112,26 @@ export const maybeSkipSteppedLoadRestoreBinary = (
     stepNeedsAdjustment,
   } = params;
   if (!snapshot) {
-    return logSteppedLoadRestoreSkip(ctx, {
+    return logSteppedLoadRestoreSkip({
       action,
       reasonCode: 'missing_snapshot',
     });
   }
-  if (!canTurnOnDevice(snapshot)) {
-    return logSteppedLoadRestoreSkip(ctx, {
+  if (!ctx.canTurnOnDevice(action.id)) {
+    return logSteppedLoadRestoreSkip({
       action,
       reasonCode: 'not_setable',
     });
   }
   const snapshotOn = isBinaryOnOrUnknown(snapshot);
   if (ctx.state.actuation.isRestoreInFlight(action.id)) {
-    return logSteppedLoadRestoreSkip(ctx, {
+    return logSteppedLoadRestoreSkip({
       action,
       reasonCode: 'already_in_progress',
     });
   }
   if (snapshotOn !== false && !stepNeedsAdjustment) {
-    return logSteppedLoadRestoreSkip(ctx, {
+    return logSteppedLoadRestoreSkip({
       action,
       reasonCode: 'no_keep_violation',
     });

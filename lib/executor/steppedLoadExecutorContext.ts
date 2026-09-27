@@ -9,6 +9,7 @@ import type { SteppedCommandClaim, SteppedCommandClaimState } from './steppedCom
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
+  canTurnOnDevice: (deviceId: string) => boolean;
   steppedCommandClaim: SteppedCommandClaim;
   steppedCommandOwner: TargetCommandOwner;
   binaryCommandClaim: BinaryCommandClaim;

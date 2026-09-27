@@ -1,6 +1,6 @@
 /**
  * Whole-device realtime update handling for `DeviceTransport`, extracted as
- * homey-free free functions over a shared `TransportContext`. Reconciles a
+ * homey-free free functions over a shared `RealtimeIngestService`. Reconciles a
  * pushed `device.update` against the held snapshot (binary-settle evidence,
  * native stepped-load adapters, calibration-input detection) and defers the
  * observed-state emission until the snapshot commit is in place.
@@ -12,7 +12,7 @@ import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
   recordDeviceUpdateObservation,
@@ -25,13 +25,12 @@ import {
 } from './managerRealtimeHandlers';
 import { buildNativeEvObservationDevice } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
-import {
-  applyBinarySettleEvidenceFromDeviceUpdate,
-  clearBinarySettleEvidence,
-} from './binarySettleEvidence';
-import type { TransportContext } from './transportContext';
+import type { RealtimeIngestService } from './transportServices';
+import type { SnapshotRefreshService } from './snapshotRefresh';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
 
 const moduleLogger = getLogger('device/transport');
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export function didSnapshotChangeCalibrationInputs(params: {
     previousSnapshot: TransportDeviceSnapshot | undefined;
@@ -50,11 +49,10 @@ export function didSnapshotChangeCalibrationInputs(params: {
 }
 
 export function fireSnapshotMutatedForRefresh(
-    ctx: TransportContext,
+    refresh: SnapshotRefreshService,
     snapshot: readonly TransportDeviceSnapshot[],
     previousSnapshot: readonly TransportDeviceSnapshot[],
 ): void {
-    if (!ctx.onSnapshotMutated) return;
     const previousByDeviceId = new Map(previousSnapshot.map((entry) => [entry.id, entry]));
     const nowMs = Date.now();
     for (const entry of snapshot) {
@@ -63,22 +61,22 @@ export function fireSnapshotMutatedForRefresh(
             currentSnapshot: entry,
             observedCapabilityIds: [],
         })) {
-            ctx.onSnapshotMutated(entry, nowMs);
+            refresh.notifications.snapshotChanged(entry, nowMs);
         }
     }
 }
 
-function syncRealtimeDeviceUpdateSnapshot(ctx: TransportContext, params: {
-    deviceId: string;
-    currentSnapshot: TargetDeviceSnapshot | null | undefined;
-}): TargetDeviceSnapshot | null {
-    const { deviceId, currentSnapshot } = params;
+function syncRealtimeDeviceUpdateSnapshot(
+    snapshotStore: TransportSnapshotStore,
+    deviceId: string,
+    currentSnapshot: TargetDeviceSnapshot | null | undefined,
+): TargetDeviceSnapshot | null {
     if (currentSnapshot === undefined) return null;
     if (currentSnapshot) {
-        ctx.latestSnapshotById.set(deviceId, currentSnapshot);
+        snapshotStore.replaceSnapshotEntry(deviceId, currentSnapshot);
         return currentSnapshot;
     }
-    ctx.latestSnapshotById.delete(deviceId);
+    snapshotStore.removeSnapshotEntry(deviceId);
     return null;
 }
 
@@ -89,49 +87,49 @@ function syncRealtimeDeviceUpdateSnapshot(ctx: TransportContext, params: {
 // surfaces on the realtime event path (parity with the zone-tree-commit
 // notify in `snapshotRefresh.ts`).
 function notifyDeviceZoneChangeContained(
-    ctx: TransportContext,
+    ingest: RealtimeIngestService,
     previousSnapshot: { zoneId?: string | null } | undefined,
     currentSnapshot: { zoneId?: string | null } | null,
 ): void {
     if (!currentSnapshot) return;
     if ((previousSnapshot?.zoneId ?? null) === (currentSnapshot.zoneId ?? null)) return;
     try {
-        ctx.notifyDeviceZoneChanged();
+        ingest.notifications.notifyDeviceZoneChanged();
     } catch (error) {
-        ctx.logger.debug({
+        emitDeviceDebug({
             event: 'device_zone_changed_notify_failed',
             error: normalizeError(error).message,
         });
     }
 }
 
-export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: HomeyDeviceLike): void {
+export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
     const deviceId = getDeviceId(device);
-    if (deviceId && !ctx.shouldTrackRealtimeDevice(deviceId)) {
-        clearBinarySettleEvidence(ctx, deviceId);
-        ctx.deleteTrackedDevice(deviceId);
+    if (deviceId && !ingest.reader.shouldTrackRealtimeDevice(deviceId)) {
+        ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
+        ingest.reader.snapshotStore.untrackRawDevice(deviceId);
     }
-    const effectiveDevice = ctx.applyDeviceDriverOverride(device);
+    const effectiveDevice = ingest.reader.applyDeviceDriverOverride(device);
     // The read contract (`deviceReadContract.ts`), before anything reads the
     // payload: an update that does not conform is ignored whole. No producer,
     // tracking entry, parse or settle evidence sees it, and the device's entry
     // stands as it was — a no-op, never a partial merge.
-    const contractEmitter = ctx.logger.structuredLog;
-    if (isIgnoredDeviceRead(ctx.owner, effectiveDevice, 'device_update', contractEmitter)) return;
+    const contractEmitter = moduleLogger;
+    if (isIgnoredDeviceRead(ingest.reader.snapshotStore, effectiveDevice, 'device_update', contractEmitter)) return;
     // Keep the battery membership set non-empty for a present battery even before
     // the first full refresh — the realtime path parses the battery (stamped
     // managed observe-only structurally), so the deviceId-only resolve* consumers
     // must agree. Additive: a full refresh re-derives the set; this never narrows it.
-    ctx.observationProducers.battery.noteBatteryDevice(effectiveDevice);
+    ingest.observationProducers.battery.noteBatteryDevice(effectiveDevice);
     // Same machinery for a present solar device: keep the solar membership set
     // non-empty before the first full refresh so the deviceId-only resolve* consumers
     // agree with the structural managed observe-only stamp. Additive; full refresh
     // re-derives the set.
-    ctx.observationProducers.solar.noteSolarDevice(effectiveDevice);
-    const previousSnapshot = ctx.latestSnapshotById.get(deviceId);
-    if (deviceId && ctx.shouldTrackRealtimeDevice(deviceId)) {
-        ctx.setTrackedDevice(deviceId, effectiveDevice);
-        ctx.syncTrackedNativeSteppedLoadAdapters();
+    ingest.observationProducers.solar.noteSolarDevice(effectiveDevice);
+    const previousSnapshot = ingest.reader.snapshotStore.getSnapshotIndex().get(deviceId);
+    if (deviceId && ingest.reader.shouldTrackRealtimeDevice(deviceId)) {
+        ingest.reader.snapshotStore.trackRawDevice(deviceId, effectiveDevice);
+        ingest.reader.syncNativeSteppedLoadCommandAdapters();
     }
     const observedDevice = buildNativeEvObservationDevice({
         device: effectiveDevice,
@@ -147,38 +145,33 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     const deferredControlEvents: PlanRealtimeUpdateEvent[] = [];
     const result = runRealtimeDeviceUpdate({
         device: observedDevice,
-        latestSnapshot: ctx.latestSnapshot,
-        recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
-        shouldTrackRealtimeDevice: (nextDeviceId) => ctx.shouldTrackRealtimeDevice(nextDeviceId),
-        parseDevice: (nextDevice, nowTs) => ctx.parseDevice(nextDevice, nowTs, {}),
+        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
+        observationState: ingest.observationBridge.state,
+        shouldTrackRealtimeDevice: (nextDeviceId) => ingest.reader.shouldTrackRealtimeDevice(nextDeviceId),
+        parseDevice: (nextDevice, nowTs) => ingest.reader.parseDevice(nextDevice, nowTs, {}),
         minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
         recordObservedCapabilities: (nextDeviceId, capabilityIds) => {
             recordSnapshotCapabilityObservations({
-                state: ctx.observationState,
-                latestSnapshot: ctx.latestSnapshot,
+                state: ingest.observationBridge.state.getObservationState(),
+                latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
                 deviceId: nextDeviceId,
                 source: 'device_update',
                 capabilityIds,
             });
         },
         emitDeviceUpdateProcessed: (event) => {
-          const emit = ctx.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p));
-          emit(event);
+          emitDeviceDebug(event);
         },
-        createObservationCursor: (nextDeviceId) => ctx.nextObservationCursor(nextDeviceId),
-        /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+        createObservationCursor: (nextDeviceId) => ingest.observationBridge.nextCursor(nextDeviceId),
         emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
         emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
         /* eslint-enable functional/immutable-data */
     });
     const currentSnapshot = deviceId
-        ? syncRealtimeDeviceUpdateSnapshot(ctx, {
-            deviceId,
-            currentSnapshot: result.currentSnapshot,
-        })
+        ? syncRealtimeDeviceUpdateSnapshot(ingest.reader.snapshotStore, deviceId, result.currentSnapshot)
         : null;
     if (deviceId) {
-        applyBinarySettleEvidenceFromDeviceUpdate(ctx, {
+        ingest.binaryEvidence.applyFromDeviceUpdate({
             deviceId,
             device: observedDevice,
             snapshot: currentSnapshot,
@@ -187,8 +180,8 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     }
     if (deviceId && result.observedControlStateChanged) {
         recordDeviceUpdateObservation({
-            state: ctx.observationState,
-            latestSnapshot: ctx.latestSnapshot,
+            state: ingest.observationBridge.state.getObservationState(),
+            latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
             deviceId,
             result,
         });
@@ -198,14 +191,14 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
         currentSnapshot,
         observedCapabilityIds: result.observedCapabilityIds,
     })) {
-        ctx.onSnapshotMutated?.(currentSnapshot, Date.now());
+        ingest.notifications.snapshotChanged(currentSnapshot, Date.now());
     }
-    notifyDeviceZoneChangeContained(ctx, previousSnapshot, currentSnapshot);
+    notifyDeviceZoneChangeContained(ingest, previousSnapshot, currentSnapshot);
     // Snapshot (and binary-settle evidence) is now committed to
     // `latestSnapshotById`, so each enriched observed value projects the
     // post-update state rather than the previous one.
-    flushDeferredObservedState(ctx, deviceId, deferredObservedStateEvents, previousSnapshot, currentSnapshot);
-    for (const event of deferredControlEvents) ctx.emitObservedControlStateChangedEvent(event);
+    flushDeferredObservedState(ingest, deviceId, deferredObservedStateEvents, previousSnapshot, currentSnapshot);
+    for (const event of deferredControlEvents) ingest.observationBridge.emitControlStateChanged(event);
     // Class `car` devices reach us only here and on the device fetch: the live
     // feed pushes `device.update` for EVERY device, while parse drops unsupported
     // classes. Passed every update, not just cars — a charger's own update is what
@@ -215,7 +208,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // observed-state dispatch above: the probe resolves charger state by reading
     // the committed snapshot, so running it earlier would diff against the
     // PRE-update state and lag every charger edge by one device update.
-    ctx.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
+    ingest.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
 }
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
@@ -230,14 +223,14 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
 // marked unreachable, or skip one that had come back, for up to that long.
 // Called AFTER the commit, like every dispatch on this path.
 function flushDeferredObservedState(
-    ctx: TransportContext,
+    ingest: RealtimeIngestService,
     deviceId: string,
     events: readonly ObservedDeviceStateEvent[],
     previousSnapshot: Pick<TargetDeviceSnapshot, 'available'> | undefined,
     currentSnapshot: Pick<TargetDeviceSnapshot, 'available'> | null,
 ): void {
-    for (const event of events) ctx.dispatchObservedStateChanged(event);
+    for (const event of events) ingest.observationBridge.dispatchStateChanged(event);
     if (events.length > 0 || !currentSnapshot) return;
     if (previousSnapshot?.available === currentSnapshot.available) return;
-    ctx.dispatchObservedStateForDevice(deviceId);
+    ingest.observationBridge.dispatchStateForDevice(deviceId);
 }

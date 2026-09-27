@@ -1023,6 +1023,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [x] **P2 — the car-link probe reads an Easee's resume hold as the car stopping by itself.**
+      A linked car reporting `plugged_in` beside a charger still reporting `plugged_in_paused`
+      is no longer classified as a self-stop. A car's own `plugged_in_paused` schedule hold is
+      still preserved. See `classifyEvCarSelfStop` and its self-stop spec.
+
 - [ ] **P2 — three transport writes of observed fields still never reach the observer projection.**
       Stage 6 made the plan input read every observed field off the projection, so a write that
       does not dispatch is a field frozen until the next 5-minute refresh. Two of the three have a

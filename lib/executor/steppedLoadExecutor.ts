@@ -81,7 +81,7 @@ const suppressRecentSteppedBinaryRestore = (
       action.id, Date.now(), ctx.state.restoreBackoff.restoreCooldownMs,
     )
   ) return false;
-  logSteppedLoadRestoreSkip(ctx, {
+  logSteppedLoadRestoreSkip({
     action,
     reasonCode: 'recent_binary_restore_attempt',
   });
@@ -194,20 +194,20 @@ export const applySteppedLoadRestore = async (
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
     && effectiveCurrentOn === true;
   if (shouldDeferRestoreForAttempt) {
-    logSteppedLoadRestoreAttemptSkip(ctx, {
+    logSteppedLoadRestoreAttemptSkip({
       action,
       matchingRestoreAttempt,
     });
     return NOT_RESTORED;
   }
-  logSteppedLoadRestoreViolations(ctx, action, name, {
+  logSteppedLoadRestoreViolations(action, name, {
     desiredStepId: requestedStepId,
     stepNeedsAdjustment,
   });
 
   if (effectiveCurrentOn === true) {
     if (stepNeedsAdjustment) return NOT_RESTORED;
-    logSteppedLoadRestoreSkip(ctx, {
+    logSteppedLoadRestoreSkip({
       action,
       reasonCode: 'no_keep_violation',
     });

@@ -1,4 +1,3 @@
-import { canTurnOnDevice } from '../plan/deviceCommandability';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import {
@@ -18,6 +17,7 @@ const logger = getLogger('executor/binary');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const canApplyRestoreSnapshot = (
+  ctx: PlanExecutorBinaryContext,
   params: {
     snapshot?: ExecutorDeviceSnapshot;
     deviceId: string;
@@ -47,7 +47,7 @@ export const canApplyRestoreSnapshot = (
     }
     return false;
   }
-  if (!canTurnOnDevice(snapshot)) {
+  if (!ctx.canTurnOnDevice(deviceId)) {
     // Same wording the owner sees on the device card: both come from
     // `resolveCommandabilityDetail` over the same observed facts.
     const suffix = ' (observer reports the control unavailable)';

@@ -2,6 +2,8 @@ import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/se
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
+import { createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
+import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
@@ -212,13 +214,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     debugStructured: vi.fn(),
   });
 
-  // The real reads over the fixture: a spec that touches descriptors, the joined
-  // surface or the picker list goes through the production projections rather
-  // than a stand-in that could drift from them.
+  // The real inventory reads over the fixture go through production projections.
   // The mock's device fixture is `latestTargetSnapshot`, so the reads are backed
   // by THAT rather than by `context.deviceManager` — which most specs never set,
   // and which two helpers set to a partial stub. Without this a spec exercising
-  // code that now calls `deviceReads.surfaces()` / `.deviceIds()` sees zero
+  // code that calls `deviceReads.descriptors()` / `.deviceIds()` sees zero
   // devices and passes vacuously while production sees the fixture.
   const deviceReadStore: DeviceReadStore = {
     getSnapshot: () => latestTargetSnapshot as unknown as TransportDeviceSnapshot[],
@@ -229,7 +229,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   };
   const deviceReads = createDeviceReads({
     getStore: () => deviceReadStore,
-    getObservedRecord: (deviceId) => context.getObservedRecord(deviceId),
+  });
+  const settingsUiDeviceReads = new SettingsUiDeviceReads();
+  settingsUiDeviceReads.connect({
+    readChargerPhasePresets: () => ({ state: 'unavailable' }),
+    readCarAssociationCandidates: () => ({ state: 'unavailable' }),
+    getUiPickerDevices: () => latestTargetSnapshot as unknown as TransportDeviceSnapshot[],
   });
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
@@ -251,6 +256,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const context: AppContext = {
     homeModeCatalog,
     deviceReads,
+    deviceConfiguration: createDeviceConfiguration(() => deviceReadStore),
+    getPlanInputSnapshot: () => context.latestTargetSnapshot,
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
@@ -320,7 +327,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getThermalDirection: vi.fn((): ThermalDirection => 'heating'),
     getObservedEvChargingState: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservationRevision: vi.fn(() => 0),
-    seedObservedStateFromSnapshot: vi.fn(),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
@@ -384,6 +390,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     get planRebuildThrottle() { return planRebuildThrottle; },
     get latestTargetSnapshot() { return latestTargetSnapshot; },
     getUiPickerDevices: () => latestTargetSnapshot,
+    settingsUiDeviceReads,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),
     get priceOptimizationEnabled() { return priceOptimizationEnabled; },
     get priceOptimizationSettings() { return priceOptimizationSettings; },

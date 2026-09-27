@@ -221,6 +221,7 @@ describe('disabled temperature control', () => {
     const actuator = createTemperatureControlFencedActuator(
       {
         apply,
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
       },
       () => disabled,

@@ -8,12 +8,13 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import { shouldEmitWindowed } from '../../logging/logDedupe';
-import { getRecentLocalCapabilityWrite } from './managerRealtimeSupport';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { REALTIME_CAPABILITY_EVENT_WINDOW_MS } from './transportTypes';
-import type { TransportContext } from './transportContext';
+import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
+import type { TransportObservationState } from './transportObservationState';
 import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export function normalizeRealtimeCapabilityEventValue(capabilityId: string, value: unknown): unknown {
     if (typeof value === 'boolean') return value;
@@ -69,16 +70,12 @@ export function resolveRealtimeCapabilityEvent(
 }
 
 export function hasMatchingRecentLocalWrite(
-    ctx: TransportContext,
+    observationState: TransportObservationState,
     deviceId: string,
     capabilityId: string,
     normalizedValue: unknown,
 ): boolean {
-    const recentWrite = getRecentLocalCapabilityWrite({
-        recentLocalCapabilityWrites: ctx.recentLocalCapabilityWrites,
-        deviceId,
-        capabilityId,
-    });
+    const recentWrite = observationState.getRecentLocalCapabilityWrite(deviceId, capabilityId);
     if (!recentWrite) return false;
     return Object.is(
         normalizeRealtimeCapabilityEventValue(capabilityId, recentWrite.value),
@@ -87,22 +84,17 @@ export function hasMatchingRecentLocalWrite(
 }
 
 export function emitCapabilityEventReceived(
-    ctx: TransportContext,
+    observationState: TransportObservationState,
     deviceId: string,
     capabilityId: string,
     normalizedValue: unknown,
 ): void {
-    if (!ctx.debugStructured) return;
+    if (!isDebugTopicEnabled('devices')) return;
     const key = JSON.stringify([deviceId, capabilityId, normalizedValue]);
-    if (!shouldEmitWindowed({
-        state: ctx.recentRealtimeCapabilityEventLogByKey,
-        key,
-        now: Date.now(),
-        windowMs: REALTIME_CAPABILITY_EVENT_WINDOW_MS,
-    })) {
+    if (!observationState.shouldEmitRealtimeCapabilityEvent(key, Date.now(), REALTIME_CAPABILITY_EVENT_WINDOW_MS)) {
         return;
     }
-    ctx.debugStructured({
+    emitDeviceDebug({
         event: 'device_capability_event_received',
         source: 'web_api_subscription',
         deviceId,

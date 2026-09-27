@@ -23,6 +23,7 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
+  canTurnOnDevice: (deviceId: string) => boolean;
   /** The device as the executor reads it now — descriptor joined with the observer's record. */
   readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
   capacityDryRun: boolean;

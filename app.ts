@@ -5,7 +5,7 @@ import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/de
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
-import { createDeviceReads, type DeviceReads } from './lib/device/deviceReads';
+import { createDeviceReadSources } from './lib/device/deviceReadSources';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
@@ -207,10 +207,9 @@ class PelsApp extends PelsAppBase implements AppContext {
    * owner. Lazy on both sides — the transport is wired during ordered startup,
    * and the observed record comes from the projection built with it.
    */
-  public readonly deviceReads: DeviceReads = createDeviceReads({
-    getStore: () => this.deviceManager,
-    getObservedRecord: (deviceId) => this.getObservedRecord(deviceId),
-  });
+  private readonly deviceReadSources = createDeviceReadSources(() => this.deviceManager);
+  public get deviceReads() { return this.deviceReadSources.deviceReads; }
+  public get deviceConfiguration() { return this.deviceReadSources.deviceConfiguration; }
   /**
    * Observer-owned emitter for post-translation realtime events
    * (`observed-state-changed`, `observed-control-state-changed`). Wiring builds
@@ -421,7 +420,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
     getLatestTargetSnapshot: () => this.latestTargetSnapshot,
-    getDeviceSurfaces: () => this.deviceReads.surfaces(),
+    getDeviceSurfaces: () => this.latestTargetSnapshot,
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
@@ -431,7 +430,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
       createTemperatureShedFloorDefaults(this.ctx)(snapshot, operatingModeResolver)
     ),
-    persistFilledModeTargets: (snapshot) => createModeTargetPersistence(this.ctx)(snapshot),
+    persistFilledModeTargets: () => createModeTargetPersistence(this.ctx)(),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
     emitSettingsUiDevicesUpdated: () => this.emitSettingsUiDevicesUpdated(),

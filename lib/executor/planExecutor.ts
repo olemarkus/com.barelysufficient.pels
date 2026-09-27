@@ -347,6 +347,7 @@ export class PlanExecutor {
     if (!this.steppedExecutorContext) {
       this.steppedExecutorContext = {
         state: this.state,
+        canTurnOnDevice: (deviceId) => this.deps.actuator.canTurnOnDevice(deviceId),
         steppedCommandClaim: this.steppedCommandClaim,
         steppedCommandOwner: 'ordinary',
         binaryCommandClaim: this.binaryCommandClaim,
@@ -380,6 +381,7 @@ export class PlanExecutor {
     if (!this.binaryExecutorContext) {
       this.binaryExecutorContext = {
         state: this.state,
+        canTurnOnDevice: (deviceId) => this.deps.actuator.canTurnOnDevice(deviceId),
         readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
         capacityDryRun: this.capacityDryRun,
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,

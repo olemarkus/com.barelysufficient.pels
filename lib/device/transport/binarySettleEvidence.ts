@@ -1,20 +1,18 @@
 /**
- * Homey-free binary-settle evidence bookkeeping over `TransportContext`.
+ * Owns binary-settle evidence updates across realtime events and full refreshes.
  * Per `lib/device/AGENTS.md`, older full reads cannot roll back fresher
- * realtime/local-write evidence; mutations target the passed context/snapshot.
+ * realtime/local-write evidence.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { HomeyDeviceLike } from '../../utils/types';
+import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { resolveEvCurrentOn, toCapabilityTimestampMs } from '../managerControl';
 import { recordSnapshotCapabilityObservations } from './managerObservation';
-import type { ObservedDeviceStateEvent } from './managerRealtimeHandlers';
-import { cloneBinaryControlObservation } from './transportTypes';
-import type { TransportContext } from './transportContext';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
+import type { TransportObservationState } from './transportObservationState';
 
-type SettleCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
 
 export function readCapabilityValue(device: HomeyDeviceLike, capabilityId: string | undefined): {
     present: boolean;
@@ -63,66 +61,50 @@ export function resolveBinaryControlPayload(
     };
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: string): boolean {
-    const removed = ctx.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
+export class BinarySettleEvidenceService {
+    constructor(
+        private readonly snapshotStore: TransportSnapshotStore,
+        private readonly observationState: TransportObservationState,
+        private readonly logger: Logger,
+        private readonly shouldTrackRealtimeDevice: (deviceId: string) => boolean,
+    ) {}
+
+    clearBinarySettleEvidence(deviceId: string): boolean {
+    const removed = this.observationState.clearBinarySettleEvidence(deviceId);
     // By-id is authoritative; see the note in `deviceTransport.requestBinaryControl`.
-    const snapshot = ctx.latestSnapshotById.get(deviceId);
+    const snapshot = this.snapshotStore.getSnapshotIndex().get(deviceId);
     if (snapshot) delete snapshot.binaryControlObservation;
     return removed;
 }
-/* eslint-enable functional/immutable-data */
-export function clearBinarySettleEvidenceForInvalidControlPayload(ctx: TransportContext, params: {
-    deviceId: string;
-    deviceName?: string;
-    capabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    source: BinaryControlObservation['source'];
-    value: unknown;
-}): void {
-    const {
-        deviceId,
-        deviceName,
-        capabilityId,
-        source,
-        value,
-    } = params;
-    if (!capabilityId) return;
-    const existing = ctx.latestBinarySettleEvidenceByDeviceId.get(deviceId);
+    clearInvalidControlPayload(
+        deviceId: string,
+        capabilityId: string,
+    ): void {
+    const existing = this.observationState.getBinarySettleEvidence(deviceId);
     if (!existing || existing.capabilityId !== capabilityId) return;
-    clearBinarySettleEvidence(ctx, deviceId);
-    ctx.logger.structuredLog.error({
+    this.clearBinarySettleEvidence(deviceId);
+    this.logger.structuredLog.error({
         event: 'binary_settle_evidence_cleared',
         reasonCode: 'invalid_control_payload',
         deviceId,
-        ...(deviceName ? { deviceName } : {}),
         capabilityId,
-        source,
-        valueType: typeof value,
+        source: 'realtime_capability',
     });
 }
 
-export function upsertBinarySettleEvidence(
-    ctx: TransportContext,
+    private upsertBinarySettleEvidence(
     deviceId: string,
     evidence: BinaryControlObservation,
 ): BinaryControlObservation {
-    const existing = ctx.latestBinarySettleEvidenceByDeviceId.get(deviceId);
-    if (existing && existing.observedAtMs > evidence.observedAtMs) {
-        return cloneBinaryControlObservation(existing);
-    }
-    const next = cloneBinaryControlObservation(evidence);
-    ctx.latestBinarySettleEvidenceByDeviceId.set(deviceId, next);
-    return next;
+    return this.observationState.upsertBinarySettleEvidence(deviceId, evidence);
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function applyBinarySettleEvidenceToSnapshot(
-    ctx: TransportContext,
+    private applyBinarySettleEvidenceToSnapshot(
     snapshot: TransportDeviceSnapshot,
     evidence: BinaryControlObservation,
 ): BinaryControlObservation {
     const mutableSnapshot = snapshot;
-    const acceptedEvidence = upsertBinarySettleEvidence(ctx, snapshot.id, evidence);
+    const acceptedEvidence = this.upsertBinarySettleEvidence(snapshot.id, evidence);
     if (acceptedEvidence.capabilityId === 'evcharger_charging') {
         const rawPermission = acceptedEvidence.observedCapabilityIds.includes('evcharger_charging');
         if (rawPermission) mutableSnapshot.evCharging = acceptedEvidence.observedValue;
@@ -138,50 +120,43 @@ export function applyBinarySettleEvidenceToSnapshot(
     mutableSnapshot.binaryControlObservation = acceptedEvidence;
     return acceptedEvidence;
 }
-/* eslint-enable functional/immutable-data */
-export function applyCachedBinarySettleEvidenceToSnapshot(
-    ctx: TransportContext,
+    private applyCachedBinarySettleEvidenceToSnapshot(
     snapshot: TransportDeviceSnapshot,
 ): void {
-    const cached = ctx.latestBinarySettleEvidenceByDeviceId.get(snapshot.id);
+    const cached = this.observationState.getBinarySettleEvidence(snapshot.id);
     if (!cached) return;
     if (cached.capabilityId !== snapshot.binaryCapabilityId) return;
-    applyBinarySettleEvidenceToSnapshot(ctx, snapshot, cached);
+    this.applyBinarySettleEvidenceToSnapshot(snapshot, cached);
 }
 
-export function shouldClearBinarySettleEvidenceForSnapshot(
-    ctx: TransportContext,
+    private shouldClearBinarySettleEvidenceForSnapshot(
     snapshot: TransportDeviceSnapshot,
 ): boolean {
-    return !ctx.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
+    return !this.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function reconcileBinarySettleEvidenceWithSnapshot(
-    ctx: TransportContext,
+    reconcileWithSnapshot(
     snapshot: TransportDeviceSnapshot[],
 ): void {
     const activeDeviceIds = new Set(snapshot.map((device) => device.id));
-    for (const deviceId of ctx.latestBinarySettleEvidenceByDeviceId.keys()) {
-        if (!activeDeviceIds.has(deviceId)) ctx.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
-    }
+    this.observationState.retainBinarySettleEvidenceFor(activeDeviceIds);
     for (const device of snapshot) {
-        if (shouldClearBinarySettleEvidenceForSnapshot(ctx, device)) {
-            clearBinarySettleEvidence(ctx, device.id);
+        if (this.shouldClearBinarySettleEvidenceForSnapshot(device)) {
+            this.clearBinarySettleEvidence(device.id);
             delete device.binaryControlObservation;
             continue;
         }
         const evidence = device.binaryControlObservation;
         if (evidence) {
-            applyBinarySettleEvidenceToSnapshot(ctx, device, evidence);
+            this.applyBinarySettleEvidenceToSnapshot(device, evidence);
             continue;
         }
-        applyCachedBinarySettleEvidenceToSnapshot(ctx, device);
+        this.applyCachedBinarySettleEvidenceToSnapshot(device);
     }
 }
 /* eslint-enable functional/immutable-data */
 
-export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext, params: {
+    applyFromDeviceUpdate(params: {
     deviceId: string;
     device: HomeyDeviceLike;
     snapshot: TransportDeviceSnapshot | null;
@@ -194,7 +169,7 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         previousSnapshot,
     } = params;
     if (!snapshot) {
-        clearBinarySettleEvidence(ctx, deviceId);
+        this.clearBinarySettleEvidence(deviceId);
         return;
     }
     const payload = resolveBinaryControlPayload(device, snapshot, previousSnapshot);
@@ -206,9 +181,9 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         !payload.present
         || typeof payload.value !== 'boolean'
         || payload.observedAtMs === undefined
-        || isOlderEvCommandObservation(payload, previousSnapshot)
+        || this.isOlderEvCommandObservation(payload, previousSnapshot)
     ) {
-        applyCachedBinarySettleEvidenceToSnapshot(ctx, snapshot);
+        this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
         return;
     }
     const evidence: BinaryControlObservation = {
@@ -219,10 +194,10 @@ export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext,
         observedAtMs: payload.observedAtMs,
         source: 'device_update',
     };
-    applyBinarySettleEvidenceToSnapshot(ctx, snapshot, evidence);
+    this.applyBinarySettleEvidenceToSnapshot(snapshot, evidence);
 }
 
-function isOlderEvCommandObservation(
+private isOlderEvCommandObservation(
     payload: ReturnType<typeof resolveBinaryControlPayload>,
     previousSnapshot: TransportDeviceSnapshot | undefined,
 ): boolean {
@@ -232,9 +207,7 @@ function isOlderEvCommandObservation(
         && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs;
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function applyBinaryObservationToSnapshot(
-    ctx: TransportContext,
+    applyBinaryObservationToSnapshot(
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: boolean,
@@ -262,29 +235,19 @@ export function applyBinaryObservationToSnapshot(
             observedAtMs,
             source,
         };
-        applyBinarySettleEvidenceToSnapshot(ctx, mutableSnapshot, evidence);
+        this.applyBinarySettleEvidenceToSnapshot(mutableSnapshot, evidence);
     }
 }
 /* eslint-enable functional/immutable-data */
 
-export function recordRealtimeCapabilityObservation(ctx: TransportContext, params: {
-    deviceId: string;
-    eventCapabilityId: string;
-    observedCapabilityIds: string[];
-}, deferObservedEvent = false, cursor?: SettleCursor): void {
-    const { deviceId, eventCapabilityId, observedCapabilityIds } = params;
+    recordRealtimeCapabilityObservation(deviceId: string, capabilityIds: string[]): void {
     recordSnapshotCapabilityObservations({
-        state: ctx.observationState,
-        latestSnapshot: ctx.latestSnapshot,
+        state: this.observationState.getObservationState(),
+        latestSnapshot: this.snapshotStore.getSnapshot(),
         deviceId,
         source: 'realtime_capability',
-        capabilityIds: observedCapabilityIds,
+        capabilityIds,
     });
-    if (deferObservedEvent) return;
-    ctx.dispatchObservedStateChanged({
-        source: 'realtime_capability',
-        deviceId,
-        ...(cursor ?? ctx.nextObservationCursor(deviceId)),
-        capabilityId: eventCapabilityId,
-    });
+}
+
 }

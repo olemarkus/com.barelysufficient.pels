@@ -48,7 +48,7 @@ import {
 } from '../packages/shared-domain/src/binaryControlState';
 import type {
   EvObservedProbe,
-  TargetDeviceSnapshot,
+  ObservedDeviceState,
 } from '../packages/contracts/src/types';
 
 /**
@@ -84,7 +84,7 @@ export type ExternalOffHoldObservedDevice = {
 };
 
 export function toExternalOffHoldObservedDevice(
-  device: (TargetDeviceSnapshot & EvObservedProbe) | undefined,
+  device: (ObservedDeviceState & EvObservedProbe) | undefined,
 ): ExternalOffHoldObservedDevice | undefined {
   if (!device) return undefined;
   return {

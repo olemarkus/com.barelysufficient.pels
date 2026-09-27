@@ -277,13 +277,14 @@ const buildExecutor = (
       settings: { set: settingsSet },
       flow: flowMock,
     } as unknown as Homey.App['homey'],
-    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceDescriptors: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceConfigurations: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route writes through the actuator over the SAME device-manager methods + the
     // shared production flow-trigger factory, so routing matches production wiring.
     actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (deviceId, desired) => {
         const target = deviceManager.getSnapshotByDeviceId(deviceId)?.targets?.[0];
         if (!target) throw new Error('No temperature target binding');
@@ -443,6 +444,7 @@ describe('PlanExecutor declined actuator requests', () => {
     const apply = vi.fn(async () => ({ requested: false as const }));
     const actuator: Actuator = {
       apply,
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
     };
     const persistLastControlledMs = vi.fn();
@@ -500,6 +502,7 @@ describe('PlanExecutor declined actuator requests', () => {
     const apply = vi.fn(async () => ({ requested: false as const }));
     const actuator: Actuator = {
       apply,
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
     };
     const persistLastControlledMs = vi.fn();

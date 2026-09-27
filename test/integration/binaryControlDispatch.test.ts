@@ -28,6 +28,7 @@ const buildTransport = (
     actuator: createDeviceActuator({
       requestBinaryControl,
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
     }),
@@ -228,6 +229,7 @@ describe('binary command dispatch', () => {
         });
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
+      canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: async () => ({ requested: false }),
     });

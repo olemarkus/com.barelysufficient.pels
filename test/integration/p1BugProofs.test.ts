@@ -68,13 +68,14 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceDescriptors: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceConfigurations: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.
       actuator: createDeviceActuator({
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
       requestBinaryControl: async (deviceId, desired) => {

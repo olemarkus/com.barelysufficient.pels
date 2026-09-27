@@ -124,7 +124,7 @@ export class AppSnapshotHelpers {
       snapshot: TargetDeviceSnapshot[],
       resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
     ) => void;
-    persistFilledModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
+    persistFilledModeTargets: () => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
@@ -351,7 +351,7 @@ export class AppSnapshotHelpers {
 
     const snapshot = this.deps.getLatestTargetSnapshot();
     this.deps.seedTemperatureShedFloorDefaults(snapshot);
-    this.deps.persistFilledModeTargets(snapshot);
+    this.deps.persistFilledModeTargets();
     const enforcedSnapshot = snapshot.map((device) => {
       // Enforced FIRST, then stamped: `withHeadroomCurrentOn` resolves its
       // answer from the device's parse-time `controllable`, and the whole point

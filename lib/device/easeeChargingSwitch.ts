@@ -69,25 +69,34 @@ const RESUME: EaseeSwitchWrite = {
 const SWITCH: EaseeSwitchWrite = { kind: 'switch' };
 
 /**
- * `trackedDevices` holds each device as Homey last reported it; without built-in
+ * `trackedDevice` is the device Homey last reported; without built-in
  * control the charger's current is read from there, since the snapshot carries
  * no native step for a charger PELS does not step itself.
  */
 export function resolveEaseeSwitchWrite(
   snapshot: TransportDeviceSnapshot,
-  trackedDevices: ReadonlyMap<string, HomeyDeviceLike>,
+  trackedDevice: HomeyDeviceLike | undefined,
   desired: boolean,
 ): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot)) {
     if (!desired) return PAUSE;
     return snapshot.evChargingState === 'plugged_in' ? SWITCH : RESUME;
   }
-  const device = trackedDevices.get(snapshot.id);
+  const device = trackedDevice;
   if (!desired || device === undefined || snapshot.evChargingState !== 'plugged_in_paused') return SWITCH;
   const capabilityObj = getCapabilityObj(device);
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
-  const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]);
+  const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value);
   return currentA !== undefined && !holdsChargingCurrent(currentA) ? RESUME : SWITCH;
+}
+
+/**
+ * Easee only accepts a start command from its `plugged_in` state. For other
+ * reported states, use the safe current write; a stale `unplugged` report must
+ * not start a new session.
+ */
+function isSessionOpen(snapshot: Pick<TransportDeviceSnapshot, 'evChargingState'>): boolean {
+  return snapshot.evChargingState === 'plugged_in';
 }
 
 /** A current the charger charges at; below it (0-5 A) the charger pauses. */
@@ -140,7 +149,7 @@ export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): D
   const stateValue = state?.value;
   if (charging === undefined || state === undefined || !isEvChargingState(stateValue)) return capabilityObj;
   const current = capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID];
-  const currentA = readCurrentA(current);
+  const currentA = readCurrentA(current?.value);
   const on = isChargingSwitchOn(stateValue, currentA !== undefined && holdsChargingCurrent(currentA));
   const datedBy = stateValue === 'plugged_in_paused' && current !== undefined ? latestOf(state, current) : state;
   return {
@@ -180,7 +189,7 @@ export function resolveEaseeRealtimeUpdates(
       return [event, switchEvent(!isSteppedLoadOffStep(steppedLoadProfile, reportedStepId))];
     }
     case EASEE_CHARGER_CURRENT_CAPABILITY_ID: {
-      const currentA = readCurrentA({ value });
+      const currentA = readCurrentA(value);
       const state = snapshot.evChargingState;
       if (currentA === undefined || state === undefined) return [event];
       return [event, switchEvent(isChargingSwitchOn(state, holdsChargingCurrent(currentA)))];
@@ -194,8 +203,7 @@ function switchEvent(charging: boolean): { capabilityId: string; value: unknown 
   return { capabilityId: 'evcharger_charging', value: charging };
 }
 
-function readCurrentA(current: Pick<DeviceCapabilityValue, 'value'> | undefined): number | undefined {
-  const value = current?.value;
+function readCurrentA(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 

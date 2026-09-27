@@ -17,8 +17,9 @@
  *   state. What the device is doing.
  * - **Commanded** (`lib/executor`, this layer's own stores): whether a binary or
  *   step command is in flight and what it asked for. What PELS asked for.
- * - **Configured** (the ladder): not a reading and not a decision. It rides the
- *   intent, which the executor already receives.
+ * - **Configured** (the effective ladder): DeviceConfiguration owns resolution;
+ *   Observer carries that resolved ladder beside the reported rung, so this
+ *   reader can interpret observed state without asking the transport or settings.
  *
  * The two are kept apart deliberately — see `lib/device/AGENTS.md` on never
  * collapsing `observed` into `commanded`. This type joins them at the point of
@@ -46,7 +47,8 @@ import type {
 export type ObserverDeviceRead = ObservedDeviceState
   & ReportedStepObservedProbe
   & MeasuredPowerObservedProbe
-  & EvObservedProbe;
+  & EvObservedProbe
+  & { steppedLoadProfile?: SteppedLoadProfile };
 
 /** In-flight command state, owned by this layer. */
 export type DriftCommandRead = {

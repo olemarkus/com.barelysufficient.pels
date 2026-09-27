@@ -1,6 +1,7 @@
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
+import type { Logger } from '../../utils/types';
+import type { DeviceTransportParseProviders } from './managerParseDevice';
 import { fetchLivePowerReport as fetchLivePowerReportFromSdk, type LivePowerReport } from './managerFetch';
-import type { TransportContext } from './transportContext';
 
 /**
  * Resolve one live report against a producer-clean Main meter selection. The
@@ -12,13 +13,13 @@ import type { TransportContext } from './transportContext';
  * back honestly absent from `resolveHomeReading`.
  */
 export async function fetchLivePowerReport(
-  ctx: TransportContext,
+  logger: Logger,
+  providers: DeviceTransportParseProviders,
   selection: MainMeterSelection,
 ): Promise<LivePowerReport> {
   return fetchLivePowerReportFromSdk({
-    logger: ctx.logger,
-    debugStructured: ctx.debugStructured,
+    logger,
     meterSelection: selection,
-    additionalMeterDeviceIds: ctx.providers.getAdditionalMeterDeviceIds?.() ?? [],
+    additionalMeterDeviceIds: providers.getAdditionalMeterDeviceIds?.() ?? [],
   });
 }

@@ -93,14 +93,7 @@ export function resolveFlowCapabilityOverlay(params: {
     rawCapabilityObj,
     providers, logger,
   } = params;
-  const nativeEvOverlay = applyOverlaysWithDiagnostics({
-    device,
-    deviceId,
-    rawCapabilities,
-    rawCapabilityObj,
-    providers,
-    logger,
-  });
+  const nativeEvOverlay = applyOverlaysWithDiagnostics(device, rawCapabilities, rawCapabilityObj, logger);
   const overlayCapabilities = nativeEvOverlay.capabilities;
   const overlayCapabilityObj = nativeEvOverlay.capabilityObj;
   const targetPowerOverlay = applySyntheticTargetPowerOverlay({
@@ -153,9 +146,14 @@ export function resolveFlowCapabilityOverlay(params: {
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
     : undefined;
-  const overlay: ReturnType<typeof resolveFlowCapabilityOverlay> = {
-    capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
-    capabilityObj,
+  const finalCapabilities = stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj });
+  const easeeBuiltInControl = isEaseeUnderBuiltInControl({ controlAdapter, capabilities: finalCapabilities });
+  const finalCapabilityObj = easeeBuiltInControl
+    ? withEaseeObservedCharging(capabilityObj)
+    : capabilityObj;
+  return {
+    capabilities: finalCapabilities,
+    capabilityObj: finalCapabilityObj,
     controlAdapter,
     binaryWriteCapabilityId: nativeEvOverlay.binaryWriteCapabilityId,
     binaryObservationCapabilityId: nativeEvOverlay.binaryObservationCapabilityId,
@@ -174,9 +172,6 @@ export function resolveFlowCapabilityOverlay(params: {
     targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     allReportedCapabilities,
   };
-  // An Easee under built-in control reads its charging switch from the plug state and current.
-  if (!isEaseeUnderBuiltInControl(overlay)) return overlay;
-  return { ...overlay, capabilityObj: withEaseeObservedCharging(capabilityObj) };
 }
 
 /**
@@ -208,22 +203,20 @@ function resolveCandidateNativeWriteCapabilities(params: {
   return owned.length > 0 ? owned : undefined;
 }
 
-function applyOverlaysWithDiagnostics(params: {
-  device: HomeyDeviceLike;
-  deviceId: string;
-  rawCapabilities: string[];
-  rawCapabilityObj: DeviceCapabilityMap;
-  providers: DeviceTransportParseProviders;
-  logger: Logger;
-}): ReturnType<typeof applyNativeEvWiringOverlay> {
+function applyOverlaysWithDiagnostics(
+  device: HomeyDeviceLike,
+  rawCapabilities: string[],
+  rawCapabilityObj: DeviceCapabilityMap,
+  logger: Logger,
+): ReturnType<typeof applyNativeEvWiringOverlay> {
   const overlay = applyNativeEvWiringOverlay({
-    device: params.device,
-    capabilities: params.rawCapabilities,
-    capabilityObj: params.rawCapabilityObj,
+    device,
+    capabilities: rawCapabilities,
+    capabilityObj: rawCapabilityObj,
   });
   warnIfTargetPowerCapabilityViolatesContract({
-    logger: params.logger,
-    device: params.device,
+    logger,
+    device,
     capabilities: overlay.capabilities,
     capabilityObj: overlay.capabilityObj,
   });

@@ -34,8 +34,8 @@ type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
 };
 
 /**
- * Seed observed state, release any external-off hold whose device is observed
- * back ON, and evict cache entries for devices that are gone.
+ * Release any external-off hold whose device is observed back ON, and evict
+ * cache entries for devices that are gone.
  *
  * The release sweep is here rather than at the push seam because detection is
  * push-driven, which is the safe direction for STARTING a hold but the wrong one
@@ -52,15 +52,14 @@ type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
 const runSnapshotPrePass = (
   ctx: AppContext,
   options?: ToPlanDeviceOptions,
-): AppContext['latestTargetSnapshot'] => {
-  ctx.seedObservedStateFromSnapshot();
-  const snapshot = ctx.latestTargetSnapshot;
+): ReturnType<AppContext['getPlanInputSnapshot']> => {
+  const snapshot = ctx.getPlanInputSnapshot();
   releaseExternalOffHoldsForObservedOn({
     policy: ctx.externalOffHold,
     deviceIds: snapshot.map((device) => device.id),
     // Affirmative evidence only — see `isAffirmativelyOn`. Release is the one
     // direction where silence must not count as consent.
-    isObservedOn: (deviceId) => isAffirmativelyOn(ctx.deviceManager?.getSnapshotByDeviceId(deviceId)),
+    isObservedOn: (deviceId) => isAffirmativelyOn(ctx.getObservedRecord(deviceId)),
     onObservedOn: (deviceId) => {
       const device = snapshot.find((entry) => entry.id === deviceId);
       const observation = toExternalOffHoldObservedDevice(device);
@@ -82,7 +81,7 @@ const runSnapshotPrePass = (
     },
     debugStructured: ctx.getStructuredDebugEmitter('reconcile', 'devices'),
   });
-  evictMissingDeviceCacheEntries(ctx, snapshot);
+  evictMissingDeviceCacheEntries(ctx, ctx.deviceConfiguration.ids());
   return snapshot;
 };
 

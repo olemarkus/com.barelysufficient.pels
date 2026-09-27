@@ -24,13 +24,13 @@
  * and EV plug state off it, exactly as the drift check does.
  */
 import type {
-  DeviceDescriptorRead,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
   ReportedStepObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { ObserverDeviceRead } from './driftObservedDevice';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
 /**
  * What the executor holds for one device: the narrowed executor surface plus
@@ -43,18 +43,17 @@ export type ExecutorDeviceRead = ExecutorDeviceSnapshot
   & EvObservedProbe;
 
 /**
- * The two owner reads the executor is wired with. Neither is the transport's
- * snapshot: the descriptor read is the transport's declared descriptor surface,
- * the observed read is the observer projection.
+ * The executor's two owner reads. The final executor read keeps only the
+ * configuration fields it consumes and joins them to Observer's live record.
  */
 export type ExecutorDeviceReadDeps = {
-  /** Transport-owned identity and config; `undefined` for an untracked device. */
-  getDeviceDescriptor: (deviceId: string) => DeviceDescriptorRead | undefined;
-  /** Every tracked device's descriptor, in snapshot order. */
-  getDeviceDescriptors: () => DeviceDescriptorRead[];
+  /** Runtime configuration source; `undefined` for an untracked device. */
+  getDeviceConfiguration: (deviceId: string) => DeviceConfigurationRead | undefined;
+  /** Every tracked runtime configuration, in snapshot order. */
+  getDeviceConfigurations: () => DeviceConfigurationRead[];
   /**
    * Observer-owned observed record, live. `undefined` until the first
-   * observation for a device lands or the boot seed fills it.
+   * observation for a device lands.
    */
   getObservedState: (deviceId: string) => ObserverDeviceRead | undefined;
 };
@@ -63,21 +62,26 @@ export function readExecutorDevice(
   deps: ExecutorDeviceReadDeps,
   deviceId: string,
 ): ExecutorDeviceRead | undefined {
-  const descriptor = deps.getDeviceDescriptor(deviceId);
-  if (!descriptor) return undefined;
-  return joinExecutorDevice(descriptor, deps.getObservedState(deviceId));
+  const configuration = deps.getDeviceConfiguration(deviceId);
+  if (!configuration) return undefined;
+  return joinExecutorDevice(configuration, deps.getObservedState(deviceId));
 }
 
 export function readExecutorDevices(deps: ExecutorDeviceReadDeps): ExecutorDeviceRead[] {
-  return deps.getDeviceDescriptors().flatMap((descriptor) => {
-    const device = joinExecutorDevice(descriptor, deps.getObservedState(descriptor.id));
+  return deps.getDeviceConfigurations().flatMap((source) => {
+    const device = joinExecutorDevice(source, deps.getObservedState(source.id));
     return device ? [device] : [];
   });
 }
 
 const joinExecutorDevice = (
-  descriptor: DeviceDescriptorRead,
+  configuration: DeviceConfigurationRead,
   observed: ObserverDeviceRead | undefined,
-): ExecutorDeviceRead | undefined => (
-  observed ? { ...observed, ...descriptor } : undefined
-);
+): ExecutorDeviceRead | undefined => {
+  if (!observed) return undefined;
+  return {
+    ...observed,
+    id: configuration.id,
+    name: configuration.name,
+  };
+};

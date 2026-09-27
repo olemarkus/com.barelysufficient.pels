@@ -27,8 +27,8 @@ export type PlanEngineWiring = {
   steppedCommandStore: SteppedCommandStore;
   steppedReportedStore: SteppedReportedStepStore;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
-  getDeviceDescriptor: PlanExecutorDeps['getDeviceDescriptor'];
-  getDeviceDescriptors: PlanExecutorDeps['getDeviceDescriptors'];
+  getDeviceConfiguration: PlanExecutorDeps['getDeviceConfiguration'];
+  getDeviceConfigurations: PlanExecutorDeps['getDeviceConfigurations'];
   // Named for what the executor needs — the observed RECORD, because its drift
   // check reads the reported step, measured power and EV state off it — rather
   // than reusing the app's base-state read, which is assignable here and would

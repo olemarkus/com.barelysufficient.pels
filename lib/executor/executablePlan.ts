@@ -1,9 +1,7 @@
 import type { DesiredBinaryKind } from './executableDesiredState';
 import type {
   DeviceControlAdapterSnapshot,
-  DeviceDescriptor,
   ObservedDeviceState,
-  SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
@@ -31,22 +29,16 @@ export type ExecutablePlan = {
 
 /**
  * The decomposed snapshot surface the executor consumes: observer-owned
- * observed truth (`ObservedDeviceState`) plus the descriptor config its
- * actuation gates read (commandability and the stepped-load ladder).
+ * observed truth (`ObservedDeviceState`, including the resolved stepped-load
+ * profile). Binary writeability is queried at the Actuator boundary.
  * Deliberately narrower than the raw producer
  * `TargetDeviceSnapshot` — the executor is a downstream consumer, so it depends
  * on the decomposed halves, never the full producer snapshot. The full snapshot
  * remains structurally assignable to this, so producers feed it unchanged.
  */
 export type ExecutorDeviceSnapshot = ObservedDeviceState
-  & Pick<
-    DeviceDescriptor,
-    | 'capabilities'
-    | 'canSetControl'
-    | 'deviceClass'
-  >
-  & SteppedLoadDescriptorProbe
-  & { currentOn?: boolean; commandableNow?: boolean };
+  & { steppedLoadProfile?: SteppedLoadProfile }
+  & { currentOn?: boolean };
 
 /**
  * One device's commands for this cycle.

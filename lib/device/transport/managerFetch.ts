@@ -1,10 +1,10 @@
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
-import type { StructuredDebugEmitter } from '../../logging/logger';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
 const moduleLogger = getLogger('device/manager-fetch');
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 import {
   asLiveEnergyReport,
   extractLiveMeterItems,
@@ -265,7 +265,6 @@ export async function fetchLiveGenerationW(logger: Logger): Promise<LiveGenerati
 
 export async function fetchLivePowerReport(params: {
   logger: Logger;
-  debugStructured?: StructuredDebugEmitter;
   /** Producer-clean Main meter selection; `unavailable` nulls the whole-home half. */
   meterSelection: MainMeterSelection;
   /** Additional per-meter reading requests (sub-home meters); empty = none. */
@@ -273,7 +272,6 @@ export async function fetchLivePowerReport(params: {
 }): Promise<LivePowerReport> {
   const {
     logger,
-    debugStructured,
     meterSelection,
     additionalMeterDeviceIds,
   } = params;
@@ -285,7 +283,7 @@ export async function fetchLivePowerReport(params: {
     const generation = resolveLiveGeneration(report);
     const additionalMeterPowerW = extractAdditionalMeterPowerW(report, additionalMeterDeviceIds);
     const deviceCount = Object.keys(byDeviceId).length;
-    (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
+    emitDeviceDebug({
       event: 'energy_live_report_received',
       source: 'homey_energy',
       homeMeterResolution: home.state,

@@ -1,26 +1,10 @@
 import type { AssociatedCarSnapshot } from '../../../packages/contracts/src/types';
 import type { AssociatedCarLevel } from '../evCarLinkReadModel';
-import type { DeviceTransportParseProviders } from './managerParseDevice';
-import type { TransportEvCarLinkProducer } from './transportContext';
-import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { clearCarStateOfCharge } from './carStateOfChargeWrite';
 import {
-  EV_SOC_CAPABILITY_ID,
   updateStateOfChargeFromCarObservation,
 } from './stateOfCharge';
-
-/**
- * Exactly the two reads this resolver performs — declared rather than taking the
- * whole `TransportContext`, so the contract is visible and a test can satisfy it
- * with a real typed value instead of a cast. `TransportContext` satisfies it
- * structurally.
- */
-export type CarAssociationSources = {
-  providers: Pick<DeviceTransportParseProviders, 'getEvCarAssociationCarIds'>;
-  observationProducers: {
-    evCarLink: Pick<TransportEvCarLinkProducer, 'getAssociatedCarForCharger'>;
-  };
-};
 
 /**
  * The single resolver for "which car is associated with this charger right now".
@@ -46,12 +30,10 @@ export type CarAssociationSources = {
  * after unplugging. Recomputing costs two map lookups.
  */
 export const resolveAssociatedCar = (
-  ctx: CarAssociationSources,
-  chargerId: string,
+  eligibleCarIds: readonly string[],
+  associated: AssociatedCarSnapshot | undefined,
 ): AssociatedCarSnapshot | undefined => {
-  const eligibleCarIds = ctx.providers.getEvCarAssociationCarIds?.(chargerId) ?? [];
   if (eligibleCarIds.length === 0) return undefined;
-  const associated = ctx.observationProducers.evCarLink.getAssociatedCarForCharger(chargerId);
   if (!associated) return undefined;
   return eligibleCarIds.includes(associated.carId) ? associated : undefined;
 };
@@ -63,10 +45,10 @@ export const resolveAssociatedCar = (
  * since.
  */
 export const clearAssociatedCarStateOfCharge = (
-  ctx: { latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot> },
+  snapshotStore: TransportSnapshotStore,
   chargerId: string,
 ): boolean => {
-  const snapshot = ctx.latestSnapshotById.get(chargerId);
+  const snapshot = snapshotStore.getSnapshotByDeviceId(chargerId);
   return snapshot ? clearCarStateOfCharge({ snapshot }) : false;
 };
 
@@ -87,14 +69,14 @@ export const clearAssociatedCarStateOfCharge = (
  * app's reporting lag cannot drive a control path.
  */
 export const applyAssociatedCarStateOfCharge = (
-  ctx: CarAssociationSources & {
-    latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>;
-  },
+  eligibleCarIds: readonly string[],
+  associatedCar: AssociatedCarSnapshot | undefined,
+  snapshotStore: TransportSnapshotStore,
   reading: AssociatedCarLevel,
 ): boolean => {
-  const associated = resolveAssociatedCar(ctx, reading.chargerId);
+  const associated = resolveAssociatedCar(eligibleCarIds, associatedCar);
   if (associated?.carId !== reading.carId) return false;
-  const snapshot = ctx.latestSnapshotById.get(reading.chargerId);
+  const snapshot = snapshotStore.getSnapshotByDeviceId(reading.chargerId);
   if (!snapshot) return false;
   return updateStateOfChargeFromCarObservation({
     snapshot,
@@ -104,28 +86,3 @@ export const applyAssociatedCarStateOfCharge = (
     chargeLimitPct: reading.chargeLimitPct,
   });
 };
-
-/**
- * The two probe callbacks, bound to a transport. Built here rather than inline
- * in `DeviceTransport` so the adoption decision and the write live together, and
- * the hub keeps one import instead of three.
- */
-export const createCarStateOfChargeAdoption = (params: {
-  getCtx: () => CarAssociationSources & {
-    latestSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>;
-  };
-  /**
-   * Dispatched as a `measure_battery` observation, so the existing EV-boost
-   * plan-rebuild gate fires exactly as it does for a charger's own report.
-   */
-  dispatch: (chargerId: string, capabilityId: string) => void;
-}) => ({
-  onAssociatedCarStateOfCharge: (reading: AssociatedCarLevel): void => {
-    if (!applyAssociatedCarStateOfCharge(params.getCtx(), reading)) return;
-    params.dispatch(reading.chargerId, EV_SOC_CAPABILITY_ID);
-  },
-  onAssociationEnded: (chargerId: string): void => {
-    if (!clearAssociatedCarStateOfCharge(params.getCtx(), chargerId)) return;
-    params.dispatch(chargerId, EV_SOC_CAPABILITY_ID);
-  },
-});

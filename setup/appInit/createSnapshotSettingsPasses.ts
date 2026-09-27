@@ -31,12 +31,10 @@ export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
 
 export const createModeTargetPersistence = (
   ctx: AppContext,
-): ((snapshot: DecoratedDeviceSnapshot[]) => void) => (snapshot) => persistFilledModeTargets({
-  // The settings UI reads the snapshot; this reads the plan projection of it.
-  // The two disagree on purpose for a device whose owner switched temperature
-  // control off — still a temperature device to the UI (that is what renders the
-  // toggle and its saved targets), not one to control.
-  devices: snapshot.map((device) => toPlanDevice(ctx, device)),
+): (() => void) => () => persistFilledModeTargets({
+  // This settings pass needs the same runtime configuration and observer values
+  // used by planning; inventory metadata stays on DeviceReads.
+  devices: ctx.getPlanInputSnapshot().map((device) => toPlanDevice(ctx, device)),
   settings: ctx.homey.settings,
   resolveHomeIdForDevice: (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
   structuredLog: (event) => ctx.getStructuredLogger('devices')?.info(event),

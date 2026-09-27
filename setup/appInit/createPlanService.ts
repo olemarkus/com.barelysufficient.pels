@@ -28,7 +28,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     homey: ctx.homey,
     publishPelsStatus: scope.publishPelsStatus,
     planEngine,
-    // Home-scoped plan-device source (boot/hot-plug projection seed + eviction +
+    // Home-scoped plan-device source (observed-state pre-pass + eviction +
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
     getPlanDevices: scope.getPlanDevices,
@@ -38,18 +38,15 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getSettleDevices: () => deviceManager.getBinaryCommandConfirmationSnapshot(),
     // The decorated devices carry their own ladder, so the settle evidence is a
     // pure projection off them — no profile lookup at the consumer.
-    getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.latestTargetSnapshot),
+    getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.getPlanInputSnapshot()),
     // EV charging state for the settings-UI read model comes from the observer
     // (its canonical owner), not the plan device — the planner carries only the
     // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT
-    // fall back to `ctx.latestTargetSnapshot` here — that getter re-runs
-    // `getSnapshot()` + full re-decoration on every access, so a per-device lookup
+    // fall back to `ctx.getPlanInputSnapshot()` here — that getter rebuilds
+    // and re-decorates the full runtime projection on every access, so a per-device lookup
     // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary
-    // shed e2es). The cold-start gap (a generic chip for the first cycle before
-    // the event-driven projection fills) is closed by the boot/hot-plug seed in
-    // `getPlanDevices` above: every plan build seed-fills the projection from the
-    // raw snapshot before the read model serializes, so a boot-present EV's real
-    // plug-state is materialized for cycle 1.
+    // shed e2es). The bootstrap refresh publishes the boot snapshot to Observer
+    // before the warmup gate admits the first plan cycle.
     getObservedEvChargingState: (deviceId) => ctx.getObservedEvChargingState(deviceId),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
@@ -61,7 +58,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getObservedTemperature: (deviceId) => ctx.getObservedTemperature(deviceId),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
-      for (const deviceId of ctx.deviceReads.deviceIds()) {
+      for (const deviceId of ctx.deviceConfiguration.ids()) {
         const profile = ctx.deviceControlHelpers.getSteppedLoadProfile(deviceId);
         if (profile) map.set(deviceId, profile);
       }

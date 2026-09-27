@@ -45,14 +45,14 @@ export type PlanEngineCompositionResult = {
 
 /**
  * Wrap an actuator so every `apply` no-ops (requested:false, `base` untouched)
- * while `isFenced()` is true. The single-method actuator seam makes this the
- * simplest robust point-of-use fence: an in-flight continuation cannot issue a
- * device write after its execution posture changes.
+ * while `isFenced()` is true. An in-flight continuation cannot issue a device
+ * write after its execution posture changes.
  */
 export const createFencedActuator = (
   base: Actuator,
   isFenced: (deviceId: string) => boolean,
 ): Actuator => ({
+  canTurnOnDevice: base.canTurnOnDevice.bind(base),
   resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
     isFenced(command.deviceId) ? Promise.resolve({ requested: false }) : base.apply(command)
@@ -91,8 +91,8 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     homeId: deps.homeId,
     setCapacityInShortfall: deps.setCapacityInShortfall,
     persistLastControlledMs: deps.persistLastControlledMs,
-    getDeviceDescriptor: deps.getDeviceDescriptor,
-    getDeviceDescriptors: deps.getDeviceDescriptors,
+    getDeviceConfiguration: deps.getDeviceConfiguration,
+    getDeviceConfigurations: deps.getDeviceConfigurations,
     // The RECORD, not the base read: the executor's drift check reads the
     // reported step, measured power and EV state off it. Supplying
     // `getObservedState` here compiles — narrow is assignable to wide, since
@@ -173,11 +173,10 @@ export function createPlanEngineComposition(
     steppedCommandStore: ctx.steppedCommandStore,
     steppedReportedStore: ctx.steppedReportedStore,
     persistLastControlledMs: scope.persistLastControlledMs,
-    // The executor's two device reads, each from its owner: descriptors from
-    // the transport, the observed record from the observer projection. It gets
-    // no handle on the transport itself (stage 5 of the snapshot decomposition).
-    getDeviceDescriptor: (deviceId: string) => ctx.getDeviceDescriptor(deviceId),
-    getDeviceDescriptors: () => ctx.getDeviceDescriptors(),
+    // Runtime configuration and observed state come from their respective
+    // owners. Device inventory metadata does not enter planner or executor.
+    getDeviceConfiguration: (deviceId: string) => ctx.deviceConfiguration.get(deviceId),
+    getDeviceConfigurations: () => ctx.deviceConfiguration.getAll(),
     // See the sibling wiring above: the drift check holds the record.
     getObservedRecord: (deviceId: string) => ctx.getObservedRecord(deviceId),
     getObservationRevision: () => ctx.getObservationRevision(),

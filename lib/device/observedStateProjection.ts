@@ -45,6 +45,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         available: snapshot.available,
         ...projectReportedStepObservation(snapshot),
         ...projectMeasuredPowerObservation(snapshot),
+        ...projectSteppedLoadProfile(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
@@ -100,6 +101,15 @@ function projectMeasuredPowerObservation(snapshot: TransportDeviceSnapshot): Mea
             ? { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs } : {}),
     };
 }
+
+const projectSteppedLoadProfile = (
+    snapshot: TransportDeviceSnapshot,
+): Pick<ProjectedObservedDeviceState, 'steppedLoadProfile'> => {
+    const profile = snapshot.steppedLoadProfile;
+    return profile === undefined
+        ? {}
+        : { steppedLoadProfile: { ...profile, steps: profile.steps.map((step) => ({ ...step })) } };
+};
 
 function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): ReportedStepObservedProbe {
     return {
