@@ -102,6 +102,8 @@ export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 // RETIRED, never read again: `main_meter_authority_migration_v1_done`, the
 // marker of the deleted boot-time meter-authority migration. Installs that ran
 // it still hold it as `true`; do not reuse the name for a new marker.
+// Other retired names are listed, and unset at boot, in
+// lib/store/retiredSettingsKeys.ts; do not reuse those either.
 // OPERATING_MODE_SETTING is declared above HOME_SCOPABLE_BASE_KEYS (it is a
 // member of that set).
 export const MANAGED_DEVICES = 'managed_devices';

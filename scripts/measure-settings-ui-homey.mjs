@@ -361,8 +361,7 @@ const createHomeyContext = async ({ appId, homeyId }) => {
         }
       }
       if (normalizedMethod === 'GET' && uri === '/ui_devices') {
-        const allSettings = await getAllSettings();
-        return { devices: getArraySetting(allSettings, 'target_devices_snapshot') };
+        return callInstalledAppApi('GET', '/ui_devices');
       }
       if (normalizedMethod === 'GET' && uri === '/ui_plan') {
         return callInstalledAppApi('GET', '/ui_plan');

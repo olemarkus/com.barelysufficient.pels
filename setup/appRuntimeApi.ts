@@ -2,6 +2,7 @@ import { temperaturePolicyPriceSettings } from '../packages/shared-domain/src/se
 import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
 import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
+import { unsetRetiredSettingsKeys } from '../lib/store/retiredSettingsKeys';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
@@ -332,6 +333,7 @@ abstract class AppRuntimeApi extends Base {
     runBootMigrations({ homey: this.homey });
     // Nothing to import: a status is a fact of the run that publishes it.
     retireLegacyPlanStatusKeys(this.homey.settings);
+    unsetRetiredSettingsKeys(this.homey.settings);
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => { this.loadCapacitySettingsFromStore(false); };

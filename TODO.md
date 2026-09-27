@@ -1623,26 +1623,34 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
-      core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power
-      tracker (`lib/power/trackerStore.ts`), the weather history
-      (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
+      core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each
+      write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
+      the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
       (`lib/objectives/deferredObjectives/planHistoryStore.ts`) and the device diagnostics
       (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~170 kB of the
-      blob: `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`), the tariff/price
-      caches `nettleie_data`, `combined_prices`, `electricity_prices` (`setup/priceDataAdapter.ts`,
-      `setup/priceCombinedPricesAdapter.ts`), `device_action_log_by_device`,
-      `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`
-      and `learned_thermostat_deadband_c`. Change: one repository per family beside its domain,
-      taking the open database (the tracker and weather stores are the pattern: rows or one JSON
-      row per event, diffed writes, the legacy key imported once at boot through
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~80 kB of the ~108 kB object:
+      the tariff/price caches `nettleie_data` (48 kB), `combined_prices` (21 kB) and
+      `electricity_prices` (4 kB) (`lib/price/priceDataStore.ts`,
+      `lib/price/combinedPricesReader.ts`), `deferred_objective_active_plans` (4 kB,
+      `setup/appInit/deferredRecorders.ts`), `power_calibration` (2 kB,
+      `lib/device/devicePowerCalibrationStore.ts`) and `device_power_peaks` (1 kB,
+      `lib/device/learnedPowerPeakState.ts`). The size is what matters, because the small live
+      latches stay in settings by ruling and keep writing: measured on production on 2026-09-26,
+      `device_last_controlled_ms` writes ~19 times an hour (every executor actuation batch,
+      `setup/homeRuntime/homeSignalWriters.ts`), `deferred_objective_observation_watermark` 12
+      (`setup/appInit/deferredRecorders.ts`), `power_calibration` up to 10 while a charger runs,
+      `daily_budget_state` ~7. Change: one repository per family beside its domain, taking the
+      open database (the tracker and weather stores are the pattern: rows or one JSON row per
+      event, diffed writes, the legacy key imported once at boot through
       `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
       Done when `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production
-      Homey is under ~100 kB and the perf counter `daily_budget_persist_ms` — the one periodic
-      settings writer left — no longer records a write above a few milliseconds. Also retire the
-      two dev harnesses that still read the retired tracker key —
-      `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload`) and the fixture in
-      `scripts/benchmark-settings-ui-boot.mjs` — by pointing them at the `ui_power` API payload.
+      Homey is under ~40 kB. Count writes by diffing successive reads of that endpoint, not with
+      the `settings_set.*` perf counters, which cover only `daily_budget_state` and
+      `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
+      gone (the tracker key, `pels_status`, `app_heartbeat` and `target_devices_snapshot`):
+      `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload` and the device list) and the
+      fixture in `scripts/benchmark-settings-ui-boot.mjs`, by pointing them at the `ui_power` and
+      device API payloads.
 
 - [ ] **The tracker store has no schema version, and the objective profiles ride it as one JSON
       scalar.** `lib/power/trackerStore.ts` writes `objectiveProfiles` — every device's learned
