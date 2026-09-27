@@ -68,9 +68,11 @@ export function recordShedPostureRestoreBatchAdmission(
   }
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordBatchAdmission(batchState: RestoreBatchState, neededKw: number): void {
   Object.assign(batchState, {
     admittedCount: batchState.admittedCount + 1,
     admittedNeedKw: batchState.admittedNeedKw + neededKw,
   });
 }
+/* eslint-enable functional/immutable-data */

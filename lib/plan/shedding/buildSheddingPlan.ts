@@ -21,6 +21,7 @@ import { buildShedCandidateParams, buildSheddingCandidates, summarizeSheddingCan
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export async function buildSheddingPlan(
   context: PlanContext,
   power: MeasuredPower,
@@ -58,6 +59,7 @@ export async function buildSheddingPlan(
     overshootStats,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function shouldPlanShedding(headroom: number): boolean {
   return headroom < 0;

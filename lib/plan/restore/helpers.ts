@@ -216,6 +216,7 @@ function resolveSteppedRestoreNeed(
   return { deltaKw, neededKw: deltaKw + computeRestoreBufferKw(deltaKw) };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function planRestoreForSteppedDevice(
   params: {
     dev: SteppedPlanDevice & MeteredKind;
@@ -332,6 +333,7 @@ export function planRestoreForSteppedDevice(
     headroomReserves,
   }, { availableHeadroom, restoredOneThisCycle }, batchState, batchContinuation);
 }
+/* eslint-enable functional/immutable-data */
 
 function commitSteppedRestoreAttempt(
   batchState: RestoreBatchState,

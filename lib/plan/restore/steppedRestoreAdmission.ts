@@ -152,6 +152,7 @@ export function admitSteppedRestore(
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function blockSteppedRestoreForShedInvariant(params: {
   dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -213,6 +214,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   }
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
 function canUseSwapForSteppedRestore(params: {
   dev: SteppedPlanDevice;

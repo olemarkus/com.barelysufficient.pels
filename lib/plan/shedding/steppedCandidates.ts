@@ -104,6 +104,7 @@ type SteppedShedLadderResult =
  * still `chooseShedRung` at spend time, gentlest one that covers the remaining
  * deficit.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function buildSteppedShedDescentTargets(params: {
   profile: SteppedLoadProfile;
   initialTargetStep: SteppedLoadStep;
@@ -144,6 +145,7 @@ function buildSteppedShedDescentTargets(params: {
   if (offStep && !targets.some((step) => step.id === offStep.id)) targets.push(offStep);
   return targets;
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Prices the whole ladder rather than one rung: every reachable step down from
@@ -160,6 +162,7 @@ function buildSteppedShedDescentTargets(params: {
  * decides it, against the deficit still open when this candidate's turn comes.
  * See `chooseShedRung`.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function resolveSteppedShedLadder(params: {
   device: MeteredPlanInputDevice;
   profile: SteppedLoadProfile;
@@ -197,6 +200,7 @@ export function resolveSteppedShedLadder(params: {
   if (rungsTried.length === 0) return { kind: 'no_reachable_step' };
   return { kind: 'no_relief', rungsTried };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * The rung a shed of `neededKw` aims at: the **gentlest rung whose priced relief

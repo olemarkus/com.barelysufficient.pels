@@ -404,15 +404,6 @@ export default tseslint.config(
       ],
     },
   },
-  // Temporary migration boundary: root plan code and the core runtime domains
-  // have returned to the repository-wide immutable-data rule. Remaining plan
-  // subsystems and device code are migrated in subsequent layers.
-  {
-    files: ['lib/plan/restore/**/*.ts', 'lib/plan/shedding/**/*.ts', 'lib/plan/swap/**/*.ts'],
-    rules: {
-      'functional/immutable-data': 'off',
-    },
-  },
   // Keep the Homey SDK at the leaf. The runtime SDK object (`homey.settings` /
   // `clock` / `api` / `flow`) is dependency-injected from the entry points
   // (app.ts and drivers/** subclass `Homey.App`/`Homey.Driver` and thread the

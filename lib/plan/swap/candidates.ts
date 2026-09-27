@@ -65,6 +65,7 @@ function isViableSwapCandidate(
   return true;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildSwapCandidates(
   dev: DevicePlanDevice,
   onDevices: MeteredDevicePlanDevice[],
@@ -131,4 +132,5 @@ export function buildSwapCandidates(
     reserveKw: SWAP_RESTORE_RESERVE_KW,
   };
 }
+/* eslint-enable functional/immutable-data */
 

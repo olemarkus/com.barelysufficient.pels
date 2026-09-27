@@ -74,6 +74,7 @@ export function summarizeSheddingCandidates(params: ShedCandidateParams): {
   };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildSheddingCandidates(params: ShedCandidateParams): {
   candidates: ShedCandidate[];
   reducibleControlledKw: number;
@@ -85,7 +86,9 @@ export function buildSheddingCandidates(params: ShedCandidateParams): {
   result.candidates.sort(sortCandidates);
   return result;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function collectSheddingCandidates(
   params: ShedCandidateParams,
   options: { includeCandidates: boolean },
@@ -171,6 +174,7 @@ function collectSheddingCandidates(
     ...recorder.summary(),
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function addCandidatePower(params: {
   device: MeteredPlanInputDevice;

@@ -20,6 +20,7 @@ function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number):
   return buildShortfallReason(needed, headroomKw);
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function markRestoreCandidatesStayShedForShortfall(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   headroomKw: number;
@@ -75,6 +76,7 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
     setPlanDevice(dev.id, update);
   }
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Hold every restore candidate this cycle with ONE reason — the cooldown lane's

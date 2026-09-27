@@ -66,6 +66,7 @@ export function createShedCandidateSkipRecorder(
   const skipped: SkippedDeviceRecord[] = [];
   const counts = new Map<ShedCandidateSkipReason, number>();
   return {
+    /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
     record: ({ device, reasonCode, rungsTried }) => {
       skipped.push({
         deviceId: device.id,
@@ -76,6 +77,7 @@ export function createShedCandidateSkipRecorder(
       });
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
     },
+    /* eslint-enable functional/immutable-data */
     summary: () => ({
       skippedCandidateCount: skipped.length,
       skippedCandidateReasons: [...counts.entries()].map(([reason, count]) => ({ reason, count })),
