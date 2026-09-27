@@ -19,6 +19,7 @@ describe('SettingsUiDeviceReads', () => {
     reads.connect({
       readChargerPhasePresets: () => chargerRead,
       readCarAssociationCandidates: () => carRead,
+      getUiPickerDevices: () => [],
     });
 
     expect(reads.readChargerPhasePresets()).toBe(chargerRead);
@@ -42,6 +43,7 @@ describe('Homey settings-UI device-read boundary', () => {
     reads.connect({
       readChargerPhasePresets: () => chargerRead,
       readCarAssociationCandidates: () => carRead,
+      getUiPickerDevices: () => [],
     });
 
     expect(readChargerPhasePresetsFromHomey({

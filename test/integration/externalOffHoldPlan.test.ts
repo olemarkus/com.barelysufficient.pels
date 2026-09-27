@@ -225,6 +225,7 @@ const buildExecutorCtx = (held: boolean) => {
     state,
     readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
+    canTurnOnDevice: () => true,
     buildBinaryControlTransport: () => ({
       getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),

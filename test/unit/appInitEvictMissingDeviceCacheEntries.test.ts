@@ -9,13 +9,6 @@
 import { describe, expect, it } from 'vitest';
 import { evictMissingDeviceCacheEntries } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-
-const buildSnapshot = (id: string): TargetDeviceSnapshot => ({
-  id,
-  name: id,
-  targets: [],
-} as unknown as TargetDeviceSnapshot);
 
 describe('evictMissingDeviceCacheEntries', () => {
   it('evicts nothing when the snapshot is empty', () => {
@@ -43,7 +36,7 @@ describe('evictMissingDeviceCacheEntries', () => {
     ctx.lastKnownPowerKw['present-1'] = { kw: 1.23, observedAtMs: 0 };
     ctx.lastKnownPowerKw['orphan-1'] = { kw: 4.56, observedAtMs: 0 };
 
-    evictMissingDeviceCacheEntries(ctx, [buildSnapshot('present-1')]);
+    evictMissingDeviceCacheEntries(ctx, ['present-1']);
 
     expect(ctx.lastKnownPowerKw['present-1']?.kw).toBe(1.23);
     expect(ctx.lastKnownPowerKw['orphan-1']).toBeUndefined();
@@ -54,7 +47,7 @@ describe('evictMissingDeviceCacheEntries', () => {
     ctx.lastKnownPowerKw['a'] = { kw: 1, observedAtMs: 0 };
     ctx.lastKnownPowerKw['b'] = { kw: 2, observedAtMs: 0 };
 
-    evictMissingDeviceCacheEntries(ctx, [buildSnapshot('a'), buildSnapshot('b')]);
+    evictMissingDeviceCacheEntries(ctx, ['a', 'b']);
 
     expect(Object.keys(ctx.lastKnownPowerKw).sort()).toEqual(['a', 'b']);
   });

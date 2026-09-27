@@ -35,6 +35,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
     capacityDryRun: false,
     // Binary writes route through the actuator over a recording `setCapability`,
     // so the native-path assertions still observe the onoff/evcharger writes.
+    canTurnOnDevice: () => true,
     buildBinaryControlTransport: () => ({
       getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),

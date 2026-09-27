@@ -165,6 +165,7 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     state,
     readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
+    canTurnOnDevice: () => true,
     buildBinaryControlTransport: () => ({
       getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore,
@@ -226,6 +227,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     state,
     readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
+    canTurnOnDevice: () => true,
     buildBinaryControlTransport: () => ({
       getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore,

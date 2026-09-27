@@ -1446,7 +1446,6 @@ describe('native stepped-load wiring', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get, put });
     try {
-      const debugStructured = vi.fn();
       const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
@@ -1455,8 +1454,6 @@ describe('native stepped-load wiring', () => {
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
         },
-        undefined,
-        { debugStructured },
       );
 
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
@@ -1482,7 +1479,7 @@ describe('native stepped-load wiring', () => {
         'manager/devices/device/hoiax-1/capability/max_power_3000',
         { value: '2' },
       );
-      expect(debugStructured).toHaveBeenCalledWith({
+      expect(logCapture.findEvent('device_capability_write_requested')).toMatchObject({
         event: 'device_capability_write_requested',
         deviceId: 'hoiax-1',
         deviceName: 'Connected 300',
@@ -1492,7 +1489,7 @@ describe('native stepped-load wiring', () => {
         valueType: 'string',
         writeValue: '2',
       });
-      expect(debugStructured).toHaveBeenCalledWith({
+      expect(logCapture.findEvent('device_capability_write_accepted')).toMatchObject({
         event: 'device_capability_write_accepted',
         deviceId: 'hoiax-1',
         deviceName: 'Connected 300',
@@ -1504,7 +1501,6 @@ describe('native stepped-load wiring', () => {
       });
 
       put.mockClear();
-      debugStructured.mockClear();
       deviceManager.injectDeviceUpdateForTest({
         ...buildHoiaxDevice(),
         capabilitiesObj: {

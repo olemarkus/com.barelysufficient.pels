@@ -699,16 +699,16 @@ export type DeviceControlPosture = {
 export type PlanDeviceCarriedKey =
   'associatedCar' | 'available' | 'binaryControllable' | 'budgetExempt'
   | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
-  | 'controllable' | 'desiredStepId' | 'deviceClass' | 'deviceRole'
-  | 'deviceType' | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
-  | 'expectedPowerKw' | 'expectedPowerSource' | 'flowBacked' | 'flowConflict'
+  | 'controllable' | 'desiredStepId'
+  | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
+  | 'expectedPowerKw' | 'expectedPowerSource'
   | 'id' | 'lastFreshDataMs' | 'lastLocalWriteMs' | 'lastStepCommandIssuedAt'
   | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'name'
-  | 'nativeWriteCapabilities' | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
+  | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'
   | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge' | 'stepCommandPending'
-  | 'stepCommandRetryCount' | 'stepCommandStatus' | 'suggestedSteppedLoadProfile' | 'targetStepId'
-  | 'targets' | 'zone' | 'zoneId';
+  | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targetStepId'
+  | 'targets';
 
 /**
  * Stripped before planning: raw observations and the decorator's own stamps.

@@ -151,10 +151,12 @@ const releaseLane = (state: PlanEngineState) => {
     state,
     readDevice: read,
     capacityDryRun: false,
+    canTurnOnDevice: () => true,
     buildBinaryControlTransport: () => ({
       getObservedBinaryControl: read,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
+        canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {

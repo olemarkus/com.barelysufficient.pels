@@ -212,6 +212,7 @@ describe('settingsUiApi', () => {
     settingsUiDeviceReads.connect({
       readChargerPhasePresets: () => ({ state: 'resolved', presets: {} }),
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
+      getUiPickerDevices: () => [],
     });
     const app = {
       getModePrioritiesForUi: createFixturePriorityQuery(),

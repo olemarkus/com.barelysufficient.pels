@@ -53,6 +53,7 @@ const buildHomey = (): {
   settingsUiDeviceReads.connect({
     readChargerPhasePresets: () => ({ state: 'unavailable' }),
     readCarAssociationCandidates: readRecommendationCars,
+    getUiPickerDevices: () => [],
   });
   return {
     homey: {

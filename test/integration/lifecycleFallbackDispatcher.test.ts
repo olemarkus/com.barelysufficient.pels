@@ -424,6 +424,7 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -717,6 +718,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({
           getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -772,6 +774,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({
           getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -860,6 +863,7 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -921,6 +925,7 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: () => { commandPending = true; },
@@ -996,6 +1001,7 @@ describe('LifecycleFallbackDispatcher', () => {
         steppedCommandOwner: 'ordinary',
         binaryCommandClaim: createBinaryCommandClaim(),
         binaryCommandOwner: 'ordinary',
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: marked,
@@ -1066,6 +1072,7 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedCommandOwner: owner,
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: owner,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1116,6 +1123,7 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1132,6 +1140,7 @@ describe('LifecycleFallbackDispatcher', () => {
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: 'ordinary',
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1826,6 +1835,7 @@ describe('LifecycleFallbackDispatcher', () => {
       state,
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({
         getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -1882,6 +1892,7 @@ describe('LifecycleFallbackDispatcher', () => {
       state,
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({
         getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -1930,6 +1941,7 @@ describe('LifecycleFallbackDispatcher', () => {
       state,
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       recordShedActuation: vi.fn(),
       recordReleaseShedActuation: vi.fn(),
@@ -1967,6 +1979,7 @@ describe('LifecycleFallbackDispatcher', () => {
       state,
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
@@ -2011,6 +2024,7 @@ describe('LifecycleFallbackDispatcher', () => {
       state,
       readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
@@ -2050,6 +2064,7 @@ describe('LifecycleFallbackDispatcher', () => {
         state,
         readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
+        canTurnOnDevice: () => true,
         buildBinaryControlTransport: () => ({
           getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -2131,6 +2146,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const binaryCommandClaim = createBinaryCommandClaim();
     const binaryContext: PlanExecutorBinaryContext = {
       state, readDevice: observation.getSnapshotByDeviceId, capacityDryRun: false,
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({
         getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -2142,6 +2158,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const steppedContext: PlanExecutorSteppedContext = {
       state, binaryCommandClaim, binaryCommandOwner: 'ordinary',
       steppedCommandClaim: createSteppedCommandClaim(), steppedCommandOwner: 'ordinary',
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: binaryContext.buildBinaryControlTransport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
@@ -2221,6 +2238,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const steppedContext: PlanExecutorSteppedContext = {
       state, binaryCommandClaim, binaryCommandOwner: 'ordinary',
       steppedCommandClaim: createSteppedCommandClaim(), steppedCommandOwner: 'ordinary',
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: transport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
@@ -2345,6 +2363,7 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedCommandOwner: 'ordinary',
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: 'ordinary',
+      canTurnOnDevice: () => true,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),

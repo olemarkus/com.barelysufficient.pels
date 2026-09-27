@@ -140,6 +140,7 @@ const installBoundary = (options: {
   settingsUiDeviceReads.connect({
     readChargerPhasePresets: () => ({ state: 'resolved', presets: {} }),
     readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
+    getUiPickerDevices: () => [],
   });
   const app: ScopedApiApp = {
     getModePrioritiesForUi: createFixturePriorityQuery(),
