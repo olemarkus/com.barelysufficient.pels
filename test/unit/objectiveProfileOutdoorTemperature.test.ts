@@ -15,7 +15,6 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
   observedAtMs,
   value,
   crediblePowerW: 2000,
-  powerSource: 'measured',
 });
 
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe

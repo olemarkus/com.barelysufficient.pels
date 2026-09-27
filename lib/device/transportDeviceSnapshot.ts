@@ -42,14 +42,13 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
  * - `SteppedLoadDescriptorProbe` for `steppedLoadProfile` / `targetPowerConfig`
  *   (see `SteppedLoadDescriptorFields`).
  * - `ReportedStepObservedProbe` for `reportedStepId` and exact target-power
- *   evidence (see
- *   `ReportedStepObservedFields`).
+ *   evidence.
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak
  * across the producer boundary — consumers receive `TargetDeviceSnapshot` (the
  * widened object is assignable to it) and narrow through `isEvObserved` /
  * `hasObservedTemperature` / `hasObservedStateOfCharge` /
- * `hasObservedMeasuredPower` / `isSteppedLoadSnapshot` / `hasObservedReportedStep`
+ * `hasObservedMeasuredPower` / `isSteppedLoadSnapshot`
  * (`packages/shared-domain/src/*ObservedState.ts`).
  */
 /**

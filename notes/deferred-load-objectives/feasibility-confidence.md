@@ -25,8 +25,9 @@ Per device, per planning cycle, `buildObjectiveProfileSample`
 - `observedAtMs` — the **sensor's own freshness timestamp** (`lastFreshDataMs`
   for temperature, `stateOfCharge.level.observedAtMs` for SoC — a known level
   carries the stamp it was read at), not PELS wall-clock.
-- `crediblePowerW` — measured power if present, else the reported step's
-  planning power; **absent when the device isn't drawing**.
+- `crediblePowerW` — measured power above the 5 W noise floor; **absent when
+  the device isn't drawing or has no meter** (configured step power is expected
+  draw, never evidence of actual draw).
 
 Two consecutive samples yield the learned rate:
 `kwhPerUnit = crediblePowerW × Δt / Δvalue` (energy) and

@@ -186,11 +186,6 @@ const isObjectiveProfileSample = (value: unknown): boolean => (
   && isFiniteNumber(value.observedAtMs)
   && isFiniteNumber(value.value)
   && isOptionalFiniteNumber(value.crediblePowerW)
-  && (
-    value.powerSource === undefined
-    || value.powerSource === 'measured'
-    || value.powerSource === 'reported_step_planning'
-  )
 );
 
 const isObjectiveProfileObservation = (value: unknown): boolean => (

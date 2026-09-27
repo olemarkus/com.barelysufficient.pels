@@ -3,12 +3,13 @@
 // closed (see `lib/objectives/energyAccumulator.ts`), so `kwhPerUnit` stays
 // `undefined`, the band buffer never grows (`resolveBandedUpdate` skips it),
 // and adaptive learning silently stalls. Surface it once per device so the
-// user knows which thermostats need per-step `planningPowerW` configured.
+// user knows which devices have no measured draw to learn from. Configured step
+// power does not help: it is expected draw, never evidence of actual draw.
 //
 // In-memory only per `feedback_homey_sdk_unreliable`: a transient SDK gap that
 // drops `measuredPowerKw` should not have to fight persisted state on restart.
 // The flag re-arms on next process start, which is the right cadence for
-// "configuration is still missing".
+// "there is still no measured draw".
 import type { DeviceObjectiveProfileSample } from './types';
 
 export const OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20;

@@ -510,14 +510,11 @@ export type ObservedDeviceState = {
     // at realtime) only write finite values. Owner seams and producer-fed
     // structural funnels widen with `MeasuredPowerObservedProbe` instead.
     // `reportedStepId` is deliberately NOT here (stepped-observed slice of the
-    // discriminated-types refactor): it lives on `ReportedStepObservedFields`,
-    // regrouped onto the snapshot by the presence-only `hasObservedReportedStep`
-    // guard (`packages/shared-domain/src/steppedLoadObservedState.ts`), so an
-    // un-narrowed `snapshot.reportedStepId` read on a base-typed value is a hard
-    // compile error (TS2339). A non-stepped device never reports a step; a stepped
-    // device only carries it once a native/flow step report lands (absent until
-    // then), so the guard is presence-only. Owner seams and producer-fed structural
-    // funnels widen with `ReportedStepObservedProbe` instead.
+    // discriminated-types refactor), so a `snapshot.reportedStepId` read on a
+    // base-typed value is a hard compile error (TS2339). A non-stepped device never
+    // reports a step; a stepped device only carries it once a native/flow step
+    // report lands (absent until then). Only owner seams and producer-fed structural
+    // funnels read it, and they widen with `ReportedStepObservedProbe`.
     /**
      * @deprecated Raw binary evidence is observer-owned transport state. Consumer
      * code must not read this directly; use observer helpers to resolve observed
@@ -798,33 +795,17 @@ export type SteppedLoadDescriptorProbe = {
 
 /**
  * Reported-step observed cluster (stepped-observed slice of the discriminated-types
- * refactor). `reportedStepId` is the observed id of the step a stepped device last
- * reported via a native/flow capability. It is OMITTED from `ObservedDeviceState`,
- * so an un-narrowed `snapshot.reportedStepId` read is a hard compile error
- * (TS2339); consumers pass through the presence-only `hasObservedReportedStep`
- * guard (`packages/shared-domain/src/steppedLoadObservedState.ts`) first.
- *
- * PRESENCE-ONLY, like the other observed clusters: a non-stepped device never
- * reports a step, and a stepped device carries `reportedStepId` only once a report
- * lands (absent until then), so presence — not device kind — is the line the guard
- * draws.
- */
-export type ReportedStepObservedFields = {
-    reportedStepId: string;
-    /** Exact target-power observation retained before rung matching. */
-    reportedStepPowerW?: number;
-    /** Timestamp of the exact step observation, not general snapshot freshness. */
-    reportedStepObservedAtMs?: number;
-};
-
-/**
- * Reported-step observed cluster as a plain optional: the owner-seam carrier
- * (`TargetDeviceSnapshot & ReportedStepObservedProbe`). Consumer code narrows
- * through `hasObservedReportedStep` instead of taking this shape.
+ * refactor), as the owner-seam carrier (`TargetDeviceSnapshot &
+ * ReportedStepObservedProbe`). `reportedStepId` is the observed id of the step a
+ * stepped device last reported via a native/flow capability; it is OMITTED from
+ * `ObservedDeviceState`, so a base-typed read is a hard compile error (TS2339).
+ * Absent until a report lands: a non-stepped device never reports a step.
  */
 export type ReportedStepObservedProbe = {
     reportedStepId?: string;
+    /** Exact target-power observation retained before rung matching. */
     reportedStepPowerW?: number;
+    /** Timestamp of the exact step observation, not general snapshot freshness. */
     reportedStepObservedAtMs?: number;
 };
 
@@ -880,8 +861,8 @@ export type SteppedLoadDecoration = {
  * (`decorateSnapshotWithDeviceControl`) is the OWNER seam that re-resolves the
  * effective `steppedLoadProfile` and writes it (with `reportedStepId`) onto the
  * carrier — the base type omits those fields. Consumers (flowCards, settings-UI)
- * narrow through `isSteppedLoadSnapshot` / `hasObservedReportedStep`; the probes
- * are all-optional, so they widen the carrier without changing its runtime shape.
+ * narrow through `isSteppedLoadSnapshot`; the probes are all-optional, so they
+ * widen the carrier without changing its runtime shape.
  */
 /**
  * Applied by the settings-UI devices composer, not by transport: the association

@@ -1,6 +1,4 @@
 import type {
-  ReportedStepObservedFields,
-  ReportedStepObservedProbe,
   SteppedLoadDescriptorFields,
   SteppedLoadDescriptorProbe,
 } from '../../contracts/src/types';
@@ -46,17 +44,4 @@ export const isSteppedLoadSnapshot = <T extends SteppedLoadDescriptorProbe>(
   snapshot: T,
 ): snapshot is T & SteppedLoadDescriptorFields => (
   snapshot.steppedLoadProfile !== undefined
-);
-
-/**
- * Type guard: the snapshot carries an observed `reportedStepId`, a guaranteed
- * `string` on the narrowed shape. PRESENCE-ONLY, like the other observed-state
- * guards: a non-stepped device never reports a step, and a stepped device
- * carries it only once a native/flow report lands, so a consumer narrows on
- * presence rather than device kind. Browser-safe and generic over the carrier.
- */
-export const hasObservedReportedStep = <T extends ReportedStepObservedProbe>(
-  snapshot: T,
-): snapshot is T & ReportedStepObservedFields => (
-  snapshot.reportedStepId != null
 );

@@ -13,7 +13,6 @@ const tempSample = (overrides: Partial<DeviceObjectiveProfileSample> & {
   observedAtMs: number;
   value: number;
 }): DeviceObjectiveProfileSample => ({
-  powerSource: 'measured',
   ...overrides,
 });
 

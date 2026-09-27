@@ -335,7 +335,6 @@ function buildAcceptedProfileSample(params: {
     rateConfidence: nextProfile.unitPerHour.confidence,
     energyConfidence: nextProfile.kwhPerUnit?.confidence ?? null,
     globalEnergyConfidence,
-    powerSource: previousSample.powerSource ?? null,
     // Also `kwhPerUnit.sampleCount` now, since the stat is derived from this
     // same buffer — one number, logged once.
     bufferedSamples: nextProfile.samples?.length ?? 0,

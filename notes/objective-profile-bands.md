@@ -25,14 +25,11 @@ The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was pres
 
 #### Requirement: a credible power source must be available per accepted sample
 
-`crediblePowerW` is resolved by `resolveCredibleDevicePower` in `lib/objectives/samples.ts`. It draws from one of two sources:
+`crediblePowerW` is resolved by `resolveCredibleDevicePower` in `lib/objectives/samples.ts` from one source only: `currentDrawKw`, the producer-resolved measured draw (`measure_power`, `meter_power` deltas, Homey Energy per-device power). The raw `measuredPowerKw` does not reach this layer; the wiring (`setup/powerSamplePipeline.ts`) resolves it, and a device with no meter arrives as `0`, which fails the 5 W credibility floor.
 
-1. `currentDrawKw` — the producer-resolved draw, i.e. an inline meter on the device capability set. The raw `measuredPowerKw` does not reach this layer; the wiring (`setup/powerSamplePipeline.ts`) resolves it, and a device with no meter arrives as `0`, which fails the 5 W credibility floor.
-2. `steppedLoadProfile.steps[reportedStepId].planningPowerW` — the user-configured planning power for the device's currently reported step.
+A step's configured `planningPowerW` is never used: it is what the device is expected to draw, not what it drew, for any device (owner ruling 2026-09-27). A device that reads on at a step while its meter reads 0 W drew nothing.
 
-If neither is available, `crediblePowerW` is omitted from the sample. The next accepted sample then enters `buildAcceptedProfileSample` with `windowEnergyKwh = undefined` (the open sub-interval has no left-edge power), so `kwhPerUnit` is `undefined`, `resolveBandedUpdate` returns `{}`, and the band buffer never grows. Adaptive learning silently stalls.
-
-For thermostats without an inline meter, configure a per-step `planningPowerW` on the device's stepped-load profile. Without one, energy training is effectively disabled regardless of accepted-sample count.
+Without a measured draw, `crediblePowerW` is omitted from the sample. The next accepted sample then enters `buildAcceptedProfileSample` with `windowEnergyKwh = undefined` (the open sub-interval has no left-edge power), so `kwhPerUnit` is `undefined`, `resolveBandedUpdate` returns `{}`, and the band buffer never grows. Adaptive learning stalls; the remedy is a meter on the device.
 
 #### `objective_profile_no_power_source` diagnostic
 

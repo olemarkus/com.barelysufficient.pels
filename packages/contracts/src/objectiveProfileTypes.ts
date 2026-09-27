@@ -111,6 +111,8 @@ export type DeviceObjectiveProfileSample = {
   // The persisted name predates that.
   observedAtMs: number;
   value: number;
+  // A measured draw above the 5 W noise floor, and only that: configured step
+  // power is expected draw, never actual (`lib/objectives/samples.ts`). Samples
+  // persisted with a `powerSource` tag still load; the key is no longer read.
   crediblePowerW?: number;
-  powerSource?: 'measured' | 'reported_step_planning';
 };

@@ -65,7 +65,6 @@ const sampleAt = (
   observedAtMs,
   value,
   crediblePowerW: WINDOW_POWER_W,
-  powerSource: 'measured',
 });
 
 /**

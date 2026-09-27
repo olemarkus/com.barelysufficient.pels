@@ -73,12 +73,11 @@ helpers. The observer was created but never handed the observation contract.
    is retired (Homey reports on change, so an old `lastUpdated` means "nothing has
    happened")),
    `reportedStepId`/`reportedStepPowerW`/`reportedStepObservedAtMs` (now type-gated
-   off the base onto `ReportedStepObservedFields`, narrowed via the presence-only
-   `hasObservedReportedStep` — a non-stepped device never reports a step and a
-   stepped one carries it only once a native/flow report lands; exact target-power
-   evidence carries finite watts together with its observation timestamp; owner
-   seams carry the cluster through the `ReportedStepObservedProbe` widening;
-   stepped-observed slice of the discriminated-types refactor),
+   off the base — a non-stepped device never reports a step and a stepped one
+   carries it only once a native/flow report lands; exact target-power evidence
+   carries finite watts together with its observation timestamp; owner seams carry
+   the cluster through the `ReportedStepObservedProbe` widening; stepped-observed
+   slice of the discriminated-types refactor),
    `binaryControlObservation`, `available`,
    `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth

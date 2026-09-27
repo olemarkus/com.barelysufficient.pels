@@ -100,7 +100,6 @@ describe('objective profiles', () => {
           observedAtMs: startMs + index * hourMs,
           value: 50 + index,
           crediblePowerW: 1000,
-          powerSource: 'measured',
         },
         deviceId: 'dev',
         deviceName: 'Device',
@@ -133,7 +132,6 @@ describe('objective profiles', () => {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
           crediblePowerW: isCheap ? 1000 : 3000,
-          powerSource: 'measured',
         },
         deviceId: 'dev',
         deviceName: 'Device',
@@ -169,7 +167,6 @@ describe('objective profiles', () => {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
           crediblePowerW: isCheap ? 1000 : 3000,
-          powerSource: 'measured',
         },
         debugStructured,
         deviceId: 'dev',
@@ -228,7 +225,16 @@ describe('objective profiles', () => {
     expect(profile?.kwhPerUnit).toBeUndefined();
   });
 
-  it('uses reported stepped-load planning power as lower-confidence energy evidence', () => {
+  // A step's configured power is what the device is expected to draw, not what it
+  // drew, so it is never energy evidence (owner ruling 2026-09-27). Only a
+  // measured reading is.
+  it.each([
+    // No reading at all: nothing to learn energy from.
+    ['with no power reading', undefined],
+    // A metered 0 W is an answer: an Easee in its ~5 min hold after a resume, or a
+    // water heater whose thermostat has cut out, reads on at a step and draws nothing.
+    ['metered at 0 W', 0],
+  ])('credits no energy to a stepped device that reads on at a step %s', (_label, measuredPowerKw) => {
     const steppedProfile = {
       steps: [
         { id: 'off', planningPowerW: 0 },
@@ -239,7 +245,7 @@ describe('objective profiles', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
-        measuredPowerKw: undefined,
+        measuredPowerKw,
         steppedLoadProfile: steppedProfile,
         reportedStepId: 'low',
       })],
@@ -252,7 +258,7 @@ describe('objective profiles', () => {
       devices: [temperatureDevice({
         currentTemperature: 51,
         lastFreshDataMs: startMs + hourMs,
-        measuredPowerKw: undefined,
+        measuredPowerKw,
         steppedLoadProfile: steppedProfile,
         reportedStepId: 'low',
       })],
@@ -262,8 +268,8 @@ describe('objective profiles', () => {
     });
 
     const profile = state.objectiveProfiles?.['heater-1'];
-    expect(profile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
-    expect(profile?.lastSample.powerSource).toBe('reported_step_planning');
+    expect(profile?.kwhPerUnit).toBeUndefined();
+    expect(profile?.lastSample.crediblePowerW).toBeUndefined();
   });
 
   describe('no-power-source diagnostic', () => {
@@ -364,7 +370,6 @@ describe('objective profiles', () => {
           observedAtMs: startMs + (OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1) * hourMs,
           value: 30 + OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1,
           crediblePowerW: 1000,
-          powerSource: 'measured',
         },
         debugStructured,
         outdoorTemperatureC: undefined,
@@ -390,7 +395,6 @@ describe('objective profiles', () => {
             observedAtMs: startMs + index * hourMs,
             value: 30 + index,
             crediblePowerW: 1000,
-            powerSource: 'measured',
           },
           debugStructured,
           deviceName: 'Device',
@@ -748,7 +752,6 @@ describe('objective profiles', () => {
       observedAtMs: startMs + hourMs,
       value: 55,
       crediblePowerW: 2000,
-      powerSource: 'measured',
     } as const;
 
     it('suppresses non_monotonic_time rejection on exact (observedAtMs, value) duplicates', () => {

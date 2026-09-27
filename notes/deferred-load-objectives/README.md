@@ -656,9 +656,13 @@ temperature changes and credible energy evidence instead.
 
 Credible energy evidence can come from:
 
-- measured device power
-- a confirmed stepped-load step with configured planning power, at lower confidence
-- native EV charging power/current evidence, where available
+- measured device power (`measure_power`, `meter_power` deltas, Homey Energy per-device power)
+
+A step's configured planning power is not evidence: it is what the device is expected to draw,
+not what it drew, for any device (owner ruling 2026-09-27). A device reading on at a step while
+its meter reads 0 W (an Easee in its hold after a resume, a water heater whose thermostat has cut
+out) drew nothing, and crediting the step billed that to the learned rate. With no measured
+reading, a sample carries no energy (`lib/objectives/samples.ts`).
 
 Whole-home power and broad controlled-load attribution are not enough by themselves to create
 high-confidence per-device energy conversion. If credible energy evidence is missing, PELS may

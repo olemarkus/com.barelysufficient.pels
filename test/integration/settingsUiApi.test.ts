@@ -66,7 +66,7 @@ describe('settingsUiApi', () => {
     // (stepped-descriptor move) plus `reportedStepId` (reported-step-observed move).
     // The settings-UI `isEvObserved` / `hasObservedTemperature` /
     // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` / `isSteppedLoadSnapshot`
-    // / `hasObservedReportedStep` narrowing (and `supportsPowerDevice`) works only
+    // narrowing (and `supportsPowerDevice`) works only
     // if the served objects physically carry these — a producer rebuild that drops
     // any of them must fail here.
     //

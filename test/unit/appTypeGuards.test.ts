@@ -115,7 +115,9 @@ describe('appTypeGuards plain-object handling', () => {
               observedAtMs: 1_750_000_030_000,
               value: 55,
               crediblePowerW: 900,
-              powerSource: 'measured',
+              // A tag samples no longer carry: one saved before it was retired
+              // must still load, or the whole row of learned rates is dropped.
+              powerSource: 'reported_step_planning',
             },
             kwhPerUnit: {
               sampleCount: 4,
