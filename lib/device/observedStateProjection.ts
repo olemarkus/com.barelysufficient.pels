@@ -85,14 +85,16 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
 
 /**
  * The measured-power cluster as consumers may read it: the reading, when it
- * was observed, and whether it is the device's own measurement of its draw
- * now. The source itself stays in the device layer.
+ * was observed, and whether it is a live figure of the device's draw rather
+ * than a rate derived from an energy counter. The source itself stays in the
+ * device layer.
  */
 function projectMeasuredPowerObservation(snapshot: TransportDeviceSnapshot): MeasuredPowerObservedProbe {
     return {
         ...(snapshot.measuredPowerKw !== undefined ? {
             measuredPowerKw: snapshot.measuredPowerKw,
-            measuredPowerIsDirectMeasurement: snapshot.measuredPowerSource === 'measure_power',
+            measuredPowerIsDirectMeasurement: snapshot.measuredPowerSource === 'measure_power'
+                || snapshot.measuredPowerSource === 'homey_energy',
         } : {}),
         ...(snapshot.measuredPowerObservedAtMs !== undefined
             ? { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs } : {}),

@@ -759,13 +759,12 @@ export type MeasuredPowerObservedFields = {
     measuredPowerKw: number;
     measuredPowerObservedAtMs?: number;
     /**
-     * The device's own meter reported this draw as it is now. False for a
-     * rate the device layer derived from a cumulative energy counter, which
-     * trails by the device app's report interval, and for Homey Energy's
-     * figure for a device with no meter of its own, which is an estimate from
-     * the owner's Energy settings that steps with on/off whatever the device
-     * draws. Resolved by the device layer, which alone knows where a reading
-     * came from.
+     * The reading is a live figure of the device's draw: its own
+     * `measure_power`, or Homey Energy's live figure for it, which is the same
+     * measurement reached another way. False for a rate the device layer
+     * derived from a cumulative energy counter, which trails by the device
+     * app's report interval. Resolved by the device layer, which alone knows
+     * where a reading came from.
      */
     measuredPowerIsDirectMeasurement: boolean;
 };

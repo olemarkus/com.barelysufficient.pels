@@ -160,20 +160,20 @@ worth fixing promptly.
 
 A meter that keeps reporting exactly the same number can count as stopped too,
 when your devices show it should have moved. PELS watches the managed devices
-that measure their own power. If their combined draw changes by a kilowatt or
-more and stays that way while the whole-home reading keeps exactly the same
-value, the banner warns you after two minutes, and after ten minutes PELS
-treats the meter as stopped. That is a meter that has stopped updating, for
-example a HAN/P1 reader that lost contact with the electricity meter while its
-app keeps showing the last value. A steady reading on its own is never treated
-as stopped, and nor is exactly 0 W, which a meter that cannot show export
-reports for as long as your home exports. So a meter stuck at 0 W is not
-caught, and nor is one that freezes while none of your managed devices measures
-its own power (an estimate from Homey's Energy settings does not count). A
-meter that normally holds a value for twenty minutes or more (one that reports
-only on change) is not checked this way, and nor is any meter while a battery,
-or a solar inverter that is producing, is connected to Homey: either can keep
-the grid reading still while a device switches.
+that report their power. If their combined draw changes by a kilowatt or more
+and stays that way while the whole-home reading keeps exactly the same value,
+the banner warns you after two minutes, and after ten minutes PELS treats the
+meter as stopped. That is a meter that has stopped updating, for example a
+HAN/P1 reader that lost contact with the electricity meter while its app keeps
+showing the last value. A steady reading on its own is never treated as stopped,
+and nor is exactly 0 W, which a meter that cannot show export reports for as
+long as your home exports. So a meter stuck at 0 W is not caught, and nor is one
+that freezes while none of your managed devices reports its power (W): one that
+reports only the energy it has used (kWh) does not count, because that figure
+trails behind. A meter that normally holds a value for twenty minutes or more
+(one that reports only on change) is not checked this way, and nor is any meter
+while a battery, or a solar inverter that is producing, is connected to Homey:
+either can keep the grid reading still while a device switches.
 
 In **Simulation mode** nothing is switched. PELS still shows what it would
 limit, and planning carries on as usual.

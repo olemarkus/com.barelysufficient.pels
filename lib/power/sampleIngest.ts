@@ -91,11 +91,11 @@ const mayCoverLoad = (
 /**
  * The home's measured load (`ManagedLoadDraw`), UNCLAMPED: the evidence a held
  * whole-home reading is checked against (`lib/power/heldReading.ts`). A device
- * counts, power-limited or not, when its reading is its own direct measurement
- * (`measuredPowerIsDirectMeasurement`): neither a rate derived from a
- * cumulative counter nor an estimate is a move the grid meter must follow. A
- * battery or PV inverter is not a load, and never counts. Availability is
- * not asked. Homey keeps an offline device's last value,
+ * counts, power-limited or not, when its reading is a live figure of its draw
+ * (`measuredPowerIsDirectMeasurement`). A rate derived from a cumulative
+ * counter does not: it trails by the device app's report interval. A battery
+ * or PV inverter is not a load, and never counts. Availability is not
+ * asked. Homey keeps an offline device's last value,
  * which cannot move, and dropping the device from the sum would restart the
  * run each time a flaky one blinks. Nothing counts while a battery or a
  * producing PV inverter may be covering the load.

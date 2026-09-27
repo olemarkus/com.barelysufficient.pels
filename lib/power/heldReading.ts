@@ -13,7 +13,7 @@ import type { HeldReading, ManagedLoadDraw, PowerTrackerState } from './trackerT
  * keeps serving its last value, say (2026-09-14, one home on a frozen 1.1 kW
  * for three days with its hard cap unenforced).
  *
- * The evidence is the loads' own direct measurements, resolved at ingest
+ * The evidence is the loads' live measurements of their draw, resolved at ingest
  * (`ManagedLoadDraw`), and a held reading is judged in two steps:
  * - SUSPECTED once, over the same loads, their draw has sat a kilowatt or more
  *   (or a quarter of the reading) away from its baseline on every sample for

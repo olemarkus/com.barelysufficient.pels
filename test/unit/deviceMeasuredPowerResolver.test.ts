@@ -264,7 +264,6 @@ describe('DeviceMeasuredPowerResolver', () => {
 
     expect(measuredPower.measuredPowerKw).toBeCloseTo(0.125, 6);
     expect(measuredPower.observedAtMs).toBe(1500);
-    // An estimate for a device with no meter: never evidence a grid meter must follow.
     expect(measuredPower.source).toBe('homey_energy');
   });
 

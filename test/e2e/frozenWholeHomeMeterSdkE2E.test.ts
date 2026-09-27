@@ -6,8 +6,7 @@
 // the hard cap went unenforced. Holding one value proves nothing by itself (a
 // quiet home, a meter that reports past a threshold); holding it for ten
 // minutes while a device's own meter shows kilowatts moving is a dead meter.
-// An estimate from Homey's Energy settings is no such evidence, and nor is a
-// load a battery could be covering.
+// A load a battery could be covering is no such evidence.
 //
 // Driven through the real Homey Energy poll (the live report at the wire path
 // the REST client hits); observed only through what PELS writes back via
@@ -32,19 +31,19 @@ const POLL_MS = 10_000;
 
 /**
  * What Homey Energy reports: the whole-home meter (`null` while it reports
- * nothing), Homey's figure for each device it estimates, and PV production
- * when the home has any.
+ * nothing), its live figure for each device PELS reads through it, and PV
+ * production when the home has any.
  */
 const energy = {
   meterW: 1100 as number | null,
-  estimatesW: {} as Record<string, number>,
+  devicesW: {} as Record<string, number>,
   generationW: undefined as number | undefined,
 };
 
 /**
- * A relay with no meter of its own. Served as a raw Homey device, because a
- * `MockDevice` always declares `measure_power`: Homey reports only its
- * Energy-settings estimate for it.
+ * A relay whose power PELS reads only through Homey Energy: it declares no
+ * `measure_power` of its own. Served as a raw Homey device, because a
+ * `MockDevice` always declares `measure_power`.
  */
 type Relay = { on: boolean };
 
@@ -66,7 +65,7 @@ const installHomeyApi = (relay: Relay | null): void => {
       return {
         items: [
           { type: 'cumulative', id: 'm-main', values: { W: energy.meterW } },
-          ...Object.entries(energy.estimatesW).map(([id, W]) => ({ type: 'device', id, values: { W } })),
+          ...Object.entries(energy.devicesW).map(([id, W]) => ({ type: 'device', id, values: { W } })),
           ...(energy.generationW === undefined ? [] : [{ type: 'generator', values: { W: energy.generationW } }]),
         ],
       };
@@ -172,7 +171,7 @@ describe('a whole-home meter frozen on one value (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     energy.meterW = 1100;
-    energy.estimatesW = {};
+    energy.devicesW = {};
     energy.generationW = undefined;
   });
 
@@ -218,22 +217,21 @@ describe('a whole-home meter frozen on one value (SDK-boundary e2e)', () => {
     expect(turnedOn(putSpy, resumedFrom)).toBe(true);
   }, 60_000);
 
-  it('never counts an estimate as evidence: a relay switched off under a steady meter', async () => {
+  it('counts a device whose power PELS reads through Homey Energy', async () => {
     const relay: Relay = { on: true };
-    energy.estimatesW = { [RELAY]: 2000 };
+    energy.devicesW = { [RELAY]: 0 };
     const { putSpy } = await startApp([], relay);
-    // A full device read picks up Homey's estimate: 2 kW while the relay is on.
+    // A full device read picks up Homey Energy's figure: the heater is idle.
     refreshDevices();
     await poll(6, live);
     await poll(90, frozen);
 
-    // The relay turns off. Homey's estimate for it drops by 2 kW; a relay
-    // heater whose own thermostat was satisfied drew nothing to begin with.
-    relay.on = false;
-    energy.estimatesW = { [RELAY]: 0 };
+    // Its thermostat calls for heat: Homey Energy reports 3 kW, and the next
+    // device read carries it. The whole-home reading stays on 1100 W.
+    energy.devicesW = { [RELAY]: 3000 };
     refreshDevices();
-    await poll(80, frozen);
-    expect(turnedOff(putSpy)).toBe(false);
+    await poll(70, frozen);
+    expect(turnedOff(putSpy)).toBe(true);
   }, 60_000);
 
   it('owes a reading that freezes after a silence its own pass, though it dates from the same moment', async () => {

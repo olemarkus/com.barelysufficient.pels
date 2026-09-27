@@ -622,8 +622,8 @@ export function toPlanDevice(
     // any structural consumer, which is exactly the second competing answer this
     // change exists to remove. `currentDrawKw` below is the only answer.
     measuredPowerKw: _measuredPowerKw,
-    // Whether the reading is the device's own measurement answers only whether
-    // a held whole-home reading is contradicted (`lib/power/heldReading.ts`);
+    // Whether the reading is a live figure of the draw answers only whether a
+    // held whole-home reading is contradicted (`lib/power/heldReading.ts`);
     // nothing plans on it.
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,
     // Same discipline, binary axis. `withBinaryDiscriminant` strips these when the

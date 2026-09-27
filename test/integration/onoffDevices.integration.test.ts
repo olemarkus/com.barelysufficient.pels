@@ -258,8 +258,8 @@ describe('On/off device integration', () => {
     expect(entry?.powerCapable).toBe(true);
     expect(entry?.expectedPowerSource).toBe('measured-peak');
     expect(entry?.measuredPowerKw).toBeCloseTo(0.125, 6);
-    // Homey Energy's figure for a device with no meter: not its own measurement.
-    expect(entry?.measuredPowerIsDirectMeasurement).toBe(false);
+    // Homey Energy's live figure is the device's measurement, reached another way.
+    expect(entry?.measuredPowerIsDirectMeasurement).toBe(true);
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
   });

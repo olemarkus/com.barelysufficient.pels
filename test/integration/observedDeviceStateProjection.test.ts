@@ -296,6 +296,20 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
+    it.each([
+        ['measure_power', true],
+        // Homey Energy's live figure is the same measurement, reached another way.
+        ['homey_energy', true],
+        // A rate from a cumulative counter trails by the device app's report interval.
+        ['meter_power', false],
+    ] as const)('tells consumers whether a %s reading is a live figure of the draw', (source, isDirect) => {
+        const snapshot = {
+            id: 'dev1', name: 'dev1', available: true, targets: [],
+            measuredPowerKw: 2, measuredPowerSource: source,
+        } as unknown as TransportDeviceSnapshot;
+        expect(projectObservedState(snapshot).measuredPowerIsDirectMeasurement).toBe(isDirect);
+    });
+
     it('copies every declared observed key — the projection is hand-written and drifts silently', () => {
         // `evChargingStateObservedAtMs` was declared on the observed surface, carried
         // in `PlanDeviceCarriedKey`, and never copied here: the type-level key-set

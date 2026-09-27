@@ -28,7 +28,7 @@ export type CapacityMonthlyPeak = {
 
 /**
  * The home's measured load at one sample, and which loads it sums: every
- * device whose reading is its own direct measurement, and none at all while a
+ * device whose reading is a live figure of its draw, and none at all while a
  * battery or a producing PV inverter may be covering a load's move and holding
  * the grid reading still (`resolveManagedLoadDraw`, `sampleIngest.ts`).
  * Unclamped by the whole-home total, so a meter frozen at 1.1 kW cannot hide a
