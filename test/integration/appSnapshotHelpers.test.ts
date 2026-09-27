@@ -240,7 +240,9 @@ describe('appSnapshotHelpers', () => {
     // cleanup of departed devices and the `snapshot_refresh` reconciliation stamp.
     expect(syncHeadroomCardState).toHaveBeenCalledWith([{
       ...snapshot[0],
+      isEvCharger: false,
       managed: true,
+      observeOnly: false,
       controllable: true,
       countsAsManagedUsage: true,
       currentOn: true,
@@ -381,7 +383,9 @@ describe('appSnapshotHelpers', () => {
     expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': true }]);
     expect(syncHeadroomCardState).toHaveBeenCalledWith([{
       ...snapshot[0],
+      isEvCharger: false,
       managed: true,
+      observeOnly: false,
       controllable: true,
       // Missing power evidence does not alter the saved owner preference.
       countsAsManagedUsage: true,

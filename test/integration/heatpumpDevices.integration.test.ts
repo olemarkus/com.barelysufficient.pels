@@ -4,7 +4,7 @@ import {
     MockDevice,
     MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
@@ -109,7 +109,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const snapshot = getLatestTargetSnapshotForTests();
+        const snapshot = getDeviceSurfacesForTests();
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry).toBeDefined();
@@ -128,7 +128,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const snapshot = getLatestTargetSnapshotForTests();
+        const snapshot = getDeviceSurfacesForTests();
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry?.targets).toBeDefined();
@@ -155,7 +155,7 @@ describe('Heatpump device integration', () => {
 
         await app.refreshTargetDevicesSnapshot();
 
-        const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
+        const snapshot = getDeviceSurfacesForTests();
         const entry = snapshot.find((device) => device.id === 'heatpump-a');
         expect(entry).toBeDefined();
         expect(entry?.powerCapable).toBe(false);
