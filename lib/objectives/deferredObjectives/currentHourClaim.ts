@@ -36,8 +36,8 @@ const CAUSES_THAT_KEEP_THE_HOUR: ReadonlySet<DeferredObjectiveActivePlanFloorSho
 /**
  * What claim a smart task has on the CURRENT hour — the single producer-resolved
  * answer admission acts on (`admission.resolveDecision` maps it 1:1 onto a decision
- * kind, and `decorationController.resolveDeferredAvoidDeviceIds` reads it rather
- * than re-deriving).
+ * kind, and `decorationController.resolveDeferredAvoidDeviceIds` reads that decision
+ * rather than re-deriving).
  *
  * Both plan producers resolve it through this one function — `horizonPlanner`'s
  * fresh allocation and `frozenHorizonPlan`'s mid-hour read of the commitment — so

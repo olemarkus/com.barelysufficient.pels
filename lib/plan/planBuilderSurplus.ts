@@ -46,7 +46,10 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  * not claim them. Computed once and shared by both, so the two stages can never
  * disagree.
  *
- * - The smart-task precedence set: a governed device is the task's to run.
+ * - The smart-task precedence set: a governed device is the task's to run. That
+ *   is `admittedDeviceIds`, the `planned` and `idle` decisions; the force-shed
+ *   set, the avoid set and the release intents are all drawn from those same
+ *   decisions, so they add nothing to it.
  * - "Leave off until turned on again": a held device runs for nobody until it is
  *   turned on, surplus included (owner ruling 2026-09-19). Without it a held dump
  *   load that is still opted into surplus would reserve pool it can never use
@@ -54,16 +57,10 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  *   turning it on releases the hold and hands it back to surplus control.
  */
 function resolvePostureExcludeIds(
-  decoration: Pick<
-    DeferredDecorationBundle,
-    'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
-  >,
+  decoration: Pick<DeferredDecorationBundle, 'admittedDeviceIds'>,
   admittedDevices: readonly PlanInputDevice[],
 ): Set<string> {
   return new Set([
-    ...decoration.forceShedSet,
-    ...decoration.deferredAvoidDeviceIds,
-    ...Object.keys(decoration.deferredReleaseIntentByDeviceId),
     ...decoration.admittedDeviceIds,
     ...admittedDevices.filter((device) => device.externalOffHoldActive === true).map((device) => device.id),
   ]);
@@ -85,10 +82,7 @@ export function runStandingPostureHolds(params: {
   shedSet: Set<string>;
   /** The shedding plan's decided rungs; a solar stop clears its own. */
   shedStepTargets: Map<string, string>;
-  decoration: Pick<
-    DeferredDecorationBundle,
-    'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
-  >;
+  decoration: Pick<DeferredDecorationBundle, 'forceShedSet' | 'admittedDeviceIds'>;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
   // Zero-export inferred curtailed-surplus term (kW, >= 0; producer:
   // `lib/solar/curtailmentSurplus.ts`), injected flat through the plan deps and

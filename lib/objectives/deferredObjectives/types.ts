@@ -39,7 +39,8 @@ export type DeferredObjectiveHorizonStatusDetail =
  *
  * Invariants a caller may rely on:
  * - Exactly one of the three holds per cycle, and it is resolved once. Consumers
- *   (`admission.resolveDecision`, `decorationController.resolveDeferredAvoidDeviceIds`,
+ *   (`admission.resolveDecision`, and through its decision
+ *   `decorationController.resolveDeferredAvoidDeviceIds`;
  *   `diagnosticFields.isCurrentBucketPlanned`) read it and must not re-derive it from
  *   `currentBucket.plannedUsefulEnergyKWh`, `priceDeferralEligible` or the status.
  * - `claimed` ⇒ the hour carries booked energy and the device should be driven.

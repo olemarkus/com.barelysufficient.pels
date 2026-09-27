@@ -58,7 +58,12 @@ So a `released` hour (`idle` decision) stands the device down whatever its power
   (`hasExecutableShedDevices`), the last two through `nonCapacityHoldShed`. The executor records
   its turn-off as a release, not a capacity shed, so it starts no house-wide shed cooldown or
   restore back-off (`PlanExecutor.recordShedActuation`); the home's status reports no limiting for
-  it (`pelsStatus.ts`); and starvation excludes the device while the hold is active. A device with
+  it (`pelsStatus.ts`), whatever reason text it carries; and starvation excludes the device while
+  the hold is active. Its card reads "Waiting for cheaper hours" whatever the task's status: the
+  avoid set is the `idle` decisions themselves (`resolveDeferredAvoidDeviceIds`), because an
+  `at_risk` task (`feasible_above_floor` is the normal state of a stepped water heater) holds its
+  device exactly as an `on_track` one does. Do not gate it on status again: an unstated reason
+  falls to `capacity` and blames the house's limit for the task's own hold. A device with
   no OFF to reach (temperature-only: no on/off handle, no step ladder) keeps its configured
   setback, since an OFF there would issue no command at all.
 - **The task lends the device authority** (no standing authority: power limiting off and no

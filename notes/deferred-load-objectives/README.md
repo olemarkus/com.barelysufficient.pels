@@ -151,17 +151,24 @@ fallback actuation stays on the independent lifecycle clock:
   by contributing a term to the device's derived `commandAuthority` — the owner's two
   settings are never written. For idle decisions the planner also seeds the device into the shedding shed-set
   so the shedding lane keeps it off.
-- Once a device is admitted, the shedding and restore lanes act on it with their normal logic
-  and produce their normal reasons (cooldowns, restore-pending, capacity, etc.). The deferred
-  plan does not override step selection, admission gates, or reason codes — it only decides
-  whether the device participates this cycle. Soft deadlines therefore still respect budget,
+- In an hour the task plans or still needs (`planned`, `unclaimed`), the shedding and restore
+  lanes act on the admitted device with their normal logic and produce their normal reasons
+  (cooldowns, restore-pending, capacity, etc.). Soft deadlines therefore still respect budget,
   capacity, priority, and cooldown rules, exactly as the original design called for.
+- In an hour the task released (`idle`), the task holds the device, and that hold is the one
+  place the deferred plan decides more than participation. A device with authority of its own
+  is shed to OFF rather than its limiting floor (a temperature-only device keeps its setback),
+  the hold is not capacity pressure (`nonCapacityHoldShed`), and its card reads "Waiting for
+  cheaper hours" whatever the task's status, since the avoid set is the `idle` decisions
+  themselves (`resolveDeferredAvoidDeviceIds`). Rules of record:
+  `lib/objectives/deferredObjectives/AGENTS.md`.
 - During planned hours of an active deferred temperature objective, the planner commands
   `max(modeTarget + priceOptDelta, deadlineTargetC)` to the device so the device's own
   thermostat can actually reach the deadline. The price-opt cheap/expensive delta combines only
-  with the mode side; the deadline target is never further modulated. Outside planned hours, or
-  once the diagnostic transitions to `satisfied`/`cannot_meet`, the override drops out and the
-  setpoint reverts to the regular mode target. The override applies regardless of the
+  with the mode side; the deadline target is never further modulated. Outside claimed hours, or
+  once the task is `satisfied`, the override drops out: the setpoint reverts to the regular mode
+  target, except in a released hour, where the task holds the device as above. The override
+  applies regardless of the
   capacity-based control toggle (cap-on and cap-off devices both pick it up).
   Implementation: `buildDeferredTargetOverrides` in `lib/objectives/deferredObjectives/admission.ts`
   derives the per-cycle map from `deferredEvaluations`; `resolvePlannedTarget` in

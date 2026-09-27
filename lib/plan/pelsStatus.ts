@@ -5,7 +5,7 @@ import {
   computeProjectedPeriodEnergyKWh,
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
-import type { DevicePlan, DevicePlanDevice, PlanMeta } from './planTypes';
+import type { DevicePlan, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 /**
@@ -241,15 +241,6 @@ function isRestoreHoldShedReason(reason: DeviceReason): boolean {
     || reason.code === PLAN_REASON_CODES.restorePending;
 }
 
-function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
-  if (device.plannedState !== 'shed') return false;
-  // Held off by "Only PELS starts this device" or its smart task's deferred hour,
-  // and by nothing else: no limit is driving it, so it must not make the home
-  // report hourly or daily limiting (`nonCapacityHoldShed`).
-  if (device.nonCapacityHoldShed === true) return false;
-  return !isRestoreHoldShedReason(device.reason);
-}
-
 function resolveReasonFlags(reason: DeviceReason): {
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
@@ -285,11 +276,20 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
     }
 
     if (device.plannedState !== 'shed') continue;
+    // Held off by "Only PELS starts this device" or its smart task's deferred hour,
+    // and by nothing else: no limit is driving it, so it must not make the home
+    // report hourly or daily limiting. `nonCapacityHoldShed` says so whatever
+    // reason text the device carries; "Waiting for cheaper hours" says so for a
+    // task hold on a device the task lends authority to, which that flag does not
+    // cover.
+    if (device.nonCapacityHoldShed === true || device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
+      continue;
+    }
 
     const reasonFlags = resolveReasonFlags(device.reason);
     summary.hasHourlyReason = summary.hasHourlyReason || reasonFlags.hasHourlyReason;
     summary.hasDailyReason = summary.hasDailyReason || reasonFlags.hasDailyReason;
-    summary.hasLimitDrivenShedDevices = summary.hasLimitDrivenShedDevices || isLimitDrivenShedDevice(device);
+    summary.hasLimitDrivenShedDevices = summary.hasLimitDrivenShedDevices || !isRestoreHoldShedReason(device.reason);
   }
 
   return summary;

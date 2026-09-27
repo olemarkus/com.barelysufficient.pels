@@ -8,6 +8,7 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
+import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
 import {
   buildExecutableDeviceIntent,
   buildExecutablePlan,
@@ -52,9 +53,7 @@ const decorateWithDecision = (
     deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
     admittedDeviceIds: new Set([deviceId]),
     drivingDeviceIds: new Set([deviceId]),
-    // What `resolveDeferredAvoidDeviceIds` answers for an on-track task deferring
-    // this hour, so the card reads "Waiting for cheaper hours".
-    deferredAvoidDeviceIds: new Set(decision.kind === 'idle' ? [deviceId] : []),
+    deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(decisions),
   };
 };
 

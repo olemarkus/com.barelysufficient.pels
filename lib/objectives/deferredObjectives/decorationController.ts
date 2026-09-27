@@ -1,8 +1,5 @@
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import {
-  resolvedTrajectoryStatus,
-  type DeferredObjectiveStallClassificationReader,
-} from './diagnosticTypes';
+import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { selectObjectiveDevices } from '../types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
@@ -92,7 +89,7 @@ export class DeferredObjectiveDecorationController {
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
-      deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(evaluations),
+      deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(decisions),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
@@ -162,43 +159,23 @@ const resolveAdmittedDeviceIds = (
   return admitted;
 };
 
-// Devices whose smart task is on track AND has no allocated energy this hour
-// (the current hour was relatively expensive so the allocator booked the load
-// into cheaper hours, or the task is between planned hours). Used downstream by
-// `normalizeShedReasons` to render the
-// `deferredObjectiveAvoid` reason ("Waiting for cheaper hours") instead of the
-// misleading capacity/dailyBudget fallback when the device ends up held.
+// Devices whose smart task is waiting out this hour: the admission decision is
+// `idle`, which is exactly when the task holds the device (`applyDeferredAdmissionToInput`).
+// Used downstream by `normalizeShedReasons` to render the `deferredObjectiveAvoid`
+// reason ("Waiting for cheaper hours") for a device that ends up held, since the task
+// is what holds it.
 //
-// Gating on `status === 'on_track'` is intentional: the calm "Waiting for
-// cheaper hours" framing is honest only while PELS still believes the deadline
-// will be met. `at_risk` / `cannot_meet` tasks must fall through to the
-// physical-constraint framing so the Overview doesn't mask a failure the user
-// already got notified about. `inactive` / `satisfied` / `invalid` never reach
-// this branch because they don't co-occur with an unbooked current hour.
+// It reads the decision, not the task's status: an `at_risk` task (the normal state of
+// a stepped water heater, `feasible_above_floor`) holds its device in a released hour
+// just as an `on_track` one does, so the same words apply. The task's own status is
+// shown on the task. An `unclaimed` hour is a different decision: the task still needs
+// it, the device competes as managed, and no framing is stamped.
 export const resolveDeferredAvoidDeviceIds = (
-  evaluations: readonly DeferredObjectiveDiagnostic[],
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): Set<string> => {
   const avoidIds = new Set<string>();
-  for (const diag of evaluations) {
-    // Price-deferral / cold-start release: the device is idled this cycle because
-    // either it is already at/above this hour's trajectory milestone and a later
-    // hour is cheaper (`priceDeferralEligible`), or a later hour is meaningfully
-    // cheaper and the current hour's catch-up fits there at its real step
-    // (`coldStartReleaseEligible`). Both get the "waiting for cheaper hours"
-    // framing — even though the current bucket carries booked energy and the plan
-    // status may be `at_risk`. Without this the reason falls through to
-    // capacity/daily-budget framing and the pause is miscounted as starvation.
-    if (diag.horizonPlan?.priceDeferralEligible || diag.horizonPlan?.coldStartReleaseEligible) {
-      avoidIds.add(diag.deviceId);
-      continue;
-    }
-    if (resolvedTrajectoryStatus(diag) !== 'on_track') continue;
-    // Read the producer's claim rather than re-deriving "is the current hour
-    // unbooked" from the bucket. An `unclaimed` hour is one the task could not book
-    // but still needs, so the device is NOT waiting for anything cheaper — labelling
-    // it so would state the opposite of the admission decision, and (per the comment
-    // above) would also drop a genuinely starved device out of starvation counting.
-    if (diag.horizonPlan?.currentHourClaim === 'released') avoidIds.add(diag.deviceId);
+  for (const [deviceId, decision] of decisions) {
+    if (decision.kind === 'idle') avoidIds.add(deviceId);
   }
   return avoidIds;
 };

@@ -613,13 +613,17 @@ describe('buildDeferredTargetOverrides', () => {
 });
 
 describe('resolveDeferredAvoidDeviceIds', () => {
+  // Driven through the real admission: the avoid set is the devices the task's
+  // decision holds idle this hour, so the framing and the hold cannot disagree.
+  const avoidIdsFor = (diagnostic: DeferredObjectiveDiagnostic) => (
+    resolveDeferredAvoidDeviceIds(applyDeferredObjectiveAdmission([diagnostic]))
+  );
+
   it('flags a price-deferred device as waiting for cheaper hours, even when at_risk with a booked current bucket', () => {
     // Price-deferral release: the device is idled because a cheaper hour can carry
     // the load, so it gets the "waiting for cheaper hours" framing — not capacity /
-    // daily-budget framing (which would miscount the pause as starvation). The
-    // current bucket still carries booked energy and the status may be `at_risk`
-    // (e.g. the floor undershoots and only climbing fits), so the price-deferral
-    // case must bypass both the no-energy and the on_track gates.
+    // daily-budget framing (which would miscount the pause as starvation), even
+    // though the current bucket still carries booked energy.
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       trajectory: { kind: 'resolved', status: 'at_risk' },
@@ -630,12 +634,47 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         currentHourClaim: 'released',
       }),
     });
-    expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(true);
+    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(true);
   });
 
   it('does not flag a normally-planned device that is running this hour', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'heater1', horizonPlan: buildHorizonPlan() });
-    expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(false);
+    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(false);
+  });
+
+  it('flags an at_risk task holding its device off in an hour it released', () => {
+    // A stepped water heater's task is normally `at_risk / feasible_above_floor`:
+    // the floor schedule undershoots and only climbing fits. An hour it booked
+    // nothing into is still `released`, so admission idles the device and holds it
+    // off. The card must say the task is waiting, not blame the house's limit.
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
+      reasonCode: 'feasible_above_floor',
+      horizonPlan: buildHorizonPlan({
+        status: 'at_risk',
+        statusDetail: 'feasible_above_floor',
+        currentBucket: null,
+        currentHourClaim: 'released',
+      }),
+    });
+    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(true);
+  });
+
+  it('does not flag an hour the task still needs', () => {
+    // `unclaimed`: nothing booked, but the task cannot finish without the hour, so
+    // the device competes as managed. It is not waiting for anything cheaper.
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      trajectory: { kind: 'resolved', status: 'at_risk' },
+      horizonPlan: buildHorizonPlan({
+        status: 'at_risk',
+        statusDetail: 'limited_by_daily_budget',
+        currentBucket: null,
+        currentHourClaim: 'unclaimed',
+      }),
+    });
+    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(false);
   });
 });
 

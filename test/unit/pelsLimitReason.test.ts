@@ -3,7 +3,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw, buildUnmeasuredPlanMeta, type PlanMetaOverrides } from '../utils/planTestUtils';
 
@@ -106,6 +106,43 @@ describe('pels status limit reason', () => {
     // `nonCapacityHoldShed`: a deferred smart-task hour or "Only PELS starts this
     // device", and nothing else. No limit drives it (owner ruling, 2026-09-25).
     const plan = buildPlan({ softLimitSource: 'capacity', reason: 'waiting for cheaper hours' });
+    plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
+
+    const status = buildPelsStatus({
+      plan,
+      priceLevel: PriceLevel.NORMAL,
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
+    });
+
+    expect(status.limitReason).toBe('none');
+  });
+
+  it.each(['capacity', 'daily'] as const)(
+    'reports none for %s source when a smart task holds a device it lends authority to',
+    (softLimitSource) => {
+      // Power-limit control off: the task's hold carries its reason but no
+      // `nonCapacityHoldShed`, and no limit drives it either.
+      const plan = buildPlan({ softLimitSource, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } });
+
+      const status = buildPelsStatus({
+        plan,
+        priceLevel: PriceLevel.NORMAL,
+        lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+        dryRunEffective: false,
+      });
+
+      expect(status.limitReason).toBe('none');
+    },
+  );
+
+  it.each([
+    ['capacity', PLAN_REASON_CODES.capacity],
+    ['daily', PLAN_REASON_CODES.dailyBudget],
+  ] as const)('reports none for %s source when a held device carries a %s reason', (softLimitSource, code) => {
+    // The hold decides, not the wording: a device held only by its smart task or
+    // start policy is not driven by any limit, whatever reason text it carries.
+    const plan = buildPlan({ softLimitSource, reason: { code } });
     plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
 
     const status = buildPelsStatus({
