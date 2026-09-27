@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createPriceCacheStore, importLegacyGridTariff } from '../../lib/price/priceCacheStore';
+import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { NETTLEIE_DATA } from '../../lib/utils/settingsKeys';
+import { ELECTRICITY_PRICES, ELECTRICITY_PRICES_AREA, NETTLEIE_DATA } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
 
 const open = () => {
@@ -73,7 +73,7 @@ describe('priceCacheStore', () => {
   });
 });
 
-describe('importLegacyGridTariff', () => {
+describe('importLegacyPriceCaches', () => {
   const rig = () => {
     const settings = new MockSettings();
     settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
@@ -83,7 +83,7 @@ describe('importLegacyGridTariff', () => {
   it('imports the key one row per hour and retires it; a second boot has nothing to do', () => {
     const { settings, store } = rig();
     settings.set(NETTLEIE_DATA, perStepRows(24, 15));
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     const stored = store.read('grid_tariff') as Array<{ time: number; energyFeeExVat: number }>;
     expect(stored).toHaveLength(24);
     expect(stored.map((entry) => [entry.time, entry.energyFeeExVat])).toEqual(
@@ -91,7 +91,7 @@ describe('importLegacyGridTariff', () => {
     );
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
     const get = vi.spyOn(settings, 'get');
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(get).not.toHaveBeenCalled();
   });
 
@@ -99,7 +99,7 @@ describe('importLegacyGridTariff', () => {
     const { settings, store } = rig();
     store.write('grid_tariff', TARIFF);
     settings.set(NETTLEIE_DATA, perStepRows(24, 15));
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(store.read('grid_tariff')).toEqual(TARIFF);
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
   });
@@ -110,20 +110,20 @@ describe('importLegacyGridTariff', () => {
     const { settings, store } = rig();
     store.write('grid_tariff', [{ ...TARIFF[0], source: 'fallback' }]);
     settings.set(NETTLEIE_DATA, TARIFF);
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(store.read('grid_tariff')).toEqual(TARIFF);
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
 
     store.write('grid_tariff', []);
     settings.set(NETTLEIE_DATA, TARIFF);
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(store.read('grid_tariff')).toEqual(TARIFF);
   });
 
   it('adopts an empty tariff as the empty tariff it is', () => {
     const { settings, store } = rig();
     settings.set(NETTLEIE_DATA, []);
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(store.read('grid_tariff')).toEqual([]);
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
   });
@@ -131,16 +131,63 @@ describe('importLegacyGridTariff', () => {
   it('leaves the key for the next boot on a suspect read or a value that is not a tariff', () => {
     const { settings, store } = rig();
     settings.set(NETTLEIE_DATA, 'garbage');
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(settings.get(NETTLEIE_DATA)).toBe('garbage');
     settings.set(NETTLEIE_DATA, TARIFF);
     const originalGet = settings.get.bind(settings);
     const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === NETTLEIE_DATA ? undefined : originalGet(key)));
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     get.mockRestore();
     expect(store.read('grid_tariff')).toBeNull();
-    importLegacyGridTariff(settings, store);
+    importLegacyPriceCaches(settings, store);
     expect(store.read('grid_tariff')).toEqual(TARIFF);
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
+  });
+});
+
+describe('importLegacyPriceCaches: spot prices', () => {
+  const SPOT = [
+    { startsAt: '2026-09-27T00:00:00.000Z', spotPriceExVat: 55.1, currency: 'NOK' },
+    { startsAt: '2026-09-27T01:00:00.000Z', spotPriceExVat: 51.3, currency: 'NOK' },
+  ];
+  const rig = () => {
+    const settings = new MockSettings();
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    return { settings, ...open() };
+  };
+
+  it('imports the spot prices and their area and retires both keys', () => {
+    const { settings, store } = rig();
+    settings.set(ELECTRICITY_PRICES, SPOT);
+    settings.set(ELECTRICITY_PRICES_AREA, 'NO1');
+    importLegacyPriceCaches(settings, store);
+    expect(store.read('spot_prices')).toEqual(SPOT);
+    expect(store.read('spot_price_area')).toBe('NO1');
+    expect(settings.get(ELECTRICITY_PRICES)).toBeNull();
+    expect(settings.get(ELECTRICITY_PRICES_AREA)).toBeNull();
+  });
+
+  it('retires the keys without reading them when the store already holds fetched prices', () => {
+    const { settings, store } = rig();
+    store.write('spot_prices', SPOT);
+    store.write('spot_price_area', 'NO2');
+    settings.set(ELECTRICITY_PRICES, [SPOT[0]]);
+    settings.set(ELECTRICITY_PRICES_AREA, 'NO1');
+    importLegacyPriceCaches(settings, store);
+    expect(store.read('spot_prices')).toEqual(SPOT);
+    expect(store.read('spot_price_area')).toBe('NO2');
+    expect(settings.get(ELECTRICITY_PRICES)).toBeNull();
+    expect(settings.get(ELECTRICITY_PRICES_AREA)).toBeNull();
+  });
+
+  it('leaves a key that holds nothing usable for the next boot', () => {
+    const { settings, store } = rig();
+    settings.set(ELECTRICITY_PRICES, { not: 'a list' });
+    settings.set(ELECTRICITY_PRICES_AREA, '');
+    importLegacyPriceCaches(settings, store);
+    expect(store.read('spot_prices')).toBeNull();
+    expect(store.read('spot_price_area')).toBeNull();
+    expect(settings.get(ELECTRICITY_PRICES)).toEqual({ not: 'a list' });
+    expect(settings.get(ELECTRICITY_PRICES_AREA)).toBe('');
   });
 });

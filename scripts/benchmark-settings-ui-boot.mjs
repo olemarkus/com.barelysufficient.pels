@@ -307,7 +307,6 @@ const buildFixture = () => {
       },
       prices: {
         combinedPrices: settings.combined_prices,
-        electricityPrices: null,
         priceArea: settings.price_area,
         flowToday: null,
         flowTomorrow: null,
@@ -335,7 +334,6 @@ const buildFixture = () => {
     },
     'GET /ui_prices': {
       combinedPrices: settings.combined_prices,
-      electricityPrices: null,
       priceArea: settings.price_area,
       flowToday: null,
       flowTomorrow: null,

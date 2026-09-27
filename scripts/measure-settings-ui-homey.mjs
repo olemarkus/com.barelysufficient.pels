@@ -307,7 +307,6 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     const homeyCurrency = allSettings.homey_prices_currency;
     return {
       combinedPrices: allSettings.combined_prices ?? null,
-      electricityPrices: allSettings.electricity_prices ?? null,
       flowToday: allSettings.flow_prices_today ?? null,
       flowTomorrow: allSettings.flow_prices_tomorrow ?? null,
       homeyCurrency: typeof homeyCurrency === 'string' ? homeyCurrency : null,

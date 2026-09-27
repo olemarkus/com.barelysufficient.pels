@@ -1,8 +1,6 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   COMBINED_PRICES,
-  ELECTRICITY_PRICES,
-  ELECTRICITY_PRICES_AREA,
   HOMEY_PRICES_CURRENCY,
   POWERHOUR_PRICES_CURRENCY,
   POWERHOUR_PRICES_DEVICE,
@@ -139,14 +137,14 @@ export type PriceDataStore = {
  * lives beside the port it implements because the reads and the keys they use
  * are the price module's own: `setup/` hands over a {@link SettingsPort} and the
  * cache and knows nothing about which store backs which field. The grid tariff
- * is in the cache (`priceCacheStore.ts`); the rest still rides settings until
- * it moves the same way.
+ * and the spot prices are in the cache (`priceCacheStore.ts`); the rest still
+ * rides settings until it moves the same way.
  */
 export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => ({
-  readSpotPrices: () => settings.get(ELECTRICITY_PRICES),
-  writeSpotPrices: (prices) => settings.set(ELECTRICITY_PRICES, prices),
-  readSpotPriceArea: () => settings.get(ELECTRICITY_PRICES_AREA),
-  writeSpotPriceArea: (area) => settings.set(ELECTRICITY_PRICES_AREA, area),
+  readSpotPrices: () => cache.read('spot_prices'),
+  writeSpotPrices: (prices) => cache.write('spot_prices', prices),
+  readSpotPriceArea: () => cache.read('spot_price_area'),
+  writeSpotPriceArea: (area) => cache.write('spot_price_area', area),
   readNettleie: () => cache.read('grid_tariff'),
   writeNettleie: (data) => cache.write('grid_tariff', data),
   readFlowPayload: (key) => settings.get(key),

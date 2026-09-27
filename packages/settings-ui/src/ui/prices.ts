@@ -7,7 +7,6 @@ import { classifyPriceOptimizationSetupRead } from './priceOptimizationSetupRead
 
 const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
-  electricityPrices: null,
   priceArea: null,
   flowToday: null,
   flowTomorrow: null,

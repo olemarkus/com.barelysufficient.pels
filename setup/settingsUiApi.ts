@@ -415,7 +415,6 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   // V2 in place; later bootstrap calls then see V2 here.
   return {
     combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
-    electricityPrices: homey.settings.get('electricity_prices') as unknown ?? null,
     priceArea: stringOrNull(homey.settings.get('price_area')),
     flowToday: homey.settings.get('flow_prices_today') as unknown ?? null,
     flowTomorrow: homey.settings.get('flow_prices_tomorrow') as unknown ?? null,

@@ -540,7 +540,6 @@ describe('settings script', () => {
           power: { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'never' } },
           prices: {
             combinedPrices: null,
-            electricityPrices: null,
             priceArea: null,
             flowToday: null,
             flowTomorrow: null,

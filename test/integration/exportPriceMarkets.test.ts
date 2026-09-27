@@ -38,12 +38,14 @@ import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const TZ = 'Europe/Oslo';
 
+let priceCache = createInMemoryPriceCache();
+
 const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   energyApi ?? noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+  createPriceDataStore(mockHomeyInstance.settings, priceCache),
   () => ({}),
   noHomeyWebApi,
 );
@@ -61,6 +63,7 @@ describe('Export (feed-in) pricing applied independently of the import scheme', 
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.api.clearRealtimeEvents();
+    priceCache = createInMemoryPriceCache();
   });
 
   afterEach(() => {
@@ -78,7 +81,7 @@ describe('Export (feed-in) pricing applied independently of the import scheme', 
       mockHomeyInstance.settings.set('nettleie_fylke', '03');
       mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
       mockHomeyInstance.settings.set('provider_surcharge', 0);
-      mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+      priceCache.write('spot_prices', spotPrices);
     };
 
     it('links export to the wholesale spot (×factor), tracking it negative under negative spot', () => {

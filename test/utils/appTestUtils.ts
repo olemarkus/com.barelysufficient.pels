@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { createPriceCacheStore } from '../../lib/price/priceCacheStore';
+import { createPriceCacheStore, type PriceCacheKey } from '../../lib/price/priceCacheStore';
 
 let appInstances: MyApp[] = [];
 
@@ -136,14 +136,14 @@ export function getStoredPowerTrackerForTests(homeId: string = 'main'): PowerTra
 }
 
 /**
- * The grid tariff the app under test has cached — the price cache's row in the
- * database `createApp` opens, not a settings key. `null` while none is cached.
+ * A price cache as the app under test has stored it — the price cache's row in
+ * the database `createApp` opens, not a settings key. `null` while none is cached.
  */
-export function getStoredGridTariffForTests(): unknown {
+export function getStoredPriceCacheForTests(key: PriceCacheKey): unknown {
   if (testUserdataDir === undefined) return null;
   const database = openUserdataDatabase(testUserdataDatabase());
   try {
-    return createPriceCacheStore(database).read('grid_tariff');
+    return createPriceCacheStore(database).read(key);
   } finally {
     database.close();
   }

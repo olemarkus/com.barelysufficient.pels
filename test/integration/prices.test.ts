@@ -7,7 +7,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getStoredGridTariffForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPriceCacheForTests } from '../utils/appTestUtils';
 import {
   ELECTRICITY_SUPPORT_COVERAGE,
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
@@ -304,7 +304,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // Check that prices were stored
-    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[];
+    const prices = getStoredPriceCacheForTests('spot_prices') as SpotPriceEntry[];
     expect(Array.isArray(prices)).toBe(true);
     expect(prices.length).toBeGreaterThan(0);
 
@@ -427,7 +427,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // Should not throw, prices should be absent or empty
-    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[] | null;
+    const prices = getStoredPriceCacheForTests('spot_prices') as SpotPriceEntry[] | null;
     expect(prices === null || prices.length === 0).toBe(true);
   });
 
@@ -452,7 +452,7 @@ describe('Spot price fetching', () => {
     await flushPromises();
 
     // No prices stored due to error
-    const prices = mockHomeyInstance.settings.get('electricity_prices') as SpotPriceEntry[] | null;
+    const prices = getStoredPriceCacheForTests('spot_prices') as SpotPriceEntry[] | null;
     expect(prices === null || prices.length === 0).toBe(true);
   });
 
@@ -639,6 +639,7 @@ describe('Spot price fetching', () => {
       currency: 'NOK',
     }));
     mockHomeyInstance.settings.set('electricity_prices', [...todayPrices, ...tomorrowPrices]);
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     let fetchCount = 0;
@@ -701,6 +702,7 @@ describe('Spot price fetching', () => {
       currency: 'NOK',
     }));
     mockHomeyInstance.settings.set('electricity_prices', todayPrices);
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     let fetchCount = 0;
@@ -740,6 +742,56 @@ describe('Spot price fetching', () => {
 
       // Should NOT have fetched because it's before 12:15 UTC (tomorrow prices are not expected yet)
       expect(fetchCount).toBe(0);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
+  // The prices and their area import as two keys, so one transient read can
+  // leave the prices cached without the area they were fetched for. Serving
+  // them then could price NO2 with NO1's spot prices until the next boot.
+  it('refetches cached prices whose area is not recorded, even when the cache is otherwise current', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    const now = new Date();
+    now.setUTCHours(10, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+    mockHomeyInstance.settings.set('electricity_prices', mockHvakosterStrommenResponse.map((p) => ({
+      startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+      spotPriceExVat: p.NOK_per_kWh * 100,
+      currency: 'NOK',
+    })));
+    mockHomeyInstance.settings.set('price_area', 'NO2');
+
+    const fetchedUrls: string[] = [];
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
+      fetchedUrls.push(url);
+      callback(createMockHttpsResponse(200, mockHvakosterStrommenResponse));
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
+    });
+    const originalDate = global.Date;
+    global.Date = class extends Date {
+      constructor(...args: unknown[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
+          super(...args);
+        }
+      }
+
+      static now() {
+        return now.getTime();
+      }
+    } as DateConstructor;
+
+    try {
+      const app = createApp();
+      await app.onInit();
+      await flushPromises();
+
+      expect(fetchedUrls.some((url) => url.includes('_NO2.json'))).toBe(true);
+      expect(getStoredPriceCacheForTests('spot_price_area')).toBe('NO2');
     } finally {
       global.Date = originalDate;
     }
@@ -795,7 +847,7 @@ describe('Grid tariff fetching', () => {
     await flushPromises();
 
     // Check that grid tariff data was stored
-    const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
+    const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as Array<Record<string, unknown>>;
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData.length).toBe(3);
 
@@ -862,7 +914,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // A full day of static fallback data is seeded so prices still work.
-    const gridTariffData = getStoredGridTariffForTests() as GridTariffEntryWithSource[];
+    const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as GridTariffEntryWithSource[];
     expect(Array.isArray(gridTariffData)).toBe(true);
     expect(gridTariffData).toHaveLength(24);
     expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
@@ -906,7 +958,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // No fallback available and nothing cached → nothing stored.
-    const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
+    const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as Array<Record<string, unknown>>;
     expect(gridTariffData).toBeNull();
   });
 
@@ -949,7 +1001,7 @@ describe('Grid tariff fetching', () => {
     }
 
     // Stale fallback for the wrong operator is cleared, not left serving.
-    expect(getStoredGridTariffForTests()).toEqual([]);
+    expect(getStoredPriceCacheForTests('grid_tariff')).toEqual([]);
   });
 
   it('uses correct URL format with encoded parameters', async () => {
@@ -1035,7 +1087,7 @@ describe('Grid tariff fetching', () => {
       await flushPromises();
 
       expect(requestedDates).toEqual([today, yesterday, week]);
-      const gridTariffData = getStoredGridTariffForTests() as Array<Record<string, unknown>>;
+      const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as Array<Record<string, unknown>>;
       expect(Array.isArray(gridTariffData)).toBe(true);
       expect(gridTariffData.length).toBe(mockNveGridTariffResponse.length);
     } finally {
@@ -1122,7 +1174,7 @@ describe('Grid tariff fetching', () => {
         { label: 'month', date: month },
       ]);
       // The real cache is preserved untouched — not overwritten by the fallback.
-      expect(getStoredGridTariffForTests()).toEqual(realCache);
+      expect(getStoredPriceCacheForTests('grid_tariff')).toEqual(realCache);
     } finally {
       errorSpy.mockRestore();
       global.Date = originalDate;
@@ -1333,10 +1385,13 @@ describe('Price optimization', () => {
     }
   };
 
+  // The cache a hand-built coordinator reads; the spot prices are seeded into it.
+  let priceCache = createInMemoryPriceCache();
+
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
-    priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+    priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
@@ -1390,6 +1445,7 @@ describe('Price optimization', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    priceCache = createInMemoryPriceCache();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
     mockHomeyInstance.flow._triggerCardRunListeners = {};
@@ -1606,7 +1662,7 @@ describe('Price optimization', () => {
     const hourStarts = [0, 1, 2, 3, 4, 5].map((h) => hourStartMs + h * HOUR_MS);
     const surplusHourMs = hourStarts[surplusIndex];
     const surplusHourIso = new Date(surplusHourMs).toISOString();
-    mockHomeyInstance.settings.set('electricity_prices', hourStarts.map((startMs) => ({
+    priceCache.write('spot_prices', hourStarts.map((startMs) => ({
       startsAt: new Date(startMs).toISOString(),
       spotPriceExVat: 50,
       currency: 'NOK',
@@ -2504,7 +2560,7 @@ describe('Price optimization', () => {
         currentHourPriceExVat: 20,
         defaultPriceExVat: 50,
       });
-      mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+      priceCache.write('spot_prices', spotPrices);
       mockHomeyInstance.settings.set('price_threshold_percent', 25);
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);
 
@@ -2523,7 +2579,7 @@ describe('Price optimization', () => {
         currentHourPriceExVat: 40,
         defaultPriceExVat: 50,
       });
-      mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+      priceCache.write('spot_prices', spotPrices);
 
       await withMockedNow(now, async () => {
         const coordinator = createPriceCoordinatorForTest();

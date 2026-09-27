@@ -95,7 +95,7 @@ const setNorwayNorgesprisSettings = (params: {
   mockHomeyInstance.settings.set('nettleie_fylke', countyCode);
   mockHomeyInstance.settings.set('nettleie_tariffgruppe', tariffGroup);
   mockHomeyInstance.settings.set('provider_surcharge', 0);
-  mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+  priceCache.write('spot_prices', spotPrices);
   priceCache.write('grid_tariff', [{
     dateKey: tariffDateKey,
     time: typeof gridTariffHour === 'number' ? gridTariffHour : norwayHour,

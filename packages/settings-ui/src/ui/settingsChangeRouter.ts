@@ -135,7 +135,6 @@ const PRICE_REFRESH_KEYS = new Set([
   // The runtime's source re-selection changes the provenance carried on the
   // prices payload, so a source write must invalidate the cached read model.
   PV_FORECAST_SOURCE,
-  'electricity_prices',
   'flow_prices_today',
   'flow_prices_tomorrow',
   'homey_prices_today',

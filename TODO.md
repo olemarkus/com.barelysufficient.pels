@@ -1653,12 +1653,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
       the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
       (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
-      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the grid tariff cache
+      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the grid tariff and spot price caches
       (`lib/price/priceCacheStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~40 kB of the ~56 kB object:
-      the price caches `combined_prices` (21 kB), `electricity_prices` (4 kB) and
-      `flow_prices_today`/`_tomorrow` (4 kB) (`lib/price/priceDataStore.ts`,
-      `lib/price/combinedPricesReader.ts`; they join the grid tariff in `priceCacheStore.ts`), the
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~36 kB of the ~52 kB object:
+      the price caches `combined_prices` (21 kB) and the Flow, Homey and Power by the Hour
+      price payloads (`flow_prices_today`/`_tomorrow` 4 kB, and the `homey_prices_*` and
+      `powerhour_prices_*` pairs on homes with those schemes) (`lib/price/priceDataStore.ts`,
+      `lib/price/combinedPricesReader.ts`; they join the tariff and spot prices in `priceCacheStore.ts`), the
       learned hourly profiles in `daily_budget_state` (7 of its 8 kB,
       `setup/dailyBudgetStateAdapter.ts`), `power_calibration` (2 kB,
       `lib/device/devicePowerCalibrationStore.ts`), `device_power_peaks` (1 kB,

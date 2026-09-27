@@ -769,7 +769,6 @@ export type PowerhourSourceUiStatus =
 
 export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
-  electricityPrices: unknown | null;
   priceArea: string | null;
   flowToday: unknown | null;
   flowTomorrow: unknown | null;

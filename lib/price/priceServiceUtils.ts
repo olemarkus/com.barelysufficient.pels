@@ -37,8 +37,14 @@ const shouldFetchTomorrowPrices = (now: Date, hasTomorrowPrices: boolean): boole
 
 export const getSpotPriceCacheDecision = (params: SpotPriceCacheDecisionParams): SpotPriceCacheDecision => {
   const { cachedArea, priceArea, existingPrices, dates, now } = params;
-  const areaChanged = typeof cachedArea === 'string' && cachedArea !== priceArea;
-  if (!existingPrices || !Array.isArray(existingPrices) || existingPrices.length === 0 || areaChanged) {
+  // Cached prices are only as good as the area they were fetched for. A fetch
+  // always stores both, but the prices can be held without their area: the
+  // two legacy settings keys import independently, and the two cache writes are
+  // separate. Prices whose area is not recorded are refetched rather than
+  // served to an area they may not be for.
+  const areaKnown = typeof cachedArea === 'string';
+  const areaChanged = areaKnown && cachedArea !== priceArea;
+  if (!existingPrices || !Array.isArray(existingPrices) || existingPrices.length === 0 || !areaKnown || areaChanged) {
     return { useCache: false, shouldFetchTomorrow: false, areaChanged };
   }
 

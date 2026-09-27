@@ -1034,7 +1034,6 @@
       : {};
     return {
       combinedPrices: settings.combined_prices ?? null,
-      electricityPrices: settings.electricity_prices ?? null,
       priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
       flowToday: settings.flow_prices_today ?? null,
       flowTomorrow: settings.flow_prices_tomorrow ?? null,
@@ -2246,10 +2245,9 @@
       dailyBudget: buildScenarioOverBudgetDailyBudget(),
     }),
     'missing-price': () => ({
-      description: 'Price feed unavailable; combined/electricity/homey prices all null.',
+      description: 'Price feed unavailable; combined/homey prices all null.',
       settings: {
         combined_prices: null,
-        electricity_prices: null,
         homey_prices_today: null,
         homey_prices_tomorrow: null,
         flow_prices_today: null,

@@ -468,7 +468,6 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
     description: 'Price feed unavailable: combined_prices is null, daily-budget price array is all-null.',
     settings: {
       combined_prices: null,
-      electricity_prices: null,
       homey_prices_today: null,
       homey_prices_tomorrow: null,
       flow_prices_today: null,

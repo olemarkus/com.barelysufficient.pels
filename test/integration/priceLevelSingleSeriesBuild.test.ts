@@ -59,7 +59,7 @@ const seedCheapCurrentHour = (): void => {
   mockHomeyInstance.settings.set('provider_surcharge', 0);
   mockHomeyInstance.settings.set('price_threshold_percent', 25);
   mockHomeyInstance.settings.set('price_min_diff_ore', 0);
-  mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+  priceCache.write('spot_prices', spotPrices);
   priceCache.write('grid_tariff', [{
     dateKey: getDateKeyInTimeZone(NOW, TZ),
     time: getZonedParts(NOW, TZ).hour,
@@ -92,7 +92,7 @@ describe('current-hour price level resolves from a single series build', () => {
   });
 
   it('answers UNKNOWN when the current hour has no price', () => {
-    mockHomeyInstance.settings.set('electricity_prices', []);
+    priceCache.write('spot_prices', []);
     const service = createService();
 
     expect(service.getCurrentHourPriceLevel()).toEqual(PriceLevel.UNKNOWN);

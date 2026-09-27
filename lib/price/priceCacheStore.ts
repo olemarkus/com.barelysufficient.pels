@@ -20,13 +20,13 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
 import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
-import { NETTLEIE_DATA } from '../utils/settingsKeys';
+import { ELECTRICITY_PRICES, ELECTRICITY_PRICES_AREA, NETTLEIE_DATA } from '../utils/settingsKeys';
 import { isGridTariffFallbackData, oneGridTariffEntryPerHour } from './gridTariffUtils';
 
 const storeLogger = getLogger('price/cache-store');
 
 /** The caches this store holds, one row each. */
-export type PriceCacheKey = 'grid_tariff';
+export type PriceCacheKey = 'grid_tariff' | 'spot_prices' | 'spot_price_area';
 
 export type PriceCacheStore = {
   /** The cached value, or `null` when the store holds none. Throws only on I/O. */
@@ -94,32 +94,74 @@ const holdsFetchedTariff = (value: unknown): boolean => (
   Array.isArray(value) && value.length > 0 && !isGridTariffFallbackData(value as Array<{ source?: unknown }>)
 );
 
-/**
- * The one-shot import of the legacy `nettleie_data` settings key, run at boot
- * before the price service first reads the tariff. Rules and their reasons:
- * `lib/store/legacySettingsImport.ts`. A tariff fetched from NVE since the
- * upgrade wins and the key is just retired; otherwise the key's rows are
- * adopted, one per hour, over whatever stopgap the store holds.
- */
-export const importLegacyGridTariff = (settings: SettingsPort, cache: PriceCacheStore): void => {
-  if (isLegacySettingsKeyListed(settings, NETTLEIE_DATA) !== true) return;
-  const result = importLegacySettingsKey(settings, NETTLEIE_DATA, {
-    holds: () => holdsFetchedTariff(cache.read('grid_tariff')),
+/** One legacy settings key and the cache row it moves into. */
+type LegacyPriceCache = {
+  settingsKey: string;
+  cacheKey: PriceCacheKey;
+  /**
+   * Whether what the store holds already beats the key, which is then retired
+   * unread: a value fetched since the upgrade is newer than anything the key
+   * could hold.
+   */
+  storeWins: (held: unknown) => boolean;
+  /** The key's value in the stored shape, or `null` when it holds nothing usable. */
+  toStored: (raw: unknown) => unknown;
+};
+
+const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
+  {
+    settingsKey: NETTLEIE_DATA,
+    cacheKey: 'grid_tariff',
+    storeWins: holdsFetchedTariff,
+    toStored: (raw) => (Array.isArray(raw) ? oneGridTariffEntryPerHour(raw as Array<Record<string, unknown>>) : null),
+  },
+  {
+    settingsKey: ELECTRICITY_PRICES,
+    cacheKey: 'spot_prices',
+    storeWins: (held) => Array.isArray(held) && held.length > 0,
+    toStored: (raw) => (Array.isArray(raw) ? raw : null),
+  },
+  {
+    settingsKey: ELECTRICITY_PRICES_AREA,
+    cacheKey: 'spot_price_area',
+    storeWins: (held) => typeof held === 'string' && held !== '',
+    toStored: (raw) => (typeof raw === 'string' && raw !== '' ? raw : null),
+  },
+];
+
+const importLegacyPriceCache = (settings: SettingsPort, cache: PriceCacheStore, legacy: LegacyPriceCache): void => {
+  const { settingsKey, cacheKey } = legacy;
+  if (isLegacySettingsKeyListed(settings, settingsKey) !== true) return;
+  const result = importLegacySettingsKey(settings, settingsKey, {
+    holds: () => legacy.storeWins(cache.read(cacheKey)),
     adopt: (raw) => {
-      if (!Array.isArray(raw)) return false;
-      cache.write('grid_tariff', oneGridTariffEntryPerHour(raw as Array<Record<string, unknown>>));
+      const stored = legacy.toStored(raw);
+      if (stored === null) return false;
+      cache.write(cacheKey, stored);
       return true;
     },
   });
   if (result.outcome === 'imported') {
-    storeLogger.info({ event: 'legacy_grid_tariff_imported' });
+    storeLogger.info({ event: 'legacy_price_cache_imported', settingsKey });
   } else if (result.outcome === 'retired') {
-    storeLogger.info({ event: 'legacy_grid_tariff_key_retired', reason: result.reason });
+    storeLogger.info({ event: 'legacy_price_cache_key_retired', settingsKey, reason: result.reason });
   } else {
     storeLogger.warn({
-      event: 'legacy_grid_tariff_import_deferred',
+      event: 'legacy_price_cache_import_deferred',
+      settingsKey,
       reason: result.reason,
       ...(result.error === undefined ? {} : { err: normalizeError(result.error) }),
     });
   }
+};
+
+/**
+ * The one-shot import of the legacy price-cache settings keys, run at boot
+ * before the price service first reads them. Rules and their reasons:
+ * `lib/store/legacySettingsImport.ts`. Each key is decided on its own: a value
+ * fetched since the upgrade wins and the key is just retired; otherwise the
+ * key's value is adopted, over whatever stopgap the store holds.
+ */
+export const importLegacyPriceCaches = (settings: SettingsPort, cache: PriceCacheStore): void => {
+  for (const legacy of LEGACY_PRICE_CACHES) importLegacyPriceCache(settings, cache, legacy);
 };

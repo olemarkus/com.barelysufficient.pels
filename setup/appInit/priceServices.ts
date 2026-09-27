@@ -2,13 +2,13 @@ import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../../lib/price/priceFlowTags';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
-import { createPriceCacheStore, importLegacyGridTariff } from '../../lib/price/priceCacheStore';
+import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { createHomeyWebApiGet } from '../homeyWebApi';
 import type { AppContext } from '../../lib/app/appContext';
 
 export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   const priceCache = createPriceCacheStore(ctx.getUserdataDatabase());
-  importLegacyGridTariff(ctx.homey.settings, priceCache);
+  importLegacyPriceCaches(ctx.homey.settings, priceCache);
   const coordinator = new PriceCoordinator({
     homey: ctx.homey,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey.settings),

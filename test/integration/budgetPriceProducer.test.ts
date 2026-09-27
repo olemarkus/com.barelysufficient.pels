@@ -17,12 +17,14 @@ import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const TZ = 'Europe/Oslo';
 
+let priceCache = createInMemoryPriceCache();
+
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
-  createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),
+  createPriceDataStore(mockHomeyInstance.settings, priceCache),
   () => ({}),
   noHomeyWebApi,
 );
@@ -36,13 +38,14 @@ describe('budgetPrice layered onto the producer from injected forecast surplus',
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.api.clearRealtimeEvents();
+    priceCache = createInMemoryPriceCache();
     vi.useFakeTimers().setSystemTime(now);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'norway');
     mockHomeyInstance.settings.set('price_area', 'NO1');
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
     mockHomeyInstance.settings.set('provider_surcharge', 0);
-    mockHomeyInstance.settings.set('electricity_prices', [
+    priceCache.write('spot_prices', [
       { startsAt: hourA, spotPriceExVat: 100, currency: 'NOK' },
       { startsAt: hourB, spotPriceExVat: 100, currency: 'NOK' },
     ]);

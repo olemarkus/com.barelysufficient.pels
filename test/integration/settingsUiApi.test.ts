@@ -632,7 +632,6 @@ describe('settingsUiApi', () => {
     });
     expect(getSettingsUiPricesPayload({ homey: homey as never })).toEqual({
       combinedPrices: { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] },
-      electricityPrices: null,
       priceArea: 'NO1',
       // No app on this fixture homey ⇒ the status seams are absent (boot
       // window), and each answers with its own "nothing to report yet" member.

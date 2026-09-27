@@ -185,10 +185,12 @@ export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 export const COMBINED_PRICES = 'combined_prices';
+// Legacy: the spot prices and the area they are for live in the userdata store
+// (lib/price/priceCacheStore.ts). The keys are only read by the one-shot boot import.
 export const ELECTRICITY_PRICES = 'electricity_prices';
 export const ELECTRICITY_PRICES_AREA = 'electricity_prices_area';
 // Legacy: the grid tariff cache lives in the userdata store
-// (lib/price/priceCacheStore.ts). The key is only read by its one-shot boot import.
+// (lib/price/priceCacheStore.ts). The key is only read by the one-shot boot import.
 export const NETTLEIE_DATA = 'nettleie_data';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
 export const PRICE_SCHEME = 'price_scheme';

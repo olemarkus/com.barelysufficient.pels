@@ -326,7 +326,6 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
   if (override !== undefined) return override;
   return {
     combinedPrices: await getHomeySetting(homey, 'combined_prices') || null,
-    electricityPrices: await getHomeySetting(homey, 'electricity_prices') || null,
     priceArea: await getHomeySetting(homey, 'price_area') || null,
     flowToday: await getHomeySetting(homey, 'flow_prices_today') || null,
     flowTomorrow: await getHomeySetting(homey, 'flow_prices_tomorrow') || null,
