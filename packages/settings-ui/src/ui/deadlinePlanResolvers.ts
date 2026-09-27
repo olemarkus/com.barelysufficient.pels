@@ -51,17 +51,6 @@ export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number
     : null;
 };
 
-// No unit filter: a profile records a value, and the caller is already inside the
-// branch that knows what the objective measures. The UI is one of the two places
-// that legitimately knows what the number is — it takes that from the objective,
-// not from the reading.
-const resolveProfileSampleValue = (
-  profile: DeviceObjectiveProfile | null,
-): number | null => {
-  if (!profile) return null;
-  return isFiniteNumber(profile.lastSample.value) ? profile.lastSample.value : null;
-};
-
 export type DeadlineProgress = {
   currentValue: number;
   // Counted to `plannedTargetValue`, the target the plan works to.
@@ -103,43 +92,42 @@ const observedStateOfChargePercent = (
   stateOfCharge.level.kind === 'known' ? stateOfCharge.level.percent : null
 );
 
+// Progress comes from the device's live reading and nothing else, which is also
+// the only thing the runtime reads (`resolveObjectiveProgress`). With no reading
+// the runtime reports the task blocked (`objective_missing_temperature` /
+// `objective_progress_stale`), so the page shows `no_current_reading`. The learned
+// profile's last sample is not a stand-in: it is an older reading of the same
+// absent thing, and drawing a trajectory from it put the page on track for a task
+// the runtime had stopped.
 export const resolveProgress = (params: {
   // Probe-widened: the live reading (temperature or SoC) rides on the
   // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
-  // `hasObservedStateOfCharge` narrow it (present implies finite), falling back to
-  // the profile sample when there is no live reading. Widened onto the observed
-  // base, not the decorated snapshot: no descriptor field is read here. SoC is
-  // the RESOLVED probe — the payload serves the level, so declaring the
-  // transport's bag would let a `report.percent` read compile and then find
+  // `hasObservedStateOfCharge` narrow it (present implies finite). Widened onto
+  // the observed base, not the decorated snapshot: no descriptor field is read
+  // here. SoC is the RESOLVED probe — the payload serves the level, so declaring
+  // the transport's bag would let a `report.percent` read compile and then find
   // `undefined` at runtime.
   device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe;
   objective: DeferredObjectiveSettingsEntry;
-  profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {
-  const { device, objective, profile } = params;
+  const { device, objective } = params;
   if (objective.kind === 'temperature') {
-    if (hasObservedTemperature(device)) {
-      return buildTemperatureProgress(
-        device.temperature.currentTemperature,
-        objective.targetTemperatureC,
-      );
-    }
-    const currentTemperature = resolveProfileSampleValue(profile);
-    if (!isFiniteNumber(currentTemperature)) return null;
-    return buildTemperatureProgress(currentTemperature, objective.targetTemperatureC);
+    if (!hasObservedTemperature(device)) return null;
+    return buildTemperatureProgress(
+      device.temperature.currentTemperature,
+      objective.targetTemperatureC,
+    );
   }
 
   // `level`, never the raw report. `hasObservedStateOfCharge` proves only that the
   // bag exists, so reading the raw percentage rendered a departed car's charge as
-  // "now" for a charger whose level had gone to `not_connected`. A present bag with
-  // no level yields `null` here and does NOT fall through to the profile sample —
-  // that sample is an older reading of the same absent thing.
+  // "now" for a charger whose level had gone to `not_connected`.
   //
-  // The trailing `isFiniteNumber` guards the profile-sample fallback (which is
-  // genuinely nullable) and covers the `null` this branch now returns.
-  const percent = hasObservedStateOfCharge(device)
-    ? observedStateOfChargePercent(device.stateOfCharge)
-    : resolveProfileSampleValue(profile);
+  // The trailing `isFiniteNumber` covers the `null` of a bag with no known level,
+  // and keeps a junk percentage off the page (see the regression lock in
+  // `deadlinePlan.test.ts`).
+  if (!hasObservedStateOfCharge(device)) return null;
+  const percent = observedStateOfChargePercent(device.stateOfCharge);
   if (!isFiniteNumber(percent)) return null;
   return {
     currentValue: Math.min(100, Math.max(0, percent)),

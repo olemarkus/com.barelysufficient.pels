@@ -703,6 +703,12 @@
         controlModel: 'stepped_load',
         currentOn: true,
         currentTemperature: 51.1,
+        // The observed-temperature facet `/ui_devices` serves in production: the
+        // smart-task page reads its progress from this and nothing else.
+        temperature: {
+          currentTemperature: 51.1,
+          target: { id: 'target_temperature', unit: 'C', value: 65 },
+        },
         plannedTarget: 65,
         measuredPowerKw: 0.0,
         expectedPowerKw: 0.0,

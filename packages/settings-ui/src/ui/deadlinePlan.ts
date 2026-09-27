@@ -209,7 +209,7 @@ const prepareObjectivePayload = (
   if (!ctx.activePlan?.latest) return null;
 
   const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
-  const observedProgress = resolveProgress({ device: ctx.device, objective: ctx.objective, profile });
+  const observedProgress = resolveProgress({ device: ctx.device, objective: ctx.objective });
   const carChargeLimit = resolveSmartTaskCarChargeLimit(
     ctx.activePlan.carChargeLimit,
     ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null,

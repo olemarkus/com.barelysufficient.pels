@@ -255,7 +255,7 @@ packages/settings-ui/src/ui/deadlinePlanData.ts 1
 packages/settings-ui/src/ui/deadlinePlanHero.ts 6
 packages/settings-ui/src/ui/deadlinePlanInputs.ts 1
 packages/settings-ui/src/ui/deadlinePlanPending.ts 1
-packages/settings-ui/src/ui/deadlinePlanResolvers.ts 2
+packages/settings-ui/src/ui/deadlinePlanResolvers.ts 1
 packages/settings-ui/src/ui/deadlinePlanRevisionPanelFeed.ts 1
 packages/settings-ui/src/ui/deadlinePlanTimeline.ts 2
 packages/settings-ui/src/ui/deadlinePlanTrajectory.ts 3

@@ -251,71 +251,6 @@ describe('deadline plan page payload', () => {
     );
   });
 
-  it('uses the learned objective sample when live temperature is missing', () => {
-    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
-    const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }];
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      electricityPrices: null,
-      priceArea: null,
-      gridTariffData: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
-
-    const payload = expectOk(testExports.buildObjectivePayload({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
-      }, buildHeaterActivePlan({
-        now,
-        deadline,
-        plannedHourOffsets: [0, 1],
-        plannedKWhPerHour: 2,
-      })),
-      deviceId: 'heater',
-      devices,
-      prices,
-      nowMs: now.getTime(),
-    }));
-
-    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toContain('4.0 kWh');
-    expect(payload.timeline.hours.some((hour) => hour.planned)).toBe(true);
-  });
-
   it('accepts legacy combined prices stored as a plain array', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
@@ -1595,7 +1530,11 @@ describe('deadline plan page payload', () => {
     expect(renderInput.kind).toBe('temperature');
   });
 
-  it('returns no_current_reading when the device has no temperature and no profile sample', () => {
+  it('returns no_current_reading when the device has no temperature, even with a learned profile sample', () => {
+    // The runtime reads only the live reading (`resolveObjectiveProgress` reports
+    // `objective_missing_temperature` here), so the page must not stand the
+    // profile's last sample in for it and draw a trajectory the runtime is not
+    // running.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1643,7 +1582,25 @@ describe('deadline plan page payload', () => {
       plannedHourOffsets: [0],
       plannedKWhPerHour: 2,
     }));
-    bootstrap.power.tracker = { objectiveProfiles: {} };
+    bootstrap.power.tracker = {
+      objectiveProfiles: {
+        heater: {
+          updatedAtMs: now.getTime(),
+          lastSample: { observedAtMs: now.getTime() - 60 * 60 * 1000, value: 18 },
+          kwhPerUnit: {
+            sampleCount: 3,
+            mean: 0.5,
+            m2: 0,
+            min: 0.5,
+            max: 0.5,
+            confidence: 'low',
+            lastUpdatedMs: now.getTime(),
+          },
+          acceptedSamples: 3,
+          rejectedSamples: 0,
+        },
+      },
+    };
 
     const result = testExports.buildObjectivePayload({
       bootstrap,
@@ -1731,7 +1688,7 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // No learned EV profile — the only fallback path is the (junk) live reading.
+    // No learned EV profile, and none would be read: progress is the live reading alone.
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const result = testExports.buildObjectivePayload({
