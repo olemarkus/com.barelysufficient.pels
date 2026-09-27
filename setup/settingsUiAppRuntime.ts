@@ -25,7 +25,7 @@ import type {
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
-import { getHourBucketKey } from '../lib/utils/dateUtils';
+import { getHourBucketKey } from '../lib/utils/hourBuckets';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart

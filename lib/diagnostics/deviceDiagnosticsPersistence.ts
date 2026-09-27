@@ -2,7 +2,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import type {
   DeviceDiagnosticsWindowKey,
   DeviceDiagnosticsWindowSummary,

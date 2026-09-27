@@ -2,7 +2,7 @@ import type { DeviceDiagnosticsTrackedTransitionReconciliation } from '../diagno
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { HeadroomCardState, PlanEngineState } from './planState';
 import { hasBinaryControlCapability } from '../../packages/shared-domain/src/binaryControlKind';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { resolveCurrentOn } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';

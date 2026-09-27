@@ -25,7 +25,7 @@ import {
   type PvGainTrainingPoint,
 } from '../../packages/shared-domain/src/solar/pvGain';
 import { forecastPvKwh } from '../../packages/shared-domain/src/solar/pvForecast';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const HOUR_MS = 3_600_000;
 const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;

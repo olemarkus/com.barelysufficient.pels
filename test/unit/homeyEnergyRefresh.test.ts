@@ -1,4 +1,4 @@
-import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildHomeyEnergyDateInfo } from '../../lib/price/homeyEnergyRefresh';
 
 describe('homeyEnergyRefresh date selection', () => {

@@ -28,7 +28,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   shiftDateKey,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   resolveComingDayFromState,
   resolveMetDay,

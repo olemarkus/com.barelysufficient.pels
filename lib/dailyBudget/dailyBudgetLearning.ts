@@ -3,8 +3,8 @@ import {
   buildLocalDayBuckets,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-  zeroHourProfile,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
+import { zeroHourProfile } from './hourProfile';
 import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
 import { buildObservedHourlyStatsFromWindow } from './dailyBudgetObservedStats';
 import { normalizeWeights, sumArray } from './dailyBudgetMath';

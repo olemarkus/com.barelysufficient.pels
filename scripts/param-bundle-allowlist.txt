@@ -234,7 +234,6 @@ lib/price/staticGridTariffFallback.ts 2
 lib/solar/pvForecastSourceSelection.ts 1
 lib/utils/capacityHelpers.ts 1
 lib/utils/cpuSpikeMonitor.ts 1
-lib/utils/dateUtils.ts 1
 lib/weather/controlledKwhBackfill.ts 1
 lib/weather/dailyKwhResolve.ts 1
 lib/weather/energySignatureService.ts 1

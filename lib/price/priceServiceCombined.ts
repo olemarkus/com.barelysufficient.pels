@@ -11,7 +11,10 @@ import {
 } from './priceTypes';
 import { calculateAveragePrice, calculateThresholds, getPriceLevelFlags } from './priceMath';
 import { resolvePlanningPrice } from './budgetPrice';
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { toStableFingerprint } from '../utils/stableFingerprint';
 
 const stripLastFetched = (value: unknown): unknown => {

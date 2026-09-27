@@ -4,7 +4,7 @@ import {
   isStepCalibrationConfident,
 } from '../../lib/device/devicePowerCalibration';
 import { firstPositiveFinite } from '../../lib/objectives/deferredObjectives/planningSpeed';
-import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../lib/observer/observedPower';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type {

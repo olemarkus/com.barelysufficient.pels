@@ -1,7 +1,7 @@
 import { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
-import { getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import { getDateKeyStartMs } from '../../packages/shared-domain/src/utils/dateUtils';
 
 const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean } = {}) => {
   const { initialState, isDebugEnabled = true } = params;

@@ -1,4 +1,4 @@
-import { getHourStartInTimeZone } from '../utils/dateUtils';
+import { getHourStartInTimeZone } from '../utils/hourBuckets';
 import type { CombinedHourlyPrice } from './priceTypes';
 import type { FlowPricePeriod } from '../../packages/shared-domain/src/price/flowPriceUtils';
 

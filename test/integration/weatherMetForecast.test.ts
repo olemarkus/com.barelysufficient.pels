@@ -6,7 +6,11 @@ import type {
   WeatherDailyRecord,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 /**
  * Integration (collector layer): tomorrow's budget forecast sourced from MET

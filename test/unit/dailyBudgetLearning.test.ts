@@ -11,7 +11,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-} from '../../lib/utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,

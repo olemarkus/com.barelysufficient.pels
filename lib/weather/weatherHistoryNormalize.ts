@@ -6,7 +6,7 @@ import type {
   WeatherMetForecastCache,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../utils/types';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * Normalizers for the persisted weather-history layers `weatherHistory.ts` does

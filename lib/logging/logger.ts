@@ -3,6 +3,7 @@ import type { Logger as PinoLogger } from 'pino';
 import { Writable } from 'node:stream';
 import { getCurrentContext, runWithContext } from './alsContext';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
+import { reportTimeZoneOffsetFailuresTo } from '../../packages/shared-domain/src/utils/dateUtils';
 
 export type { Logger } from 'pino';
 export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
@@ -75,6 +76,12 @@ let rootLogger: PinoLogger = pino({ level: 'silent' }, discardDestination);
  */
 export const setRootLogger = (logger: PinoLogger): void => {
   rootLogger = logger;
+  // The date helpers are shared with the settings WebView, so they warn through
+  // a hook that defaults to `console.warn`. Once the runtime has a root logger,
+  // their warnings go to it, and so to the Homey log.
+  reportTimeZoneOffsetFailuresTo((failure) => {
+    getLogger('utils/date').warn({ event: 'time_zone_offset_failed', ...failure });
+  });
 };
 
 const moduleLoggerCache = new Map<string, PinoLogger>();

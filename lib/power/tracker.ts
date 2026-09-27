@@ -3,7 +3,11 @@ import {
   type PowerTrackerState,
   type RecordPowerSampleParams,
 } from './trackerTypes';
-import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
+import {
+  truncateToUtcHour,
+  getHourBucketKey,
+} from '../utils/hourBuckets';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
   accrueTrackedSampleFamilies,

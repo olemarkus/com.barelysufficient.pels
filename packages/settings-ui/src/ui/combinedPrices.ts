@@ -16,16 +16,10 @@
 // Entries lacking a finite numeric total or a string `startsAt` are dropped
 // silently.
 
+import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
+
 const isRecord = (candidate: unknown): candidate is Record<string, unknown> => (
   Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
-);
-
-// Settings-UI-side `isFiniteNumber`. The runtime backend has its own copy in
-// `lib/utils/appTypeGuards.ts`, but architecture rules forbid the settings UI
-// from importing runtime code, so this lives here as the canonical settings-UI
-// source. `deadlinePlanData.ts` re-imports from this module to avoid drift.
-export const isFiniteNumber = (candidate: unknown): candidate is number => (
-  typeof candidate === 'number' && Number.isFinite(candidate)
 );
 
 export type CombinedPriceRow = {

@@ -1,5 +1,5 @@
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,

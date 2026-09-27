@@ -3,7 +3,7 @@ import {
   getTimeZoneOffsetMinutes,
   getZonedParts,
   shiftDateKey,
-} from '../../utils/dateUtils';
+} from '../../../packages/shared-domain/src/utils/dateUtils';
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;

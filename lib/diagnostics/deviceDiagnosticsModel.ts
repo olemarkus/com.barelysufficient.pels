@@ -1,7 +1,7 @@
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { ACTIVATION_BACKOFF_MAX_LEVEL } from '../plan/admission';
 import type {
   DeviceDiagnosticsWindowSummary,

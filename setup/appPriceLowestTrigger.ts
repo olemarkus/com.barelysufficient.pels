@@ -1,6 +1,6 @@
 import { resolveCurrentPriceFromCombined } from '../lib/price/priceLowestFlowEvaluator';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
-import { getHourStartInTimeZone } from '../lib/utils/dateUtils';
+import { getHourStartInTimeZone } from '../lib/utils/hourBuckets';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 

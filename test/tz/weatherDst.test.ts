@@ -1,4 +1,7 @@
-import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
 import { getLocalHourKey, rollupDay } from '../../lib/weather/weatherHistory';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';

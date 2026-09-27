@@ -18,7 +18,7 @@ import type {
   PowerCalibrationVersion,
   StepCalibration,
 } from '../../packages/contracts/src/powerCalibration';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * Runtime version constant for {@link PowerCalibrationSnapshot}. Defined here

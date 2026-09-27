@@ -66,11 +66,7 @@
 // no-plan-solar-coupling dep-cruiser rules); the {gate 0.30, hardOff 0.35}
 // pairing is maintained by comment, not by a shared constant.
 
-// Local guard — mirrors lib/utils/appTypeGuards.isFiniteNumber; kept local so the
-// estimator stays dependency-light and unit-testable in isolation.
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const HOUR_MS = 3_600_000;
 

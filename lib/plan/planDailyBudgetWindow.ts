@@ -1,6 +1,6 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
 
 export type CurrentHourUsageSplit = {

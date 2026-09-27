@@ -13,7 +13,7 @@ import {
   WEATHER_HISTORY_RETENTION_DAYS,
 } from '../../lib/weather/weatherHistory';
 import { readMeterScopeDailyKwh } from '../../lib/weather/weatherMeterScope';
-import { shiftDateKey } from '../../lib/utils/dateUtils';
+import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 
 const liveRecord = (dateKey: string, overrides: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
   dateKey,

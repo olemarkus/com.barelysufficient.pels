@@ -13,7 +13,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-} from '../../lib/utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
 
 const TZ = 'Europe/Oslo';

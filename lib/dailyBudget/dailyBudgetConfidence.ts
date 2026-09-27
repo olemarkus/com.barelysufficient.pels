@@ -37,12 +37,14 @@ import {
   getNextLocalDayStartUtcMs,
   getPreviousLocalDayStartUtcMs as resolvePreviousLocalDayStartUtcMs,
   getZonedParts,
+} from '../../packages/shared-domain/src/utils/dateUtils';
+import {
   HOURS_OF_DAY,
   toHourProfile,
   zeroHourProfile,
-} from '../utils/dateUtils';
-import type { HourProfile } from '../utils/dateUtils';
-import { clamp } from '../utils/mathUtils';
+} from './hourProfile';
+import type { HourProfile } from './hourProfile';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { hasUnreliableOverlap } from './dailyBudgetLearning';
 import type { ConfidenceDebug } from './dailyBudgetTypes';
 

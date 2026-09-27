@@ -17,7 +17,10 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
-import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';

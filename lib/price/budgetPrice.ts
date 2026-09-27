@@ -10,7 +10,7 @@
 // `total`). When no surplus is forecast it is left unset (≡ total), so non-prosumer
 // behaviour is byte-identical.
 
-import { getHourStartInTimeZone } from '../utils/dateUtils';
+import { getHourStartInTimeZone } from '../utils/hourBuckets';
 import type { CombinedPriceFields } from './priceTypes';
 
 const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));

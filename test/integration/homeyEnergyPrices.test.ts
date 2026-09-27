@@ -8,7 +8,7 @@ import {
   type HomeyEnergyApi,
   type HomeyEnergyPriceInterval,
 } from '../../lib/utils/homeyEnergy';
-import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 
 const buildIntervals = (startUtcMs: number, values: number[], intervalMinutes: number): HomeyEnergyPriceInterval[] => (
   values.map((value, index) => {

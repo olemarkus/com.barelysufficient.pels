@@ -2,10 +2,7 @@ import type { PowerTrackerState } from '../power/tracker';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import type { DeviceControlProfiles } from '../../packages/contracts/src/types';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
-
-export function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * Returns true when the input is a plain object literal (Object.prototype or

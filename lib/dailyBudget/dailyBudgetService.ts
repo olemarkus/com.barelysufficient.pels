@@ -1,5 +1,5 @@
 import type { PowerTrackerState } from '../power/tracker';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { DailyBudgetSettingsStore } from './dailyBudgetSettingsStore';

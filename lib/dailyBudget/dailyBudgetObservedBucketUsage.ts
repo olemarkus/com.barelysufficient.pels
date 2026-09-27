@@ -1,5 +1,5 @@
 import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
-import { getZonedParts } from '../utils/dateUtils';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 
 export type ObservedWindowBucketUsage = {
   hour: number;

@@ -1,6 +1,6 @@
 import type { GenerationSegment, PowerTrackerState } from './trackerTypes';
 import { calculateEnergyAcrossBoundaries } from './trackerEnergy';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * Solar accounting helpers for the power tracker (PR-5 solar visibility).

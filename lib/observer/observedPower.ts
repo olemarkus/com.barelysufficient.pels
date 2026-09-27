@@ -9,7 +9,7 @@ import type { MeteredPlanInputKind } from '../../packages/planner-types/src/plan
 import type {
   RestorePowerSource,
 } from '../../packages/contracts/src/types';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 // The observer-side re-export of `RestorePowerSource` is gone with

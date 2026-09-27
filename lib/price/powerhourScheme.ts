@@ -12,7 +12,10 @@
  * `powerhourPriceFetch.ts`; this module never sees a thrown call or a raw body.
  */
 
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   buildFlowEntries,
   buildPricesByHourFromPeriods,

@@ -1,12 +1,12 @@
 import {
   isBooleanMap,
-  isFiniteNumber,
   isNumberMap,
   isPlausiblePowerTrackerState,
   isStringMap,
   sanitizePowerTrackerSolarFields,
   salvagePowerTrackerState,
 } from '../../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 describe('appTypeGuards plain-object handling', () => {
   describe('isStringMap', () => {

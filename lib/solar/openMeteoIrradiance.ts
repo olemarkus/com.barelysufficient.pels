@@ -11,7 +11,7 @@
 // — a malformed entry is skipped, and an hour with nothing to say answers the
 // read's own `absent` member, never a fabricated 0.
 
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PvIrradianceProvider, PvIrradianceRead } from './pvForecastService';
 
 const HOUR_MS = 3_600_000;

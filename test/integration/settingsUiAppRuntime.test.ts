@@ -6,7 +6,7 @@ import {
   resetSettingsUiPowerStatsForApp,
 } from '../../setup/settingsUiAppRuntime';
 import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../packages/contracts/src/settingsUiApi';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
+import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 
 describe('settings UI app runtime helpers', () => {
   it('uses the contract-declared PELS_APP_NOT_READY prefix for boot-window errors', async () => {

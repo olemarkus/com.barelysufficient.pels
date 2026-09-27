@@ -2,7 +2,7 @@ import type {
   DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryHourlyContribution,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 /** Unknown means the run's original requirement cannot be recovered from remaining need. */
 export type MeteredRunCommitment = { kind: 'known'; kwh: number } | { kind: 'unknown' };

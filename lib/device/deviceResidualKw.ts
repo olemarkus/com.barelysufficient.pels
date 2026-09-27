@@ -49,7 +49,7 @@ import type {
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../packages/contracts/src/types';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,

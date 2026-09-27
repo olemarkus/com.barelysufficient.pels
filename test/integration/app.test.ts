@@ -61,7 +61,7 @@ import {
   TARGET_CONFIRMATION_STUCK_POLL_MS,
 } from '../../lib/plan/planConstants';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudget/dailyBudgetConstants';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
+import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
 import {

@@ -22,7 +22,7 @@ import type {
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
 import { resolveRemainingEnergyKWh } from '../../../shared-domain/src/energyQuantities.ts';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
-import { isFiniteNumber } from './deadlinePlanData.ts';
+import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
 
 // The planner commits to running this device at the lowest non-zero step for

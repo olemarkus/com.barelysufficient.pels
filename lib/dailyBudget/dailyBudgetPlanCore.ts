@@ -1,4 +1,4 @@
-import { clamp } from '../utils/mathUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import {
   NEW_PLAN_BLEND_WEIGHT,
   PREVIOUS_PLAN_BLEND_WEIGHT,

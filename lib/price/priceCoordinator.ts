@@ -28,7 +28,7 @@ import type {
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PriceDataStore } from './priceDataStore';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
+import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';

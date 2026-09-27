@@ -1,4 +1,4 @@
-import { truncateToUtcHour } from '../utils/dateUtils';
+import { truncateToUtcHour } from '../utils/hourBuckets';
 import { addToHourlyBuckets } from './trackerBucketChanges';
 import type { PowerTrackerState } from './trackerTypes';
 

@@ -1,4 +1,4 @@
-import { getZonedParts } from '../utils/dateUtils';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export function buildPlanBreakdown(params: {

@@ -13,7 +13,7 @@ import type {
   PvForecastStateRead,
   PvForecastStore,
 } from '../lib/solar/pvForecastStore';
-import { isFiniteNumber } from '../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
 import type { PvForecastServiceState } from '../lib/solar/pvForecastService';
 import type { PvGenerationHistory, PvHourBucket } from '../packages/shared-domain/src/solar/pvGenerationHistory';
 

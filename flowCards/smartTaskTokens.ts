@@ -16,7 +16,7 @@ import {
   type DeferredObjectiveHoursRemainingEvent,
   type DeferredObjectivePlanRevisionWrittenEvent,
 } from '../lib/objectives/deferredObjectives';
-import { isFiniteNumber } from '../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
 
 // The status-token id set is a public-API contract for flow authors. Aliasing
 // here keeps the runtime call sites readable while the single source of truth

@@ -4,8 +4,8 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
-import { clamp } from '../utils/mathUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
 import {
   buildAllowedCumKWh,

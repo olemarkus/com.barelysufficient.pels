@@ -18,7 +18,8 @@ planner (`lib/plan` consumes them via `planBudget.ts` / `planDailyBudgetWindow.t
 - Governing docs: `docs/daily-budget.md` (model + behaviour) and `docs/daily-budget-weights.md`
   (hour-weight derivation). Read both before changing allocation or learning logic.
 - **DST: a local day is 23, 24, or 25 hours.** Bucket logic must use timezone-aware day boundaries
-  (`buildLocalDayBuckets` / `getNextLocalDayStartUtcMs` from `lib/utils/dateUtils`), never `24 *
+  (`buildLocalDayBuckets` / `getNextLocalDayStartUtcMs` from
+  `packages/shared-domain/src/utils/dateUtils`), never `24 *
   ONE_HOUR`. DST-sensitive specs belong in the tz lane (`npm run test:unit:tz`).
 - Layering (`no-dailyBudget-to-peer` in `.dependency-cruiser.cjs`): may consume `lib/power` and
   `lib/price`; must not import `lib/{plan,device,objectives,observer,executor}`.

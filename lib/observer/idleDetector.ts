@@ -46,7 +46,7 @@
  * we have no way to distinguish "satisfied hold" from "broken" / "capped".
  * EV chargers have their own release modelling (`binary_release`) and are excluded.
  */
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 export type IdleClassification =
   | 'active'

@@ -28,7 +28,7 @@ import {
   prunePowerTrackerHistoryForApp,
   type PowerTrackerPersistReason,
 } from './sampleIngest';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { getHourBucketKey } from '../utils/hourBuckets';
 import { normalizeError } from '../utils/errorUtils';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import type { HomeId } from '../utils/settingsKeys';

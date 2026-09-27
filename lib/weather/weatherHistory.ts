@@ -6,7 +6,10 @@ import type {
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../utils/types';
-import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
+import {
+  getZonedParts,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   defaultStoredFit,
   defaultStoredSuggestion,

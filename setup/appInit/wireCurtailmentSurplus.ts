@@ -13,7 +13,7 @@ import {
 } from '../../lib/solar/curtailmentSurplus';
 import { createCurtailmentHoldStore } from '../curtailmentHoldStateAdapter';
 import { getLogger } from '../../lib/logging/logger';
-import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PvForecastSourceId, SelectedPvForecast } from '../../lib/solar/pvForecastSource';
 

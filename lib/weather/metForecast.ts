@@ -1,5 +1,9 @@
 import type { MetDaySummary } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { getDateKeyInTimeZone, getZonedParts, shiftDateKey } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getZonedParts,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 /**
  * Direct MET Norway Locationforecast 2.0 (compact) forecast source for the

@@ -1,4 +1,4 @@
-import { getZonedParts } from '../utils/dateUtils';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildCompositeWeights } from './dailyBudgetAllocation';
 
 type PlanWeights = {

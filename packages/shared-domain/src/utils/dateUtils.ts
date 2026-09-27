@@ -1,11 +1,6 @@
-// TWIN FILE — the browser-safe counterpart of `lib/utils/dateUtils.ts`
-// (runtime). The settings UI consumes this copy because
-// `.dependency-cruiser.cjs`'s `no-settings-ui-to-runtime` rule (error) forbids
-// settings-ui → `lib/**`, so the duplication is structural. The copies are kept
-// in step BY HAND — no sync script, no CI check — and have already drifted (this
-// one carries `formatDayFirstInTimeZone`). An export with no importer in one copy
-// carries `@public` there so knip does not report it; do not delete it from one
-// side.
+// Time-zone and hour/day bucketing helpers, the one copy both the runtime and
+// the settings UI read. Every day, hour and quarter boundary PELS draws or
+// buckets energy against comes from here, so the two cannot disagree on one.
 //
 // `Intl.DateTimeFormat` construction is the expensive part of every helper here
 // — far more than the formatting — and `buildFlowDaySlots` calls them in a loop
@@ -60,6 +55,28 @@ const getHourLabelFormatter = (timeZone: string): Intl.DateTimeFormat => {
 };
 
 const timeZoneOffsetErrorLogged = new Set<string>();
+
+/** A time zone `Intl` could not compute an offset for. Reported once per zone. */
+export type TimeZoneOffsetFailure = {
+    timeZone: string;
+    primaryMessage: string;
+    fallbackMessage: string;
+};
+
+// Where an offset failure goes. Each side with a real log points it there at
+// startup: the app's `setRootLogger` (`lib/logging/logger.ts`) and the settings
+// UI's boot (`logSettingsWarn`). `console.warn` is only the fallback before that,
+// or where nothing installs one.
+let reportTimeZoneOffsetFailure = (failure: TimeZoneOffsetFailure): void => {
+    console.warn(
+        `getTimeZoneOffsetMinutes: failed to compute offset for ${failure.timeZone}: `
+        + `${failure.primaryMessage}; fallback failed: ${failure.fallbackMessage}`,
+    );
+};
+
+export const reportTimeZoneOffsetFailuresTo = (report: (failure: TimeZoneOffsetFailure) => void): void => {
+    reportTimeZoneOffsetFailure = report;
+};
 const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
 
 const compareDateKeys = (left: string, right: string): number => {
@@ -74,25 +91,6 @@ const parseDateKey = (dateKey: string): { year: number; month: number; day: numb
     const [year, month, day] = dateKey.split('-');
     return { year: Number(year), month: Number(month), day: Number(day) };
 };
-
-export function truncateToUtcHour(timestamp: number): number {
-    const date = new Date(timestamp);
-    return Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-        date.getUTCHours(),
-        0,
-        0,
-        0,
-    );
-}
-
-/** @public — no importer in this copy; see the twin note at the top of the file. */
-export function getHourBucketKey(nowMs: number = Date.now()): string {
-    const hourStart = truncateToUtcHour(nowMs);
-    return new Date(hourStart).toISOString();
-}
 
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     let primaryError: unknown;
@@ -117,12 +115,11 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
         return Math.round((utcCandidate - date.getTime()) / 60000);
     } catch (fallbackError) {
         if (!timeZoneOffsetErrorLogged.has(timeZone)) {
-            const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
-            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-            console.warn(
-                `getTimeZoneOffsetMinutes: failed to compute offset for ${timeZone}: `
-                + `${primaryMessage}; fallback failed: ${fallbackMessage}`,
-            );
+            reportTimeZoneOffsetFailure({
+                timeZone,
+                primaryMessage: primaryError instanceof Error ? primaryError.message : String(primaryError),
+                fallbackMessage: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            });
             timeZoneOffsetErrorLogged.add(timeZone);
         }
         return 0;
@@ -130,14 +127,10 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 /**
- * Duplicated from `lib/utils/dateUtils.ts`: shared-domain is browser-safe and
- * must not import from `lib/**`, so the two copies are kept textually identical
- * rather than consolidated. Only `Hour` is needed here; `HourProfile` and its
- * constructors live in the runtime copy until a shared-domain caller wants them.
- *
  * An hour of the day. The literal union is what makes an hour-indexed profile
  * checkable: `HourProfile[Hour]` is `number`, while `number[]` indexed by a
- * plain `number` is `number | undefined` under `noUncheckedIndexedAccess`.
+ * plain `number` is `number | undefined` under `noUncheckedIndexedAccess`
+ * (`HourProfile` is in `lib/dailyBudget/hourProfile.ts`, its only user).
  */
 export type Hour = 0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23;
 
@@ -152,13 +145,12 @@ export function getZonedParts(date: Date, timeZone: string): {
     second: number;
 } {
     const parts = getZonedPartsFormatter(timeZone).formatToParts(date);
-    const map = parts.reduce<Record<string, string>>((acc, part) => {
-        if (part.type !== 'literal') {
-            return { ...acc, [part.type]: part.value };
-        }
-        return acc;
-    }, {});
-    const rawHour = Number(map.hour);
+    // One pass, nothing copied per part: this runs on every plan build.
+    const map = new Map<string, string>();
+    for (const part of parts) {
+        if (part.type !== 'literal') map.set(part.type, part.value);
+    }
+    const rawHour = Number(map.get('hour'));
     // `hourCycle: 'h23'` yields 00-23, and the 24 -> 0 wrap covers the one
     // legacy formatter that reports midnight as 24. The guard is what lets the
     // hour leave here typed `Hour`, so every profile read downstream is checked.
@@ -167,16 +159,16 @@ export function getZonedParts(date: Date, timeZone: string): {
         // Unreachable with `hourCycle: 'h23'`, which always emits an hour part.
         // Refuse rather than name midnight: this value keys the tracker's
         // capacity buckets, so guessing would post energy to a real hour.
-        throw new RangeError(`getZonedParts produced a non-hour: ${String(map.hour)}`);
+        throw new RangeError(`getZonedParts produced a non-hour: ${String(map.get('hour'))}`);
     }
     const hour: Hour = wrapped;
     return {
-        year: Number(map.year),
-        month: Number(map.month),
-        day: Number(map.day),
+        year: Number(map.get('year')),
+        month: Number(map.get('month')),
+        day: Number(map.get('day')),
         hour,
-        minute: Number(map.minute),
-        second: Number(map.second),
+        minute: Number(map.get('minute')),
+        second: Number(map.get('second')),
     };
 }
 
@@ -259,15 +251,6 @@ export function formatDayFirstInTimeZone(
 
 export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
     return date.toLocaleTimeString([], { timeZone, ...options });
-}
-
-/** @public — no importer in this copy; see the twin note at the top of the file. */
-export function getHourStartInTimeZone(date: Date, timeZone: string): number {
-    const { year, month, day, hour } = getZonedParts(date, timeZone);
-    const utcHour = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
-    // Use the offset at the actual instant so repeated fall-back hours resolve to the active occurrence.
-    const offsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
-    return utcHour - offsetMinutes * 60 * 1000;
 }
 
 export function getNextLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {

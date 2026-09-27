@@ -4,7 +4,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   shiftDateKey,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import { resolveUsableCapacityKw } from '../power/capacityModel';

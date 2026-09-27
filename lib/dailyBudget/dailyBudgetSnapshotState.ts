@@ -1,4 +1,4 @@
-import { shiftDateKey } from '../utils/dateUtils';
+import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { resolvePlanningPrice } from '../price/budgetPrice';
 import type { CombinedPriceData, CombinedPriceEntry } from './dailyBudgetPrices';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from './dailyBudgetTypes';

@@ -1,5 +1,9 @@
 import { isUnknownRecord } from '../utils/types';
-import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 /**
  * One-shot reconstruction of historical daily whole-home kWh from a cumulative

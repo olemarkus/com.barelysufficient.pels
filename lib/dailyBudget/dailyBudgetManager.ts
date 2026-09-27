@@ -1,3 +1,4 @@
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PowerTrackerState } from '../power/tracker';
 import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
@@ -78,12 +79,8 @@ export class DailyBudgetManager {
    * surface a fabricated 0 — gate on a positive sample count first.
    */
   observedGrossBackgroundKwh(hourOfDay: number): number | undefined {
-    // Note: deliberately `Number.isFinite` + `typeof` rather than the shared
-    // `isFiniteNumber` guard — importing `lib/utils/appTypeGuards` here would pull
-    // `deviceControlProfiles` into the settings-ui typecheck graph (this manager is
-    // transitively reachable from it), tripping an ES2020 `.at()` lib mismatch.
     const samples = this.state.profileObservedGrossUncontrolledSampleCounts?.[hourOfDay];
-    if (typeof samples !== 'number' || !Number.isFinite(samples) || samples <= 0) return undefined;
+    if (!isFiniteNumber(samples) || samples <= 0) return undefined;
     const p50 = this.state.profileObservedP50GrossUncontrolledKWh?.[hourOfDay];
     return typeof p50 === 'number' && Number.isFinite(p50) ? p50 : undefined;
   }

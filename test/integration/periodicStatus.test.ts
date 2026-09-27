@@ -1,6 +1,6 @@
 import { buildPeriodicStatusLogFields } from '../../lib/diagnostics/periodicStatus';
 import { recordPowerSample, type PowerTrackerState } from '../../lib/power/tracker';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
+import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 
 describe('periodic status used kWh', () => {
   it('reports usage from the current UTC hour bucket', async () => {

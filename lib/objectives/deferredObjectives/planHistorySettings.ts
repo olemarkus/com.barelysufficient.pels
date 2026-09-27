@@ -18,7 +18,7 @@ import type {
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 // Bumped to 5 when persistence switched to compact, device-independent rows.
 // v3/v4 envelopes are read only by the one-shot boot import into the userdata

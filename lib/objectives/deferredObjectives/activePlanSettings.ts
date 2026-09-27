@@ -12,7 +12,7 @@ import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
   normalizeDeferredObjectiveActivePlansShape,
 } from '../../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 // Re-exported from shared-domain (its long-term home) so existing runtime
 // importers (`activePlanRecorder.ts`) keep their `./activePlanSettings` path.

@@ -5,7 +5,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   shiftDateKey,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { readDeviceTemperature } from './weatherDeviceRead';
 import { metRefreshedLogFields, runMetForecastRefresh } from './metForecastRefresh';
 import type { WeatherCollectorDeps } from './weatherCollectorDeps';

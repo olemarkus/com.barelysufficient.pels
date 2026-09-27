@@ -4,7 +4,7 @@ import {
   getNextLocalDayStartUtcMs,
   shiftDateKey,
   getZonedParts,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import type { CombinedHourlyPrice } from './priceTypes';
 const STEPS_PER_DAY = 24;
 const DEFAULT_EPSILON = 1e-6;

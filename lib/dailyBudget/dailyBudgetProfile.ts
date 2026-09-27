@@ -1,4 +1,4 @@
-import { clamp } from '../utils/mathUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { getProfileBlendConfidence, normalizeWeights } from './dailyBudgetMath';
 import type { DailyBudgetProfile, DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';

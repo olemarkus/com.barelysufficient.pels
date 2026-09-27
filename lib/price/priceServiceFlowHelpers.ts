@@ -1,5 +1,8 @@
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW } from '../utils/settingsKeys';
 import {
   buildFlowEntries,

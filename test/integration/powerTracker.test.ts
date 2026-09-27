@@ -16,9 +16,11 @@ import {
 import {
   getHourBucketKey,
   truncateToUtcHour,
+} from '../../lib/utils/hourBuckets';
+import {
   getDateKeyInTimeZone,
   getZonedParts,
-} from '../../lib/utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 // Use fake timers to control throttling, but keep real Date behavior
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });

@@ -7,7 +7,7 @@
  * sequence. The formulas and their user-facing meaning are specified in
  * `docs/daily-budget-weights.md`; keep code and doc in lock-step.
  */
-import { clamp } from '../utils/mathUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { PRICE_SHAPING_PRICE_RANGE_EPSILON } from './dailyBudgetConstants';
 
 const CAP_ALLOCATION_EPSILON = 1e-6;

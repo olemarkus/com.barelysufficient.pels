@@ -26,7 +26,7 @@ import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
-import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import { createPlanHistoryStoreForApp } from './planHistoryStore';

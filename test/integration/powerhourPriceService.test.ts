@@ -11,7 +11,11 @@ import {
   PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 import { POWERHOUR_APP_ID } from '../../lib/price/powerhourPriceFetch';
-import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type Homey from 'homey';
 

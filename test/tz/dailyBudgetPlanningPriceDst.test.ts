@@ -7,7 +7,11 @@
 // the host zone).
 import { describe, expect, it } from 'vitest';
 import { buildPriceSeriesPair } from '../../lib/dailyBudget/dailyBudgetPrices';
-import { buildLocalDayBuckets, getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../../lib/utils/dateUtils';
+import {
+  buildLocalDayBuckets,
+  getDateKeyStartMs,
+  getNextLocalDayStartUtcMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 const OSLO = 'Europe/Oslo';
 const HOUR_MS = 60 * 60 * 1000;

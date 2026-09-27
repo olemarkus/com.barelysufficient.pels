@@ -1,7 +1,7 @@
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { aggregateAndPruneHistory, recordPowerSample } from '../../lib/power/tracker';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
-import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { GenerationSegment } from '../../lib/power/trackerTypes';
 
 // PR-5 solar visibility: tracker-side accounting for the sparse

@@ -2,7 +2,7 @@ import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contract
 import type { WeatherDaySuppression } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { pickLastPlan, snapshotShowsBudgetExhausted } from '../../packages/shared-domain/src/deferredPlanHistoryShared';
 import { asDeliveredEnergyKWh, asRemainingEnergyKWh } from '../../packages/shared-domain/src/energyQuantities';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 
 /**
  * What a local day's deadline-bound smart-task misses proved about the daily

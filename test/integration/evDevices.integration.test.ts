@@ -11,7 +11,10 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
-import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, getTransportSnapshotForTests } from '../utils/appTestUtils';

@@ -3,7 +3,10 @@ import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { mockHomeyInstance } from '../mocks/homey';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
-import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getZonedParts,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 

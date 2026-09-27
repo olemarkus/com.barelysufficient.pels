@@ -10,8 +10,8 @@
 // the blend denominator — is the capacity limit (the most a managed home could pull
 // in an hour), a conservative, stable estimate that keeps the blend near `total`.
 
-import { getZonedParts } from '../../lib/utils/dateUtils';
-import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { AppContext } from '../../lib/app/appContext';
 
 /**

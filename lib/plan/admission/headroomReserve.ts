@@ -13,7 +13,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../../../packages/shared-domain/src/deviceControlProfiles';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import { HEADROOM_RESERVE_MAX_MS } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from './reserve';
 

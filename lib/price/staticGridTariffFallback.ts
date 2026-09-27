@@ -1,4 +1,4 @@
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import { VAT_MULTIPLIER_STANDARD } from './priceComponents';
 import {
   GRID_TARIFF_SOURCE_FALLBACK,

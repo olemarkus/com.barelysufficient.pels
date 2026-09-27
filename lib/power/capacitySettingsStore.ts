@@ -36,7 +36,7 @@ import {
 } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { TimerRegistry } from '../utils/timerRegistry';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,

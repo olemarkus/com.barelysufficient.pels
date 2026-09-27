@@ -1,4 +1,4 @@
-import { clamp } from '../utils/mathUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { resolvePlanningPrice } from '../price/budgetPrice';
 import {
   PRICE_SHAPING_FLEX_SHARE,

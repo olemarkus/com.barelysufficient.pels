@@ -2,7 +2,7 @@ import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   buildPlan,
 } from './dailyBudgetMath';

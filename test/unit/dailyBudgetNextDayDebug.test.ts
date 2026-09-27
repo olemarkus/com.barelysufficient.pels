@@ -1,7 +1,7 @@
 import { buildDefaultProfile } from '../../lib/dailyBudget/dailyBudgetManager';
 import { logNextDayPlanDebug } from '../../lib/dailyBudget/dailyBudgetNextDayDebug';
 import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
-import { getNextLocalDayStartUtcMs } from '../../lib/utils/dateUtils';
+import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 
 const TZ = 'Europe/Oslo';
 

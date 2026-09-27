@@ -26,10 +26,10 @@ import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
-  getHourStartInTimeZone,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-} from '../../lib/utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
+import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
 import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 // Mock the https module

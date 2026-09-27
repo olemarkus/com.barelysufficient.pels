@@ -1,4 +1,4 @@
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PowerTrackerState } from './trackerTypes';
 
 /**

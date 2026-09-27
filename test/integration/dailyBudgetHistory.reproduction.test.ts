@@ -1,5 +1,8 @@
 import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
-import { getDateKeyStartMs, getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyStartMs,
+  getDateKeyInTimeZone,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
 const TZ = 'Europe/Oslo';

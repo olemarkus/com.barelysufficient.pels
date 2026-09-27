@@ -5,7 +5,7 @@ import {
   isPriceAtLevel,
 } from './priceMath';
 import { resolvePlanningPrice } from './budgetPrice';
-import { getHourStartInTimeZone } from '../utils/dateUtils';
+import { getHourStartInTimeZone } from '../utils/hourBuckets';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import { PriceLevel } from './priceLevels';
 import type { CombinedPricePeriod, PriceScheme } from './priceTypes';

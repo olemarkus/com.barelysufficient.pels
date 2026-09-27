@@ -1,4 +1,4 @@
-import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
+import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildPriceDebugData, type CombinedPriceData } from './dailyBudgetMath';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import type { DayContext, PriceData } from './dailyBudgetState';

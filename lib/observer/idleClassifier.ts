@@ -33,7 +33,7 @@ import {
   type StallEvidence,
 } from '../../packages/shared-domain/src/idleClassificationCopy';
 import type { ObservedTemperatureState } from './observedDeviceStateProjection';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * Subset of DevicePlanDevice used by the classifier — keeps coupling thin.

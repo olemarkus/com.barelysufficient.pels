@@ -1,4 +1,4 @@
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
+import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import {
   computeDailyUsageSoftLimit,
   computeDynamicSoftLimit,

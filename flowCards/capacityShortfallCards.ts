@@ -1,4 +1,4 @@
-import { isFiniteNumber } from '../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
 import type { CapacityShortfallSustainedCrossing } from '../setup/capacityShortfallAlertDispatch';
 import { readFlowNumberArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';

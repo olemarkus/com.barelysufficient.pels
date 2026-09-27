@@ -1,6 +1,6 @@
 import type { PowerTrackerState } from '../power/tracker';
 import { MAX_POWER_SAMPLE_GAP_MS } from '../power/trackerTypes';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { getHourBucketKey } from '../utils/hourBuckets';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 

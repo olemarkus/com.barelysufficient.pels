@@ -1,5 +1,5 @@
 import { computeShortfallThreshold } from '../../lib/plan/planBudget';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
+import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 
 describe('shortfall threshold', () => {
   afterEach(() => {

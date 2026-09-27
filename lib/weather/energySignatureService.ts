@@ -7,7 +7,11 @@ import type {
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { suggestDailyBudgetKwh } from './suggestDailyBudget';
-import { getDateKeyInTimeZone, getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  getNextLocalDayStartUtcMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 

@@ -10,7 +10,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   buildLocalDayBuckets,
-} from '../../lib/utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 
 const TZ = 'Europe/Oslo';
 const HOUR_MS = 60 * 60 * 1000;

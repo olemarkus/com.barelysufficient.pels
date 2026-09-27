@@ -18,7 +18,7 @@
 //  - cost arrays are in the price minor unit (e.g. øre); the consumer applies
 //    the shared CostDisplay divisor (øre→kr ÷100). null where un-priceable.
 
-import { clamp } from '../utils/mathUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 
 export type BudgetStatus = 'within' | 'tight' | 'over';
 

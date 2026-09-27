@@ -1,5 +1,5 @@
-import { getZonedParts } from '../utils/dateUtils';
-import { clamp } from '../utils/mathUtils';
+import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
+import { clamp } from '../../packages/shared-domain/src/utils/math';
 import {
   CONTROLLED_USAGE_WEIGHT,
   OBSERVED_HOURLY_PEAK_MARGIN_RATIO,

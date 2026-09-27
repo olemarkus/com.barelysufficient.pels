@@ -1,21 +1,21 @@
-import { buildLocalDayBuckets as buildRuntimeDayBuckets } from '../../lib/utils/dateUtils';
-import { buildLocalDayBuckets as buildSharedDayBuckets } from '../../packages/shared-domain/src/utils/dateUtils';
+import { buildLocalDayBuckets } from '../../packages/shared-domain/src/utils/dateUtils';
+import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
 
-const loadDateUtils = () => require('../../lib/utils/dateUtils.ts') as typeof import('../../lib/utils/dateUtils');
+const loadDateUtils = () => import('../../packages/shared-domain/src/utils/dateUtils.js');
 
 describe('dateUtils time zone handling', () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
-  it('computes offsets using the primary formatter path', () => {
-    const { getTimeZoneOffsetMinutes } = loadDateUtils();
+  it('computes offsets using the primary formatter path', async () => {
+    const { getTimeZoneOffsetMinutes } = await loadDateUtils();
     const offset = getTimeZoneOffsetMinutes(new Date('2024-01-01T00:00:00.000Z'), 'UTC');
     expect(offset).toBe(0);
   });
 
-  it('falls back to zero on invalid time zones and warns once', () => {
-    const { getTimeZoneOffsetMinutes } = loadDateUtils();
+  it('falls back to zero on invalid time zones and warns once', async () => {
+    const { getTimeZoneOffsetMinutes } = await loadDateUtils();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const date = new Date('2024-01-01T00:00:00.000Z');
 
@@ -27,14 +27,13 @@ describe('dateUtils time zone handling', () => {
     warnSpy.mockRestore();
   });
 
-  it('formats date keys in the requested zone', () => {
-    const { getDateKeyInTimeZone } = loadDateUtils();
+  it('formats date keys in the requested zone', async () => {
+    const { getDateKeyInTimeZone } = await loadDateUtils();
     const key = getDateKeyInTimeZone(new Date('2024-01-01T23:00:00.000Z'), 'UTC');
     expect(key).toBe('2024-01-01');
   });
 
   it('resolves repeated fall-back hours to the active occurrence', () => {
-    const { getHourStartInTimeZone } = loadDateUtils();
     const timeZone = 'Europe/Oslo';
 
     const firstOccurrence = getHourStartInTimeZone(new Date('2024-10-27T00:30:00.000Z'), timeZone);
@@ -44,13 +43,13 @@ describe('dateUtils time zone handling', () => {
     expect(new Date(secondOccurrence).toISOString()).toBe('2024-10-27T01:00:00.000Z');
   });
 
-  it('uses calendar day arithmetic across spring-forward boundaries', () => {
+  it('uses calendar day arithmetic across spring-forward boundaries', async () => {
     const {
       getDateKeyStartMs,
       getNextLocalDayStartUtcMs,
       getPreviousLocalDayStartUtcMs,
       shiftDateKey,
-    } = loadDateUtils();
+    } = await loadDateUtils();
     const timeZone = 'Europe/Oslo';
     const dateKey = '2024-03-31';
     const dayStartUtcMs = getDateKeyStartMs(dateKey, timeZone);
@@ -63,10 +62,7 @@ describe('dateUtils time zone handling', () => {
   });
 });
 
-describe.each([
-  ['runtime', buildRuntimeDayBuckets],
-  ['shared-domain', buildSharedDayBuckets],
-] as const)('%s local day bucket labels', (_name, buildLocalDayBuckets) => {
+describe('local day bucket labels', () => {
   it('keeps timezone labels independent across repeated calls', () => {
     const dayStartUtcMs = Date.parse('2024-01-01T00:00:00.000Z');
     const nextDayStartUtcMs = dayStartUtcMs + 2 * 60 * 60 * 1000;

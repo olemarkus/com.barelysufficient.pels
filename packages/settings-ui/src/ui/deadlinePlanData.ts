@@ -1,10 +1,8 @@
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { resolvePlanningPrice } from '../../../shared-domain/src/price/planningPrice.ts';
-import { normalizeCombinedPrices, isFiniteNumber } from './combinedPrices.ts';
+import { normalizeCombinedPrices } from './combinedPrices.ts';
 
 export const ONE_HOUR_MS = 60 * 60 * 1000;
-
-export { isFiniteNumber };
 
 export type HorizonHour = {
   startsAtMs: number;

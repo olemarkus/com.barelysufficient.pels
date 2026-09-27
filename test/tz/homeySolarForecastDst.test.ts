@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyStartMs,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { HomeyEnergySolarForecastSource } from '../../lib/solar/homeyEnergySolarForecast';
 
 // The Homey solar forecast is queried by LOCAL calendar date but its points are

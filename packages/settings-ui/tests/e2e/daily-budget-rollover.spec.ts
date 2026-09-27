@@ -14,8 +14,8 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 type DailyBudgetRuntimeModule = {
   DailyBudgetManager: typeof import('../../../../lib/dailyBudget/dailyBudgetManager').DailyBudgetManager;
   normalizeWeights: typeof import('../../../../lib/dailyBudget/dailyBudgetMath').normalizeWeights;
-  getDateKeyInTimeZone: typeof import('../../../../lib/utils/dateUtils').getDateKeyInTimeZone;
-  getDateKeyStartMs: typeof import('../../../../lib/utils/dateUtils').getDateKeyStartMs;
+  getDateKeyInTimeZone: typeof import('../../../shared-domain/src/utils/dateUtils').getDateKeyInTimeZone;
+  getDateKeyStartMs: typeof import('../../../shared-domain/src/utils/dateUtils').getDateKeyStartMs;
 };
 
 let runtimeBundleDir: string | null = null;
@@ -31,7 +31,7 @@ const loadDailyBudgetRuntimeModule = () => {
         contents: [
           "export { DailyBudgetManager } from './lib/dailyBudget/dailyBudgetManager';",
           "export { normalizeWeights } from './lib/dailyBudget/dailyBudgetMath';",
-          "export { getDateKeyInTimeZone, getDateKeyStartMs } from './lib/utils/dateUtils';",
+          "export { getDateKeyInTimeZone, getDateKeyStartMs } from './packages/shared-domain/src/utils/dateUtils';",
         ].join('\n'),
         resolveDir: repoRoot,
         sourcefile: path.join(repoRoot, 'daily-budget-rollover.runtime.ts'),

@@ -12,8 +12,11 @@
 // into `resolved | unavailable | failed`, and this class trusts that verdict
 // (root AGENTS.md → "Clean and trusted interfaces between layers").
 
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import {
+  getDateKeyInTimeZone,
+  shiftDateKey,
+} from '../../packages/shared-domain/src/utils/dateUtils';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PvForecastHour } from './pvForecastService';
 import type { PvForecastConfidence } from './pvForecastSource';
 

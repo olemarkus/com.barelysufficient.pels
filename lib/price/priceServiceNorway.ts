@@ -1,5 +1,8 @@
 import { calculateElectricitySupport, getRegionalPricingRules } from './priceComponents';
-import { getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getZonedParts,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { NORWAY_PRICE_MODEL } from '../utils/settingsKeys';
 import {
   DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,

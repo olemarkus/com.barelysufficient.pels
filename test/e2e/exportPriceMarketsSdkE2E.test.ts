@@ -23,7 +23,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { flattenAllHours } from '../../lib/price/priceStore';
-import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   COMBINED_PRICES,
   EXPORT_FIXED,

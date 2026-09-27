@@ -18,7 +18,7 @@ import type {
   PvForecastStateRead,
   PvForecastStore,
 } from './pvForecastStore';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { normalizeError } from '../utils/errorUtils';
 
 export const PV_FORECAST_USER_AGENT = 'com.barelysufficient.pels (PELS PV forecast)';

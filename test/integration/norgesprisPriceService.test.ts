@@ -8,7 +8,10 @@ import {
   ENOVA_FEE_EX_VAT,
   VAT_MULTIPLIER_STANDARD,
 } from '../../lib/price/priceComponents';
-import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getZonedParts,
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import {
   NORGESPRIS_CABIN_MONTHLY_CAP_KWH,

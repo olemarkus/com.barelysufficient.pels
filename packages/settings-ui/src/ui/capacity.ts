@@ -91,7 +91,7 @@ import {
   publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
 import { formatCapacityPeak } from './capacityPeakRead.ts';
-import { isFiniteNumber } from './combinedPrices.ts';
+import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 

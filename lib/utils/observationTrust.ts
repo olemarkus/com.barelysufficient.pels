@@ -17,7 +17,7 @@
  * Lives in `lib/utils/` so both `lib/observer/` and `lib/device/` can import a
  * single source (the latter cannot import `lib/observer/`).
  */
-import { isFiniteNumber } from './appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { ObservedStateOfCharge } from '../../packages/contracts/src/types';
 
 type TrustedTemperatureInput = {

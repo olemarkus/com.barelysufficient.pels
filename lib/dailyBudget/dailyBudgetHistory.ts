@@ -3,7 +3,7 @@ import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildPriceDebugData, sumArray, type CombinedPriceData } from './dailyBudgetMath';
 import {
   buildBucketUsage,

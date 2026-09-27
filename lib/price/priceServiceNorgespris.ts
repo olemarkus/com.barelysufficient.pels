@@ -2,7 +2,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import {
   getMonthStartInTimeZone,
   getZonedParts,
-} from '../utils/dateUtils';
+} from '../../packages/shared-domain/src/utils/dateUtils';
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
 
 /**

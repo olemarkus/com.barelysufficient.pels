@@ -30,7 +30,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';

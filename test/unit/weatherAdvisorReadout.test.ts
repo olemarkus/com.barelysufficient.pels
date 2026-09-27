@@ -9,7 +9,7 @@ import {
   buildWeatherAdvisorReadout,
   type WeatherAdvisorReadoutInput,
 } from '../../lib/weather/weatherAdvisorReadout';
-import { shiftDateKey } from '../../lib/utils/dateUtils';
+import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 
 // 2026-06-11 12:00 UTC; the test timezone is UTC so dateKeys stay literal.
 const NOW_MS = Date.UTC(2026, 5, 11, 12, 0, 0);

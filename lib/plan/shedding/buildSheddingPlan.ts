@@ -2,7 +2,7 @@ import type { DeviceReason } from '../../../packages/shared-domain/src/planReaso
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type ShedPlanLatch, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import {
   type PlanSheddingResult,
   type ShedCandidateParams,

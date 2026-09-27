@@ -111,6 +111,7 @@ import {
 import { state } from './state.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging.ts';
+import { reportTimeZoneOffsetFailuresTo } from '../../../shared-domain/src/utils/dateUtils.ts';
 import {
   markSettingsUi,
   markSettingsUiReady,
@@ -552,6 +553,13 @@ export const boot = async () => {
     if (!hasHomey) {
       return;
     }
+    reportTimeZoneOffsetFailuresTo((failure) => {
+      void logSettingsWarn(
+        `Could not work out the time zone offset for ${failure.timeZone}`,
+        failure.fallbackMessage,
+        'dateUtils',
+      );
+    });
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
     initializeBootHandlers();

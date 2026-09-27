@@ -1,4 +1,4 @@
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   buildPricesByHourFromPeriods,
   DEFAULT_PERIOD_MINUTES,

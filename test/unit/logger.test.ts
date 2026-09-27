@@ -4,6 +4,7 @@
 import { PassThrough } from 'node:stream';
 import { createRootLogger, getLogger, setRootLogger, withRebuildContext } from '../../lib/logging/logger';
 import { runWithContext, getCurrentContext } from '../../lib/logging/alsContext';
+import { getTimeZoneOffsetMinutes } from '../../packages/shared-domain/src/utils/dateUtils';
 
 function waitForLine(dest: PassThrough): Promise<string> {
   return new Promise((resolve) => {
@@ -27,6 +28,23 @@ function logInNestedContext(logger: import('pino').Logger): void {
 }
 
 describe('logger', () => {
+  it("routes the shared date helpers' offset warning to the root logger once one is set", async () => {
+    // Shared with the settings WebView, the date helpers default to console.warn,
+    // which bypasses the Homey destination; the runtime root logger takes over.
+    const dest = new PassThrough();
+    const pending = waitForLine(dest);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setRootLogger(createRootLogger(dest));
+
+    expect(getTimeZoneOffsetMinutes(new Date('2024-01-01T00:00:00.000Z'), 'Invalid/LoggerRoute')).toBe(0);
+    const parsed = JSON.parse(await pending);
+
+    expect(parsed.event).toBe('time_zone_offset_failed');
+    expect(parsed.timeZone).toBe('Invalid/LoggerRoute');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('emits valid JSON lines', async () => {
     const dest = new PassThrough();
     const pending = waitForLine(dest);

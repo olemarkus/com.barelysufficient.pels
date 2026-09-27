@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import type { DailyBudgetSettingsStore } from '../lib/dailyBudget/dailyBudgetSettingsStore';
 import type { DailyBudgetSettings } from '../lib/dailyBudget/dailyBudgetTypes';
-import { isFiniteNumber } from '../lib/utils/appTypeGuards';
+import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_ENABLED,
