@@ -105,6 +105,8 @@ const selectedModeSettingKey = (baseKey: string, homeId = getHomeScope().selecte
 );
 
 const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
+  const editingMode = state.editingMode;
+  const keepEditingMode = state.loadedModeHomeId === homeId;
   const [, targets] = readModeCatalogPair(read.priorities, read.targets, homeId === MAIN_HOME_ID);
   state.modePriorityCatalog = readModePriorityCatalog(read.priorities)
     ?? (state.loadedModeHomeId === homeId ? state.modePriorityCatalog : new ModePriorityCatalog());
@@ -113,7 +115,10 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   state.activeMode = typeof read.mode === 'string' && read.mode.trim()
     ? read.mode
     : DEFAULT_MODE_NAME;
-  state.editingMode = state.activeMode;
+  state.editingMode = keepEditingMode
+    && (state.modePriorityCatalog.modes().includes(editingMode) || Object.hasOwn(targets, editingMode))
+    ? editingMode
+    : state.activeMode;
   state.modeTargets = targets;
   state.controllableMap = readBooleanSettingMap(read.controllables);
   state.managedMap = readBooleanSettingMap(read.managed);

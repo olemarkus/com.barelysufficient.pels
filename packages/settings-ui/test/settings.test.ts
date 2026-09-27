@@ -1596,6 +1596,33 @@ describe('settings script', () => {
     expect(activeModeSelect.value).toBe('Home');
   });
 
+  it('keeps the selected editing mode when the mode catalog reloads', async () => {
+    installedHomeyMock().get = vi.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
+      if (key === 'operating_mode') return cb(null, 'Home');
+      return cb(null, [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+      ]);
+    });
+
+    await loadDeviceAndModeSettings();
+
+    const { loadModeAndPriorities } = await import('../src/ui/modes.ts');
+    const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
+    modeSelect.value = 'Away';
+    modeSelect.dispatchEvent(new Event('change'));
+    await flushPromises();
+
+    await loadModeAndPriorities();
+
+    expect(modeSelect.value).toBe('Away');
+  });
+
   it('copies priorities and targets from the active mode when adding a new mode', async () => {
     const store: Record<string, unknown> = {};
     const setSpy = vi.fn((key, val, cb) => {
