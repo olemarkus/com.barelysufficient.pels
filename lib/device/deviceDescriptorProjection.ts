@@ -54,11 +54,6 @@ const DESCRIPTOR_KEY_RECORD: Record<keyof DeviceDescriptorRead, true> = {
 };
 const DESCRIPTOR_KEYS = Object.keys(DESCRIPTOR_KEY_RECORD) as (keyof DeviceDescriptorRead)[];
 
-/** The list form of the projection, for a caller already holding a snapshot list. */
-export function projectDeviceDescriptors(snapshots: readonly DeviceDescriptorRead[]): DeviceDescriptorRead[] {
-    return snapshots.map(projectDeviceDescriptor);
-}
-
 export function projectDeviceDescriptor(source: DeviceDescriptorRead): DeviceDescriptorRead {
     const descriptor: DeviceDescriptorRead = {
         id: source.id,
