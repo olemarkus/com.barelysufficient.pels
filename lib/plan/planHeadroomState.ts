@@ -24,6 +24,7 @@ import {
 
 const HEADROOM_STEP_DOWN_THRESHOLD_KW = 0.15;
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const removeHeadroomCardStateForDevice = (
   state: PlanEngineState,
   deviceId: string,
@@ -37,6 +38,7 @@ const removeHeadroomCardStateForDevice = (
     delete cards[deviceId];
   }
 };
+/* eslint-enable functional/immutable-data */
 
 const collectTrackedDeviceIds = (state: PlanEngineState): Set<string> => (
   new Set([
@@ -119,6 +121,7 @@ const isReportableTrackedRise = (
  * signals such as a plan rebuild's actuation or overshoot attribution: a normal
  * device duty cycle must not become `setback_failed` here.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const syncTrackedUsage = (
   state: PlanEngineState,
   device: HeadroomCardDeviceLike,
@@ -154,6 +157,7 @@ const syncTrackedUsage = (
     });
   }
 };
+/* eslint-enable functional/immutable-data */
 
 const syncHeadroomCardDevice = (
   state: PlanEngineState,
@@ -208,6 +212,7 @@ export const syncHeadroomCardSnapshot = (
  * usage. No device is at hand here, so the entry keeps whatever name it had and
  * no rise is reported; a drop still stamps `lastStepDownMs`.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const syncHeadroomUsageObservation = (
   state: PlanEngineState,
   deviceId: string,
@@ -236,7 +241,9 @@ export const syncHeadroomUsageObservation = (
     });
   }
 };
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const resolveHeadroomCardCooldown = (
   state: PlanEngineState,
   deviceId: string,
@@ -284,3 +291,4 @@ export const resolveHeadroomCardCooldown = (
   });
   return candidates[0] ?? null;
 };
+/* eslint-enable functional/immutable-data */

@@ -257,6 +257,7 @@ function resolveReasonFlags(reason: DeviceReason): {
   };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
   const summary: PlanStatusSummary = {
     devicesOn: 0,
@@ -294,6 +295,7 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
 
   return summary;
 }
+/* eslint-enable functional/immutable-data */
 
 function resolveHourlyLimited(params: HourlyLimitParams): boolean {
   const {

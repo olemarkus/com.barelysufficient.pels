@@ -10,6 +10,7 @@ import type {
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function prunePendingTargetCommandsForPlan(params: {
   state: PlanEngineState;
   plan: DevicePlan;
@@ -38,6 +39,7 @@ export function prunePendingTargetCommandsForPlan(params: {
   }
   return changed;
 }
+/* eslint-enable functional/immutable-data */
 
 export function syncPendingTargetCommands(params: {
   state: PlanEngineState;
@@ -168,6 +170,7 @@ function getObservedTargetValue(liveDevice: PlanInputDevice): unknown {
   return getPrimaryTargetCapability(liveDevice.targets)?.value;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function clearPendingTargetCommandForMissingDevice(params: {
   state: PlanEngineState;
   deviceId: string;
@@ -188,6 +191,7 @@ function clearPendingTargetCommandForMissingDevice(params: {
   });
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
 function formatObservedTarget(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return `${value}°C`;
@@ -195,6 +199,7 @@ function formatObservedTarget(value: unknown): string {
   return String(value);
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function handleConfirmedPendingTargetObservation(params: {
   state: PlanEngineState;
   deviceId: string;
@@ -225,7 +230,9 @@ function handleConfirmedPendingTargetObservation(params: {
   });
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function handleTemporaryUnavailablePendingTargetObservation(params: {
   deviceId: string;
   pending: PendingTargetCommandState;
@@ -264,7 +271,9 @@ function handleTemporaryUnavailablePendingTargetObservation(params: {
   });
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function updatePendingTargetWaitingObservation(params: {
   deviceId: string;
   pending: PendingTargetCommandState;
@@ -317,7 +326,9 @@ function updatePendingTargetWaitingObservation(params: {
     });
   }
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function maybeEmitRepeatedPendingConfirmation(params: {
   pending: PendingTargetCommandState;
   deviceId: string;
@@ -353,3 +364,4 @@ function maybeEmitRepeatedPendingConfirmation(params: {
     expected: pending.desired,
   });
 }
+/* eslint-enable functional/immutable-data */

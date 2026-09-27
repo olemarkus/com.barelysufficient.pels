@@ -15,6 +15,7 @@ export type SteppedRestoreAttemptHold =
   | { kind: 'retry_backoff'; availableHeadroom: number; restoredOneThisCycle: boolean }
   | { kind: 'not_handled'; availableHeadroom: number; restoredOneThisCycle: boolean };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applySteppedRestoreAttemptHold(params: {
   dev: SteppedPlanDevice & MeteredKind;
   nextStepId: string;
@@ -112,3 +113,4 @@ export function applySteppedRestoreAttemptHold(params: {
 
   return { kind: 'not_handled', availableHeadroom, restoredOneThisCycle };
 }
+/* eslint-enable functional/immutable-data */

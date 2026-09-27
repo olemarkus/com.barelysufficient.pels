@@ -164,6 +164,7 @@ export type ShedHoldParams = {
   temperatureSetpoints: TemperatureSetpointsByDevice;
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyShedTemperatureHold(params: ShedHoldParams): {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number;
@@ -225,6 +226,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     ledgerAxes: ledger.axes(),
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function resolveHoldGating(
   pass: HoldPass,

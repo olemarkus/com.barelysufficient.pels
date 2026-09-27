@@ -4,6 +4,7 @@ import type { PlanEngineState } from './planState';
 
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function emitRestoreDebugEventOnChange(params: {
   state: PlanEngineState;
   key: string;
@@ -23,11 +24,14 @@ export function emitRestoreDebugEventOnChange(params: {
   restoreDecisionLogByKey[key] = signature;
   emitPlanDebug(payload);
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearRestoreDebugEvent(state: PlanEngineState, key: string): void {
   const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
   delete restoreDecisionLogByKey[key];
 }
+/* eslint-enable functional/immutable-data */
 
 function normalizeSignatureValue(value: unknown): unknown {
   if (typeof value === 'number') return roundLogValue(value, 2);

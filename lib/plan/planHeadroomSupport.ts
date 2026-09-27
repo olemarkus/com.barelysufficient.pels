@@ -100,6 +100,7 @@ const getStartupReconciliationWindowEndMs = (state: PlanEngineState): number => 
   state.restoreBackoff.startupWindowEndMs(state.appStartedAtMs + TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS)
 );
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const ensureHeadroomEntry = (
   state: PlanEngineState,
   deviceId: string,
@@ -110,6 +111,7 @@ export const ensureHeadroomEntry = (
   }
   return cards[deviceId];
 };
+/* eslint-enable functional/immutable-data */
 
 /**
  * The reconciliation a tracked usage change happened under, read off the plan

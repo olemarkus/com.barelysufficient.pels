@@ -185,6 +185,7 @@ export type BasePlanDeviceInputs = {
   surplusCeilingStepId: string | undefined;
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const {
     dev, priority, binaryCommandPending, currentState, control, boostActive, surplusAbsorbActive,
@@ -298,6 +299,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));
 }
+/* eslint-enable functional/immutable-data */
 
 // A helper rather than a twelfth conditional in the builder above (its
 // complexity budget is spent): the draw is forwarded unchanged, resolved once at

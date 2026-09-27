@@ -404,12 +404,11 @@ export default tseslint.config(
       ],
     },
   },
-  // Temporary migration boundary: the other runtime hot-path domains have
-  // returned to the repository-wide immutable-data rule. Keep this exception
-  // only for plan and device code until their existing owned-state updates and
-  // accumulators have been reviewed individually.
+  // Temporary migration boundary: root plan code and the core runtime domains
+  // have returned to the repository-wide immutable-data rule. Remaining plan
+  // subsystems and device code are migrated in subsequent layers.
   {
-    files: ['lib/plan/**/*.ts', 'lib/device/**/*.ts'],
+    files: ['lib/plan/admission/**/*.ts', 'lib/plan/restore/**/*.ts', 'lib/plan/shedding/**/*.ts', 'lib/plan/swap/**/*.ts', 'lib/device/**/*.ts'],
     rules: {
       'functional/immutable-data': 'off',
     },

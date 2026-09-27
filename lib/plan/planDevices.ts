@@ -98,6 +98,7 @@ export function buildInitialPlanDevices(params: {
   // `planBuilder.buildPlanSnapshotWithTimings` (hoisted so the standing dump-load
   // hold can read it when the shed set is assembled). This module only READS
   // `state.surplusEligibilityByDevice` — it never advances the allocator.
+  /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
   const result = context.devices.map((dev) => {
     const t0 = Date.now();
     const priority = dev.priority;
@@ -169,6 +170,7 @@ export function buildInitialPlanDevices(params: {
     offStateMs += Date.now() - t2;
     return withOffStateReason;
   });
+  /* eslint-enable functional/immutable-data */
   addPerfDuration('plan_devices_setup_ms', setupMs);
   addPerfDuration('plan_devices_base_ms', baseMs);
   addPerfDuration('plan_devices_offstate_ms', offStateMs);
@@ -181,6 +183,7 @@ export function buildInitialPlanDevices(params: {
  * (`PlanContext.temperatureSetpoints`); this only picks. A limit is not decided
  * here — `resolveShedAction` swaps in the limit for a device the plan sheds.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   temperatureSetpoints: TemperatureSetpointsByDevice;
@@ -202,6 +205,7 @@ function resolvePlannedTarget(params: {
   state.surplusAbsorbActiveByDevice[dev.id] = lifted && setpoints.surplusC !== setpoints.keepC;
   return lifted ? setpoints.surplusC : setpoints.keepC;
 }
+/* eslint-enable functional/immutable-data */
 
 function resolveCurrentState(device: PlanInputDevice): string {
   // Trust the producer-resolved label (`toPlanDevice` resolves it from the raw

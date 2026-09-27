@@ -118,6 +118,7 @@ function buildOverviewPassContext(
 // Returns true when at least one device's overview signature changed (and was
 // captured into the recorder / batched for debug), so the caller can refresh
 // the open settings-UI activity-log view.
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function emitDeviceOverviewTransitions(
   plan: DevicePlan,
   signatureByDeviceId: Map<string, string>,
@@ -155,3 +156,4 @@ export function emitDeviceOverviewTransitions(
   emitOverviewDebugBatch(changedDevices, debugEnabled, deps.overviewDebugStructured);
   return captured;
 }
+/* eslint-enable functional/immutable-data */

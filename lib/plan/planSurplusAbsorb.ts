@@ -270,6 +270,7 @@ function composeSurplusPool(params: {
  * forever, so its `lastLiftEngaged` never clears; and a stale tracking decision
  * clamps a device the posture has left to a rung nothing is maintaining.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function pruneNonCandidateSurplusState(
   state: PlanEngineState,
   willingIds: ReadonlySet<string>,
@@ -285,6 +286,7 @@ function pruneNonCandidateSurplusState(
     if (!willingIds.has(deviceId)) clearSurplusTracking(state, deviceId);
   }
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Hold a ceiling CLIMB back until `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS` has passed
@@ -296,6 +298,7 @@ function pruneNonCandidateSurplusState(
  * self-consumption, while waiting to give it back means importing against
  * surplus that is already gone.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function paceCeilingClimb(params: {
   dev: MeteredPlanInputDevice;
   state: PlanEngineState;
@@ -324,6 +327,7 @@ function paceCeilingClimb(params: {
   state.surplusTrackingRaisedMs[dev.id] = nowTs;
   return target;
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * The VARIABLE claimant. A fixed claimant (temperature lift, binary dump load)
@@ -364,6 +368,7 @@ function paceCeilingClimb(params: {
  * Reserving that keeps the pool honest for lower-priority devices, and pairs
  * with the add-back in {@link addsBackOwnDraw} so the draw is counted once.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function claimForTrackingDevice(params: {
   dev: MeteredPlanInputDevice;
   state: PlanEngineState;
@@ -447,6 +452,7 @@ function claimForTrackingDevice(params: {
   state.surplusTrackingByDevice[dev.id] = { kind: 'stopped' };
   return positiveOrZero(dev.currentDrawKw);
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * The rung an ELIGIBLE tracking device holds this build. Never null: eligibility

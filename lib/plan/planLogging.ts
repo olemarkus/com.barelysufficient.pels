@@ -78,6 +78,7 @@ export function buildPublishedPlanCapacityStateSummary(
   });
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildPlanCapacityStateSummary(
   plan: PlanCapacityStateSummaryInput,
   metadata: CapacityStateSummaryMetadata,
@@ -122,6 +123,7 @@ export function buildPlanCapacityStateSummary(
     summarySourceAtMs: metadata.summarySourceAtMs,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * The device-count half of the plan input's capacity state
@@ -142,6 +144,7 @@ export type PlanInputDeviceCounts = Pick<
   | 'actuationInFlight'
 >;
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function countPlanInputDevices(
   devices: PlanInputDevice[],
   shedSet: ReadonlySet<string>,
@@ -188,6 +191,7 @@ export function countPlanInputDevices(
   }
   return { ...counts, actuationInFlight: counts.pendingControlledDevices > 0 };
 }
+/* eslint-enable functional/immutable-data */
 
 function buildPlannedShedCounts(
   counts: { plannedShed: boolean; pending: boolean; active: boolean },
@@ -452,6 +456,7 @@ function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
     .sort((a, b) => b.count - a.count || a.reasonCode.localeCompare(b.reasonCode));
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
   restoreBlockedCount: number;
   restoreBlockedReasons: PlanReasonGroup[];
@@ -476,6 +481,7 @@ function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
     inactiveReasons: buildPlanReasonGroups(inactiveDevices),
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function roundPlanDebugNumber(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;

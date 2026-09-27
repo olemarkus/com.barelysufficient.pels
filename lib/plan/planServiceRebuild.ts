@@ -79,6 +79,7 @@ export async function performPlanRebuild(
   const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
   const outcome = createPlanRebuildOutcome(isDryRun);
 
+  /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
   const run = async (): Promise<void> => {
     try {
       await executePlanRebuild(host, trigger, isDryRun, outcome);
@@ -117,11 +118,13 @@ export async function performPlanRebuild(
       }
     }
   };
+  /* eslint-enable functional/immutable-data */
 
   await withRebuildContext(rebuildId, run);
   return outcome;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 async function executePlanRebuild(
   host: PlanRebuildHost,
   trigger: PlanRebuildTrigger,
@@ -171,7 +174,9 @@ async function executePlanRebuild(
     hadShedding,
   });
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
   trigger: PlanRebuildTrigger,
@@ -207,6 +212,7 @@ async function buildPlanForRebuild(
     observationRevision,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 function measurePlanChanges(host: PlanRebuildHost, plan: DevicePlan): {
   changes: PlanChangeSet;
