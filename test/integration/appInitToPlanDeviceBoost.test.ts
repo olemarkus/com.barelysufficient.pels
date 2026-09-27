@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Coverage for `toPlanDevice`'s BOOST wiring — the producer seam that turns a
  * device's ladder, drivability, configured floor and live reading into the two
@@ -80,7 +81,7 @@ describe('toPlanDevice — boost producer wiring', () => {
     // `currentTemperature` spread in `resolvePlanBoostFields` breaks only this.
     const device = toPlanDevice(
       ctxWith({ enabled: true, boostBelowC: 55 }),
-      buildHeater(),
+      withDeviceConfiguration(buildHeater()),
     );
     expect(device.boostSupported).toBe(true);
     expect(device.boostRequested).toBe(true);
@@ -89,12 +90,12 @@ describe('toPlanDevice — boost producer wiring', () => {
   it('does not request once the reading is at or above the floor', () => {
     const device = toPlanDevice(
       ctxWith({ enabled: true, boostBelowC: 55 }),
-      buildHeater({
+      withDeviceConfiguration(buildHeater({
         temperature: {
           currentTemperature: 61,
           target: { id: 'target_temperature', value: 70, unit: '°C', min: 30, max: 85, step: 1 },
         },
-      } as Partial<DecoratedDeviceSnapshot>),
+      } as Partial<DecoratedDeviceSnapshot>)),
     );
     expect(device.boostSupported).toBe(true);
     expect(device.boostRequested).toBe(false);
@@ -106,7 +107,7 @@ describe('toPlanDevice — boost producer wiring', () => {
     // threshold, or on the device exposing a temperature target.
     const device = toPlanDevice(
       ctxWith(undefined),
-      buildHeater({ targets: [] }),
+      withDeviceConfiguration(buildHeater({ targets: [] })),
     );
     expect(device.boostSupported).toBe(true);
     expect(device.boostRequested).toBe(false);
@@ -115,7 +116,7 @@ describe('toPlanDevice — boost producer wiring', () => {
   it('withholds boost entirely from a device with no step ladder', () => {
     const device = toPlanDevice(
       ctxWith({ enabled: true, boostBelowC: 55 }),
-      buildHeater({ steppedLoadProfile: undefined, controlModel: 'binary_power' }),
+      withDeviceConfiguration(buildHeater({ steppedLoadProfile: undefined, controlModel: 'binary_power' })),
     );
     expect(device.boostSupported).toBe(false);
     expect(device.boostRequested).toBe(false);
@@ -126,7 +127,7 @@ describe('toPlanDevice — boost producer wiring', () => {
     // unreachable device is not boost-supported however cold it is.
     const device = toPlanDevice(
       ctxWith({ enabled: true, boostBelowC: 55 }),
-      buildHeater({ available: false }),
+      withDeviceConfiguration(buildHeater({ available: false })),
     );
     expect(device.boostSupported).toBe(false);
     expect(device.boostRequested).toBe(false);
@@ -138,7 +139,7 @@ describe('toPlanDevice — boost producer wiring', () => {
     // setpoint it is not allowed to move.
     const device = toPlanDevice(
       ctxWith({ enabled: true, boostBelowC: 55 }),
-      buildHeater({ temperatureControlDisabled: true } as Partial<DecoratedDeviceSnapshot>),
+      withDeviceConfiguration(buildHeater({ temperatureControlDisabled: true } as Partial<DecoratedDeviceSnapshot>)),
     );
     expect(device.boostRequested).toBe(false);
   });

@@ -5,7 +5,12 @@ import {
   MockDriver,
 } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import {
+  createApp,
+  cleanupApps,
+  getLatestTargetSnapshotForTests,
+  getDeviceSurfacesForTests,
+} from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -89,7 +94,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const snapshot = getLatestTargetSnapshotForTests() as Array<{
+    const snapshot = getDeviceSurfacesForTests() as Array<{
       id: string;
       deviceType?: string;
       deviceClass?: string;

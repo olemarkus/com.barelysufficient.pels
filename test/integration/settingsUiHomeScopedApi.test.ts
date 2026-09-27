@@ -92,6 +92,7 @@ type ScopedApiApp = {
   getModePrioritiesForUi: ReturnType<typeof createFixturePriorityQuery>;
   settingsUiDeviceReads: SettingsUiDeviceReads;
   latestTargetSnapshot: Record<string, unknown>[];
+  getSettingsUiManagedDevices: () => Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
   getLatestPlanSnapshotForUi: () => Record<string, unknown> | null;
   powerTracker: Record<string, unknown>;
@@ -150,6 +151,7 @@ const installBoundary = (options: {
       { id: 'dev-area', name: 'Area heater', deviceClass: 'heater' },
       { id: 'dev-area-pv', name: 'Area PV', deviceClass: 'solarpanel' },
     ],
+    getSettingsUiManagedDevices: () => app.latestTargetSnapshot,
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
     powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },

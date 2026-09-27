@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Coverage for the "Leave off until turned on again" detection seam
  * (`syncExternalOffHoldForDevice`) and its producer projection
@@ -379,7 +380,7 @@ describe('syncExternalOffHoldForDevice — releasing a hold', () => {
     });
     const observed = toExternalOffHoldObservedDevice(snapshot)!;
 
-    expect(toPlanDevice(h.ctx, snapshot).currentState).toBe('off');
+    expect(toPlanDevice(h.ctx, withDeviceConfiguration(snapshot)).currentState).toBe('off');
     expect(sync(h, observed)).toBe('cleared');
     expect(h.ctx.externalOffHold?.isHeld(DEVICE_ID)).toBe(false);
   });
@@ -395,24 +396,24 @@ describe('toPlanDevice — externalOffHoldActive projection', () => {
   it('projects the hold onto the plan input while the device is still off', () => {
     const h = buildCtx({ optedIn: true });
     sync(h, observedDeviceFor(h.ctx));
-    expect(toPlanDevice(h.ctx, buildSnapshot()).externalOffHoldActive).toBe(true);
+    expect(toPlanDevice(h.ctx, withDeviceConfiguration(buildSnapshot())).externalOffHoldActive).toBe(true);
   });
 
   it('does not project a hold whose device is observed on, so a missed release is inert', () => {
     const h = buildCtx({ optedIn: true });
     sync(h, observedDeviceFor(h.ctx));
-    const device = toPlanDevice(h.ctx, buildSnapshot({ binaryControl: { on: true } }));
+    const device = toPlanDevice(h.ctx, withDeviceConfiguration(buildSnapshot({ binaryControl: { on: true } })));
     expect(device.externalOffHoldActive).toBeUndefined();
   });
 
   it('leaves the bit absent for a device with no hold', () => {
     const h = buildCtx({ optedIn: true });
-    expect(toPlanDevice(h.ctx, buildSnapshot()).externalOffHoldActive).toBeUndefined();
+    expect(toPlanDevice(h.ctx, withDeviceConfiguration(buildSnapshot())).externalOffHoldActive).toBeUndefined();
   });
 
   it('restores a hold persisted before a restart', () => {
     const h = buildCtx({ optedIn: true, heldBefore: [DEVICE_ID] });
-    expect(toPlanDevice(h.ctx, buildSnapshot()).externalOffHoldActive).toBe(true);
+    expect(toPlanDevice(h.ctx, withDeviceConfiguration(buildSnapshot())).externalOffHoldActive).toBe(true);
   });
 });
 

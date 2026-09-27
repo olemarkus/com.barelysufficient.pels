@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Coverage for `toPlanDevice`'s calibration-view enrichment.
  *
@@ -106,22 +107,22 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
   it('is false when the device has no reportedStepId, even if selectedStepId has a calibration entry', () => {
     const snapshot = buildSnapshotWithMediumEntry();
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       selectedStepId: 'medium',
       // No reportedStepId → no observational truth about which step the
       // device is currently at. The resolver must NOT fall back to the
       // planner's intended step.
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
   it('is false when reportedStepId matches a confident calibration entry inside the recent-draw window', () => {
     const snapshot = buildSnapshotWithMediumEntry();
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
@@ -133,10 +134,10 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
     // must not read this as idle and release the boost mid-climb.
     const snapshot = buildSnapshotWithMediumEntry();
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'low',
       selectedStepId: 'low',
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
@@ -154,10 +155,10 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
     });
     if (outcome.accepted) snapshot = outcome.snapshot;
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
@@ -178,10 +179,10 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(true);
   });
 
@@ -206,11 +207,11 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       measuredPowerKw: 1.4,
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
@@ -233,17 +234,17 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const stale = toPlanDevice(ctx, buildDeviceSnapshot({
+    const stale = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       measuredPowerObservedAtMs: FIXED_NOW - 5 * 60_000,
-    }));
+    })));
     expect(stale.confirmedNotDrawing).toBe(false);
-    const unmetered = toPlanDevice(ctx, buildDeviceSnapshot({
+    const unmetered = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       measuredPowerKw: undefined,
-    }));
+    })));
     expect(unmetered.confirmedNotDrawing).toBe(false);
   });
 
@@ -265,13 +266,13 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       // Fresh device, stale reading — the whole point.
       lastFreshDataMs: FIXED_NOW,
       measuredPowerObservedAtMs: FIXED_NOW - 5 * 60_000,
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
@@ -295,11 +296,11 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       binaryControl: { on: false },
-    }));
+    })));
     expect(result.confirmedNotDrawing).toBe(false);
   });
 

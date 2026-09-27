@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Flow-boundary integration coverage for flow-backed stepped-load
  * restore-from-off ordering ("Elbillader" Easee EV charger, 1-phase
@@ -284,8 +285,11 @@ const buildHarness = (
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceConfigurations: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => {
+      const device = deviceManager.getSnapshotByDeviceId(id);
+      return device ? withDeviceConfiguration(device) : undefined;
+    },
+    getDeviceConfigurations: () => deviceManager.getSnapshot().map(withDeviceConfiguration),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({

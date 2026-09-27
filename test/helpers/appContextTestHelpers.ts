@@ -75,6 +75,10 @@ type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationEnabled
   modeCatalog?: Partial<HomeModeCatalogSnapshot>;
 };
 
+type MutableAppContextMock = AppContext & {
+  latestTargetSnapshot: TransportDeviceSnapshot[];
+};
+
 export function configureHomeModeCatalog(
   context: AppContext,
   configuration: Partial<HomeModeCatalogSnapshot>,
@@ -121,7 +125,7 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
   };
 }
 
-export function createAppContextMock(options: AppContextMockOptions = {}): AppContext {
+export function createAppContextMock(options: AppContextMockOptions = {}): MutableAppContextMock {
   const {
     latestTargetSnapshot: latestTargetSnapshotOverride,
     priceOptimizationEnabled: priceOptimizationEnabledOverride,
@@ -162,7 +166,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   let lastNotifiedOperatingMode = 'Home';
   const planRebuildThrottle = createInertPlanRebuildThrottle();
-  const latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
+  let latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
   const priceOptimizationEnabled = priceOptimizationEnabledOverride ?? false;
   const priceOptimizationSettings = priceOptimizationSettingsOverride ?? {};
 
@@ -261,7 +265,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     homeModeCatalog,
     deviceReads,
     deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
-    getPlanInputSnapshot: () => latestTargetSnapshot,
+    getPlanInputSnapshot: () => {
+      const configurations = getDeviceConfigurationStore();
+      return latestTargetSnapshot.map((snapshot) => ({
+        ...snapshot,
+        ...configurations.get(snapshot.id),
+      })) as ReturnType<AppContext['getPlanInputSnapshot']>;
+    },
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
@@ -464,9 +474,14 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     timers,
   };
 
+  Object.defineProperty(context, 'latestTargetSnapshot', {
+    get: () => latestTargetSnapshot,
+    set: (snapshot: TransportDeviceSnapshot[]) => { latestTargetSnapshot = snapshot; },
+  });
+
   Object.assign(context, overrides);
   if (modeCatalogOverride) configureHomeModeCatalog(context, modeCatalogOverride);
-  return context;
+  return context as MutableAppContextMock;
 }
 
 /** A live-phase context with the smallest service surfaces used by lifecycle tests. */

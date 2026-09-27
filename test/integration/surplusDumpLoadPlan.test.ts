@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { SwapLedger } from '../../lib/plan/swap';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 // Integration tests for the binary "Run on solar surplus" dump-load rung (PR-7).
@@ -809,7 +810,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBe(true);
   });
 
   // ── Pool reachability: the gate that keeps a dump load out of a hold it can
@@ -838,7 +839,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
 
   it('stamps surplusOnly on the flow power source once the home has exhibited export', () => {
     const ctx = willingCtxOnSource('flow', exportedBefore);
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBe(true);
   });
 
   it('does NOT stamp when no surplus can ever arrive — the held-off-forever regression', () => {
@@ -848,7 +849,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     // forever, and a stamped device would sit in `awaiting_solar_surplus`
     // permanently with no time-based escape. Leaving it unstamped lets it run.
     const ctx = willingCtxOnSource('flow');
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBeUndefined();
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBeUndefined();
   });
 
   it('stamps on a contributing curtailment estimator with no export at all', () => {
@@ -856,7 +857,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     // export never appears. Gating on export alone would trap this home too.
     const ctx = willingCtxOnSource('homey_energy');
     ctx.canContributeCurtailmentSurplus = () => true;
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBe(true);
   });
 
   it('does not stamp a non-willing device, an unmanaged device, or a temperature device', () => {
@@ -871,11 +872,11 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;
     };
-    expect(toPlanDevice(managedCtx({}, true), buildSocketSnapshot()).surplusOnly).toBeUndefined();
-    expect(toPlanDevice(managedCtx(willing, false), buildSocketSnapshot()).surplusOnly).toBeUndefined();
-    expect(toPlanDevice(managedCtx(willing, true), buildSocketSnapshot({
+    expect(toPlanDevice(managedCtx({}, true), withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBeUndefined();
+    expect(toPlanDevice(managedCtx(willing, false), withDeviceConfiguration(buildSocketSnapshot())).surplusOnly).toBeUndefined();
+    expect(toPlanDevice(managedCtx(willing, true), withDeviceConfiguration(buildSocketSnapshot({
       targets: [{ id: 'target_temperature', value: 20 }] as TargetDeviceSnapshot['targets'],
-    })).surplusOnly).toBeUndefined();
+    }))).surplusOnly).toBeUndefined();
   });
 
   it('never stamps a target-power (continuous/preset) or non-binary-controlModel device', () => {
@@ -895,16 +896,16 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;
     };
-    expect(toPlanDevice(willingCtx(), buildSocketSnapshot({
+    expect(toPlanDevice(willingCtx(), withDeviceConfiguration(buildSocketSnapshot({
       targetPowerConfig: { enabled: true },
-    } as Partial<TargetDeviceSnapshot>)).surplusOnly).toBeUndefined();
-    expect(toPlanDevice(willingCtx(), buildSocketSnapshot({
+    } as Partial<TargetDeviceSnapshot>))).surplusOnly).toBeUndefined();
+    expect(toPlanDevice(willingCtx(), withDeviceConfiguration(buildSocketSnapshot({
       controlModel: 'stepped_load',
-    } as Partial<TargetDeviceSnapshot>)).surplusOnly).toBeUndefined();
+    } as Partial<TargetDeviceSnapshot>))).surplusOnly).toBeUndefined();
     // A disabled target-power config + explicit binary_power model IS still a candidate.
-    expect(toPlanDevice(willingCtx(), buildSocketSnapshot({
+    expect(toPlanDevice(willingCtx(), withDeviceConfiguration(buildSocketSnapshot({
       targetPowerConfig: { enabled: false },
       controlModel: 'binary_power',
-    } as Partial<TargetDeviceSnapshot>)).surplusOnly).toBe(true);
+    } as Partial<TargetDeviceSnapshot>))).surplusOnly).toBe(true);
   });
 });

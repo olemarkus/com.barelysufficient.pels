@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * `toPlanDevice` resolves the start policy IN FORCE from the owner's stored
  * policy and Power-limit control (owner ruling, 2026-09-25): with power limiting
@@ -29,7 +30,7 @@ const planDeviceWith = (powerLimitOn: boolean) => {
   ctx.deviceStartPolicies = { charger: 'pels_only' };
   vi.mocked(ctx.resolveManagedState).mockReturnValue(true);
   vi.mocked(ctx.isCapacityControlEnabled).mockReturnValue(powerLimitOn);
-  return toPlanDevice(ctx, charger());
+  return toPlanDevice(ctx, withDeviceConfiguration(charger()));
 };
 
 describe('toPlanDevice — start policy in force', () => {

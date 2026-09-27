@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Coverage for `toPlanDevice`'s R7b per-home options (`ToPlanDeviceOptions`):
  * a sub-home capacity bundle overrides the surplus posture (capacity-only, no
@@ -65,7 +66,7 @@ describe('toPlanDevice — R7b per-home options', () => {
     const ctx = buildSurplusCtx();
     const snapshot = { ...buildSurplusWillingSnapshot(), available: false };
 
-    expect(toPlanDevice(ctx, snapshot).available).toBe(false);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(snapshot)).available).toBe(false);
   });
 
   describe('thermal direction never reaches the planner', () => {
@@ -90,7 +91,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       const ctx = createAppContextMock();
       ctx.isCapacityControlEnabled = vi.fn(() => true);
       ctx.resolveManagedState = vi.fn(() => true);
-      return { ...toPlanDevice(ctx, heatPump(thermostatMode)), priority: 1 } as PlanInputDevice;
+      return { ...toPlanDevice(ctx, withDeviceConfiguration(heatPump(thermostatMode))), priority: 1 } as PlanInputDevice;
     };
 
     it('strips the raw mode, so no planner code can re-derive a direction from it', () => {
@@ -115,7 +116,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       expectedPowerKw: 1, expectedPowerSource: 'default',
     } satisfies DecoratedDeviceSnapshot & TemperatureObservedProbe;
 
-    const result = toPlanDevice(ctx, temperatureOnly);
+    const result = toPlanDevice(ctx, withDeviceConfiguration(temperatureOnly));
 
     expect(result.targets).toEqual([]);
     expect('binaryCapabilityId' in result).toBe(false);
@@ -136,7 +137,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       measuredPowerKw: 0.7,
     } as DecoratedDeviceSnapshot;
 
-    const result = toPlanDevice(ctx, binarySurvivor);
+    const result = toPlanDevice(ctx, withDeviceConfiguration(binarySurvivor));
 
     expect(ctx.getShedBehavior).toHaveBeenCalledWith(SURPLUS_DEVICE_ID);
     expect(result.residualKw.shed).toBe(0.7);
@@ -160,7 +161,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
     } as DecoratedDeviceSnapshot;
 
-    const result = toPlanDevice(ctx, claimingSnapshot);
+    const result = toPlanDevice(ctx, withDeviceConfiguration(claimingSnapshot));
 
     expect(result.deviceType).toBe('onoff');
     expect('currentTemperature' in result).toBe(false);
@@ -196,7 +197,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       measuredPowerKw: 2,
     } satisfies DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
 
-    const result = toPlanDevice(ctx, steppedSurvivor);
+    const result = toPlanDevice(ctx, withDeviceConfiguration(steppedSurvivor));
 
     expect(result.residualKw.shed).toBeGreaterThan(0);
     expect('currentTemperature' in result).toBe(false);
@@ -205,20 +206,20 @@ describe('toPlanDevice — R7b per-home options', () => {
 
   it('DEFAULT stamps surplusOnly for a surplusWilling metered dump load (main-home behavior)', () => {
     const ctx = buildSurplusCtx();
-    const result = toPlanDevice(ctx, buildSurplusWillingSnapshot());
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()));
     expect(result.surplusOnly).toBe(true);
   });
 
   it('byte-identity guard: no opts === empty opts ({})', () => {
     const ctx = buildSurplusCtx();
-    const noOpts = toPlanDevice(ctx, buildSurplusWillingSnapshot());
-    const emptyOpts = toPlanDevice(ctx, buildSurplusWillingSnapshot(), {});
+    const noOpts = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()));
+    const emptyOpts = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()), {});
     expect(emptyOpts).toEqual(noOpts);
   });
 
   it('surplusPostureEnabled=false NEVER stamps surplusOnly (sub-home capacity-only)', () => {
     const ctx = buildSurplusCtx();
-    const result = toPlanDevice(ctx, buildSurplusWillingSnapshot(), { surplusPostureEnabled: false });
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()), { surplusPostureEnabled: false });
     expect(result.surplusOnly).toBeUndefined();
   });
 
@@ -238,7 +239,7 @@ describe('toPlanDevice — R7b per-home options', () => {
 
     // `priceOptimizationSettings` lives on the context, not the settings store,
     // so the willing opt-in survives a settings read that answers nothing.
-    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot())).surplusOnly).toBe(true);
     // The plan path writes nothing: it neither repairs the suspect key nor arms
     // the export latch, which the tracker component does when it adopts state.
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();
@@ -249,11 +250,11 @@ describe('toPlanDevice — R7b per-home options', () => {
     // reachability off them dropped the dump load's stamp, and the generic
     // restore lane then ran it from the grid. The feed's capability is latched.
     const ctx = buildSurplusCtx();
-    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot())).surplusOnly).toBe(true);
 
     ctx.powerTracker = {};
 
-    expect(toPlanDevice(ctx, buildSurplusWillingSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot())).surplusOnly).toBe(true);
   });
 
   it('carries no in-flight binary command state at all', () => {
@@ -263,7 +264,7 @@ describe('toPlanDevice — R7b per-home options', () => {
     // single producer-stamped copy could only ever be right for one of them.
     // With nothing stamped, a sub-home has nothing to isolate itself from here
     // either — hence no `getPendingBinaryCommand` override.
-    const result = toPlanDevice(buildSurplusCtx(), buildSurplusWillingSnapshot());
+    const result = toPlanDevice(buildSurplusCtx(), withDeviceConfiguration(buildSurplusWillingSnapshot()));
 
     expect(result).not.toHaveProperty('binaryCommandPending');
     expect(result).not.toHaveProperty('binaryCommandPendingDesired');
@@ -289,7 +290,7 @@ describe('toPlanDevice — R7b per-home options', () => {
       measuredPowerKw: 0.7,
     } as unknown as TargetDeviceSnapshot & EvObservedProbe;
 
-    const result = toPlanDevice(ctx, snapshot);
+    const result = toPlanDevice(ctx, withDeviceConfiguration(snapshot));
 
     expect('binaryControl' in result).toBe(false);
     expect('binaryControlObservation' in result).toBe(false);

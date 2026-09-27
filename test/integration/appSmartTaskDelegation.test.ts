@@ -23,6 +23,7 @@ import type {
   DeferredObjectivePlanHistoryV5,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 
 const DEVICE_ID = 'dev-1';
 
@@ -67,17 +68,28 @@ const buildAppWithRecorders = (options: {
   history?: DeferredObjectivePlanHistoryV5;
 } = {}) => {
   const app = createApp();
+  app.deviceManager = partialDouble<MyApp['deviceManager']>({
+    getSnapshot: () => [],
+    getSnapshotByDeviceId: () => undefined,
+    isBatteryDevice: () => false,
+    isSolarDevice: () => false,
+    deviceConfigurationStore: new DeviceConfigurationStore(),
+  });
   if (options.history) {
-    Object.defineProperty(app, 'latestTargetSnapshot', {
-      value: [{
+    Object.defineProperty(app, 'getDeviceSurfaces', {
+      value: () => [{
         id: DEVICE_ID,
         name: 'Connected 300',
+        deviceClass: 'thermostat',
         deviceType: 'temperature',
+        targets: [],
+        available: true,
         temperature: {
           currentTemperature: 50,
           target: { id: 'target_temperature', value: 65 },
         },
       }],
+      configurable: true,
     });
   }
   // The recorder contracts promise a snapshot; these doubles surface the

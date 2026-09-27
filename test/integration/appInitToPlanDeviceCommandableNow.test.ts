@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Coverage for `toPlanDevice`'s commandableNow enrichment: the producer seam
  * populates `commandableNow` + `commandabilityReason` on every `PlanInputDevice`
@@ -39,7 +40,7 @@ const ctxAtFixedNow = (): AppContext => {
 describe('toPlanDevice — commandableNow producer wiring', () => {
   it('populates commandableNow=true for a plugged-in EV charger', () => {
     const ctx = ctxAtFixedNow();
-    const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_in_paused' }));
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({ evChargingState: 'plugged_in_paused' })));
     expect(result.commandableNow).toBe(true);
     expect(result.objectiveKind).toBe('ev_soc');
     expect(result).not.toHaveProperty('evChargingState');
@@ -47,7 +48,7 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
 
   it('populates commandableNow=false for a plugged-out EV charger', () => {
     const ctx = ctxAtFixedNow();
-    const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_out' }));
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({ evChargingState: 'plugged_out' })));
     expect(result.commandableNow).toBe(false);
     expect(result.commandabilityReason).toBe('charger_unplugged');
     expect(result).not.toHaveProperty('evChargingState');
@@ -63,7 +64,7 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(
       ctx,
-      buildEvSnapshot({ evChargingState: 'plugged_in_paused' }),
+      withDeviceConfiguration(buildEvSnapshot({ evChargingState: 'plugged_in_paused' })),
       {
         projectCommandability: () => ({
           commandableNow: false,
@@ -82,7 +83,7 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     // through to availability. (A charger that CLAIMS the capability and reports
     // outside the enum never gets this far — it is dropped at parse.)
     const ctx = ctxAtFixedNow();
-    const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: undefined }));
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({ evChargingState: undefined })));
     expect(result).not.toHaveProperty('evChargingState');
     expect(result.commandableNow).toBe(true);
   });
@@ -90,25 +91,25 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
   it('does not write back into live AppContext state (pure projection)', () => {
     const ctx = ctxAtFixedNow();
     const before = structuredClone(ctx.lastKnownPowerKw);
-    toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_in_charging' }));
+    toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({ evChargingState: 'plugged_in_charging' })));
     expect(ctx.lastKnownPowerKw).toEqual(before);
   });
 
   it('populates canSetControlResolved=true for a plugged-in EV with default canSetControl', () => {
     const ctx = ctxAtFixedNow();
-    const result = toPlanDevice(ctx, buildEvSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
-    }));
+    })));
     expect(result.canSetControlResolved).toBe(true);
   });
 
   it('populates canSetControlResolved=false when canSetControl is explicitly false', () => {
     const ctx = ctxAtFixedNow();
-    const result = toPlanDevice(ctx, buildEvSnapshot({
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({
       evChargingState: 'plugged_in_paused',
       canSetControl: false,
-    }));
+    })));
     expect(result.canSetControlResolved).toBe(false);
   });
 

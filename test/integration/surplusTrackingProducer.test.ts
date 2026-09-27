@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 // Integration coverage for the surplus-TRACKING producer stamp: the per-device
 // price-opt blob + the raw snapshot's modality → the flat
 // `PlanInputDevice.surplusTracking` bit, through the REAL `toPlanDevice`.
@@ -72,7 +73,7 @@ const buildSocketSnapshot = (
 
 describe('toPlanDevice surplusTracking producer stamp', () => {
   it('stamps surplusTracking for a willing managed stepped charger', () => {
-    const device = toPlanDevice(willingCtx(CHARGER), buildChargerSnapshot());
+    const device = toPlanDevice(willingCtx(CHARGER), withDeviceConfiguration(buildChargerSnapshot()));
     expect(device.surplusTracking).toBe(true);
   });
 
@@ -81,11 +82,11 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     // setting, and the device's own shape picks which of the three modalities it
     // means. A charger must never come back carrying the dump-load hold, and a
     // socket must never come back carrying a ladder ceiling.
-    const charger = toPlanDevice(willingCtx(CHARGER), buildChargerSnapshot());
+    const charger = toPlanDevice(willingCtx(CHARGER), withDeviceConfiguration(buildChargerSnapshot()));
     expect(charger.surplusTracking).toBe(true);
     expect(charger.surplusOnly).toBeUndefined();
 
-    const socket = toPlanDevice(willingCtx(SOCKET), buildSocketSnapshot());
+    const socket = toPlanDevice(willingCtx(SOCKET), withDeviceConfiguration(buildSocketSnapshot()));
     expect(socket.surplusOnly).toBe(true);
     expect(socket.surplusTracking).toBe(false);
   });
@@ -94,7 +95,7 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     const ctx = createAppContextMock({ powerTracker: exportedBefore });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(false);
   });
 
   it('does not stamp when the home has never exported and cannot infer curtailment', () => {
@@ -113,13 +114,13 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     vi.mocked(ctx.homey.settings.getKeys).mockReturnValue([POWER_SOURCE]);
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(false);
   });
 
   it('does not stamp an unmanaged charger', () => {
     const ctx = willingCtx(CHARGER);
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => false;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildChargerSnapshot())).surplusTracking).toBe(false);
   });
 
   it('stamps regardless of plug state — the unplugged case is the allocator\'s to answer', () => {
@@ -127,7 +128,7 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     // still carries the posture; what it must not do is RESERVE surplus, and
     // that is decided per-cycle from `commandableNow` in the allocator rather
     // than by withholding the posture (see the unit tier).
-    const device = toPlanDevice(willingCtx(CHARGER), buildChargerSnapshot());
+    const device = toPlanDevice(willingCtx(CHARGER), withDeviceConfiguration(buildChargerSnapshot()));
     expect(device.surplusTracking).toBe(true);
   });
 });

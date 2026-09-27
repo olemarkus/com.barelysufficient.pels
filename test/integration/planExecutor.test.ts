@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
@@ -277,8 +278,11 @@ const buildExecutor = (
       settings: { set: settingsSet },
       flow: flowMock,
     } as unknown as Homey.App['homey'],
-    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceConfigurations: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => {
+      const device = deviceManager.getSnapshotByDeviceId(id);
+      return device ? withDeviceConfiguration(device) : undefined;
+    },
+    getDeviceConfigurations: () => deviceManager.getSnapshot().map(withDeviceConfiguration),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route writes through the actuator over the SAME device-manager methods + the

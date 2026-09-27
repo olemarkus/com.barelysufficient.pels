@@ -22,6 +22,7 @@ import type {
 } from '../packages/contracts/src/settingsUiApi';
 import type {
   AssociatedCarSnapshot,
+  DecoratedDeviceSnapshot,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
@@ -45,7 +46,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   /** Every home's live status (`AppContext.planStatuses`). */
   planStatuses?: AppContext['planStatuses'];
   getModePrioritiesForUi?: (deviceIds: readonly string[]) => ModePriorityOrder;
-  getSettingsUiManagedDevices?: () => TargetDeviceSnapshot[];
+  getSettingsUiManagedDevices?: () => DecoratedDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: {
     getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined;

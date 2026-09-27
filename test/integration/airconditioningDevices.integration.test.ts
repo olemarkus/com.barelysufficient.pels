@@ -2,7 +2,7 @@ import {
     mockHomeyInstance,
     setMockDrivers,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
@@ -76,7 +76,7 @@ describe('Airconditioning device integration', () => {
 
         await app.refreshTargetDevicesSnapshot();
 
-        const snapshot = getLatestTargetSnapshotForTests();
+        const snapshot = getDeviceSurfacesForTests();
         const entry = snapshot.find((device) => device.id === 'aircon-a');
 
         expect(entry).toBeDefined();

@@ -4,6 +4,7 @@
 import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
 import fs from 'node:fs';
@@ -151,6 +152,13 @@ export function getTransportSnapshotForTests(): TargetDeviceSnapshot[] {
   const app = mockHomeyInstance.app as { deviceManager?: { getSnapshot?: () => unknown } } | null;
   const snapshot = app?.deviceManager?.getSnapshot?.();
   return Array.isArray(snapshot) ? snapshot as TargetDeviceSnapshot[] : [];
+}
+
+/** The UI/runtime join of DeviceReads inventory with accepted Observer state. */
+export function getDeviceSurfacesForTests(): DeviceSurfaces[] {
+  const app = mockHomeyInstance.app as { getDeviceSurfaces?: () => unknown } | null;
+  const surfaces = app?.getDeviceSurfaces?.();
+  return Array.isArray(surfaces) ? surfaces as DeviceSurfaces[] : [];
 }
 
 /**

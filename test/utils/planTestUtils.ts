@@ -37,6 +37,8 @@ import type {
   TargetCapabilitySnapshot,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
+import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type {
   SettingsUiPlanMetaMeasuredFields,
   SettingsUiPlanMetaSnapshot,
@@ -443,6 +445,26 @@ export const fixtureExpectedPowerKw = (o: {
   evidenceFreeEstimateByCapability.set(key, resolved);
   return resolved;
 };
+
+/**
+ * Join a transport-shaped test fixture to the configuration surface exactly
+ * where production joins DeviceConfiguration and Observer before projection.
+ */
+export const withDeviceConfiguration = <T extends {
+  id: string;
+  name: string;
+  deviceClass?: string;
+  deviceRole?: 'ev_charger';
+  binaryCapabilityId?: string;
+  expectedPowerKw?: number;
+  expectedPowerSource?: DeviceConfigurationRead['expectedPowerSource'];
+}>(device: T): T & DeviceConfigurationRead => ({
+  ...device,
+  observeOnly: isObserveOnlyRoleClassKey(device.deviceClass),
+  isEvCharger: device.deviceClass === 'evcharger',
+  expectedPowerKw: fixtureExpectedPowerKw(device),
+  expectedPowerSource: device.expectedPowerSource ?? 'default',
+});
 
 
 // The stepped cluster is COMPLETE by producer invariant: any fixture supplying

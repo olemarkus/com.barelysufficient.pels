@@ -77,7 +77,7 @@ const writeActiveHomesConfig = (config: HomeConfig): void => {
 };
 
 type Rig = {
-  ctx: AppContext;
+  ctx: ReturnType<typeof createAppContextMock>;
   registry: HomeRuntimeRegistry;
   setMembershipReady: (ready: boolean) => void;
   /** Make the injected membership authority THROW (a failing outward seam). */

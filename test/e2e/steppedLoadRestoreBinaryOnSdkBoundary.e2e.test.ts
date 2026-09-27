@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * SDK-boundary e2e: drives the REAL PELS executor pipeline (PlanExecutor →
  * executable-plan projection → steppedLoadExecutor → binary-control dispatch)
@@ -194,8 +195,11 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceConfigurations: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => {
+      const device = deviceManager.getSnapshotByDeviceId(id);
+      return device ? withDeviceConfiguration(device) : undefined;
+    },
+    getDeviceConfigurations: () => deviceManager.getSnapshot().map(withDeviceConfiguration),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped

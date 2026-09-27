@@ -402,13 +402,13 @@ describe('smart-task membership and authority predicates', () => {
       name: 'Main meter',
       managed: true,
       measuredPowerKw: 0,
-    } as AppContext['latestTargetSnapshot'][number]);
+    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
     ctx.latestTargetSnapshot.push({
       id: 'heater-1',
       name: 'Hall heater',
       managed: true,
       measuredPowerKw: 0,
-    } as AppContext['latestTargetSnapshot'][number]);
+    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
 
     expect(resolveSmartTaskHomeScope(ctx, 'meter-1')).toBe('source_device');
     expect(hasMainHomeSmartTaskAuthority(ctx, 'meter-1')).toBe(false);
@@ -473,7 +473,7 @@ describe('smart-task membership and authority predicates', () => {
       managed: true,
       targets: [],
       binaryControl: { on: false },
-    } as AppContext['latestTargetSnapshot'][number]);
+    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
     ctx.deviceDiagnosticsService = {
       getStarvedRescueEntries: () => [{
         deviceId: 'meter-1',

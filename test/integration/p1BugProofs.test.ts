@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
@@ -68,8 +69,11 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceConfigurations: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => {
+      const device = deviceManager.getSnapshotByDeviceId(id);
+      return device ? withDeviceConfiguration(device) : undefined;
+    },
+    getDeviceConfigurations: () => deviceManager.getSnapshot().map(withDeviceConfiguration),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // This proof never drives a step write; supply an actuator over the device

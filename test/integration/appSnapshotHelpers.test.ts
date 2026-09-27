@@ -14,6 +14,7 @@ import { normalizePowerSource } from '../../lib/power/powerSource';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { PowerSampleAdmission } from '../../lib/app/appContext';
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 
 const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
@@ -214,7 +215,7 @@ describe('appSnapshotHelpers', () => {
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
       }),
-      getPlanInputSnapshot: () => snapshot,
+      getPlanInputSnapshot: () => snapshot.map(withDeviceConfiguration) as never,
       getDeviceSurfaces: () => [],
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
@@ -285,7 +286,7 @@ describe('appSnapshotHelpers', () => {
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
       }),
-      getPlanInputSnapshot: () => snapshot,
+      getPlanInputSnapshot: () => snapshot.map(withDeviceConfiguration) as never,
       getDeviceSurfaces: () => [],
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
@@ -346,7 +347,7 @@ describe('appSnapshotHelpers', () => {
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
       }),
-      getPlanInputSnapshot: () => snapshot,
+      getPlanInputSnapshot: () => snapshot.map(withDeviceConfiguration) as never,
       getDeviceSurfaces: () => [],
       resolveManagedState: (deviceId) => (
         mockHomeyInstance.settings.get(MANAGED_DEVICES) as Record<string, boolean>
@@ -414,7 +415,7 @@ describe('appSnapshotHelpers', () => {
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
       }),
-      getPlanInputSnapshot: () => snapshot,
+      getPlanInputSnapshot: () => snapshot.map(withDeviceConfiguration) as never,
       getDeviceSurfaces: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,

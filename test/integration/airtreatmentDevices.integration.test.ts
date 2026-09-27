@@ -3,7 +3,7 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -102,7 +102,7 @@ describe('Airtreatment device integration', () => {
 
     await app.refreshTargetDevicesSnapshot();
 
-    const snapshot = getLatestTargetSnapshotForTests();
+    const snapshot = getDeviceSurfacesForTests();
     const entry = snapshot.find((device) => device.id === 'airtreatment-1');
 
     expect(entry).toBeDefined();

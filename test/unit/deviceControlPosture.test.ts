@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { resolveDeviceControlPosture, resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
 import { partialDouble } from '../helpers/partialDouble';
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 
 /**
  * The producer's two INDEPENDENT observe-only vetoes.
@@ -19,15 +21,15 @@ import { partialDouble } from '../helpers/partialDouble';
  * The two vetoes are meant to disagree without either failing open, so both
  * directions are pinned here.
  */
-const snapshot = (fields: Partial<DecoratedDeviceSnapshot>): DecoratedDeviceSnapshot => (
-  partialDouble<DecoratedDeviceSnapshot>({
+const snapshot = (fields: Partial<DecoratedDeviceSnapshot>): DecoratedDeviceSnapshot & DeviceConfigurationRead => (
+  withDeviceConfiguration(partialDouble<DecoratedDeviceSnapshot>({
     id: 'dev-1',
     name: 'Device',
     binaryControl: { on: true },
     // A device PELS may switch has a power reading.
     measuredPowerKw: 0.5,
     ...fields,
-  })
+  }))
 );
 
 describe('resolveDeviceControlPosture', () => {
@@ -47,7 +49,7 @@ describe('resolveDeviceControlPosture', () => {
     // measured draw (owner ruling 2026-09-23). A supported thermostat with no
     // reading still gets its setpoints; those never needed this authority.
     const { measuredPowerKw: _noReading, ...unmetered } = snapshot({ deviceClass: 'thermostat' }) as
-      DecoratedDeviceSnapshot & { measuredPowerKw?: number };
+      DecoratedDeviceSnapshot & DeviceConfigurationRead & { measuredPowerKw?: number };
     expect(resolveDeviceControlPosture(unmetered, true, true, 'unrestricted').commandAuthority).toBe(false);
     expect(resolveDeviceControlPosture(unmetered, true, false, 'pels_only').commandAuthority).toBe(false);
   });
@@ -85,9 +87,9 @@ describe('resolveDeviceControlPosture', () => {
   it('refuses authority when the device has no axis left to command', () => {
     // Temperature control switched off, no binary handle, not stepped.
     const posture = resolveDeviceControlPosture(
-      partialDouble<DecoratedDeviceSnapshot>({
+      withDeviceConfiguration(partialDouble<DecoratedDeviceSnapshot>({
         id: 'dev-1', name: 'Thermostat', deviceClass: 'thermostat', temperatureControlDisabled: true,
-      }),
+      })),
       true, true, 'unrestricted',
     );
     expect(posture.commandAuthority).toBe(false);

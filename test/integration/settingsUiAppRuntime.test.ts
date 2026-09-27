@@ -19,17 +19,16 @@ describe('settings UI app runtime helpers', () => {
     );
   });
 
-  it('reads latestTargetSnapshot exactly once per getLatestDevicesForUiFromApp call', () => {
+  it('reads the settings UI managed-device surface exactly once per call', () => {
     let getterCallCount = 0;
     const devices = [{ id: 'dev-1', name: 'Heater' }];
     const mockHomey = {
-      app: Object.defineProperty({}, 'latestTargetSnapshot', {
-        get() {
+      app: {
+        getSettingsUiManagedDevices() {
           getterCallCount++;
           return devices;
         },
-        configurable: true,
-      }),
+      },
     };
 
     const result = getLatestDevicesForUiFromApp(mockHomey as never);

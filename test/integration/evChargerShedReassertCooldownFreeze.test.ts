@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Integration repro of the charger re-shed cooldown deadlock
  * (prod 2026-07-26 20:55Z → 2026-07-27 00:44Z, `Elbillader`).
@@ -214,8 +215,11 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    getDeviceConfiguration: (id) => deviceManager.getSnapshotByDeviceId(id),
-    getDeviceConfigurations: () => deviceManager.getSnapshot(),
+    getDeviceConfiguration: (id) => {
+      const device = deviceManager.getSnapshotByDeviceId(id);
+      return device ? withDeviceConfiguration(device) : undefined;
+    },
+    getDeviceConfigurations: () => deviceManager.getSnapshot().map(withDeviceConfiguration),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({

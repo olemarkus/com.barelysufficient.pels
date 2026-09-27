@@ -14,6 +14,8 @@ const configuration = (id: string): DeviceConfigurationRead => ({
   name: `${id} (configuration)`,
   capabilities: ['onoff'],
   canSetControl: true,
+  observeOnly: false,
+  isEvCharger: false,
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',
 });

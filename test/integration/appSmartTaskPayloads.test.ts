@@ -90,8 +90,8 @@ const TEMPERATURE = {
   target: { id: 'target_temperature' as const, value: 65 },
 };
 const DEFAULT_HISTORY_DEVICES: readonly HistoryDevice[] = [
-  { id: 'dev-1', name: 'Connected 300', deviceType: 'temperature', temperature: TEMPERATURE },
-  { id: 'dev-2', name: 'Connected 300', deviceType: 'temperature', temperature: TEMPERATURE },
+  { id: 'dev-1', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', temperature: TEMPERATURE },
+  { id: 'dev-2', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', temperature: TEMPERATURE },
 ];
 
 const buildPayloads = (
@@ -108,7 +108,7 @@ const buildPayloads = (
   const ctx: SmartTaskPayloadsContext = {
     deferredObjectiveActivePlanRecorder: activePlanRecorder,
     deferredObjectivePlanHistoryRecorder: options.wireHistoryRecorder === false ? undefined : historyRecorder,
-    latestTargetSnapshot: devices,
+    getDeviceSurfaces: () => devices as never,
   };
   return new AppSmartTaskPayloads(ctx);
 };

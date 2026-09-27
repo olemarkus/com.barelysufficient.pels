@@ -1,3 +1,4 @@
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 // SDK-boundary regression for the 2026-08-01 prod incident: an app restart lost
 import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // the water heater's flow-registered step ladder, `resolveObjectiveSteps` came up
@@ -159,7 +160,7 @@ const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean })
   const device: PlanInputDevice = {
     ...toPlanDevice(
       createAppContextMock({ getNow: () => new Date(nowMs) }),
-      buildDeviceReading(tempC, nowMs, opts),
+      withDeviceConfiguration(buildDeviceReading(tempC, nowMs, opts)),
     ),
     priority: 1,
   };

@@ -270,17 +270,8 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('uses compatibility settings to classify a test-device mock as the real driver', () => {
-    const deviceManager = createTestDeviceTransport(
-      mockHomeyInstance as unknown as Homey.App,
-      createLogger(),
-      {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-      },
-    );
-
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+  it('uses compatibility settings and the resolved override for a test-device mock', () => {
+    const device = buildZaptecDevice({
       id: 'zaptec-go2-compat-mock',
       name: 'Zaptec Go 2 compatibility mock',
       driverId: 'homey:app:com.olemarkus.testdevices:go2',
@@ -289,7 +280,20 @@ describe('native EV wiring shim', () => {
         pelsCompatibilityOwnerUri: 'homey:app:com.zaptec',
         pelsCompatibilityDriverId: 'homey:app:com.zaptec:go2',
       },
-    })]);
+    });
+    const deviceManager = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+        getNativeEvWiringEnabled: () => true,
+        getDeviceDriverIdOverride: (id) => (
+          id === 'zaptec-go2-compat-mock' ? 'homey:app:com.zaptec:go2' : undefined
+        ),
+      },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([device]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go2-compat-mock',

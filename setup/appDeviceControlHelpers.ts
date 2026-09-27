@@ -72,7 +72,7 @@ export const resolveDefaultControlModel = (
   device: TargetDeviceSnapshot & TemperatureObservedProbe,
 ): DeviceControlModel => {
   if (device.controlModel) return device.controlModel;
-  if (device.temperature !== undefined) return 'temperature_target';
+  if (device.deviceType === 'temperature') return 'temperature_target';
   return 'binary_power';
 };
 
