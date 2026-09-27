@@ -18,6 +18,7 @@ import type {
   DeviceDescriptorRead,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
+import type { DeviceConfigurationRead } from '../lib/ports/deviceConfigurationRead';
 import type {
   SettingsUiHardCapConfigurationRead,
   SettingsUiPlanSnapshot,
@@ -168,13 +169,20 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.context.deviceReads.descriptor(deviceId);
   }
 
-  /** Runtime view: configuration joined with Observer state. */
-  public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
+  /** Settings UI needs inventory metadata plus the separately owned observation. */
+  public getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[] {
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(
+      this.context.getDeviceSurfaces(),
+    );
+  }
+
+  /** Legacy host alias; internal runtime consumers use `getPlanInputSnapshot()`. */
+  public get latestTargetSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[] {
     return this.getPlanInputSnapshot();
   }
 
   /** Plan/executor input, composed only from their two owners. */
-  public getPlanInputSnapshot(): DecoratedDeviceSnapshot[] {
+  public getPlanInputSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[] {
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.getRuntimeDevices());
   }
 
@@ -269,7 +277,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
     resolveShedBehavior(this.context.shedBehaviors, deviceId),
     // Lazy and single-device: this runs several times per device per plan build,
-    // and `latestTargetSnapshot` rebuilds the whole list on every access.
+    // and `getPlanInputSnapshot` rebuilds the whole list on every access.
     () => this.getRuntimeDevice(deviceId),
     this.context.observedTemperatureModeUpdates.allowsLimiting(deviceId),
     // The observer's answer, so the configured pair collapses to the one limit

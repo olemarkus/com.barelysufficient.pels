@@ -5,7 +5,7 @@ import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/de
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
-import { createDeviceReadSources } from './lib/device/deviceReadSources';
+import { createDeviceReadSources, joinObservedDeviceDescriptors } from './lib/device/deviceReadSources';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
@@ -210,6 +210,13 @@ class PelsApp extends PelsAppBase implements AppContext {
   private readonly deviceReadSources = createDeviceReadSources(() => this.deviceManager);
   public get deviceReads() { return this.deviceReadSources.deviceReads; }
   public get deviceConfiguration() { return this.deviceReadSources.deviceConfiguration; }
+
+  public getDeviceSurfaces() {
+    return joinObservedDeviceDescriptors(
+      this.deviceReads.descriptors(),
+      (deviceId) => this.getObservedRecord(deviceId),
+    );
+  }
   /**
    * Observer-owned emitter for post-translation realtime events
    * (`observed-state-changed`, `observed-control-state-changed`). Wiring builds
@@ -419,8 +426,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     getDeviceManager: () => this.deviceManager,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
-    getLatestTargetSnapshot: () => this.latestTargetSnapshot,
-    getDeviceSurfaces: () => this.latestTargetSnapshot,
+    getPlanInputSnapshot: () => this.getPlanInputSnapshot(),
+    getDeviceSurfaces: () => this.getDeviceSurfaces(),
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
@@ -472,7 +479,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getFlowReportedCapabilities: () => this.flowReportedCapabilities,
     setFlowReportedCapabilities: (state) => { this.flowReportedCapabilities = state; },
     getDeviceManager: () => this.deviceManager,
-    getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+    getDeviceConfiguration: () => this.deviceConfiguration.getAll(),
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     getSteppedLoadProfile: (deviceId) => this.deviceControlHelpers.getSteppedLoadProfile(deviceId),
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,

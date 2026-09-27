@@ -308,7 +308,7 @@ describe('P1 bug proofs', () => {
       nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot: () => [rawDevice],
+      getDeviceSurfaces: () => [rawDevice],
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

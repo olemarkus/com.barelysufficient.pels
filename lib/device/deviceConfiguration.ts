@@ -6,6 +6,7 @@
  */
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -21,6 +22,8 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     controlModel: snapshot.controlModel,
     controlAdapter: snapshot.controlAdapter,
     binaryControllable: snapshot.binaryControllable,
+    observeOnly: isObserveOnlyRoleClassKey(snapshot.deviceClass),
+    isEvCharger: snapshot.deviceClass === 'evcharger',
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
     powerCapable: snapshot.powerCapable,

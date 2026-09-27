@@ -217,7 +217,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     // heater MUST.
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getLatestTargetSnapshot = (nowMs: number) => ([
+    const getDeviceSurfaces = (nowMs: number) => ([
       {
         id: SOLAR_ID, name: 'Solar Panel', targets: [], deviceClass: 'solarpanel',
         expectedPowerKw: 1,
@@ -238,7 +238,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         timeZone: 'UTC',
         capacitySettings: { limitKw: 10, marginKw: 0, periodMinutes: 60 },
         // The harness type expects a no-arg getter; close over the per-call nowMs.
-        getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
+        getDeviceSurfaces: () => getDeviceSurfaces(nowMs) as never,
         powerTracker: tracker,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

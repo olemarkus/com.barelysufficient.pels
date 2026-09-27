@@ -5,7 +5,6 @@ import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/
 import { toResolvedPlanHistoryEntry } from '../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { assembleActivePlansWithTrajectory } from './deferredObjectiveActivePlansUiAssembler';
 import { resolveSmartTaskDeviceKind } from '../packages/shared-domain/src/smartTaskDeviceKind';
-import type { SmartTaskDeviceLike } from '../packages/shared-domain/src/smartTaskDeviceKind';
 
 /**
  * The `AppContext` members this projection reads. Narrowed on purpose: the
@@ -14,10 +13,10 @@ import type { SmartTaskDeviceLike } from '../packages/shared-domain/src/smartTas
  */
 export type SmartTaskPayloadsContext = Pick<
   AppContext,
-  'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'
-> & {
-  latestTargetSnapshot: ReadonlyArray<SmartTaskDeviceLike & { id: string; name: string }>;
-};
+  | 'deferredObjectiveActivePlanRecorder'
+  | 'deferredObjectivePlanHistoryRecorder'
+  | 'getDeviceSurfaces'
+>;
 
 /**
  * Read-only smart-task payload assembly for the settings UI and the widgets:
@@ -51,9 +50,10 @@ export class AppSmartTaskPayloads {
         list.push(entry);
         byDevice.set(entry.deviceId, list);
       }
-      // Read ONCE: the getter re-projects and re-decorates the whole device list
-      // on every access, so calling it per device is quadratic.
-      const devices = this.ctx.latestTargetSnapshot;
+      // History labels need inventory identity (EV class) and the accepted
+      // temperature facet. Read each owner once here; the planner snapshot
+      // intentionally omits inventory class/type.
+      const devices = this.ctx.getDeviceSurfaces();
       for (const [deviceId, list] of byDevice) {
         const device = devices.find((candidate) => candidate.id === deviceId);
         if (!device) continue;

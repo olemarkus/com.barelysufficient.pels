@@ -4,6 +4,8 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { partialDouble } from '../helpers/partialDouble';
 
 /**
@@ -24,24 +26,30 @@ import { partialDouble } from '../helpers/partialDouble';
 export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetDeviceSnapshot[] }>(
   mock: T,
 ): T & {
+  deviceConfigurationStore: DeviceConfigurationStore;
   getSnapshotByDeviceId: (deviceId: string) => (TargetDeviceSnapshot & TransportControlBindingProbe) | undefined;
   getAssociatedCar: (deviceId: string) => AssociatedCarSnapshot | undefined;
   dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void;
   isFlowBackedCapability: (deviceId: string, capabilityId: string) => boolean;
-} => ({
-  dispatchObservedStateForDevice: () => {},
-  getAssociatedCar: () => undefined,
-  isFlowBackedCapability: (deviceId, capabilityId) => {
+} => {
+  const deviceConfigurationStore = new DeviceConfigurationStore();
+  deviceConfigurationStore.replace(mock.getSnapshot() as unknown as TransportDeviceSnapshot[]);
+  return {
+    dispatchObservedStateForDevice: () => {},
+    deviceConfigurationStore,
+    getAssociatedCar: () => undefined,
+    isFlowBackedCapability: (deviceId, capabilityId) => {
     const snapshot = mock.getSnapshot().find((entry) => entry.id === deviceId) as
       | (TargetDeviceSnapshot & TransportControlBindingProbe)
       | undefined;
     return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
-  },
-  ...mock,
-  getSnapshotByDeviceId: (deviceId: string) => mock.getSnapshot().find((entry) => entry.id === deviceId) as
-    | (TargetDeviceSnapshot & TransportControlBindingProbe)
-    | undefined,
-});
+    },
+    ...mock,
+    getSnapshotByDeviceId: (deviceId: string) => mock.getSnapshot().find((entry) => entry.id === deviceId) as
+      | (TargetDeviceSnapshot & TransportControlBindingProbe)
+      | undefined,
+  };
+};
 
 /**
  * The same enriched stub, widened to `DeviceTransport` for direct assignment to

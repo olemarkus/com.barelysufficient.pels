@@ -248,6 +248,7 @@ describe('settingsUiApi', () => {
       get latestTargetSnapshot() {
         return latestDevices;
       },
+      getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
       getObservedState: (deviceId: string) => options.observedStateById?.[deviceId],
       // The payload refresh reads the whole observed record through its own

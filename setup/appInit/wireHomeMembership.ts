@@ -515,7 +515,7 @@ export const wireHomeMembership = (
     getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
     // The membership join asks for exactly what it needs — `id` + `zoneId`, both
     // stamped at parse — and nothing decorates on the way. NOT
-    // `ctx.latestTargetSnapshot`: that getter projects and decorates every device
+    // `ctx.getPlanInputSnapshot()`: that getter projects and decorates every device
     // per access, and a membership recompute must stay a pure, cheap read. (It
     // used to be a side-EFFECTING read too — the decorator settled stepped
     // commands — which is what `homeMembershipService.test.ts` pins with a ctx

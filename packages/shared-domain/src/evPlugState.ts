@@ -40,7 +40,7 @@ import type { EvChargingState } from '../../contracts/src/types';
  * never re-derive EV-ness from either field alone. Either signal alone is
  * sufficient — see {@link isEvDevice} for why the union is the contract.
  */
-export type EvDeviceIdentity = { deviceClass?: string };
+export type EvDeviceIdentity = { deviceClass?: string; isEvCharger?: boolean };
 
 // Membership set derived from a `satisfies Record<EvChargingState, …>` literal so
 // a new union member is a compile error here until it's added to the guard (the
@@ -82,7 +82,7 @@ export const isEvChargingState = (value: unknown): value is EvChargingState => (
  * missing.
  */
 export const isEvDevice = (dev: EvDeviceIdentity): boolean => (
-  dev.deviceClass === 'evcharger'
+  dev.isEvCharger === true || dev.deviceClass === 'evcharger'
 );
 
 /**

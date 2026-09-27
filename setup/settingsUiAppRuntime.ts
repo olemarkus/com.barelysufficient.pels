@@ -45,7 +45,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   /** Every home's live status (`AppContext.planStatuses`). */
   planStatuses?: AppContext['planStatuses'];
   getModePrioritiesForUi?: (deviceIds: readonly string[]) => ModePriorityOrder;
-  latestTargetSnapshot?: TargetDeviceSnapshot[];
+  getSettingsUiManagedDevices?: () => TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: {
     getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined;
@@ -169,7 +169,7 @@ export const getPrioritiesForUiFromApp = (
 
 export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] | null => {
   const app = getRuntimeApp(homey);
-  const snapshot = app?.latestTargetSnapshot;
+  const snapshot = app?.getSettingsUiManagedDevices?.();
   return Array.isArray(snapshot) ? snapshot : null;
 };
 

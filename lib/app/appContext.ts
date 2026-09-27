@@ -15,6 +15,8 @@ import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceReads } from '../device/deviceReads';
 import type { DeviceConfiguration } from '../device/deviceConfiguration';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { SettingsUiDeviceReads } from '../device/settingsUiDeviceReads';
 import type { DeviceTransportPort } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
@@ -277,9 +279,10 @@ export type AppContext = {
   set lastNotifiedOperatingMode(value: string);
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
   get planRebuildThrottle(): PlanRebuildThrottle;
-  get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
   /** Plan/executor runtime inputs joined from DeviceConfiguration and Observer. */
-  getPlanInputSnapshot(): DecoratedDeviceSnapshot[];
+  getPlanInputSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[];
+  /** Inventory metadata joined with accepted Observer state for consumers needing both. */
+  getDeviceSurfaces(): DeviceSurfaces[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];
   /**
    * The Flow-card device list as descriptors — identity and config, no

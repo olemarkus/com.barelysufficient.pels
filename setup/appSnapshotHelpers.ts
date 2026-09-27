@@ -1,14 +1,15 @@
 import type { PowerSource } from '../lib/power/powerSource';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
-import type { DeviceSurfaces } from '../lib/device/deviceSurfaces';
+import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
+import type { DeviceConfigurationRead } from '../lib/ports/deviceConfigurationRead';
+import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
 import type { PlanService } from '../lib/plan/planService';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
@@ -113,7 +114,7 @@ export class AppSnapshotHelpers {
     getDeviceManager: () => DeviceTransportPort | undefined;
     getPlanEngine: () => PlanEngine | undefined;
     getPlanService: () => PlanService | undefined;
-    getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
+    getPlanInputSnapshot: () => (DecoratedDeviceSnapshot & DeviceConfigurationRead)[];
     resolveManagedState: (deviceId: string) => boolean;
     isCapacityControlEnabled: (deviceId: string) => boolean;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
@@ -121,7 +122,7 @@ export class AppSnapshotHelpers {
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     seedTemperatureShedFloorDefaults: (
-      snapshot: TargetDeviceSnapshot[],
+      snapshot: DeviceSurfaces[],
       resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
     ) => void;
     persistFilledModeTargets: () => void;
@@ -139,7 +140,7 @@ export class AppSnapshotHelpers {
     // otherwise record the OLD meter's watts seconds after the user switched
     // (the poll path has the same fence via its pollGeneration counter).
     resolveMainMeterSelection: () => MainMeterSelection;
-    reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
+    reconcileTargetPowerReachability?: (snapshot: DeviceSurfaces[], nowMs: number) => void;
     /**
      * The joined surface, UNDECORATED. The reachability pass reads the observed
      * `reportedStepId` as well as the descriptor's target-power config, so a
@@ -349,8 +350,8 @@ export class AppSnapshotHelpers {
     );
     this.scheduleTargetPowerProbe();
 
-    const snapshot = this.deps.getLatestTargetSnapshot();
-    this.deps.seedTemperatureShedFloorDefaults(snapshot);
+    const snapshot = this.deps.getPlanInputSnapshot();
+    this.deps.seedTemperatureShedFloorDefaults(this.deps.getDeviceSurfaces());
     this.deps.persistFilledModeTargets();
     const enforcedSnapshot = snapshot.map((device) => {
       // Enforced FIRST, then stamped: `withHeadroomCurrentOn` resolves its
@@ -389,7 +390,7 @@ export class AppSnapshotHelpers {
     resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
   ): void {
     this.deps.seedTemperatureShedFloorDefaults(
-      this.deps.getLatestTargetSnapshot(),
+      this.deps.getDeviceSurfaces(),
       resolveOperatingModeForDevice,
     );
   }

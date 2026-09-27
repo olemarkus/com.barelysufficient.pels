@@ -6,9 +6,9 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
 /**
  * The device's control posture, resolved once, here.
@@ -32,13 +32,14 @@ import type { DeviceStartPolicy } from '../../packages/shared-domain/src/setting
  * device ... enters the planner controllable/actuated") and both are kept.
  */
 export function resolveDeviceControlPosture(
-  device: DecoratedDeviceSnapshot,
+  device: DecoratedDeviceSnapshot & DeviceConfigurationRead,
   managed: boolean,
   capacityControlEnabled: boolean,
   startPolicy: DeviceStartPolicy,
 ): DeviceControlPosture {
-  if (isObserveOnlyRoleClassKey(device.deviceClass)) {
-    // The structural veto, keyed on the parse-time class key. A battery or panel
+  if (device.observeOnly) {
+    // The structural veto, resolved from the parse-time class key before this
+    // boundary. A battery or panel
     // is tracked and never commanded, whatever the settings say. `managed` reads
     // the snapshot's own stamp because the managed FILTER must keep observing it.
     return { managed: device.managed !== false, commandAuthority: false };

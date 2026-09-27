@@ -14,20 +14,18 @@ import { resolveTargetPowerReachabilityTransition } from '../lib/executor/target
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../lib/observer/controlCommandConfirmation';
 import { sortSteppedLoadSteps } from '../packages/shared-domain/src/deviceControlProfiles';
 import type {
-  ReportedStepObservedProbe,
-  SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   SteppedLoadStep,
-  TargetDeviceSnapshot,
   TargetPowerReachabilityState,
   TargetPowerSteppedLoadConfig,
 } from '../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { SteppedCommandStore } from '../lib/executor/steppedCommandStore';
 import {
   type SteppedLoadDesiredRuntimeState,
 } from '../lib/executor/steppedCommandState';
 
-type ReachabilitySnapshot = TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
+type ReachabilitySnapshot = DeviceSurfaces;
 
 type TargetPowerExactObservation = {
   planningPowerW: number;
@@ -239,11 +237,11 @@ export const resolveIssuedTargetPowerStepPowers = (params: {
   };
 };
 
-export const resolveTargetPowerSnapshotProfiles = (params: {
-  snapshots: ReachabilitySnapshot[];
+export const resolveTargetPowerSnapshotProfiles = <T extends ReachabilitySnapshot>(params: {
+  snapshots: T[];
   getConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
   resolveFallbackProfile: (snapshot: ReachabilitySnapshot) => SteppedLoadProfile | null;
-}): ReachabilitySnapshot[] => {
+}): T[] => {
   return params.snapshots.map((snapshot) => {
     const config = params.getConfig?.(snapshot.id) ?? snapshot.targetPowerConfig;
     const evidence = isEvTargetPowerConfig(config)

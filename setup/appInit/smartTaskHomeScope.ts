@@ -150,21 +150,19 @@ export const mapObjectiveWriteRefusalReason = (
 // Currently-starved devices for the starvation-rescue widget (the app's
 // `getStarvedRescueDevices` delegate). Sourced from the diagnostics service's
 // live starvation state (`getStarvedRescueEntries`, which mirrors the overview
-// `getOverviewStarvation` freshness/eligibility gate) and joined against the
-// runtime-planned snapshot for the device name — a starved device is by
-// definition managed + capacity-controlled, so it is in `getPlanInputSnapshot`.
-// Entries are dropped when the device is no longer in the snapshot (e.g.
-// removed mid-cycle — never shown with a stale name) and when it is durably in
+// `getOverviewStarvation` freshness/eligibility gate) and joined against
+// DeviceConfiguration for the device name — a starved device is by definition
+// managed + capacity-controlled, so its configuration is present. Entries are
+// dropped when the device is no longer configured (e.g. removed mid-cycle —
+// never shown with a stale name) and when it is durably in
 // a sub-home or is an active source device. A transient Main authority fence
 // keeps the diagnostic row visible but marks its rescue unavailable.
 export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevice[] => {
   const entries = ctx.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
-  // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
-  // entry — the live snapshot can be sizeable on busy installs.
-  const snapshotById = new Map(ctx.getPlanInputSnapshot().map((device) => [device.id, device]));
+  const configurationById = new Map(ctx.deviceConfiguration.getAll().map((device) => [device.id, device]));
   const nowMs = ctx.getNow().getTime();
   return entries.flatMap((entry): StarvationRescueDevice[] => {
-    const device = snapshotById.get(entry.deviceId);
+    const device = configurationById.get(entry.deviceId);
     const smartTaskHomeScope = resolveSmartTaskHomeScope(ctx, entry.deviceId);
     if (
       !device

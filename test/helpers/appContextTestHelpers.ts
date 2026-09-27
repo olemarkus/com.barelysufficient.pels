@@ -2,8 +2,10 @@ import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/se
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
+import { joinObservedDeviceDescriptors } from '../../lib/device/deviceReadSources';
 import { DeviceConfigurationStore, createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
+import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
@@ -66,7 +68,7 @@ type MockHomey = FlowHomeyLike & {
   };
 };
 
-type AppContextMockOptions = Omit<Partial<AppContext>, 'latestTargetSnapshot' | 'priceOptimizationEnabled' | 'priceOptimizationSettings'> & {
+type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationEnabled' | 'priceOptimizationSettings'> & {
   latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
@@ -228,7 +230,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   };
   const deviceReads = createDeviceReads(() => deviceReadStore);
   const deviceConfigurationStore = new DeviceConfigurationStore();
-  deviceConfigurationStore.replace(latestTargetSnapshot as unknown as TransportDeviceSnapshot[]);
+  const getDeviceConfigurationStore = (): DeviceConfigurationStore => {
+    deviceConfigurationStore.replace(latestTargetSnapshot as unknown as TransportDeviceSnapshot[]);
+    return deviceConfigurationStore;
+  };
   const settingsUiDeviceReads = new SettingsUiDeviceReads();
   settingsUiDeviceReads.connect({
     readChargerPhasePresets: () => ({ state: 'unavailable' }),
@@ -255,8 +260,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const context: AppContext = {
     homeModeCatalog,
     deviceReads,
-    deviceConfiguration: createDeviceConfiguration(() => deviceConfigurationStore),
-    getPlanInputSnapshot: () => context.latestTargetSnapshot,
+    deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
+    getPlanInputSnapshot: () => latestTargetSnapshot,
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
@@ -314,7 +319,17 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     resolveManagedState: vi.fn(() => false),
     getObservedState: vi.fn(() => undefined),
-    getObservedRecord: vi.fn(() => undefined),
+    getObservedRecord: (deviceId: string) => {
+      const snapshot = latestTargetSnapshot.find((device) => device.id === deviceId);
+      return snapshot ? projectObservedState(snapshot as unknown as TransportDeviceSnapshot) : undefined;
+    },
+    getDeviceSurfaces: () => joinObservedDeviceDescriptors(
+      deviceReads.descriptors(),
+      (deviceId) => {
+        const snapshot = latestTargetSnapshot.find((device) => device.id === deviceId);
+        return snapshot ? projectObservedState(snapshot as unknown as TransportDeviceSnapshot) : undefined;
+      },
+    ),
     getFlowDeviceDescriptors: vi.fn(async () => []),
     getDeviceDescriptors: vi.fn(() => []),
     getDeviceDescriptor: vi.fn(() => undefined),
@@ -387,7 +402,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },
     set lastNotifiedOperatingMode(value) { lastNotifiedOperatingMode = value; },
     get planRebuildThrottle() { return planRebuildThrottle; },
-    get latestTargetSnapshot() { return latestTargetSnapshot; },
     getUiPickerDevices: () => latestTargetSnapshot,
     settingsUiDeviceReads,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),

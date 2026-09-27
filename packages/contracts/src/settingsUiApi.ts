@@ -417,7 +417,8 @@ export type ChargerPhasePresetsRead =
   | { state: 'unavailable' };
 
 export type SettingsUiDevicesPayload = {
-  // Served from the app-layer DECORATED device list (`latestTargetSnapshot`),
+  // Served from the app-layer managed-device join of DeviceReads metadata,
+  // Observer state, and stepped-load decoration,
   // so the payload carries the stepped-load step-command/planning decoration
   // the settings-UI reads (`selectedStepId` / `planningPowerKw` / ...). Typed
   // as the decoration carrier rather than the raw transport snapshot.

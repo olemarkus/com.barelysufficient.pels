@@ -97,16 +97,18 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
     planRebuildThrottle: deps.planRebuildThrottle,
-    // Membership complement (same single seam as the plan input in
-    // `homeScope.ts`): with sub-homes configured, this home's controlled/
-    // background usage split and per-device sample accounting stop counting
-    // sub-home members — their draw lands in background usage. Identity (same
-    // array) for the main home when `hasSubHomes()` is false; EMPTY for a
-    // sub-home under those conditions (fail-closed dual). The shared filter
-    // also removes every configured meter from every home's controlled/
-    // background split, regardless of where that source device is zoned.
-    getLatestTargetSnapshot: () => (
-      filterDevicesForHome(ctx.homeMembership, ctx.latestTargetSnapshot, deps.homeId)
+    // Power attribution needs inventory class and Observer measurements. Use
+    // the explicit joined read here; planner input intentionally carries
+    // neither class nor zone.
+    // The membership complement removes sub-home loads from this home's
+    // controlled/background split and every configured meter from each home's
+    // attribution.
+    getDeviceSurfaces: () => (
+      filterDevicesForHome(
+        ctx.homeMembership,
+        ctx.getDeviceSurfaces(),
+        deps.homeId,
+      )
     ),
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),

@@ -162,7 +162,7 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
   });
   // Subscribe the projection BEFORE the transport is reachable through `ctx`:
-  // past that assignment any consumer can read `latestTargetSnapshot`, which is
+  // past that assignment any consumer can read the composed plan input, which is
   // the descriptor joined with the projection's record, so a delta dispatched in
   // between would be one no subscriber received.
   subscribeObservedStateProjection(deps);

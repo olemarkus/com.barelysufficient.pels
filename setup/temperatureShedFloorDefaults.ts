@@ -7,7 +7,7 @@
  * `appDeviceSupport.ts`, which runs this when a device snapshot is refreshed.
  */
 import type Homey from 'homey';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import { readModeDeviceTarget } from '../lib/home/modeDeviceTargetsRead';
 import { readShedBehaviorsSetting } from '../lib/home/shedBehaviorsRead';
 import type { DeviceOperatingModeOutcome } from '../lib/home/homeModeDeviceRead';
@@ -37,13 +37,13 @@ export type ResolveOperatingModeForDevice = (deviceId: string) => DeviceOperatin
 
 type BooleanMap = Record<string, boolean>;
 
-function isTemperatureWithoutOnOff(device: TargetDeviceSnapshot): boolean {
+function isTemperatureWithoutOnOff(device: DeviceSurfaces): boolean {
   const hasTarget = Array.isArray(device.targets) && device.targets.length > 0;
   const hasOnOff = device.capabilities?.includes('onoff') === true;
   return isTemperatureControlDevice(device) && hasTarget && !hasOnOff;
 }
 
-function resolveTemperatureShedFloor(device: TargetDeviceSnapshot): number {
+function resolveTemperatureShedFloor(device: DeviceSurfaces): number {
   const classKey = (device.deviceClass || '').trim().toLowerCase();
   return classKey === 'airtreatment' ? AIRTREATMENT_SHED_FLOOR_C : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
 }
@@ -111,7 +111,7 @@ type OvershootSeed =
 
 function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
   settings: Homey.App['homey']['settings'];
-  device: TargetDeviceSnapshot;
+  device: DeviceSurfaces;
   existing: ConfiguredShedBehavior;
   resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
 }): OvershootSeed {
@@ -156,7 +156,7 @@ function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
 
 export function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
   settings: Homey.App['homey']['settings'];
-  snapshot: TargetDeviceSnapshot[];
+  snapshot: DeviceSurfaces[];
   managed: BooleanMap;
   controllable: BooleanMap;
   resolveOperatingModeForDevice: ResolveOperatingModeForDevice;

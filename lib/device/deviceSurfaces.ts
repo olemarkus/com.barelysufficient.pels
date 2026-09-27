@@ -1,20 +1,9 @@
 /** Cached picker rows for unmanaged devices, which have no Observer record. */
-import type {
-    DeviceDescriptorRead,
-    ProjectedObservedDeviceState,
-} from '../../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
+export type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectDeviceDescriptor } from './deviceDescriptorProjection';
 import { projectObservedState } from './observedStateProjection';
-
-export type DeviceSurfaces = DeviceDescriptorRead & ProjectedObservedDeviceState;
-
-export function joinDeviceSurfaces(
-    descriptor: DeviceDescriptorRead,
-    observed: ProjectedObservedDeviceState,
-): DeviceSurfaces {
-    return { ...observed, ...descriptor };
-}
 
 /**
  * Both surfaces projected from parsed devices the observer does not track: the
@@ -24,7 +13,8 @@ export function joinDeviceSurfaces(
  * DeviceConfiguration and Observer records.
  */
 export function projectDeviceSurfaces(snapshots: readonly TransportDeviceSnapshot[]): DeviceSurfaces[] {
-    return snapshots.map((snapshot) => (
-        joinDeviceSurfaces(projectDeviceDescriptor(snapshot), projectObservedState(snapshot))
-    ));
+    return snapshots.map((snapshot) => ({
+        ...projectObservedState(snapshot),
+        ...projectDeviceDescriptor(snapshot),
+    }));
 }

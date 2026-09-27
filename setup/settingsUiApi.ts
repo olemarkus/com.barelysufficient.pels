@@ -182,8 +182,9 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
   };
 };
 
-// The raw candidate list BEFORE the observe-only filter: the force-managed snapshot
-// (`latestTargetSnapshot`) plus the unmanaged-but-eligible picker devices. Auto-tracked
+// The raw candidate list BEFORE the observe-only filter: managed devices joined
+// from DeviceReads metadata and Observer state, plus unmanaged-but-eligible
+// picker devices from SettingsUiDeviceReads. Auto-tracked
 // observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
 // managed half here; callers decide whether to expose or merely detect them.
 /**

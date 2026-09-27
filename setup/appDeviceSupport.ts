@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import { isBooleanMap } from '../lib/utils/appTypeGuards';
 import {
   MODE_DEVICE_TARGETS,
@@ -82,7 +82,7 @@ export function isRuntimePlannedPlanDevice(device: { control: { managed: boolean
 }
 
 export function seedTemperatureShedFloorDefaults(params: {
-  snapshot: TargetDeviceSnapshot[];
+  snapshot: DeviceSurfaces[];
   settings: Homey.App['homey']['settings'];
   debugStructured: StructuredEventEmitter;
   /**

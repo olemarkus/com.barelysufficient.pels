@@ -14,7 +14,7 @@ import type {
   DecoratedDeviceSnapshot, DeviceControlModel,
   DeviceControlProfiles, ReportedStepObservedProbe,
   SteppedLoadDescriptorProbe, SteppedLoadProfile,
-  TargetDeviceSnapshot, TargetPowerReachabilityState,
+  TargetDeviceSnapshot, TargetPowerReachabilityState, TemperatureObservedProbe,
   TargetPowerSteppedLoadConfig,
 } from '../packages/contracts/src/types';
 import type { LifecycleFallbackDevice } from '../lib/executor/lifecycleFallbackDispatcher';
@@ -68,9 +68,11 @@ const hasNativeSteppedLoadFeedbackAuthority = (
   snapshot: TargetDeviceSnapshot | undefined,
 ): boolean => snapshot !== undefined && isNativeSteppedLoadControlEnabled(snapshot);
 
-export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
+export const resolveDefaultControlModel = (
+  device: TargetDeviceSnapshot & TemperatureObservedProbe,
+): DeviceControlModel => {
   if (device.controlModel) return device.controlModel;
-  if (device.deviceType === 'temperature') return 'temperature_target';
+  if (device.temperature !== undefined) return 'temperature_target';
   return 'binary_power';
 };
 
@@ -133,18 +135,19 @@ export const resolveEffectiveSteppedLoadProfile = (params: {
 /* eslint-disable complexity, max-statements --
  * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
-export const decorateSnapshotWithDeviceControl = (params: {
+export const decorateSnapshotWithDeviceControl = <T extends TargetDeviceSnapshot & TemperatureObservedProbe
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>(params: {
   // Owner seam: the input is a producer-fed transport snapshot carrying the
   // stepped-descriptor + reported-step probes; the decorator re-resolves the
   // effective profile and writes it (with `reportedStepId`) onto the carrier.
-  snapshot: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
+  snapshot: T;
   profiles: DeviceControlProfiles;
   store: SteppedCommandStore;
   reportedStore: SteppedReportedStepStore;
   temperatureControlDisabled?: boolean;
   temperatureAdjustmentsDisabled?: boolean;
   nowMs?: number;
-}): DecoratedDeviceSnapshot => {
+}): T & DecoratedDeviceSnapshot => {
   const {
     snapshot: rawSnapshot, profiles, store, reportedStore, temperatureControlDisabled = false, nowMs = Date.now(),
   } = params;
@@ -331,9 +334,10 @@ export class AppDeviceControlHelpers {
     };
   }
 
-  decorateTargetSnapshotList(
-    snapshot: Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>,
-  ): DecoratedDeviceSnapshot[] {
+  decorateTargetSnapshotList<T extends TargetDeviceSnapshot & TemperatureObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>(
+    snapshot: T[],
+  ): (T & DecoratedDeviceSnapshot)[] {
     const nowMs = Date.now();
     const profiles = this.deps.getProfiles();
     const resolvedSnapshots = resolveTargetPowerSnapshotProfiles({

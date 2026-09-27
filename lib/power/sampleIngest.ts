@@ -5,7 +5,7 @@ import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw } from './capacityModel';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
-import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import {
   hasObservedMeasuredPower,
   normalizeMeasuredPowerKw,
@@ -81,7 +81,7 @@ const NO_LOAD_EVIDENCE: ManagedLoadDraw = { totalW: 0, loadKey: resolveManagedLo
  * so a PV home is judged like any other then.
  */
 const mayCoverLoad = (
-  devices: readonly TargetDeviceSnapshot[],
+  devices: readonly DeviceSurfaces[],
   generationW: number | undefined,
 ): boolean => (
   devices.some((device) => device.deviceClass === 'battery')
@@ -101,7 +101,7 @@ const mayCoverLoad = (
  * producing PV inverter may be covering the load.
  */
 const resolveManagedLoadDraw = (
-  devices: readonly (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[],
+  devices: readonly DeviceSurfaces[],
   generationW: number | undefined,
 ): ManagedLoadDraw => {
   if (mayCoverLoad(devices, generationW)) return NO_LOAD_EVIDENCE;
@@ -114,7 +114,7 @@ const resolveManagedLoadDraw = (
 };
 
 const buildMeasuredDevicePowerWById = (params: {
-  devices: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[];
+  devices: readonly DeviceSurfaces[];
 }): Record<string, number> | undefined => {
   const entries = params.devices.flatMap((device) => {
     // A solar device is a PRODUCER: its `measure_power` is POSITIVE when generating, so
@@ -140,7 +140,7 @@ const buildMeasuredDevicePowerWById = (params: {
     // per-device breakdown's membership list. An unmetered heater booked at 0
     // would render as "used 0.00 kWh", which is a claim about the device;
     // leaving it out keeps its consumption in the honest "Other" remainder.
-    // This is why the seam reads the raw cluster rather than `currentDrawKw`,
+    // This is why the seam reads the observed measurement rather than `currentDrawKw`,
     // which deliberately collapses "no meter" and "meter reads zero" into 0.
     //
     // The per-capability AGE gate that used to follow was removed on 2026-08-08.
@@ -219,7 +219,7 @@ const resolveGrossConsumptionW = (params: {
 
 export type UpdateObjectiveProfiles = (params: {
   state: PowerTrackerState;
-  devices: TargetDeviceSnapshot[];
+  devices: DeviceSurfaces[];
   nowMs: number;
 }) => PowerTrackerState;
 
@@ -240,7 +240,8 @@ export async function recordPowerSampleForApp(params: {
   nowMs?: number;
   timeZone: string;
   capacitySettings: CapacitySettings;
-  getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
+  /** Inventory metadata joined with accepted Observer state for attribution. */
+  getDeviceSurfaces: () => DeviceSurfaces[];
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
@@ -253,23 +254,18 @@ export async function recordPowerSampleForApp(params: {
     nowMs = Date.now(),
     timeZone,
     capacitySettings,
-    getLatestTargetSnapshot,
+    getDeviceSurfaces,
     powerTracker,
     schedulePlanRebuild,
     saveState,
     updateObjectiveProfiles,
   } = params;
   const hourBudgetKWh = resolveUsableCapacityKw(capacitySettings);
-  const snapshot: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[] = getLatestTargetSnapshot();
-  // Resolve raw readings once before the power-owned attribution. This is the
-  // same normalization as the observer's getCurrentDrawKw; power must not import
-  // the observer merely to resolve this transport-to-attribution boundary.
-  // The attribution answer is resolved here for the same reason the draw is:
-  // this seam holds raw transport snapshots, so it answers from the parse stamp
-  // rather than fabricating a control posture it does not hold. `!== false` is
-  // the old optional's `=== false` skip under a required name — an unpopulated
-  // flag counted as managed then and counts as managed now.
-  const usageDevices = snapshot.map((device) => ({
+  const devices = getDeviceSurfaces();
+  // Observer supplies measured readings; DeviceReads supplies class and
+  // controllability metadata. `!== false` preserves the established rule that
+  // an unpopulated controllable flag counts as managed usage.
+  const usageDevices = devices.map((device) => ({
     ...device,
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
@@ -286,7 +282,7 @@ export async function recordPowerSampleForApp(params: {
     generationW,
     devices: usageDevices,
   });
-  const { controlledKw } = snapshot.length
+  const { controlledKw } = devices.length
     ? splitControlledUsageKw({
       devices: usageDevices,
       totalKw: grossConsumptionW / 1000,
@@ -296,14 +292,14 @@ export async function recordPowerSampleForApp(params: {
   // device books nothing. The planner's projection (an off device claiming its
   // configured demand) is a control threshold, never energy
   // (`notes/safe-pace-two-constraints.md`).
-  const exemptKw = snapshot.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
+  const exemptKw = devices.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
-  const managedDraw = resolveManagedLoadDraw(snapshot, generationW);
+  const managedDraw = resolveManagedLoadDraw(devices, generationW);
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
-  const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices: snapshot });
+  const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices });
   const profilingState = updateObjectiveProfiles({
     state: powerTracker,
-    devices: snapshot,
+    devices,
     nowMs,
   });
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);

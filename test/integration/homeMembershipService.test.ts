@@ -327,7 +327,7 @@ describe('post-refresh recompute through the transport seam', () => {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Stub ctx exposing ONLY the members `wireHomeMembership` may touch. The
-    // decorated-snapshot getter throws, so if any recompute touched it,
+    // plan-input getter throws, so if any recompute touched it,
     // containment would leave the membership map empty and the h_a assertion
     // below would fail. (It used to be a SIDE-EFFECTING read —
     // `decorateTargetSnapshotList` settled stepped commands — which is why the
@@ -340,8 +340,8 @@ describe('post-refresh recompute through the transport seam', () => {
       deviceManager: transport,
       timers: new TimerRegistry(),
       getStructuredLogger: () => undefined,
-      get latestTargetSnapshot(): never {
-        throw new Error('membership recompute must not touch the decorated snapshot path');
+      getPlanInputSnapshot(): never {
+        throw new Error('membership recompute must not read plan inputs');
       },
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
@@ -3123,7 +3123,12 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     const ctx = {
       homey: homeyLike,
       homeMembership: service,
-      latestTargetSnapshot: [{
+      deviceConfiguration: {
+        get: () => ({ id: 'd-moving', name: 'Moving heater', expectedPowerKw: 0, expectedPowerSource: 'default' }),
+        getAll: () => [{ id: 'd-moving', name: 'Moving heater', expectedPowerKw: 0, expectedPowerSource: 'default' }],
+        ids: () => ['d-moving'],
+      },
+      getPlanInputSnapshot: () => [{
         id: 'd-moving',
         name: 'Moving heater',
         targets: [],

@@ -137,7 +137,7 @@ export const previewSettingsUiSmartTask = (
   if (!request) return previewReject('invalid_request');
   const app = getApp(homey);
   // Call app methods on `homey.app` (not via an extracted const): they rely on
-  // their `this` (`this.latestTargetSnapshot`, …).
+  // their `this` (`this.getPlanInputSnapshot()`, …).
   if (typeof app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
   // Preview is read-only all the way to the public handler. In particular it
   // does not opportunistically migrate settings or write the migration marker.

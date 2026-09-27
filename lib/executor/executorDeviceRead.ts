@@ -1,23 +1,13 @@
 /**
- * The executor's per-device read, composed from the two layers that own its
- * halves: the transport's DESCRIPTOR (identity and config) and the observer's
- * OBSERVED record (what the device is doing). Stage 5 of the snapshot
- * decomposition (`notes/state-management/snapshot-decomposition.md`): the
- * executor no longer pulls the transport's raw snapshot, so nothing here can
- * read an observation the projection has not recorded.
+ * The executor's per-device read joins resolved DeviceConfiguration identity
+ * with Observer's record of accepted device state. It never reads inventory
+ * metadata or the transport snapshot, so it cannot consume a value Observer
+ * has not accepted.
  *
- * The join is deliberately thin — one spread per device. The two halves share
- * only `id`/`name`, and that is a property of the PRODUCERS, not of this file:
- * the descriptor is `projectDeviceDescriptor`'s output, which physically
- * carries descriptor keys and nothing else, so the spread cannot pick up an
- * observed field the projection has not recorded. A descriptor that was merely
- * the snapshot under a narrower type would break exactly that. The descriptor
- * goes last so identity is the transport's: a rename arrives as a device.update
- * with no observed change, which the projection is not told about. It resolves
- * nothing: both halves arrive resolved by their owners, and a device with
- * either half missing is not readable this cycle, which is the same answer the
- * dispatch path already gives for a device absent from the snapshot between
- * planning and dispatch.
+ * The result contains the narrowed executor configuration, not the full config
+ * source. Identity comes from DeviceConfiguration so a rename is visible even
+ * when Observer's state did not change. If either owner has no record, the
+ * device is not readable for this execution cycle.
  *
  * The observed half is the RECORD (`ObserverDeviceRead`), not the base state:
  * the stepped-load and drift projections read the reported step, measured power

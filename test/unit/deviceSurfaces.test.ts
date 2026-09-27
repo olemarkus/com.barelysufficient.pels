@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { joinDeviceSurfaces, projectDeviceSurfaces } from '../../lib/device/deviceSurfaces';
+import { projectDeviceSurfaces } from '../../lib/device/deviceSurfaces';
+import { joinObservedDeviceDescriptors } from '../../lib/device/deviceReadSources';
 import type {
   DeviceDescriptorRead,
   ProjectedObservedDeviceState,
@@ -27,9 +28,12 @@ const observed = (id: string): ProjectedObservedDeviceState => ({
   measuredPowerKw: 1.5,
 });
 
-describe('joinDeviceSurfaces', () => {
+describe('joinObservedDeviceDescriptors', () => {
   it('carries both surfaces, identity from the descriptor', () => {
-    const joined = joinDeviceSurfaces(descriptor('a', 'Heater'), observed('a'));
+    const joined = joinObservedDeviceDescriptors(
+      [descriptor('a', 'Heater')],
+      () => observed('a'),
+    )[0];
     expect(joined).toEqual({
       id: 'a',
       // Identity is the transport's: a rename arrives as a device.update with no

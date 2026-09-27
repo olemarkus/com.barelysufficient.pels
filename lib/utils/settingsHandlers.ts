@@ -621,7 +621,8 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
     });
     await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
-  // After the snapshot refresh (bundles read the same `latestTargetSnapshot`),
+  // After the snapshot refresh (plan inputs read the same DeviceConfiguration
+  // and Observer values),
   // so a sub-home's rebuild sees fresh device state alongside the new targets.
   deps.rebuildHomeRuntimePlansForModeChange?.();
 }

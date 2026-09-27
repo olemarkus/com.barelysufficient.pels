@@ -2,7 +2,7 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
@@ -91,12 +91,12 @@ describe('VThermo device integration', () => {
 
     await app.refreshTargetDevicesSnapshot();
 
-    const snapshot = getLatestTargetSnapshotForTests();
-    const entry = snapshot.find((device) => device.id === 'vthermo-1');
-    expect(entry).toBeDefined();
-    expect(entry?.deviceClass).toBe('thermostat');
-    expect(entry?.deviceType).toBe('temperature');
-    expect(entry?.powerCapable).toBe(false);
+    const descriptor = app.getDeviceDescriptor('vthermo-1');
+    expect(descriptor).toMatchObject({
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      powerCapable: false,
+    });
 
     const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;

@@ -26,10 +26,10 @@ import { normalizeError } from '../utils/errorUtils';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DeviceTransport } from './deviceTransport';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { DevicePersistencePort } from './devicePersistencePort';
 import type { FlowBackedRefreshTrigger } from './flowBackedRefreshTrigger';
 import type {
-  DecoratedDeviceSnapshot,
   StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -88,7 +88,7 @@ export type FlowBackedDeviceStateDeps = {
   getFlowReportedCapabilities: () => FlowReportedCapabilitiesByDevice;
   setFlowReportedCapabilities: (state: FlowReportedCapabilitiesByDevice) => void;
   getDeviceManager: () => DeviceTransport | undefined;
-  getLatestTargetSnapshot: () => DecoratedDeviceSnapshot[];
+  getDeviceConfiguration: () => DeviceConfigurationRead[];
   resolveManagedState: (deviceId: string) => boolean | undefined;
   getSteppedLoadProfile: (deviceId: string) => unknown;
   getExpectedPowerKwOverrides: () => ExpectedPowerOverridesByDeviceId;
@@ -419,7 +419,7 @@ export class FlowBackedDeviceState {
     const deviceById = new Map(devices.map((device) => [device.id, device]));
     const flowReportedCapabilities = this.deps.getFlowReportedCapabilities();
     const ignoredNativeEvFlowIds = new Set(
-      this.deps.getLatestTargetSnapshot()
+      this.deps.getDeviceConfiguration()
         .filter((device) => (
           device.controlAdapter?.kind === 'capability_adapter'
           && !flowReportedCapabilities[device.id]?.measure_battery

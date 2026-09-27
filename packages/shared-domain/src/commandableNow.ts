@@ -22,6 +22,7 @@ export { isEvDevice } from './evPlugState';
  */
 export type CommandableNowInput = {
   deviceClass?: string;
+  isEvCharger?: boolean;
   available: boolean;
 } & EvObservedProbe;
 

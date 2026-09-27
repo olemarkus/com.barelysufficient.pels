@@ -5,8 +5,10 @@
 > `DeviceConfiguration` values with Observer records. `DeviceReads` serves inventory metadata such as class,
 > zone, native-write and Flow-conflict details. The settings UI's unmanaged
 > picker uses `SettingsUiDeviceReads`, since those devices have no Observer
-> record. The observer projection
-> carries the resolved stepped-load profile with the reported rung. The old
+> record. Consumers that need both inventory metadata and accepted runtime
+> state use the named `DeviceSurfaces` join: settings UI managed-device rows,
+> power attribution, and mode ownership. The observer projection carries the
+> resolved stepped-load profile with the reported rung. The old
 > stage-5/6 joins below record how the earlier decomposition was built; where
 > they say runtime consumers join `DeviceDescriptorRead`, this current boundary
 > supersedes them. The pull refresh populates Observer before the startup warmup
@@ -22,17 +24,17 @@ moving the store wholesale is a risky dual-store with no behavior change). This 
 the right handle: **move the observation *contract* to the observer, decompose the
 god-struct, and seal the raw snapshot inside transport.**
 
-> Status: **design + in progress.** Shipped so far: `lastDesiredStepChangeAt`
-> cull (PR-1), step-command/planning cluster re-home onto `SteppedLoadDecoration`
-> (PR-2, #1502), `temperatureBoost`/`evBoost` removed from `TargetDeviceSnapshot`
-> (PR-3), `DeviceDescriptor` + `ObservedDeviceState` read interfaces with
-> `TargetDeviceSnapshot` re-expressed as their intersection (PR-4, stage 3), and
-> the observer-owned `ObservedDeviceState` projection stood up + shadow-verified
-> with **zero consumer switch** (PR-4a, stage 4a — split out of stage 4). Next is
-> **stage 4b / 5** — route real readers (wiring-side first, then plan/executor)
-> onto the projection. Read
-> [`observer-transport-split.md`](./observer-transport-split.md) +
-> the device-state invariants digest in [`lib/device/AGENTS.md`](../../lib/device/AGENTS.md) first.
+> Status: **implemented (2026-09-27).** The split is complete. `DeviceReads`
+> serves inventory and UI metadata; `DeviceConfiguration` owns resolved
+> configuration needed by runtime consumers; Observer owns accepted pull/push
+> state. Planner and executor combine only `DeviceConfiguration` and Observer
+> through `lib/device/deviceRuntimeRead.ts`. Transport owns the Homey SDK read,
+> parse, refresh and realtime-ingest path, while managed-device writes pass
+> through the actuator seam. `TransportContext` and the all-purpose decorated
+> snapshot API have been removed from those runtime inputs. The stages below
+> record the history and design decisions that led here; their intermediate
+> status and consumer-routing instructions are historical. The current module
+> map is in [`lib/device/AGENTS.md`](../../lib/device/AGENTS.md).
 
 ## The smell (why this exists)
 

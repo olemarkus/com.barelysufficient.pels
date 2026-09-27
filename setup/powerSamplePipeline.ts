@@ -21,7 +21,7 @@ import type {
 } from '../lib/power/sampleIngestQueue';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
@@ -49,7 +49,7 @@ export type PowerSamplePipelineDeps = {
   getPlanService: () => PlanService;
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
-  getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
+  getDeviceSurfaces: () => DeviceSurfaces[];
   savePowerTracker: (state: PowerTrackerState) => void;
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
@@ -303,7 +303,7 @@ export class PowerSamplePipeline {
         nowMs,
         capacitySettings,
         timeZone: this.deps.getTimeZone(),
-        getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
+        getDeviceSurfaces: () => this.deps.getDeviceSurfaces(),
         powerTracker,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

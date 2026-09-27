@@ -7,6 +7,8 @@ export type DeviceConfigurationRead = {
   controlModel?: DeviceDescriptorRead['controlModel'];
   controlAdapter?: DeviceDescriptorRead['controlAdapter'];
   binaryControllable?: DeviceDescriptorRead['binaryControllable'];
+  observeOnly: boolean;
+  isEvCharger: boolean;
   capabilities?: DeviceDescriptorRead['capabilities'];
   canSetControl?: DeviceDescriptorRead['canSetControl'];
   powerCapable?: DeviceDescriptorRead['powerCapable'];

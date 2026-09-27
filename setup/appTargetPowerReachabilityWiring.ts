@@ -75,12 +75,13 @@ export const createTargetPowerReachabilityAppWiring = (
         AppContext['deviceControlHelpers']['reconcileTargetPowerReachability']
       >[0], nowMs: number) => ctx.deviceControlHelpers.reconcileTargetPowerReachability(snapshot, nowMs),
       getNextTargetPowerProbe: () => {
-        // Descriptors: the eligibility question is managed-ness and capacity
-        // control, both keyed by device id. Nothing here asks what a device is doing.
-        const eligibleDeviceIds = new Set((ctx.getDeviceDescriptors())
-          .filter((device) => ctx.resolveManagedState(device.id) && ctx.isCapacityControlEnabled(device.id))
-          .map((device) => device.id));
-        const dueProbes = Object.entries(ctx.deviceTargetPowerConfigs).flatMap(([deviceId, config]) => {
+      // This probe is scoped by resolved configuration and per-device settings;
+      // it does not need a DeviceReads inventory scan.
+        const targetPowerConfigs = Object.entries(ctx.deviceTargetPowerConfigs);
+        if (targetPowerConfigs.length === 0) return undefined;
+        const eligibleDeviceIds = new Set(ctx.deviceConfiguration.ids()
+          .filter((deviceId) => ctx.resolveManagedState(deviceId) && ctx.isCapacityControlEnabled(deviceId)));
+        const dueProbes = targetPowerConfigs.flatMap(([deviceId, config]) => {
           if (!eligibleDeviceIds.has(deviceId)) return [];
           const dueAtMs = resolveValidTargetPowerReachability(config)?.nextProbeAtMs;
           return dueAtMs === undefined ? [] : [{ deviceId, dueAtMs }];

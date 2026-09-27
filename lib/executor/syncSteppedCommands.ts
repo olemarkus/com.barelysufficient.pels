@@ -7,7 +7,7 @@
  * were wrong with that. A command confirmed because the PLANNER asked for its
  * devices rather than because the executor observed the command materialize, so
  * settle timing rode on plan-build cadence. Reading the plan input had side
- * effects, which is why `latestTargetSnapshot` — a getter that decorates on
+ * effects, which is why `getPlanInputSnapshot` — a getter that decorates on
  * every access — could not be used by anything that needed a pure read;
  * `setup/appInit/wireHomeMembership.ts` and `createGenerationPollSource.ts` both
  * route around it in so many words. And it carried the commanded axis to the

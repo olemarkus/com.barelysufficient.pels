@@ -76,7 +76,7 @@ const buildPipeline = (
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     planRebuildThrottle: throttle,
-    getLatestTargetSnapshot: () => [],
+    getDeviceSurfaces: () => [],
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getCoSampledGenerationW: () => undefined,
     getObservedGenerationSegments: () => [],

@@ -16,7 +16,6 @@ import {
 } from '../../lib/device/nativeSteppedLoadWiring';
 import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerNativeEv';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
-import { setObservedNativeSteppedLoadStep } from '../../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
 import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
@@ -655,8 +654,7 @@ describe('native stepped-load wiring', () => {
 
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'target-power-1',
         profile: {
           steps: [
@@ -665,8 +663,9 @@ describe('native stepped-load wiring', () => {
           ],
         },
         desiredStepId: '8a',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('target-power-1', capabilityId, value),
-      })).resolves.toBe(true);
+        planningPowerW: 1840,
+        planningCurrentA: 8,
+      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/target-power-1/capability/target_power',
@@ -1482,7 +1481,6 @@ describe('native stepped-load wiring', () => {
       expect(logCapture.findEvent('device_capability_write_requested')).toMatchObject({
         event: 'device_capability_write_requested',
         deviceId: 'hoiax-1',
-        deviceName: 'Connected 300',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
         value: '2',
@@ -1492,7 +1490,6 @@ describe('native stepped-load wiring', () => {
       expect(logCapture.findEvent('device_capability_write_accepted')).toMatchObject({
         event: 'device_capability_write_accepted',
         deviceId: 'hoiax-1',
-        deviceName: 'Connected 300',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
         value: '2',
@@ -1864,14 +1861,14 @@ describe('native stepped-load wiring', () => {
       onObservedState(deviceManager, liveStateObserved);
       onObservedControlState(deviceManager, realtimeReconcile);
 
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
         profile: steppedProfile,
         desiredStepId: 'max',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
+        planningPowerW: 1750,
+        planningCurrentA: 0,
       }))
-        .resolves.toBe(true);
+        .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1926,13 +1923,13 @@ describe('native stepped-load wiring', () => {
 
       // ...and the native stepped-load adapter for the preserved device survives,
       // so a step command still routes (it would resolve false with no adapter).
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
         profile: steppedProfile,
         desiredStepId: 'max',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
-      })).resolves.toBe(true);
+        planningPowerW: 1750,
+        planningCurrentA: 0,
+      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
         { value: '3' },
@@ -2025,14 +2022,14 @@ describe('native stepped-load wiring', () => {
 
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-mock',
         profile: steppedProfile,
         desiredStepId: 'medium',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-mock', capabilityId, value),
+        planningPowerW: 1750,
+        planningCurrentA: 0,
       }))
-        .resolves.toBe(true);
+        .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-mock/capability/max_power_3000',

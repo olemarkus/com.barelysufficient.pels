@@ -16,7 +16,7 @@ export const createModeOwnershipTransfer = (ctx: AppContext): ModeOwnershipTrans
     store: new HomeModeOwnershipStore(ctx.homey.settings),
     getLogger: () => ctx.getStructuredLogger('homes'),
     getMembership: () => ctx.homeMembership,
-    getLatestTargetSnapshot: () => ctx.latestTargetSnapshot,
+    getDeviceSurfaces: () => ctx.getDeviceSurfaces(),
     transferModeTargets: (moves) => transferModeTargetsForOwnershipMoves(
       ctx.homey.settings,
       ctx.homeModeCatalog,

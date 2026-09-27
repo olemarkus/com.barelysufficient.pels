@@ -65,7 +65,7 @@ describe('recordPowerSampleForApp', () => {
   it('records measured budget exempt usage into exempt buckets', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getLatestTargetSnapshot = () => ([
+    const getDeviceSurfaces = () => ([
       {
         available: true,
         id: 'dev-budget',
@@ -94,7 +94,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -110,7 +110,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -132,7 +132,7 @@ describe('recordPowerSampleForApp', () => {
     // heater's 2 kW was recorded as exempt and the budget counted nothing used.
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getLatestTargetSnapshot = () => ([
+    const getDeviceSurfaces = () => ([
       {
         available: true,
         id: 'dev-charger',
@@ -163,7 +163,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -179,7 +179,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -197,7 +197,7 @@ describe('recordPowerSampleForApp', () => {
   it('does not record budget-exempt buckets for devices with capacity control disabled', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getLatestTargetSnapshot = () => ([
+    const getDeviceSurfaces = () => ([
       {
         available: true,
         id: 'dev-budget',
@@ -217,7 +217,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -233,7 +233,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -259,7 +259,7 @@ describe('recordPowerSampleForApp', () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let observedAtMs = start;
-    const getLatestTargetSnapshot = () => ([
+    const getDeviceSurfaces = () => ([
       {
         available: true,
         id: 'fresh-heater',
@@ -305,7 +305,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -321,7 +321,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -341,7 +341,7 @@ describe('recordPowerSampleForApp', () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let observedAtMs = start;
-    const getLatestTargetSnapshot = () => ([
+    const getDeviceSurfaces = () => ([
       {
         available: true,
         id: 'idle-heater',
@@ -360,7 +360,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -376,7 +376,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start + 30 * 60 * 1000,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -399,7 +399,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot: () => [],
+      getDeviceSurfaces: () => [],
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -418,7 +418,7 @@ describe('recordPowerSampleForApp', () => {
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let currentTemperature = 50;
     let observedAtMs = start;
-    const getLatestTargetSnapshot = () => {
+    const getDeviceSurfaces = () => {
       const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
       return [{
         available: true,
@@ -459,7 +459,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: start,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -476,7 +476,7 @@ describe('recordPowerSampleForApp', () => {
       nowMs: observedAtMs,
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getLatestTargetSnapshot,
+      getDeviceSurfaces,
       powerTracker: tracker,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -522,7 +522,7 @@ describe('recordPowerSampleForApp', () => {
     const record = async (params: {
       currentPowerW: number;
       generationW?: number;
-      getLatestTargetSnapshot: () => never[] | ReturnType<ReturnType<typeof drawingSnapshot>>;
+      getDeviceSurfaces: () => never[] | ReturnType<ReturnType<typeof drawingSnapshot>>;
     }): Promise<PowerTrackerState> => {
       let tracker: PowerTrackerState = {};
       await recordPowerSampleForApp({
@@ -532,7 +532,7 @@ describe('recordPowerSampleForApp', () => {
         nowMs: start,
         timeZone: 'UTC',
         capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-        getLatestTargetSnapshot: params.getLatestTargetSnapshot as never,
+        getDeviceSurfaces: params.getDeviceSurfaces as never,
         powerTracker: {},
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -546,7 +546,7 @@ describe('recordPowerSampleForApp', () => {
     it('attributes the measured device draw instead of reporting a 0 kW home', async () => {
       const tracker = await record({
         currentPowerW: -1500,
-        getLatestTargetSnapshot: drawingSnapshot(start),
+        getDeviceSurfaces: drawingSnapshot(start),
       });
       // 1.2 + 0.8 kW of measured managed draw survives the export sample.
       expect(tracker.lastControlledPowerW).toBe(2000);
@@ -567,7 +567,7 @@ describe('recordPowerSampleForApp', () => {
       // never drew.
       const tracker = await record({
         currentPowerW: -1000,
-        getLatestTargetSnapshot: () => ([
+        getDeviceSurfaces: () => ([
           {
             id: 'home-battery',
             expectedPowerKw: 1,
@@ -596,7 +596,7 @@ describe('recordPowerSampleForApp', () => {
     it('reports 0 when no fresh measured draw is available to floor at', async () => {
       const tracker = await record({
         currentPowerW: -1500,
-        getLatestTargetSnapshot: () => [],
+        getDeviceSurfaces: () => [],
       });
       expect(tracker.lastControlledPowerW).toBeUndefined();
       expect(tracker.lastPowerW).toBe(-1500);
@@ -606,7 +606,7 @@ describe('recordPowerSampleForApp', () => {
       const tracker = await record({
         currentPowerW: -1500,
         generationW: 4000,
-        getLatestTargetSnapshot: drawingSnapshot(start),
+        getDeviceSurfaces: drawingSnapshot(start),
       });
       // gross = -1500 + 4000 = 2500 W, so the split measures against 2.5 kW and
       // the 2 kW of managed draw leaves 0.5 kW of background — NOT the 2 kW
@@ -625,7 +625,7 @@ describe('recordPowerSampleForApp', () => {
       const tracker = await record({
         currentPowerW: -1500,
         generationW: 0,
-        getLatestTargetSnapshot: drawingSnapshot(start),
+        getDeviceSurfaces: drawingSnapshot(start),
       });
       expect(tracker.lastControlledPowerW).toBe(2000);
       expect(tracker.lastUncontrolledPowerW).toBe(0);
@@ -638,7 +638,7 @@ describe('recordPowerSampleForApp', () => {
       const tracker = await record({
         currentPowerW: -1500,
         generationW: 3000,
-        getLatestTargetSnapshot: drawingSnapshot(start),
+        getDeviceSurfaces: drawingSnapshot(start),
       });
       expect(tracker.lastControlledPowerW).toBe(1500);
       expect(tracker.lastUncontrolledPowerW).toBe(0);
@@ -647,7 +647,7 @@ describe('recordPowerSampleForApp', () => {
     it('leaves a positive net sample byte-identical', async () => {
       const tracker = await record({
         currentPowerW: 2500,
-        getLatestTargetSnapshot: drawingSnapshot(start),
+        getDeviceSurfaces: drawingSnapshot(start),
       });
       expect(tracker.lastControlledPowerW).toBe(2000);
       expect(tracker.lastUncontrolledPowerW).toBe(500);

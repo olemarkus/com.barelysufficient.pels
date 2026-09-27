@@ -1,7 +1,7 @@
 import type { Logger as PinoLogger } from '../logging/logger';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { HomeMembershipPort } from './membership';
 
 /** One device changing owning home, as the transfer resolves it. */
@@ -38,7 +38,7 @@ export type ModeOwnershipTransferDeps = {
   getLogger: () => PinoLogger | undefined;
   /** Absent until membership is wired; the reconcile is a no-op until then. */
   getMembership: () => HomeMembershipPort | undefined;
-  getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
+  getDeviceSurfaces: () => DeviceSurfaces[];
   /**
    * Carry each device's persisted temperature anchor to its destination home.
    * Injected because the catalog that does it reads app-shaped state this
@@ -93,7 +93,7 @@ export class ModeOwnershipTransfer {
   private readCurrentOwners(): Map<string, HomeId> {
     const membership = this.deps.getMembership();
     return new Map(
-      this.deps.getLatestTargetSnapshot()
+      this.deps.getDeviceSurfaces()
         .filter(isTemperatureControlDevice)
         .map((device) => [
           device.id,
