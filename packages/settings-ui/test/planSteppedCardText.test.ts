@@ -2,6 +2,7 @@ import {
   formatStepDisplayLabel,
   isSteppedTransit,
   resolveSteppedActiveStepId,
+  resolveSteppedRailSteps,
   resolveSteppedEvExceptionLabel,
   resolveSteppedLevelFact,
   resolveSteppedStatusLine,
@@ -79,6 +80,24 @@ describe('resolveSteppedLevelFact', () => {
     expect(resolveSteppedLevelFact({
       ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }),
     })).toBe('Level Low');
+  });
+
+  it('reads the resting rung by the planner\'s off rule, not by its spelling', () => {
+    const ladder: SteppedLoadProfile = {
+      steps: [
+        { id: 'OFF', planningPowerW: 0 },
+        { id: 'Off', planningPowerW: 600 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    // A zero-power rung is off whatever it is called; the bold state word says so.
+    expect(resolveSteppedLevelFact({
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'OFF' }),
+    })).toBeNull();
+    // A powered rung the owner named `Off` runs, so its level is a fact worth stating.
+    expect(resolveSteppedLevelFact({
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'Off' }),
+    })).toBe('Level Off');
   });
 
   it('shows "Level unknown" without a reported step (no fallback/assumed leakage)', () => {
@@ -721,6 +740,28 @@ describe('resolveSteppedStatusLine', () => {
       )).toBe('Increasing to Medium');
     });
 
+    it('reads a powered step the owner named "Off" as a running rung, as the planner does', () => {
+      // The planner's off rule is an exact `off` id or zero power; a user-named
+      // `Off` rung drawing 600 W runs. Reading it as off told the owner a
+      // step-down was a turn-off.
+      const ownerNamedOff: SteppedLoadProfile = {
+        steps: [
+          { id: 'Off', planningPowerW: 600 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      };
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'Off', commandPending: true }),
+        },
+        ownerNamedOff,
+        NOW_MS,
+      )).toBe('Reducing to Off');
+    });
+
     it('returns "Reducing to Low" when stepping down', () => {
       expect(resolveSteppedStatusLine(
         {
@@ -775,6 +816,36 @@ describe('resolveSteppedTemperatureText', () => {
   });
 });
 
+describe('resolveSteppedRailSteps', () => {
+  const binaryDevice = { currentState: 'on' };
+
+  it('draws the ladder alone when it has an off rung of its own, whatever its name', () => {
+    const idleLadder: SteppedLoadProfile = {
+      steps: [
+        { id: 'idle', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+      ],
+    };
+    expect(resolveSteppedRailSteps(binaryDevice, idleLadder).map((step) => step.id)).toEqual(['idle', 'low']);
+  });
+
+  it('puts the synthetic off rung in front for a binary device whose ladder has none', () => {
+    const ownerNamedOff: SteppedLoadProfile = {
+      steps: [
+        { id: 'Off', planningPowerW: 600 },
+        { id: 'low', planningPowerW: 1250 },
+      ],
+    };
+    expect(resolveSteppedRailSteps(binaryDevice, ownerNamedOff).map((step) => step.id))
+      .toEqual(['off', 'Off', 'low']);
+  });
+
+  it('draws a step-only device\'s ladder as it is', () => {
+    expect(resolveSteppedRailSteps({ currentState: 'not_applicable' }, profile).map((step) => step.id))
+      .toEqual(['low', 'medium', 'max']);
+  });
+});
+
 describe('resolveSteppedActiveStepId', () => {
   it('returns the off step id when state is off and profile has an explicit off step', () => {
     const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
@@ -789,6 +860,28 @@ describe('resolveSteppedActiveStepId', () => {
   it('returns synthetic "off" id for empty currentState with no off step', () => {
     const device = { ...baseDevice, currentState: '', steppedLoad: steppedLoad({ reportedStepId: 'medium' }) };
     expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
+  });
+
+  it("returns the ladder's zero-power rung, whatever its name, when state is off", () => {
+    const idleLadder: SteppedLoadProfile = {
+      steps: [
+        { id: 'idle', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+      ],
+    };
+    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
+    expect(resolveSteppedActiveStepId(device, idleLadder)).toBe('idle');
+  });
+
+  it('does not rest a device on a powered rung the owner named "Off"', () => {
+    const ownerNamedOff: SteppedLoadProfile = {
+      steps: [
+        { id: 'Off', planningPowerW: 600 },
+        { id: 'low', planningPowerW: 1250 },
+      ],
+    };
+    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
+    expect(resolveSteppedActiveStepId(device, ownerNamedOff)).toBe('off');
   });
 
   it('returns reportedStepId when state is not off-like', () => {

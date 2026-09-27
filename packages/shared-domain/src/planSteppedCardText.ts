@@ -2,9 +2,10 @@ import type {
   ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
+  SteppedLoadStep,
 } from '../../contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
-import type { DeviceOverviewSnapshot } from './deviceOverview';
+import type { DeviceOverviewSnapshot, DeviceOverviewSteppedLoad } from './deviceOverview';
 import {
   isHoldReasonCode,
   resolveDisplayStateKind,
@@ -23,6 +24,12 @@ import {
 } from './planCardReasonLine';
 import { formatStepDisplayLabel } from './steppedStepLabel';
 import {
+  getSteppedLoadOffStep,
+  getSteppedLoadStep,
+  isSteppedLoadOffStep,
+  isSteppedLoadStepOff,
+} from './deviceControlProfiles';
+import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   type PlanStateKind,
 } from './planStateLabels';
@@ -30,11 +37,6 @@ import {
 const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
-
-const isOffLikeId = (id: string | undefined): boolean => {
-  const n = (id ?? '').trim().toLowerCase();
-  return n === '' || n === 'off';
-};
 
 // Broader than the shared `isOffLikeState` in `deviceStatePredicates.ts`:
 // also treats empty / `'disappeared'` as off-for-display so the stepped card
@@ -66,37 +68,55 @@ const resolveTargetStepId = (device: SteppedCardDevice): string | null => (
   device.steppedLoad?.targetStepId ?? null
 );
 
-const normalizeStepId = (id: string | null): string | null => (
-  id === null ? null : id.toLowerCase()
+// Step ids are matched exactly, as the planner matches them: every producer of a
+// reported or target step id hands over the ladder's own id, and the ladder
+// rejects only exact duplicates, so `Low` and `low` are two rungs.
+const findStepIndex = (profile: SteppedLoadProfile, stepId: string | null): number => (
+  stepId === null ? -1 : profile.steps.findIndex((s) => s.id === stepId)
 );
 
-const findStepIndex = (profile: SteppedLoadProfile, stepId: string | null): number => {
-  const norm = normalizeStepId(stepId);
-  return norm === null ? -1 : profile.steps.findIndex((s) => s.id.toLowerCase() === norm);
-};
-
 const findStepLabel = (profile: SteppedLoadProfile, stepId: string | null): string | null => {
-  const norm = normalizeStepId(stepId);
-  if (!norm) return null;
-  const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
+  const step = getSteppedLoadStep(profile, stepId);
   return step ? formatStepDisplayLabel(step.id) : null;
 };
 
+// Powered by the planner's off rule (`isSteppedLoadStepOff`): a rung the owner
+// named `Off` that draws power runs, and reads as running here too.
 const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): boolean => {
-  if (!stepId || isOffLikeId(stepId)) return false;
-  const norm = normalizeStepId(stepId);
-  const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
-  return step !== undefined && step.planningPowerW > 0;
+  const step = getSteppedLoadStep(profile, stepId);
+  return step !== null && !isSteppedLoadStepOff(step);
+};
+
+const SYNTHETIC_OFF_STEP: SteppedLoadStep = { id: 'off', planningPowerW: 0 };
+
+/**
+ * The rung a device at rest sits on: the ladder's own off step by the planner's
+ * rule (`getSteppedLoadOffStep`, the one a `turn_off` shed parks it at), or the
+ * step rail's synthetic `off` rung for a ladder that has none.
+ */
+const resolveSteppedOffStep = (profile: SteppedLoadProfile): SteppedLoadStep => (
+  getSteppedLoadOffStep(profile) ?? SYNTHETIC_OFF_STEP
+);
+
+/**
+ * The rungs the step rail draws: the ladder, with the synthetic `off` rung in
+ * front for a device that has a binary off but no off rung of its own, so a
+ * resting device always has a rung to sit on.
+ */
+export const resolveSteppedRailSteps = (
+  device: { currentState?: string },
+  profile: SteppedLoadProfile,
+): SteppedLoadStep[] => {
+  const hasBinaryOff = device.currentState !== 'not_applicable';
+  if (!hasBinaryOff || getSteppedLoadOffStep(profile) !== null) return profile.steps;
+  return [SYNTHETIC_OFF_STEP, ...profile.steps];
 };
 
 export const resolveSteppedActiveStepId = (
   device: SteppedCardDevice,
   profile: SteppedLoadProfile,
 ): string | null => {
-  if (isSteppedCardOffLikeState(device.currentState)) {
-    const offStep = profile.steps.find((s) => s.id.toLowerCase() === 'off');
-    return offStep?.id ?? 'off';
-  }
+  if (isSteppedCardOffLikeState(device.currentState)) return resolveSteppedOffStep(profile).id;
   return resolveCurrentStepId(device);
 };
 
@@ -129,9 +149,8 @@ const resolveSteppedWaitVerb = (
 type SteppedDevice = SteppedCardDevice;
 
 const isAtTargetStep = (device: SteppedDevice): boolean => {
-  const reportedId = normalizeStepId(resolveCurrentStepId(device));
-  const targetId = normalizeStepId(resolveTargetStepId(device));
-  return reportedId !== null && targetId !== null && reportedId === targetId;
+  const reportedId = resolveCurrentStepId(device);
+  return reportedId !== null && reportedId === resolveTargetStepId(device);
 };
 
 // Settling reasons that only fire while the planner is *checking headroom* for a
@@ -353,15 +372,18 @@ const EV_ROUTINE_STATE = 'plugged_in_charging';
 // already covers "off").
 export const resolveSteppedLevelFact = (device: {
   currentState?: string;
-  steppedLoad?: SteppedLoadCardState;
+  steppedLoad?: Pick<DeviceOverviewSteppedLoad, 'profile' | 'reportedStepId'>;
   evChargingState?: EvChargingState;
   deviceRole?: 'ev_charger';
   stateOfCharge?: ObservedStateOfCharge;
 }): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
-  const stepId = device.steppedLoad?.reportedStepId ?? null;
-  if (!stepId) return 'Level unknown';
-  if (isOffLikeId(stepId)) return null;
+  const { steppedLoad } = device;
+  const stepId = steppedLoad?.reportedStepId ?? null;
+  if (!steppedLoad || !stepId) return 'Level unknown';
+  // Resting on the ladder's off rung by the planner's rule is off, which the
+  // bold state word already says.
+  if (isSteppedLoadOffStep(steppedLoad.profile, stepId)) return null;
   const levelText = `level ${formatStepDisplayLabel(stepId)}`;
   const isEvCharger = device.deviceRole === 'ev_charger';
   const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;

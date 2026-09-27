@@ -5,6 +5,7 @@ import {
   resolveSteppedEvExceptionLabel,
   resolveSteppedLevelFact,
   resolveSteppedPowerText,
+  resolveSteppedRailSteps,
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
 } from '../../../../shared-domain/src/planSteppedCardText.ts';
@@ -59,15 +60,9 @@ const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanDisplay
 
 const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedLoadProfile }) => {
   const activeStepId = resolveSteppedActiveStepId(dev, profile);
-
-  const hasExplicitOff = profile.steps.some((s) => s.id.toLowerCase() === 'off');
-  const hasBinaryOff = dev.currentState !== 'not_applicable';
-  const steps = hasExplicitOff || !hasBinaryOff
-    ? profile.steps
-    : [{ id: 'off', planningPowerW: 0 }, ...profile.steps];
+  const steps = resolveSteppedRailSteps(dev, profile);
   const n = steps.length;
-  const normActive = activeStepId?.toLowerCase() ?? null;
-  const activeIdx = normActive === null ? -1 : steps.findIndex((s) => s.id.toLowerCase() === normActive);
+  const activeIdx = activeStepId === null ? -1 : steps.findIndex((s) => s.id === activeStepId);
   const hasPosition = n > 1 && activeIdx >= 0;
   const filledPct = hasPosition ? (activeIdx / (n - 1)) * 100 : 0;
 
