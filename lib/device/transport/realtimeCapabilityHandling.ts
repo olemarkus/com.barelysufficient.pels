@@ -57,6 +57,7 @@ const resolveBinaryAxisOn = (
         : (snapshot.binaryControl?.on ?? fallback)
 );
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -105,6 +106,7 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     });
     return false;
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * A reading that repeats its previous value still advanced an observation stamp
@@ -271,6 +273,7 @@ function dispatchTemperatureFacetRemoval(
     ctx.dispatchObservedControlStateChanged({ deviceId, ...cursor, name: snapshot.name, changes });
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function dropDeviceWithoutRemainingControlFacet(
     ctx: TransportContext,
     snapshotIndex: number,
@@ -280,7 +283,9 @@ function dropDeviceWithoutRemainingControlFacet(
     ctx.latestSnapshot.splice(snapshotIndex, 1);
     ctx.latestSnapshotById.delete(snapshot.id);
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function handleTemperatureCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -335,6 +340,7 @@ function handleTemperatureCapabilityUpdate(ctx: TransportContext, params: {
     });
     return false;
 }
+/* eslint-enable functional/immutable-data */
 
 function handleBinaryCapabilityEvent(ctx: TransportContext, params: {
     snapshotIndex: number;
@@ -373,6 +379,7 @@ function handleBinaryCapabilityEvent(ctx: TransportContext, params: {
     return true;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -452,6 +459,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
         changes,
     });
 }
+/* eslint-enable functional/immutable-data */
 
 export function handleRealtimeCapabilityUpdate(
     ctx: TransportContext,

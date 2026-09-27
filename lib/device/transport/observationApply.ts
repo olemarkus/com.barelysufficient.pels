@@ -38,6 +38,7 @@ export function applyCapabilityObservation(
     return applyTargetCapabilityObservation(nextSnapshot, capabilityId, observation);
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyControlCapabilityObservation(
     nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
@@ -74,7 +75,9 @@ function applyControlCapabilityObservation(
     snapshot.lastUpdated = snapshot.lastFreshDataMs ?? snapshot.lastUpdated;
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyEvChargingStateObservation(
     nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
@@ -107,7 +110,9 @@ function applyEvChargingStateObservation(
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyMeasuredTemperatureObservation(
     nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
@@ -121,6 +126,7 @@ function applyMeasuredTemperatureObservation(
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
 function applyStateOfChargeObservation(
     nextSnapshot: TransportDeviceSnapshot,
@@ -138,6 +144,7 @@ function applyStateOfChargeObservation(
     return true;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyTargetCapabilityObservation(
     nextSnapshot: TransportDeviceSnapshot,
     capabilityId: string,
@@ -180,7 +187,9 @@ function applyTargetCapabilityObservation(
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyTemperatureTargetObservation(
     snapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
@@ -199,7 +208,9 @@ function applyTemperatureTargetObservation(
     }
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyExactTargetPowerObservation(params: {
     snapshot: TransportDeviceSnapshot;
     capabilityId: string;
@@ -231,6 +242,7 @@ function applyExactTargetPowerObservation(params: {
     snapshot.reportedStepObservedAtMs = observation.observedAt;
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
 export function clearCapabilityObservationIfMatched(
     state: DeviceTransportObservationState,

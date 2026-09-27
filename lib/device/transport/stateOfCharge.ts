@@ -125,6 +125,7 @@ function retainedCarCandidate(
  * the charger's level as far as everything downstream is concerned; only its
  * provenance differs.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateStateOfChargeFromCarObservation(params: {
   snapshot: TransportDeviceSnapshot;
   percent: number;
@@ -172,7 +173,9 @@ export function updateStateOfChargeFromCarObservation(params: {
   };
   return hasCarStateOfChargeChanged(previous, snapshot.stateOfCharge, carId);
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateStateOfChargeObservationFreshness(params: {
   snapshot: TransportDeviceSnapshot;
   reportedAt: number;
@@ -194,7 +197,9 @@ export function updateStateOfChargeObservationFreshness(params: {
   };
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateStateOfChargeFromRealtimeCapability(params: {
   snapshot: TransportDeviceSnapshot;
   capabilityId: string;
@@ -258,7 +263,9 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
     || previous.report.observedAtMs !== next.report.observedAtMs
     || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateStateOfChargeSessionBoundary(params: {
   snapshot: TransportDeviceSnapshot;
   evChargingState: EvChargingState;
@@ -294,6 +301,7 @@ export function updateStateOfChargeSessionBoundary(params: {
     || previous.sessionStartedAtMs !== snapshot.stateOfCharge.sessionStartedAtMs
     || previous.invalidatedAtMs !== snapshot.stateOfCharge.invalidatedAtMs;
 }
+/* eslint-enable functional/immutable-data */
 
 export function isStateOfChargeCapabilityId(
   capabilityId: string,

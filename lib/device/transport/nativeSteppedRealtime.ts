@@ -105,6 +105,7 @@ function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params:
     });
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
     snapshotIndex: number;
     deviceId: string;
@@ -173,6 +174,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
         });
     }
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Watts per unit of a native EV step observation, for the preset's

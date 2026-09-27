@@ -59,6 +59,7 @@ export type TargetedRefreshMergeResult = {
  * intentional removal and is DROPPED immediately (no grace), mirroring the
  * whole-snapshot "raw-nonempty-but-parsed-empty commits immediately" invariant.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function mergeTargetedRefreshSnapshot(params: {
     presentSnapshot: TransportDeviceSnapshot[];
     previousSnapshot: readonly TransportDeviceSnapshot[];
@@ -116,6 +117,7 @@ export function mergeTargetedRefreshSnapshot(params: {
     }
     return { snapshot, graceExceededIds };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Build the realtime-tracking device list for a targeted refresh: the freshly-
@@ -123,6 +125,7 @@ export function mergeTargetedRefreshSnapshot(params: {
  * device absent from this cycle's read — so a retained device keeps its realtime
  * events and native adapters across the miss.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function overlayRetainedTrackedDevices(params: {
     effectiveList: HomeyDeviceLike[];
     committedSnapshot: readonly TargetDeviceSnapshot[];
@@ -138,3 +141,4 @@ export function overlayRetainedTrackedDevices(params: {
     }
     return trackingList;
 }
+/* eslint-enable functional/immutable-data */

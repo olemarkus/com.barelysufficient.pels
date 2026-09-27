@@ -31,6 +31,7 @@ export function getDebugObservedSources(
     };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordSnapshotRefreshObservations(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot[];
@@ -58,7 +59,9 @@ export function recordSnapshotRefreshObservations(params: {
         };
     }
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordDeviceUpdateObservation(params: {
     state: DeviceTransportObservationState;
     latestSnapshot: TransportDeviceSnapshot[];
@@ -80,6 +83,7 @@ export function recordDeviceUpdateObservation(params: {
         ...(result.changes.length > 0 ? { changes: result.changes.map((change) => ({ ...change })) } : {}),
     };
 }
+/* eslint-enable functional/immutable-data */
 
 export function cloneTransportDeviceSnapshotForDebug(
     snapshot: TransportDeviceSnapshot | null,

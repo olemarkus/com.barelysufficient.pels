@@ -26,6 +26,7 @@ export function resolveTargetDeviceType(
 }
 
 /** Remove the complete temperature facet while leaving every other device facet intact. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function removeTemperatureObservation(snapshot: TransportDeviceSnapshot): boolean {
   const hadTemperature = snapshot.temperature !== undefined
     || snapshot.targets.some((target) => target.id === TARGET_TEMPERATURE_CAPABILITY_ID)
@@ -37,8 +38,10 @@ export function removeTemperatureObservation(snapshot: TransportDeviceSnapshot):
   if (snapshot.deviceType === 'temperature') mutableSnapshot.deviceType = 'onoff';
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
 /** Apply a finite measurement only to an already-admitted atomic facet. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateTemperatureMeasurement(
   snapshot: TransportDeviceSnapshot,
   value: number,
@@ -49,8 +52,10 @@ export function updateTemperatureMeasurement(
   mutableSnapshot.temperature = { ...snapshot.temperature, currentTemperature: value };
   return true;
 }
+/* eslint-enable functional/immutable-data */
 
 /** Apply a finite exact target only to an already-admitted atomic facet. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function updateTemperatureTarget(
   snapshot: TransportDeviceSnapshot,
   value: number,
@@ -66,6 +71,7 @@ export function updateTemperatureTarget(
   ));
   return { changed: true, previousValue };
 }
+/* eslint-enable functional/immutable-data */
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);

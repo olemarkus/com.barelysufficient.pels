@@ -10,6 +10,7 @@ export type FlowSteppedLoadObservation = {
 };
 
 /** Admit validated Flow exact-step evidence into transport-owned observed state. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function reportFlowSteppedObservation(
     ctx: TransportContext,
     observation: FlowSteppedLoadObservation,
@@ -41,3 +42,4 @@ export function reportFlowSteppedObservation(
     ctx.dispatchObservedStateForDevice(observation.deviceId, PELS_MEASURE_STEP_CAPABILITY_ID);
     return true;
 }
+/* eslint-enable functional/immutable-data */

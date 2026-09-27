@@ -12,6 +12,7 @@ export type ExplicitControlObservation = {
   observedCapabilityId: string;
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyExplicitBinaryObservation(params: {
   parsed: TransportDeviceSnapshot;
   observation: ExplicitControlObservation;
@@ -50,6 +51,7 @@ export function applyExplicitBinaryObservation(params: {
     source: 'device_update',
   };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Whether a `device.update`'s explicit binary value is newer evidence than what
@@ -76,6 +78,7 @@ export function resolveExplicitBinaryEvidence(params: {
   return { accepted: true, observedAtMs: sourceObservedAtMs };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function preserveStaleBundledEvState(params: {
   device: HomeyDeviceLike;
   parsed: TransportDeviceSnapshot;
@@ -102,6 +105,7 @@ export function preserveStaleBundledEvState(params: {
   parsed.evChargingState = previous.evChargingState;
   parsed.evChargingStateObservedAtMs = previousStateObservedAtMs;
 }
+/* eslint-enable functional/immutable-data */
 
 function resolvePreviousExplicitBinaryObservedAtMs(
   previous: TransportDeviceSnapshot,
@@ -126,6 +130,7 @@ function resolvePreviousExplicitBinaryObservedAtMs(
   return undefined;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function preserveRejectedExplicitBinaryObservation(params: {
   parsed: TransportDeviceSnapshot;
   previous: TransportDeviceSnapshot;
@@ -184,3 +189,4 @@ export function preserveRejectedExplicitBinaryObservation(params: {
     delete parsed.binaryControlObservation;
   }
 }
+/* eslint-enable functional/immutable-data */

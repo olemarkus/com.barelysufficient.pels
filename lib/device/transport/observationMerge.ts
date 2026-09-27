@@ -15,6 +15,7 @@ import { incPerfCounter } from '../../utils/perfCounters';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function mergeFresherCapabilityObservations(params: {
     state: DeviceTransportObservationState;
     previousSnapshot: TransportDeviceSnapshot[];
@@ -83,6 +84,7 @@ export function mergeFresherCapabilityObservations(params: {
         }
     }
 }
+/* eslint-enable functional/immutable-data */
 
 function mergeTemperatureRejectionObservations(params: {
     state: DeviceTransportObservationState;
@@ -112,6 +114,7 @@ function isFiniteNumber(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value);
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function mergeSnapshotObservationsForDevice(params: {
     state: DeviceTransportObservationState;
     nextSnapshot: TransportDeviceSnapshot;
@@ -196,7 +199,9 @@ function mergeSnapshotObservationsForDevice(params: {
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
     }
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function preserveBinaryControlObservation(params: {
     previous: TransportDeviceSnapshot;
     snapshot: TransportDeviceSnapshot;
@@ -215,6 +220,7 @@ function preserveBinaryControlObservation(params: {
         };
     }
 }
+/* eslint-enable functional/immutable-data */
 function mergeStateOfChargeObservationsForDevice(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot;

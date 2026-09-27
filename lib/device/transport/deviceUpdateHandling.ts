@@ -166,8 +166,10 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
           emit(event);
         },
         createObservationCursor: (nextDeviceId) => ctx.nextObservationCursor(nextDeviceId),
+        /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
         emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
         emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
+        /* eslint-enable functional/immutable-data */
     });
     const currentSnapshot = deviceId
         ? syncRealtimeDeviceUpdateSnapshot(ctx, {
@@ -239,4 +241,3 @@ function flushDeferredObservedState(
     if (previousSnapshot?.available === currentSnapshot.available) return;
     ctx.dispatchObservedStateForDevice(deviceId);
 }
-

@@ -307,7 +307,9 @@ function homeyHttpRequest(
 
     const req = requestModule.request(options, (res) => {
       const chunks: Buffer[] = [];
+      /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      /* eslint-enable functional/immutable-data */
       res.on('end', () => {
         const raw = Buffer.concat(chunks).toString('utf8');
         // The control path gave up on this request long ago and has already

@@ -38,9 +38,11 @@ export function hasCarStateOfChargeChanged(
  * charger's. Only ever clears a reading the car produced — a charger's own
  * native or flow-reported level is untouched.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearCarStateOfCharge(params: { snapshot: TransportDeviceSnapshot }): boolean {
   const { snapshot } = params;
   if (snapshot.stateOfCharge?.source.kind !== 'car') return false;
   snapshot.stateOfCharge = undefined;
   return true;
 }
+/* eslint-enable functional/immutable-data */

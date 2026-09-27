@@ -102,6 +102,7 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
  * abandon-grace window AND under the consecutive-read threshold. Once either is
  * exceeded — a genuinely-emptied home — the empty snapshot is allowed through.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function shouldDeferEmptySnapshotCommit(
     ctx: TransportContext,
     snapshot: readonly TargetDeviceSnapshot[],
@@ -145,6 +146,7 @@ function shouldDeferEmptySnapshotCommit(
     });
     return true;
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Resolve the snapshot to commit. For a TARGETED (by-id) overlay, `failedIds`
@@ -186,6 +188,7 @@ function resolveCommittedRefreshSnapshot(
     return snapshot;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function appendRecoveredTemperatureDevices(
     ctx: TransportContext,
     presentSnapshot: readonly TransportDeviceSnapshot[],
@@ -198,6 +201,7 @@ function appendRecoveredTemperatureDevices(
         committedSnapshot.push(device);
     }
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Commits a refreshed snapshot unless the abandon-grace guard defers it.

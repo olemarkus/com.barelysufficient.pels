@@ -19,6 +19,7 @@ const moduleLogger = getLogger('device/transport');
  * ignored devices are named once per violation in the log and contribute
  * nothing from this read.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function partitionConformingDeviceReads(
     ctx: TransportContext,
     list: readonly HomeyDeviceLike[],
@@ -32,6 +33,7 @@ export function partitionConformingDeviceReads(
     }
     return { devices, ignoredIds };
 }
+/* eslint-enable functional/immutable-data */
 
 // An ignored read is a no-op for the device: the entry it had before this read
 // stands. A device PELS had never parsed has no entry and stays out until a read

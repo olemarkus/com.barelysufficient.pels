@@ -79,6 +79,7 @@ export async function fetchDevicesWithFallback(params: {
   throw lastError;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export async function fetchDevicesByIds(params: {
   deviceIds: string[];
   logger: Logger;
@@ -147,6 +148,7 @@ export async function fetchDevicesByIds(params: {
   }
   return { devices, fetchSource: 'targeted_by_id', failedIds };
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * The whole-home reading for the producer-clean Main meter selection. A

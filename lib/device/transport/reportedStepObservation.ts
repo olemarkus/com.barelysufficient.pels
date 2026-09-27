@@ -1,6 +1,7 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 /** Keep an exact step cluster atomic when a bundled observation is older. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function preserveNewerReportedStepObservation(
     previous: TransportDeviceSnapshot,
     snapshot: TransportDeviceSnapshot,
@@ -24,3 +25,4 @@ export function preserveNewerReportedStepObservation(
         targetPower.value = previous.reportedStepPowerW;
     }
 }
+/* eslint-enable functional/immutable-data */

@@ -19,6 +19,7 @@ type RecordSnapshotObservationOptions = {
     capabilityIdSet: ReadonlySet<string>;
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordLocalWriteObservation(params: {
     state: DeviceTransportObservationState;
     latestSnapshot: TransportDeviceSnapshot[];
@@ -56,7 +57,9 @@ export function recordLocalWriteObservation(params: {
         countsTowardDeviceFreshness: false,
     });
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordSnapshotCapabilityObservations(params: {
     state: DeviceTransportObservationState;
     latestSnapshot: TransportDeviceSnapshot[];
@@ -117,7 +120,9 @@ export function recordSnapshotCapabilityObservations(params: {
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
     }
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordCapabilityObservation(params: {
     state: DeviceTransportObservationState;
     latestSnapshot: TransportDeviceSnapshot[];
@@ -159,6 +164,7 @@ export function recordCapabilityObservation(params: {
     resolvedSnapshot.lastFreshDataMs = Math.max(resolvedSnapshot.lastFreshDataMs ?? 0, observedAt);
     resolvedSnapshot.lastUpdated = resolvedSnapshot.lastFreshDataMs;
 }
+/* eslint-enable functional/immutable-data */
 
 export function resolveLatestLocalWriteMs(
     state: DeviceTransportObservationState,
@@ -269,6 +275,7 @@ function recordSnapshotScalarObservation(
     return true;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function updateLocalWriteTimestamps(
     state: DeviceTransportObservationState,
     latestSnapshot: TransportDeviceSnapshot[],
@@ -287,3 +294,4 @@ function updateLocalWriteTimestamps(
         Math.max(state.latestLocalWriteMsByDeviceId.get(deviceId) ?? 0, observedAt),
     );
 }
+/* eslint-enable functional/immutable-data */

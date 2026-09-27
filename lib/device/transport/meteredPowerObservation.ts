@@ -6,6 +6,7 @@ const endMs = (reading: MeteredPowerReading): number => (
 );
 
 /** Preserve the complete source record when a pull predates committed telemetry. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function preserveNewerMeteredPowerReading(
   previous: TransportDeviceSnapshot,
   next: TransportDeviceSnapshot,
@@ -19,3 +20,4 @@ export function preserveNewerMeteredPowerReading(
   snapshot.measuredPowerKw = retained.powerKw;
   snapshot.measuredPowerObservedAtMs = previous.measuredPowerObservedAtMs;
 }
+/* eslint-enable functional/immutable-data */

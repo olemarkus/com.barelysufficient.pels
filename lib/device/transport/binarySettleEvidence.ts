@@ -65,6 +65,7 @@ export function resolveBinaryControlPayload(
     };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: string): boolean {
     const removed = ctx.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
     // By-id is authoritative; see the note in `deviceTransport.requestBinaryControl`.
@@ -72,6 +73,7 @@ export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: strin
     if (snapshot) delete snapshot.binaryControlObservation;
     return removed;
 }
+/* eslint-enable functional/immutable-data */
 export function clearBinarySettleEvidenceForInvalidControlPayload(ctx: TransportContext, params: {
     deviceId: string;
     deviceName?: string;
@@ -115,6 +117,7 @@ export function upsertBinarySettleEvidence(
     return next;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyBinarySettleEvidenceToSnapshot(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
@@ -137,6 +140,7 @@ export function applyBinarySettleEvidenceToSnapshot(
     mutableSnapshot.binaryControlObservation = acceptedEvidence;
     return acceptedEvidence;
 }
+/* eslint-enable functional/immutable-data */
 export function applyCachedBinarySettleEvidenceToSnapshot(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
@@ -154,6 +158,7 @@ export function shouldClearBinarySettleEvidenceForSnapshot(
     return !ctx.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function reconcileBinarySettleEvidenceWithSnapshot(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot[],
@@ -176,6 +181,7 @@ export function reconcileBinarySettleEvidenceWithSnapshot(
         applyCachedBinarySettleEvidenceToSnapshot(ctx, device);
     }
 }
+/* eslint-enable functional/immutable-data */
 
 export function applyBinarySettleEvidenceFromDeviceUpdate(ctx: TransportContext, params: {
     deviceId: string;
@@ -228,6 +234,7 @@ function isOlderEvCommandObservation(
         && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyBinaryObservationToSnapshot(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
@@ -260,6 +267,7 @@ export function applyBinaryObservationToSnapshot(
         applyBinarySettleEvidenceToSnapshot(ctx, mutableSnapshot, evidence);
     }
 }
+/* eslint-enable functional/immutable-data */
 
 export function recordRealtimeCapabilityObservation(ctx: TransportContext, params: {
     deviceId: string;

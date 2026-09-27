@@ -34,6 +34,7 @@ export type FreshnessOnlyCapabilityUpdateResult = {
   temperatureFacetRemoved?: boolean;
 };
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyFreshnessOnlyCapabilityUpdate(params: {
   snapshot: TransportDeviceSnapshot;
   capabilityId: string;
@@ -107,6 +108,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   }
   return { changed: false, normalizedValue: undefined };
 }
+/* eslint-enable functional/immutable-data */
 
 function applyTemperatureUpdate(
   snapshot: TransportDeviceSnapshot,
@@ -133,6 +135,7 @@ function applyTemperatureUpdate(
   };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function applyEvChargingStateUpdate(
   snapshot: TransportDeviceSnapshot,
   value: EvChargingState | undefined,
@@ -158,3 +161,4 @@ function applyEvChargingStateUpdate(
     normalizedValue: value,
   };
 }
+/* eslint-enable functional/immutable-data */

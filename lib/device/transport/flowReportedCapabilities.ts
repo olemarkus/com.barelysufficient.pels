@@ -85,6 +85,7 @@ export function isFlowReportedObservationCapabilityId(value: string): value is F
   return FLOW_REPORTED_OBSERVATION_CAPABILITY_SET.has(value);
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function parseFlowReportedCapabilities(value: unknown): FlowReportedCapabilitiesByDevice {
   if (!isRecord(value)) return {};
 
@@ -100,6 +101,7 @@ export function parseFlowReportedCapabilities(value: unknown): FlowReportedCapab
 
   return parsed;
 }
+/* eslint-enable functional/immutable-data */
 
 /**
  * Single legitimate optional read against the normalized structure: an
@@ -117,6 +119,7 @@ export function readFlowReportedCapabilitiesForDevice(
   return state?.[deviceId] ?? {};
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function upsertFlowReportedCapability(params: {
   state: FlowReportedCapabilitiesByDevice;
   deviceId: string;
@@ -180,6 +183,7 @@ export function upsertFlowReportedCapability(params: {
     entry,
   };
 }
+/* eslint-enable functional/immutable-data */
 
 export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice | undefined): string[] {
   return Object.keys(state ?? {});
@@ -261,6 +265,7 @@ export function getFlowEffectiveRequiredCapabilitiesForType(
   return [];
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function augmentCapabilitiesWithFlowReports(params: {
   deviceType: FlowAugmentedDeviceType;
   capabilities: readonly string[];
@@ -331,7 +336,9 @@ export function augmentCapabilitiesWithFlowReports(params: {
     flowBackedCapabilityIds,
   };
 }
+/* eslint-enable functional/immutable-data */
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function buildFlowBackedCapabilityValue(params: {
   capabilityId: FlowReportedCapabilityId;
   reportedEntry: FlowReportedCapabilityEntry;
@@ -361,6 +368,7 @@ function buildFlowBackedCapabilityValue(params: {
 
   return nextValue;
 }
+/* eslint-enable functional/immutable-data */
 
 function buildDerivedEvChargingStateEntry(params: {
   capabilityObj: DeviceCapabilityMap;
@@ -443,6 +451,7 @@ function resolveCapabilityLastUpdatedMs(
     : undefined;
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function parseFlowReportedDeviceEntry(
   deviceEntry: Record<string, unknown>,
 ): Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>> {
@@ -458,6 +467,7 @@ function parseFlowReportedDeviceEntry(
 
   return nextDeviceEntry;
 }
+/* eslint-enable functional/immutable-data */
 
 function isCapabilityProvidedNatively(
   capabilityId: FlowReportedCapabilityId,

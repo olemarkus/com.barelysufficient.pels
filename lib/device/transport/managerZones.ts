@@ -85,6 +85,7 @@ const toZoneTreeNode = (value: unknown): ZoneTreeNode | null => {
  * read. The caller's neighbouring zone logs in `snapshotRefresh` go through the
  * same injected emitter, so this also keeps one zone story on one channel.
  */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTree | null> {
   const { logger } = params;
   let data: unknown;
@@ -138,3 +139,4 @@ export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTre
   // never trigger prototype setters.
   return Object.fromEntries(Object.entries(tree));
 }
+/* eslint-enable functional/immutable-data */

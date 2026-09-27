@@ -43,6 +43,7 @@ export function normalizeReportedThermostatMode(value: string): string {
 }
 
 /** True when the event was a mode event, whether or not it changed anything. */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function handleThermostatModeCapabilityUpdate(
     ctx: TransportContext,
     snapshot: TransportDeviceSnapshot,
@@ -83,3 +84,4 @@ export function handleThermostatModeCapabilityUpdate(
     });
     return true;
 }
+/* eslint-enable functional/immutable-data */
