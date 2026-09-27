@@ -1,0 +1,24 @@
+# Planner input production
+
+`lib/planInput/` owns the cross-domain projection from a device's joined
+descriptor/observation surfaces to the `PlanInputDevice` contract. It resolves
+the producer facts once; `lib/plan/` consumes those facts and owns the plan
+decision.
+
+This is a deliberate integration layer above the peer domains, not another
+peer. It may read the device, observer, plan, and other domain owners needed to
+form the planner's input. Peer domains must never import this layer. Setup may
+construct its required `PlanInputProjectionSource` from owner reads and pass it
+to the producer, but the producer must not import `AppContext`, `setup/`, or the
+Homey SDK, and must not retain mutable state.
+
+The source contract has required operations. Genuine per-device absence stays
+in the return types of those reads where the domain already has that state;
+do not add optional source operations or nullable fallbacks for wiring
+convenience. Keep plan-input fields resolved and required wherever their owner
+guarantees them.
+
+The home-specific options on the projection are wiring policy: main-home
+defaults and sub-home overrides. They do not authorize home membership,
+priority ranking, or runtime mutation here. Those remain with their owners and
+their existing setup seams.

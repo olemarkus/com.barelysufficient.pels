@@ -4,14 +4,15 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * a sub-home capacity bundle overrides the surplus posture (capacity-only, no
  * price/surplus signal), the PELS-OFF provenance cleanup, and binary-command
  * reachability. There is no pending-binary override — that read left the seam
- * entirely. The DEFAULT (no opts / `{}`) must reproduce the pre-R7b behavior
- * byte-for-byte — that byte-identity is the single-home safety proof.
+ * entirely. The compatibility wrapper's default must match the explicit
+ * main-home projection policy — that equality is the single-home safety proof.
  *
  * Only the SDK seam (settings store + the mock ctx readers) is stubbed; the real
  * producer resolves the flat bits.
  */
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
+import { createDefaultToPlanDeviceOptions } from '../../lib/planInput/projectPlanInputDevice';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
@@ -210,16 +211,23 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.surplusOnly).toBe(true);
   });
 
-  it('byte-identity guard: no opts === empty opts ({})', () => {
+  it('byte-identity guard: the main-home projection policy matches the wired default', () => {
     const ctx = buildSurplusCtx();
-    const noOpts = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()));
-    const emptyOpts = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()), {});
-    expect(emptyOpts).toEqual(noOpts);
+    const implicitDefault = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()));
+    const explicitDefault = toPlanDevice(
+      ctx,
+      withDeviceConfiguration(buildSurplusWillingSnapshot()),
+      createDefaultToPlanDeviceOptions(),
+    );
+    expect(explicitDefault).toEqual(implicitDefault);
   });
 
   it('surplusPostureEnabled=false NEVER stamps surplusOnly (sub-home capacity-only)', () => {
     const ctx = buildSurplusCtx();
-    const result = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()), { surplusPostureEnabled: false });
+    const result = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()), {
+      ...createDefaultToPlanDeviceOptions(),
+      surplusPostureEnabled: false,
+    });
     expect(result.surplusOnly).toBeUndefined();
   });
 

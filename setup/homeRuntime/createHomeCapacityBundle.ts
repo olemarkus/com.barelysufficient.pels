@@ -295,7 +295,6 @@ function buildSubHomeScope(params: {
         clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForCommandProvenance()
           ?.clearRecentBinaryOffCommand(id, observedOnAtMs),
         projectCommandability: binaryCommandReachability.project,
-        pruneCommandability: binaryCommandReachability.prune,
       });
     },
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,

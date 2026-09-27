@@ -45,7 +45,7 @@ Design-of-record: `notes/state-management/` (especially `observer-transport-spli
 | "What is the freshest observed value?" | 1. recent realtime event → 2. recent snapshot → 3. never observed (unknown). There is no stale rung — see `lib/observer/AGENTS.md` |
 | "Did the command succeed?" | 1. confirming telemetry — timeout expiry = unknown, NOT success |
 
-The producer resolves this ladder into the flat bits the planner consumes (`lib/observer/observedState.ts` and `transport/`, assembled onto `PlanInputDevice` in `setup/appInit/toPlanDevice.ts`): a conservative still-on/still-high figure for shed sizing, and the restore-side admission bits. The planner reads them as given — it does not walk the ladder, inspect pending records, or weigh per-device attribution itself. For hard-cap safety, whole-home power outranks per-device attribution, and `lib/power` is what answers with it.
+The producer resolves this ladder into the flat bits the planner consumes (`lib/observer/observedState.ts` and `transport/`, assembled onto `PlanInputDevice` in `lib/planInput/projectPlanInputDevice.ts`): a conservative still-on/still-high figure for shed sizing, and the restore-side admission bits. The planner reads them as given — it does not walk the ladder, inspect pending records, or weigh per-device attribution itself. For hard-cap safety, whole-home power outranks per-device attribution, and `lib/power` is what answers with it.
 
 ### Hard invariants
 

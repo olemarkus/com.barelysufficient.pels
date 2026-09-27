@@ -2,9 +2,10 @@
  * The learned measured peak: the highest draw PELS has actually observed from a
  * device, on a rolling window.
  *
- * Pure policy, no I/O. `lib/device/managerRuntime.updateLastKnownPower` owns the
- * mutation and `lib/device/devicePowerEstimate` reads it as one rung of the
- * expected-power ladder. Persistence is a settings-boundary concern and lives
+ * Pure policy, no I/O. `lib/device/managerRuntime.updateLastKnownPower` and
+ * `pruneMissingLearnedPeaks` own mutation; `lib/device/devicePowerEstimate`
+ * reads it as one rung of the expected-power ladder. Persistence is a
+ * settings-boundary concern and lives
  * on `setup/settingsRepository.ts`, which uses the parsers at the bottom of this
  * file to validate what it loads.
  *
@@ -51,6 +52,27 @@ export type LearnedPeak = {
 };
 
 export type LearnedPeaksByDeviceId = Record<string, LearnedPeak>;
+
+/**
+ * Drop peaks for devices that no longer exist. A snapshot with no devices does
+ * not prove deletion: Homey can return an empty list on a transient read
+ * failure, and that must not erase learned data. `device/managerRuntime` owns
+ * this mutable record; callers provide only the resolved set of present IDs.
+ */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+export const pruneMissingLearnedPeaks = (
+  peaks: LearnedPeaksByDeviceId,
+  presentDeviceIds: ReadonlySet<string>,
+): void => {
+  if (presentDeviceIds.size === 0) return;
+  for (const deviceId of Object.keys(peaks)) {
+    if (!presentDeviceIds.has(deviceId)) {
+      // eslint-disable-next-line no-param-reassign
+      delete peaks[deviceId];
+    }
+  }
+};
+/* eslint-enable functional/immutable-data */
 
 const isExpired = (peak: LearnedPeak, nowMs: number): boolean => (
   nowMs - peak.observedAtMs > PEAK_WINDOW_MS

@@ -19,7 +19,7 @@ import type {
 } from '../packages/contracts/src/types';
 import type { LifecycleFallbackDevice } from '../lib/executor/lifecycleFallbackDispatcher';
 import { projectLifecycleFallbackDevice } from './lifecycleFallbackDeviceProjection';
-import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial';
+import { resolveTemperatureDeniedControlModel } from '../lib/planInput/temperatureControlDenial';
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,

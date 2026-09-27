@@ -36,7 +36,7 @@ type OwningHomeRouter = {
  * re-decide (root `AGENTS.md` § Control Flow).
  *
  * The hold itself never needed the rebuild. It is state the PLANNER picks up on
- * its next build (`resolveExternalOffHoldActive` in `setup/appInit/toPlanDevice.ts`)
+ * its next build (`resolveExternalOffHoldActive` in `lib/planInput/projectPlanInputDevice.ts`)
  * and the executor then respects (`planExecutionDrift.ts`), and the reason the
  * old code rebuilt immediately was to pre-empt the queued reconcile's stale ON
  * command — a command that no longer exists to pre-empt.

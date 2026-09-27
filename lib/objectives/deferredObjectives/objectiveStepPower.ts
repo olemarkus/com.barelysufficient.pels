@@ -14,7 +14,7 @@ export function resolveStepDeliveryUsefulKw(
   stepId: string,
   nameplateKw: number,
 ): number {
-  // The producer (`appInit.buildStepPowerCalibrationView`) already capped each
+  // The producer (`lib/planInput.buildStepPowerCalibrationView`) already capped each
   // entry at nameplate, so callers here only fall back to nameplate when no
   // calibration entry exists or the stored value is unusable.
   const calibrated = device.stepPowerCalibration?.[stepId];

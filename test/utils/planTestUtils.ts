@@ -68,7 +68,7 @@ import {
 import {
   buildResidualKwForPlanDevice,
   resolveResidualShedBehavior,
-} from '../../setup/appInit/residualKwForPlanDevice';
+} from '../../lib/planInput/residualKwForPlanDevice';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 
 /**
@@ -220,7 +220,7 @@ const fixtureDeviceTargets = (device: {
  * resolution reads, and strip it — discriminant included — when there is none.
  *
  * The cluster and the facet are ONE decision, exactly as they are in production:
- * `resolveTemperatureInputFields` (`setup/appInit/toPlanDevice.ts`) derives
+ * `resolveTemperatureInputFields` (`lib/planInput/projectPlanInputDevice.ts`) derives
  * `deviceType`, `currentTarget` and `currentTemperature` from facet presence, so
  * "a snapshot claiming `'temperature'` without the facet plans as `'onoff'`,
  * never as a half-cluster". A fixture that resolved them separately could claim

@@ -255,7 +255,7 @@ export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTra
  * Whether the home's solar-surplus pool can ever open, which decides whether the
  * "Use solar surplus" toggle is offered at all. The app's one answer
  * (`AppContext.isSurplusPoolReachable`), the same one the plan path stamps the
- * posture from (`setup/appInit/toPlanDevice.ts`), so the toggle and the posture
+ * posture from (`lib/planInput/projectPlanInputDevice.ts`), so the toggle and the posture
  * cannot disagree. Optional only because this type describes `homey.app` as it
  * crosses the bridge, where every member is unproven; the app itself always
  * has it. With no answer there is no pool.

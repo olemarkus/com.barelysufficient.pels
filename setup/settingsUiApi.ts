@@ -622,7 +622,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // Whether the surplus ENGINE can act, which the two flags above do not
     // answer: both of them also unlock the export-price section, which needs no
     // surplus pool. Same predicate the runtime producer gates the `surplusOnly`
-    // stamp on (`setup/appInit/toPlanDevice.ts`), so the toggle is offered
+    // stamp on (`lib/planInput/projectPlanInputDevice.ts`), so the toggle is offered
     // exactly where enabling it does something.
     surplusPoolReachable: getSurplusPoolReachableForUiFromApp(homey),
   };

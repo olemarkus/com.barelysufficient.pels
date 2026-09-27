@@ -24,7 +24,7 @@
  * (including non-stepped) uses the highest-known observed power. The producer
  * module does NOT implement the observed-power highest-of math itself (that
  * lives in `lib/observer/observedPower.getHighestKnownPowerKw`); the wiring layer in
- * `setup/appInit/residualKwForPlanDevice.ts` calls the observer helper and
+ * `lib/planInput/residualKwForPlanDevice.ts` calls the observer helper and
  * funnels the pre-resolved `{ kw, source }` in via `restoreFallback`.
  *
  * Layering note: this helper deliberately does NOT consult observed-off state.
@@ -79,7 +79,7 @@ export type ResidualKwShedSteppedDevice = {
   /**
    * True when the caller resolved a known effective step ID for this device
    * via `resolveKnownEffectiveStepId` (any of reported / selected / actual /
-   * assumed; stamped input-side in `setup/appInit/residualKwForPlanDevice.ts` and
+   * assumed; stamped input-side in `lib/planInput/residualKwForPlanDevice.ts` and
    * output-side in `lib/plan/planRemainingSheddableLoad.ts`).
    * The unknown-current-measured fallback below only fires when no step state is
    * known at all.

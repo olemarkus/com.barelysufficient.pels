@@ -240,7 +240,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       } as unknown as NonNullable<ReturnType<typeof createAppContextMock>['homeMembership']>,
     });
 
-    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
+    expect(buildMainHomeScope(ctx, () => false, () => false).getPlanDevices()).toEqual([]);
   });
 
   it('includes every device while no sub-homes exist', () => {
@@ -259,7 +259,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       resolveManagedState: vi.fn(() => true),
     });
 
-    expect(buildHomePlanDevices(ctx, MAIN_HOME_ID)).toEqual([]);
+    expect(buildMainHomeScope(ctx, () => false, () => false).getPlanDevices()).toEqual([]);
   });
 
   it('plans a temperature device without a power reading for its setpoints, with no power axis', () => {
@@ -281,7 +281,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       resolveManagedState: vi.fn(() => true),
     });
 
-    const planned = buildHomePlanDevices(ctx, MAIN_HOME_ID);
+    const planned = buildMainHomeScope(ctx, () => false, () => false).getPlanDevices();
     expect(planned.map((device) => device.id)).toEqual(['device-main']);
     expect('currentDrawKw' in planned[0]!).toBe(false);
     expect(planned[0]!.control.commandAuthority).toBe(false);
@@ -342,6 +342,9 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     });
 
     const devices = buildHomePlanDevices(ctx, SUB_HOME.homeId, {
+      surplusPostureEnabled: false,
+      projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
+      clearRecentBinaryOffCommand: () => {},
       getPrioritiesForDevices: createFixturePriorityQuery([
         { id: 'device-sub', priority: 4 }, { id: 'device-main', priority: 8 },
       ]),

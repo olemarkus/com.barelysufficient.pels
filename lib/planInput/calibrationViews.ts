@@ -2,16 +2,16 @@ import {
   getStepPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
-} from '../../lib/device/devicePowerCalibration';
-import { firstPositiveFinite } from '../../lib/objectives/deferredObjectives/planningSpeed';
+} from '../device/devicePowerCalibration';
+import { firstPositiveFinite } from '../objectives/deferredObjectives/planningSpeed';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../lib/observer/observedPower';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from '../observer/observedPower';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
   DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
 } from '../../packages/contracts/src/types';
-import type { AppContext } from '../../lib/app/appContext';
+import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
 const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
 // One minute, matching the calibration store's own `DEFAULT_FRESHNESS_WINDOW_MS`
@@ -20,12 +20,12 @@ const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
 const MEASURED_DRAW_FRESHNESS_WINDOW_MS = 60 * 1000;
 
 export function buildStepPowerCalibrationView(
-  ctx: AppContext,
+  snapshot: PowerCalibrationSnapshot,
   device: DecoratedDeviceSnapshot,
 ): Record<string, number> | undefined {
   const profile = device.steppedLoadProfile;
   if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
-    return buildSteppedCalibrationView(ctx, device, profile.steps);
+    return buildSteppedCalibrationView(snapshot, device, profile.steps);
   }
   // EV chargers ship a single useful "charge" step rather than a stepped
   // profile. The deferred-objective planner (`resolveObjectiveSteps`) and
@@ -34,17 +34,16 @@ export function buildStepPowerCalibrationView(
   // unifies the calibration path for both stepped and binary loads instead
   // of duplicating the lookup logic.
   if (device.deviceClass === 'evcharger') {
-    return buildEvChargerCalibrationView(ctx, device);
+    return buildEvChargerCalibrationView(snapshot, device);
   }
   return undefined;
 }
 
 function buildSteppedCalibrationView(
-  ctx: AppContext,
+  snapshot: PowerCalibrationSnapshot,
   device: DecoratedDeviceSnapshot,
   steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'],
 ): Record<string, number> | undefined {
-  const snapshot = ctx.getPowerCalibrationSnapshot();
   const deviceEntry = snapshot.devices[device.id];
   if (!deviceEntry) return undefined;
   const entries = steps.flatMap((step): Array<[string, number]> => {
@@ -58,7 +57,7 @@ function buildSteppedCalibrationView(
 }
 
 function buildEvChargerCalibrationView(
-  ctx: AppContext,
+  snapshot: PowerCalibrationSnapshot,
   device: DecoratedDeviceSnapshot,
 ): Record<string, number> | undefined {
   // `planningPowerKw` is the decorated per-step figure and still wins when the
@@ -66,7 +65,6 @@ function buildEvChargerCalibrationView(
   // the answer. No `?? powerKw` tail and no null arm — `expectedPowerKw` is
   // required and positive, so an EV charger can no longer fail to get a view.
   const nameplateKw = firstPositiveFinite([device.planningPowerKw]) ?? device.expectedPowerKw;
-  const snapshot = ctx.getPowerCalibrationSnapshot();
   const stepId = 'charge';
   // Even when no calibration entries exist yet we expose the nameplate
   // values so the hero planning-speed reading has a useful default. The
@@ -153,7 +151,7 @@ const isMeasurablyIdle = (
  * the stale rung there IS calibration-confident.
  */
 const hasNoRecentDrawAtAnyStep = (params: {
-  snapshot: ReturnType<AppContext['getPowerCalibrationSnapshot']>;
+  snapshot: PowerCalibrationSnapshot;
   deviceId: string;
   steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'];
   nowMs: number;
@@ -179,7 +177,8 @@ const hasNoRecentDrawAtAnyStep = (params: {
 };
 
 export function resolveConfirmedNotDrawing(
-  ctx: AppContext,
+  snapshot: PowerCalibrationSnapshot,
+  nowMs: number,
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
   observedOff: boolean,
 ): boolean {
@@ -195,11 +194,6 @@ export function resolveConfirmedNotDrawing(
   // never have visited, releasing boost during the warm-up window.
   const stepId = device.reportedStepId;
   if (typeof stepId !== 'string' || stepId.length === 0) return false;
-  const snapshot = ctx.getPowerCalibrationSnapshot();
-  // Use the AppContext clock so the planner can be tested deterministically
-  // and so this stays consistent with other plan-input enrichment helpers
-  // (per state-management/AGENTS.md "use a single clock per cycle").
-  const nowMs = ctx.getNow().getTime();
   if (!isMeasurablyIdle(device, nowMs)) return false;
   const steps = device.steppedLoadProfile?.steps ?? [];
   // No ladder, no recency scan — and therefore no verdict. Without this the

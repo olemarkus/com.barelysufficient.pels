@@ -7,13 +7,13 @@
 // sub-home rebuilding on its own cadence would never clear a hold whose ON
 // arrived by pull — and the next shed in that bundle would strand the device.
 //
-// Only the per-device projection differs between homes, and that difference is
-// the options argument: a sub-home disables the surplus posture, routes
-// pending-binary reads to its own engine, and supplies its own mode-priority
-// resolver. This boundary also projects each home's current planned set to
-// unique relative ranks before either the planner or smart-task clock reads it.
+// Each home supplies its resolved projection policy, hold cleanup and priority
+// resolver. This boundary projects the home's current planned set to unique
+// relative ranks before either the planner or smart-task clock reads it.
 
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
+import { createPlanInputProjectionSource } from '../appInit/planInputDeviceProjection';
+import { projectPlanInputDevice } from '../../lib/planInput/projectPlanInputDevice';
+import { pruneMissingLearnedPowerPeaks } from '../appInit/devicePowerPeakPrePass';
 import {
   isAffirmativelyOn,
   releaseExternalOffHoldsForObservedOn,
@@ -29,8 +29,10 @@ import type { ModePriorityOrder } from '../../packages/shared-domain/src/setting
 import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
+  /** Owning-home cleanup for a pull-observed ON after an outside-off hold. */
+  clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs: number) => void;
   /** This home's catalog owner returns a complete order for the planned set. */
-  getPrioritiesForDevices?: (deviceIds: readonly string[]) => ModePriorityOrder;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
 };
 
 /**
@@ -51,7 +53,7 @@ type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
  */
 const runSnapshotPrePass = (
   ctx: AppContext,
-  options?: ToPlanDeviceOptions,
+  options: BuildHomePlanDevicesOptions,
 ): ReturnType<AppContext['getPlanInputSnapshot']> => {
   const snapshot = ctx.getPlanInputSnapshot();
   releaseExternalOffHoldsForObservedOn({
@@ -67,21 +69,16 @@ const runSnapshotPrePass = (
         observation?.binaryAxisOn !== true
         || observation.binaryAxisObservedAtMs === undefined
       ) return;
-      if (options?.clearRecentBinaryOffCommand) {
-        options.clearRecentBinaryOffCommand(
-          deviceId,
-          observation.binaryAxisObservedAtMs,
-        );
-        return;
-      }
-      ctx.planEngine?.clearRecentBinaryOffCommand(
+      options.clearRecentBinaryOffCommand(
         deviceId,
         observation.binaryAxisObservedAtMs,
       );
     },
     debugStructured: ctx.getStructuredDebugEmitter('reconcile', 'devices'),
   });
-  evictMissingDeviceCacheEntries(ctx, ctx.deviceConfiguration.ids());
+  // Pruning uses all configured devices, even when this observer join or the
+  // per-home projection omitted one temporarily.
+  pruneMissingLearnedPowerPeaks(ctx, new Set(ctx.deviceConfiguration.ids()));
   return snapshot;
 };
 
@@ -105,17 +102,20 @@ const runSnapshotPrePass = (
 export const buildHomePlanDevices = (
   ctx: AppContext,
   homeId: HomeId,
-  options?: BuildHomePlanDevicesOptions,
+  options: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
-  const homeDevices = filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx, options), homeId);
+  const source = createPlanInputProjectionSource(ctx);
+  const homeDevices = filterDevicesForHome(
+    ctx.homeMembership,
+    runSnapshotPrePass(ctx, options),
+    homeId,
+  );
   const devices = homeDevices
-    .map((device) => toPlanDevice(ctx, device, options))
+    .map((device) => projectPlanInputDevice(source, device, options))
     .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/settings/modePriorities.ts`).
   const deviceIds = devices.map((device) => device.id);
-  const priorities = options?.getPrioritiesForDevices
-    ? options.getPrioritiesForDevices(deviceIds)
-    : ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds);
+  const priorities = options.getPrioritiesForDevices(deviceIds);
   return devices.map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
 };

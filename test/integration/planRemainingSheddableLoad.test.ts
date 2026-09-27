@@ -222,7 +222,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
     ];
 
     // Populate `residualKw.shed` using the same
-    // resolver wired by `setup/appInit/residualKwForPlanDevice.ts`. We
+    // resolver emitted by `lib/planInput/residualKwForPlanDevice.ts`. We
     // compute it inline rather than importing the wiring helper because the
     // helper takes a `TargetDeviceSnapshot`, not a `PlanInputDevice`.
     const producerDevices = fixtures.map((device): MeteredPlanInputDevice => {

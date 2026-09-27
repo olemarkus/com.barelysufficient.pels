@@ -1,7 +1,7 @@
-import { hasTemperaturePolicyPowerControl } from '../../lib/device/temperatureControlPosture';
+import { hasTemperaturePolicyPowerControl } from '../device/temperatureControlPosture';
 /**
- * Producer-side wiring for `PlanInputDevice.residualKw` (chunks 3-4 of the
- * planner-detype refactor). `toPlanDevice` in `./toPlanDevice.ts` calls
+ * Projection for `PlanInputDevice.residualKw`. `projectPlanInputDevice` in
+ * `./projectPlanInputDevice.ts` calls
  * `buildResidualKwForPlanDevice`, which adapts a `TargetDeviceSnapshot` to
  * the structural input shapes consumed by `resolveResidualKwShed` (chunk 3)
  * and `resolveResidualKwRestore` (chunk 4) in
@@ -31,13 +31,13 @@ import {
   type ResidualKwShedBehavior,
   type ResidualKwShedSteppedDevice,
   type ResidualKwShedTemperatureTarget,
-} from '../../lib/device/deviceResidualKw';
-import { getCurrentDrawKw, getHighestKnownPowerKw } from '../../lib/observer/observedPower';
-import { resolveObservedCurrentState } from '../../lib/observer/observedState';
+} from '../device/deviceResidualKw';
+import { getCurrentDrawKw, getHighestKnownPowerKw } from '../observer/observedPower';
+import { resolveObservedCurrentState } from '../observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
-} from '../../lib/plan/planSteppedLoadState';
+} from '../plan/planSteppedLoadState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 

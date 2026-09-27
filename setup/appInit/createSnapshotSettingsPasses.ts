@@ -15,7 +15,8 @@ import {
   type ResolveOperatingModeForDevice,
 } from '../appDeviceSupport';
 import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '../homeRuntime/homeOperatingMode';
-import { toPlanDevice } from './toPlanDevice';
+import { createDefaultToPlanDeviceOptions } from '../../lib/planInput/projectPlanInputDevice';
+import { toPlanDevice } from './planInputDeviceProjection';
 
 export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
   snapshot: DecoratedDeviceSnapshot[],
@@ -34,7 +35,11 @@ export const createModeTargetPersistence = (
 ): (() => void) => () => persistFilledModeTargets({
   // This settings pass needs the same runtime configuration and observer values
   // used by planning; inventory metadata stays on DeviceReads.
-  devices: ctx.getPlanInputSnapshot().map((device) => toPlanDevice(ctx, device)),
+  devices: ctx.getPlanInputSnapshot().map((device) => toPlanDevice(
+    ctx,
+    device,
+    createDefaultToPlanDeviceOptions(),
+  )),
   settings: ctx.homey.settings,
   resolveHomeIdForDevice: (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
   structuredLog: (event) => ctx.getStructuredLogger('devices')?.info(event),

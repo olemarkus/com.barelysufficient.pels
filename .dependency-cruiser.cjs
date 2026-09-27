@@ -37,6 +37,13 @@ module.exports = {
       to: { path: '^lib/app/' },
     },
     {
+      name: 'no-domain-to-plan-input-integration',
+      comment: 'Planner-input production is a one-way integration layer above peer domains; peers may not depend back on it.',
+      severity: 'error',
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
+      to: { path: '^lib/planInput/' },
+    },
+    {
       name: 'no-plan-solar-coupling',
       comment: 'The curtailment-surplus term crosses from lib/solar into lib/plan only as a flat '
         + 'injected getter (setup/appInit/wireCurtailmentSurplus.ts): the planner must never import '

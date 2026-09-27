@@ -1,4 +1,4 @@
-import type { DeviceControlModel } from '../packages/contracts/src/types';
+import type { DeviceControlModel } from '../../packages/contracts/src/types';
 
 /**
  * What the per-device "Disable temperature control" setting denies, in one
@@ -16,7 +16,7 @@ import type { DeviceControlModel } from '../packages/contracts/src/types';
  * them writes that capability; step and binary control are not.
  *
  * This module exists so the decorator (`decorateSnapshotWithDeviceControl`) and
- * the plan projection (`projectTemperatureDeniedDevice` below, applied in `appInit/toPlanDevice`)
+ * the plan projection (`projectTemperatureDeniedDevice` below, applied in `lib/planInput/projectPlanInputDevice.ts`)
  * resolve the denial through ONE function. They used to hold independent copies
  * of the rewrite, and the copies disagreed: the plan side also wiped the stepped
  * cluster, `targetPowerConfig` and `controlAdapter`.

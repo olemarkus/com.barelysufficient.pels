@@ -282,7 +282,7 @@ export type PlanInputDeviceBase = {
   // read it — the planner holds no battery level — but saying it is not here was
   // false, and a comment that a rest-spread silently contradicts is worse than no
   // comment. What carries it is now declared at the producer
-  // (`PlanDeviceCarriedKey`, `setup/appInit/toPlanDevice.ts`), where a compile
+  // (`PlanDeviceCarriedKey`, `lib/planInput/projectPlanInputDevice.ts`), where a compile
   // error fires if the set changes.
   /**
    * Producer-resolved boost facts, kind-free by construction. The producer
@@ -539,7 +539,7 @@ export type PlanInputDeviceBase = {
    * absence of evidence is not evidence of idleness. Read by
    * `resolveBoostActive` (`lib/plan/planBoost.ts`), which releases the boost —
    * a claim on other devices' power — from a device that cannot spend it. See
-   * `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`).
+   * `resolveConfirmedNotDrawing` (`lib/planInput/calibrationViews.ts`).
    */
   confirmedNotDrawing: boolean;
   /**

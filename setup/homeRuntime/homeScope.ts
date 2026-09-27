@@ -269,8 +269,14 @@ export function buildMainHomeScope(
       // complement and the planned-set filter — all shared with every sub-home
       // bundle, see `buildHomePlanDevices`.
       return buildHomePlanDevices(ctx, homeId, {
+        surplusPostureEnabled: true,
         projectCommandability: binaryCommandReachability.project,
-        pruneCommandability: binaryCommandReachability.prune,
+        clearRecentBinaryOffCommand: (deviceId, observedOnAtMs) => (
+          ctx.planEngine?.clearRecentBinaryOffCommand(deviceId, observedOnAtMs)
+        ),
+        getPrioritiesForDevices: (deviceIds) => (
+          ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds)
+        ),
       });
     },
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,

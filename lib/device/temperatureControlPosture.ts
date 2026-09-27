@@ -177,7 +177,7 @@ export function resolveResidualShedBehavior(
     // leaving the device shed with no way back. (Under "Save as current mode
     // target" the fence admits the limit, and the arm is not denied.)
     // The first disjunct cannot decide anything in production:
-    // `projectTemperatureDeniedDevice` (applied in `toPlanDevice.ts`) already blanks
+    // `projectTemperatureDeniedDevice` (applied in `lib/planInput/projectPlanInputDevice.ts`) already blanks
     // `targets`/`temperature` and stamps `deviceType: 'onoff'` for a
     // temperature-disabled device before this runs. It is kept because fixture
     // callers reach this function directly, without that projection — so the

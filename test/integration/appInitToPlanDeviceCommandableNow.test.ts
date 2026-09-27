@@ -66,6 +66,7 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
       ctx,
       withDeviceConfiguration(buildEvSnapshot({ evChargingState: 'plugged_in_paused' })),
       {
+        surplusPostureEnabled: true,
         projectCommandability: () => ({
           commandableNow: false,
           reason: 'binary_command_retry',

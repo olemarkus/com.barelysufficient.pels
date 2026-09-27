@@ -14,7 +14,7 @@
  *      own fields, at the producer seam.
  *   2. Recomputed — the same fixtures with the restore half re-resolved from the
  *      plan device, mirroring the wiring in
- *      `setup/appInit/residualKwForPlanDevice.ts`.
+ *      `lib/planInput/residualKwForPlanDevice.ts`.
  *
  * The invariant we pin: per-device estimate AND the summed
  * `computeBaseRestoreNeed` totals must match to the watt across both passes. If
@@ -61,7 +61,7 @@ type RestoreFixture = MeteredDevicePlanDevice & {
   controlModel?: DeviceControlModel;
   // `steppedLoadProfile` rides on the stepped variant of the `DevicePlanDevice`
   // union; surface it as a flat optional here so the wiring mirror below can
-  // read it the same way `setup/appInit/residualKwForPlanDevice.ts` does
+  // read it the same way `lib/planInput/residualKwForPlanDevice.ts` does
   // (guarded by `controlModel === 'stepped_load'`).
   steppedLoadProfile?: SteppedLoadProfile;
   // Same treatment, same reason: `planningPowerKw` moved onto `SteppedLoadKind`
@@ -105,7 +105,7 @@ const zeroPowerSteppedProfile: SteppedLoadProfile = {
 };
 
 function withProducerResolvedRestore(dev: RestoreFixture): RestoreFixture {
-  // Mirror the wiring in `setup/appInit/residualKwForPlanDevice.ts`. The wiring
+  // Mirror the producer in `lib/planInput/residualKwForPlanDevice.ts`. The producer
   // layer is what the real runtime uses; this test recomputes it from the
   // finished plan device so the number the fixture builder stamped at the
   // producer seam can be compared against it.

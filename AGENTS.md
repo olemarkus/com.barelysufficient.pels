@@ -42,6 +42,8 @@ Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
 App Wiring (stateless) setup/**, flowCards/**
       ↓
+Plan Input Integration  lib/planInput/**
+      ↓
 Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/**, lib/objectives/**,
                       lib/power/**, lib/price/**, lib/dailyBudget/**, lib/actuator/**,
                       lib/home/**, lib/solar/**, lib/weather/**, lib/thermostat/**, lib/flowApi/**
@@ -59,6 +61,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`, `lib/weather`, `lib/solar`, `lib/home`, `lib/thermostat`) must not import `lib/app/**` (`no-domain-to-app-layer`). Those thirteen are the domain peer set the rule matches — keep this list and the `from` path in `.dependency-cruiser.cjs` in step.
 - `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
 - `lib/utils/**` may not import `lib/device`, `lib/power` or `lib/plan` (`no-utils-to-device-power-plan`, which sees value imports only; a type-only import is held by review).
+- `lib/planInput/**` is the one-way integration seam that projects owner-resolved device surfaces into the planner input contract. It may read peer domains for that projection; peer domains must not import it. It owns no mutable state and accepts required narrow source operations, never `AppContext` or the SDK. See `lib/planInput/AGENTS.md`.
 - **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
 - **A logging call whose visibility you cannot read is banned.** `.debug()` outside `lib/logging/`
   is dark on a pino module logger (the root runs at `info`), topic-gated prose on the injected SDK

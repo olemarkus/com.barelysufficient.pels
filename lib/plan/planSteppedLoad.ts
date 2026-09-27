@@ -668,7 +668,7 @@ function resolveStepChangeBeforeKw(
 }
 
 // Per the "resolution belongs in producer" rule, the producer
-// (`appInit.buildStepPowerCalibrationView`) has already bound the calibrated
+// (`lib/planInput.buildStepPowerCalibrationView`) has already bound the calibrated
 // value to samples inside the configured step's power band. The plan layer
 // trusts the view; this only falls back to nameplate when no entry is present.
 //

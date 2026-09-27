@@ -13,7 +13,7 @@
  * reported a value at all. That question is answered by the temperature itself:
  * the producer emits `currentTemperature` only when the device carries the
  * observed temperature facet (`resolveTemperatureInputFields` in
- * `setup/appInit/toPlanDevice.ts` — no facet plans as `'onoff'`), so a finite
+ * `lib/planInput/projectPlanInputDevice.ts` — no facet plans as `'onoff'`), so a finite
  * reading IS the proof, and no timestamp is consulted. It does not suppress on
  * the reading's AGE, and nothing else in the app does either — PELS has no
  * timeout that turns a quiet device into an untrusted one.

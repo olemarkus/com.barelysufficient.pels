@@ -87,13 +87,13 @@ export function toPlanRemainingSheddableDevice(device: MeteredDevicePlanDevice):
 /**
  * Output-side residualKw.shed re-resolution (chunk 3 of the planner-detype
  * refactor). Mirrors the input-side `toPlanDevice` wiring in
- * `setup/appInit/toPlanDevice.ts`, but reads from a post-plan `DevicePlanDevice` whose
+ * `lib/planInput/projectPlanInputDevice.ts`, but reads from a post-plan `DevicePlanDevice` whose
  * shed action / setpoint / step state are already materialised by the
  * planner. Lets `sumRemainingSheddableLoadKw` collapse to the producer-
  * resolved number for the output recompute path too.
  *
  * Mirrors the input-side `resolveResidualShedBehavior` default
- * (`setup/appInit/residualKwForPlanDevice.ts`): when there is no resolved shed
+ * (`lib/planInput/residualKwForPlanDevice.ts`): when there is no resolved shed
  * action, treat it as `turn_off` (the legacy default) so non-shed devices still
  * get an honest residual instead of a structural 0.
  */

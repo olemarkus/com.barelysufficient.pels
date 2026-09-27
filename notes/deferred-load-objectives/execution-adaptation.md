@@ -393,7 +393,7 @@ exemption/boost/floor every cycle (the hero's safe pace collapsed 2.2 → 1.3 kW
 plan sat untouched in persisted settings. The learned rate never degraded; only the ladder did.
 
 **How the gap is detected.** It is resolved once at the producer
-(`setup/appInit/toPlanDevice.ts` → `resolveSteppedLadderMissing`) and carried inward as a flat
+(`lib/planInput/projectPlanInputDevice.ts` → `resolveSteppedLadderMissing`) and carried inward as a flat
 `steppedLadderMissing` bit on the plan / objective device input. The producer is the only place that
 sees both halves of the question — the configured control model, and the ladder the planner will
 actually run — because `withSteppedDiscriminant` strips the whole stepped cluster from a non-stepped
