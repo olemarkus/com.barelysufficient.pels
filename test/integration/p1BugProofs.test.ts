@@ -19,8 +19,7 @@ import type { PendingBinaryCommandStore } from '../../lib/observer/pendingBinary
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { partialDouble } from '../helpers/partialDouble';
-import { toUsageDevice } from '../../lib/plan/planUsage';
-import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
+import { sumControlledUsageKwFor } from '../../lib/power/usageAttribution';
 import {
   buildPlanDevice,
   buildPlanMeta,
@@ -120,7 +119,7 @@ describe('P1 bug proofs', () => {
 
     const highestKnown = getHighestKnownPowerKw(device)?.kw ?? 0;
     expect(estimateRestorePower(device)).toBe(highestKnown);
-    expect(sumControlledUsageKw([toUsageDevice(device)])).toBe(0);
+    expect(sumControlledUsageKwFor([device], (item) => item.control.commandAuthority)).toBe(0);
   });
 
   it('keeps shedding active after a single sample just above the restore margin', () => {
@@ -298,7 +297,10 @@ describe('P1 bug proofs', () => {
     });
 
     if (!isMeteredPlanDevice(planDevice)) throw new Error('fixture: the stepped device has a power reading');
-    const plannerControlledKw = sumControlledUsageKw([toUsageDevice(planDevice)]);
+    const plannerControlledKw = sumControlledUsageKwFor(
+      [planDevice],
+      (device) => device.control.commandAuthority,
+    );
     await recordPowerSampleForApp({
       generationSegments: [],
       currentPowerW: 1250,

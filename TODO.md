@@ -1523,27 +1523,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `AGENTS.md` scopes to pure helpers; this one reads the SDK and writes to the logger).
       **Done when:** the two files no longer import each other. [P2]
 
-- [ ] **P2 — the usage sums copy every plan device to attach one boolean.** `toUsageDevice`
-      (`lib/plan/planUsage.ts`) spreads a whole `DevicePlanDevice` to add `countsAsManagedUsage`,
-      and four call sites map it over the full device set on every build:
-      `lib/plan/planContext.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planBuilderMeta.ts` and
-      `lib/plan/admission/sheddingGuard.ts`. That is three to four full copies of every device per
-      build, every 10 s per home, on an app whose RSS ceiling is 160 MB. `eslint.config.mjs` bans
-      `SpreadElement` inside loop statements in `lib/plan` for this reason; a `.map()` callback
-      evades the selector but not the intent. **What changes:** give the four sums in
-      `lib/power/usageAttribution.ts` and `sumBudgetExemptProjectedUsageKw` an explicit
-      `countsAsManaged` predicate parameter instead of a stamped field, so each caller answers the
-      question at its own seam and nothing is copied. The sample path already answers it in
-      `lib/power/sampleIngest.ts` (`controllable !== false` on the raw snapshot), so it can pass
-      that predicate directly.
-      **Done when:** `toUsageDevice` is gone and no `.map()` runs on the plan-build path to feed a
-      usage sum.
-
 - [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
       invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`
       (`lib/plan/*.ts`) each expose public mutable fields beside the mutators that are the only
-      runtime writers; `functional/immutable-data` is off in `lib/plan`, so nothing stops a direct
-      write, and an invariant like the restore back-off's "one instability bumps the cooldown once"
+      runtime writers. The `functional/immutable-data` rule ignores class fields, so it cannot stop
+      a direct write here; an invariant like the restore back-off's "one instability bumps the cooldown once"
       (`commitCooldown` being the sole writer) is unenforced. `ActuationRecord`'s in-flight sets are
       already private and show the shape. Change: make each record's fields private with getters,
       leaving the mutators as the write path. Done when the three records expose no assignable

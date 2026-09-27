@@ -15,7 +15,7 @@ export type UsageDevice = {
    *
    * Named for the question rather than for the plan's `commandAuthority`,
    * because the three seams that answer it do not compute the same predicate: a
-   * plan device answers with its resolved authority (`toUsageDevice`), while the
+   * plan device answers with its resolved authority (`control.commandAuthority`), while the
    * two raw-snapshot seams answer `controllable !== false` off the parse stamp,
    * which carries neither the temperature-axis term nor a smart task's grant.
    * That fork predates the posture split — both sides spelled it `controllable`
@@ -29,6 +29,8 @@ export type UsageDevice = {
   budgetExempt?: boolean;
   currentDrawKw: number;
 };
+
+const countsAsManagedUsage = (device: UsageDevice): boolean => device.countsAsManagedUsage;
 
 /**
  * Managed usage: the sum of what the managed devices are drawing.
@@ -45,10 +47,17 @@ export type UsageDevice = {
  * reading, so the managed total cannot be attributed" — a state that no longer
  * exists, because the producer always has an answer for every planned device.
  */
-export const sumControlledUsageKw = (devices: readonly UsageDevice[]): number => {
+export const sumControlledUsageKw = (devices: readonly UsageDevice[]): number => (
+  sumControlledUsageKwFor(devices, countsAsManagedUsage)
+);
+
+export const sumControlledUsageKwFor = <T extends { currentDrawKw: number }>(
+  devices: readonly T[],
+  countsAsManaged: (device: T) => boolean,
+): number => {
   let totalKw = 0;
   for (const dev of devices) {
-    if (!dev.countsAsManagedUsage) continue;
+    if (!countsAsManaged(dev)) continue;
     totalKw += dev.currentDrawKw;
   }
   return totalKw;
@@ -58,24 +67,41 @@ export const sumControlledUsageKw = (devices: readonly UsageDevice[]): number =>
 // exempt kWh the sample path integrates (`notes/safe-pace-two-constraints.md`
 // § "It needs to land twice"). An off exempt device contributes no reservation
 // on either: only its resolved current draw counts. The projected sibling remains in `lib/plan/planUsage.ts`.
-export const sumBudgetExemptMeasuredUsageKw = (devices: readonly UsageDevice[]): number => {
+export const sumBudgetExemptMeasuredUsageKw = (devices: readonly UsageDevice[]): number => (
+  sumBudgetExemptMeasuredUsageKwFor(devices, countsAsManagedUsage)
+);
+
+export const sumBudgetExemptMeasuredUsageKwFor = <T extends {
+  budgetExempt?: boolean;
+  currentDrawKw: number;
+}>(
+  devices: readonly T[],
+  countsAsManaged: (device: T) => boolean,
+): number => {
   let totalKw = 0;
   for (const dev of devices) {
-    if (dev.budgetExempt !== true || !dev.countsAsManagedUsage) continue;
+    if (dev.budgetExempt !== true || !countsAsManaged(dev)) continue;
     totalKw += dev.currentDrawKw;
   }
   return totalKw;
 };
 
-export function splitControlledUsageKw(params: {
-  devices: readonly UsageDevice[];
-  totalKw: number;
-}): { controlledKw: number; uncontrolledKw: number } {
-  const { devices, totalKw } = params;
-  const controlledKw = sumControlledUsageKw(devices);
+type UsageSplit = { controlledKw: number; uncontrolledKw: number };
+
+const splitUsageKw = (totalKw: number, controlledKw: number): UsageSplit => {
   const boundedControlledKw = Math.max(0, Math.min(totalKw, controlledKw));
   return {
     controlledKw: boundedControlledKw,
     uncontrolledKw: Math.max(0, totalKw - boundedControlledKw),
   };
-}
+};
+
+export const splitControlledUsageKw = (params: {
+  devices: readonly UsageDevice[];
+  totalKw: number;
+}): UsageSplit => splitUsageKw(params.totalKw, sumControlledUsageKw(params.devices));
+
+export const splitControlledUsageKwFor = <T extends { currentDrawKw: number }>(
+  params: { devices: readonly T[]; totalKw: number },
+  countsAsManaged: (device: T) => boolean,
+): UsageSplit => splitUsageKw(params.totalKw, sumControlledUsageKwFor(params.devices, countsAsManaged));

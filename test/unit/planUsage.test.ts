@@ -16,7 +16,7 @@ describe('plan usage budget exemption helpers', () => {
         countsAsManagedUsage: true,
         expectedPowerKw: 0.8,
       },
-    ])).toBeCloseTo(1.2, 6);
+    ], (device) => device.countsAsManagedUsage)).toBeCloseTo(1.2, 6);
   });
 
   it('projects an observed-off exempt device onto its configured demand', () => {
@@ -44,7 +44,7 @@ describe('plan usage budget exemption helpers', () => {
         countsAsManagedUsage: true,
         expectedPowerKw: 10,
       },
-    ])).toBeCloseTo(2, 6);
+    ], (device) => device.countsAsManagedUsage)).toBeCloseTo(2, 6);
   });
 
   it('ignores budget-exempt devices with capacity control disabled', () => {
@@ -59,7 +59,7 @@ describe('plan usage budget exemption helpers', () => {
         countsAsManagedUsage: true,
         currentDrawKw: 1.5,
       },
-    ])).toBeCloseTo(1.5, 6);
+    ], (device) => device.countsAsManagedUsage)).toBeCloseTo(1.5, 6);
   });
 
 });

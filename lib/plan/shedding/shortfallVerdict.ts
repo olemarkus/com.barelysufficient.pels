@@ -1,7 +1,7 @@
 import { isOverShortfallThreshold } from '../../power/capacityGuard';
 import { applyShortfallPeriodCoverage } from './shortfallAvailability';
 import type { PlanInputCapacityStateSummary } from '../../power/capacityStateSummary';
-import { splitControlledUsageKw } from '../../power/usageAttribution';
+import { splitControlledUsageKwFor } from '../../power/usageAttribution';
 import type { MeasuredPower, PlanContext } from '../planContext';
 import { countPlanInputDevices } from '../planLogging';
 import {
@@ -60,10 +60,10 @@ function buildShortfallCapacityStateSummary(
   const { shedSet } = selection;
   // The published split, bounded by the total, so the incident record cannot
   // claim more managed usage than the house drew.
-  const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
+  const { controlledKw, uncontrolledKw } = splitControlledUsageKwFor({
     devices: toMeteredUsageDevices(devices),
     totalKw: power.drawKw,
-  });
+  }, (device) => device.control.commandAuthority);
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw({
     // Only a device with a power axis has reducible load to count.
     devices: devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),

@@ -5,18 +5,6 @@ import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { MeteredKind } from './planTypes';
 
 type UsageDevice = {
-  /**
-   * Does this device's draw belong to the MANAGED side of the split? Same member,
-   * same reasoning as its twin in `lib/power/usageAttribution.ts` — read that
-   * docblock; this view exists separately only because the projected exemption
-   * needs plan-state fields the power-side one does not.
-   *
-   * REQUIRED. It was `controllable?: boolean` against a `=== false` test, so a
-   * device missing the field had its whole draw counted as managed. Production
-   * always populated it, so the defect was latent; the optional is gone so it
-   * cannot become live.
-   */
-  countsAsManagedUsage: boolean;
   budgetExempt?: boolean;
   // Producer-resolved on/off truth, present iff the device is binary
   // (`binaryCapabilityId` set). A step-only stepper carries no `currentOn`; its
@@ -32,37 +20,23 @@ type UsageDevice = {
 };
 
 /**
- * Project a plan device onto the usage view: a device PELS may command this
- * cycle is one whose draw counts as managed.
- *
- * The one place a plan device's posture answers the usage question. The
- * raw-snapshot seams (`withHeadroomCurrentOn`, `sampleIngest`) answer it from
- * the parse stamp instead, because they hold no resolved posture and must not
- * fabricate one.
- */
-export const toUsageDevice = <T extends { control: { commandAuthority: boolean } }>(
-  device: T,
-): T & { countsAsManagedUsage: boolean } => (
-  { ...device, countsAsManagedUsage: device.control.commandAuthority }
-);
-
-/**
- * The usage view of a plan's devices: only devices with a power axis. A device
- * planned without a power reading (a temperature device the plan still sets for
- * mode and price) has no draw to attribute, so it is left out of every usage sum
- * and the whole-home meter counts what it draws as background usage — the
- * honest split, since nothing measured it on its own.
+ * Select the plan devices with a power axis without cloning them into a second
+ * usage-shaped array. A device planned without a power reading has no draw to
+ * attribute, so the whole-home meter counts it as background usage.
  */
 export const toMeteredUsageDevices = <T extends { control: { commandAuthority: boolean } }>(
   devices: readonly T[],
-): Array<T & MeteredKind & { countsAsManagedUsage: boolean }> => (
-  devices.filter((device): device is T & MeteredKind => isMeteredPlanDevice(device)).map(toUsageDevice)
+): Array<T & MeteredKind> => (
+  devices.filter((device): device is T & MeteredKind => isMeteredPlanDevice(device))
 );
 
-export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number => {
+export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice>(
+  devices: readonly T[],
+  countsAsManaged: (device: T) => boolean,
+): number => {
   let totalKw = 0;
   for (const dev of devices) {
-    if (dev.budgetExempt !== true || !dev.countsAsManagedUsage) continue;
+    if (dev.budgetExempt !== true || !countsAsManaged(dev)) continue;
     totalKw += resolveBudgetExemptProjectedKw(dev);
   }
   return totalKw;

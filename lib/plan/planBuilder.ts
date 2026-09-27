@@ -427,7 +427,10 @@ export class PlanBuilder {
     // missing reading rather than for real budget pressure. Every metered plan
     // device carries a resolved draw, and a device without a reading has no
     // power axis to sum, so the unresolved state is gone.
-    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(toMeteredUsageDevices(devices)));
+    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(
+      toMeteredUsageDevices(devices),
+      (device) => device.control.commandAuthority,
+    ));
     const budgetPaceKw = computeDailyUsageSoftLimit(bucket, nowTs);
     // Budget-exempt load should not trigger daily-budget shedding of other devices.
     // Remove exempt energy already metered this hour, then add back the exempt live

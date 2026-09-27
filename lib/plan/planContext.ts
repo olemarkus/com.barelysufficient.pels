@@ -3,7 +3,7 @@ import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
 import { getCurrentCapacityPeriodContext, getCurrentHourContext } from './planHourContext';
-import { sumBudgetExemptMeasuredUsageKw } from '../power/usageAttribution';
+import { sumBudgetExemptMeasuredUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
@@ -163,7 +163,10 @@ export function resolveMeasuredPower(
     headroomKw: reading.headroomKw(softLimit),
     capacityHeadroomKw: reading.headroomKw(capacitySoftLimit),
     budgetHeadroomKw: hasBudgetAxis
-      ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKw(toMeteredUsageDevices(devices)))
+      ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
+        toMeteredUsageDevices(devices),
+        (device) => device.control.commandAuthority,
+      ))
       : null,
     capacityBreached,
     budgetReleasableHeadroomHold: softLimitSource === 'daily' && !capacityBreached,

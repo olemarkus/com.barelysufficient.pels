@@ -15,7 +15,7 @@ import type {
 } from './planTypes';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { splitControlledUsageKw } from '../power/usageAttribution';
+import { splitControlledUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
 import {
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
@@ -122,7 +122,10 @@ export function resolveMeasuredMetaFields(
     headroomKw: power.headroomKw,
     shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
     hardCapHeadroomKw: capacityLimitKw - reading.totalKw,
-    ...splitControlledUsageKw({ devices: toMeteredUsageDevices(planDevices), totalKw: reading.totalKw }),
+    ...splitControlledUsageKwFor({
+      devices: toMeteredUsageDevices(planDevices),
+      totalKw: reading.totalKw,
+    }, (device) => device.control.commandAuthority),
   };
 }
 
