@@ -59,7 +59,7 @@ const buildContext = () => {
   refreshGridTariffData.mockImplementation(async () => undefined);
   startPriceRefresh.mockImplementation(() => undefined);
   rebuildPlanFromCache.mockImplementation(async () => createPlanRebuildOutcome(false));
-  ctx.operatingMode = 'Home';
+  ctx.homeModeCatalog.setOperatingMode('Home');
   ctx.lastNotifiedOperatingMode = 'Away';
 
   return {

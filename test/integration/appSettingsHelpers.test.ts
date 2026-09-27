@@ -1,4 +1,3 @@
-import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createInertPlanRebuildThrottle } from '../helpers/powerRebuildScheduler';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -33,11 +32,6 @@ const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},
 ): CapacitySettingsSnapshot => ({
   capacitySettings: { limitKw: 12, marginKw: 0.5, periodMinutes: 60 },
-  modeAliases: {},
-  operatingMode: 'Home',
-  capacityPriorities: {},
-  modePriorityCatalog: new ModePriorityCatalog(overrides.capacityPriorities),
-  modeDeviceTargets: {},
   capacityDryRun: false,
   controllableDevices: {},
   managedDevices: {},
@@ -118,8 +112,6 @@ const buildContext = (): AppContext => {
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
-    resolveModeName: vi.fn((name: string) => name),
-    getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
     isCapacityControlEnabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
@@ -139,14 +131,6 @@ const buildContext = (): AppContext => {
     set capacitySettings(_value) {},
     get capacityDryRun() { return false; },
     set capacityDryRun(_value) {},
-    get operatingMode() { return 'Home'; },
-    set operatingMode(_value) {},
-    get modeAliases() { return {}; },
-    set modeAliases(_value) {},
-    get capacityPriorities() { return {}; },
-    set capacityPriorities(_value) {},
-    get modeDeviceTargets() { return {}; },
-    set modeDeviceTargets(_value) {},
     get controllableDevices() { return {}; },
     set controllableDevices(_value) {},
     get managedDevices() { return {}; },
@@ -500,31 +484,6 @@ describe('buildCapacitySettingsSnapshot', () => {
 
     expect(next.capacitySettings).toEqual({ limitKw: 8, marginKw: 0.5, periodMinutes: 15 });
     expect(next.capacityDryRun).toBe(true);
-  });
-
-  it('resolves a loaded set of devices to unique, deterministic priority per mode', () => {
-    // Persisted payload is intentionally corrupt: duplicate priorities (a/b
-    // both 5), a gap (jumps to 9), and an unordered key sequence.
-    const settings = {
-      get: vi.fn((key: string) => (
-        key === 'capacity_priorities'
-          ? { Home: { b: 5, a: 5, c: 9, d: 1 } }
-          : ({ managed_devices: { new: true }, mode_device_targets: { Eco: {} } } as Record<string, unknown>)[key]
-      )),
-    };
-
-    const next = buildCapacitySettingsSnapshot({
-      settings: settings as never,
-      current: buildCapacitySnapshot(),
-    });
-
-    // Strict 1..N order; ties (a/b) break by deviceId; gaps closed.
-    expect(next.capacityPriorities).toEqual({
-      Home: { d: 1, a: 2, b: 3, c: 4, new: 5 },
-      Eco: { a: 1, b: 2, c: 3, d: 4, new: 5 },
-    });
-    const ranks = Object.values(next.capacityPriorities.Home);
-    expect(new Set(ranks).size).toBe(ranks.length);
   });
 
   it('loads normalized device driver overrides from settings', () => {

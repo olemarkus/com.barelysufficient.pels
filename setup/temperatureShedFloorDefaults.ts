@@ -10,7 +10,7 @@ import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { readModeDeviceTarget } from '../lib/home/modeDeviceTargetsRead';
 import { readShedBehaviorsSetting } from '../lib/home/shedBehaviorsRead';
-import type { DeviceOperatingModeOutcome } from './homeRuntime/homeOperatingMode';
+import type { DeviceOperatingModeOutcome } from '../lib/home/homeModeDeviceRead';
 import { isTemperatureControlDevice } from '../packages/shared-domain/src/temperatureDeviceKind';
 import {
   MAIN_HOME_ID,
@@ -55,7 +55,7 @@ function resolveTemperatureShedFloor(device: TargetDeviceSnapshot): number {
 /**
  * The active mode governing one device's mode target. Default: the historical
  * raw unsuffixed read (main-home behaviour). The app wires
- * `resolveOperatingModeForDevice` (setup/homeRuntime/homeOperatingMode.ts) so
+ * `resolveOperatingModeForDevice` (`lib/home/homeModeDeviceRead.ts`) so
  * a sub-home member resolves through ITS home's effective mode instead of
  * silently using the global one.
  */

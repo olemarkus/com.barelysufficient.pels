@@ -10,10 +10,6 @@ import type {
   TargetPowerReachabilityState,
   TemperatureBoostSettings,
 } from '../packages/contracts/src/types';
-import {
-  getAllModes as getAllModesHelper,
-  resolveModeName as resolveModeNameHelper,
-} from '../lib/utils/capacityHelpers';
 import { createSettingsHandler } from '../lib/utils/settingsHandlers';
 import {
   isDeviceControlProfiles,
@@ -31,9 +27,6 @@ import {
   type DeviceTargetPowerConfigsWithReachability,
   resolveValidTargetPowerReachability,
 } from '../lib/device/targetPowerReachability';
-import {
-  type ModePriorityCatalog, readModePriorityCatalog,
-} from '../packages/shared-domain/src/settings/modePriorities';
 import {
   isDeviceStartPolicyMap,
   type DeviceStartPolicy,
@@ -65,16 +58,10 @@ import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
 import { requirePlanService } from './appInit/contextGuards';
-import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
 import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: CapacitySettings;
-  modeAliases: Record<string, string>;
-  operatingMode: string;
-  capacityPriorities: Record<string, Record<string, number>>;
-  modePriorityCatalog: ModePriorityCatalog;
-  modeDeviceTargets: Record<string, Record<string, number>>;
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
@@ -126,10 +113,6 @@ export function buildCapacitySettingsSnapshot(params: {
   current: CapacitySettingsSnapshot;
 }): CapacitySettingsSnapshot {
   const { settings, current } = params;
-  const modeRaw = settings.get(OPERATING_MODE_SETTING) as unknown;
-  const modeAliases = settings.get('mode_aliases') as unknown;
-  const priorities = settings.get('capacity_priorities') as unknown;
-  const modeTargets = settings.get('mode_device_targets') as unknown;
   const deviceFlags = readDeviceFlagSettings({ settings, current });
   const deviceSettings = readDeviceControlSettings({ settings, current });
   const deviceOverrides = readDeviceOverrideSettings({ settings, current });
@@ -138,32 +121,6 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
   const rawEvCarAssociations = settings.get(EV_CAR_ASSOCIATIONS) as unknown;
-
-  const nextAliases = isStringMap(modeAliases)
-    ? Object.fromEntries(
-      Object.entries(modeAliases).map(([k, v]) => [k.toLowerCase(), v]),
-    )
-    : current.modeAliases;
-
-  // The key owner admits stored preferences once. Published snapshots are
-  // complete; planning/objective queries use the same opaque owner so a read
-  // never promotes a filled rank into a preference for a later device roster.
-  // Resolve aliases against the mode records that actually survived a rename.
-  // Do this before the active-mode read so a retained chain can skip a removed
-  // intermediate name, while a name swap stops at its still-configured target.
-  const priorityCatalog = readModePriorityCatalog(priorities) ?? current.modePriorityCatalog;
-  const nextPriorities = priorityCatalog.resolve([], []);
-  // Sanitize-and-keep, per the key's owner: a catalog carrying one malformed
-  // mode is adopted with that mode emptied, not discarded in favour of the last
-  // good snapshot. Only a blob that is not a catalog at all falls back.
-  const nextTargets = sanitizeModeDeviceTargets(modeTargets) ?? current.modeDeviceTargets;
-  const nextMode = (typeof modeRaw === 'string' && modeRaw.length > 0)
-    ? resolveModeNameHelper(
-      modeRaw,
-      nextAliases,
-      getAllModesHelper('', nextPriorities, nextTargets),
-    )
-    : current.operatingMode;
 
   // A read that is not the map keeps the one already held: a transient miss is
   // not an owner who cleared every limit.
@@ -176,11 +133,6 @@ export function buildCapacitySettingsSnapshot(params: {
   // carries the new capacity block and dry-run flag; they pass straight through.
   return {
     capacitySettings: current.capacitySettings,
-    modeAliases: nextAliases,
-    operatingMode: nextMode,
-    capacityPriorities: priorityCatalog.resolveConfiguration(deviceFlags.managedDevices, nextTargets, nextMode),
-    modePriorityCatalog: priorityCatalog,
-    modeDeviceTargets: nextTargets,
     capacityDryRun: current.capacityDryRun,
     controllableDevices: deviceFlags.controllableDevices,
     managedDevices: deviceFlags.managedDevices,
@@ -467,7 +419,7 @@ export function initSettingsHandlerForApp(
     if (options.consumeObservedModeTargetChange?.(key)) return;
     await settingsHandler?.(key);
     if (key === OPERATING_MODE_SETTING) {
-      ctx.notifyOperatingModeChanged(ctx.operatingMode);
+      ctx.notifyOperatingModeChanged(ctx.homeModeCatalog.getSnapshot().operatingMode);
     }
   };
   ctx.homey.settings.on('set', onSettingsSet);

@@ -54,7 +54,6 @@ import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
 import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
 import { PlanService } from '../../lib/plan/planService';
 import { getLogger } from '../../lib/logging/logger';
-import { resolveModeName } from '../../lib/utils/capacityHelpers';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   CAPACITY_PRIORITIES,
@@ -69,11 +68,11 @@ import {
 import {
   createHomeModeCatalog,
   readPersistedHomeModeCatalog,
-  transferModeTargetsForOwnershipMoves,
-} from '../../setup/homeRuntime/homeModeCatalog';
+} from '../../lib/home/homeModeCatalog';
+import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCatalogOwnership';
 import { drainPending } from '../utils/asyncDrain';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -88,6 +87,15 @@ const writeActiveHomesConfig = (config: HomeConfig): void => {
 };
 
 type Rig = { ctx: AppContext; registry: HomeRuntimeRegistry };
+
+const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCatalog(
+  homeId,
+  ctx.homey.settings,
+  () => ctx.homeModeCatalog.getSnapshot(),
+  () => ctx.managedDevices,
+  () => ctx.homeMembership,
+  () => getLogger('homes'),
+);
 
 const buildRig = (): Rig => {
   const ctx = createAppContextMock({
@@ -106,15 +114,14 @@ const buildRig = (): Rig => {
     // shared captureLogger helper observes the accessor's transition events.
     getStructuredLogger: (component: string) => getLogger(component),
   });
-  ctx.modeDeviceTargets = {
+  configureHomeModeCatalog(ctx, { targets: {
     Home: { 'dev-1': 21 },
     Cooler: { 'dev-1': 16 },
     Away: { 'dev-1': 12 },
-  };
-  ctx.capacityPriorities = {
+  }, priorities: {
     Home: { 'dev-1': 1 },
     Cooler: { 'dev-1': 7 },
-  };
+  } });
   const registry = new HomeRuntimeRegistry({
     ctx,
     isMembershipReady: () => true,
@@ -156,22 +163,24 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('initializes an area catalog once, filters it by ownership, and commits the marker last', () => {
-    rig.ctx.modeAliases = { cooler: 'Cooler' };
-    rig.ctx.capacityPriorities = {
-      Home: { 'dev-1': 1, 'dev-main': 2 },
-      Cooler: { 'dev-main': 1, 'dev-1': 2 },
-    };
-    rig.ctx.modeDeviceTargets = {
-      Home: { 'dev-1': 21, 'dev-main': 20 },
-      Cooler: { 'dev-1': 16, 'dev-main': 18 },
-    };
+    configureHomeModeCatalog(rig.ctx, {
+      aliases: { cooler: 'Cooler' },
+      priorities: {
+        Home: { 'dev-1': 1, 'dev-main': 2 },
+        Cooler: { 'dev-main': 1, 'dev-1': 2 },
+      },
+      targets: {
+        Home: { 'dev-1': 21, 'dev-main': 20 },
+        Cooler: { 'dev-1': 16, 'dev-main': 18 },
+      },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: (deviceId: string) => deviceId === 'dev-1' ? 'h_a' : 'main',
     } as unknown as AppContext['homeMembership'];
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
 
     catalog.reload();
 
@@ -195,6 +204,61 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(setSpy).toHaveBeenCalledTimes(writeCount);
   });
 
+  it('defers a new area catalog initialization until its registry can publish the bundle', () => {
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
+
+    expect(catalog.isInitialized()).toBe(false);
+    expect(setSpy).not.toHaveBeenCalled();
+
+    catalog.reload();
+
+    expect(catalog.isInitialized()).toBe(true);
+    expect(setSpy.mock.calls.at(-1)).toEqual(['mode_catalog_initialized:h_a', true]);
+  });
+
+  it('retains an initialized area catalog when a committed settings key disappears', () => {
+    mockHomeyInstance.settings.set('mode_catalog_initialized:h_a', true);
+    mockHomeyInstance.settings.set('mode_aliases:h_a', {});
+    mockHomeyInstance.settings.set('capacity_priorities:h_a', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('mode_device_targets:h_a', { Home: { 'dev-1': 22 } });
+    mockHomeyInstance.settings.set('operating_mode:h_a', 'Home');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
+    catalog.reload();
+    expect(catalog.getSnapshot().targets).toEqual({ Home: { 'dev-1': 22 } });
+
+    const getValue = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
+      key === 'mode_device_targets:h_a' ? null : getValue(key)
+    ));
+    const getKeys = mockHomeyInstance.settings.getKeys.bind(mockHomeyInstance.settings);
+    const keyList = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(() => (
+      getKeys().filter((key) => key !== 'mode_device_targets:h_a')
+    ));
+    catalog.reload();
+
+    expect(catalog.getSnapshot().targets).toEqual({ Home: { 'dev-1': 22 } });
+    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    keyList.mockRestore();
+  });
+
+  it('adopts a valid Main mode change while retaining a malformed sibling preference', () => {
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'dev-1': 1 } },
+      targets: { Home: { 'dev-1': 22 } },
+    });
+    mockHomeyInstance.settings.set('capacity_priorities', { malformed: null });
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
+
+    rig.ctx.homeModeCatalog.reload();
+
+    expect(rig.ctx.homeModeCatalog.getSnapshot()).toMatchObject({
+      operatingMode: 'Away',
+      priorities: { Home: { 'dev-1': 1 } },
+      targets: { Home: { 'dev-1': 22 } },
+    });
+  });
+
   it('initializes an unwritten area catalog when Homey returns null for missing settings', () => {
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
@@ -206,7 +270,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       originalGet(key) ?? null
     ));
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
 
     catalog.reload();
 
@@ -220,15 +284,15 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('creates an independent Home mode instead of inheriting Main’s active mode', () => {
-    rig.ctx.operatingMode = 'Away';
-    rig.ctx.capacityPriorities = { Away: { 'dev-1': 1 } };
-    rig.ctx.modeDeviceTargets = { Away: { 'dev-1': 12 } };
+    configureHomeModeCatalog(rig.ctx, {
+      operatingMode: 'Away', priorities: { Away: { 'dev-1': 1 } }, targets: { Away: { 'dev-1': 12 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => 'h_a',
     } as unknown as AppContext['homeMembership'];
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
 
     catalog.reload();
 
@@ -247,11 +311,11 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('keeps the new Home mode literal when Main previously renamed Home', () => {
-    rig.ctx.operatingMode = 'Work';
-    rig.ctx.modeAliases = { home: 'Work' };
-    rig.ctx.capacityPriorities = { Work: { 'dev-1': 1 } };
-    rig.ctx.modeDeviceTargets = { Work: { 'dev-1': 20 } };
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    configureHomeModeCatalog(rig.ctx, {
+      operatingMode: 'Work', aliases: { home: 'Work' },
+      priorities: { Work: { 'dev-1': 1 } }, targets: { Work: { 'dev-1': 20 } },
+    });
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
 
     catalog.reload();
 
@@ -275,7 +339,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     });
     mockHomeyInstance.settings.set('operating_mode:h_a', 'Cooler');
 
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
     catalog.reload();
 
     expect(catalog.getSnapshot().operatingMode).toBe('Home');
@@ -283,7 +347,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
   it('initializes area catalogs before owner-aware mode resolution', () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
-    rig.ctx.operatingMode = 'Away';
+    rig.ctx.homeModeCatalog.setOperatingMode('Away');
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
@@ -317,11 +381,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     mockHomeyInstance.settings.set('mode_device_targets:h_b', { Home: {} });
     mockHomeyInstance.settings.set('operating_mode:h_b', 'Home');
 
-    const result = transferModeTargetsForOwnershipMoves(rig.ctx, [{
-      deviceId: 'dev-1',
-      fromHomeId: 'h_a',
-      toHomeId: 'h_b',
-    }]);
+    const result = transferModeTargetsForOwnershipMoves(
+      rig.ctx.homey.settings,
+      rig.ctx.homeModeCatalog,
+      () => rig.ctx.managedDevices,
+      () => rig.ctx.homeMembership,
+      [{ deviceId: 'dev-1', fromHomeId: 'h_a', toHomeId: 'h_b' }],
+    );
 
     expect(result).toEqual({ completedDeviceIds: ['dev-1'], failedDeviceIds: [] });
     expect(mockHomeyInstance.settings.get('mode_device_targets:h_b')).toEqual({
@@ -332,7 +398,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   it.each([undefined, null])(
     'never recopies Main when the existing initialization marker reads %s',
     (ambiguousMarker) => {
-      const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+      const catalog = createCatalogFor(rig.ctx, 'h_a');
       catalog.reload();
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
       catalog.reload();
@@ -359,7 +425,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       key === pinKey ? undefined : originalGet(key)
     ));
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
-    const catalog = createHomeModeCatalog(rig.ctx, 'h_a');
+    const catalog = createCatalogFor(rig.ctx, 'h_a');
 
     catalog.reload();
 
@@ -376,15 +442,12 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   const reloadCapacitySettingsFromStore = (): void => {
     const aliasesRaw = mockHomeyInstance.settings.get('mode_aliases') as
       Record<string, string> | null;
-    const aliases = Object.fromEntries(
-      Object.entries(aliasesRaw ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
-    );
     const targets = mockHomeyInstance.settings.get('mode_device_targets') as
       Record<string, Record<string, number>> | null;
-    if (targets) rig.ctx.modeDeviceTargets = targets;
-    const configuredModes = new Set(Object.keys(targets ?? rig.ctx.modeDeviceTargets));
-    vi.mocked(rig.ctx.resolveModeName)
-      .mockImplementation((name: string) => resolveModeName(name, aliases, configuredModes));
+    configureHomeModeCatalog(rig.ctx, {
+      aliases: aliasesRaw ?? {},
+      ...(targets === null ? {} : { targets }),
+    });
   };
 
   it('routes a suffixed operating_mode write to ONE bundle; main\'s mode dispatch never runs', async () => {
@@ -415,7 +478,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
       // Mutation guards: the suffixed write must never fall through to the
       // main home's exact-key dispatch.
-      expect(rig.ctx.operatingMode).toBe('Home');
+      expect(rig.ctx.homeModeCatalog.getSnapshot().operatingMode).toBe('Home');
       expect(rig.ctx.loadCapacitySettings).not.toHaveBeenCalled();
       expect(rig.ctx.notifyOperatingModeChanged).not.toHaveBeenCalled();
 
@@ -585,7 +648,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       // Without the fan-out the pinned area keeps its previous shedding order
       // until an unrelated rebuild.
       expect(countBundleRebuilds()).toBeGreaterThan(0);
-      const persisted = readPersistedHomeModeCatalog(rig.ctx, 'h_a');
+      const persisted = readPersistedHomeModeCatalog(
+        rig.ctx.homey.settings, 'h_a', rig.ctx.managedDevices, rig.ctx.homeMembership,
+      );
       expect(persisted.state).toBe('resolved');
       if (persisted.state === 'resolved') {
         expect(persisted.snapshot.modePriorityCatalog
@@ -708,9 +773,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
 
-    // The real app updates ctx.operatingMode in loadCapacitySettings before
+    // The real app reloads its Main mode catalog before
     // the fan-out; the mock's loader is inert, so the rig mirrors that order.
-    rig.ctx.operatingMode = 'Away';
+    rig.ctx.homeModeCatalog.setOperatingMode('Away');
     rig.registry.onModeSettingsChanged();
     await drainPending();
 
@@ -808,7 +873,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     membership.recompute();
 
     ctx = createAppContextMock({ homey: homeyLike, homeMembership: membership });
-    ctx.modeDeviceTargets = MODE_TARGETS;
+    configureHomeModeCatalog(ctx, { targets: MODE_TARGETS });
   });
 
   afterEach(() => {
@@ -891,7 +956,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
       () => runSeedPass(),
     );
     ctx = createAppContextMock({ homey: homeyLike, homeMembership: membership });
-    ctx.modeDeviceTargets = MODE_TARGETS;
+    configureHomeModeCatalog(ctx, { targets: MODE_TARGETS });
     membership.recompute();
 
     // Before the detached zone-tree result lands, the membership lookup's Main
@@ -913,7 +978,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
   it('skips the overshoot seed between rename target and alias commits', () => {
     const renamedTargets = { Home: { 'vt-1': 24 }, Chill: { 'vt-1': 20 } };
     mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
-    ctx.modeDeviceTargets = renamedTargets;
+    configureHomeModeCatalog(ctx, { targets: renamedTargets });
 
     // The targets write removed `Cooler`, but the alias write has not landed.
     // The bundle may follow a logged global fallback; a persisted default may
@@ -921,11 +986,8 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     runSeedPass();
     expect(readOvershootEntry()).toBeUndefined();
 
-    ctx.resolveModeName = (name: string) => resolveModeName(
-      name,
-      { cooler: 'Chill' },
-      new Set(Object.keys(renamedTargets)),
-    );
+    mockHomeyInstance.settings.set('mode_aliases', { cooler: 'Chill' });
+    configureHomeModeCatalog(ctx, { targets: renamedTargets, aliases: { cooler: 'Chill' } });
     runSeedPass();
     expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
   });

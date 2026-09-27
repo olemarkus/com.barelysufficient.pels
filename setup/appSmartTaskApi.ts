@@ -187,7 +187,9 @@ export class AppSmartTaskApi {
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
-    const previewPriorities = this.ctx.getPrioritiesForDevices(previewDevices.map((device) => device.id));
+    const previewPriorities = this.ctx.homeModeCatalog.getPrioritiesForDevices(
+      previewDevices.map((device) => device.id),
+    );
     const devices = previewDevices.map((device) => ({
       ...device,
       priority: previewPriorities.getPriority(device.id),
@@ -205,7 +207,7 @@ export class AppSmartTaskApi {
       devices,
       settings: roster.settings,
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
-      getPrioritiesForDevices: (deviceIds) => this.ctx.getPrioritiesForDevices(deviceIds),
+      getPrioritiesForDevices: (deviceIds) => this.ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
       getStallClassification: (id) => planService.getStallEvidence(id),
       powerTracker: this.ctx.powerTracker,

@@ -48,8 +48,10 @@
   beyond the two the seam writes. Its predecessor keyed "fresh install" on the mere PRESENCE of
   `power_tracker_state` and lost to the tracker's first prune on every boot.
   Everything else is the owner's pick in Limits & safety.)
-  `homeRuntime/homeOperatingMode.ts` has not had the same treatment: it still
-  gates on `undefined` alone.
+  Home mode settings reads and classification belong to
+  `lib/home/homeModeSettingsRead.ts`; `homeRuntime/homeOperatingMode.ts` is only
+  a wiring adapter to the home catalog. Keep SDK absence and read failures
+  classified at that domain-owned boundary.
 - **Configured meter ownership and sampled-meter provenance are different facts.** The
   `ui_homes_save` seam requires an explicit Main meter before any meter area can run and refuses
   the same explicit meter on both sides (there is no Automatic to switch back to).

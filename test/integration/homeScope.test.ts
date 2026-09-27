@@ -9,7 +9,7 @@ import {
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
@@ -98,8 +98,9 @@ describe('buildMainHomeScope', () => {
     ctx.getDynamicSoftLimitOverride = (() => 3.5) as AppContext['getDynamicSoftLimitOverride'];
     const scope = buildMainHomeScope(ctx, () => false, () => false);
 
-    ctx.operatingMode = 'away';
-    ctx.modeDeviceTargets = { away: { 'device-1': 21 } };
+    configureHomeModeCatalog(ctx, {
+      operatingMode: 'away', targets: { away: { 'device-1': 21 } },
+    });
 
     expect(scope.getPriceOptimizationSettings()).toBe(priceOpt);
     expect(scope.getDynamicSoftLimitOverride()).toBe(3.5);

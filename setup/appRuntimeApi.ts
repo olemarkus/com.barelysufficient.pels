@@ -352,11 +352,6 @@ abstract class AppRuntimeApi extends Base {
       settings: this.homey.settings,
       current: {
         capacitySettings,
-        modeAliases: this.context.modeAliases,
-        operatingMode: this.context.operatingMode,
-        capacityPriorities: this.context.capacityPriorities,
-        modePriorityCatalog: this.context.modePriorityCatalog,
-        modeDeviceTargets: this.context.modeDeviceTargets,
         capacityDryRun,
         controllableDevices: this.context.controllableDevices,
         managedDevices: this.context.managedDevices,
@@ -377,6 +372,7 @@ abstract class AppRuntimeApi extends Base {
     Object.assign(this.context, next, {
       deviceControlProfiles: normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {},
     });
+    this.context.homeModeCatalog.reload();
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
     if (rebuildAfterRecovery && capacityRead.state === 'resolved' && this.context.planService) {
@@ -433,7 +429,7 @@ abstract class AppRuntimeApi extends Base {
       capacityGuard: this.context.capacityGuard,
       powerTracker: this.context.powerTracker,
       capacitySettings: this.context.capacitySettings,
-      operatingMode: this.context.operatingMode,
+      operatingMode: this.context.homeModeCatalog.getSnapshot().operatingMode,
       capacityDryRun: this.context.capacityDryRun,
       starvedDeviceCount: this.context.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
       capacityPaceKw: this.computeDynamicSoftLimit(),

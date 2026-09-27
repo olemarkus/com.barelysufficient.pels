@@ -218,7 +218,7 @@ export function buildMainHomeScope(
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCapacitySettings: () => ctx.capacitySettings,
-    getPrioritiesForDevices: (deviceIds) => ctx.getPrioritiesForDevices(deviceIds),
+    getPrioritiesForDevices: (deviceIds) => ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
@@ -295,8 +295,8 @@ export function buildMainHomeScope(
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
-    getOperatingMode: () => ctx.operatingMode,
-    getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getOperatingMode: () => ctx.homeModeCatalog.getSnapshot().operatingMode,
+    getModeDeviceTargets: () => ctx.homeModeCatalog.getSnapshot().targets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`

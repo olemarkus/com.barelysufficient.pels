@@ -74,13 +74,18 @@ from outside PELS.
 - A caller that needs to know how the bytes are shaped is a caller that should be
   asking the owner.
 
-Keys with owners so far: `mode_device_targets`, `pv_forecast_source`,
+Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`.
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders
 for every known device and mode, including new devices and target-only modes.
 Consumers receive numeric priorities; they do not distinguish saved and filled ranks.
+
+`mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
+Runtime and settings UI both lowercase alias keys and ignore malformed entries;
+both retain their last-good aliases if the stored value is not a record (the UI
+resets to empty aliases when switching to a different home).
 
 `pv_forecast_source` is the cheap case the rule still earns: a flat three-value
 union with nothing to sanitize partially, but two callers from day one (the

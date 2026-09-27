@@ -226,6 +226,9 @@ the legacy Main catalog; afterwards Main edits never change the area.
 The bundle reads one coherent last-good catalog snapshot, so a transient
 settings failure cannot mix one generation's mode with another generation's
 targets. Scoped catalog writes reload and rebuild only the owning bundle.
+The snapshot owner lives in `lib/home/homeModeCatalog.ts`; `AppContext` exposes
+that owner to runtime consumers, while setup only constructs it and passes the
+settings, membership, and managed-device seams it needs.
 Device-detail target edits, overshoot defaults, and automatic missing-target
 seeding resolve through the device's assigned catalog. The Settings page shows
 one current-mode selector per home; the Modes page follows the global

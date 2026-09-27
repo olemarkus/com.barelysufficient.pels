@@ -89,7 +89,7 @@ const createMembershipPort = (options: {
 
 // The app surfaces the three endpoints consume, typed against the real ports.
 type ScopedApiApp = {
-  getPrioritiesForDevices: ReturnType<typeof createFixturePriorityQuery>;
+  getModePrioritiesForUi: ReturnType<typeof createFixturePriorityQuery>;
   settingsUiDeviceReads: SettingsUiDeviceReads;
   latestTargetSnapshot: Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
@@ -142,7 +142,7 @@ const installBoundary = (options: {
     readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
   });
   const app: ScopedApiApp = {
-    getPrioritiesForDevices: createFixturePriorityQuery(),
+    getModePrioritiesForUi: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [
       { id: 'dev-main', name: 'Main heater', deviceClass: 'heater' },

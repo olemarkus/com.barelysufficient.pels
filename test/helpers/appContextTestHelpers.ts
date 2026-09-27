@@ -1,4 +1,3 @@
-import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
@@ -45,6 +44,15 @@ import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowe
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
+import { createHomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import {
+  CAPACITY_PRIORITIES,
+  MODE_ALIASES,
+  MODE_DEVICE_TARGETS,
+  OPERATING_MODE_SETTING,
+} from '../../lib/utils/settingsKeys';
+import type { HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -60,7 +68,20 @@ type AppContextMockOptions = Omit<Partial<AppContext>, 'latestTargetSnapshot' | 
   latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
+  modeCatalog?: Partial<Pick<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'priorities' | 'targets'>>;
 };
+
+export function configureHomeModeCatalog(
+  context: AppContext,
+  configuration: Partial<Pick<HomeModeCatalogSnapshot, 'operatingMode' | 'aliases' | 'priorities' | 'targets'>>,
+): void {
+  const { settings } = context.homey;
+  if (configuration.operatingMode !== undefined) settings.set(OPERATING_MODE_SETTING, configuration.operatingMode);
+  if (configuration.aliases !== undefined) settings.set(MODE_ALIASES, configuration.aliases);
+  if (configuration.priorities !== undefined) settings.set(CAPACITY_PRIORITIES, configuration.priorities);
+  if (configuration.targets !== undefined) settings.set(MODE_DEVICE_TARGETS, configuration.targets);
+  context.homeModeCatalog.reload();
+}
 
 function createFlowCardMock(): FlowCard {
   return {
@@ -70,6 +91,7 @@ function createFlowCardMock(): FlowCard {
 }
 
 export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: MockHomey } {
+  const values = new Map<string, unknown>([['__test_presence', true]]);
   const flowHomey: MockHomey = {
     flow: {
       getTriggerCard: vi.fn(() => createFlowCardMock()),
@@ -78,10 +100,10 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
     },
     settings: {
       // Unset keys answer `null`, as the SDK does — see test/mocks/homey.ts.
-      get: vi.fn(() => null),
-      set: vi.fn(),
-      unset: vi.fn(),
-      getKeys: vi.fn(() => []),
+      get: vi.fn((key: string) => values.get(key) ?? null),
+      set: vi.fn((key: string, value: unknown) => { values.set(key, value); }),
+      unset: vi.fn((key: string) => { values.delete(key); }),
+      getKeys: vi.fn(() => [...values.keys()]),
       on: vi.fn(),
       off: vi.fn(),
     },
@@ -106,6 +128,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     homeyEnergyHelpers: homeyEnergyHelpersOverride,
     deviceControlHelpers: deviceControlHelpersOverride,
     getStructuredDebugEmitter: getStructuredDebugEmitterOverride,
+    modeCatalog: modeCatalogOverride,
     ...overrides
   } = options;
 
@@ -117,10 +140,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let powerTracker: PowerTrackerState = {};
   let capacitySettings = { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
-  let operatingMode = 'Home';
-  let modeAliases: Record<string, string> = {};
-  let modePriorityCatalog = new ModePriorityCatalog();
-  let modeDeviceTargets: Record<string, Record<string, number>> = {};
   let controllableDevices: Record<string, boolean> = {};
   let managedDevices: Record<string, boolean> = {};
   let budgetExemptDevices: Record<string, boolean> = {};
@@ -221,7 +240,16 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     () => context.canContributeCurtailmentSurplus?.() === true,
   );
   surplusPoolReachability.observeExportEvidence(powerTracker);
+  const homeModeCatalog = createHomeModeCatalog(
+    MAIN_HOME_ID,
+    homey.settings,
+    () => homeModeCatalog.getSnapshot(),
+    () => managedDevices,
+    () => context.homeMembership,
+    () => undefined,
+  );
   const context: AppContext = {
+    homeModeCatalog,
     deviceReads,
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
@@ -278,8 +306,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
     getHomeyDevicesForFlow: vi.fn(async () => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
-    resolveModeName: vi.fn((name: string) => name),
-    getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
     getObservedState: vi.fn(() => undefined),
     getObservedRecord: vi.fn(() => undefined),
@@ -320,19 +346,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set capacitySettings(value) { capacitySettings = value; },
     get capacityDryRun() { return capacityDryRun; },
     set capacityDryRun(value) { capacityDryRun = value; },
-    get operatingMode() { return operatingMode; },
-    set operatingMode(value) { operatingMode = value; },
-    get modeAliases() { return modeAliases; },
-    set modeAliases(value) { modeAliases = value; },
-    get modePriorityCatalog() { return modePriorityCatalog; },
-    set modePriorityCatalog(value) { modePriorityCatalog = value; },
-    getPrioritiesForDevices: (deviceIds) => modePriorityCatalog.getOrder(operatingMode, deviceIds),
-    get capacityPriorities() {
-      return modePriorityCatalog.resolveConfiguration(managedDevices, modeDeviceTargets, operatingMode);
-    },
-    set capacityPriorities(value) { modePriorityCatalog = new ModePriorityCatalog(value); },
-    get modeDeviceTargets() { return modeDeviceTargets; },
-    set modeDeviceTargets(value) { modeDeviceTargets = value; },
     get controllableDevices() { return controllableDevices; },
     set controllableDevices(value) { controllableDevices = value; },
     get managedDevices() { return managedDevices; },
@@ -432,6 +445,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   };
 
   Object.assign(context, overrides);
+  if (modeCatalogOverride) configureHomeModeCatalog(context, modeCatalogOverride);
   return context;
 }
 

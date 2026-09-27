@@ -60,7 +60,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
@@ -646,8 +646,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(thermostat, binaryLoad);
-    rig.ctx.capacityPriorities = { Home: { 'heater-move': 1, 'switch-move': 2 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-move': 22 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-move': 1, 'switch-move': 2 } },
+      targets: { Home: { 'heater-move': 22 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
@@ -686,8 +688,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(existingThermostat);
-    rig.ctx.capacityPriorities = { Home: { 'heater-existing': 1, 'heater-late': 2 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-existing': 21, 'heater-late': 23 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-existing': 1, 'heater-late': 2 } },
+      targets: { Home: { 'heater-existing': 21, 'heater-late': 23 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
@@ -722,8 +726,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(thermostat);
-    rig.ctx.capacityPriorities = { Home: { 'heater-transient': 1 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-transient': 22 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-transient': 1 } }, targets: { Home: { 'heater-transient': 22 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
@@ -756,8 +761,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     } as unknown as TargetDeviceSnapshot;
     const configureRig = (): void => {
       rig.ctx.latestTargetSnapshot.push(thermostat);
-      rig.ctx.capacityPriorities = { Home: { 'heater-restart': 1 } };
-      rig.ctx.modeDeviceTargets = { Home: { 'heater-restart': 22 } };
+      configureHomeModeCatalog(rig.ctx, {
+        priorities: { Home: { 'heater-restart': 1 } }, targets: { Home: { 'heater-restart': 22 } },
+      });
       rig.ctx.homeMembership = {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
@@ -802,8 +808,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(thermostat);
-    rig.ctx.capacityPriorities = { Home: { 'heater-provisional': 1 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-provisional': 22 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-provisional': 1 } }, targets: { Home: { 'heater-provisional': 22 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => ownershipReady,
       hasPendingOwnershipGeneration: () => false,
@@ -832,8 +839,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(thermostat);
-    rig.ctx.capacityPriorities = { Home: { 'heater-aborted-move': 1 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-aborted-move': 22 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-aborted-move': 1 } }, targets: { Home: { 'heater-aborted-move': 22 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => generationPending,
@@ -877,8 +885,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
     } as unknown as TargetDeviceSnapshot;
     rig.ctx.latestTargetSnapshot.push(thermostat);
-    rig.ctx.capacityPriorities = { Home: { 'heater-ledger-retry': 1 } };
-    rig.ctx.modeDeviceTargets = { Home: { 'heater-ledger-retry': 22 } };
+    configureHomeModeCatalog(rig.ctx, {
+      priorities: { Home: { 'heater-ledger-retry': 1 } }, targets: { Home: { 'heater-ledger-retry': 22 } },
+    });
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,

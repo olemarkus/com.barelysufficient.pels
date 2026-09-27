@@ -117,6 +117,6 @@ export const buildHomePlanDevices = (
   const deviceIds = devices.map((device) => device.id);
   const priorities = options?.getPrioritiesForDevices
     ? options.getPrioritiesForDevices(deviceIds)
-    : ctx.getPrioritiesForDevices(deviceIds);
+    : ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds);
   return devices.map((device) => ({ ...device, priority: priorities.getPriority(device.id) }));
 };

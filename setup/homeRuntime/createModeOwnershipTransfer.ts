@@ -1,7 +1,7 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 import { HomeModeOwnershipStore } from './homeModeOwnershipStore';
-import { transferModeTargetsForOwnershipMoves } from './homeModeCatalog';
+import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCatalogOwnership';
 
 /**
  * Give `lib/home`'s ownership transfer the four app-shaped seams it reads and
@@ -17,6 +17,12 @@ export const createModeOwnershipTransfer = (ctx: AppContext): ModeOwnershipTrans
     getLogger: () => ctx.getStructuredLogger('homes'),
     getMembership: () => ctx.homeMembership,
     getLatestTargetSnapshot: () => ctx.latestTargetSnapshot,
-    transferModeTargets: (moves) => transferModeTargetsForOwnershipMoves(ctx, moves),
+    transferModeTargets: (moves) => transferModeTargetsForOwnershipMoves(
+      ctx.homey.settings,
+      ctx.homeModeCatalog,
+      () => ctx.managedDevices,
+      () => ctx.homeMembership,
+      moves,
+    ),
   })
 );

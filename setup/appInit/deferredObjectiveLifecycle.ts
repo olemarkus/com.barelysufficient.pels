@@ -232,7 +232,7 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getCapacitySettings: () => ctx.capacitySettings,
-    getPrioritiesForDevices: (deviceIds) => ctx.getPrioritiesForDevices(deviceIds),
+    getPrioritiesForDevices: (deviceIds) => ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     // An excluded task's lifecycle diagnostics carry the dedicated code for
     // their exclusion (relocated → `objective_device_in_sub_home`, unmanaged →
     // `objective_device_unmanaged`), and the eligible-count denominator

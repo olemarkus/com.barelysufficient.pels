@@ -286,7 +286,7 @@ export class AppServiceWiring {
     );
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
     await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
-    ctx.lastNotifiedOperatingMode = ctx.operatingMode;
+    ctx.lastNotifiedOperatingMode = ctx.homeModeCatalog.getSnapshot().operatingMode;
     await runStartupStep('startAppServices', () => {
       requireInitializedAppContext(ctx);
       return startAppServices(ctx);

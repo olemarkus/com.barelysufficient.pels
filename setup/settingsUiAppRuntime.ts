@@ -43,7 +43,7 @@ const appNotReadyError = (capability: string): Error => (
 type SettingsUiRuntimeApp = Homey.App & {
   /** Every home's live status (`AppContext.planStatuses`). */
   planStatuses?: AppContext['planStatuses'];
-  getPrioritiesForDevices?: AppContext['getPrioritiesForDevices'];
+  getModePrioritiesForUi?: (deviceIds: readonly string[]) => ModePriorityOrder;
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: {
@@ -158,8 +158,8 @@ export const getPrioritiesForUiFromApp = (
   deviceIds: readonly string[],
 ): ModePriorityOrder => {
   const app = getRuntimeApp(homey);
-  if (typeof app?.getPrioritiesForDevices !== 'function') throw appNotReadyError('mode priorities');
-  return app.getPrioritiesForDevices(deviceIds);
+  if (!app?.getModePrioritiesForUi) throw appNotReadyError('mode priorities');
+  return app.getModePrioritiesForUi(deviceIds);
 };
 
 export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] | null => {

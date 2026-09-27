@@ -157,7 +157,7 @@ const initApp = async (app: MyApp) => {
   await app.refreshTargetDevicesSnapshot();
   await app.planService.rebuildPlanFromCache('unknown');
   const initialized = app;
-  initialized['lastNotifiedOperatingMode'] = initialized['operatingMode'];
+  initialized['lastNotifiedOperatingMode'] = initialized['homeModeCatalog'].getSnapshot().operatingMode;
 };
 
 const clearRecentLocalCapabilityWrites = (app: MyApp) => {
@@ -656,7 +656,7 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
 
     // Verify internal state was updated
-    expect(app.operatingMode).toBe('Away');
+    expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Away');
   });
 
   it('set_capacity_mode flow card throws if mode is empty', async () => {
@@ -1810,7 +1810,7 @@ describe('MyApp initialization', () => {
     expect(result).toBe(true);
 
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
-    expect(app.operatingMode).toBe('Away');
+    expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Away');
   });
 
   it('triggers operating_mode_changed when mode changes', async () => {
@@ -1968,7 +1968,8 @@ describe('MyApp initialization', () => {
       onApiWrite: { accept: true, updateActual: true, updateApi: false },
     });
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-    app.modeDeviceTargets = { Home: { 'dev-1': 20 } };
+    app.homey.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    app.homeModeCatalog.reload();
 
     const nowSpy = vi.spyOn(Date, 'now');
     try {
@@ -2235,12 +2236,12 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Cozy');
 
     // Internal state should use the renamed mode and drop the old one
-    expect(app.operatingMode).toBe('Cozy');
-    expect(app.modeDeviceTargets.Cozy['dev-1']).toBe(20);
-    expect(app.modeDeviceTargets.Home).toBeUndefined();
-    expect(app.capacityPriorities.Home).toBeUndefined();
+    expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Cozy');
+    expect(app.homeModeCatalog.getSnapshot().targets.Cozy['dev-1']).toBe(20);
+    expect(app.homeModeCatalog.getSnapshot().targets.Home).toBeUndefined();
+    expect(app.homeModeCatalog.getSnapshot().priorities.Home).toBeUndefined();
 
-    const modes = Array.from(app.getAllModes());
+    const modes = Array.from(app.homeModeCatalog.getAllModes());
     expect(modes).toContain('Cozy');
     expect(modes).not.toContain('Home');
 
@@ -2307,7 +2308,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Work', away: 'Home' });
     await flushPromises();
 
-    expect(app.operatingMode).toBe('Work');
+    expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Work');
 
     const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
 

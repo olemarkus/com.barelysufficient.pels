@@ -142,8 +142,8 @@ describe('Shed vs Restore Logic', () => {
 
         const devices = targetDevices;
         // Mock desired state (e.g. thermostat set to 22) to imply it "wants" to be ON
-        app.modeDeviceTargets = { 'Home': { 'dev-E': 22 } };
-        app.operatingMode = 'Home';
+        app.homeModeCatalog.getSnapshot().targets = { 'Home': { 'dev-E': 22 } };
+        app.homeModeCatalog.getSnapshot().operatingMode = 'Home';
 
         const plan = await app.planService.buildDevicePlanSnapshot(devices);
         const devE = plan.devices.find((d: { id: string }) => d.id === 'dev-E');

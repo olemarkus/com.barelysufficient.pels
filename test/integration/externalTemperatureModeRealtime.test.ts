@@ -62,7 +62,7 @@ describe('external temperature changes reach the mode through observation', () =
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
       Home: { [deviceId]: 22 }, Away: { [deviceId]: 16 },
     });
-    expect(app.modeDeviceTargets.Home?.[deviceId]).toBe(22);
+    expect(app.homeModeCatalog.getSnapshot().targets.Home?.[deviceId]).toBe(22);
     await drainPending();
     expect(rebuild).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe('external temperature changes reach the mode through observation', () =
     await drainPending();
 
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
-    expect(app.modeDeviceTargets.Home?.[deviceId]).toBe(22);
+    expect(app.homeModeCatalog.getSnapshot().targets.Home?.[deviceId]).toBe(22);
   });
 
   it('keeps saved price and solar settings without applying their offsets', async () => {
@@ -191,7 +191,7 @@ describe('external temperature changes reach the mode through observation', () =
     // which is what separates a fresh install from a transient read miss.
     expect(mockHomeyInstance.settings.get('operating_mode')).toBeNull();
     expect(mockHomeyInstance.settings.getKeys()).not.toContain('operating_mode');
-    expect(app.operatingMode).toBe('Home');
+    expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Home');
 
     app.deviceManager!.injectDeviceUpdateForTest(update(22));
 

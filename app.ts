@@ -1,4 +1,4 @@
-import { ModePriorityCatalog } from './packages/shared-domain/src/settings/modePriorities';
+import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import Homey from 'homey';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
@@ -149,24 +149,21 @@ class PelsApp extends PelsAppBase implements AppContext {
     MAIN_HOME_ID,
     () => ({ ...this.capacitySettings, dryRun: this.capacityDryRun }),
   );
-  public operatingMode = 'Home';
-  public modeAliases: Record<string, string> = {};
-  public modePriorityCatalog = new ModePriorityCatalog();
-  public get capacityPriorities(): Record<string, Record<string, number>> {
-    return this.modePriorityCatalog.resolveHomeConfiguration(
-      this.managedDevices, this.modeDeviceTargets, this.operatingMode, MAIN_HOME_ID, this.context.homeMembership,
-    );
-  }
-  public set capacityPriorities(value: Record<string, Record<string, number>>) {
-    this.modePriorityCatalog = new ModePriorityCatalog(value);
-  }
-  public getPrioritiesForDevices = (deviceIds: readonly string[]) => (
-    this.modePriorityCatalog.getOrder(this.operatingMode, deviceIds)
-  );
-  public modeDeviceTargets: Record<string, Record<string, number>> = {};
   public controllableDevices: Record<string, boolean> = {};
   public managedDevices: Record<string, boolean> = {};
   public budgetExemptDevices: Record<string, boolean> = {};
+  public readonly homeModeCatalog = createHomeModeCatalog(
+    MAIN_HOME_ID,
+    this.homey.settings,
+    () => this.homeModeCatalog.getSnapshot(),
+    () => this.managedDevices,
+    () => this.context.homeMembership,
+    () => this.getStructuredLogger('homes'),
+  );
+  /** Narrow settings bridge; the UI never receives the catalog owner itself. */
+  public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
+    this.homeModeCatalog.getPrioritiesForDevices(deviceIds)
+  );
   public deviceStartPolicies: Record<string, DeviceStartPolicy> = {};
   public temperatureControlDisabledDevices: Record<string, boolean> = {};
   public temperatureControlPolicyState: 'unavailable' | 'resolved' = 'unavailable';

@@ -1,4 +1,5 @@
 import { isDeviceStartPolicyMap } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
+import { readModeAliases as readSharedModeAliases } from '../../../shared-domain/src/settings/modeAliases.ts';
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
 } from '../../../shared-domain/src/settings/temperatureControl.ts';
@@ -49,14 +50,8 @@ export const readStrictBooleanSettingMap = (
   return Object.fromEntries(entries.filter(([, entry]) => entry === true));
 };
 
-export const readModeAliases = (value: unknown): Record<string, string> => (
-  value && typeof value === 'object'
-    ? Object.entries(value).reduce<Record<string, string>>((acc, [key, alias]) => (
-      typeof key === 'string' && typeof alias === 'string'
-        ? { ...acc, [key.toLowerCase()]: alias }
-        : acc
-    ), {})
-    : {}
+export const readModeAliases = (value: unknown): Record<string, string> | null => (
+  readSharedModeAliases(value)
 );
 
 export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead> => {

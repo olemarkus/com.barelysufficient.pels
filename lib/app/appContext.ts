@@ -1,4 +1,4 @@
-import type { ModePriorityCatalog, ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
+import type { HomeModeCatalog } from '../home/homeModeCatalog';
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
@@ -186,8 +186,6 @@ export type AppContext = {
   }) => FlowBackedCapabilityReportOutcome;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
-  resolveModeName: (name: string) => string;
-  getAllModes: () => Set<string>;
   resolveManagedState: (deviceId: string) => boolean;
   // Observer-owned maintained observed truth for a device, fed by the dispatcher
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
@@ -250,16 +248,7 @@ export type AppContext = {
   set capacitySettings(value: CapacitySettings);
   get capacityDryRun(): boolean;
   set capacityDryRun(value: boolean);
-  get operatingMode(): string;
-  set operatingMode(value: string);
-  get modeAliases(): Record<string, string>;
-  set modeAliases(value: Record<string, string>);
-  modePriorityCatalog: ModePriorityCatalog;
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  get capacityPriorities(): Record<string, Record<string, number>>;
-  set capacityPriorities(value: Record<string, Record<string, number>>);
-  get modeDeviceTargets(): Record<string, Record<string, number>>;
-  set modeDeviceTargets(value: Record<string, Record<string, number>>);
+  readonly homeModeCatalog: HomeModeCatalog;
   get controllableDevices(): Record<string, boolean>;
   set controllableDevices(value: Record<string, boolean>);
   get managedDevices(): Record<string, boolean>;

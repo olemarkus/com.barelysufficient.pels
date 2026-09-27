@@ -22,9 +22,9 @@ export function registerAppFlowCards(ctx: AppContext): void {
   registerFlowCards({
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
-    resolveModeName: (mode) => ctx.resolveModeName(mode),
-    getAllModes: () => ctx.getAllModes(),
-    getCurrentOperatingMode: () => ctx.operatingMode,
+    resolveModeName: (mode) => ctx.homeModeCatalog.resolveModeName(mode),
+    getAllModes: () => ctx.homeModeCatalog.getAllModes(),
+    getCurrentOperatingMode: () => ctx.homeModeCatalog.getSnapshot().operatingMode,
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),

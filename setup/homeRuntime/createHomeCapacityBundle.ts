@@ -72,7 +72,7 @@ import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadines
 import {
   createHomeModeCatalog,
   type HomeModeCatalog,
-} from './homeModeCatalog';
+} from '../../lib/home/homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
 import { createHomePlanRuntime } from './createHomePlanRuntime';
@@ -531,7 +531,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
   });
-  const modeCatalog = createHomeModeCatalog(ctx, homeId);
+  const modeCatalog = createHomeModeCatalog(
+    homeId,
+    ctx.homey.settings,
+    () => ctx.homeModeCatalog.getSnapshot(),
+    () => ctx.managedDevices,
+    () => ctx.homeMembership,
+    () => ctx.getStructuredLogger('homes'),
+  );
   let scheduleSourceActuationRetry = (): void => undefined;
   const isMeterSourceAuthorizedForExecution = (): boolean => {
     const authorized = deps.isMeterSourceAuthorized();

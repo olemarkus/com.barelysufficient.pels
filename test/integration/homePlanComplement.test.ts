@@ -309,8 +309,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       homeMembership: makeMembershipService(membershipInputs),
       resolveManagedState: vi.fn(() => true),
       // Simulate persisted gaps left by devices that are no longer active.
-      capacityPriorities: { Home: { 'device-main': 5, 'device-sub': 9 } },
-      operatingMode: 'Home',
+      modeCatalog: { priorities: { Home: { 'device-main': 5, 'device-sub': 9 } }, operatingMode: 'Home' },
     });
     const scope = buildMainHomeScope(ctx, () => false, () => false);
     const priorities = () => Object.fromEntries(
@@ -339,8 +338,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       homeMembership: makeMembershipService(membershipInputs),
       resolveManagedState: vi.fn(() => true),
       // Main's order deliberately conflicts with the area's order below.
-      capacityPriorities: { Home: { 'device-main': 1, 'device-sub': 2 } },
-      operatingMode: 'Home',
+      modeCatalog: { priorities: { Home: { 'device-main': 1, 'device-sub': 2 } }, operatingMode: 'Home' },
     });
 
     const devices = buildHomePlanDevices(ctx, SUB_HOME.homeId, {
@@ -360,8 +358,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       latestTargetSnapshot: [mainDevice, subDevice],
       homeMembership: makeMembershipService(membershipInputs),
       resolveManagedState: vi.fn(() => true),
-      capacityPriorities: { Home: { 'device-sub': 100 } },
-      operatingMode: 'Home',
+      modeCatalog: { priorities: { Home: { 'device-sub': 100 } }, operatingMode: 'Home' },
     });
 
     expect(buildMainHomeScope(ctx, () => false, () => false).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([

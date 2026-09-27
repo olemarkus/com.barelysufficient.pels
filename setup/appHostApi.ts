@@ -10,11 +10,6 @@ import type {
   DailyBudgetSettingsInput,
   DailyBudgetUiRead,
 } from '../lib/dailyBudget/dailyBudgetTypes';
-import {
-  getAllModes as getAllModesHelper,
-  resolveModeName as resolveModeNameHelper,
-} from '../lib/utils/capacityHelpers';
-import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
 import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DecoratedDeviceSnapshot,
@@ -123,19 +118,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract registerAppFlowCards(): void;
 
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
-    const resolved = resolveModeNameHelper(
-      rawMode,
-      this.context.modeAliases,
-      getAllModesHelper('', this.context.capacityPriorities, this.context.modeDeviceTargets),
-    );
-    const previousMode = this.context.operatingMode;
+    const { previous: previousMode, resolved } = this.context.homeModeCatalog.setOperatingMode(rawMode);
     if (resolved !== rawMode) {
       this.context.getStructuredDebugEmitter('settings', 'settings')({
         event: 'mode_resolved_via_alias', requestedMode: rawMode, resolvedMode: resolved,
       });
     }
-    this.context.operatingMode = resolved;
-    this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     const aliasUsed = rawMode !== resolved ? rawMode : null;
     if (this.homey.settings.get('mode_alias_used') !== aliasUsed) this.homey.settings.set('mode_alias_used', aliasUsed);
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
@@ -255,14 +243,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePriceCoordinator().storeFlowPriceData(kind, raw);
   }
 
-  public resolveModeName = (name: string): string => resolveModeNameHelper(
-    name,
-    this.context.modeAliases,
-    getAllModesHelper('', this.context.capacityPriorities, this.context.modeDeviceTargets),
-  );
-  public getAllModes = (): Set<string> => (
-    getAllModesHelper(this.context.operatingMode, this.context.capacityPriorities, this.context.modeDeviceTargets)
-  );
   protected isObserveOnlyRoleDevice = (deviceId: string): boolean => (
     this.context.deviceManager?.isBatteryDevice(deviceId) === true
     || this.context.deviceManager?.isSolarDevice(deviceId) === true

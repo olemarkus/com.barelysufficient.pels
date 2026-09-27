@@ -214,7 +214,7 @@ describe('settingsUiApi', () => {
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
     });
     const app = {
-      getPrioritiesForDevices: createFixturePriorityQuery(),
+      getModePrioritiesForUi: createFixturePriorityQuery(),
           // A fixture that configures neither seam leaves the boot-window shape.
       ...(options.capacitySettings && typeof options.capacityDryRun === 'boolean'
         ? {
@@ -558,7 +558,7 @@ describe('settingsUiApi', () => {
   it('uses the app priority owner for newly discovered devices without saved ranks', () => {
     const homey = createHomey();
     const catalog = new ModePriorityCatalog({ Home: { 'ev-1': 100 } });
-    homey.app.getPrioritiesForDevices = (deviceIds) => catalog.getOrder('Home', deviceIds);
+    homey.app.getModePrioritiesForUi = (deviceIds) => catalog.getOrder('Home', deviceIds);
 
     const payload = getSettingsUiDevicesPayload({ homey: homey as never });
 
