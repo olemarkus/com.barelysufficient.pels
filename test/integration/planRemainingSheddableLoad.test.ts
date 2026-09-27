@@ -13,7 +13,7 @@ import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
 } from '../../lib/plan/planSteppedLoadState';
-import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import {
   buildPlanDevice as baseBuildPlanDevice,
   buildPlanInputDevice as baseBuildPlanInputDevice,

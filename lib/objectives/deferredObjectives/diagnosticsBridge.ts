@@ -25,7 +25,7 @@ import {
 import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
-} from './settings';
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
   buildAllocationContextSignature,
   buildPriorityReservations,

@@ -26,8 +26,8 @@ import {
   getTrustedCurrentTemperatureC,
   getTrustedStateOfCharge,
 } from '../utils/observationTrust';
-import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
+import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
+import { hasTemperatureBoostTarget } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 // Commandability resolution lives in shared-domain so the executor can import it

@@ -31,7 +31,7 @@
  * does not try to detect this.
  */
 import type { ObjectiveDeviceInput } from '../../objectives/types';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;

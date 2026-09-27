@@ -63,7 +63,7 @@ import {
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
-import { normalizeTargetCapabilityValue } from '../../lib/utils/targetCapabilities';
+import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;

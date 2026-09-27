@@ -16,7 +16,7 @@ import {
   type ResolvedSubHomeScope,
 } from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsV1 } from '../packages/contracts/src/deferredObjectiveSettings';
 import {
   hasHardCapConfigurationSeam,
   hasCapacityPeakSeam,

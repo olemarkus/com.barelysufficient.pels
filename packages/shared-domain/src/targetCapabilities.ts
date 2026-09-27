@@ -1,6 +1,4 @@
-import type { TargetCapabilitySnapshot } from './types.js';
-
-const DEFAULT_TEMPERATURE_TARGET_STEP = 0.5;
+import type { TargetCapabilitySnapshot } from '../../contracts/src/types';
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
@@ -49,14 +47,6 @@ const roundTargetCapabilityValue = (
   return Number(
     (base + (Math.round((value - base) / target.step) * target.step)).toFixed(decimals),
   );
-};
-
-export const getTargetCapabilityStep = (
-  target?: Partial<Pick<TargetCapabilitySnapshot, 'step'>> | null,
-  fallback = DEFAULT_TEMPERATURE_TARGET_STEP,
-): number => {
-  if (isFiniteNumber(target?.step) && target.step > 0) return target.step;
-  return fallback;
 };
 
 export const normalizeTargetCapabilityValue = (params: {

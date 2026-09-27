@@ -9,7 +9,10 @@ import {
   homeScopedSettingsKey,
   type HomeId,
 } from '../lib/utils/settingsKeys';
-import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
+import {
+  getPrimaryTargetCapability,
+  normalizeTargetCapabilityValue,
+} from '../packages/shared-domain/src/targetCapabilities';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import {

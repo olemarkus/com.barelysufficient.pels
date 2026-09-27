@@ -12,7 +12,7 @@ import {
 import type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 const emitSmartTaskDebug = getDebugEmitter('smart-task-api', 'deferred_objectives');
 

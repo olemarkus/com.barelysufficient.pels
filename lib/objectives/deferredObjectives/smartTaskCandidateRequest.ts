@@ -8,10 +8,12 @@ import type {
 import { resolveDeferredObjectiveDeadline } from './deadline';
 import {
   normalizeDeferredObjectiveSettingsEntry,
-  type DeferredObjectiveRescueMode,
-  type DeferredObjectiveRescuePermissions,
-  type DeferredObjectiveSettingsKind,
-} from './settings';
+} from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import type {
+  DeferredObjectiveRescueMode,
+  DeferredObjectiveRescuePermissions,
+  DeferredObjectiveSettingsKind,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 /**
  * Shared server-side handling of a UI-composed smart-task candidate request

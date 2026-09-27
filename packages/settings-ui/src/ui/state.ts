@@ -14,10 +14,8 @@ import type {
   TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
-import {
-  createEmptyDeferredObjectiveSettings,
-  type DeferredObjectiveSettingsV1,
-} from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ChargerPhasePresets } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';

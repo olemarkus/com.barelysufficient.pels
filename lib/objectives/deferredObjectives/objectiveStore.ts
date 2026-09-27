@@ -6,9 +6,11 @@ import {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettingsEntry,
-  type DeferredObjectiveSettingsEntry,
-  type DeferredObjectiveSettingsV1,
-} from './settings';
+} from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import type {
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveSettingsV1,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 // ─── Per-device-key objective store ─────────────────────────────────────────
 //

@@ -1,4 +1,4 @@
-import { normalizeDeferredObjectiveSettings } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
 import { SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { callApi, getSetting, hasSettingCache } from './homey.ts';

@@ -2,10 +2,8 @@ import type {
   SettingsUiBootstrap,
   SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import {
-  normalizeDeferredObjectiveSettings,
-  type DeferredObjectiveSettingsEntry,
-} from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,

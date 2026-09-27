@@ -1,9 +1,7 @@
 import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
-import type {
-  DeferredObjectiveSettingsKind,
-} from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
   SmartTaskCandidateRequest,
   SmartTaskWriteRejectReason,

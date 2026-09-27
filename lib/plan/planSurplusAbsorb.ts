@@ -19,7 +19,7 @@ import {
   SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
   syncSurplusEligibilityState,
 } from './admission';
-import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
+import { hasTemperatureBoostTarget } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { resolveBoostActive } from './planBoost';
 import {
   getSteppedLoadLowestActiveStep,

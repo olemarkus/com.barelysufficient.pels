@@ -7,7 +7,7 @@ import type {
   ProjectedObservedDeviceState,
 } from '../packages/contracts/src/types';
 import { isCanSetControl } from '../lib/device/deviceActionProjection';
-import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../packages/shared-domain/src/targetCapabilities';
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 
 /** Narrow the app-owned decorated carrier before it crosses into the executor. */

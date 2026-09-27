@@ -4,9 +4,7 @@ import {
   parseSmartTaskCandidateRequest,
 } from '../../lib/objectives/deferredObjectives';
 import type { SmartTaskCandidateRequest } from '../../packages/contracts/src/smartTaskEdit';
-import type {
-  DeferredObjectiveRescuePermissions,
-} from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveRescuePermissions } from '../../packages/contracts/src/deferredObjectiveSettings';
 
 // The per-key permission merge is the whole reason the request reads its
 // booleans as `boolean | undefined`: ABSENT and `false` mean opposite things, so

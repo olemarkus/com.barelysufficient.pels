@@ -39,7 +39,7 @@ import {
   resolveKnownEffectiveStepId,
 } from '../../lib/plan/planSteppedLoadState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 
 export { resolveResidualShedBehavior } from '../../lib/device/temperatureControlPosture';
 export type { ResidualKwForPlanDeviceShedBehavior } from '../../lib/device/temperatureControlPosture';

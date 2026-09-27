@@ -15,10 +15,8 @@ import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/m
 import { describe, expect, it, vi } from 'vitest';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
 import type { AppContext } from '../../lib/app/appContext';
-import {
-  buildDeferredObjectiveDiagnostics,
-  normalizeDeferredObjectiveSettings,
-} from '../../lib/objectives/deferredObjectives';
+import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives';
+import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
   ELIGIBILITY_ABANDON_GRACE_MS,
@@ -34,7 +32,7 @@ import {
 import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 import { resolveSmartTaskDeviceExclusion } from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import {
   withBinaryDiscriminant,

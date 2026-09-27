@@ -8,10 +8,8 @@ import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
   type SettingsUiDevicesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import {
-  normalizeDeferredObjectiveSettings,
-  type DeferredObjectiveSettingsV1,
-} from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
   ResolvedDeferredObjectiveActivePlanV1,

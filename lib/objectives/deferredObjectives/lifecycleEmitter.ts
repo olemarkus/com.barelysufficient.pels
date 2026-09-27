@@ -22,7 +22,7 @@ import {
 import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
-import type { DeferredObjectiveSettingsV1 } from './settings';
+import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
 

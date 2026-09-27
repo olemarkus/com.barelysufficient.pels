@@ -4,7 +4,7 @@ import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { buildObjectiveSignature } from './activePlanSignature';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type ResolvedActiveCommittedPlan = {
   commitmentHours: DeferredObjectiveActivePlanHourV1[];

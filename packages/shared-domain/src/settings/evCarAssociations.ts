@@ -1,11 +1,8 @@
-import type { EvCarAssociations } from '../../packages/contracts/src/types';
+import type { EvCarAssociations } from '../../../contracts/src/types';
 
 /**
- * Runtime copy of `packages/contracts/src/evCarAssociations.ts`. Kept duplicated
- * on purpose: runtime code may not take a value dependency on the contracts
- * package (`no-runtime-value-deps-on-contracts`), and the settings UI may not
- * import `lib/**`. Change both together — `test/unit/evCarAssociations.test.ts`
- * asserts they agree.
+ * The parse boundary for the persisted `ev_car_associations` setting, read by the
+ * runtime and by the settings UI's car picker alike.
  */
 export const normalizeEvCarAssociations = (value: unknown): EvCarAssociations => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

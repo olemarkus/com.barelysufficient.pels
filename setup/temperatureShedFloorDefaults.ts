@@ -26,7 +26,7 @@ import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
 } from '../packages/shared-domain/src/utils/airtreatmentShedTemperature';
-import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../packages/shared-domain/src/targetCapabilities';
 import {
   resolveShedBehavior, type ConfiguredShedBehavior,
 } from '../packages/shared-domain/src/settings/shedBehaviors';

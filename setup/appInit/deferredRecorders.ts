@@ -19,7 +19,7 @@ import {
   type DeferredObjectiveBackfillConfig,
   type DeferredObjectiveDeviceWriteDeps,
 } from '../../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,

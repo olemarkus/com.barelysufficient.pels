@@ -1,5 +1,5 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
+import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
 export { buildBinaryCommandConfirmationSnapshot } from './binaryCommandConfirmationSnapshot';
 
 export function resolveTemperatureTarget(

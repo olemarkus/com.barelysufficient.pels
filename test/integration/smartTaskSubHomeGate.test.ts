@@ -30,8 +30,8 @@ import type { AppContext } from '../../lib/app/appContext';
 import {
   buildDeferredObjectiveDiagnostics,
   DeferredObjectiveDecorationController,
-  normalizeDeferredObjectiveSettings,
 } from '../../lib/objectives/deferredObjectives';
+import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
   clearObjectiveForDevice,
@@ -45,7 +45,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
-import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import {
   withBinaryDiscriminant,

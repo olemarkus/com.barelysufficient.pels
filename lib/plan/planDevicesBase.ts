@@ -18,7 +18,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import {
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepIdFor,

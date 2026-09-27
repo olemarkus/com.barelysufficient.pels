@@ -689,8 +689,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       that needs no SoC observation/freshness at all, so accepting `targetEnergyKwh` broadens supported
       chargers and removes a fragile dependency.
       *Why:* widens device support for the EV persona. Design: `notes/ev-ready-by/README.md`. Files:
-      `packages/contracts/src/deferredObjectiveSettings.ts`, `flowCards/deadlineObjectiveCards.ts`,
-      `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
+      `packages/contracts/src/deferredObjectiveSettings.ts` and its parser in
+      `packages/shared-domain/src/settings/deferredObjectiveSettings.ts`,
+      `flowCards/deadlineObjectiveCards.ts`, `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`. [P3]
 
 - [ ] **Smart-task edit lane: don't reattach a stale draft to a NEW task on the same device.**

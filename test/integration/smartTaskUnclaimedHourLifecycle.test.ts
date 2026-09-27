@@ -36,10 +36,8 @@ import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjective
 // while the task is short and again once it is covered.
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
-import {
-  normalizeDeferredObjectiveSettings,
-  resolveDeferredObjectiveDeadline,
-} from '../../lib/objectives/deferredObjectives';
+import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';

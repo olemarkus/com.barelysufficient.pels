@@ -76,11 +76,6 @@ export {
   ELIGIBILITY_ABANDON_GRACE_MS,
   PriorityAllocationTracker,
 } from './priorityAllocation';
-export {
-  createEmptyDeferredObjectiveSettings,
-  normalizeDeferredObjectiveSettings,
-  normalizeDeferredObjectiveSettingsEntry,
-} from './settings';
 export type {
   BuildPriceHorizon,
   DeferredObjectiveDiagnostic,
@@ -90,7 +85,7 @@ export type {
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
-} from './settings';
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 export type {
   DeferredObjective,
   DeferredObjectiveHorizonBucket,

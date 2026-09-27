@@ -1,4 +1,4 @@
-import type { DeferredObjectiveRescuePermissions } from './settings';
+import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 type ObjectiveSignatureParams = {
   objectiveKind: 'temperature' | 'ev_soc';

@@ -6,7 +6,7 @@ import type {
 import type {
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
-} from './settings';
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveHorizonPlan } from './types';
 import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
 

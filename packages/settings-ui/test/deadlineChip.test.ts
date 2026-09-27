@@ -2,7 +2,7 @@ import { h, render } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../contracts/src/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 

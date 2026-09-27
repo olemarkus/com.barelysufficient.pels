@@ -12,7 +12,7 @@ import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveStep } from './types';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {

@@ -11,7 +11,7 @@ import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import { getLogger } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
-import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
+import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';

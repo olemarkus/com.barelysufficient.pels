@@ -1,4 +1,4 @@
-import type { EvBoostSettings } from '../../packages/contracts/src/types';
+import type { EvBoostSettings } from '../../../contracts/src/types';
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)

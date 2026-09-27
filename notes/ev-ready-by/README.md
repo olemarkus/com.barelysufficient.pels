@@ -386,7 +386,8 @@ diagnostics bridge computes `energyNeededKwh` directly from
 `kWhPerUnit × (target% − current%)` math. Validates with both target
 shapes round-tripping through the active-plan recorder.
 
-Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
+Files: `packages/contracts/src/deferredObjectiveSettings.ts` (the type),
+`packages/shared-domain/src/settings/deferredObjectiveSettings.ts` (its parser),
 `flowCards/deadlineObjectiveCards.ts`,
 `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
 `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and

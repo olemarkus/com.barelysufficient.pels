@@ -138,7 +138,7 @@ describe('pre-push checks script', () => {
       FAKE_GIT_LOG: path.join(dir, 'git.log'),
       FAKE_MERGE_BASE_VALUE: 'base-sha',
       FAKE_DIFF_RANGE: 'base-sha..local-sha',
-      FAKE_DIFF_OUTPUT: 'packages/contracts/src/targetCapabilities.ts',
+      FAKE_DIFF_OUTPUT: 'packages/contracts/src/deferredObjectiveSettings.ts',
     });
 
     expect(result.status).toBe(0);
@@ -146,7 +146,7 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npx vitest related --config vitest.config.changed.mts');
     expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs --related');
     expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest related --config vitest.config.ts');
-    expect(result.stdout).toContain('--passWithNoTests packages/contracts/src/targetCapabilities.ts [test lock]');
+    expect(result.stdout).toContain('--passWithNoTests packages/contracts/src/deferredObjectiveSettings.ts [test lock]');
     expect(result.stdout).not.toContain('pre-push: running npm run ci:checks [test lock]');
     expect(result.stdout).not.toContain('playwright');
     expect(result.stdout).not.toContain('ci:test:runtime');

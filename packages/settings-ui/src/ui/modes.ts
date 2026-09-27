@@ -2,9 +2,9 @@ import Sortable from 'sortablejs';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
   getPrimaryTargetCapability,
-  getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
-} from '../../../contracts/src/targetCapabilities.ts';
+} from '../../../shared-domain/src/targetCapabilities.ts';
+import { getTargetCapabilityStep } from './targetCapabilityStep.ts';
 import {
   modeSelect,
   priorityList,

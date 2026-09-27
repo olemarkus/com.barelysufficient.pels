@@ -15,10 +15,10 @@ import {
   isDeviceControlProfiles,
   isBooleanMap,
   isStringMap,
-  normalizeEvBoostSettings,
-  normalizeTemperatureBoostSettings,
 } from '../lib/utils/appTypeGuards';
-import { normalizeEvCarAssociations } from '../lib/utils/evCarAssociations';
+import { normalizeEvBoostSettings } from '../packages/shared-domain/src/settings/evBoost';
+import { normalizeTemperatureBoostSettings } from '../packages/shared-domain/src/settings/temperatureBoost';
+import { normalizeEvCarAssociations } from '../packages/shared-domain/src/settings/evCarAssociations';
 import {
   normalizeCompleteTargetPowerReachabilityByDevice,
   normalizeDeviceTargetPowerConfigs,

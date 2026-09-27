@@ -19,7 +19,7 @@ import {
 import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
-} from '../../lib/objectives/deferredObjectives/settings';
+} from '../../packages/contracts/src/deferredObjectiveSettings';
 
 const DEADLINE_MS = Date.UTC(2026, 0, 1, 18, 0, 0);
 const HOUR_MS = 60 * 60 * 1000;

@@ -1,15 +1,7 @@
 import type { PowerTrackerState } from '../power/tracker';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
-import type {
-  DeviceControlProfiles,
-  EvBoostSettings,
-  TemperatureBoostSettings,
-} from '../../packages/contracts/src/types';
-import {
-  normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
-} from './temperatureBoost';
+import type { DeviceControlProfiles } from '../../packages/contracts/src/types';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
-import { normalizeEvBoostSettings as normalizeEvBoostSettingsRuntime } from './evBoost';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -46,14 +38,6 @@ export function isDeviceControlProfiles(value: unknown): value is DeviceControlP
   const normalized = normalizeDeviceControlProfiles(value);
   if (!normalized) return false;
   return Object.keys(normalized).length === Object.keys(value).length;
-}
-
-export function normalizeTemperatureBoostSettings(value: unknown): TemperatureBoostSettings {
-  return normalizeTemperatureBoostSettingsContract(value);
-}
-
-export function normalizeEvBoostSettings(value: unknown): EvBoostSettings {
-  return normalizeEvBoostSettingsRuntime(value);
 }
 
 const SOLAR_RECORD_FIELDS = [

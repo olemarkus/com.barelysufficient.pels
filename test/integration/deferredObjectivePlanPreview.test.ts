@@ -17,7 +17,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { buildDeferredObjectivePolicyWindowPrices } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type {

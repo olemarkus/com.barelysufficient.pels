@@ -1,5 +1,5 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
-import { normalizeEvBoostSettings } from '../../packages/contracts/src/evBoost';
+import { normalizeEvBoostSettings } from '../../packages/shared-domain/src/settings/evBoost';
 import {
   type BoostResolveInput,
   resolveBoostRequested,

@@ -31,7 +31,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectiveRescuePermissions } from './settings';
+import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
   buildReservationSegmentsFromHorizonPlan,
   resolveProjectedFinishAtMs,

@@ -1,7 +1,5 @@
-import {
-  getTargetCapabilityStep,
-  normalizeTargetCapabilityValue,
-} from '../../contracts/src/targetCapabilities';
+import { getTargetCapabilityStep } from '../src/ui/targetCapabilityStep';
+import { normalizeTargetCapabilityValue } from '../../shared-domain/src/targetCapabilities';
 
 describe('targetCapabilities helper', () => {
   it('returns the configured step or the default fallback', () => {

@@ -19,7 +19,7 @@ import {
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
-import { normalizeEvCarAssociations } from '../../../contracts/src/evCarAssociations.ts';
+import { normalizeEvCarAssociations } from '../../../shared-domain/src/settings/evCarAssociations.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';

@@ -9,7 +9,7 @@ import { formatDeadlineLocalTime } from './deadline';
 import { resolvePlanningSpeedKw } from './planningSpeed';
 import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import type { DeferredObjectiveKind, DeferredObjectiveHorizonPlan } from './types';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
   BaseDeferredObjectiveDiagnostic,
   DeferredObjectiveDiagnostic,

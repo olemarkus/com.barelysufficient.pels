@@ -27,7 +27,10 @@ import {
   buildDeferredObjectivePolicyBucketPrices,
   buildDeferredObjectivePolicyWindowPrices,
 } from './policyHorizon';
-import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
+import type {
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveSettingsV1,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type PreviewDeferredObjectivePlanParams = {
   nowMs: number;

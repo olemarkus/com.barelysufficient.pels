@@ -11,7 +11,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
-import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;

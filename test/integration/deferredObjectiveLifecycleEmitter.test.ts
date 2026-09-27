@@ -7,7 +7,7 @@ import {
   type DeferredObjectiveLifecycleEmitterDeps,
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   createDeferredObjectiveStatusBus,

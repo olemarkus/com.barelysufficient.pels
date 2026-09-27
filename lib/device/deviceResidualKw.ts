@@ -59,7 +59,7 @@ import {
   isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../utils/steppedLoadLadder';
-import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
 
 export type ResidualKwShedBehavior =
   | { action: 'turn_off' }

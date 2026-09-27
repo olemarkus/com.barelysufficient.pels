@@ -3,7 +3,7 @@ import type {
   DeferredObjectiveActivePlanRecorder,
 } from './activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type DeferredObjectiveChangeInput = {
   deviceId: string;

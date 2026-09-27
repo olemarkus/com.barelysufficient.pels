@@ -24,7 +24,7 @@ import {
 } from './admission';
 import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import type { DeferredObjectiveSettingsV1 } from './settings';
+import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
 export type DeferredObjectiveDecorationControllerDeps = {

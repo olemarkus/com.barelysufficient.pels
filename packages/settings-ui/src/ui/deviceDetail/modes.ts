@@ -1,9 +1,9 @@
 import { ModePriorityCatalog, readModePriorityCatalog } from '../../../../shared-domain/src/settings/modePriorities.ts';
 import {
   getPrimaryTargetCapability,
-  getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
-} from '../../../../contracts/src/targetCapabilities.ts';
+} from '../../../../shared-domain/src/targetCapabilities.ts';
+import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElement } from '../dom.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';

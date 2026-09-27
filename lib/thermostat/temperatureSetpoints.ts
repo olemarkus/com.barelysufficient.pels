@@ -41,7 +41,10 @@ import {
   resolvePriceOptimizationConfig,
   type PriceOptimizationSettings,
 } from '../price/priceOptimizer';
-import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+import {
+  getPrimaryTargetCapability,
+  normalizeTargetCapabilityValue,
+} from '../../packages/shared-domain/src/targetCapabilities';
 import { applyPriceShift } from './priceShift';
 import {
   demandShortfallC,

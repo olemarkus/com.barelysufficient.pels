@@ -25,7 +25,7 @@ import {
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from '../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../packages/contracts/src/deferredObjectiveSettings';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { CancelDeferredObjectiveOutcome } from './appInit/deferredObjectiveCancel';
 

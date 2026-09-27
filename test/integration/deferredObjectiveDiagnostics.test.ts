@@ -10,12 +10,14 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   buildDeferredObjectivePolicyHorizon as buildDeferredObjectivePolicyHorizonRaw,
-  createEmptyDeferredObjectiveSettings,
   ELIGIBILITY_ABANDON_GRACE_MS,
-  normalizeDeferredObjectiveSettings,
   PriorityAllocationTracker,
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
+import {
+  createEmptyDeferredObjectiveSettings,
+  normalizeDeferredObjectiveSettings,
+} from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { reportStalledTasksAsSatisfied } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';

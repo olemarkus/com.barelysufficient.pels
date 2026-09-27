@@ -3,7 +3,7 @@ import { isEvChargerDevice } from '../deviceKind.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../contracts/src/settingsKeys.ts';
-import { normalizeEvCarAssociations } from '../../../../contracts/src/evCarAssociations.ts';
+import { normalizeEvCarAssociations } from '../../../../shared-domain/src/settings/evCarAssociations.ts';
 import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import {
   deviceDetailCarFlowNote,

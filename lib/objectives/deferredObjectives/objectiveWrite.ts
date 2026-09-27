@@ -10,7 +10,7 @@ import {
   writeObjectiveForDevice,
   type ObjectiveSettingsStore,
 } from './objectiveStore';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';

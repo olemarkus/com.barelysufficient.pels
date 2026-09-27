@@ -6,7 +6,7 @@ import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/
 import { renderDeadlinesList } from '../src/ui/views/DeadlinesList.tsx';
 import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../contracts/src/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 
 /* -------------------------------------------------------------------------- *
  * Chip primitive rebind regression tests.

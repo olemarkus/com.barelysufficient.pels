@@ -3,7 +3,7 @@ import { TEMPERATURE_BOOST_SETTINGS } from '../../../../contracts/src/settingsKe
 import {
   hasTemperatureBoostTarget,
   normalizeTemperatureBoostSettings,
-} from '../../../../contracts/src/temperatureBoost.ts';
+} from '../../../../shared-domain/src/settings/temperatureBoost.ts';
 import {
   deviceDetailTemperatureBoost,
   deviceDetailTemperatureBoostBelow,

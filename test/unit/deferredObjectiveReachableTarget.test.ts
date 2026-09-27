@@ -3,7 +3,7 @@ import {
   resolveObjectiveProgress,
   resolveReachableTargetValue,
 } from '../../lib/objectives/deferredObjectives/diagnosticProgress';
-import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { ObjectiveDeviceInput, ObjectiveStateOfCharge } from '../../lib/objectives/types';
 import { partialDouble } from '../helpers/partialDouble';
 

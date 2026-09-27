@@ -18,7 +18,7 @@ import {
   resolveBrowserTimeZone,
   type DeadlinePlanHistoryView,
 } from './deadlinePlanHistoryFetch.ts';
-import { normalizeDeferredObjectiveSettings } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import { resolveSmartTaskGoalBounds } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
 import { isSteppedLoadSnapshot } from '../../../shared-domain/src/steppedLoadObservedState.ts';

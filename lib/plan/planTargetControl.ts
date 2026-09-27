@@ -8,7 +8,7 @@ import type {
   PlanInputDevice,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function prunePendingTargetCommandsForPlan(params: {

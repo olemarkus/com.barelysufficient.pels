@@ -12,12 +12,14 @@ import {
   buildUnavailableDeferredObjectivePlanEstimate,
   migrateBlobToPerKeyIfNeeded,
   readDeferredObjectiveRoster,
-  normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
 } from '../lib/objectives/deferredObjectives';
+import {
+  normalizeDeferredObjectiveSettingsEntry,
+} from '../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,

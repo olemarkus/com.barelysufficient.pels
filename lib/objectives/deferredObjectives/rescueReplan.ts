@@ -7,7 +7,7 @@ import {
   type PriceHorizonEntry,
 } from './policyHorizon';
 import { resolveCommittedHours } from './resolveCommittedHours';
-import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
 
 // Reserve a flat 1-hour safety buffer before the deadline. The horizon planner
