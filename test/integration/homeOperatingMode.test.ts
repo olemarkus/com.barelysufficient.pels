@@ -72,7 +72,7 @@ import {
 import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCatalogOwnership';
 import { drainPending } from '../utils/asyncDrain';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
+import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -91,7 +91,7 @@ type Rig = { ctx: AppContext; registry: HomeRuntimeRegistry };
 const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCatalog(
   homeId,
   ctx.homey.settings,
-  () => ctx.homeModeCatalog.getSnapshot(),
+  () => getHomeModeCatalogForTest(ctx).getSnapshot(),
   () => ctx.managedDevices,
   () => ctx.homeMembership,
   () => getLogger('homes'),
@@ -125,9 +125,10 @@ const buildRig = (): Rig => {
   } });
   const registry = new HomeRuntimeRegistry({
     ctx,
+    mainModeCatalog: getHomeModeCatalogForTest(ctx),
     isMembershipReady: () => true,
     isRuntimeActive: () => true,
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx),
+    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   });
   return { ctx, registry };
 };
@@ -251,9 +252,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     mockHomeyInstance.settings.set('capacity_priorities', { malformed: null });
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
 
-    rig.ctx.homeModeCatalog.reload();
+    getHomeModeCatalogForTest(rig.ctx).reload();
 
-    expect(rig.ctx.homeModeCatalog.getSnapshot()).toMatchObject({
+    expect(getHomeModeCatalogForTest(rig.ctx).getSnapshot()).toMatchObject({
       operatingMode: 'Away',
       priorities: { Home: { 'dev-1': 1 } },
       targets: { Home: { 'dev-1': 22 } },
@@ -348,7 +349,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
   it('initializes area catalogs before owner-aware mode resolution', () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
-    rig.ctx.homeModeCatalog.setOperatingMode('Away');
+    getHomeModeCatalogForTest(rig.ctx).setOperatingMode('Away');
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
@@ -362,7 +363,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
 
     expect(mockHomeyInstance.settings.get('mode_catalog_initialized:h_a')).toBe(true);
-    expect(resolveOperatingModeForDevice(rig.ctx, 'dev-1')).toMatchObject({
+    expect(resolveOperatingModeForDevice(getHomeModeCatalogForTest(rig.ctx), 'dev-1')).toMatchObject({
       state: 'resolved',
       mode: 'Home',
       homeId: 'h_a',
@@ -384,7 +385,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const result = transferModeTargetsForOwnershipMoves(
       rig.ctx.homey.settings,
-      rig.ctx.homeModeCatalog,
+      getHomeModeCatalogForTest(rig.ctx),
       () => rig.ctx.managedDevices,
       () => rig.ctx.homeMembership,
       [{ deviceId: 'dev-1', fromHomeId: 'h_a', toHomeId: 'h_b' }],
@@ -459,6 +460,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},
@@ -479,7 +481,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
       // Mutation guards: the suffixed write must never fall through to the
       // main home's exact-key dispatch.
-      expect(rig.ctx.homeModeCatalog.getSnapshot().operatingMode).toBe('Home');
+      expect(getHomeModeCatalogForTest(rig.ctx).getSnapshot().operatingMode).toBe('Home');
       expect(rig.ctx.loadCapacitySettings).not.toHaveBeenCalled();
       expect(rig.ctx.notifyOperatingModeChanged).not.toHaveBeenCalled();
 
@@ -507,6 +509,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},
@@ -556,6 +559,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},
@@ -621,6 +625,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},
@@ -798,7 +803,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     // The real app reloads its Main mode catalog before
     // the fan-out; the mock's loader is inert, so the rig mirrors that order.
-    rig.ctx.homeModeCatalog.setOperatingMode('Away');
+    getHomeModeCatalogForTest(rig.ctx).setOperatingMode('Away');
     rig.registry.onModeSettingsChanged();
     await drainPending();
 
@@ -877,7 +882,9 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     seedTemperatureShedFloorDefaults({
       snapshot: [SUB_HOME_HEATER],
       settings: homeyLike.settings,
-      resolveOperatingModeForDevice: (deviceId) => resolveOperatingModeForDevice(ctx, deviceId),
+      resolveOperatingModeForDevice: (deviceId) => resolveOperatingModeForDevice(
+        getHomeModeCatalogForTest(ctx), deviceId,
+      ),
       debugStructured: vi.fn(),
     });
   };
@@ -911,7 +918,8 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
         return passthroughGet(key);
       });
 
-    expect(resolveOperatingModeForDevice(ctx, 'main-device')).toEqual({ state: 'unavailable' });
+    expect(resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'main-device'))
+      .toEqual({ state: 'unavailable' });
     readSpy.mockRestore();
   });
 

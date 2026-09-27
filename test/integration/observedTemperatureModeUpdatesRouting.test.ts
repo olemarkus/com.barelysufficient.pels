@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppServiceWiring, type AppServiceWiringDeps } from '../../setup/appServiceWiring';
 import type { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -45,6 +45,11 @@ describe('observed temperature mode updates ask the owning home whether a device
     });
     const wiring = new AppServiceWiring(partialDouble<AppServiceWiringDeps>({
       ctx,
+      getHomeOperatingMode: () => getHomeModeCatalogForTest(ctx).getOperatingMode(),
+      getPrioritiesForDevices: (ids) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(ids),
+      getModeDeviceTargets: () => getHomeModeCatalogForTest(ctx).getModeDeviceTargets(),
+      resolveOperatingModeForDevice: (id) => getHomeModeCatalogForTest(ctx).resolveOperatingModeForDevice(id),
+      createHomeRuntimeRegistry: () => registry,
       isMainActuationStopped: () => false,
       getHomeRuntimeRegistry: () => registry,
     }));

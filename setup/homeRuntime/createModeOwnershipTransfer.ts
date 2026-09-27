@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 import { HomeModeOwnershipStore } from './homeModeOwnershipStore';
 import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCatalogOwnership';
@@ -8,10 +9,13 @@ import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCat
  * the catalog transfer it cannot name itself.
  *
  * The component is the domain's; this is the binding. `lib/home` is a declared
- * pure leaf, so the catalog — which reads capacity priorities, mode aliases and
- * operating mode off `AppContext` — arrives as a callback rather than an import.
+ * pure leaf, so the catalog arrives as an explicit owner rather than being
+ * reached through the broad `AppContext`.
  */
-export const createModeOwnershipTransfer = (ctx: AppContext): ModeOwnershipTransfer => (
+export const createModeOwnershipTransfer = (
+  ctx: AppContext,
+  homeModeCatalog: HomeModeCatalog,
+): ModeOwnershipTransfer => (
   new ModeOwnershipTransfer({
     store: new HomeModeOwnershipStore(ctx.homey.settings),
     getLogger: () => ctx.getStructuredLogger('homes'),
@@ -19,7 +23,7 @@ export const createModeOwnershipTransfer = (ctx: AppContext): ModeOwnershipTrans
     getDeviceSurfaces: () => ctx.getDeviceSurfaces(),
     transferModeTargets: (moves) => transferModeTargetsForOwnershipMoves(
       ctx.homey.settings,
-      ctx.homeModeCatalog,
+      homeModeCatalog,
       () => ctx.managedDevices,
       () => ctx.homeMembership,
       moves,

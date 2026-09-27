@@ -28,6 +28,7 @@
  * gap; a zero is never fabricated.
  */
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import type { HomesStore, SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReadResult } from '../../lib/home/homeRuntimeRead';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
@@ -78,6 +79,7 @@ const RECOVERY_RETRY_MAX_EXPONENT = 6;
 
 export type HomeRuntimeRegistryDeps = {
   ctx: AppContext;
+  mainModeCatalog: HomeModeCatalog;
   /** Membership-readiness signal handed to every bundle (execution gate). */
   isMembershipReady: () => boolean;
   /** Producer-resolved GA activation posture from the membership service. */
@@ -535,6 +537,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     if (!prepared.ok) throw new Error(`tracker preparation failed for ${home.homeId}`);
     return createHomeCapacityBundle({
       ctx: this.deps.ctx,
+      mainModeCatalog: this.deps.mainModeCatalog,
       home,
       initialPowerTrackerState: prepared.state,
       powerTrackerMeterIdentity: meterIdentity,

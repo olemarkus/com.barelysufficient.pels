@@ -1,4 +1,5 @@
 import type { InitializedAppContext } from '../../lib/app/appContext';
+import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
@@ -17,6 +18,7 @@ const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
 export type PostStartupBackgroundDeps = {
   ctx: InitializedAppContext;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
   startPowerTrackerPruning: () => void;
@@ -102,7 +104,7 @@ export const startPostStartupBackgroundTasks = (
   // eslint-disable-next-line functional/immutable-data
   ctx.canContributeCurtailmentSurplus = () => curtailment.canContributeSurplus();
   deps.backgroundTasks.startDeferredObjectiveLifecycleClock(
-    createDeferredObjectiveLifecycleEmitter(ctx),
+    createDeferredObjectiveLifecycleEmitter(ctx, deps.getPrioritiesForDevices),
   );
   deps.runNativeWiringDetectionBestEffort();
   deps.timers.registerInterval('nativeWiringRequery', setInterval(

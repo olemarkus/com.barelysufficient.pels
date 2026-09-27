@@ -8,6 +8,7 @@
  * settings handle.
  */
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   seedTemperatureShedFloorDefaults,
@@ -18,7 +19,7 @@ import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '
 import { createDefaultToPlanDeviceOptions } from '../../lib/planInput/projectPlanInputDevice';
 import { toPlanDevice } from './toPlanDevice';
 
-export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
+export const createTemperatureShedFloorDefaults = (ctx: AppContext, homeModeCatalog: HomeModeCatalog) => (
   snapshot: DecoratedDeviceSnapshot[],
   operatingModeResolver?: ResolveOperatingModeForDevice,
 ): void => seedTemperatureShedFloorDefaults({
@@ -26,7 +27,7 @@ export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
   settings: ctx.homey.settings,
   // Overshoot defaults follow the OWNING home's effective mode.
   resolveOperatingModeForDevice: operatingModeResolver
-    ?? ((deviceId) => resolveOperatingModeForDevice(ctx, deviceId)),
+    ?? ((deviceId) => resolveOperatingModeForDevice(homeModeCatalog, deviceId)),
   debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
 });
 

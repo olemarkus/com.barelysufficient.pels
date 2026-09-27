@@ -40,6 +40,7 @@ import type { PelsStatus } from '../../lib/plan/pelsStatus';
 import type { PlanEngineWiring } from '../appInit/planEngineWiring';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
+import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
@@ -190,6 +191,9 @@ export type HomeScope = {
  */
 export function buildMainHomeScope(
   ctx: AppContext,
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  getOperatingMode: () => string,
+  getModeDeviceTargets: () => Record<string, Record<string, number>>,
   isTornDown: () => boolean,
   isHomeWideFenced: () => boolean,
 ): HomeScope {
@@ -218,7 +222,7 @@ export function buildMainHomeScope(
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCapacitySettings: () => ctx.capacitySettings,
-    getPrioritiesForDevices: (deviceIds) => ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+    getPrioritiesForDevices,
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
@@ -263,13 +267,11 @@ export function buildMainHomeScope(
       // `buildHomePlanDevices`.
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: true,
+        getPrioritiesForDevices,
         projectCommandability: binaryCommandReachability.project,
         pruneCommandability: binaryCommandReachability.prune,
         clearRecentBinaryOffCommand: (deviceId, observedOnAtMs) => (
           ctx.planEngine?.clearRecentBinaryOffCommand(deviceId, observedOnAtMs)
-        ),
-        getPrioritiesForDevices: (deviceIds) => (
-          ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds)
         ),
       });
     },
@@ -295,8 +297,8 @@ export function buildMainHomeScope(
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
-    getOperatingMode: ctx.homeModeCatalog.getOperatingMode,
-    getModeDeviceTargets: ctx.homeModeCatalog.getModeDeviceTargets,
+    getOperatingMode,
+    getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`

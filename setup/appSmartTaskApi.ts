@@ -1,4 +1,5 @@
 import type { AppContext } from '../lib/app/appContext';
+import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
@@ -71,7 +72,10 @@ type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: fals
  * takes the context directly rather than a bespoke dependency bag.
  */
 export class AppSmartTaskApi {
-  constructor(private readonly ctx: AppContext) {}
+  constructor(
+    private readonly ctx: AppContext,
+    private readonly getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  ) {}
 
   // Open-task predicate; semantics documented on the store helper.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
@@ -184,7 +188,7 @@ export class AppSmartTaskApi {
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
-    const previewPriorities = this.ctx.homeModeCatalog.getPrioritiesForDevices(
+    const previewPriorities = this.getPrioritiesForDevices(
       previewDevices.map((device) => device.id),
     );
     const devices = previewDevices.map((device) => ({
@@ -204,7 +208,7 @@ export class AppSmartTaskApi {
       devices,
       settings: roster.settings,
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
-      getPrioritiesForDevices: (deviceIds) => this.ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+      getPrioritiesForDevices: this.getPrioritiesForDevices,
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
       getStallClassification: (id) => planService.getStallEvidence(id),
       powerTracker: this.ctx.powerTracker,

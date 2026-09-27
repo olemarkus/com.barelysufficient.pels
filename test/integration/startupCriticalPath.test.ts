@@ -3,7 +3,7 @@ import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
 import type { Logger } from '../../lib/logging/logger';
 import { requireInitializedAppContext, type AppContext } from '../../lib/app/appContext';
-import { createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
+import { getHomeModeCatalogForTest, createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -59,7 +59,7 @@ const buildContext = () => {
   refreshGridTariffData.mockImplementation(async () => undefined);
   startPriceRefresh.mockImplementation(() => undefined);
   rebuildPlanFromCache.mockImplementation(async () => createPlanRebuildOutcome(false));
-  ctx.homeModeCatalog.setOperatingMode('Home');
+  getHomeModeCatalogForTest(ctx).setOperatingMode('Home');
   ctx.lastNotifiedOperatingMode = 'Away';
 
   return {

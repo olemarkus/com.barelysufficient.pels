@@ -17,6 +17,11 @@ const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService']) => 
   const Base = withAppHostApi(Homey.App);
   class TestHostApi extends Base {
     protected readonly context = { dailyBudgetService } as AppContext;
+    protected readonly getHomeOperatingMode = () => 'Home';
+    protected readonly setHomeOperatingMode = (mode: string) => ({ previous: 'Home', resolved: mode });
+    protected readonly reloadHomeModeCatalog = () => {};
+    protected readonly resolveHomeModeName = (mode: string) => mode;
+    protected readonly getHomeModeNames = () => new Set(['Home']);
 
     protected readonly smartTaskApi = {} as never;
 

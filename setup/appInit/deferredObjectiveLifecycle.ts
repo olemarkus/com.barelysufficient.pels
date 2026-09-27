@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
@@ -209,6 +210,7 @@ export const handleDeferredDeadlineReached = (
  */
 export function createDeferredObjectiveLifecycleEmitter(
   ctx: AppContext,
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
 ): DeferredObjectiveLifecycleEmitter {
   let lastWatermarkPersistMs = 0;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
@@ -232,7 +234,7 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getCapacitySettings: () => ctx.capacitySettings,
-    getPrioritiesForDevices: (deviceIds) => ctx.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+    getPrioritiesForDevices,
     // An excluded task's lifecycle diagnostics carry the dedicated code for
     // their exclusion (relocated → `objective_device_in_sub_home`, unmanaged →
     // `objective_device_unmanaged`), and the eligible-count denominator

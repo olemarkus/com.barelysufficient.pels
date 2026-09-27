@@ -4,6 +4,7 @@ import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userda
 
 // One store for the file: no spec here persists a tracker, the context only needs the seam.
 const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+const homeModeCatalog = partialDouble<HomeModeCatalog>({ getOperatingMode: () => 'Home' });
 import {
   buildCapacitySettingsSnapshot,
   initSettingsHandlerForApp,
@@ -12,6 +13,8 @@ import {
   type CapacitySettingsSnapshot,
 } from '../../setup/appSettingsHelpers';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import { partialDouble } from '../helpers/partialDouble';
 import type { ShedAction } from '../../lib/plan/planTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
@@ -200,7 +203,7 @@ const HOOKS = { onPvForecastSourceObserved: () => {} };
 describe('initSettingsHandlerForApp', () => {
   it('publishes the temperature-control policy at the synchronous settings edge', async () => {
     const ctx = buildContext();
-    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS);
 
     const handling = handle(TEMPERATURE_CONTROL_DISABLED_DEVICES);
 
@@ -211,7 +214,7 @@ describe('initSettingsHandlerForApp', () => {
   it('routes daily budget updates through the app context callback', async () => {
     const ctx = buildContext();
 
-    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS);
     await handle(CAPACITY_LIMIT_KW);
 
     expect(ctx.updateDailyBudgetState).toHaveBeenCalledWith({
@@ -225,7 +228,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     const onHomeScopedSettingChanged = vi.fn();
 
-    const { handle } = initSettingsHandlerForApp(ctx, { ...HOOKS, onHomeScopedSettingChanged });
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), { ...HOOKS, onHomeScopedSettingChanged });
     await handle(`${CAPACITY_MARGIN_KW}:cabin`);
     await handle(`${CAPACITY_LIMIT_KW}:cabin`);
 
@@ -241,7 +244,7 @@ describe('initSettingsHandlerForApp', () => {
   it('routes a global source change through the home-runtime epoch hook', async () => {
     const ctx = buildContext();
     const onHomeRuntimePowerSourceChanged = vi.fn();
-    const { handle } = initSettingsHandlerForApp(ctx, {
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), {
       ...HOOKS,
       onHomeRuntimePowerSourceChanged,
     });
@@ -255,7 +258,7 @@ describe('initSettingsHandlerForApp', () => {
 
   it('resets Main synchronously before handling a whole-home meter change', async () => {
     const ctx = buildContext();
-    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS);
 
     const handling = handle(HOMEY_ENERGY_METER_DEVICE_ID);
 
@@ -268,7 +271,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     const onHomeScopedSettingChanged = vi.fn();
 
-    const { handle } = initSettingsHandlerForApp(ctx, { ...HOOKS, onHomeScopedSettingChanged });
+    const { handle } = initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), { ...HOOKS, onHomeScopedSettingChanged });
     await handle(CAPACITY_LIMIT_KW);
 
     expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
@@ -283,7 +286,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.priceCoordinator;
 
-    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
       'PriceCoordinator must be initialized before settings handler setup.',
     );
   });
@@ -292,7 +295,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.planService;
 
-    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
       'PlanService must be initialized before use.',
     );
   });
@@ -301,7 +304,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.dailyBudgetService;
 
-    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
       'DailyBudgetService must be initialized before settings handler setup.',
     );
   });

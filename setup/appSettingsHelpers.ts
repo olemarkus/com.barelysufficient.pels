@@ -324,6 +324,7 @@ function requireDailyBudgetService(ctx: AppContext) {
 
 export function initSettingsHandlerForApp(
   ctx: AppContext,
+  getHomeOperatingMode: () => string,
   options: {
     /**
      * Receives writes to home-suffixed settings keys (`<base>:<homeId>`,
@@ -419,7 +420,7 @@ export function initSettingsHandlerForApp(
     if (options.consumeObservedModeTargetChange?.(key)) return;
     await settingsHandler?.(key);
     if (key === OPERATING_MODE_SETTING) {
-      ctx.notifyOperatingModeChanged(ctx.homeModeCatalog.getOperatingMode());
+      ctx.notifyOperatingModeChanged(getHomeOperatingMode());
     }
   };
   ctx.homey.settings.on('set', onSettingsSet);

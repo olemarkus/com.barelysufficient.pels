@@ -15,6 +15,7 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
 import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
@@ -22,14 +23,16 @@ import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 /** Construct the registry and run its boot-time reconcile (empty = inert). */
 export const createHomeRuntimeRegistryForApp = (
   ctx: AppContext,
+  homeModeCatalog: HomeModeCatalog,
   isMembershipReady: () => boolean,
   isRuntimeActive: () => boolean,
 ): HomeRuntimeRegistry => {
   const registry = new HomeRuntimeRegistry({
     ctx,
+    mainModeCatalog: homeModeCatalog,
     isMembershipReady,
     isRuntimeActive,
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx),
+    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, homeModeCatalog),
   });
   registry.reconcile();
   return registry;

@@ -103,6 +103,7 @@ const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
 // Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
 export type HomeCapacityBundleDeps = {
   ctx: AppContext;
+  mainModeCatalog: HomeModeCatalog;
   home: SubHomeConfig;
   /** Already safety-resolved against persisted state by the owning registry. */
   initialPowerTrackerState: PowerTrackerState;
@@ -535,7 +536,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   const modeCatalog = createHomeModeCatalog(
     homeId,
     ctx.homey.settings,
-    () => ctx.homeModeCatalog.getSnapshot(),
+    () => deps.mainModeCatalog.getSnapshot(),
     () => ctx.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),

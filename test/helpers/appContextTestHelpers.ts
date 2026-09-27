@@ -57,7 +57,10 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
-import type { HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
+import type { HomeModeCatalog, HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
+import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
+
+const homeModeCatalogByContext = new WeakMap<AppContext, HomeModeCatalog>();
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -89,7 +92,29 @@ export function configureHomeModeCatalog(
   if (configuration.aliases !== undefined) settings.set(MODE_ALIASES, configuration.aliases);
   if (configuration.priorities !== undefined) settings.set(CAPACITY_PRIORITIES, configuration.priorities);
   if (configuration.targets !== undefined) settings.set(MODE_DEVICE_TARGETS, configuration.targets);
-  context.homeModeCatalog.reload();
+  getHomeModeCatalogForTest(context).reload();
+}
+
+export function getHomeModeCatalogForTest(context: AppContext): HomeModeCatalog {
+  const catalog = homeModeCatalogByContext.get(context);
+  if (!catalog) throw new Error('No test home mode catalog is registered for this context.');
+  return catalog;
+}
+
+export function buildMainHomeScopeForTest(
+  context: AppContext,
+  isTornDown: () => boolean,
+  isHomeWideFenced: () => boolean,
+): ReturnType<typeof buildMainHomeScope> {
+  const catalog = getHomeModeCatalogForTest(context);
+  return buildMainHomeScope(
+    context,
+    (deviceIds) => catalog.getPrioritiesForDevices(deviceIds),
+    () => catalog.getOperatingMode(),
+    () => catalog.getModeDeviceTargets(),
+    isTornDown,
+    isHomeWideFenced,
+  );
 }
 
 function createFlowCardMock(): FlowCard {
@@ -263,7 +288,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => undefined,
   );
   const context: AppContext = {
-    homeModeCatalog,
     deviceReads,
     deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
     getPlanInputSnapshot: () => {
@@ -482,6 +506,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   });
 
   Object.assign(context, overrides);
+  homeModeCatalogByContext.set(context, homeModeCatalog);
   if (modeCatalogOverride) configureHomeModeCatalog(context, modeCatalogOverride);
   return context as MutableAppContextMock;
 }

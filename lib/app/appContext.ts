@@ -1,4 +1,3 @@
-import type { HomeModeCatalog } from '../home/homeModeCatalog';
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
@@ -240,7 +239,6 @@ export type AppContext = {
   set capacitySettings(value: CapacitySettings);
   get capacityDryRun(): boolean;
   set capacityDryRun(value: boolean);
-  readonly homeModeCatalog: HomeModeCatalog;
   get controllableDevices(): Record<string, boolean>;
   set controllableDevices(value: Record<string, boolean>);
   get managedDevices(): Record<string, boolean>;

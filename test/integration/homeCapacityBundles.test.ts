@@ -60,7 +60,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
-import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
+import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
@@ -110,12 +110,13 @@ const buildRig = (): Rig => {
   let runtimeActive = true;
   const registry = new HomeRuntimeRegistry({
     ctx,
+    mainModeCatalog: getHomeModeCatalogForTest(ctx),
     isMembershipReady: () => {
       if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
       return membershipReady;
     },
     isRuntimeActive: () => runtimeActive,
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx),
+    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   });
   return {
     ctx,
@@ -1632,6 +1633,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},
@@ -1668,6 +1670,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const storeWrites = failTrackerStoreWrites(rig.ctx);
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
+      () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
       {
         ...buildHomeRuntimeSettingsHooks(() => rig.registry),
         onPvForecastSourceObserved: () => {},

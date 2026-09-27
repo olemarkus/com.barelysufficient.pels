@@ -23,6 +23,8 @@ import {
   type AppContext,
   type StartupBootstrapConfig,
 } from '../lib/app/appContext';
+import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
+import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
@@ -42,6 +44,7 @@ import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
 } from './appInit/wireHomeRuntimeRegistry';
+export { createHomeRuntimeRegistryForApp };
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -77,18 +80,14 @@ import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 
 /**
- * Dependencies for {@link AppServiceWiring}. Service handles the wider app also
- * reads/writes (`priceCoordinator`, `deviceManager`, `planEngine`, …) live on
- * `PelsApp` and flow through `ctx` (the shared `AppContext`); observer-owned
- * fields and other private `PelsApp` state are reached through the typed
- * getters/setters below. Cluster-internal calls that have a thin `PelsApp`
- * stub (`initPlanEngine`, `runStartupSettingsMigrations`, …) route back through
- * the app so test seams/spies that reassign the instance method are honoured.
+ * Service handles stay on PelsApp and are reached through `ctx` or the typed
+ * accessors below. Calls tests can override route back through the app.
  */
 // Re-exported so `app.ts` can construct the fence it owns without taking a
 // second module dependency — its `import-x/max-dependencies` ceiling of 31 is a
 // ratchet, and this wiring already imports the factory.
 export { createPreparedMainReconcileFence };
+export type { HomeRuntimeRegistry };
 
 /** The Main-home shortfall gate, as this wiring hands it over and reads it back. */
 export type MainShortfallSideEffectGate = ReturnType<
@@ -103,6 +102,11 @@ const MEMBERSHIP_TEARDOWN_KEY = 'homeMembership';
 
 export type AppServiceWiringDeps = {
   ctx: AppContext;
+  getHomeOperatingMode: () => string;
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
+  getModeDeviceTargets: () => Record<string, Record<string, number>>;
+  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
+  createHomeRuntimeRegistry: (isMembershipReady: () => boolean, isRuntimeActive: () => boolean) => HomeRuntimeRegistry;
   /**
    * Handles to the services ordered startup constructs, held by `PelsApp` — the
    * composition root — and reached here through accessors. This class builds
@@ -202,10 +206,9 @@ export class AppServiceWiring {
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
     this.mainHomeScope = buildMainHomeScope(
-      deps.ctx,
-      deps.isMainActuationStopped,
-      () => this.isMainHomeWideFenced(),
-    );
+      deps.ctx, deps.getPrioritiesForDevices, deps.getHomeOperatingMode,
+      deps.getModeDeviceTargets, deps.isMainActuationStopped,
+      () => this.isMainHomeWideFenced());
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
@@ -214,6 +217,7 @@ export class AppServiceWiring {
   createObservedTemperatureModeUpdates() {
     return createObservedTemperatureModeUpdates(
       this.deps.ctx,
+      this.deps.resolveOperatingModeForDevice,
       () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
       (deviceId) => this.isDeviceLimitedInOwningHome(deviceId),
     );
@@ -286,7 +290,7 @@ export class AppServiceWiring {
     );
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
     await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
-    ctx.lastNotifiedOperatingMode = ctx.homeModeCatalog.getOperatingMode();
+    ctx.lastNotifiedOperatingMode = this.deps.getHomeOperatingMode();
     await runStartupStep('startAppServices', () => {
       requireInitializedAppContext(ctx);
       return startAppServices(ctx);
@@ -402,8 +406,7 @@ export class AppServiceWiring {
    * state. With zero sub-homes the reconcile is a no-op and nothing else runs.
    */
   initHomeRuntimeRegistry(): void {
-    this.deps.setHomeRuntimeRegistry(createHomeRuntimeRegistryForApp(
-      this.deps.ctx,
+    this.deps.setHomeRuntimeRegistry(this.deps.createHomeRuntimeRegistry(
       () => this.deps.getHomeMembershipService()?.isSubHomeExecutionReady() === true,
       () => this.deps.getHomeMembershipService()?.isRuntimeActive() === true,
     ));
@@ -604,6 +607,7 @@ export class AppServiceWiring {
     // write is dropped here and absorbed by the registry's boot-time reconcile.
     this.deps.setStopSettingsHandler(registerSettingsHandler({
       ctx: this.deps.ctx,
+      getHomeOperatingMode: this.deps.getHomeOperatingMode,
       getHomeRuntimeRegistry: () => this.deps.getHomeRuntimeRegistry(),
       requestMainAuthorityRecovery: (timing) => this.deps.getRequestMainAuthorityRecovery()?.(timing),
       observeOwnershipConfigurationChanged: () => {

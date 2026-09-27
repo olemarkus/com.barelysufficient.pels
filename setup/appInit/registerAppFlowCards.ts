@@ -18,13 +18,18 @@ import {
   readConfiguredPowerSource,
 } from '../powerSourceSettings';
 
-export function registerAppFlowCards(ctx: AppContext): void {
+export function registerAppFlowCards(
+  ctx: AppContext,
+  resolveModeName: (mode: string) => string,
+  getAllModes: () => Set<string>,
+  getCurrentOperatingMode: () => string,
+): void {
   registerFlowCards({
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
-    resolveModeName: (mode) => ctx.homeModeCatalog.resolveModeName(mode),
-    getAllModes: () => ctx.homeModeCatalog.getAllModes(),
-    getCurrentOperatingMode: () => ctx.homeModeCatalog.getOperatingMode(),
+    resolveModeName,
+    getAllModes,
+    getCurrentOperatingMode,
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),

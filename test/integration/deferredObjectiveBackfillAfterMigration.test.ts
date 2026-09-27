@@ -11,7 +11,7 @@ import {
   DEFERRED_OBJECTIVES_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { createPlanHistoryStore, type PlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 
@@ -137,7 +137,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     getKeysImpl = () => [...store.keys()];
     const tickMs = bootMs + 30_000;
     vi.setSystemTime(tickMs);
-    const emitter = createDeferredObjectiveLifecycleEmitter(ctx);
+    const emitter = createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
     emitter.tick(tickMs);
 
     // Migration completed: marker set, blob consumed, per-device key written.
@@ -196,7 +196,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'];
 
     getKeysImpl = () => [...store.keys()];
-    const emitter = createDeferredObjectiveLifecycleEmitter(ctx);
+    const emitter = createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
 
     const firstTickMs = bootMs + 30_000;
     vi.setSystemTime(firstTickMs);
@@ -262,7 +262,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     getKeysImpl = () => (store.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED) ? [] : [...store.keys()]);
     const flakeTickMs = bootMs + 30_000;
     vi.setSystemTime(flakeTickMs);
-    const emitter = createDeferredObjectiveLifecycleEmitter(ctx);
+    const emitter = createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
     emitter.tick(flakeTickMs);
 
     // Migration completed, but the empty-config read was untrustworthy: watermark NOT
@@ -353,7 +353,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
 
     const nextTickMs = nextBootMs + 30_000;
     vi.setSystemTime(nextTickMs);
-    const nextEmitter = createDeferredObjectiveLifecycleEmitter(nextCtx);
+    const nextEmitter = createDeferredObjectiveLifecycleEmitter(nextCtx, (deviceIds) => getHomeModeCatalogForTest(nextCtx).getPrioritiesForDevices(deviceIds));
     nextEmitter.tick(nextTickMs);
 
     const history = planHistoryStore.read();

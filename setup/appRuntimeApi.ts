@@ -379,7 +379,7 @@ abstract class AppRuntimeApi extends Base {
     Object.assign(this.context, next, {
       deviceControlProfiles: normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {},
     });
-    this.context.homeModeCatalog.reload();
+    this.reloadHomeModeCatalog();
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
     if (rebuildAfterRecovery && capacityRead.state === 'resolved' && this.context.planService) {
@@ -425,7 +425,14 @@ abstract class AppRuntimeApi extends Base {
       options,
     });
   }
-  protected registerAppFlowCards(): void { registerAppFlowCards(this.context); }
+  protected registerAppFlowCards(): void {
+    registerAppFlowCards(
+      this.context,
+      this.resolveHomeModeName,
+      this.getHomeModeNames,
+      this.getHomeOperatingMode,
+    );
+  }
   public isTemperatureControlDisabled = (deviceId: string): boolean => (
     isTemperatureControlDisabledForApp(this.context, deviceId)
   );
@@ -436,7 +443,7 @@ abstract class AppRuntimeApi extends Base {
       capacityGuard: this.context.capacityGuard,
       powerTracker: this.context.powerTracker,
       capacitySettings: this.context.capacitySettings,
-      operatingMode: this.context.homeModeCatalog.getOperatingMode(),
+      operatingMode: this.getHomeOperatingMode(),
       capacityDryRun: this.context.capacityDryRun,
       starvedDeviceCount: this.context.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
       capacityPaceKw: this.computeDynamicSoftLimit(),

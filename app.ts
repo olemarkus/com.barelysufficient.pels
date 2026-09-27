@@ -74,12 +74,13 @@ import { AppNativeWiring } from './setup/appNativeWiring';
 import { FlowConflictRefreshCoordinator } from './lib/flowApi/flowConflictRefreshCoordinator';
 import {
   AppServiceWiring,
+  createHomeRuntimeRegistryForApp,
   createPreparedMainReconcileFence,
   type MainAuthorityRecoveryRequest,
   type MainShortfallSideEffectGate,
+  type HomeRuntimeRegistry,
 } from './setup/appServiceWiring';
 import type { HomeMembershipService } from './setup/homeMembership';
-import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
 import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
@@ -160,6 +161,11 @@ class PelsApp extends PelsAppBase implements AppContext {
     () => this.context.homeMembership,
     () => this.getStructuredLogger('homes'),
   );
+  protected readonly getHomeOperatingMode = () => this.homeModeCatalog.getOperatingMode();
+  protected readonly setHomeOperatingMode = (mode: string) => this.homeModeCatalog.setOperatingMode(mode);
+  protected readonly reloadHomeModeCatalog = () => this.homeModeCatalog.reload();
+  protected readonly resolveHomeModeName = (mode: string) => this.homeModeCatalog.resolveModeName(mode);
+  protected readonly getHomeModeNames = () => this.homeModeCatalog.getAllModes();
   /** Narrow settings bridge; the UI never receives the catalog owner itself. */
   public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
     this.homeModeCatalog.getPrioritiesForDevices(deviceIds)
@@ -449,7 +455,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
     seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
-      createTemperatureShedFloorDefaults(this.ctx)(snapshot, operatingModeResolver)
+      createTemperatureShedFloorDefaults(this.ctx, this.homeModeCatalog)(snapshot, operatingModeResolver)
     ),
     persistFilledModeTargets: () => createModeTargetPersistence(this.ctx)(),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
@@ -534,7 +540,10 @@ class PelsApp extends PelsAppBase implements AppContext {
   private readonly ctx = this.context;
   // Smart-task (deferred-objective) preview/create/cancel/rescue + history
   // payload bodies. Declared after `ctx` so the context field is initialized.
-  protected readonly smartTaskApi = new AppSmartTaskApi(this.ctx);
+  protected readonly smartTaskApi = new AppSmartTaskApi(
+    this.ctx,
+    (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+  );
   protected readonly smartTaskPayloads = new AppSmartTaskPayloads(this.ctx);
   // Boot/teardown orchestration + per-service construction. Public lifecycle
   // and init delegators live on AppRuntimeApi; AppServiceWiring routes through
@@ -559,6 +568,18 @@ class PelsApp extends PelsAppBase implements AppContext {
 
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
+    getHomeOperatingMode: this.getHomeOperatingMode,
+    getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
+    getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
+    resolveOperatingModeForDevice: (deviceId) => (
+      homeMode.resolveOperatingModeForDevice(this.homeModeCatalog, deviceId)
+    ),
+    createHomeRuntimeRegistry: (isMembershipReady, isRuntimeActive) => createHomeRuntimeRegistryForApp(
+      this.ctx,
+      this.homeModeCatalog,
+      isMembershipReady,
+      isRuntimeActive,
+    ),
     getHomeMembershipService: () => this.homeMembershipService,
     setHomeMembershipService: (service) => { this.homeMembershipService = service; },
     getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
@@ -603,7 +624,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     getFlowConflict: (deviceId) => this.flowConflictsByDevice[deviceId],
     computeShortfallThreshold: () => this.computeShortfallThreshold(),
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
-      (deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId, membership, allowPending),
+      (deviceId) => homeMode.resolveOperatingModeForDevice(
+        this.homeModeCatalog, deviceId, membership, allowPending,
+      ),
     ),
     openUserdataStores: () => this.openUserdata(),
     loadPersistedState: () => this.flowBacked.loadPersistedState(),

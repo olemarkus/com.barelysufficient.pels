@@ -1,4 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import type { HomeMembershipPort } from '../../lib/home/membership';
 import {
   resolveHomeIdForModeCatalogSeed as resolveOwnedHomeId,
   type DeviceOperatingModeOutcome,
@@ -15,11 +17,11 @@ export const resolveHomeIdForModeCatalogSeed = (
 
 /** Passes the narrow runtime seams to the home domain's mode resolver. */
 export const resolveOperatingModeForDevice = (
-  ctx: AppContext,
+  homeModeCatalog: HomeModeCatalog,
   deviceId: string,
-  membershipOverride?: AppContext['homeMembership'],
+  membershipOverride?: HomeMembershipPort,
   allowPendingOwnershipGeneration = false,
-): DeviceOperatingModeOutcome => ctx.homeModeCatalog.resolveOperatingModeForDevice(
+): DeviceOperatingModeOutcome => homeModeCatalog.resolveOperatingModeForDevice(
   deviceId,
   membershipOverride,
   allowPendingOwnershipGeneration,

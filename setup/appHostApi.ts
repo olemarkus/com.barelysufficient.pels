@@ -66,6 +66,13 @@ import type { PriceOptimizationSetupRead } from '../packages/contracts/src/price
 export const withAppHostApi = (Base: typeof Homey.App) => {
 abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly context: AppContext;
+  protected abstract readonly getHomeOperatingMode: () => string;
+  protected abstract readonly setHomeOperatingMode: (
+    mode: string,
+  ) => { previous: string; resolved: string };
+  protected abstract readonly reloadHomeModeCatalog: () => void;
+  protected abstract readonly resolveHomeModeName: (mode: string) => string;
+  protected abstract readonly getHomeModeNames: () => Set<string>;
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
@@ -120,7 +127,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract registerAppFlowCards(): void;
 
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
-    const { previous: previousMode, resolved } = this.context.homeModeCatalog.setOperatingMode(rawMode);
+    const { previous: previousMode, resolved } = this.setHomeOperatingMode(rawMode);
     if (resolved !== rawMode) {
       this.context.getStructuredDebugEmitter('settings', 'settings')({
         event: 'mode_resolved_via_alias', requestedMode: rawMode, resolvedMode: resolved,

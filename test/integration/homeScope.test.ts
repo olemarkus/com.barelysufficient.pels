@@ -1,5 +1,4 @@
 import { describe, expect, it, type Mock } from 'vitest';
-import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_IN_SHORTFALL,
@@ -9,7 +8,7 @@ import {
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
+import { buildMainHomeScopeForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
@@ -38,7 +37,7 @@ describe('buildMainHomeScope', () => {
     const ctx = createAppContextMock();
     ctx.capacityDryRun = false;
     let homeWideFenced = false;
-    const scope = buildMainHomeScope(ctx, () => false, () => homeWideFenced);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => homeWideFenced);
 
     expect(scope.getCapacityDryRun()).toBe(false);
 
@@ -53,7 +52,7 @@ describe('buildMainHomeScope', () => {
 
   it('writes the persisted signals to the unsuffixed main-home keys and publishes the status under main', () => {
     const ctx = createAppContextMock();
-    const scope = buildMainHomeScope(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
     const setSpy = ctx.homey.settings.set as unknown as Mock;
 
     scope.setCapacityInShortfall(true);
@@ -69,7 +68,7 @@ describe('buildMainHomeScope', () => {
 
   it('reads the capacity scalars live off the ctx snapshot, not the settings store', () => {
     const ctx = createAppContextMock();
-    const scope = buildMainHomeScope(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
     const getSpy = ctx.homey.settings.get as unknown as Mock;
 
     // Mutations AFTER scope construction must be visible on the next read —
@@ -96,7 +95,7 @@ describe('buildMainHomeScope', () => {
     const priceOpt = { 'device-1': { enabled: true, cheapDelta: 1, expensiveDelta: 2 } as never };
     const ctx = createAppContextMock({ priceOptimizationSettings: priceOpt });
     ctx.getDynamicSoftLimitOverride = (() => 3.5) as AppContext['getDynamicSoftLimitOverride'];
-    const scope = buildMainHomeScope(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
 
     configureHomeModeCatalog(ctx, {
       operatingMode: 'away', targets: { away: { 'device-1': 21 } },
@@ -112,7 +111,7 @@ describe('buildMainHomeScope', () => {
     const ctx = createAppContextMock();
     const diagnostics = { getOverviewStarvation: () => null } as unknown as AppContext['deviceDiagnosticsService'];
     ctx.deviceDiagnosticsService = diagnostics;
-    const scope = buildMainHomeScope(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
 
     // Main emits realtime and carries the shared recorder.
     expect(scope.emitsUiRealtime).toBe(true);
@@ -129,7 +128,7 @@ describe('buildMainHomeScope', () => {
   it('resolves deviceDiagnostics LIVE (scope built before diagnostics init still sees the recorder)', () => {
     const ctx = createAppContextMock();
     ctx.deviceDiagnosticsService = undefined;
-    const scope = buildMainHomeScope(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
     // At scope-construction time the recorder is not wired yet.
     expect(scope.getDeviceDiagnostics()).toBeUndefined();
     // ...it is wired later; a live getter (not a captured value) now resolves it.

@@ -5,12 +5,13 @@ import { buildHomeRuntimeSettingsHooks } from './wireHomeRuntimeRegistry';
 
 export const registerSettingsHandler = (params: {
   ctx: AppContext;
+  getHomeOperatingMode: () => string;
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
   requestMainAuthorityRecovery: (timing?: 'scheduled' | 'immediate') => void;
   observeOwnershipConfigurationChanged: () => void;
   onPvForecastSourceObserved: () => void;
 }): (() => void) => {
-  const settingsHandler = initSettingsHandlerForApp(params.ctx, {
+  const settingsHandler = initSettingsHandlerForApp(params.ctx, params.getHomeOperatingMode, {
     ...buildHomeRuntimeSettingsHooks(params.getHomeRuntimeRegistry),
     consumeObservedModeTargetChange:
       params.ctx.observedTemperatureModeUpdates.consumeSettingChange.bind(params.ctx.observedTemperatureModeUpdates),
