@@ -53,12 +53,15 @@ So a `released` hour (`idle` decision) stands the device down whatever its power
   `admission.ts` force-sheds it and stamps `deferredHoldActive`. The planner sheds it to OFF, not
   to the owner's limiting floor, which answers capacity pressure and still draws
   (`isDeferredHoldShed`, `lib/plan/shedding/deferredHold.ts`). The hold alone is not capacity
-  pressure: all three readers of the stepped fairness invariant exclude it — the plan's
-  keep-invariant clamp (`planDevices.ts`), the restore side (`countShedDevices`) and the executor
-  (`hasExecutableShedDevices`), the last two through `nonCapacityHoldShed`. The executor records
-  its turn-off as a release, not a capacity shed, so it starts no house-wide shed cooldown or
-  restore back-off (`PlanExecutor.recordShedActuation`); the home's status reports no limiting for
-  it (`pelsStatus.ts`), whatever reason text it carries; and starvation excludes the device while
+  pressure: all four readers of the stepped fairness invariant exclude it — the plan's
+  keep-invariant clamp (`planDevices.ts`), the shed side (`isNonSteppedDeviceRecovering`, which
+  excludes the active hold as starvation does, so a held binary device does not send every
+  `set_step` device being shed to its lowest active step), the restore side
+  (`countShedDevices`) and the executor (`hasExecutableShedDevices`), the last two through
+  `nonCapacityHoldShed`. The executor records its turn-off as a release, not a capacity shed,
+  so it starts no house-wide shed cooldown or restore back-off
+  (`PlanExecutor.recordShedActuation`); the home's status reports no limiting for it
+  (`pelsStatus.ts`), whatever reason text it carries; and starvation excludes the device while
   the hold is active. Its card reads "Waiting for cheaper hours" whatever the task's status: the
   avoid set is the `idle` decisions themselves (`resolveDeferredAvoidDeviceIds`), because an
   `at_risk` task (`feasible_above_floor` is the normal state of a stepped water heater) holds its

@@ -72,7 +72,9 @@ import {
  * clamp — see `isStartPolicyHoldShed` in `../planDevices.ts`, the exclusion
  * `awaitingSolarSurplus` already needed for exactly this reason. Counting it
  * would cap unrelated stepped loads at their lowest step while merely respecting
- * a configuration choice.
+ * a configuration choice. For the same reason, once the hold has turned it off it
+ * is not "recovering" (`isNonSteppedDeviceRecovering`), which would send every
+ * `set_step` device being shed straight to its lowest active step.
  *
  * The per-device reason is the stable `awaitingPelsStart` code — no embedded
  * numbers or timestamps, so it is byte-stable across plan cycles (rebuild-storm
@@ -102,9 +104,10 @@ export function resolveStartPolicyHold(
  * Is this device held off by its start policy RIGHT NOW? THE single definition,
  * shared by {@link resolveStartPolicyHold} (which turns it into shed-set
  * membership and a reason), by the plan-side keep-invariant predicate
- * `isStartPolicyHoldShed` in `planDevices.ts`, and — through the flag
- * `buildBasePlanDevice` stamps from it — by `getInactiveReason` and starvation
- * eligibility on the output device.
+ * `isStartPolicyHoldShed` in `planDevices.ts`, by the shed side's recovery rule
+ * `isNonSteppedDeviceRecovering`, and — through the flag `buildBasePlanDevice`
+ * stamps from it — by `getInactiveReason` and starvation eligibility on the
+ * output device.
  *
  * One definition rather than several hand-mirrored ones, because the surplus
  * posture proved what mirroring costs here: its two copies drifted, and a pump

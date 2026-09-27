@@ -17,7 +17,9 @@ import type { DeviceReason } from '../../../packages/shared-domain/src/planReaso
  * The same shape as `isStartPolicyHoldShed` (`./startPolicyHold.ts`), for the
  * same reason: one definition read by the shed-behaviour override in
  * `planDevicesBase`, the keep-invariant exclusion in `planDevices`, and through
- * `nonCapacityHoldShed` the restore side and the executor.
+ * `nonCapacityHoldShed` the restore side and the executor. The shed side's
+ * recovery rule (`isNonSteppedDeviceRecovering`) reads `deferredHoldActive` with
+ * no shed-reason arm: a held device stays off this hour either way.
  *
  * Unlike the start-policy predicate it has no "own reason" arm, so on the
  * silent-meter fail-closed pass (`planBuilderSilentMeter.ts`), which gives every

@@ -183,6 +183,67 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
   });
 
+  it('limits another stepped device one rung, not to its lowest step, while the task holds a binary device off', async () => {
+    // A binary device off because PELS shed it and not yet restored forces a
+    // `set_step` device straight to its lowest active step when it is shed
+    // (`isNonSteppedDeviceRecovering`): power it is waiting for must not sit at a
+    // middle rung. A device its task holds off is waiting for nothing, since the
+    // task will not let it on this hour however much room there is. Four steps, so
+    // the next rung down (`mid`) and the lowest active step (`low`) differ.
+    const fourStepProfile = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1000 },
+        { id: 'mid', planningPowerW: 2000 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    const heater = inputDevice({
+      id: 'heater',
+      name: 'Heater',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on: true },
+      currentState: 'on',
+      currentDrawKw: 3,
+      expectedPowerKw: 3,
+      steppedLoadProfile: fourStepProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      controllable: true,
+      managed: true,
+    });
+    const binaryCharger = (on: boolean): PlanInputDevice => inputDevice({
+      id: 'charger',
+      name: 'Charger',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on },
+      currentState: on ? 'on' : 'off',
+      currentDrawKw: on ? 1 : 0,
+      expectedPowerKw: 1,
+      controllable: true,
+      managed: true,
+    });
+    let powerW = 4000;
+    const builder = new PlanBuilder({
+      ...buildBuilderDeps(idleDecision),
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getDynamicSoftLimitOverride: () => 5,
+      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
+    }, createPlanEngineState());
+
+    // The task's deferred hour begins: the running charger is held off, with room to spare.
+    const entering = await builder.buildDevicePlanSnapshot([binaryCharger(true), heater]);
+    expect(entering.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('shed');
+
+    // The charger now reads off, and the house goes 0.5 kW over.
+    powerW = 5500;
+    const plan = await builder.buildDevicePlanSnapshot([binaryCharger(false), heater]);
+
+    const limited = plan.devices.find((entry) => entry.id === 'heater');
+    expect(limited?.plannedState).toBe('shed');
+    expect(limited?.desiredStepId).toBe('mid');
+  });
+
   it('still counts the device as limited when capacity sheds it as well', async () => {
     // A fresh capacity reason is pressure: the hold alone is what is excluded.
     const tight = new PlanBuilder({

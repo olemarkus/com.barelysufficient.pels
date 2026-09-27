@@ -614,8 +614,11 @@ export type PlanInputDeviceBase = {
    * Stamped by `applyDeferredAdmissionToInput`, and only there, together with
    * the device's membership of the admission's `forceShedSet`. A device the task
    * lends authority to (Power-limit control off) keeps its own route, a release
-   * to its configured posture, and is not stamped. Read through
-   * `isDeferredHoldShed` (`lib/plan/shedding/deferredHold.ts`).
+   * to its configured posture, and is not stamped. A reader asking whether this
+   * cycle's shed is the hold alone goes through `isDeferredHoldShed`
+   * (`lib/plan/shedding/deferredHold.ts`); a reader asking whether the hold is
+   * active reads the flag (starvation eligibility, and the shed side's recovery
+   * rule `isNonSteppedDeviceRecovering`).
    */
   deferredHoldActive?: true;
 };

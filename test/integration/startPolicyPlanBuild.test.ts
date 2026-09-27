@@ -459,6 +459,55 @@ describe('start policy through a whole plan build', () => {
     expect(other?.desiredStepId).toBe('max');
   });
 
+  it('limits another stepped device one rung, not to its lowest step, while it holds a device off', async () => {
+    // The shed side of the same rule: a binary device off because PELS shed it
+    // forces a `set_step` device being shed to its lowest active step, but a device
+    // held by its start policy is waiting for a smart task, not for power. Four
+    // steps, so the next rung down (`mid`) and the lowest active step (`low`) differ.
+    const heater = inputDevice({
+      id: 'heater',
+      name: 'Heater',
+      binaryCapabilityId: 'onoff',
+      binaryControl: { on: true },
+      currentState: 'on',
+      currentDrawKw: 3,
+      expectedPowerKw: 3,
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1000 },
+          { id: 'mid', planningPowerW: 2000 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      controllable: true,
+      managed: true,
+    });
+    let powerW = 4000;
+    const builder = buildBuilder({
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getDynamicSoftLimitOverride: () => 5,
+      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
+      getShedBehavior: (deviceId: string) => (
+        deviceId === 'heater' ? { action: 'set_step' } : { action: 'turn_off' }
+      ),
+    });
+
+    // Someone starts the charger outside PELS, and the hold turns it off again.
+    const holding = await builder.buildDevicePlanSnapshot([charger('pels_only'), heater]);
+    expect(holding.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('shed');
+
+    // The charger now reads off, and the house goes 0.5 kW over.
+    powerW = 5500;
+    const plan = await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false }), heater]);
+
+    const limited = plan.devices.find((entry) => entry.id === 'heater');
+    expect(limited?.plannedState).toBe('shed');
+    expect(limited?.desiredStepId).toBe('mid');
+  });
+
   it('still sheds the hold to OFF when the meter has gone silent', async () => {
     // The fail-closed pass sheds every candidate to its floor, and for this
     // device the floor is OFF — the policy carries its own shed intent, not the
