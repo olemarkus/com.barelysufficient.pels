@@ -1,5 +1,5 @@
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
-import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
+import { inertPlanHistoryDeps, createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
 const {
   capturedPlanExecutorDeps,
   capturedEmitterDeps,
@@ -404,10 +404,8 @@ describe('app init plan service wiring', () => {
     expect(recorder.getHistorySnapshot().entries[0]).toMatchObject({ id: 'stored-1', targetValue: 65 });
     recorder.backfillFromConfig([{
       deviceId: 'dev',
-      objectiveKind: 'temperature',
       deadlineAtMs: 7_200_000,
-      targetTemperatureC: 70,
-      targetPercent: null,
+      targetValue: 70,
     }], 3_600_000, 7_200_001);
     expect(recorder.flushIfDirty()).toBe(true);
     expect(createPlanHistoryStore(ctx.getUserdataDatabase()).read()?.entries.map((entry) => entry.id))
@@ -435,10 +433,8 @@ describe('app init plan service wiring', () => {
     expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
     recorder.backfillFromConfig([{
       deviceId: 'dev',
-      objectiveKind: 'temperature',
       deadlineAtMs: 7_200_000,
-      targetTemperatureC: 70,
-      targetPercent: null,
+      targetValue: 70,
     }], 3_600_000, 7_200_001);
     // The flush re-reads first; the store answers now, so the write lands.
     expect(recorder.flushIfDirty()).toBe(true);
@@ -602,6 +598,7 @@ describe('app init plan service wiring', () => {
     setSpy.mockClear();
 
     capturedEmitterDeps.current = null;
+    ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
     createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (
@@ -643,6 +640,7 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
     capturedEmitterDeps.current = null;
+    ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
     createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (
@@ -743,6 +741,7 @@ describe('app init plan service wiring', () => {
     setSpy.mockClear();
 
     capturedEmitterDeps.current = null;
+    ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
     createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (

@@ -56,3 +56,16 @@ export const hasObservedMeasuredPower = <T extends MeasuredPowerObservedProbe>(
 export const normalizeMeasuredPowerKw = (kw: unknown): number | null => (
   typeof kw === 'number' && Number.isFinite(kw) && kw >= 0 ? kw : null
 );
+
+/**
+ * Whether a device's power reading is a live measurement of its draw: its own
+ * `measure_power`, or Homey Energy's live figure for it. False with no reading,
+ * and for a rate the device layer derived from a cumulative meter, which trails
+ * the device by its app's report interval and lingers after it stops. The one
+ * rule for "may energy be counted from this reading": asked when an energy task
+ * is created (`supportsSmartTaskKind`) and on every tick it counts
+ * (`EnergyTaskDeliveryTracker`, through the observer).
+ */
+export const hasLiveMeasuredPower = (snapshot: MeasuredPowerObservedProbe): boolean => (
+  hasObservedMeasuredPower(snapshot) && snapshot.measuredPowerIsDirectMeasurement
+);

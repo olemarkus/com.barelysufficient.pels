@@ -4,7 +4,7 @@
 import type {
   DeferredObjectiveActivePlanV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import { toResolvedActivePlans } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
+import { type ActivePlanFixture, resolveActivePlanFixtures } from '../helpers/activePlanFixtures';
 import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -30,12 +30,11 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 const NOW = new Date('2026-05-26T10:00:00.000Z').getTime();
 const HOUR = 60 * 60 * 1000;
 
-const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredObjectiveActivePlanV1 => ({
+const buildPlan = (overrides: Partial<ActivePlanFixture>): ActivePlanFixture => ({
   deviceId: 'dev',
   deviceName: 'Device',
   objectiveKind: 'temperature',
-  targetTemperatureC: 55,
-  targetPercent: null,
+  targetValue: 55,
   deadlineAtMs: NOW + 5 * HOUR,
   startedAtMs: NOW - HOUR,
   pending: false,
@@ -61,11 +60,10 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObserv
   ...overrides,
 } as TargetDeviceSnapshot);
 
-const buildInput = (plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>, devices: TargetDeviceSnapshot[] = []) => ({
-  // The widget payload builder consumes the RESOLVED active-plans view (kind-split
-  // columns collapsed to `targetValue` / `value`), produced by the UI assembler in
-  // production. Resolve the raw fixtures here at the same boundary.
-  activePlans: toResolvedActivePlans({ version: 1, plansByDeviceId }),
+const buildInput = (plansByDeviceId: Record<string, ActivePlanFixture>, devices: TargetDeviceSnapshot[] = []) => ({
+  // The widget payload builder consumes the RESOLVED active-plans view, produced
+  // by the UI assembler in production. Resolve the fixtures at the same boundary.
+  activePlans: resolveActivePlanFixtures(plansByDeviceId),
   devices,
   nowMs: NOW,
   timeZone: 'UTC',
@@ -86,6 +84,28 @@ describe('buildSmartTasksWidgetPayload', () => {
       a: buildPlan({ deviceId: 'a', latest: { ...buildPlan({}).latest!, planStatus: 'satisfied' } }),
     }));
     expect(payload.state).toBe('empty');
+  });
+
+  test('shows an energy task in kWh, with the energy delivered so far as its current value', () => {
+    const relay = buildPlan({
+      deviceId: 'relay',
+      deviceName: 'Water heater relay',
+      objectiveKind: 'energy',
+      targetValue: 6,
+    });
+    const payload = buildSmartTasksWidgetPayload({
+      ...buildInput({ relay }),
+      // 4 kWh delivered so far, from the runtime's delivery count.
+      activePlans: resolveActivePlanFixtures({ relay }, () => 4),
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0]).toMatchObject({
+      unitSymbol: 'kWh',
+      currentValue: 4,
+      targetValue: 6,
+      targetActionVerb: 'Deliver',
+    });
   });
 
   test('sorts cannot_meet → at_risk → pending → on_track', () => {
@@ -172,7 +192,7 @@ describe('buildSmartTasksWidgetPayload', () => {
 
   test('joins live current value from device snapshot', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput(
-      { dev: buildPlan({ deviceId: 'dev', targetTemperatureC: 55 }) },
+      { dev: buildPlan({ deviceId: 'dev', targetValue: 55 }) },
       [buildDevice({
         id: 'dev',
         temperature: {
@@ -190,7 +210,7 @@ describe('buildSmartTasksWidgetPayload', () => {
 
   test('renders EV plans with % unit', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput(
-      { ev: buildPlan({ deviceId: 'ev', objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 80 }) },
+      { ev: buildPlan({ deviceId: 'ev', objectiveKind: 'ev_soc', targetValue: 80 }) },
       [buildDevice({
         id: 'ev',
         // Built through the producer's fixture: the `as Partial<…>` cast silences
@@ -250,8 +270,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceId: 'ev',
       deviceName: 'EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       diagnosticReasonCode: 'objective_invalid_session',
     });
     const onTrackPlan = buildPlan({ deviceId: 'heat', deviceName: 'Heating' });
@@ -268,10 +287,10 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceId: 'relocated',
       deviceName: 'Garage heater',
       diagnosticReasonCode: 'objective_device_in_sub_home',
-      startProgressC: 50,
+      startProgressValue: 50,
       progressSamples: [
-        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
-        { atMs: NOW, valueC: 52, valuePercent: null },
+        { atMs: NOW - HOUR, value: 50 },
+        { atMs: NOW, value: 52 },
       ],
       kwhPerUnitProvenance: {
         source: 'bootstrap',
@@ -307,10 +326,10 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceId: 'unmanaged',
       deviceName: 'Garage heater',
       diagnosticReasonCode: 'objective_device_unmanaged',
-      startProgressC: 50,
+      startProgressValue: 50,
       progressSamples: [
-        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
-        { atMs: NOW, valueC: 52, valuePercent: null },
+        { atMs: NOW - HOUR, value: 50 },
+        { atMs: NOW, value: 52 },
       ],
       kwhPerUnitProvenance: {
         source: 'bootstrap',
@@ -470,8 +489,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       ev: buildPlan({
         deviceId: 'ev',
         objectiveKind: 'ev_soc',
-        targetTemperatureC: null,
-        targetPercent: 80,
+        targetValue: 80,
       }),
     }));
     expect(payload.state).toBe('ready');
@@ -671,10 +689,10 @@ describe('buildSmartTasksWidgetPayload', () => {
   test('attaches a trajectory chart to active rows', () => {
     const plan = buildPlan({
       deviceId: 'dev',
-      startProgressC: 50,
+      startProgressValue: 50,
       progressSamples: [
-        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
-        { atMs: NOW, valueC: 52, valuePercent: null },
+        { atMs: NOW - HOUR, value: 50 },
+        { atMs: NOW, value: 52 },
       ],
       latest: { ...buildPlan({}).latest!, rateMean: 0.5 },
     });

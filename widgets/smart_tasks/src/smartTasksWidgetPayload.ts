@@ -29,6 +29,7 @@ import {
   resolveHistoryDetailChartData,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import {
+  deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
   RECOURSE_CANNOT_MEET_BUDGET,
   RECOURSE_CANNOT_MEET_DEVICE,
@@ -117,8 +118,12 @@ const resolveCurrentValue = (
   // the base type omits; `hasObservedTemperature` / `hasObservedStateOfCharge`
   // narrow it (present is finite by the producer invariant).
   device: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe) | undefined,
-  kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
+  plan: ResolvedDeferredObjectiveActivePlanV1,
 ): number | null => {
+  // An energy task's current value is the energy fed so far, which the plan
+  // carries; the device has no reading this task is measured by.
+  if (plan.objectiveKind === 'energy') return plan.deliveredKWh;
+  const kind = plan.objectiveKind;
   if (!device) return null;
   if (kind === 'temperature') {
     return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
@@ -409,12 +414,12 @@ const buildRow = (params: {
     ? formatLocalHHMM(firstHourMs, timeZone)
     : null;
   const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
-  const currentValue = resolveCurrentValue(device, plan.objectiveKind);
+  const currentValue = resolveCurrentValue(device, plan);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
-    unitSymbol: plan.objectiveKind === 'temperature' ? '°C' : '%',
+    unitSymbol: deadlineLabels(plan.objectiveKind).targetUnit,
     currentValue,
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
@@ -495,7 +500,7 @@ const buildEndedRow = (
     id: entry.id,
     deviceId: entry.deviceId,
     deviceName: devicesById.get(entry.deviceId)?.name ?? entry.deviceName ?? entry.deviceId,
-    unitSymbol: entry.objectiveKind === 'temperature' ? '°C' : '%',
+    unitSymbol: deadlineLabels(entry.objectiveKind).targetUnit,
     targetValue,
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(entry.objectiveKind),
     outcomeLabel: getPlanHistoryOutcomeLabel(entry.outcome),

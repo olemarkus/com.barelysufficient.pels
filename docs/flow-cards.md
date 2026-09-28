@@ -90,6 +90,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Set EV charging phase** | Tells PELS the charger or car is now in **1-phase** or **3-phase** mode so power calculations match reality. Use it after the phase has already switched — this card does not switch the charger hardware. |
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
+| **Add energy task** | Stores an amount of energy (kWh) and ready-by time for an on/off device with a live power reading, such as a water heater switched by a relay. PELS delivers that energy in the cheapest hours before the ready-by time. See [Energy tasks](/smart-tasks#energy-tasks). |
 | **Clear smart task** | Removes any active Smart task for a device. |
 | **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **pause lower-priority devices** (reserves power so the task can start sooner). Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
@@ -139,6 +140,7 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 | --- | --- |
 | Charge an EV to a target battery percentage | **Add charging task** |
 | Heat a temperature device to a target temperature | **Add heating task** |
+| Deliver an amount of energy to an on/off device, for example a water heater on a relay | **Add energy task** |
 | Remove the current task for a device | **Clear smart task** |
 
 Use **Smart task status changed** for notifications after the task status has settled, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.

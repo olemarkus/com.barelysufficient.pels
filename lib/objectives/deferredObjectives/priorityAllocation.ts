@@ -8,7 +8,7 @@ import {
   resolveObjectiveProgressDirectionRead,
   type ObjectiveDeviceInput,
 } from '../../objectives/types';
-import { buildObjectiveSignature } from './activePlanSignature';
+import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 import { buildLiveReservationSegments } from './activePlanSchedule';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import { resolveObjectiveSteps } from './objectiveSteps';
@@ -203,18 +203,13 @@ export const orderDeferredObjectives = (params: {
     .sort((left, right) => left.priority - right.priority || compareDeviceIdAsc(left.deviceId, right.deviceId));
 };
 
-const objectiveSignature = (entry: OrderedDeferredObjective): string => buildObjectiveSignature({
-  objectiveKind: entry.objective.kind,
-  targetTemperatureC: entry.objective.kind === 'temperature' ? entry.objective.targetTemperatureC : null,
-  targetPercent: entry.objective.kind === 'ev_soc' ? entry.objective.targetPercent : null,
-  deadlineAtMs: entry.objective.deadlineAtMs,
-  enforcement: entry.objective.enforcement,
-  progressDirection: resolveObjectiveProgressDirectionRead({
+const objectiveSignature = (entry: OrderedDeferredObjective): string => buildObjectiveSignatureForEntry(
+  entry.objective,
+  resolveObjectiveProgressDirectionRead({
     objectiveKind: entry.objective.kind,
     thermalDirection: entry.device?.thermalDirection ?? 'unknown',
   }),
-  rescue: entry.objective.rescue,
-});
+);
 
 export const buildAllocationContextSignature = (
   entries: readonly OrderedDeferredObjective[],

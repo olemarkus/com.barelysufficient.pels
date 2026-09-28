@@ -1,8 +1,8 @@
-import type { DeferredObjectivePlanHistoryEntry } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
-import {
-  resolveFinalProgressValue,
-  resolveTargetValue,
-} from '../../../packages/shared-domain/src/deferredObjectiveValues';
+import type {
+  DeferredObjectivePlanOutcome,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 // Public outcomes exposed to Flow automations. Maps from the broader internal
 // outcome set (`planHistory.ts`):
@@ -16,8 +16,10 @@ export type DeferredObjectivePublicOutcome = 'succeeded' | 'missed' | 'abandoned
 
 export type DeferredObjectiveEndedEvent = {
   deviceId: string;
-  deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc';
+  // The name the recorder last saw, or the device id when it never saw one
+  // (`finalizeRecord`).
+  deviceName: string;
+  objectiveKind: DeferredObjectiveSettingsKind;
   outcome: DeferredObjectivePublicOutcome;
   // Unit-agnostic deadline target (°C for temperature, % for EV SoC — disambiguate
   // via `objectiveKind`). Resolved from the entry's kind-split columns at build
@@ -54,7 +56,7 @@ export const createDeferredObjectiveEndedBus = (): DeferredObjectiveEndedBus => 
 // Maps an internal outcome to its public Flow-trigger value, or `null` when
 // the outcome should not fire the trigger (`replaced`, `unknown`).
 export const toPublicOutcome = (
-  outcome: DeferredObjectivePlanHistoryEntry['outcome'],
+  outcome: DeferredObjectivePlanOutcome,
 ): DeferredObjectivePublicOutcome | null => {
   switch (outcome) {
     case 'met': return 'succeeded';
@@ -75,7 +77,7 @@ export const toPublicOutcome = (
 };
 
 export const buildEndedEventFromEntry = (
-  entry: DeferredObjectivePlanHistoryEntry,
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
 ): DeferredObjectiveEndedEvent | null => {
   // Backfill entries describe deadlines that elapsed before PELS observed
   // them — firing a Flow trigger retroactively would be surprising.
@@ -87,10 +89,10 @@ export const buildEndedEventFromEntry = (
     deviceName: entry.deviceName,
     objectiveKind: entry.objectiveKind,
     outcome: publicOutcome,
-    targetValue: resolveTargetValue(entry),
+    targetValue: entry.targetValue,
     deadlineAtMs: entry.deadlineAtMs,
     finalizedAtMs: entry.finalizedAtMs,
     metAtMs: entry.metAtMs,
-    finalProgressValue: resolveFinalProgressValue(entry),
+    finalProgressValue: entry.finalProgressValue,
   };
 };

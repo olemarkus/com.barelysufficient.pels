@@ -9,9 +9,10 @@ import type {
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../contracts/src/deferredObjectivePlanPreview';
 import type {
-  DeferredObjectiveRescuePermissions,
   DeferredObjectiveRescueMode,
+  DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsKind,
+  DeferredObjectiveUnit,
 } from '../../contracts/src/deferredObjectiveSettings';
 import type {
   DeferredObjectiveActivePlanCarChargeLimitV1,
@@ -681,9 +682,16 @@ export const resolveSmartTaskPreviewStatusCopy = (
   }
 };
 
+const SMART_TASK_UNKNOWN_NOW_VALUE_LINE: Record<DeferredObjectiveSettingsKind, string> = {
+  ev_soc: 'Charge level unknown',
+  temperature: 'Temperature unknown',
+  // An energy task counts from when it starts, so before then nothing is delivered.
+  energy: 'Nothing delivered yet',
+};
+
 export const formatSmartTaskUnknownNowValueLine = (
   kind: DeferredObjectiveSettingsKind,
-): string => (kind === 'ev_soc' ? 'Charge level unknown' : 'Temperature unknown');
+): string => SMART_TASK_UNKNOWN_NOW_VALUE_LINE[kind];
 
 // Map a create rejection reason to the user-facing widget error line. Two cases
 // get bespoke copy: the previewed deadline passing (tells the user to re-preview)
@@ -981,6 +989,8 @@ export const resolveSmartTaskLearning = (
 ): boolean => {
   if (!provenance) return false;
   if (provenance.source === 'bootstrap') return true;
+  // Nothing to learn: an energy task's rate is exact.
+  if (provenance.source === 'exact') return false;
   return provenance.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
 };
 
@@ -1123,6 +1133,9 @@ export const formatSmartTaskCurrentValueLine = (params: {
   if (params.kind === 'temperature') {
     return `currently ${params.currentValue.toFixed(1)} °C`;
   }
+  if (params.kind === 'energy') {
+    return `${params.currentValue.toFixed(1)} kWh delivered so far`;
+  }
   return `currently ${Math.round(params.currentValue)} %`;
 };
 
@@ -1233,13 +1246,14 @@ export const resolveSmartTaskListDeadlineVerb = (
 // beside the other kind-aware smart-task vocabulary so the heat/charge split
 // can't drift; the "temperature never says charge" rule
 // (`notes/ui-terminology.md`) is enforced by the kind key.
-const SMART_TASK_WIDGET_TARGET_ACTION_VERB: Record<'temperature' | 'ev_soc', string> = {
+const SMART_TASK_WIDGET_TARGET_ACTION_VERB: Record<DeferredObjectiveSettingsKind, string> = {
   temperature: 'Heat to',
   ev_soc: 'Charge to',
+  energy: 'Deliver',
 };
 
 export const resolveSmartTaskWidgetTargetActionVerb = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
 ): string => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
 
 // Single hour/hours pluralizer shared across the smart-task surfaces (sample
@@ -1255,7 +1269,7 @@ export const pluralHour = (count: number): string => (count === 1 ? 'hour' : 'ho
 // (percent spacing matches `formatProgressValueForUnit` elsewhere in this file).
 export const formatSmartTaskGoalValue = (
   value: number,
-  unitSymbol: '°C' | '%',
+  unitSymbol: DeferredObjectiveUnit,
 ): string => {
   const rounded = Math.round(value * 10) / 10;
   const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
@@ -1270,7 +1284,7 @@ export const formatSmartTaskGoalValue = (
 // "Now <value>" string (per `feedback_ui_text_shared_with_logs.md`).
 export const formatSmartTaskNowValueLine = (params: {
   currentValue: number | null;
-  unitSymbol: '°C' | '%';
+  unitSymbol: DeferredObjectiveUnit;
 }): string | null => {
   if (params.currentValue === null || !Number.isFinite(params.currentValue)) return null;
   return `Now ${formatSmartTaskGoalValue(params.currentValue, params.unitSymbol)}`;
@@ -1287,7 +1301,7 @@ export const formatSmartTaskNowValueLine = (params: {
 export const formatSmartTaskGoalContextLine = (params: {
   goalValue: number;
   currentValue: number | null;
-  unitSymbol: '°C' | '%';
+  unitSymbol: DeferredObjectiveUnit;
 }): string => {
   const goalLabel = formatSmartTaskGoalValue(params.goalValue, params.unitSymbol);
   if (params.currentValue === null || !Number.isFinite(params.currentValue)) {
@@ -1319,9 +1333,13 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   // achieves. Stays on-vocabulary per `notes/ui-terminology.md` (temperature
   // says "temperature", never "charge"; EV says "percent").
   heatingExample: '(heat a device to a target temperature by a time)',
-  conjunction: 'or the',
+  // Rendered straight after the example, with no space before the comma.
+  listSeparator: ', the',
   chargingAction: 'Add charging task',
   chargingExample: '(charge a device to a target percent by a time)',
+  energyConjunction: 'or the',
+  energyAction: 'Add energy task',
+  energyExample: '(deliver an amount of energy to an on/off device by a time)',
   outro: 'to schedule a managed device for a specific ready-by time.',
   // Second route: the "New smart task" dashboard widget
   // (widgets/create_smart_task) creates a task directly, without the Flow
@@ -1675,11 +1693,11 @@ export type DeadlineLabels = {
   //   3. otherwise                → "Scheduled for the cheapest hours it can use — starts at HH:MM."
   resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver;
   completedHero: { headline: string; body: string };
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
   planInputsCardTitle: string;
   planInputsRateRowLabel: string;
   planInputsMaxPowerRowLabel: string;
-  perUnitRateUnit: 'kWh/°C' | 'kWh/%';
+  perUnitRateUnit: 'kWh/°C' | 'kWh/%' | 'kWh/kWh';
   // Subtext shown next to the "Energy per unit" row when the planner is using
   // a bootstrap kWh-per-unit value (no learned profile yet). `null` when the
   // kind has no bootstrap path — only EV SoC ships with one in v1.
@@ -1976,7 +1994,7 @@ const deviceUnmanagedResolver: DeadlinePendingCopyResolver = (ctx) => ({
 // really are missing would be told PELS is working "from the prices it already
 // has", trading the price-wait overclaim this fix removes for its mirror image.
 // The first lifecycle tick states the real reason either way.
-type SmartTaskPlanNoun = 'heat plan' | 'cooling plan' | 'temperature plan' | 'charging plan';
+type SmartTaskPlanNoun = 'heat plan' | 'cooling plan' | 'temperature plan' | 'charging plan' | 'schedule';
 
 const notYetPlannedCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
@@ -2016,8 +2034,8 @@ const awaitingHorizonCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyRe
 const deviceDataMissingResolver = (kind: {
   headline: string;
   body: string;
-  readingNoun: 'current temperature' | 'state of charge';
-  fallbackDeviceNoun: 'the heater' | 'the cooling device' | 'this device' | 'the EV';
+  readingNoun: 'current temperature' | 'state of charge' | 'power use';
+  fallbackDeviceNoun: 'the heater' | 'the cooling device' | 'this device' | 'the EV' | 'the device';
 }): DeadlinePendingCopyResolver => (ctx) => ({
   headline: kind.headline,
   body: kind.body,
@@ -2071,6 +2089,19 @@ const EV_DEVICE_DATA_MISSING = deviceDataMissingResolver({
     + 'from this EV before it can plan the smart task.',
   readingNoun: 'state of charge',
   fallbackDeviceNoun: 'the EV',
+});
+
+// An energy task counts the energy the device takes, so the one reading it needs
+// is the device's power. Reached only while the device has no power reading
+// (it then drops out of the smart-task roster); an energy task has no rate to
+// learn and its device cannot be unplugged, so `missing_capacity` and
+// `invalid_session` are unreachable and share this copy as their safety net.
+const ENERGY_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+  headline: 'Waiting for a power reading from the device',
+  body: 'PELS counts the energy this device takes from its power readings, and needs one '
+    + 'before it can plan the smart task.',
+  readingNoun: 'power use',
+  fallbackDeviceNoun: 'the device',
 });
 
 const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
@@ -2278,6 +2309,95 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsMaxPowerRowLabel: 'Device power used',
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
+    revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
+  },
+  // "Deliver N kWh to this device by the deadline." Only a pure on/off device
+  // carries one (a relay switching a water heater, with no temperature reading),
+  // so no copy here names heating or charging: what the task does is run the
+  // device, and its progress is the energy it has taken. Such a device cannot be
+  // unplugged: `invalid_session` / `paused_unplugged` are unreachable and fall
+  // back as they do for heaters.
+  energy: {
+    kindChipLabel: 'Energy',
+    activeChipLabel: 'Running',
+    sectionLabel: 'Energy smart task',
+    liveStateChipLabel: {
+      active: 'Running',
+      building_plan: 'Building plan…',
+      queued: 'On track',
+      unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
+      // Unreachable on a pure on/off device; the generic on-track fallback.
+      paused_unplugged: 'On track',
+      paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
+      ok: 'On track',
+    },
+    atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+    cannotMeetChipLabel: 'Cannot finish',
+    deviceSeriesName: 'Running',
+    originalDeviceSeriesName: 'Original energy',
+    actualDeviceSeriesName: 'Measured energy',
+    backgroundSeriesName: 'Background usage',
+    progressSeriesName: 'Energy delivered',
+    planTooltipIdle: 'Idle',
+    pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy('schedule'),
+      awaiting_horizon_plan: awaitingHorizonCopy('schedule'),
+      price_feature_disabled: () => ({
+        headline: 'Price-aware optimisation is off',
+        body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a schedule.',
+        headlineReason: 'Price-aware optimisation is off in Settings.',
+        recourse: { label: 'Open Settings', targetTab: 'settings' },
+      }),
+      device_data_missing: ENERGY_DEVICE_DATA_MISSING,
+      invalid_session: ENERGY_DEVICE_DATA_MISSING,
+      missing_capacity: ENERGY_DEVICE_DATA_MISSING,
+      device_in_sub_home: separateMeterUnavailableResolver,
+      device_unmanaged: deviceUnmanagedResolver,
+    },
+    unavailableByReason: {
+      no_current_reading: {
+        headline: 'Waiting for the first power reading',
+        body: 'The schedule will appear once the device reports its power use.',
+      },
+      // Unreachable: an amount of energy delivered only ever rises.
+      direction_unavailable: {
+        headline: 'Progress direction unavailable',
+        body: 'PELS could not resolve how this smart task makes progress.',
+      },
+      already_satisfied: {
+        headline: 'Satisfied',
+        body: 'The device has already taken the energy this smart task asked for.',
+      },
+    },
+    // A device with its own thermostat (a water heater on a relay) stops
+    // drawing once it is hot, and no schedule can deliver it more; the shortfall
+    // sentence says so, because "not enough time" alone would send the owner to
+    // move a deadline that is not the problem.
+    cannotMeetShortfall: () => (
+      'Not enough time or power for this amount of energy. Lower the target or move the deadline. '
+      + 'If the device switches itself off when it is done, like a water heater that is already hot, '
+      + 'it may already be full.'
+    ),
+    cannotMeetDailyBudgetExhausted: 'Today\'s daily budget is fully booked. '
+      + 'Lower it so future days reserve power earlier, or move the deadline.',
+    cannotMeetDailyBudgetContributed: 'Today’s daily budget is holding part of this back, '
+      + 'but there is not enough time to finish even without it. '
+      + 'Edit the task and turn on “May go over daily budget” under Extra permissions to help; '
+      + 'it will not be enough on its own.',
+    cannotMeetRecourse: CANNOT_MEET_RECOURSE,
+    resolveQueuedHeadlineReason,
+    completedHero: {
+      headline: 'Smart task finished',
+      body: 'See Smart tasks for the outcome.',
+    },
+    targetUnit: 'kWh',
+    planInputsCardTitle: 'What PELS uses',
+    // The rate is exact (one kWh fed is one kWh of progress); the row exists
+    // for the other kinds' learned rate and has nothing to teach here.
+    planInputsRateRowLabel: 'Energy needed per kWh',
+    planInputsMaxPowerRowLabel: 'Device power used',
+    perUnitRateUnit: 'kWh/kWh',
+    planInputsRateBootstrapNote: null,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
   },
 };
@@ -2637,7 +2757,7 @@ export const SMART_TASK_SCHEDULE_CHART_KEY = 'Filled bars are the picked hours �
 // `formatProgressValueForUnit` the hero lines use so the number can't drift.
 export const formatSmartTaskTrajectoryCardTitle = (params: {
   targetValue: number;
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
 }): string => `Will it reach ${formatProgressValueForUnit(params.targetValue, params.targetUnit)} in time?`;
 
 // Pinned-readout helper line shown when the selected hour carries no revision
@@ -2664,7 +2784,7 @@ export const NOW_MARKER_WORD = 'Now';
 // and stateline use so the number format can't drift.
 export const formatSmartTaskTargetLabel = (params: {
   targetValue: number;
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
 }): string => `Target ${formatProgressValueForUnit(params.targetValue, params.targetUnit)}`;
 
 // Primary line of the pinned hour readout under the schedule chart.
@@ -2755,8 +2875,16 @@ const formatHoursBeforeDeadline = (hoursBefore: number): string => {
   return `${rounded} ${rounded === 1 ? 'hour' : 'hours'} before the deadline`;
 };
 
+// A level (a temperature, a battery level) reads as "now"; an amount of energy
+// is a running total, so it reads as "delivered", matching the hero's
+// "Delivered X of Y kWh".
+export const formatSmartTaskCurrentValuePhrase = (valueLabel: string, unit: DeferredObjectiveUnit): string => (
+  unit === 'kWh' ? `${valueLabel} delivered` : `${valueLabel} now`
+);
+
 export const formatSmartTaskTrajectoryStatelineReady = (params: {
-  nowValueLabel: string;
+  // `formatSmartTaskCurrentValuePhrase`: "48.0 °C now" / "2.0 kWh delivered".
+  currentValuePhrase: string;
   // Lowercase mid-sentence status word ("on track" / "at risk") or null when
   // no status word applies; the chip above carries the capitalized form.
   statusWord: string | null;
@@ -2779,7 +2907,7 @@ export const formatSmartTaskTrajectoryStatelineReady = (params: {
     rest = isOnTrack ? params.statusWord : `${params.statusWord} — ${projectedReady}`;
   }
   return {
-    emphasis: `${params.nowValueLabel} now`,
+    emphasis: params.currentValuePhrase,
     rest,
     tone: 'ok',
     verdict: params.statusWord !== null
@@ -2800,12 +2928,12 @@ export const formatSmartTaskTrajectoryStatelineReady = (params: {
 // here instead of trusting the gate.
 export const formatSmartTaskTrajectoryShortAmountLabel = (
   shortBy: number,
-  unit: '°C' | '%',
+  unit: DeferredObjectiveUnit,
 ): string => {
   if (unit === '%') return `${Math.round(shortBy)}% short`;
   const rounded = Math.round(shortBy * 10) / 10;
   const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
-  return `${text} °C short`;
+  return `${text} ${unit} short`;
 };
 
 export const formatSmartTaskTrajectoryStatelineShort = (params: {
@@ -2931,10 +3059,15 @@ export const formatDeadlineDeliveredSoFarLine = (params: {
   currentProgress: number;
   startProgress: number | null;
   targetValue: number;
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
 }): string | null => {
   if (!Number.isFinite(params.plannedTotalKWh) || params.plannedTotalKWh <= 0) return null;
   if (!Number.isFinite(params.currentProgress) || !Number.isFinite(params.targetValue)) return null;
+  // An energy task's progress IS the energy delivered, counted by the task
+  // itself: one figure, stated once, against the task's own target.
+  if (params.targetUnit === 'kWh') {
+    return `Delivered ${params.currentProgress.toFixed(1)} of ${params.targetValue.toFixed(1)} kWh`;
+  }
   const deliveredKWhSafe = Number.isFinite(params.deliveredKWh) && params.deliveredKWh > 0
     ? params.deliveredKWh : 0;
   const energyPart = `Delivered ${deliveredKWhSafe.toFixed(1)} of ${params.plannedTotalKWh.toFixed(1)} kWh`;
@@ -2962,9 +3095,9 @@ export const formatDeadlineDeliveredSoFarLine = (params: {
 // precision rules as the delivered-so-far hero line above.
 export const formatProgressValueForUnit = (
   value: number,
-  unit: '°C' | '%',
+  unit: DeferredObjectiveUnit,
 ): string => (
-  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
+  unit === '%' ? `${Math.round(value)}%` : `${value.toFixed(1)} ${unit}`
 );
 
 // ─── History-detail missed-hero recourse (v2.7.2 PR 3) ───────────────────────
@@ -3075,6 +3208,11 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
     // already says "Estimated — refining as PELS observes charging", so a
     // single Source row is enough here — adding "0 readings" would be noisy.
     return [{ label: 'Source', value: 'Starting estimate', tone: null }];
+  }
+  if (provenance.source === 'exact') {
+    // An energy task: every kWh the device takes is a kWh of progress, counted
+    // from its power readings. There are no samples or confidence to report.
+    return [{ label: 'Source', value: 'Counted from power readings', tone: null }];
   }
   // `Learned from power readings` source no longer carries a redundant `Learned rate` row
   // (the card's headline already shows the rate value). Surface only the

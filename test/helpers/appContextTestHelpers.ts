@@ -377,6 +377,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getObservedStateOfCharge: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservedTemperature: vi.fn(() => ({ kind: 'absent' } as const)),
     getThermalDirection: vi.fn((): ThermalDirection => 'heating'),
+    isLiveMeasuredDraw: vi.fn(() => true),
     getObservedEvChargingState: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservationRevision: vi.fn(() => 0),
     isCapacityControlEnabled: vi.fn(() => false),

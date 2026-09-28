@@ -3,7 +3,8 @@ import type { DeferredObjectivePlanHistoryRecord } from '../packages/contracts/s
 import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../packages/shared-domain/src/deferredPlanHistoryResolvedView';
-import { assembleActivePlansWithTrajectory } from './deferredObjectiveActivePlansUiAssembler';
+import { assembleActivePlansUiView } from '../lib/objectives/deferredObjectives/activePlansUiView';
+import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';
 import { resolveSmartTaskDeviceKind } from '../packages/shared-domain/src/smartTaskDeviceKind';
 
 /**
@@ -15,6 +16,7 @@ export type SmartTaskPayloadsContext = Pick<
   AppContext,
   | 'deferredObjectiveActivePlanRecorder'
   | 'deferredObjectivePlanHistoryRecorder'
+  | 'deferredObjectiveEnergyDelivery'
   | 'getDeviceSurfaces'
 >;
 
@@ -30,10 +32,13 @@ export class AppSmartTaskPayloads {
   public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
     const snapshot = this.ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
     if (snapshot === null) return null;
-    // Stitch live in-progress trajectory (start progress + observed samples)
-    // onto the snapshot for the smart-tasks widget chart. UI-only — never
-    // persisted (see the assembler + the field doc on the contract).
-    return assembleActivePlansWithTrajectory(snapshot, this.ctx.deferredObjectivePlanHistoryRecorder);
+    // UI-only view: never persisted (see `assembleActivePlansUiView`).
+    return assembleActivePlansUiView(
+      snapshot,
+      this.ctx.deferredObjectivePlanHistoryRecorder,
+      // Built right after the active-plan recorder (`appServiceWiring`).
+      requireDeferredObjectiveEnergyDelivery(this.ctx).getDeliveredKWh,
+    );
   }
 
   private buildPlanHistoryUiPayload(

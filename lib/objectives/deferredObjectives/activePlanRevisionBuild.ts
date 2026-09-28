@@ -38,12 +38,7 @@ import {
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature } from './activePlanSignature';
-
-// Persisted plans store mixed objective kinds, so derive the nullable
-// persisted value from the discriminated diagnostic.
-export const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | null => (
-  diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null
-);
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 // The persisted `planStatus` is the status Flows read (deadlineObjectiveCards:
 // "public Flow status follows the active-plan recorder's settled status"). It
@@ -71,9 +66,8 @@ export type ActivePlanPersistDeps = {
 export type ActivePlanFlowCardSeed = {
   deviceId: string;
   deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  objectiveKind: DeferredObjectiveSettingsKind;
+  targetValue: number;
   deadlineAtMs: number;
   enforcement: 'soft' | 'hard';
   rescue?: DeferredObjectiveRescuePermissions;
@@ -120,8 +114,7 @@ export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic):
   if (diag.deadlineAtMs === null) return null;
   return buildObjectiveSignature({
     objectiveKind: diag.objectiveKind,
-    targetTemperatureC: diagTargetTemperatureC(diag),
-    targetPercent: diag.targetPercent,
+    targetValue: diag.targetValue,
     deadlineAtMs: diag.deadlineAtMs,
     enforcement: diag.enforcement,
     progressDirection: diag.progressDirection,
@@ -139,16 +132,14 @@ export const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number):
   deviceId: seed.deviceId,
   deviceName: seed.deviceName,
   objectiveKind: seed.objectiveKind,
-  targetTemperatureC: seed.targetTemperatureC,
-  targetPercent: seed.targetPercent,
+  targetValue: seed.targetValue,
   deadlineAtMs: seed.deadlineAtMs,
   startedAtMs: nowMs,
   pending: true,
   pendingReason: 'not_yet_planned',
   objectiveSignature: buildObjectiveSignature({
     objectiveKind: seed.objectiveKind,
-    targetTemperatureC: seed.targetTemperatureC,
-    targetPercent: seed.targetPercent,
+    targetValue: seed.targetValue,
     deadlineAtMs: seed.deadlineAtMs,
     enforcement: seed.enforcement,
     // Flow creation precedes the first observer read. The record is pending and
@@ -242,8 +233,7 @@ export const createPlanFromDiagnostic = (
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
-    targetTemperatureC: diagTargetTemperatureC(diag),
-    targetPercent: diag.targetPercent,
+    targetValue: diag.targetValue,
     deadlineAtMs: diag.deadlineAtMs as number,
     startedAtMs: nowMs,
     pending: true,
@@ -263,7 +253,9 @@ export const createPlanFromDiagnostic = (
 // constant for `bootstrap` — on `kWhPerUnitBanded`. `null` when the resolver
 // short-circuited (no source) or the value isn't a usable positive number.
 const resolveRateMean = (diag: DeferredObjectiveDiagnostic): number | null => {
-  if (diag.kwhPerUnitSource === null) return null;
+  // An exact rate (an energy task: one kWh of progress per kWh) has nothing
+  // to show as "energy needed per unit", so the row stays hidden.
+  if (diag.kwhPerUnitSource === null || diag.kwhPerUnitSource === 'exact') return null;
   const rate = diag.kWhPerUnitBanded;
   return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
 };

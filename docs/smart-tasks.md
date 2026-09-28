@@ -16,6 +16,7 @@ Use a Smart task when the timing matters for one device:
 - Charge an EV to a target battery percentage by 07:00.
 - Heat a room to a target temperature before people wake up.
 - Heat a water heater before a period when hot water matters.
+- Deliver 6 kWh overnight to a water heater on a relay, when it has no temperature reading of its own.
 
 If you only want the whole home to spend more energy during cheap hours, use [Daily Energy Budget](/daily-budget) instead. If you want a fixed number of cheap hours without a target, use [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 
@@ -27,11 +28,12 @@ Smart tasks are created from Homey Flow action cards or from the **New smart tas
 | --- | --- |
 | **Add charging task** | EV chargers with a battery target and ready-by time |
 | **Add heating task** | Temperature devices with a target temperature and ready-by time |
+| **Add energy task** | On/off devices with a live power reading, with an amount of energy (kWh) and ready-by time |
 | **Clear smart task** | Removes the active task for the selected device |
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers, previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget blocks creation for that ready-by time instead of creating a task that already cannot meet its target. See [Dashboard Widgets](/widgets) for the full widget set.
+The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget blocks creation for that ready-by time instead of creating a task that already cannot meet its target. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 
@@ -147,6 +149,18 @@ For many homes, this is the useful combination:
 2. Daily budget shifts whole-home usage toward cheaper hours.
 3. Smart tasks reserve attention for specific devices that must be ready.
 
+## Energy tasks
+
+An energy task asks PELS to deliver an amount of energy to a device before the ready-by time, for example `6 kWh` by `06:00`. It is for plain on/off devices that have neither a temperature reading nor a battery level, like a water heater switched by a relay: there is no temperature to heat *to*, but there is an amount of energy that heats the tank.
+
+Progress is the energy the device takes after the task starts, counted from its power readings. PELS then plans exactly like any other Smart task: it spreads the remaining energy over the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, and switches the device off once the energy has been delivered.
+
+Which devices can take one: on/off devices only, so not EV chargers, thermostats or other devices with a target temperature, and not stepped loads. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
+
+A task starts when it is created, so the window runs from the moment the Flow fires until the ready-by time. To heat a water heater every night between 22:00 and 06:00, run **Add energy task** from a Flow that fires at 22:00 with ready-by `06:00`. Running the card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
+
+A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot, and the task can then show **Cannot finish** and end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". Until the ready-by time, a task in that state keeps its scheduled hours, so other Smart tasks that want the same hours still plan around it.
+
 ## Status and History
 
 The Smart tasks view shows current tasks and past tasks. Flow cards can also react when the saved status changes.
@@ -159,7 +173,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled hour is still in the future. |
 | **At risk** | PELS has a plan, but there is limited time or room left. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
-| **Satisfied** | The observed target is already met. If a later reading drops below the target before the ready-by time, PELS returns to tracking it. |
+| **Satisfied** | The observed target is already met. For a heating or charging task, if a later reading drops below the target before the ready-by time, PELS returns to tracking it; delivered energy only ever goes up. |
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
@@ -221,6 +235,17 @@ Recommended charger setup:
 - **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still use an unbooked hour when it needs it; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
 - Current control configured as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
 - Battery reporting Flow configured when your car or charger app can provide it
+
+### Heat a water heater on a relay overnight
+
+Create a scheduled Flow:
+
+| Flow part | Card |
+| --- | --- |
+| **When** | Time is 22:00 |
+| **Then** | PELS: **Add energy task** |
+
+Set the energy and ready-by time, for example `6 kWh` by `06:00`. PELS runs the relay in the cheapest hours before 06:00 until the heater has taken 6 kWh. As with a charger, keep **Power-limit control** off for the relay so PELS does not run it on available power between tasks; while a task is active, the task decides when it runs either way. See [Power-Limit Control and Tasks](#power-limit-control-and-tasks).
 
 ### Heat before a known time
 

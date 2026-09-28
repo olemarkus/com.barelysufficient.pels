@@ -10,17 +10,16 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
-  DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
-  DeferredObjectivePlanHistoryProgressSample,
+  ResolvedDeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
-import { toResolvedLegacyPlanHistoryEntry } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
@@ -188,11 +187,9 @@ const pickEnergyExpectedKWh = (
 // Now `captureRevisionSnapshot` records each revision's own figure and both
 // surfaces resolve it from the entry — agreement by construction.
 export const buildFinalizedAttributionEvent = (
-  entry: DeferredObjectivePlanHistoryEntry,
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
 ): Record<string, unknown> => {
-  const attribution = resolveDeferredPlanHistoryMissAttribution(
-    toResolvedLegacyPlanHistoryEntry(entry),
-  );
+  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
   return {
     event: 'deferred_objective_history_finalized',
     deviceId: entry.deviceId,
@@ -238,8 +235,8 @@ export const captureRevisionSnapshot = (
   };
 };
 
-// Diagnostic reason codes that mean the `currentTemperatureC` /
-// `currentPercent` values are present but **not trustworthy** — sensor stale,
+// Diagnostic reason codes that mean the `currentValue` reading is present but
+// **not trustworthy** — sensor stale,
 // session invalid, missing device, missing temperature, or invalid deadline.
 // Writing these into `progressSamples` would pollute the history chart with
 // untrusted telemetry, so the recorder gates writes on this set the same way
@@ -257,34 +254,25 @@ export const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveD
   'objective_progress_stale',
 ]);
 
-// True iff the diagnostic carries fresh, trustworthy progress for its kind.
-// Mirrors the gating `planHistory.ts` already applies before writing
-// `finalProgressC` / `finalProgressPercent`, so progress samples never
-// disagree with the headline value the UI shows.
-export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode)) return false;
-  if (diag.objectiveKind === 'temperature') {
-    return diag.currentTemperatureC !== null;
-  }
-  return diag.currentPercent !== null && diag.targetPercent !== null;
-};
+// True iff the diagnostic carries a fresh, trustworthy reading. Mirrors the
+// gating `planHistory.ts` already applies before writing `finalProgressValue`,
+// so progress samples never disagree with the headline value the UI shows.
+// The reading is in the task's own unit, so the question is the same for
+// every kind.
+export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => (
+  !PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode) && diag.currentValue !== null
+);
 
 // Build a progress sample from the diagnostic. Returns null when the
 // diagnostic carries no trustworthy progress (stale sensor, invalid session,
 // missing device/temperature, invalid deadline) so the ring never accumulates
-// untrusted telemetry. Also returns null when neither kind-specific value is
-// present, as a defense-in-depth — `hasTrustworthyProgress` should already
-// rule this out.
+// untrusted telemetry.
 const buildProgressSample = (
   diag: DeferredObjectiveDiagnostic,
   atMs: number,
-): DeferredObjectivePlanHistoryProgressSample | null => {
-  if (!hasTrustworthyProgress(diag)) return null;
-  const valueC = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null;
-  const valuePercent = diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null;
-  if (valueC === null && valuePercent === null) return null;
-  return { atMs, valueC, valuePercent };
-};
+): ResolvedDeferredObjectivePlanHistoryProgressSample | null => (
+  hasTrustworthyProgress(diag) ? { atMs, value: diag.currentValue } : null
+);
 
 // Seed the in-memory progress ring with the first observation so a run that
 // finalizes on the same cycle it started (immediate satisfied diagnostic)
@@ -293,8 +281,8 @@ const buildProgressSample = (
 export const seedProgressSamples = (
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
-): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
-  const map = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
+  const map = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
   const sample = buildProgressSample(diag, nowMs);
   if (sample !== null) map.set(progressSampleBucketMs(nowMs), sample);
   return map;
@@ -313,14 +301,14 @@ export const seedProgressSamples = (
 // unambiguous), and terminates because the grid eventually exceeds the run
 // span, collapsing to a single bucket.
 export const rebucketProgressSamples = (
-  samples: ReadonlyMap<number, DeferredObjectivePlanHistoryProgressSample>,
+  samples: ReadonlyMap<number, ResolvedDeferredObjectivePlanHistoryProgressSample>,
   cap: number,
-): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
+): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
   if (samples.size <= cap) return new Map(samples);
   let gridMs = PROGRESS_SAMPLE_INTERVAL_MS;
   for (;;) {
     gridMs *= 2;
-    const grouped = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+    const grouped = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
     for (const sample of samples.values()) {
       const key = Math.floor(sample.atMs / gridMs) * gridMs;
       const existing = grouped.get(key);
@@ -338,10 +326,10 @@ export const rebucketProgressSamples = (
 // onto a coarser grid so memory and the persisted entry stay bounded without
 // losing the run's start.
 export const recordProgressSample = (
-  current: Map<number, DeferredObjectivePlanHistoryProgressSample>,
+  current: Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
-): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
+): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
   const sample = buildProgressSample(diag, nowMs);
   if (sample === null) return current;
   const next = new Map(current);
@@ -355,10 +343,10 @@ export const recordProgressSample = (
 // `recordProgressSample`'s re-bucket eviction; this is a backstop that applies
 // the same coarser-grid collapse (never drop-oldest) if the ring somehow
 // exceeds it, so the persisted entry stays bounded and full-run coverage —
-// including the final `finalProgressC` headline reading — survives.
+// including the final `finalProgressValue` headline reading — survives.
 export const drainProgressSamples = (
-  samples: Map<number, DeferredObjectivePlanHistoryProgressSample>,
-): DeferredObjectivePlanHistoryProgressSample[] => {
+  samples: Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>,
+): ResolvedDeferredObjectivePlanHistoryProgressSample[] => {
   if (samples.size === 0) return [];
   const bounded = samples.size <= PROGRESS_SAMPLES_PER_ENTRY_CAP
     ? samples

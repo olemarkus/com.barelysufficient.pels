@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
 // Type-only file: runtime code must not value-import contracts per the
 // packaging boundary. The schema version literal + top-level shape/version
 // guard live in browser-safe shared-domain
@@ -30,9 +31,10 @@ export type DeferredObjectiveActivePlanRevisionReason =
   | 'flow_permission_changed';
 
 // Identifies whether the kWh-per-unit value used for the revision came from a
-// learned profile or the bootstrap fallback. Optional on the revision because
-// the recorder omits it when no rate source was consulted — see the field.
-export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap';
+// learned profile, the bootstrap fallback, or is exact (an energy task, whose
+// unit is kWh). Optional on the revision because the recorder omits it when no
+// rate source was consulted — see the field.
+export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact';
 
 // Producer-resolved presentation-speed mode for the hero meta line. The
 // recorder collapses `kwhPerUnitSource` into this flat enum so the settings UI
@@ -69,21 +71,6 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'estimate'
   | 'time_capacity'
   | 'none';
-
-// Hourly snapshot of objective progress while a run is in flight. Structurally
-// identical to `DeferredObjectivePlanHistoryProgressSample` in
-// `deferredObjectivePlanHistory.ts`, but duplicated here on purpose:
-// `deferredObjectivePlanHistory.ts` already imports from THIS file
-// (`DeferredObjectiveActivePlanHourV1` / `…StatusV1`), so importing the history
-// sample type back here would close a circular dependency (rejected by the
-// `no-circular` dep-cruiser rule). The shapes are byte-identical so values flow
-// between the two structurally. Added 2026-06-02 for the smart-tasks widget
-// trajectory chart.
-export type DeferredObjectiveActivePlanProgressSampleV1 = {
-  atMs: number;
-  valueC: number | null;
-  valuePercent: number | null;
-};
 
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
@@ -345,9 +332,11 @@ export type DeferredObjectiveActivePlanCarChargeLimitV1 = {
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
   deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  objectiveKind: DeferredObjectiveSettingsKind;
+  // The target in the task's own unit (°C, % or kWh; `objectiveKind` names
+  // it). A plan stored before this field carried the target in its kind's own
+  // column (`targetTemperatureC` or `targetPercent`); the loader reads that once.
+  targetValue: number;
   deadlineAtMs: number;
   startedAtMs: number;
   pending: boolean;
@@ -406,22 +395,6 @@ export type DeferredObjectiveActivePlanV1 = {
   commitment?: DeferredObjectiveActivePlanCommitmentV1;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
-  // ── UI-derived live-progress fields (NEVER persisted) ──────────────────────
-  // Populated only by the active-plans UI payload assembler
-  // (`setup/deferredObjectiveActivePlansUiAssembler.ts`, called from
-  // `app.getDeferredObjectiveActivePlansUiPayload`), which stitches the live
-  // in-progress readings from the plan-history recorder onto the snapshot so the
-  // smart-tasks widget can draw a planned-vs-actual trajectory while the run is
-  // open. The active-plan store never writes these (the samples are persisted by
-  // the history recorder, not duplicated here), so persistence round-trips and
-  // the active-plan validator are unaffected — they are absent on every loaded
-  // plan and present only on the assembled UI payload. Added 2026-06-02.
-  //
-  // `startProgress*` is the first observed reading of the run (the trajectory
-  // anchor); `progressSamples` is the hourly observed series so far.
-  startProgressC?: number | null;
-  startProgressPercent?: number | null;
-  progressSamples?: DeferredObjectiveActivePlanProgressSampleV1[];
   // Bounded, most-recent-first log of past revisions, capped at
   // `MAX_HISTORY_REVISIONS` entries in the recorder. The first element is the
   // revision that landed *before* `latest` (so the head is always "previous
@@ -438,34 +411,57 @@ export type DeferredObjectiveActivePlansV1 = {
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>;
 };
 
-// Progress sample with the kind-split (°C/%) pair already resolved to a single
-// unit-agnostic number — the shape UI consumers receive.
+// A reading of the task's progress while its run is in flight, in the task's
+// own unit. Structurally identical to
+// `ResolvedDeferredObjectivePlanHistoryProgressSample` in
+// `deferredObjectivePlanHistory.ts`, but duplicated here on purpose:
+// `deferredObjectivePlanHistory.ts` already imports from THIS file
+// (`DeferredObjectiveActivePlanHourV1` / `…StatusV1`), so importing the history
+// sample type back here would close a circular dependency (rejected by the
+// `no-circular` dep-cruiser rule). The shapes are identical so values flow
+// between the two structurally.
 export type ResolvedDeferredObjectiveActivePlanProgressSampleV1 = {
   atMs: number;
   value: number | null;
 };
 
-// Consumer-facing view of an active plan. The kind-split value columns
-// (`targetTemperatureC`/`targetPercent`, the UI-derived `startProgressC`/
-// `startProgressPercent`, and sample `valueC`/`valuePercent`) are RESOLVED to
-// single unit-agnostic numbers (`targetValue` / `startProgressValue`, sample
-// `value`) by `toResolvedActivePlan` at the producer boundary (the UI payload
-// assembler). The raw columns are absent from this type, so reading one is a
-// compile error — consumers branch on `objectiveKind` only for the display unit.
-// The persisted `DeferredObjectiveActivePlanV1` keeps the raw columns.
-export type ResolvedDeferredObjectiveActivePlanV1 = Omit<
+// The live in-progress readings of a run, from the plan-history recorder's
+// in-flight record: `startProgressValue` is the first trustworthy reading of the
+// run (the trajectory anchor), `progressSamples` the 15-minute observed series
+// so far. Stitched onto the UI view of the active plan so the smart-tasks widget
+// can draw planned-vs-actual progress while the run is open; the active-plan
+// store never holds them.
+export type DeferredObjectiveActivePlanTrajectory = {
+  startProgressValue: number | null;
+  progressSamples: ResolvedDeferredObjectiveActivePlanProgressSampleV1[];
+};
+
+type ResolvedDeferredObjectiveActivePlanBase = Omit<
   DeferredObjectiveActivePlanV1,
-  'targetTemperatureC' | 'targetPercent' | 'progressDirection'
-  | 'startProgressC' | 'startProgressPercent'
-  | 'progressSamples'
+  'progressDirection' | 'objectiveKind'
 > & {
   // Resolved from the latest revision at the producer boundary. Legacy plans
   // without a direction retain their historical increasing interpretation.
   progressDirection: 'increasing' | 'decreasing' | 'unknown';
-  targetValue: number | null;
+  // The run's live trajectory (`DeferredObjectiveActivePlanTrajectory`), absent
+  // on a plan with no open run to read it from.
   startProgressValue?: number | null;
   progressSamples?: ResolvedDeferredObjectiveActivePlanProgressSampleV1[];
 };
+
+// Consumer-facing view of an active plan, built by `toResolvedActivePlan` at the
+// producer boundary (the UI payload assembler). Every value is in the task's own
+// unit. A task's reading right now: an energy task's is the energy delivered
+// since it started (`deliveredKWh`, from the runtime's delivery count, the same
+// count the runtime plans from), because the device has no level this task is
+// measured by; every other kind reads a level off the device, which the page
+// has on the device itself. Only on this UI view: the stored plan never has it.
+export type ResolvedDeferredObjectiveActivePlanV1 =
+  | (ResolvedDeferredObjectiveActivePlanBase & { objectiveKind: 'energy'; deliveredKWh: number })
+  | (ResolvedDeferredObjectiveActivePlanBase & { objectiveKind: 'temperature' | 'ev_soc' });
+
+/** Energy fed to `deviceId` under its task ending at `deadlineAtMs`, in kWh. */
+export type DeliveredEnergyReader = (deviceId: string, deadlineAtMs: number) => number;
 
 export type ResolvedDeferredObjectiveActivePlansV1 = {
   version: 1;

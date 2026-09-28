@@ -3,21 +3,19 @@
 // single planned staircase at the run's start progress and overlays the
 // observed-so-far line — no revised line, no "reached" marker.
 import { resolveActivePlanChartData } from '../../packages/shared-domain/src/deferredActivePlanChartData';
-import { toResolvedActivePlan } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
-import type { DeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import { type ActivePlanFixture, resolveActivePlanFixture } from '../helpers/activePlanFixtures';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 4, 26, 10, 0, 0);
 const DEADLINE_MS = START_MS + 4 * HOUR_MS;
 
 const buildPlan = (
-  overrides: Partial<DeferredObjectiveActivePlanV1> = {},
-): DeferredObjectiveActivePlanV1 => ({
+  overrides: Partial<ActivePlanFixture> = {},
+): ActivePlanFixture => ({
   deviceId: 'dev-1',
   deviceName: 'Hot water',
   objectiveKind: 'temperature',
-  targetTemperatureC: 55,
-  targetPercent: null,
+  targetValue: 55,
   deadlineAtMs: DEADLINE_MS,
   startedAtMs: START_MS,
   pending: false,
@@ -37,24 +35,20 @@ const buildPlan = (
     planStatus: 'on_track',
     rateMean: 0.5,
   },
-  startProgressC: 50,
-  startProgressPercent: null,
+  startProgressValue: 50,
   progressSamples: [
-    { atMs: START_MS, valueC: 50, valuePercent: null },
-    { atMs: START_MS + HOUR_MS, valueC: 52, valuePercent: null },
+    { atMs: START_MS, value: 50 },
+    { atMs: START_MS + HOUR_MS, value: 52 },
   ],
   ...overrides,
 });
 
-// The producer consumes the RESOLVED view (kind-split columns collapsed to a
-// single `targetValue` / `startProgressValue` / sample `value`). The fixtures
-// above stay in raw-column form so each test can express the temperature/percent
-// pair under test; this wrapper resolves them at the producer boundary exactly
-// as the real UI payload assembler does.
+// The producer consumes the RESOLVED view; this wrapper resolves the fixture at
+// the producer boundary exactly as the real UI payload assembler does.
 const resolveChart = (
-  plan: DeferredObjectiveActivePlanV1,
+  plan: ActivePlanFixture,
   options?: { nowMs?: number; currentValue?: number | null },
-) => resolveActivePlanChartData(toResolvedActivePlan(plan), options);
+) => resolveActivePlanChartData(resolveActivePlanFixture(plan), options);
 
 describe('resolveActivePlanChartData', () => {
   test('anchors the planned staircase at the observed value where booked heating starts, capped at target', () => {
@@ -83,8 +77,8 @@ describe('resolveActivePlanChartData', () => {
     // 5 booked hours × 1 kWh ÷ 0.5 kWh/°C = +10 °C from start 50 → would reach
     // 60, but the target is 55, so the drawn plan must flatten at 55.
     const data = resolveChart(buildPlan({
-      targetTemperatureC: 55,
-      startProgressC: 50,
+      targetValue: 55,
+      startProgressValue: 50,
       latest: {
         ...buildPlan().latest!,
         rateMean: 0.5,
@@ -112,12 +106,12 @@ describe('resolveActivePlanChartData', () => {
 
   test('anchors the measured line at the run start when the first sample lands later', () => {
     const data = resolveChart(buildPlan({
-      startProgressC: 50,
+      startProgressValue: 50,
       // First sample an hour into the run — without anchoring the line would
       // begin mid-chart.
       progressSamples: [
-        { atMs: START_MS + HOUR_MS, valueC: 52, valuePercent: null },
-        { atMs: START_MS + 2 * HOUR_MS, valueC: 54, valuePercent: null },
+        { atMs: START_MS + HOUR_MS, value: 52 },
+        { atMs: START_MS + 2 * HOUR_MS, value: 54 },
       ],
     }));
     expect(data.observed[0]).toEqual({ atMs: START_MS, value: 50 });
@@ -126,8 +120,8 @@ describe('resolveActivePlanChartData', () => {
   test('draws a cooling plan down to target from the observed value when booked work starts', () => {
     const coolingStart = START_MS + HOUR_MS;
     const data = resolveChart(buildPlan({
-      targetTemperatureC: 40,
-      startProgressC: 65,
+      targetValue: 40,
+      startProgressValue: 65,
       latest: {
         ...buildPlan().latest!,
         progressDirection: 'decreasing',
@@ -140,9 +134,9 @@ describe('resolveActivePlanChartData', () => {
         rateMean: 0.5,
       },
       progressSamples: [
-        { atMs: START_MS, valueC: 65, valuePercent: null },
-        { atMs: coolingStart, valueC: 55, valuePercent: null },
-        { atMs: coolingStart + HOUR_MS, valueC: 45, valuePercent: null },
+        { atMs: START_MS, value: 65 },
+        { atMs: coolingStart, value: 55 },
+        { atMs: coolingStart + HOUR_MS, value: 45 },
       ],
     }));
     expect(data.plannedOriginal[0]).toEqual({ atMs: coolingStart, value: 55 });
@@ -169,10 +163,9 @@ describe('resolveActivePlanChartData', () => {
     // restart), but the plan + rate are present and the device reports a live
     // value. The planned staircase must still render (anchored at the live value).
     const data = resolveChart(buildPlan({
-      startProgressC: null,
-      startProgressPercent: null,
+      startProgressValue: null,
       progressSamples: undefined,
-      targetTemperatureC: 65,
+      targetValue: 65,
       latest: { ...buildPlan().latest!, rateMean: 0.5 },
     }), { nowMs: START_MS + HOUR_MS, currentValue: 30 });
     expect(data.mode).toBe('trajectory');
@@ -192,14 +185,12 @@ describe('resolveActivePlanChartData', () => {
   test('reads EV SoC progress + target in percent', () => {
     const data = resolveChart(buildPlan({
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
-      startProgressC: null,
-      startProgressPercent: 45,
+      targetValue: 80,
+      startProgressValue: 45,
       latest: { ...buildPlan().latest!, rateMean: 0.5 },
       progressSamples: [
-        { atMs: START_MS, valueC: null, valuePercent: 45 },
-        { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: 52 },
+        { atMs: START_MS, value: 45 },
+        { atMs: START_MS + HOUR_MS, value: 52 },
       ],
     }));
     expect(data.unit).toBe('%');
@@ -236,7 +227,7 @@ describe('resolveActivePlanChartData', () => {
     const data = resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
-      progressSamples: [{ atMs: START_MS, valueC: 50, valuePercent: null }],
+      progressSamples: [{ atMs: START_MS, value: 50 }],
     }));
     expect(data.mode).toBe('legacy_kwh');
     expect(data.plannedOriginal).toEqual([]);
@@ -286,7 +277,7 @@ describe('resolveActivePlanChartData', () => {
     const data = resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
-      progressSamples: [{ atMs: START_MS, valueC: 50, valuePercent: null }],
+      progressSamples: [{ atMs: START_MS, value: 50 }],
     }));
     expect(data.mode).toBe('legacy_kwh');
     expect(data.runBands).toEqual([]);
@@ -295,10 +286,10 @@ describe('resolveActivePlanChartData', () => {
   test('drops non-finite / valueless samples', () => {
     const data = resolveChart(buildPlan({
       progressSamples: [
-        { atMs: START_MS, valueC: 50, valuePercent: null },
-        { atMs: Number.NaN, valueC: 51, valuePercent: null },
-        { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: null }, // no value in either column
-        { atMs: START_MS + 2 * HOUR_MS, valueC: 53, valuePercent: null },
+        { atMs: START_MS, value: 50 },
+        { atMs: Number.NaN, value: 51 },
+        { atMs: START_MS + HOUR_MS, value: null }, // no value in either column
+        { atMs: START_MS + 2 * HOUR_MS, value: 53 },
       ],
     }));
     expect(data.observed).toEqual([

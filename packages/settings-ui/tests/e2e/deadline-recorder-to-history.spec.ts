@@ -9,6 +9,7 @@ import type {
   DeferredObjectivePlanHistoryV5,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectiveSettingsKind } from '../../../contracts/src/deferredObjectiveSettings';
 
 const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -20,7 +21,7 @@ type DeferredObjectiveDiagnosticLike = {
   deviceId: string;
   deviceName?: string;
   objectiveId: string;
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   enforcement: 'soft' | 'hard';
   // Mirrors `BaseDeferredObjectiveDiagnostic.trajectory`. The recorder reads this
   // through `resolvedTrajectoryStatus`, so a fixture carrying the retired flat
@@ -35,6 +36,10 @@ type DeferredObjectiveDiagnosticLike = {
   currentPercent: number | null;
   targetTemperatureC: number | null;
   currentTemperatureC: number | null;
+  // The reading and target in the task's own unit, which the recorder reads.
+  // The producer sets them for every diagnostic, equal to the kind's columns.
+  currentValue: number | null;
+  targetValue: number;
   progressDirection: 'increasing' | 'decreasing' | 'unknown';
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
@@ -130,6 +135,8 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   currentPercent: null,
   targetTemperatureC: overrides.targetTemperatureC,
   currentTemperatureC: overrides.currentTemperatureC,
+  currentValue: overrides.currentTemperatureC,
+  targetValue: overrides.targetTemperatureC,
   progressDirection: 'increasing',
   deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '06:00',

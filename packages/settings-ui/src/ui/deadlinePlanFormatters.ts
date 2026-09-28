@@ -1,4 +1,5 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { formatProgressValueForUnit } from '../../../shared-domain/src/deadlineLabels.ts';
 
 export const formatHourLabel = (startsAtMs: number): string => (
   new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -20,11 +21,17 @@ export const formatTemperature = (value: number): string => (
   `${value.toFixed(1)} °C`
 );
 
-export const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
-  objective.kind === 'temperature'
-    ? formatTemperature(objective.targetTemperatureC)
-    : `${objective.targetPercent}%`
-);
+export const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => {
+  switch (objective.kind) {
+    case 'temperature': return formatTemperature(objective.targetTemperatureC);
+    case 'ev_soc': return `${objective.targetPercent}%`;
+    case 'energy': return formatProgressValueForUnit(objective.targetEnergyKWh, 'kWh');
+    default: {
+      const exhaustive: never = objective;
+      return exhaustive;
+    }
+  }
+};
 
 // Browser-side locale-aware short timestamp used by the stale-fallback branch
 // of `formatLastSampleValue`. Lives in this shared formatter module so the

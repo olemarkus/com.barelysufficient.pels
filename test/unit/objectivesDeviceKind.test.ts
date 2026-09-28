@@ -6,28 +6,29 @@ import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/o
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 
-// Regression coverage for the de-kind widening: objectives now identify EV
-// chargers via the canonical `isEvDevice` (deviceClass OR the
-// `evcharger_charging` capability), not the narrow `deviceClass === 'evcharger'`.
-// These fixtures are EV BY CAPABILITY ONLY — no `deviceClass` — so the old check
-// would have skipped the EV branch (returning [] / null). Each assertion fails
-// if the EV identity regresses to the class-only form.
+// Objectives identify EV chargers through the canonical `isEvDevice`, never a
+// class literal of their own. The EV fixture carries the charger class (the
+// planner device keeps no capability list for the capability branch of
+// `isEvDevice` to read); what these cases pin is that the two branches give
+// different answers: the EV branch plans at the calibrated `expectedPowerKw`
+// (7 kW), the plain on/off fallback at the live draw (3 kW).
 const NOW = 1_700_000_000_000;
 
 const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveDeviceInput => ({
   id: 'ev-cap',
   name: 'EV (capability only)',
   deviceClass: 'evcharger',
-  currentDrawKw: 0,
+  currentDrawKw: 3,
   expectedPowerKw: 7,
   objectiveSessionInactive: false,
   thermalDirection: 'heating',
   ...extra,
 });
 
-// Non-EV, non-temperature device with the same power: no synthetic charge step.
+// Non-EV, non-temperature device drawing 3 kW (a relay an energy task runs):
+// one synthetic rung at its live draw, not at the expected power.
 const plainOnOff: ObjectiveDeviceInput = {
-  id: 'x', name: 'Plain', currentDrawKw: 0, expectedPowerKw: 7,
+  id: 'x', name: 'Plain', currentDrawKw: 3, expectedPowerKw: 7,
   objectiveSessionInactive: false, thermalDirection: 'heating',
 };
 
@@ -38,12 +39,12 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
       usefulPowerKw: 7,
       admissionPowerKw: 7,
     }]);
-    expect(resolveObjectiveSteps(plainOnOff)).toEqual([]);
+    expect(resolveObjectiveSteps(plainOnOff)).toEqual([{ id: 'charge', usefulPowerKw: 3, admissionPowerKw: 3 }]);
   });
 
   it('resolvePlanningSpeedKw returns the EV rate for a capability-only EV', () => {
     expect(resolvePlanningSpeedKw(capabilityOnlyEv())).toBe(7);
-    expect(resolvePlanningSpeedKw(plainOnOff)).toBeNull();
+    expect(resolvePlanningSpeedKw(plainOnOff)).toBe(3);
   });
 
   it('buildObjectiveProfileSample emits an SoC sample for a capability-only EV', () => {

@@ -1,5 +1,8 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type {
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveUnit,
+} from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
@@ -306,7 +309,7 @@ export type BuildHeroInput = {
   // collapses to `now …` rather than inventing a starting value.
   startProgress: number | null;
   targetValue: number | null;
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
 };
 
 // Resolves the "Delivered X of Y kWh · …" subline. Returns null when there's

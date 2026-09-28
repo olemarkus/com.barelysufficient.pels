@@ -9,6 +9,7 @@ import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts
 import { resolveObjectiveDeviceInputs, type ObjectiveDeviceSource } from '../types';
 import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import type { EnergyTaskDeliveryTracker } from './energyDelivery';
 import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
@@ -134,6 +135,10 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   // must not shrink the runnable tasks' shares). Answering `null` everywhere
   // changes nothing.
   resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
+  // Counts the energy fed under each energy task. This clock is its only
+  // booking clock: the tick books the draw before it builds the diagnostics, so
+  // an energy task's progress is current as of this tick.
+  energyDelivery: EnergyTaskDeliveryTracker;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -161,6 +166,7 @@ export class DeferredObjectiveLifecycleEmitter {
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
     const devices = resolveObjectiveDeviceInputs(this.deps.getDevices(), this.deps.getThermalDirection);
+    this.deps.energyDelivery.observe(devices, settings, nowMs);
     // Resolve the user-facing status to `satisfied` for parked/stalled devices
     // so the status chip, notifications, Flows (active-plan recorder) and the
     // postmortem all agree. The decoration/actuation path builds its own
@@ -180,6 +186,7 @@ export class DeferredObjectiveLifecycleEmitter {
       getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
       resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       getStallClassification: this.deps.getStallClassification,
+      getDeliveredEnergyKWh: this.deps.energyDelivery.getDeliveredKWh,
     }), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.

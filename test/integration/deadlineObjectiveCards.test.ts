@@ -145,8 +145,7 @@ const buildActivePlan = (overrides: {
     deviceId,
     deviceName: overrides.deviceName ?? 'Boiler',
     objectiveKind: 'temperature',
-    targetTemperatureC: 55,
-    targetPercent: null,
+    targetValue: 55,
     deadlineAtMs: overrides.deadlineAtMs ?? HH_MM_TO_UTC_MS(7, 0),
     startedAtMs: MOCK_NOW_MS,
     pending,
@@ -496,6 +495,65 @@ describe('deadline objective flow cards', () => {
       target_percent: 80,
       ready_by: '07:00',
     })).rejects.toThrow(/not an EV charger/);
+  });
+
+  describe('set_energy_deadline', () => {
+    // A relay-switched water heater: an on/off axis, no temperature, no battery,
+    // and a live power reading, which is all an energy task needs.
+    const relay = {
+      ...buildDevice({ id: 'relay-1', name: 'Water heater relay', deviceType: 'onoff', binaryControllable: true }),
+      measuredPowerKw: 0,
+      measuredPowerIsDirectMeasurement: true,
+    };
+    const meterOnlyRelay = { ...relay, id: 'relay-2', measuredPowerIsDirectMeasurement: false };
+    const thermostat = {
+      ...buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature', binaryControllable: true }),
+      measuredPowerKw: 0,
+      measuredPowerIsDirectMeasurement: true,
+    };
+    const charger = { ...relay, id: 'ev-1', deviceClass: 'evcharger' };
+
+    it('writes an energy objective for an on/off device with a live power reading', async () => {
+      const { deps, mock } = buildDeps({ snapshot: [relay] });
+      registerDeadlineObjectiveCards(deps);
+      const card = mock.actions.get('set_energy_deadline')!;
+      await card.run!({ device: { id: 'relay-1' }, target_kwh: 6, ready_by: '06:00' });
+      expect(readObjectivesMap(mock.settings)['relay-1']).toEqual({
+        enabled: true,
+        kind: 'energy',
+        enforcement: 'soft',
+        targetEnergyKWh: 6,
+        deadlineAtMs: HH_MM_TO_UTC_MS(6, 0),
+      });
+    });
+
+    it('offers only pure on/off devices with a live power reading', async () => {
+      const { deps, mock } = buildDeps({ snapshot: [relay, meterOnlyRelay, thermostat, charger] });
+      registerDeadlineObjectiveCards(deps);
+      const options = await mock.actions.get('set_energy_deadline')!.autocomplete!('');
+      expect(options.map((option) => option.id)).toEqual(['relay-1']);
+    });
+
+    it.each([
+      ['a thermostat', thermostat],
+      ['an EV charger', charger],
+      ['a relay reporting only a cumulative meter', meterOnlyRelay],
+    ])('refuses %s', async (_label, device) => {
+      const { deps, mock } = buildDeps({ snapshot: [device] });
+      registerDeadlineObjectiveCards(deps);
+      await expect(mock.actions.get('set_energy_deadline')!.run!({
+        device: device.id, target_kwh: 6, ready_by: '06:00',
+      })).rejects.toThrow(/not an on\/off device with a live power reading/);
+      expect(readObjective(mock.settings, device.id)).toBeUndefined();
+    });
+
+    it("refuses an energy amount outside the card's range", async () => {
+      const { deps, mock } = buildDeps({ snapshot: [relay] });
+      registerDeadlineObjectiveCards(deps);
+      await expect(mock.actions.get('set_energy_deadline')!.run!({
+        device: 'relay-1', target_kwh: 500, ready_by: '06:00',
+      })).rejects.toThrow(/Energy \(kWh\) must be between/);
+    });
   });
 
   it('clear_deadline forgets the bus snapshot after the clear persists', async () => {

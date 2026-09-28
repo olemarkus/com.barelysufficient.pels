@@ -32,6 +32,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeliveredEnergyReader } from './energyDelivery';
 
 export type PreviewDeferredObjectivePlanParams = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
@@ -65,6 +66,10 @@ export type PreviewDeferredObjectivePlanParams = {
   // nothing against the candidate here either — the same reservation ledger the
   // live allocation uses (`buildDeferredObjectiveDiagnostics`).
   getStallClassification: DeferredObjectiveStallClassificationReader;
+  // Energy fed under each live energy task. A candidate that re-arms the task
+  // already running (same device, same deadline) keeps what it has fed; any
+  // other candidate starts from nothing.
+  getDeliveredEnergyKWh: DeliveredEnergyReader;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
   // attached to the (total) `costEstimate`, so a UI never renders a total as a
@@ -114,6 +119,7 @@ export const previewDeferredObjectivePlan = (
     getPrioritiesForDevices: params.getPrioritiesForDevices,
     resolveDeviceExclusion: params.resolveDeviceExclusion,
     getStallClassification: params.getStallClassification,
+    getDeliveredEnergyKWh: params.getDeliveredEnergyKWh,
     forceFreshDeviceId: params.deviceId,
   }).find((diagnostic) => diagnostic.deviceId === params.deviceId);
   if (!diag) throw new Error(`Preview candidate ${params.deviceId} missing from its own roster`);
@@ -201,6 +207,16 @@ const withEnabled = (
       kind: 'ev_soc',
       enforcement: candidate.enforcement,
       targetPercent: candidate.targetPercent,
+      deadlineAtMs: candidate.deadlineAtMs,
+      ...(candidate.rescue ? { rescue: candidate.rescue } : {}),
+    };
+  }
+  if (candidate.kind === 'energy') {
+    return {
+      enabled: true,
+      kind: 'energy',
+      enforcement: 'soft',
+      targetEnergyKWh: candidate.targetEnergyKWh,
       deadlineAtMs: candidate.deadlineAtMs,
       ...(candidate.rescue ? { rescue: candidate.rescue } : {}),
     };

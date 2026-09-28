@@ -1,5 +1,12 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import {
+  createInertEnergyDelivery,
+  createMemoryEnergyDeliveryStore,
+  everyReadingLive,
+  noDeviceExclusion,
+  noStallEvidence,
+} from '../helpers/deferredObjectiveWiringFixtures';
+import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -76,6 +83,7 @@ const buildDeps = (
   getPrioritiesForDevices: createFixturePriorityQuery(),
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  energyDelivery: createInertEnergyDelivery(),
   observeDeferredObjectivePlanHistory: () => undefined,
   observeDeferredObjectiveActivePlans: () => undefined,
   ...overrides,
@@ -114,6 +122,41 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     expect(observedActivePlans).toBe(activePlans);
   });
 
+  it("counts an energy task's delivered energy before building the diagnostics that read it", () => {
+    const deadlineAtMs = NOW_MS + 8 * HOUR_MS;
+    const energyDelivery = new EnergyTaskDeliveryTracker(createMemoryEnergyDeliveryStore(), everyReadingLive);
+    const observeDeferredObjectivePlanHistory = vi.fn();
+    // A relay drawing 2 kW: an on/off device with a live power reading.
+    const relay = {
+      id: 'relay',
+      name: 'Water heater relay',
+      thermalDirection: 'heating',
+      currentDrawKw: 2,
+      expectedPowerKw: 2,
+      objectiveSessionInactive: false,
+    } as ObjectiveDeviceInput;
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => ({
+        version: 1,
+        objectivesByDeviceId: {
+          relay: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs },
+        },
+      }),
+      getDevices: () => [relay],
+      energyDelivery,
+      observeDeferredObjectivePlanHistory,
+    }));
+
+    emitter.tick(NOW_MS);
+    emitter.tick(NOW_MS + HOUR_MS);
+
+    // The second tick books the hour at 2 kW, then builds the diagnostics: the
+    // task's progress is that hour's energy, not the count as of the tick before.
+    const [diagnostics] = observeDeferredObjectivePlanHistory.mock.calls[1]!;
+    expect(diagnostics[0]).toMatchObject({ deviceId: 'relay', objectiveKind: 'energy', targetValue: 6 });
+    expect(diagnostics[0].currentValue).toBeCloseTo(2);
+  });
+
   it('reports a task whose device is parked at its target as satisfied', () => {
     // The status chip, notifications and Flows read this lane's diagnostics, so
     // it is the one lane that resolves a stall to `satisfied` (the decoration
@@ -126,8 +169,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
           deadlineAtMs,
           startedAtMs: NOW_MS - HOUR_MS,
           pending: false,

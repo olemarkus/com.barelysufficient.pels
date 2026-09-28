@@ -130,7 +130,7 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
     currentValue: overrides.currentValue
       ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
     targetValue: overrides.targetValue
-      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent),
+      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? 0),
   };
 };
 
@@ -147,8 +147,7 @@ const buildSeed = (overrides: Partial<ActivePlanFlowCardSeed> = {}): ActivePlanF
   deviceId: 'dev',
   deviceName: 'Water Heater',
   objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 6 * HOUR_MS,
   enforcement: 'soft',
   ...overrides,
@@ -655,7 +654,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], HOUR_MS);
     const coolingPlan = recorder.getPlanForTests('dev');
 
-    recorder.markPending(buildSeed({ deadlineAtMs, targetTemperatureC: 22 }), 2 * HOUR_MS);
+    recorder.markPending(buildSeed({ deadlineAtMs, targetValue: 22 }), 2 * HOUR_MS);
 
     expect(recorder.getPlanForTests('dev')).toEqual(coolingPlan);
   });
@@ -1918,8 +1917,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: 6 * HOUR_MS,
           startedAtMs: HOUR_MS,
           pending: false,
@@ -3155,13 +3153,13 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // 2. User edits the target via the flow card. A committed plan is not
     // revised in place; the old active record is abandoned and replaced by a
     // fresh pending entry for the new objective.
-    recorder.markPending(buildSeed({ targetTemperatureC: 70 }), 2 * HOUR_MS);
+    recorder.markPending(buildSeed({ targetValue: 70 }), 2 * HOUR_MS);
 
     const pending = recorder.getPlanForTests('dev');
     expect(pending?.pending).toBe(true);
     expect(pending?.original).toBeNull();
     expect(pending?.latest).toBeNull();
-    expect(pending?.targetTemperatureC).toBe(70);
+    expect(pending?.targetValue).toBe(70);
     expect(pending?.startedAtMs).toBe(2 * HOUR_MS);
 
     // 3. The next plan cycle observes a diagnostic with the new target and
@@ -3225,8 +3223,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: 6 * HOUR_MS,
           startedAtMs: 0,
           pending: false,
@@ -3269,8 +3266,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: 6 * HOUR_MS,
           startedAtMs: 0,
           pending: false,
@@ -3438,8 +3434,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deviceId: 'dev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: 6 * HOUR_MS,
       startedAtMs: HOUR_MS,
       pending: false,
@@ -3461,6 +3456,31 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('rate_refined');
       expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('learned');
+    });
+
+    it('reads a plan stored before `targetValue` from its kind\'s own target column, once', () => {
+      const { targetValue: _targetValue, ...legacyEv } = basePlan();
+      const legacyHeater = {
+        ...legacyEv,
+        deviceId: 'heater',
+        objectiveKind: 'temperature',
+        targetTemperatureC: 65,
+        targetPercent: null,
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans({
+        version: 1,
+        plansByDeviceId: {
+          dev: { ...legacyEv, targetTemperatureC: null, targetPercent: 60 },
+          heater: legacyHeater,
+          // No readable target: nothing to plan toward, dropped.
+          broken: { ...legacyEv, deviceId: 'broken', targetTemperatureC: null, targetPercent: null },
+        },
+      });
+      expect(normalized.plansByDeviceId.dev?.targetValue).toBe(60);
+      expect(normalized.plansByDeviceId.heater?.targetValue).toBe(65);
+      expect(normalized.plansByDeviceId.heater).not.toHaveProperty('targetTemperatureC');
+      expect(normalized.plansByDeviceId.heater).not.toHaveProperty('targetPercent');
+      expect(normalized.plansByDeviceId.broken).toBeUndefined();
     });
 
     it('accepts a persisted plan with a non-empty revision history', () => {

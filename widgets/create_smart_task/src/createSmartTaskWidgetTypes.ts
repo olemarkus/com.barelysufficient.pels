@@ -1,7 +1,10 @@
 import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type {
+  DeferredObjectiveSettingsKind,
+  DeferredObjectiveUnit,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
   SmartTaskCandidateRequest,
   SmartTaskWriteRejectReason,
@@ -21,7 +24,7 @@ export type CreateSmartTaskDevice = {
   // Display family for the picker: drives the intentional group order and the
   // per-row type icon (thermostats, then water heaters, then EV chargers).
   group: SmartTaskDeviceGroup;
-  unitSymbol: '°C' | '%';
+  unitSymbol: DeferredObjectiveUnit;
   goalMin: number;
   goalMax: number;
   goalStep: number;

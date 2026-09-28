@@ -1,5 +1,6 @@
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
+import { createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
 /**
  * The smart-task surface `PelsApp` exposes to the widget host API and the
  * settings-UI handlers is a set of thin stubs delegating to two collaborators
@@ -31,8 +32,7 @@ const buildActivePlan = (): DeferredObjectiveActivePlanV1 => ({
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 5_000,
   startedAtMs: 1_000,
   pending: false,
@@ -101,6 +101,7 @@ const buildAppWithRecorders = (options: {
     getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV5,
     getInProgressTrajectory: () => null,
   });
+  app.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
   return app;
 };
 

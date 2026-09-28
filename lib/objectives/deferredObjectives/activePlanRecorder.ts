@@ -68,7 +68,6 @@ import {
   buildSignatureFromDiagnostic,
   createPlanFromDiagnostic,
   createPlanFromSeed,
-  diagTargetTemperatureC,
   hasLearnedRateDeviated,
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
@@ -411,8 +410,7 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       deviceName: diag.deviceName ?? null,
       objectiveKind: diag.objectiveKind,
-      targetTemperatureC: diagTargetTemperatureC(diag),
-      targetPercent: diag.targetPercent,
+      targetValue: diag.targetValue,
       deadlineAtMs: diag.deadlineAtMs as number,
       startedAtMs,
       pending: false,
@@ -624,8 +622,7 @@ export class DeferredObjectiveActivePlanRecorder {
       ...currentWithoutSnapshot,
       deviceName: diag.deviceName ?? current.deviceName,
       objectiveKind: diag.objectiveKind,
-      targetTemperatureC: diagTargetTemperatureC(diag),
-      targetPercent: diag.targetPercent,
+      targetValue: diag.targetValue,
       objectiveSignature: signature,
       // Persist the merged `effectiveHours` as the commitment when the
       // schedule has changed (i.e. expansion added one or more new hours).

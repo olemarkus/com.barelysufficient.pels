@@ -395,6 +395,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
+- [ ] **P2 — an energy task whose device stopped taking energy keeps reserving capacity from
+      lower-priority tasks until its deadline.** A water heater on a relay switches its element off
+      once the tank is hot; the energy task then falls behind, books every remaining hour, and
+      each of those hours still publishes a priority reservation, so a lower-priority task (an EV,
+      say) is allocated around power the heater will not draw. A relay has no setpoint, so the
+      idle classifier's stall evidence (the path that releases a parked thermostat's reservation)
+      never fires for it. **Where:** the reservation step in `buildDeferredObjectiveDiagnostics`
+      (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`, `buildPriorityReservations`,
+      gated today only on `stallAtTarget`). **What changes:** skip the reservation for an energy
+      task whose device drew about 0 kW for a dwell (15 min) during an hour it claimed, from a
+      producer-side "claimed but not drawing" verdict rather than the raw draw. The task keeps its
+      schedule and is not satisfied by it. **Done:** an SDK-boundary e2e with an energy task on a
+      relay that cuts out and a lower-priority EV task shows the EV allocated the heater's later
+      hours on the next settle.
+
 - [ ] **P2 — a disproved car charge limit is served from the frozen plan until the `:58` settle.**
       When a car charges past its qualified limit (`ev_car_observed_limit_disproven`), the task's
       reachable target returns to the owner's, but the committed hours and their

@@ -21,6 +21,7 @@ import {
   resolveRunBands,
   resolveStaircaseAnchor,
 } from './deferredPlanHistoryChartData';
+import { deadlineLabels } from './deadlineLabels';
 
 const finiteOrNull = (raw: number | null | undefined): number | null => (
   raw === null || raw === undefined || !Number.isFinite(raw) ? null : raw
@@ -180,7 +181,7 @@ export const resolveActivePlanChartData = (
   }
   return {
     mode: 'trajectory',
-    unit: plan.objectiveKind === 'temperature' ? '°C' : '%',
+    unit: deadlineLabels(plan.objectiveKind).targetUnit,
     windowStartMs,
     windowEndMs,
     plannedOriginal: planned,

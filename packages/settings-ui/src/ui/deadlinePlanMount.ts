@@ -40,6 +40,7 @@ import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
 import { showUsageReturnLink } from './usageReturnLink.ts';
+import { resolveObjectiveTargetValue } from '../../../shared-domain/src/deferredObjectiveValues.ts';
 
 const describeError = (error: unknown): string => {
   if (error instanceof Error && error.message) return error.message;
@@ -288,7 +289,7 @@ const buildSmartTaskEditProps = (
   const device = lastBoot.devicesPayload.devices.find((candidate) => candidate.id === deviceId);
   if (!device) return undefined;
   const bounds = resolveSmartTaskGoalBounds(device, entry.kind);
-  const baselineTarget = entry.kind === 'ev_soc' ? entry.targetPercent : entry.targetTemperatureC;
+  const baselineTarget = resolveObjectiveTargetValue(entry);
   // Prefill renders the task's absolute deadline back to the same Homey-local
   // HH:mm the write path will resolve it from, so an untouched ready-by field
   // round-trips to the same moment (browser-timezone math never enters).

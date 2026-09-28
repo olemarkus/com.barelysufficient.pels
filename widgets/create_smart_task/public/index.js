@@ -158,7 +158,13 @@
       }
     }
   };
-  var formatSmartTaskUnknownNowValueLine = (kind) => kind === "ev_soc" ? "Charge level unknown" : "Temperature unknown";
+  var SMART_TASK_UNKNOWN_NOW_VALUE_LINE = {
+    ev_soc: "Charge level unknown",
+    temperature: "Temperature unknown",
+    // An energy task counts from when it starts, so before then nothing is delivered.
+    energy: "Nothing delivered yet"
+  };
+  var formatSmartTaskUnknownNowValueLine = (kind) => SMART_TASK_UNKNOWN_NOW_VALUE_LINE[kind];
   var resolveCreateSmartTaskRejectCopy = (reason) => {
     if (reason === "deadline_passed") return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
     if (reason === "write_conflict") return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
@@ -346,6 +352,12 @@
     body: "PELS needs a current state of charge, a charge rate, or a recent observation from this EV before it can plan the smart task.",
     readingNoun: "state of charge",
     fallbackDeviceNoun: "the EV"
+  });
+  var ENERGY_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+    headline: "Waiting for a power reading from the device",
+    body: "PELS counts the energy this device takes from its power readings, and needs one before it can plan the smart task.",
+    readingNoun: "power use",
+    fallbackDeviceNoun: "the device"
   });
   var DEADLINE_LABELS = {
     temperature: {
@@ -537,6 +549,87 @@
       planInputsMaxPowerRowLabel: "Device power used",
       perUnitRateUnit: "kWh/%",
       planInputsRateBootstrapNote: "Estimated \u2014 refining as PELS observes charging.",
+      revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
+    },
+    // "Deliver N kWh to this device by the deadline." Only a pure on/off device
+    // carries one (a relay switching a water heater, with no temperature reading),
+    // so no copy here names heating or charging: what the task does is run the
+    // device, and its progress is the energy it has taken. Such a device cannot be
+    // unplugged: `invalid_session` / `paused_unplugged` are unreachable and fall
+    // back as they do for heaters.
+    energy: {
+      kindChipLabel: "Energy",
+      activeChipLabel: "Running",
+      sectionLabel: "Energy smart task",
+      liveStateChipLabel: {
+        active: "Running",
+        building_plan: "Building plan\u2026",
+        queued: "On track",
+        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
+        // Unreachable on a pure on/off device; the generic on-track fallback.
+        paused_unplugged: "On track",
+        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
+        ok: "On track"
+      },
+      atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+      cannotMeetChipLabel: "Cannot finish",
+      deviceSeriesName: "Running",
+      originalDeviceSeriesName: "Original energy",
+      actualDeviceSeriesName: "Measured energy",
+      backgroundSeriesName: "Background usage",
+      progressSeriesName: "Energy delivered",
+      planTooltipIdle: "Idle",
+      pendingHeroByReason: {
+        not_yet_planned: notYetPlannedCopy("schedule"),
+        awaiting_horizon_plan: awaitingHorizonCopy("schedule"),
+        price_feature_disabled: () => ({
+          headline: "Price-aware optimisation is off",
+          body: "Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a schedule.",
+          headlineReason: "Price-aware optimisation is off in Settings.",
+          recourse: { label: "Open Settings", targetTab: "settings" }
+        }),
+        device_data_missing: ENERGY_DEVICE_DATA_MISSING,
+        invalid_session: ENERGY_DEVICE_DATA_MISSING,
+        missing_capacity: ENERGY_DEVICE_DATA_MISSING,
+        device_in_sub_home: separateMeterUnavailableResolver,
+        device_unmanaged: deviceUnmanagedResolver
+      },
+      unavailableByReason: {
+        no_current_reading: {
+          headline: "Waiting for the first power reading",
+          body: "The schedule will appear once the device reports its power use."
+        },
+        // Unreachable: an amount of energy delivered only ever rises.
+        direction_unavailable: {
+          headline: "Progress direction unavailable",
+          body: "PELS could not resolve how this smart task makes progress."
+        },
+        already_satisfied: {
+          headline: "Satisfied",
+          body: "The device has already taken the energy this smart task asked for."
+        }
+      },
+      // A device with its own thermostat (a water heater on a relay) stops
+      // drawing once it is hot, and no schedule can deliver it more; the shortfall
+      // sentence says so, because "not enough time" alone would send the owner to
+      // move a deadline that is not the problem.
+      cannotMeetShortfall: () => "Not enough time or power for this amount of energy. Lower the target or move the deadline. If the device switches itself off when it is done, like a water heater that is already hot, it may already be full.",
+      cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
+      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
+      cannotMeetRecourse: CANNOT_MEET_RECOURSE,
+      resolveQueuedHeadlineReason,
+      completedHero: {
+        headline: "Smart task finished",
+        body: "See Smart tasks for the outcome."
+      },
+      targetUnit: "kWh",
+      planInputsCardTitle: "What PELS uses",
+      // The rate is exact (one kWh fed is one kWh of progress); the row exists
+      // for the other kinds' learned rate and has nothing to teach here.
+      planInputsRateRowLabel: "Energy needed per kWh",
+      planInputsMaxPowerRowLabel: "Device power used",
+      perUnitRateUnit: "kWh/kWh",
+      planInputsRateBootstrapNote: null,
       revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
     }
   };

@@ -11,7 +11,7 @@ import type {
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedStateOfChargeProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
 import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
-import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
+import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
 const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;
 
@@ -22,8 +22,7 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
   deviceId: 'dev_a',
   deviceName: 'Device A',
   objectiveKind: 'temperature',
-  targetTemperatureC: 21,
-  targetPercent: null,
+  targetValue: 21,
   deadlineAtMs: T0 + 12 * HOUR_MS,
   startedAtMs: T0,
   pending: false,
@@ -44,12 +43,24 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
   ...overrides,
 });
 
+const nothingDelivered = () => 0;
+
+// Resolve stored plans the way the runtime's UI assembler does, keyed as given.
+const resolvePlans = (
+  plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>,
+): ResolvedDeferredObjectiveActivePlansV1 => ({
+  version: 1,
+  plansByDeviceId: Object.fromEntries(Object.entries(plansByDeviceId).map(([deviceId, plan]) => [
+    deviceId,
+    toResolvedActivePlan(plan, nothingDelivered, null),
+  ])),
+});
+
 const buildActivePlans = (
   plans: DeferredObjectiveActivePlanV1[],
-): ResolvedDeferredObjectiveActivePlansV1 => toResolvedActivePlans({
-  version: 1,
-  plansByDeviceId: Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
-});
+): ResolvedDeferredObjectiveActivePlansV1 => resolvePlans(
+  Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
+);
 
 const buildObjectiveSettings = (
   entries: Record<string, DeferredObjectiveSettingsEntry>,
@@ -282,8 +293,7 @@ describe('resolveDeadlinesListCards', () => {
         buildPlan({
           deviceId: 'dev_b',
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
         }),
       ]),
       objectiveSettings: buildObjectiveSettings({ dev_b: enabledEvEntry }),
@@ -389,8 +399,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: buildActivePlans([
         buildPlan({
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
           pending: true,
           pendingReason: 'invalid_session',
           latest: null,
@@ -413,8 +422,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: buildActivePlans([
         buildPlan({
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
           pending: false,
           diagnosticReasonCode: 'objective_invalid_session',
         }),
@@ -433,8 +441,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: buildActivePlans([
         buildPlan({
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
           pending: false,
           diagnosticReasonCode: 'objective_invalid_session',
           carChargeLimit: { limitValue: 70, reached: true },
@@ -479,7 +486,7 @@ describe('resolveDeadlinesListCards', () => {
       dev_a: { ...buildPlan({}), deviceId: 'dev_other', deviceName: 'Stored fallback' },
     };
     const cards = resolveDeadlinesListCards({
-      activePlans: toResolvedActivePlans({ version: 1, plansByDeviceId }),
+      activePlans: resolvePlans(plansByDeviceId),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices: [
         { available: true, id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false } },
@@ -532,8 +539,7 @@ describe('resolveDeadlinesListCards', () => {
           deviceId: 'dev_b',
           deviceName: 'EV charger',
           objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
+          targetValue: 80,
           deadlineAtMs: T0 + 6 * HOUR_MS,
         }),
         buildPlan({ deviceId: 'dev_a', deadlineAtMs: T0 + 20 * HOUR_MS }),

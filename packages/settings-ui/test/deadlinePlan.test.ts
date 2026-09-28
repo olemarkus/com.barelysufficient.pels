@@ -13,7 +13,7 @@ import {
   deadlineLabels,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
 } from '../../shared-domain/src/deadlineLabels.ts';
-import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
+import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../shared-domain/src/objectiveWriteStrings.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
@@ -34,12 +34,22 @@ it('uses domain-specific measured series labels', () => {
   expect(deadlineLabels('ev_soc').actualDeviceSeriesName).toBe('Measured Charging');
 });
 
+const nothingDelivered = () => 0;
+
+// Resolve stored plans the way the runtime's UI assembler does, keyed as given.
+const resolvePlans = (
+  plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>,
+): ResolvedDeferredObjectiveActivePlansV1 => ({
+  version: 1,
+  plansByDeviceId: Object.fromEntries(Object.entries(plansByDeviceId).map(([deviceId, plan]) => [
+    deviceId,
+    toResolvedActivePlan(plan, nothingDelivered, null),
+  ])),
+});
+
 const buildActivePlans = (
   plan: DeferredObjectiveActivePlanV1 | null,
-): ResolvedDeferredObjectiveActivePlansV1 => toResolvedActivePlans({
-  version: 1,
-  plansByDeviceId: plan ? { [plan.deviceId]: plan } : {},
-});
+): ResolvedDeferredObjectiveActivePlansV1 => resolvePlans(plan ? { [plan.deviceId]: plan } : {});
 
 const buildHeaterActivePlan = (params: {
   now: Date;
@@ -98,8 +108,7 @@ const buildHeaterActivePlan = (params: {
     deviceId: 'heater',
     deviceName: 'Connected 300',
     objectiveKind: 'temperature',
-    targetTemperatureC: params.targetTemperatureC ?? 22,
-    targetPercent: null,
+    targetValue: params.targetTemperatureC ?? 22,
     deadlineAtMs: params.deadline.getTime(),
     startedAtMs: revisedAtMs,
     pending: false,
@@ -1700,8 +1709,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2085,8 +2093,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: true,
@@ -2152,8 +2159,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2253,8 +2259,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2347,8 +2352,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2446,8 +2450,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2557,8 +2560,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2667,8 +2669,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2752,8 +2753,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2851,8 +2851,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -2944,8 +2943,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
+      targetValue: 60,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -3034,8 +3032,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'heater',
       deviceName: 'Connected 300',
       objectiveKind: 'temperature',
-      targetTemperatureC: 22,
-      targetPercent: null,
+      targetValue: 22,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: planStart.getTime(),
       pending: false,
@@ -3514,8 +3511,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'heater',
       deviceName: 'Connected 300',
       objectiveKind: 'temperature',
-      targetTemperatureC: 22,
-      targetPercent: null,
+      targetValue: 22,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: false,
@@ -3579,8 +3575,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: true,
@@ -5902,6 +5897,40 @@ describe('shared-domain hero-line formatters', () => {
     expect(out).toBe('Delivered 1.8 of 4.2 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
   });
 
+  it('formatDeadlineDeliveredSoFarLine states an energy task once, from its own count', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 3.2,
+      plannedTotalKWh: 6.6,
+      currentProgress: 3,
+      startProgress: null,
+      targetValue: 6,
+      targetUnit: 'kWh',
+    });
+    expect(out).toBe('Delivered 3.0 of 6.0 kWh');
+  });
+
+  it('resolveEnergyProgress reads an energy task\'s progress off its plan, not the device', async () => {
+    const { resolveEnergyProgress } = await import('../src/ui/deadlinePlanResolvers.ts');
+    const task = {
+      enabled: true, kind: 'energy' as const, enforcement: 'soft' as const, targetEnergyKWh: 6, deadlineAtMs: 1,
+    };
+    const stored: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'relay', deviceName: 'Relay', objectiveKind: 'energy', targetValue: 6, deadlineAtMs: 1,
+      startedAtMs: 0, pending: false, objectiveSignature: 'sig', original: null, latest: null,
+    };
+    const plan = toResolvedActivePlan(stored, () => 2.5, null);
+    expect(resolveEnergyProgress(task, plan)).toEqual({
+      currentValue: 2.5, progressDirection: 'increasing', remainingUnits: 3.5, targetValue: 6, plannedTargetValue: 6,
+      unit: 'kWh',
+    });
+    // A plan still standing from the device's previous task of another kind:
+    // no progress to show for this one, never a zero.
+    const previousTask = toResolvedActivePlan({ ...stored, objectiveKind: 'temperature' }, () => 2.5, null);
+    expect(resolveEnergyProgress(task, previousTask)).toBeNull();
+  });
+
   it('formatDeadlineDeliveredSoFarLine collapses to `now …` when start equals current', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
     const out = formatDeadlineDeliveredSoFarLine({
@@ -6391,8 +6420,7 @@ describe('pending hero producer wiring', () => {
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: deadline.getTime(),
       startedAtMs: now.getTime(),
       pending: true,

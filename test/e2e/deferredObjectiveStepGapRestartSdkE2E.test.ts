@@ -1,6 +1,6 @@
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 // SDK-boundary regression for the 2026-08-01 prod incident: an app restart lost
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // the water heater's flow-registered step ladder, `resolveObjectiveSteps` came up
 // empty, and the COMMITTED smart task degraded to `unknown`
 // (`objective_missing_charge_rate`) for 9.5 h — stripping its budget exemption
@@ -271,6 +271,7 @@ const buildDiagnostic = (
 ): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: createFixturePriorityQuery([device]),
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
   nowMs,

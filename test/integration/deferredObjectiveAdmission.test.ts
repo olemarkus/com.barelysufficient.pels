@@ -1,5 +1,5 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -217,6 +217,7 @@ const buildBuilder = (
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({
       leaveOffOnRelease: () => 'released',
@@ -366,6 +367,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({
       leaveOffOnRelease: () => 'released',
@@ -633,6 +635,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({
       leaveOffOnRelease: () => 'released',

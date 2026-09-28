@@ -65,7 +65,7 @@ describe('applyDeferredObjectiveChange', () => {
     expect(markSpy.mock.calls[0]![0]).toMatchObject({
       deviceId: 'dev',
       objectiveKind: 'temperature',
-      targetTemperatureC: 65,
+      targetValue: 65,
       deadlineAtMs: 6 * HOUR_MS,
     });
   });
@@ -114,7 +114,7 @@ describe('applyDeferredObjectiveChange', () => {
     expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]).toMatchObject({
-      targetTemperatureC: 70,
+      targetValue: 70,
       deadlineAtMs: 6 * HOUR_MS,
     });
   });

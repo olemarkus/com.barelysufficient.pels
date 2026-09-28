@@ -7,6 +7,7 @@ import {
   formatSmartTaskHourReadoutPrimary,
   formatSmartTaskTrajectoryCardTitle,
   formatSmartTaskTrajectoryShortAmountLabel,
+  formatSmartTaskCurrentValuePhrase,
   formatSmartTaskTrajectoryStatelineReady,
   formatSmartTaskTrajectoryStatelineShort,
   formatEnergyEstimateKWh,
@@ -245,7 +246,7 @@ describe('live-page two-chart split copy', () => {
     // tail (the hero status row carries it above the fold, so it must not read
     // verbatim twice on one screen); the phrase moves to `verdict.supporting`.
     expect(formatSmartTaskTrajectoryStatelineReady({
-      nowValueLabel: '51.1 °C',
+      currentValuePhrase: '51.1 °C now',
       statusWord: 'on track',
       readyTimeLabel: 'Sun 02:00',
       hoursBeforeDeadline: 7,
@@ -258,7 +259,7 @@ describe('live-page two-chart split copy', () => {
     // No status word (invalid plan): the stateline keeps the projected-ready
     // phrase in `rest` and carries no hero verdict.
     expect(formatSmartTaskTrajectoryStatelineReady({
-      nowValueLabel: '45%',
+      currentValuePhrase: '45% now',
       statusWord: null,
       readyTimeLabel: 'Mon 06:00',
       hoursBeforeDeadline: 0.4,
@@ -271,11 +272,17 @@ describe('live-page two-chart split copy', () => {
     // Full time-unit words, singular-aware ("1 hour", never "1 h") — now on
     // the verdict's supporting phrase.
     expect(formatSmartTaskTrajectoryStatelineReady({
-      nowValueLabel: '45%',
+      currentValuePhrase: '45% now',
       statusWord: 'on track',
       readyTimeLabel: 'Mon 05:00',
       hoursBeforeDeadline: 1.2,
     }).verdict?.supporting).toBe('projected ready ≈ Mon 05:00, 1 hour before the deadline');
+  });
+
+  it('reads an amount of energy as delivered and a level as now', () => {
+    expect(formatSmartTaskCurrentValuePhrase('2.0 kWh', 'kWh')).toBe('2.0 kWh delivered');
+    expect(formatSmartTaskCurrentValuePhrase('51.1 °C', '°C')).toBe('51.1 °C now');
+    expect(formatSmartTaskCurrentValuePhrase('45%', '%')).toBe('45% now');
   });
 
   it('stateline short variant states the projected value and the gap', () => {
@@ -378,9 +385,12 @@ describe('smart-task list card copy constants', () => {
       actionWord: 'action',
       // User-outcome phrasing — no internal Flow-card field name ("Ready by").
       heatingExample: '(heat a device to a target temperature by a time)',
-      conjunction: 'or the',
+      listSeparator: ', the',
       chargingAction: 'Add charging task',
       chargingExample: '(charge a device to a target percent by a time)',
+      energyConjunction: 'or the',
+      energyAction: 'Add energy task',
+      energyExample: '(deliver an amount of energy to an on/off device by a time)',
       outro: 'to schedule a managed device for a specific ready-by time.',
       widgetLead: 'You can also add the',
       widgetName: 'New smart task',

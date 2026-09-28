@@ -15,6 +15,7 @@ import {
   formatSmartTaskTargetLabel,
   formatSmartTaskTrajectoryCardTitle,
   formatSmartTaskTrajectoryShortAmountLabel,
+  formatSmartTaskCurrentValuePhrase,
   formatSmartTaskTrajectoryStatelineReady,
   formatSmartTaskTrajectoryStatelineShort,
   SMART_TASK_STATELINE_AT_RISK_WORD,
@@ -24,6 +25,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
 import type { DeadlineTrajectoryPayload } from './views/DeadlinePlan.tsx';
+import type { DeferredObjectiveUnit } from '../../../contracts/src/deferredObjectiveSettings.ts';
 
 // Contiguous true-ranges over an hour grid, feeding the trajectory chart's
 // scheduled-run bands (ms coordinates, mapped by the caller). Only the first
@@ -89,7 +91,7 @@ const collectMeasuredPoints = (params: {
 // half-step of `formatSmartTaskTrajectoryShortAmountLabel` (0.05 for
 // one-decimal °C, 0.5 for whole %) — that is what guarantees a flagged
 // shortfall never rounds to a zero amount.
-const SHORTFALL_DISPLAY_EPSILON: Record<'°C' | '%', number> = { '°C': 0.05, '%': 0.5 };
+const SHORTFALL_DISPLAY_EPSILON: Record<DeferredObjectiveUnit, number> = { '°C': 0.05, '%': 0.5, kWh: 0.05 };
 
 // Planned staircase ahead: flat between runs, a vertical riser at each
 // planned hour's start (the same idiom the signed-off mock uses). Risers cap
@@ -128,7 +130,7 @@ const buildPlannedStaircase = (params: {
   targetValue: number;
   progressDirection: 'increasing' | 'decreasing';
   progressPerKWh: number;
-  unit: '°C' | '%';
+  unit: DeferredObjectiveUnit;
   deadlineAtMs: number;
   nowMs: number;
 }): { points: Array<[number, number]>; projected: number; readyAtMs: number | null } => {
@@ -193,7 +195,7 @@ export const buildTrajectory = (params: {
   targetValue: number;
   progressDirection: 'increasing' | 'decreasing';
   progressPerKWh: number;
-  unit: '°C' | '%';
+  unit: DeferredObjectiveUnit;
   deadlineAtMs: number;
   nowMs: number;
   // Scheduled-run band label — the kind verb ("Heating" / "Cooling" / "Charging") shared
@@ -235,7 +237,9 @@ export const buildTrajectory = (params: {
   const observedValues = measuredPoints.map((point) => point[1]);
   const minValue = Math.min(targetValue, ...observedValues, params.currentValue);
   const pad = unit === '%' ? 5 : 2;
-  const yMin = unit === '%' ? Math.max(0, Math.floor(minValue - pad)) : Math.floor(minValue - pad);
+  // Only a temperature can sit below zero; a charge level or an amount of
+  // energy delivered cannot.
+  const yMin = unit === '°C' ? Math.floor(minValue - pad) : Math.max(0, Math.floor(minValue - pad));
   const yMax = Math.ceil(Math.max(targetValue, ...observedValues) + pad);
   const shortBy = params.progressDirection === 'increasing'
     ? targetValue - projected
@@ -273,7 +277,10 @@ export const buildTrajectory = (params: {
       shortAmountLabel: formatSmartTaskTrajectoryShortAmountLabel(Math.max(0, shortBy), unit),
     })
     : formatSmartTaskTrajectoryStatelineReady({
-      nowValueLabel: formatProgressValueForUnit(params.currentValue, unit),
+      currentValuePhrase: formatSmartTaskCurrentValuePhrase(
+        formatProgressValueForUnit(params.currentValue, unit),
+        unit,
+      ),
       statusWord,
       readyTimeLabel: formatDeadlineFull(effectiveReadyAtMs!),
       hoursBeforeDeadline: (params.deadlineAtMs - effectiveReadyAtMs!) / ONE_HOUR_MS,

@@ -7,21 +7,19 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
-  DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryObservedInterval,
-  DeferredObjectivePlanHistoryProgressSample,
+  DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanTerminalOutcome,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryProgressSample,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
-import {
-  resolveFinalProgressValue,
-  resolveTargetValue,
-} from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import type { IdleClassification } from '../../../packages/contracts/src/idleClassification';
 import { classificationImpliesStallSatisfied } from '../stallEvidence';
 import {
@@ -49,8 +47,11 @@ export type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 // downtime windows.
 const INTERVAL_MERGE_GAP_MS = 5 * 60 * 1000;
 
+// Readings are held in the task's own unit, one value each (`targetValue`,
+// `startProgressValue`, `finalProgressValue`, sample `value`), as the stored
+// row keeps them; `objectiveKind` names the unit.
 export type InProgressRecord = Omit<
-  DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRecord,
   'id'
   | 'finalizedAtMs'
   | 'outcome'
@@ -66,10 +67,17 @@ export type InProgressRecord = Omit<
   | 'hourlyContributions'
   | 'metReason'
   | 'initialEnergyExpectedKWh'
+  | 'progressDirection'
+  | 'targetValue'
 > & {
+  // The stored row takes both from the device at the API boundary; the
+  // recorder has them from the diagnostic.
+  deviceName: string | null;
+  objectiveKind: DeferredObjectiveSettingsKind;
+  targetValue: number;
   commitment: InProgressCommitment;
-  // Direction paired with `finalProgress*`; the persisted history format only
-  // needs the resolved outcome, so this stays on the recorder's in-memory row.
+  // Direction paired with `finalProgressValue`; persisted as the finalized
+  // row's `progressDirection`.
   finalProgressDirection: ObjectiveProgressDirectionRead;
   satisfied: boolean;
   // `null` for target-reached / in-flight; `'stalled'` once the idle
@@ -97,7 +105,7 @@ export type InProgressRecord = Omit<
   // `PROGRESS_SAMPLES_PER_ENTRY_CAP` are re-bucketed onto a coarser grid
   // (deterministic eviction, full-run coverage preserved) so the in-memory
   // map stays bounded. Drained into the entry at finalization.
-  progressSamples: Map<number, DeferredObjectivePlanHistoryProgressSample>;
+  progressSamples: Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>;
   // Total kWh delivered to the device across the run, integrated from its
   // trusted measured-power feed. Persisted after the first metered sample,
   // including an exact zero-delivery run.
@@ -114,7 +122,7 @@ export type InProgressRecord = Omit<
   // finalize so the archive formats the figure in its recorded currency; a run
   // that never received a priced contribution finalizes with it null (and the
   // entry omits the field, falling back to the recording-era øre/kr default).
-  // See `DeferredObjectivePlanHistoryEntry.costDisplay`.
+  // See `DeferredObjectivePlanHistoryRecord.costDisplay`.
   costDisplay: DeferredObjectivePlanHistoryCostDisplay | null;
   // Becomes true on the first delivery contribution so
   // `deliveredKWh` and `totalCost` are persisted (as `0` if needed) rather
@@ -204,35 +212,23 @@ export const rawHorizonStatus = (
   diag.horizonPlan?.status ?? resolvedTrajectoryStatus(diag)
 );
 
-const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
-  diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null
-);
-
-const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | null => (
-  diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null
-);
-
 // Start-progress capture gated on `hasTrustworthyProgress` — the same definition
 // `progressSamples` (`recordProgressSample`) and `seedHourOpening` already use.
-// `captureProgress*` returns the raw reading even when the diagnostic is
-// stale/invalid (`objective_progress_stale` etc.), so seeding `startProgress*`
+// `diag.currentValue` is the raw reading even when the diagnostic is
+// stale/invalid (`objective_progress_stale` etc.), so seeding `startProgressValue`
 // from it lets an untrusted first read become a sticky start anchor
 // (`backfillStartProgress` only fills when start is null). That anchor feeds the
 // directional miss-attribution check (`final − start`), so a stale start could
 // flip a finalized run to `no_delivery`. Returning null instead defers to
 // `backfillStartProgress`, which adopts the first trustworthy reading.
 //
-// Scope note: only the START anchor is gated here. The `finalProgress*` seed +
-// update paths remain ungated as on main — gating them is a separate, more
-// entangled change (it interacts with the "non-plannable ticks don't roll final
-// forward" rule and the finalized-outcome classification) tracked apart from
-// this focused fix.
-const captureTrustedProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
-  hasTrustworthyProgress(diag) ? captureProgressC(diag) : null
-);
-
-const captureTrustedProgressPercent = (diag: DeferredObjectiveDiagnostic): number | null => (
-  hasTrustworthyProgress(diag) ? captureProgressPercent(diag) : null
+// Scope note: only the START anchor is gated here. The `finalProgressValue`
+// seed + update paths remain ungated as on main — gating them is a separate,
+// more entangled change (it interacts with the "non-plannable ticks don't roll
+// final forward" rule and the finalized-outcome classification) tracked apart
+// from this focused fix.
+const captureTrustedProgress = (diag: DeferredObjectiveDiagnostic): number | null => (
+  hasTrustworthyProgress(diag) ? diag.currentValue : null
 );
 
 // Against the target the task can REACH: a run met at its car's own charge
@@ -310,14 +306,11 @@ export const startRecord = (
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
     finalProgressDirection: diag.progressDirection,
-    targetTemperatureC: diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null,
-    targetPercent: diag.targetPercent,
+    targetValue: diag.targetValue,
     deadlineAtMs: diag.deadlineAtMs,
     startedAtMs: nowMs,
-    startProgressC: captureTrustedProgressC(diag),
-    startProgressPercent: captureTrustedProgressPercent(diag),
-    finalProgressC: captureProgressC(diag),
-    finalProgressPercent: captureProgressPercent(diag),
+    startProgressValue: captureTrustedProgress(diag),
+    finalProgressValue: diag.currentValue,
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
     // Seeded here when the producer can already state it; otherwise filled by
     // `backfillCommitment` on the first cycle that can. Never read back off a
@@ -407,27 +400,24 @@ const refreshPlanSnapshots = (
 };
 
 
-// Back-fill `startProgressC` / `startProgressPercent` from the first cycle
-// that actually carries a fresh reading. `startRecord` stamps both fields
-// from the first diagnostic the recorder sees, but Homey SDK reads can
+// Back-fill `startProgressValue` from the first cycle that actually carries a
+// fresh reading. `startRecord` stamps it from the first diagnostic the
+// recorder sees, but Homey SDK reads can
 // transiently fail (per `feedback_homey_sdk_unreliable` — see
 // `notes/smart-task-ui/README.md` for the live-walk regression), so a run
-// that starts with `currentTemperatureC: null` / `currentPercent: null`
-// would otherwise carry that null all the way to finalization. The history
+// that starts with `currentValue: null` would otherwise carry that null all
+// the way to finalization. The history
 // formatter (`packages/shared-domain/src/deferredPlanHistory.ts`) returns
 // `null` for the progress line when the start value is null, hiding the
 // run from the past-tasks list. Adopting the first *trustworthy* reading
-// (`captureTrustedProgress*`, not a stale/invalid one) keeps "start"
+// (`captureTrustedProgress`, not a stale/invalid one) keeps "start"
 // semantically meaning "first trustworthy observed progress" rather than
 // "snapshot at create-time, even if it was missing or stale". Once set, the
 // value is sticky — later cycles must not overwrite it.
 const backfillStartProgress = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
-): Pick<InProgressRecord, 'startProgressC' | 'startProgressPercent'> => ({
-  startProgressC: record.startProgressC ?? captureTrustedProgressC(diag),
-  startProgressPercent: record.startProgressPercent ?? captureTrustedProgressPercent(diag),
-});
+): number | null => record.startProgressValue ?? captureTrustedProgress(diag);
 
 // The run's committed mean requirement, filled on the FIRST cycle the producer
 // can state it and frozen thereafter.
@@ -480,7 +470,7 @@ const isStallMetReason = (reason: DeferredObjectivePlanMetReason | null): boolea
   reason === 'stalled' || reason === 'stalled_device_capped'
 );
 
-// Stall-promoted records freeze `satisfied` and `finalProgress*` at the
+// Stall-promoted records freeze `satisfied` and `finalProgressValue` at the
 // plateau reading. Without the freeze, post-stall samples would
 // overwrite "as warm as the device would hold" and the next plannable
 // tick would re-derive `currentlySatisfied = false` and unflag the run.
@@ -492,8 +482,7 @@ const computeMergedMetState = (
   satisfied: boolean;
   metAtMs: number | null;
   metReason: DeferredObjectivePlanMetReason | null;
-  finalProgressC: number | null;
-  finalProgressPercent: number | null;
+  finalProgressValue: number | null;
   finalProgressDirection: InProgressRecord['finalProgressDirection'];
 } => {
   const stallPromoted = record.satisfied && isStallMetReason(record.metReason);
@@ -502,8 +491,7 @@ const computeMergedMetState = (
       satisfied: true,
       metAtMs: record.metAtMs,
       metReason: record.metReason,
-      finalProgressC: record.finalProgressC,
-      finalProgressPercent: record.finalProgressPercent,
+      finalProgressValue: record.finalProgressValue,
       finalProgressDirection: record.finalProgressDirection,
     };
   }
@@ -512,8 +500,7 @@ const computeMergedMetState = (
     satisfied: currentlySatisfied,
     metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
     metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
-    finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
-    finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    finalProgressValue: diag.currentValue ?? record.finalProgressValue,
     finalProgressDirection: hasTrustworthyProgress(diag)
       ? diag.progressDirection
       : record.finalProgressDirection,
@@ -530,10 +517,9 @@ export const mergeRecord = (
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
-    ...backfillStartProgress(record, diag),
+    startProgressValue: backfillStartProgress(record, diag),
     commitment: backfillCommitment(record, diag),
-    finalProgressC: merged.finalProgressC,
-    finalProgressPercent: merged.finalProgressPercent,
+    finalProgressValue: merged.finalProgressValue,
     finalProgressDirection: merged.finalProgressDirection,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
@@ -554,9 +540,8 @@ const clearSatisfiedWithProgress = (
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
-    ...backfillStartProgress(record, diag),
-    finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
-    finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    startProgressValue: backfillStartProgress(record, diag),
+    finalProgressValue: diag.currentValue ?? record.finalProgressValue,
     finalProgressDirection: hasTrustworthyProgress(diag)
       ? diag.progressDirection
       : record.finalProgressDirection,
@@ -576,7 +561,7 @@ const recordObservedTick = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => ({
   ...record,
-  ...backfillStartProgress(record, diag),
+  startProgressValue: backfillStartProgress(record, diag),
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
   progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
   ...refreshPlanSnapshots(record, plan),
@@ -588,9 +573,9 @@ const recordObservedTick = (
 // target). Idempotent — already-satisfied records pass through. The
 // `reason` carries the distinct cause into the persisted entry so the
 // postmortem can render the right recourse copy. The promotion snapshots
-// `finalProgress*` from the diagnostic when it carries trustworthy
+// `finalProgressValue` from the diagnostic when it carries trustworthy
 // progress; non-plannable ticks route through `recordObservedTick` which
-// doesn't refresh `finalProgress*`, so without the capture here the freeze
+// doesn't refresh `finalProgressValue`, so without the capture here the freeze
 // would pin to the previous plannable tick's value rather than the
 // plateau reading.
 export const promoteRecordToStalled = (
@@ -603,12 +588,9 @@ export const promoteRecordToStalled = (
   const captureFromDiag = hasTrustworthyProgress(diag);
   return {
     ...record,
-    finalProgressC: captureFromDiag
-      ? (captureProgressC(diag) ?? record.finalProgressC)
-      : record.finalProgressC,
-    finalProgressPercent: captureFromDiag
-      ? (captureProgressPercent(diag) ?? record.finalProgressPercent)
-      : record.finalProgressPercent,
+    finalProgressValue: captureFromDiag
+      ? (diag.currentValue ?? record.finalProgressValue)
+      : record.finalProgressValue,
     finalProgressDirection: captureFromDiag ? diag.progressDirection : record.finalProgressDirection,
     satisfied: true,
     metAtMs: nowMs,
@@ -637,7 +619,7 @@ export const recordNonPlannableTick = (
 ): InProgressRecord => {
   // Stalled records skip the re-open path: "device settled short of target" is
   // exactly the state the stall promotion accepts as terminal. Re-opening
-  // would discard the carefully-frozen `metAtMs` / `finalProgress*` we
+  // would discard the carefully-frozen `metAtMs` / `finalProgressValue` we
   // captured at the plateau and produce a noisy "satisfied → not satisfied"
   // oscillation against the idle classifier's exit hysteresis. Target-reached
   // mets keep the existing clear-on-drift behavior.
@@ -655,10 +637,9 @@ export const recordNonPlannableTick = (
 const wasTargetReached = (record: InProgressRecord): boolean => {
   // Value selection is unit-agnostic; direction is captured with the final
   // trustworthy reading so terminal classification follows the device mode.
-  const target = resolveTargetValue(record);
-  const final = resolveFinalProgressValue(record);
-  if (target === null || final === null || record.finalProgressDirection === 'unknown') return false;
-  return record.finalProgressDirection === 'increasing' ? final >= target : final <= target;
+  const final = record.finalProgressValue;
+  if (final === null || record.finalProgressDirection === 'unknown') return false;
+  return record.finalProgressDirection === 'increasing' ? final >= record.targetValue : final <= record.targetValue;
 };
 
 const classifyOutcome = (
@@ -668,31 +649,31 @@ const classifyOutcome = (
   if (record.satisfied || wasTargetReached(record)) return 'met';
   if (reason === 'abandoned') return 'abandoned';
   if (reason === 'replaced') return 'replaced';
-  if (record.finalProgressC === null && record.finalProgressPercent === null) return 'abandoned';
+  if (record.finalProgressValue === null) return 'abandoned';
   return 'missed';
 };
 
+// The finalized run, resolved like the API resolves a stored row: the device
+// name the recorder last saw (its id when it never saw one), and the kind.
+// The stored row drops both (`toStoredPlanHistoryRecord`).
 export const finalizeRecord = (
   record: InProgressRecord,
   nowMs: number,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
-): DeferredObjectivePlanHistoryEntry => {
+): ResolvedDeferredObjectivePlanHistoryEntry => {
   const drainedSamples = drainProgressSamples(record.progressSamples);
   const outcome = classifyOutcome(record, reason);
   return {
     id: randomUUID(),
     deviceId: record.deviceId,
-    deviceName: record.deviceName,
+    deviceName: record.deviceName ?? record.deviceId,
     objectiveKind: record.objectiveKind,
-    targetTemperatureC: record.targetTemperatureC,
-    targetPercent: record.targetPercent,
+    targetValue: record.targetValue,
     deadlineAtMs: record.deadlineAtMs,
     startedAtMs: record.startedAtMs,
     finalizedAtMs: nowMs,
-    startProgressC: record.startProgressC,
-    startProgressPercent: record.startProgressPercent,
-    finalProgressC: record.finalProgressC,
-    finalProgressPercent: record.finalProgressPercent,
+    startProgressValue: record.startProgressValue,
+    finalProgressValue: record.finalProgressValue,
     progressDirection: record.finalProgressDirection,
     initialEnergyNeededKWh: record.initialEnergyNeededKWh,
     ...(record.commitment.kind === 'known'
@@ -747,4 +728,13 @@ export const finalizeRecord = (
       : {}),
     ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
   };
+};
+
+// The row as stored: the device name and kind are the device's, joined back on
+// at the API boundary (`toResolvedPlanHistoryEntry`).
+export const toStoredPlanHistoryRecord = (
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
+): DeferredObjectivePlanHistoryRecord => {
+  const { deviceName: _deviceName, objectiveKind: _objectiveKind, ...stored } = entry;
+  return stored;
 };

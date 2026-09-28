@@ -2,7 +2,7 @@ export type DeferredObjectiveEnforcement = 'soft' | 'hard';
 
 export type DeferredObjectiveKind =
   | 'ev_soc'
-  | 'generic_energy'
+  | 'energy'
   | 'temperature';
 
 export type DeferredObjectiveHorizonStatus =

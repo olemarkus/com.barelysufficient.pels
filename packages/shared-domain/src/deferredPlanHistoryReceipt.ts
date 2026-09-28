@@ -84,6 +84,7 @@ import {
   RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE,
   RECEIPT_LAST_STATE_COOLING_ON_SCHEDULE,
   RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE,
+  RECEIPT_LAST_STATE_RUNNING_ON_SCHEDULE,
   RECEIPT_LAST_STATE_TARGET_REACHED,
   RECEIPT_LAST_STATE_TEMPERATURE_ON_SCHEDULE,
   RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
@@ -146,6 +147,9 @@ const formatStartProgress = (
   // the formatter (°C vs %) stays kind-specific.
   const startValue = entry.startProgressValue;
   if (startValue === null) return null;
+  // An energy task counts from the moment it starts, so it always starts at 0
+  // kWh: there is nothing to report.
+  if (entry.objectiveKind === 'energy') return null;
   return entry.objectiveKind === 'temperature'
     ? formatReceiptStartFromTemperature(startValue.toFixed(1))
     : formatReceiptStartFromPercent(startValue.toFixed(0));
@@ -347,13 +351,18 @@ export const formatPlanHistoryShortfallChip = (
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
     | 'startProgressValue' | 'finalProgressValue' | 'targetValue'
-    | 'progressDirection'
+    | 'progressDirection' | 'objectiveKind'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
   const parts: string[] = [];
-  const plannedTotal = sumPlannedKWh(entry.finalPlan ?? entry.originalPlan);
+  // An energy task's target IS an amount of energy, so the chip divides by it,
+  // as the live hero does; the postmortem sentence on the same screen states
+  // the shortfall against it too.
+  const plannedTotal = entry.objectiveKind === 'energy' && entry.targetValue !== null
+    ? entry.targetValue
+    : sumPlannedKWh(entry.finalPlan ?? entry.originalPlan);
   const hasDelivery = typeof entry.deliveredKWh === 'number'
     && Number.isFinite(entry.deliveredKWh);
   if (hasDelivery && plannedTotal > 0 && entry.deliveredKWh! < plannedTotal) {
@@ -500,6 +509,7 @@ const formatLastDeviceState = (
   // line reads consistently with how a live plan would describe itself.
   switch (lastPlan.planStatus) {
     case 'on_track':
+      if (entry.objectiveKind === 'energy') return RECEIPT_LAST_STATE_RUNNING_ON_SCHEDULE;
       if (entry.objectiveKind === 'ev_soc') return RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE;
       if (entry.progressDirection === 'decreasing') return RECEIPT_LAST_STATE_COOLING_ON_SCHEDULE;
       if (entry.progressDirection === 'unknown') return RECEIPT_LAST_STATE_TEMPERATURE_ON_SCHEDULE;
@@ -507,9 +517,11 @@ const formatLastDeviceState = (
     case 'at_risk':
       return RECEIPT_LAST_STATE_BEHIND_SCHEDULE;
     case 'cannot_meet':
-      return entry.objectiveKind === 'ev_soc'
-        ? RECEIPT_LAST_STATE_BEHIND_NO_TIME_CHARGE
-        : RECEIPT_LAST_STATE_BEHIND_NO_TIME_HEAT;
+      // "…not enough time to finish" names no heating, so it fits an energy
+      // task as well as a charger.
+      return entry.objectiveKind === 'temperature'
+        ? RECEIPT_LAST_STATE_BEHIND_NO_TIME_HEAT
+        : RECEIPT_LAST_STATE_BEHIND_NO_TIME_CHARGE;
     case 'satisfied':
       return RECEIPT_LAST_STATE_TARGET_REACHED;
     case 'invalid':

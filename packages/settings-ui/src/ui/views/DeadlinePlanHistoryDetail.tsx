@@ -54,6 +54,7 @@ import { attachHourScrub, resolveScrubHourIndex } from '../deadlineChartScrub.ts
 import { buildUsageDayHref } from '../deadlineUrls.ts';
 import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
 import { MdSwitch } from './materialWebJSX.tsx';
+import type { DeferredObjectiveUnit } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 
 type Props = {
   entry: ResolvedDeferredObjectivePlanHistoryEntry;
@@ -424,7 +425,9 @@ const resolveTrajectoryYRange = (
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = data.unit === '%' ? 5 : 2;
-  const lowerBound = data.unit === '%' ? Math.max(0, Math.floor(min - pad)) : Math.floor(min - pad);
+  // Only a temperature can sit below zero; a charge level or an amount of
+  // energy delivered cannot.
+  const lowerBound = data.unit === '°C' ? Math.floor(min - pad) : Math.max(0, Math.floor(min - pad));
   const upperBound = Math.ceil(max + pad);
   return { min: lowerBound, max: upperBound };
 };
@@ -456,7 +459,7 @@ export const buildHistoryDetailTrajectoryOption = (
   if (data.unit === null) {
     throw new Error('buildHistoryDetailTrajectoryOption requires a trajectory-mode payload (unit must be set)');
   }
-  const unit: '°C' | '%' = data.unit;
+  const unit: DeferredObjectiveUnit = data.unit;
   // The DEFAULT view shows only the planner's last word — the producer-
   // resolved `plannedVisible` staircase (`replanned` gates the overlay), the
   // same semantic source the pinned readout and the strip's skip attribution
@@ -789,7 +792,7 @@ const HistoryTrajectoryChart = ({
 // a data bug (review round 2 P0 #1).
 const HistoryTrajectoryLegend = ({ target, unit, showMeasured }: {
   target: number | null;
-  unit: '°C' | '%';
+  unit: DeferredObjectiveUnit;
   showMeasured: boolean;
 }) => (
   <div class="deadline-history-legend">

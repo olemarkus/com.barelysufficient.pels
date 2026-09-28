@@ -27,10 +27,13 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import { createPlanHistoryStoreForApp } from './planHistoryStore';
 import { requirePlanService, requirePriceCoordinator } from './contextGuards';
+import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
+import { createEnergyDeliveryStore } from '../../lib/objectives/deferredObjectives/energyDeliveryStore';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
@@ -50,21 +53,10 @@ const toBackfillConfig = (
   // (runtime saw the pass) or were cleared by the user before passing — either way back-fill
   // should ignore them.
   if (!entry.enabled) return null;
-  if (entry.kind === 'temperature') {
-    return {
-      deviceId,
-      objectiveKind: 'temperature',
-      deadlineAtMs: entry.deadlineAtMs,
-      targetTemperatureC: entry.targetTemperatureC,
-      targetPercent: null,
-    };
-  }
   return {
     deviceId,
-    objectiveKind: 'ev_soc',
     deadlineAtMs: entry.deadlineAtMs,
-    targetTemperatureC: null,
-    targetPercent: entry.targetPercent,
+    targetValue: resolveObjectiveTargetValue(entry),
   };
 };
 
@@ -345,6 +337,34 @@ export function runPendingDeferredObjectiveBackfill(
     return;
   }
   attemptDeferredObjectiveBackfill(ctx, recorder, watermark);
+}
+
+/**
+ * The energy-task delivery counter on the app's userdata database. Its rows are
+ * live task state, not history, but they change on every tick an energy task
+ * draws, which is exactly the write rate `homey.settings` must never see.
+ */
+export function createDeferredObjectiveEnergyDelivery(ctx: AppContext): EnergyTaskDeliveryTracker {
+  return new EnergyTaskDeliveryTracker(
+    createEnergyDeliveryStore(ctx.getUserdataDatabase()),
+    (deviceId) => ctx.isLiveMeasuredDraw(deviceId),
+  );
+}
+
+/** Persist whatever the smart-task stores hold unwritten, before shutdown. */
+export function flushDeferredObjectiveRecorders(ctx: AppContext): void {
+  ctx.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
+  ctx.deferredObjectiveActivePlanRecorder?.flushIfDirty();
+  ctx.deferredObjectiveEnergyDelivery?.flushIfDirty();
+}
+
+export function requireDeferredObjectiveEnergyDelivery(
+  ctx: Pick<AppContext, 'deferredObjectiveEnergyDelivery'>,
+): EnergyTaskDeliveryTracker {
+  if (!ctx.deferredObjectiveEnergyDelivery) {
+    throw new Error('EnergyTaskDeliveryTracker must be initialized before plan engine setup.');
+  }
+  return ctx.deferredObjectiveEnergyDelivery;
 }
 
 export function requireDeferredObjectivePlanHistoryRecorder(

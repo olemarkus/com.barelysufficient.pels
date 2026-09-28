@@ -11,7 +11,6 @@
  */
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
-import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 
@@ -106,10 +105,10 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
   // builds a horizon plan against the fallback rate while the hero degrades
   // to the `hoursLeft` form — a producer/consumer disagreement that hides
   // the rate the user is actually being charged against.
-  if (isTemperatureControlDevice(device)) {
-    const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
-    const expected = activeDrawKw ?? device.expectedPowerKw;
-    return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
-  }
-  return null;
+  // The fallback covers every device PELS can only switch (an energy task's
+  // relay, an on/off device with a settable target), exactly as
+  // `objectiveSteps.ts` does.
+  const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
+  const expected = activeDrawKw ?? device.expectedPowerKw;
+  return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
 };

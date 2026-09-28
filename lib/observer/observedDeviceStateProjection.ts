@@ -13,6 +13,7 @@ import type {
     ObservedStateRefreshEvent,
 } from './observedStateEvents';
 import { resolveThermalDirection } from './thermalDirection';
+import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 /**
  * Owner-blessed raw read of the observed EV plug-state, for PRODUCER wiring
@@ -267,6 +268,16 @@ export class ObservedDeviceStateProjection {
     getThermalDirection(deviceId: string): ThermalDirection {
         const entry = this.byId.get(deviceId);
         return entry === undefined ? 'heating' : resolveThermalDirection(entry.value);
+    }
+
+    /**
+     * Whether this device's power reading is a live measurement of its draw
+     * (`hasLiveMeasuredPower`). False for a device with no record: nothing has
+     * reported a reading for it.
+     */
+    isLiveMeasuredDraw(deviceId: string): boolean {
+        const entry = this.byId.get(deviceId);
+        return entry !== undefined && hasLiveMeasuredPower(entry.value);
     }
 
     /**

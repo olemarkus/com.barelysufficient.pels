@@ -179,7 +179,7 @@ export const buildFrozenDiagnostic = (params: {
     epsilonKWh: FROZEN_EPSILON_KWH,
   });
   return {
-    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
+    ...mergeProgressFields(base, progress.currentValue),
     trajectory: { kind: 'resolved', status: horizonPlan.status },
     reasonCode: horizonPlan.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),

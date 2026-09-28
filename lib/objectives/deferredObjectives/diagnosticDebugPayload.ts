@@ -74,6 +74,10 @@ export const buildDeferredObjectiveDebugPayload = (
   currentPercent: diagnostic.currentPercent,
   targetTemperatureC: diagnostic.objectiveKind === 'temperature' ? diagnostic.targetTemperatureC : null,
   currentTemperatureC: diagnostic.objectiveKind === 'temperature' ? diagnostic.currentTemperatureC : null,
+  // Target and reading in the task's own unit, for every kind (an energy
+  // task's kWh, delivered so far, has no column of its own above).
+  targetValue: diagnostic.targetValue,
+  currentValue: diagnostic.currentValue,
   energyNeededKWh: diagnostic.energyNeededKWh,
   // Mean-based estimate (no buffer). Logged alongside the buffered
   // `energyNeededKWh` so analysis can derive the plan-time variance margin

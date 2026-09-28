@@ -11,7 +11,9 @@ import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './type
 import { fitBandsFromSamples, resolveKwhPerUnitStat } from '../bands';
 import { applyBandedConfidence } from '../stats';
 
-export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap';
+// `exact`: the task's unit IS energy (an energy task), so a kWh of progress is a
+// kWh fed. Nothing is learned, estimated or buffered.
+export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact';
 
 export type DeferredObjectiveEnergyResolution = {
   // Planned energy the horizon planner books hours against. This is the
@@ -133,6 +135,25 @@ export const resolveProfileEnergy = (params: {
   currentValue?: number;
   progressDirection: ObjectiveProgressDirection;
 }): DeferredObjectiveEnergyResolution => {
+  // An energy task's remaining units are kWh. The device's learned profile is
+  // a rate per °C or per % and has nothing to say about it — reading it here
+  // would size a 6 kWh task as 6 × (kWh per °C) — so the exact rate short-
+  // circuits before the profile is consulted, and there is no variance to
+  // buffer: the energy still owed is the energy still owed.
+  if (params.objectiveKind === 'energy') {
+    return {
+      energyNeededKWh: params.remainingUnits,
+      energyExpectedKWh: params.remainingUnits,
+      kWhPerUnit: 1,
+      kWhPerUnitBuffered: 1,
+      // Not a learned mean: the deviation detector has no drift to watch.
+      kWhPerUnitMean: null,
+      rateConfidence: null,
+      displayConfidence: 'high',
+      kwhPerUnitSource: 'exact',
+      reasonCode: null,
+    };
+  }
   const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
   const directionProfile = resolveDirectionProfile(profile, params.progressDirection);
   const kWhPerUnit = directionProfile?.kwhPerUnit;

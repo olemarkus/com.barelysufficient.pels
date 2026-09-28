@@ -648,25 +648,29 @@ reads the mode target being re-applied as a bug.
 
 Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind, progressDirection)` rather than hardcoding strings. Temperature tasks use `increasing` for heating and `decreasing` for cooling; an unresolved direction uses neutral temperature wording, and legacy records without a direction retain the original heating wording. EV state of charge always increases.
 
-| Concept | Heating temperature task | Cooling temperature task | EV-SoC device |
-|---|---|---|---|
-| Kind chip | `Temperature` | `Temperature` | `EV` |
-| Hero section label (eyebrow — pending hero only) | `Heating smart task` | `Cooling smart task` | `EV smart task` |
-| Live state chip — active (pending hero only) | `Heating` | `Cooling` | `Charging` |
-| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` | `Building plan…` |
-| Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` |
-| Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` |
-| Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
-| Live state chip — on track, no active hour | `On track` | `On track` | `On track` |
-| At-risk chip | `At risk` | `At risk` | `At risk` |
-| Cannot-finish chip | `Cannot finish` | `Cannot finish` | `Cannot finish` |
-| Device load series (legend) | `Heating` | `Cooling` | `Charging` |
-| Measured device series (legend) | `Measured Heating` | `Measured Cooling` | `Measured Charging` |
-| Background load series | `Background usage` | `Background usage` | `Background usage` |
-| Progress series (legend) | `Temperature` | `Temperature` | `Charge level` |
-| Active-hour tooltip word | `Heating` | `Cooling` | `Charging` |
-| Target unit | `°C` | `°C` | `%` |
-| Plan inputs card title | `What PELS has learned` | `What PELS has learned` | `What PELS has learned` |
+| Concept | Heating temperature task | Cooling temperature task | EV-SoC device | Energy task (on/off device) |
+|---|---|---|---|---|
+| Kind chip | `Temperature` | `Temperature` | `EV` | `Energy` |
+| Hero section label (eyebrow — pending hero only) | `Heating smart task` | `Cooling smart task` | `EV smart task` | `Energy smart task` |
+| Live state chip — active (pending hero only) | `Heating` | `Cooling` | `Charging` | `Running` |
+| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` | `Building plan…` | `Building plan…` |
+| Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` | `On track` |
+| Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` | (n/a) |
+| Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
+| Live state chip — on track, no active hour | `On track` | `On track` | `On track` | `On track` |
+| At-risk chip | `At risk` | `At risk` | `At risk` | `At risk` |
+| Cannot-finish chip | `Cannot finish` | `Cannot finish` | `Cannot finish` | `Cannot finish` |
+| Device load series (legend) | `Heating` | `Cooling` | `Charging` | `Running` |
+| Measured device series (legend) | `Measured Heating` | `Measured Cooling` | `Measured Charging` | `Measured energy` |
+| Background load series | `Background usage` | `Background usage` | `Background usage` | `Background usage` |
+| Progress series (legend) | `Temperature` | `Temperature` | `Charge level` | `Energy delivered` |
+| Active-hour tooltip word | `Heating` | `Cooling` | `Charging` | `Running` |
+| Target unit | `°C` | `°C` | `%` | `kWh` |
+| Plan inputs card title | `What PELS has learned` | `What PELS has learned` | `What PELS has learned` | `What PELS uses` |
+
+An energy task has no level of its own that PELS learns a rate for (its rate is exact, one kWh per
+kWh), so its inputs card is titled `What PELS uses`, not `What PELS has learned`, and it shows no
+per-unit rate row. Its current value is a running total: `2.0 kWh delivered`, never `2.0 kWh now`.
 
 The live deadline-plan hero shows only the kind chip plus a risk/failure chip
 (`At risk` or `Cannot finish`) and confidence as `Estimating` / `Refining` when
@@ -799,9 +803,14 @@ prefixed `Why:`.
 | `budget_limited` | `Daily budget filled before the deadline.` |
 | `no_delivery` (temperature) | `Delivered almost no heat before the deadline.` |
 | `no_delivery` (EV) | `Delivered almost no charge before the deadline.` |
+| `no_delivery` (energy) | `Delivered almost no energy before the deadline.` |
 | `capacity_shortfall` | `Not enough power or time before the deadline.` |
 | `energy_underestimate` | `Target needed more energy than estimated.` |
 | `low_confidence` | `Still learning this device's energy use.` |
+
+An energy task never gets `energy_underestimate` or `low_confidence`: its requirement is its
+target and its rate is exact, so nothing was estimated or learned, and those misses read as
+`capacity_shortfall`.
 
 Keep them fragment-shaped, blameless, and ≤ ~48 characters so they fit one row at
 320 px. None of them may name a remedy — the recourse button owns that — and per
@@ -1044,7 +1053,7 @@ The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `pa
 
 **Card titles** (question-shaped, like the live page):
 
-- Trajectory card: `Did it heat up as planned?` / `Did it charge as planned?` (kind-aware; replaces the retired `Progress history`). Legacy v3 entries keep `Scheduled vs observed`.
+- Trajectory card: `Did it heat up as planned?` / `Did it charge as planned?` / `Was the energy delivered as planned?` (kind-aware; replaces the retired `Progress history`). Legacy v3 entries keep `Scheduled vs observed`.
 - Hourly strip: `When did each hour run, and what did it cost?` — and the title's promise is paid by the strip's pinned readout (per-hour cost on tap), never left rhetorical.
 
 **Hero (Succeeded, receipt-first)**: outcome chip + headline + the 3-row receipt timeline (`Started` / `Largest planned hour` / `Ready`) + the cost narrative line `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered` (fragments suppress individually when data is missing; minor-unit currencies render whole integers). `View details` expands the trajectory chart AND the hourly strip together. Missed keeps the diagnosis-first shape (charts expanded, shortfall chip + Why + recourse) and the whole-kr `≈ 12 kr spent` cost chip — `spent` names what the figure is (money already spent on the failed run), and the shortfall chip already carries the delivered figure.

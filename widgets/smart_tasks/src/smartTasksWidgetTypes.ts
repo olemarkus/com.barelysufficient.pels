@@ -1,12 +1,16 @@
 import type { DeferredPlanHistoryChartData } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+import type {
+  DeferredObjectiveSettingsKind,
+  DeferredObjectiveUnit,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type SmartTasksWidgetTone = 'danger' | 'warn' | 'muted' | 'ok';
 
 export type SmartTasksWidgetRow = {
   deviceId: string;
   deviceName: string;
-  kind: 'temperature' | 'ev_soc';
-  unitSymbol: '°C' | '%';
+  kind: DeferredObjectiveSettingsKind;
+  unitSymbol: DeferredObjectiveUnit;
   currentValue: number | null;
   targetValue: number;
   // Pre-formatted "HH:MM" local-time finish line, or null when no ETA / deadline
@@ -59,7 +63,7 @@ export type SmartTasksWidgetEndedRow = {
   id: string;
   deviceId: string;
   deviceName: string;
-  unitSymbol: '°C' | '%';
+  unitSymbol: DeferredObjectiveUnit;
   targetValue: number;
   // "Heat to 55 °C" / "Charge to 80 %" — producer-resolved action verb.
   targetActionVerb: string;

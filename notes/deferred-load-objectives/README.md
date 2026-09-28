@@ -65,6 +65,13 @@ type DeferredObjectiveSettingsV1 = {
       targetTemperatureC: number;
       deadlineAtMs: number; // absolute UTC timestamp
     }
+    | {
+      enabled: boolean;
+      kind: 'energy';
+      enforcement: 'soft';
+      targetEnergyKWh: number; // 0.1..200, the Flow card's range
+      deadlineAtMs: number; // absolute UTC timestamp
+    }
   )>;
 };
 ```
@@ -880,6 +887,62 @@ capability updates on value change, so a healthy device steady at setpoint
 legitimately goes silent for hours; the last-seen temperature is credited as long
 as the device has ever produced a trusted observation.
 
+### Energy objectives (shipped)
+
+An `energy` objective ("deliver N kWh to this device by the deadline") uses the "current and target
+energy" mode below, with no level of the device's own: `currentEnergyKwh` is the energy the device
+has taken since the task started, and `targetEnergyKwh` is the task's target. It exists for a
+relay-switched water heater, which has neither a temperature nor a battery level.
+
+- **Which devices**: only pure on/off devices (`resolveSmartTaskDeviceKind` in
+  `packages/shared-domain/src/smartTaskDeviceKind.ts`): an on/off axis, and no charger role,
+  temperature target or stepped ladder. Such a device had no smart-task kind before, so `energy` is
+  its only kind and "which kind can this device take" still has one answer per device. Creating a
+  task also needs a live power reading (`supportsSmartTaskKind`): the device's own `measure_power`
+  or Homey Energy's live figure. A rate the device layer derived from a cumulative meter lingers
+  after the device switches off and would count energy never taken, so meter-only devices are not
+  offered. The create widget does not offer energy tasks yet; the Flow card does.
+- **Progress** is counted by `EnergyTaskDeliveryTracker` (`energyDelivery.ts`) on the lifecycle
+  clock and read by the bridge through an injected reader, so `resolveObjectiveProgress` stays a
+  value question. The draw each tick saw is booked over the time until the next tick, however long
+  the gap (a watt reading is a level that holds until the next report), clipped to the run's
+  window, the way plan history books delivery. One run per device and deadline: a same-deadline
+  target edit keeps what was delivered (history, by contrast, splits it into two entries), and a
+  new deadline starts from zero. A run is kept until its deadline has passed and its task is gone,
+  so a task missing from one roster read keeps its count instead of restarting at 0. Two things are not readings of the level and book nothing, because
+  counting energy a device never took makes the task stop asking for energy it still needs: a draw
+  the observer does not report as a live measurement (`isLiveMeasuredDraw`, the same rule the
+  create gate asks, so a device whose live reading goes away mid-run stops counting), and the
+  downtime across a restart. Runs persist to the userdata store (`energyDeliveryStore.ts`) when a
+  run opens or closes and otherwise every five minutes. The count is read from the store before
+  the first tick after a restart, and nothing is written until that read succeeds. While the store
+  cannot be read, the count covers only what this process has seen (so the task asks for more, not
+  less), and the stored count is added to it once a read succeeds.
+- **Rate** is exact: `resolveProfileEnergy` returns 1 kWh per kWh with source `exact` before any
+  learned profile is consulted. There is no variance buffer, no deviation baseline, and no
+  "energy per unit" row in the UI.
+- **Steps**: every non-EV, non-stepped device PELS can only switch gets the same single synthetic
+  rung as a thermostat without stepped controls (live draw when drawing, else expected power), in
+  both `objectiveSteps.ts` and its mirror `planningSpeed.ts`. That is the energy task's relay, and
+  equally an on/off device with a settable target that a heating Flow card gave a task, which
+  before this stayed at `missing_capacity` for want of a rung.
+- **Known limit**: a device that switches itself off when done (a water heater's own thermostat once
+  the tank is hot) stops taking energy, so the task can end `cannot_meet` / `missed` with a full
+  tank. A relay has no setpoint, so the idle classifier gives no stall evidence to satisfy the task
+  or to release its reservations; until the deadline it keeps reserving its booked hours against
+  lower-priority tasks.
+
+Values travel in the task's own unit, one per reading, so no layer below the settings entry keeps
+a column per kind. The diagnostic's progress is `currentValue` (for an energy task, the kWh
+delivered); the active plan stores `targetValue` (a plan stored before it carried
+`targetTemperatureC` / `targetPercent`, read into `targetValue` once on load); the in-flight
+history record holds `targetValue` / `startProgressValue` / `finalProgressValue` and unit-agnostic
+samples, and finalizes straight into the compact row, whose kind comes from the device at the API
+boundary as for every other kind. The UI view of an active plan says where its reading comes from
+(`progressSource`: a level on the device, or an energy task's delivered energy), so no surface
+branches on the kind to find the number. The kWh target is appended to the objective signature
+only for energy tasks, so temperature and EV signatures are unchanged.
+
 #### Future input modes (not the v1 path)
 
 A more general objective model could accept any of these inputs and route through the same
@@ -913,7 +976,8 @@ hot-water use. For EVs, charging may taper near high SoC; AC home charging is of
 charger-limited and close to flat for much of the session, but a flat rate to 100% can still be
 optimistic.
 
-Shipped v1 uses one rate source plus EV bootstrap fallback:
+Shipped v1 uses one rate source plus EV bootstrap fallback (an `energy` objective short-circuits
+both with the exact rate, see "Energy objectives"):
 
 1. Learned `kWhPerUnit` profile (`lib/objectives/profiles.ts`), or
 2. For EV without a learned profile: `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`

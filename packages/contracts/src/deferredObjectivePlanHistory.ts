@@ -3,6 +3,7 @@ import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanStatusV1,
 } from './deferredObjectiveActivePlans.js';
+import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
 
 export type DeferredObjectivePlanOutcome =
   | 'met'
@@ -399,7 +400,7 @@ export type DeferredObjectivePlanHistoryRecord = Omit<
 // enriches device identity once at its producer boundary.
 export type ResolvedDeferredObjectivePlanHistoryEntry = DeferredObjectivePlanHistoryRecord & {
   deviceName: string;
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   progressDirection: 'increasing' | 'decreasing' | 'unknown';
 };
 

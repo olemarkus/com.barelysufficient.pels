@@ -39,7 +39,10 @@ const buildDevice = (
   & StateOfChargeObservedProbe,
 ): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
-  if (kind === null) return null;
+  // Energy tasks are created from the "Add energy task" Flow card only, for now:
+  // the widget's picker, preview and goal stepper are shaped for a level to
+  // reach, not an amount to deliver.
+  if (kind === null || kind === 'energy') return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
   const currentValue = resolveSmartTaskCurrentValue(device, kind);
   const name = device.name?.trim();

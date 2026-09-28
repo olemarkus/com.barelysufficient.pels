@@ -3,11 +3,12 @@ import type {
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 type DeferredObjectivePlanRevisionEventBase = {
   deviceId: string;
   deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   previousPlanStatus: DeferredObjectiveActivePlanStatusV1 | null;
   /**
    * The status consumers should REPORT, when it differs from the revision's own

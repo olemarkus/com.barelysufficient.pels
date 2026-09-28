@@ -1,5 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -209,6 +209,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({
       leaveOffOnRelease: () => 'released',

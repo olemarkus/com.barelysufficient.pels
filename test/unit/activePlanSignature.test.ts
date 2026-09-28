@@ -6,8 +6,7 @@ import {
 
 const base = {
   objectiveKind: 'temperature' as const,
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 1_000,
   enforcement: 'soft' as const,
   progressDirection: 'increasing' as const,
@@ -56,7 +55,7 @@ describe('activePlanSignature — pause permission', () => {
     expect(compareObjectiveSignatures(cooling, pendingSeed).changed).toBe(false);
     expect(compareObjectiveSignatures(
       cooling,
-      buildObjectiveSignature({ ...base, targetTemperatureC: 66, progressDirection: 'unknown' }),
+      buildObjectiveSignature({ ...base, targetValue: 66, progressDirection: 'unknown' }),
     ).changed).toBe(true);
   });
 

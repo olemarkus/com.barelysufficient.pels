@@ -139,6 +139,9 @@ export const RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE = 'Last device state: charg
 export const RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE = 'Last device state: heating on schedule.';
 export const RECEIPT_LAST_STATE_COOLING_ON_SCHEDULE = 'Last device state: cooling on schedule.';
 export const RECEIPT_LAST_STATE_TEMPERATURE_ON_SCHEDULE = 'Last device state: temperature on schedule.';
+// An energy task's device can sit in a gap between its scheduled hours while on
+// schedule, so this names no activity.
+export const RECEIPT_LAST_STATE_RUNNING_ON_SCHEDULE = 'Last device state: on schedule.';
 export const RECEIPT_LAST_STATE_BEHIND_SCHEDULE = 'Last device state: behind schedule.';
 export const RECEIPT_LAST_STATE_BEHIND_NO_TIME_CHARGE
   = 'Last device state: behind schedule with not enough time to finish.';

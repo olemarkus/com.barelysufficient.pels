@@ -1,5 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import {
@@ -256,7 +256,8 @@ type DefaultedDiagnosticsParam =
   | 'getPrioritiesForDevices'
   | 'activePlans'
   | 'resolveDeviceExclusion'
-  | 'getStallClassification';
+  | 'getStallClassification'
+  | 'getDeliveredEnergyKWh';
 const buildDeferredObjectiveDiagnostics = (
   params: Omit<RawDiagnosticsParams, 'buildPriceHorizon' | DefaultedDiagnosticsParam>
     & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
@@ -265,6 +266,7 @@ const buildDeferredObjectiveDiagnostics = (
   activePlans: params.activePlans ?? null,
   resolveDeviceExclusion: params.resolveDeviceExclusion ?? noDeviceExclusion,
   getStallClassification: params.getStallClassification ?? noStallEvidence,
+  getDeliveredEnergyKWh: params.getDeliveredEnergyKWh ?? noDeliveredEnergy,
   getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
 });
@@ -328,6 +330,7 @@ const runPreview = (params: {
   activePlans: params.ctx.activePlans ?? null,
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: params.ctx.getPrioritiesForDevices
     ?? createFixturePriorityQuery(params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : [])),
   powerTracker: params.ctx.powerTracker,

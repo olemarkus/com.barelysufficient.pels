@@ -13,6 +13,7 @@ import { resolvePlanningSpeedKw } from './planningSpeed';
 import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import type { DeferredObjectiveKind, DeferredObjectiveHorizonPlan } from './types';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import type {
   BaseDeferredObjectiveDiagnostic,
   DeferredObjectiveDiagnostic,
@@ -35,21 +36,15 @@ export const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
 
 // Maps the progress resolution back to a single input-value for the banded
 // estimator. Temperature objectives integrate by °C, EV SoC objectives by %.
-// `generic_energy` has no profile-band path so we return undefined and the
-// estimator falls back to the global mean.
+// An energy objective's rate is exact (one kWh per kWh), so it consults no
+// profile band and there is no value to integrate over.
 export const progressCurrentValue = (params: {
   progress: DeferredObjectiveProgressResolution;
   objectiveKind: DeferredObjectiveKind;
 }): number | undefined => {
   const { progress, objectiveKind } = params;
-  if (progress.reasonCode) return undefined;
-  if (objectiveKind === 'ev_soc') {
-    return typeof progress.currentPercent === 'number' ? progress.currentPercent : undefined;
-  }
-  if (objectiveKind === 'temperature') {
-    return typeof progress.currentTemperatureC === 'number' ? progress.currentTemperatureC : undefined;
-  }
-  return undefined;
+  if (progress.reasonCode || objectiveKind === 'energy') return undefined;
+  return progress.currentValue;
 };
 
 export const canReportFreshProgressWhileUnknown = (
@@ -78,19 +73,19 @@ export const resolveProgressEnergy = (params: {
   currentValue: progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind }),
 });
 
-// Variant-preserving merge of progress-derived fields onto an existing
-// diagnostic. The discriminated union forbids assigning
-// `currentTemperatureC` on the EV variant, so we branch on the diagnostic's
-// own `objectiveKind` rather than spreading both fields blindly.
+// Variant-preserving merge of the progress reading onto an existing diagnostic.
+// The reading is in the task's own unit; the diagnostic's own `objectiveKind`
+// says which column holds it besides the unit-agnostic `currentValue`. The
+// discriminated union forbids `currentTemperatureC` on the other variants.
 export const mergeProgressFields = (
   base: DeferredObjectiveDiagnostic,
-  currentPercent: number | null,
-  currentTemperatureC: number | null,
+  currentValue: number | null,
 ): DeferredObjectiveDiagnostic => {
   if (base.objectiveKind === 'temperature') {
-    return { ...base, currentPercent, currentTemperatureC, currentValue: currentTemperatureC };
+    return { ...base, currentPercent: null, currentTemperatureC: currentValue, currentValue };
   }
-  return { ...base, currentPercent, currentValue: currentPercent };
+  if (base.objectiveKind === 'energy') return { ...base, currentPercent: null, currentValue };
+  return { ...base, currentPercent: currentValue, currentValue };
 };
 
 // "Is the current bucket actually running this cycle?" — gates the
@@ -106,6 +101,17 @@ export const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan
   horizonPlan.currentHourClaim === 'claimed'
 );
 
+// The progress fields of a diagnostic that has not resolved its objective's
+// progress (yet): the trajectory builders fill them in once it has.
+export const UNRESOLVED_PROGRESS = {
+  currentValue: null,
+  energyNeededKWh: null,
+  kWhPerUnitBanded: null,
+  rateConfidence: null,
+  displayConfidence: null,
+  kwhPerUnitSource: null,
+} as const;
+
 export const buildDiagnosticBase = (params: {
   deviceId: string;
   // `undefined` when the device is missing from this tick's roster.
@@ -113,8 +119,8 @@ export const buildDiagnosticBase = (params: {
   objective: DeferredObjectiveSettingsEntry;
   timeZone: string;
   powerTracker: PowerTrackerState;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
+  // The reading in the task's own unit; the variant places it.
+  currentValue: number | null;
   energyNeededKWh: number | null;
   kWhPerUnitBanded: number | null;
   rateConfidence: string | null;
@@ -143,11 +149,10 @@ export const buildDiagnosticBase = (params: {
     reasonCode: 'objective_progress_stale',
     actuationSatisfied: false,
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
-    currentPercent: params.currentPercent,
-    // Unit-agnostic pair. Seeded for the ev_soc shape here; the temperature
-    // variant below overrides both with the °C readings so the invariant holds.
-    currentValue: params.currentPercent,
-    targetValue: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
+    currentPercent: params.objective.kind === 'ev_soc' ? params.currentValue : null,
+    // Unit-agnostic pair, in the task's own unit for every kind.
+    currentValue: params.currentValue,
+    targetValue: resolveObjectiveTargetValue(params.objective),
     reachableTargetValue: resolveReachableTargetValue(params.objective, params.device),
     deadlineAtMs,
     deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
@@ -170,10 +175,14 @@ export const buildDiagnosticBase = (params: {
       ...common,
       objectiveKind: 'temperature',
       targetTemperatureC: params.objective.targetTemperatureC,
-      currentTemperatureC: params.currentTemperatureC,
-      // Override the ev_soc-shaped seed: temperature reads in °C.
-      currentValue: params.currentTemperatureC,
-      targetValue: params.objective.targetTemperatureC,
+      currentTemperatureC: params.currentValue,
+    };
+  }
+  if (params.objective.kind === 'energy') {
+    return {
+      ...common,
+      objectiveKind: 'energy',
+      targetEnergyKWh: params.objective.targetEnergyKWh,
     };
   }
   return {

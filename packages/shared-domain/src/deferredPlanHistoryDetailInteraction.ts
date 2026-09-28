@@ -36,6 +36,7 @@ import {
 } from './deferredPlanHistoryReceiptStrings';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
+import type { DeferredObjectiveUnit } from '../../contracts/src/deferredObjectiveSettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -66,7 +67,7 @@ export const HISTORY_TRAJECTORY_LEGEND_MEASURED = 'Measured';
 export const HISTORY_TRAJECTORY_LEGEND_PLANNED = 'Planned';
 export const formatHistoryTrajectoryLegendTarget = (params: {
   targetValue: number;
-  targetUnit: '°C' | '%';
+  targetUnit: DeferredObjectiveUnit;
 }): string => formatSmartTaskTargetLabel(params);
 
 // Price-level legend chips under the hourly strip. "Price low/normal/high"
@@ -249,7 +250,7 @@ const formatTrajectoryReadoutPrimary = (
   clockLabel: string,
   measured: number | null,
   planned: number | null,
-  unit: '°C' | '%',
+  unit: DeferredObjectiveUnit,
 ): string => {
   const parts = [clockLabel];
   if (measured !== null) {

@@ -21,6 +21,12 @@
  * EV SoC stays strictly fresh because charger session validity genuinely
  * requires per-session telemetry.
  *
+ * An energy task reads no level of the device at all: its progress is the energy
+ * the device has taken since the task started, counted by
+ * `EnergyTaskDeliveryTracker` (`energyDelivery.ts`) and handed in as a reader.
+ * That count is always known — a task that has fed nothing yet has fed 0 kWh —
+ * so the only way it fails is the session question EV tasks also ask.
+ *
  * Stuck-sensor residual risk: a thermostat alive on the radio but reporting
  * a fixed wrong value will be planned against that wrong value. The whole
  * Homey state model assumes capability readings are trustworthy, so every
@@ -35,19 +41,26 @@ import {
   type ObjectiveDeviceInput,
   type ObjectiveProgressDirection,
 } from '../../objectives/types';
-import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type {
+  DeferredObjectiveEnergySettingsEntry,
+  DeferredObjectiveSettingsEntry,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeliveredEnergyReader } from './energyDelivery';
 
+// `currentValue` is the reading in the task's own unit (% for an EV task, °C
+// for a temperature task, kWh delivered for an energy task); the diagnostic
+// places it in its kind's column. A resolved read always has one; an
+// unresolved read has one only when the axis still knows it (an energy task
+// paused on its session still knows what it has delivered).
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;
   progressDirection: ObjectiveProgressDirection;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
+  currentValue: number;
   reasonCode: null;
 } | {
   remainingUnits: 0;
   progressDirection: ObjectiveProgressDirection;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
+  currentValue: number | null;
   reasonCode:
   | 'objective_invalid_session'
   | 'objective_missing_temperature'
@@ -122,7 +135,8 @@ export const resolveReachableTargetValue = (
   objective: DeferredObjectiveSettingsEntry,
   device: ObjectiveDeviceInput | undefined,
 ): number => {
-  if (objective.kind !== 'ev_soc') return objective.targetTemperatureC;
+  if (objective.kind === 'temperature') return objective.targetTemperatureC;
+  if (objective.kind === 'energy') return objective.targetEnergyKWh;
   const level = device?.stateOfCharge?.level;
   const carChargeLimitPercent = level?.kind === 'known' ? level.carChargeLimitPercent : undefined;
   return carChargeLimitPercent === undefined
@@ -130,13 +144,43 @@ export const resolveReachableTargetValue = (
     : Math.min(objective.targetPercent, carChargeLimitPercent);
 };
 
-// No `nowMs`: neither axis asks how old a reading is. EV SoC rejects on session
-// validity, temperature on the absence of the facet — both value questions.
-export const resolveObjectiveProgress = (params: {
-  objective: DeferredObjectiveSettingsEntry;
-  device: ObjectiveDeviceInput;
-}): DeferredObjectiveProgressResolution => {
-  const { objective, device } = params;
+/**
+ * Energy delivered since the task started, against the energy asked for. An
+ * amount of energy only ever grows. The session check is the one every kind
+ * asks; a pure on/off device (the only kind that carries an energy task) never
+ * lacks a session.
+ */
+const resolveEnergyObjectiveProgress = (
+  objective: DeferredObjectiveEnergySettingsEntry,
+  device: ObjectiveDeviceInput,
+  readDeliveredEnergy: DeliveredEnergyReader,
+): DeferredObjectiveProgressResolution => {
+  const deliveredKWh = readDeliveredEnergy(device.id, objective.deadlineAtMs);
+  if (device.objectiveSessionInactive) {
+    return {
+      remainingUnits: 0,
+      progressDirection: 'increasing',
+      currentValue: deliveredKWh,
+      reasonCode: 'objective_invalid_session',
+    };
+  }
+  return {
+    remainingUnits: Math.max(0, objective.targetEnergyKWh - deliveredKWh),
+    progressDirection: 'increasing',
+    currentValue: deliveredKWh,
+    reasonCode: null,
+  };
+};
+
+// No `nowMs`: no axis asks how old a reading is. EV SoC rejects on session
+// validity, temperature on the absence of the facet, energy on session validity
+// alone — all value questions.
+export const resolveObjectiveProgress = (
+  objective: DeferredObjectiveSettingsEntry,
+  device: ObjectiveDeviceInput,
+  readDeliveredEnergy: DeliveredEnergyReader,
+): DeferredObjectiveProgressResolution => {
+  if (objective.kind === 'energy') return resolveEnergyObjectiveProgress(objective, device, readDeliveredEnergy);
   const progressDirection = resolveObjectiveProgressDirection({
     objectiveKind: objective.kind,
     thermalDirection: device.thermalDirection,
@@ -147,8 +191,7 @@ export const resolveObjectiveProgress = (params: {
       return {
         remainingUnits: 0,
         progressDirection,
-        currentPercent: progress.currentPercent,
-        currentTemperatureC: null,
+        currentValue: progress.currentPercent,
         reasonCode: progress.reasonCode,
       };
     }
@@ -174,8 +217,7 @@ export const resolveObjectiveProgress = (params: {
     return {
       remainingUnits,
       progressDirection,
-      currentPercent: progress.currentPercent,
-      currentTemperatureC: null,
+      currentValue: progress.currentPercent,
       reasonCode: null,
     };
   }
@@ -189,8 +231,7 @@ export const resolveObjectiveProgress = (params: {
     return {
       remainingUnits: 0,
       progressDirection,
-      currentPercent: null,
-      currentTemperatureC: null,
+      currentValue: null,
       reasonCode: 'objective_missing_temperature',
     };
   }
@@ -201,8 +242,7 @@ export const resolveObjectiveProgress = (params: {
   return {
     remainingUnits: Math.max(0, remainingTemperature),
     progressDirection,
-    currentPercent: null,
-    currentTemperatureC: usableTemperatureC,
+    currentValue: usableTemperatureC,
     reasonCode: null,
   };
 };

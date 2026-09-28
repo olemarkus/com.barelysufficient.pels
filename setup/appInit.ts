@@ -13,6 +13,9 @@
 export {
   buildDeferredObjectiveDeviceWriteDeps,
   createDeferredObjectiveActivePlanRecorder,
+  createDeferredObjectiveEnergyDelivery,
+  flushDeferredObjectiveRecorders,
+  requireDeferredObjectiveEnergyDelivery,
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
 } from './appInit/deferredRecorders';

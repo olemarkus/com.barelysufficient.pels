@@ -8,6 +8,7 @@ import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
+import type { DeliveredEnergyReader } from './energyDelivery';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
@@ -54,6 +55,7 @@ import {
   mergeProgressFields,
   progressCurrentValue,
   resolveProgressEnergy,
+  UNRESOLVED_PROGRESS,
   withUnavailableTrajectory,
   ZERO_ENERGY_RESOLUTION,
 } from './diagnosticFields';
@@ -120,6 +122,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // that exclusion's dedicated code (see `deviceExclusion.ts`); answering `null`
   // everywhere changes nothing.
   resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
+  getDeliveredEnergyKWh: DeliveredEnergyReader;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(params.resolveDeviceExclusion);
@@ -226,11 +229,24 @@ export const buildDeferredObjectiveDiagnostics = (params: {
     }
     return resolveExternalOffReportedStatus(coordinated, device);
   });
-  // Excluded objectives (sub-home device, or a device the owner no longer
-  // manages) remain visible as explicit unknown diagnostics but do not
-  // participate in the main home's allocation context or reservation ledger.
-  diagnostics.push(...Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
-    const exclusion = objective.enabled ? params.resolveDeviceExclusion(deviceId) : null;
+  diagnostics.push(...buildExcludedObjectiveDiagnostics(
+    params.settings, params.resolveDeviceExclusion, deviceById, params.timeZone, params.powerTracker,
+  ));
+  return diagnostics;
+};
+
+// Excluded objectives (sub-home device, or a device the owner no longer
+// manages) remain visible as explicit unknown diagnostics but do not
+// participate in the main home's allocation context or reservation ledger.
+const buildExcludedObjectiveDiagnostics = (
+  settings: DeferredObjectiveSettingsV1,
+  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion,
+  deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
+  timeZone: string,
+  powerTracker: PowerTrackerState,
+): DeferredObjectiveDiagnostic[] => (
+  Object.entries(settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
+    const exclusion = objective.enabled ? resolveDeviceExclusion(deviceId) : null;
     // The device may well be present (or planner scoping may have dropped it)
     // — either way the honest story is the exclusion itself ("out of the main
     // home's meter scope", "not managed"), never "missing device".
@@ -238,13 +254,12 @@ export const buildDeferredObjectiveDiagnostics = (params: {
       deviceId,
       device: deviceById.get(deviceId),
       objective,
-      timeZone: params.timeZone,
-      powerTracker: params.powerTracker,
+      timeZone,
+      powerTracker,
       ...UNRESOLVED_PROGRESS,
     }), OBJECTIVE_EXCLUSION_REASON_CODES[exclusion])];
-  }));
-  return diagnostics;
-};
+  })
+);
 /* eslint-enable functional/immutable-data */
 
 const shouldForceFreshAllocation = (
@@ -397,18 +412,6 @@ const resolveExternalOffReportedStatus = (
   return { ...diagnostic, externalOffHoldActive: true };
 };
 
-// The progress fields of a diagnostic that has not resolved its objective's
-// progress (yet): the trajectory builders fill them in once it has.
-const UNRESOLVED_PROGRESS = {
-  currentPercent: null,
-  currentTemperatureC: null,
-  energyNeededKWh: null,
-  kWhPerUnitBanded: null,
-  rateConfidence: null,
-  displayConfidence: null,
-  kwhPerUnitSource: null,
-} as const;
-
 // One objective, given the reservations of the tasks ahead of it. Every caller
 // goes through `buildDeferredObjectiveDiagnostics`, which supplies that ledger.
 const buildDeferredObjectiveDiagnostic = (params: {
@@ -426,6 +429,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   sustainableRateKw: number;
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
   forceFreshAllocation: boolean;
+  getDeliveredEnergyKWh: DeliveredEnergyReader;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -455,7 +459,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   const withDeadline = base;
   // Allocation-horizon price source, resolved by the wiring-injected producer.
   const priceHorizon = buildPriceHorizon(nowMs, objective.deadlineAtMs);
-  const progress = resolveObjectiveProgress({ objective, device });
+  const progress = resolveObjectiveProgress(objective, device, params.getDeliveredEnergyKWh);
   if (!progress.reasonCode && progress.remainingUnits <= 0) {
     return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
       nowMs,
@@ -619,7 +623,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     reasonCode: DeferredObjectiveDiagnosticReasonCode,
     extra?: ReturnType<typeof buildKnownEnergyFields>,
   ) => withUnavailableTrajectory({
-    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
+    ...mergeProgressFields(base, progress.currentValue),
     ...(extra ?? {}),
     horizonBucketCount: policyHorizon.horizonBucketCount,
   }, reasonCode);

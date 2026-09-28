@@ -1,5 +1,5 @@
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -42,6 +42,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
     });
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
@@ -76,6 +77,7 @@ describe('DeferredObjectiveDecorationController', () => {
       buildPriceHorizon: () => [],
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       getStallClassification,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
     });
@@ -98,6 +100,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getTimeZone: () => 'UTC',
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const devices = [buildDevice()];
 

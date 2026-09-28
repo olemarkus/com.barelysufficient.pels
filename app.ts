@@ -87,6 +87,7 @@ import type { UserdataDatabase } from './lib/store/userdataDatabase';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
+import type { EnergyTaskDeliveryTracker } from './lib/objectives/deferredObjectives/energyDelivery';
 
 const PelsAppBase = withAppApi(Homey.App);
 
@@ -185,6 +186,8 @@ class PelsApp extends PelsAppBase implements AppContext {
   public deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
 
   public deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
+
+  public deferredObjectiveEnergyDelivery?: EnergyTaskDeliveryTracker;
   public deviceDiagnosticsService!: DeviceDiagnosticsService;
   public priceCoordinator!: PriceCoordinator;
   public priceFlowTagPublisher?: PriceFlowTagPublisher;

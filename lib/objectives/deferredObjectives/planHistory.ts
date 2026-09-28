@@ -1,9 +1,11 @@
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryProgressSample,
+  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlanTrajectory,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryV5,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
@@ -33,9 +35,9 @@ import {
   recordNonPlannableTick,
   stallClassificationToMetReason,
   startRecord,
+  toStoredPlanHistoryRecord,
 } from './planHistoryInProgressState';
 import { randomUUID } from 'node:crypto';
-import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
@@ -67,10 +69,9 @@ type DeliveryTick = {
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
-  objectiveKind: 'temperature' | 'ev_soc';
   deadlineAtMs: number;
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  // The task's target in its own unit (`resolveObjectiveTargetValue`).
+  targetValue: number;
 };
 
 const synthesizeBackfillEntry = (
@@ -78,9 +79,7 @@ const synthesizeBackfillEntry = (
 ): DeferredObjectivePlanHistoryRecord => ({
   id: randomUUID(),
   deviceId: config.deviceId,
-  targetValue: config.objectiveKind === 'temperature'
-    ? config.targetTemperatureC
-    : config.targetPercent,
+  targetValue: config.targetValue,
   deadlineAtMs: config.deadlineAtMs,
   startedAtMs: config.deadlineAtMs,
   finalizedAtMs: config.deadlineAtMs,
@@ -163,22 +162,17 @@ export class DeferredObjectivePlanHistoryRecorder {
   }
 
   // Live trajectory for an in-flight run, stitched into the active-plans UI
-  // payload (`setup/deferredObjectiveActivePlansUiAssembler.ts`) so the
+  // payload (`activePlansUiView.ts`) so the
   // smart-tasks widget can draw planned-vs-actual progress while the run is
   // open. Reads the in-memory in-progress record without mutating it
   // (`drainProgressSamples` copies + sorts the sample map). Returns null when no
   // run is open for the device; a device has at most one open run (one objective
   // per device), so the first matching record wins.
-  getInProgressTrajectory(deviceId: string): {
-    startProgressC: number | null;
-    startProgressPercent: number | null;
-    progressSamples: DeferredObjectivePlanHistoryProgressSample[];
-  } | null {
+  getInProgressTrajectory(deviceId: string): DeferredObjectiveActivePlanTrajectory | null {
     for (const record of this.inProgress.values()) {
       if (record.deviceId !== deviceId) continue;
       return {
-        startProgressC: record.startProgressC,
-        startProgressPercent: record.startProgressPercent,
+        startProgressValue: record.startProgressValue,
         progressSamples: drainProgressSamples(record.progressSamples),
       };
     }
@@ -253,7 +247,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (restored === undefined) return;
       const recovered = startRecord(diag, nowMs, plan);
       if (recovered === null) return;
-      this.pushEntry(finalizeRecord(
+      this.pushObservedEntry(finalizeRecord(
         restoreMeteredDelivery(recovered, restored),
         nowMs,
         'deadline_passed',
@@ -302,7 +296,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (existingKeys.has(key)) continue;
       if (this.restoredMeteredDeliveryByKey.has(key)) continue;
       existingKeys.add(key);
-      this.pushEntry(synthesizeBackfillEntry(config));
+      this.pushRecord(synthesizeBackfillEntry(config));
     }
   }
 
@@ -450,21 +444,26 @@ export class DeferredObjectivePlanHistoryRecorder {
     nowMs: number,
     reason: 'deadline_passed' | 'replaced' | 'abandoned',
   ): void {
-    this.pushEntry(finalizeRecord(record, nowMs, reason));
+    this.pushObservedEntry(finalizeRecord(record, nowMs, reason));
     this.inProgress.delete(key);
   }
 
-  private pushEntry(entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord): void {
-    this.entries.push(toPlanHistoryRecord(entry));
+  // A run the recorder observed finalizes as a full entry: it has an
+  // attribution to emit and an ending to announce.
+  private pushObservedEntry(entry: ResolvedDeferredObjectivePlanHistoryEntry): void {
+    this.pushRecord(toStoredPlanHistoryRecord(entry));
+    this.emitFinalizedAttribution(entry);
+    const endedEvent = buildEndedEventFromEntry(entry);
+    if (endedEvent !== null) {
+      this.deps.endedBus.publish(endedEvent);
+    }
+  }
+
+  // A back-filled run is born compact and announces nothing.
+  private pushRecord(record: DeferredObjectivePlanHistoryRecord): void {
+    this.entries.push(record);
     this.trimEntries();
     this.dirty = true;
-    if ('objectiveKind' in entry) {
-      this.emitFinalizedAttribution(entry);
-      const endedEvent = buildEndedEventFromEntry(entry);
-      if (endedEvent !== null) {
-        this.deps.endedBus.publish(endedEvent);
-      }
-    }
   }
 
   // Emit the per-run miss attribution as the entry finalizes. Backfill entries
@@ -474,7 +473,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   // floor inputs is what quantifies the false-alarm rate. The attribution reads
   // only the persisted entry, so this log and the history-detail "Why" line
   // resolve the same cause by construction.
-  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
+  private emitFinalizedAttribution(entry: ResolvedDeferredObjectivePlanHistoryEntry): void {
     if (entry.discoveredFrom !== 'observation') return;
     this.deps.debugStructured(buildFinalizedAttributionEvent(entry));
   }

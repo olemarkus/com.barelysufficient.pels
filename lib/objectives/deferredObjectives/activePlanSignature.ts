@@ -1,10 +1,15 @@
-import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type {
+  DeferredObjectiveRescuePermissions,
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveSettingsKind,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import type { ObjectiveProgressDirectionRead } from '../types';
 
 type ObjectiveSignatureParams = {
-  objectiveKind: 'temperature' | 'ev_soc';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  objectiveKind: DeferredObjectiveSettingsKind;
+  // The target in the task's own unit (°C, % or kWh).
+  targetValue: number;
   deadlineAtMs: number;
   enforcement: 'soft' | 'hard';
   progressDirection: ObjectiveProgressDirectionRead;
@@ -34,18 +39,44 @@ const buildRescueSignatureSegment = (
     : ['rescue', exemptFromBudget, limitLowerPriorityDevices];
 };
 
+// The shipped layout gives the target a °C slot and a % slot, the unused one
+// `null`. An energy task's kWh target is appended after the direction rather
+// than given a slot of its own, so every temperature and EV task keeps the
+// signature it shipped with and a deploy does not stamp a spurious
+// `objective_changed` revision on each of them.
+const buildSignatureBase = (params: ObjectiveSignatureParams): Array<string | number | null> => {
+  const { objectiveKind, targetValue, deadlineAtMs, enforcement, progressDirection } = params;
+  switch (objectiveKind) {
+    case 'temperature': return [objectiveKind, targetValue, null, deadlineAtMs, enforcement, progressDirection];
+    case 'ev_soc': return [objectiveKind, null, targetValue, deadlineAtMs, enforcement, progressDirection];
+    case 'energy': return [objectiveKind, null, null, deadlineAtMs, enforcement, progressDirection, targetValue];
+    default: {
+      const exhaustive: never = objectiveKind;
+      return exhaustive;
+    }
+  }
+};
+
 export const buildObjectiveSignature = (params: ObjectiveSignatureParams): string => {
-  const base = [
-    params.objectiveKind,
-    params.targetTemperatureC,
-    params.targetPercent,
-    params.deadlineAtMs,
-    params.enforcement,
-    params.progressDirection,
-  ];
+  const base = buildSignatureBase(params);
   const rescue = buildRescueSignatureSegment(params.rescue);
   return JSON.stringify(rescue ? [...base, rescue] : base);
 };
+
+/** The signature of a configured task, read off its settings entry and resolved direction. */
+export const buildObjectiveSignatureForEntry = (
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+): string => (
+  buildObjectiveSignature({
+    objectiveKind: objective.kind,
+    targetValue: resolveObjectiveTargetValue(objective),
+    deadlineAtMs: objective.deadlineAtMs,
+    enforcement: objective.enforcement,
+    progressDirection,
+    rescue: objective.rescue,
+  })
+);
 
 // Internal: parse a signature string into its (base, rescue) parts. Used by
 // `compareObjectiveSignatures` so the recorder can detect when two signatures
@@ -83,9 +114,13 @@ const parseObjectiveSignature = (signature: string): ParsedObjectiveSignature =>
   // Signatures written before direction-aware objectives have five base
   // fields. Their milestone trajectory was upward, so preserve that as the
   // legacy direction when comparing against the first direction-aware read.
-  const hasDirection = signatureParts.length === 6
+  // An energy task's signature carries its kWh target as a seventh field, after
+  // the direction; it belongs to the base.
+  const hasDirection = (signatureParts.length === 6 || signatureParts.length === 7)
     && (signatureParts[5] === 'increasing' || signatureParts[5] === 'decreasing' || signatureParts[5] === 'unknown');
-  const baseParts = hasDirection ? signatureParts.slice(0, 5) : signatureParts;
+  const baseParts = hasDirection
+    ? [...signatureParts.slice(0, 5), ...signatureParts.slice(6)]
+    : signatureParts;
   const direction = hasDirection ? String(signatureParts[5]) : 'increasing';
   const rescueSegment = hasRescueTail ? tail : null;
   return {

@@ -11,11 +11,12 @@ import {
   formatClockTime,
   HOUR_MS,
   MINUTE_MS,
-  OVERSHOOT_PERCENT_THRESHOLD_PUBLIC,
-  OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC,
+  formatHistoryValueForKind,
+  OVERSHOOT_THRESHOLD_BY_KIND,
   pickLastPlan,
   snapshotShowsBudgetExhausted,
 } from './deferredPlanHistoryShared';
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 
 // Margin phrasing for the met headlines ("18 min before 01:00"). Composed
 // from the SAME receipt duration formatters the Succeeded trio's "Ready" row
@@ -76,34 +77,30 @@ export type DeferredPlanHistoryPostmortem = {
 };
 
 const MET_AT_BUZZER_WINDOW_MS = HOUR_MS;
-// Aliased to the module-private constants used by `formatPlanHistoryOvershootLine`
-// so the two helpers can't drift on the threshold definition (5 °C / 10 %).
-const OVERSHOOT_TEMPERATURE_THRESHOLD_C = OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC;
-const OVERSHOOT_PERCENT_THRESHOLD = OVERSHOOT_PERCENT_THRESHOLD_PUBLIC;
 
 // Format a resolved (unit-agnostic) value with the kind's unit suffix. Shared
 // by the target / final-progress formatters so the value selection (resolver)
 // and the unit format (kind) stay separated.
 const formatValueWithUnit = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
   value: number | null,
 ): string | null => {
   if (value === null) return null;
-  return kind === 'temperature' ? `${value.toFixed(1)} °C` : `${value.toFixed(0)} %`;
+  return formatHistoryValueForKind(kind, value);
 };
 
 const formatTargetValue = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
   targetValue: number | null,
 ): string | null => formatValueWithUnit(kind, targetValue);
 
 const formatFinalProgressValue = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
   finalProgressValue: number | null,
 ): string | null => formatValueWithUnit(kind, finalProgressValue);
 
 const formatShortfallValue = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
   finalProgressValue: number | null,
   targetValue: number | null,
   progressDirection: 'increasing' | 'decreasing' | 'unknown',
@@ -113,7 +110,7 @@ const formatShortfallValue = (
     ? targetValue - finalProgressValue
     : finalProgressValue - targetValue;
   if (gap <= 0) return null;
-  return kind === 'temperature' ? `${gap.toFixed(1)} °C` : `${gap.toFixed(0)} %`;
+  return formatHistoryValueForKind(kind, gap);
 };
 
 // Detect whether a `met` outcome overshot the target meaningfully. Threshold
@@ -121,19 +118,16 @@ const formatShortfallValue = (
 // delivered > target by > 5 °C / 10 %"). The producer surfaces the overshoot
 // to the postmortem sentence; the dedicated overshoot line copy lives in PR 6.
 const wasOvershoot = (
-  kind: 'temperature' | 'ev_soc',
+  kind: DeferredObjectiveSettingsKind,
   finalProgressValue: number | null,
   targetValue: number | null,
   progressDirection: 'increasing' | 'decreasing' | 'unknown',
 ): boolean => {
   if (finalProgressValue === null || targetValue === null || progressDirection === 'unknown') return false;
-  const threshold = kind === 'temperature'
-    ? OVERSHOOT_TEMPERATURE_THRESHOLD_C
-    : OVERSHOOT_PERCENT_THRESHOLD;
   const overshoot = progressDirection === 'increasing'
     ? finalProgressValue - targetValue
     : targetValue - finalProgressValue;
-  return overshoot > threshold;
+  return overshoot > OVERSHOOT_THRESHOLD_BY_KIND[kind];
 };
 
 type PostmortemEntry = Pick<
@@ -245,6 +239,18 @@ const resolveCarLimitMetPostmortem = (
   };
 };
 
+// An energy task's value is an amount it was given, not a level it rose to.
+const MET_VERB: Record<DeferredObjectiveSettingsKind, string> = {
+  temperature: 'Hit',
+  ev_soc: 'Hit',
+  energy: 'Delivered',
+};
+const MISSED_VERB: Record<DeferredObjectiveSettingsKind, string> = {
+  temperature: 'Reached',
+  ev_soc: 'Reached',
+  energy: 'Delivered',
+};
+
 const resolveMetPostmortem = (
   entry: PostmortemEntry,
   timeZone: string,
@@ -286,7 +292,8 @@ const resolveMetPostmortem = (
     // typo — one convention (review round 2 P2 #11; mock history-v3).
     return {
       variant: 'met-with-overshoot',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel}`,
+      sentence: `${MET_VERB[entry.objectiveKind]} ${timing.targetLabel} at ${timing.metAtLabel}, `
+        + `before ${timing.deadlineLabel}`,
     };
   }
   // Met-at-buzzer: reached the target inside the last planned hour of the
@@ -296,14 +303,14 @@ const resolveMetPostmortem = (
   if (timing !== null && timing.marginMs <= MET_AT_BUZZER_WINDOW_MS) {
     return {
       variant: 'met-at-buzzer',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, `
+      sentence: `${MET_VERB[entry.objectiveKind]} ${timing.targetLabel} at ${timing.metAtLabel}, `
         + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}`,
     };
   }
   if (timing !== null) {
     return {
       variant: 'met-with-margin',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, `
+      sentence: `${MET_VERB[entry.objectiveKind]} ${timing.targetLabel} at ${timing.metAtLabel}, `
         + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}`,
     };
   }
@@ -353,8 +360,10 @@ const resolveMissedPostmortem = (
     return {
       variant: 'missed-by-shortfall',
       sentence: entry.progressDirection === 'decreasing'
-        ? `Reached ${finalLabel} by ${deadlineLabel} — ${shortfallLabel} above ${targetLabel}.`
-        : `Reached ${finalLabel} by ${deadlineLabel} — ${shortfallLabel} short of ${targetLabel}.`,
+        ? `${MISSED_VERB[entry.objectiveKind]} ${finalLabel} by ${deadlineLabel} — `
+          + `${shortfallLabel} above ${targetLabel}.`
+        : `${MISSED_VERB[entry.objectiveKind]} ${finalLabel} by ${deadlineLabel} — `
+          + `${shortfallLabel} short of ${targetLabel}.`,
     };
   }
   return {

@@ -59,41 +59,26 @@ describe('resolveReachableTargetValue', () => {
 
 describe('resolveObjectiveProgress under a car limit', () => {
   it('sizes the remaining charge to the car\'s limit, not the task\'s target', () => {
-    const progress = resolveObjectiveProgress({
-      objective: evTask,
-      device: charger({ kind: 'known', percent: 53, carChargeLimitPercent: 70 }),
-    });
-    expect(progress).toMatchObject({ remainingUnits: 17, currentPercent: 53, reasonCode: null });
+    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 53, carChargeLimitPercent: 70 }), () => 0);
+    expect(progress).toMatchObject({ remainingUnits: 17, currentValue: 53, reasonCode: null });
   });
 
   it('has nothing left once the car sits at its limit', () => {
-    const progress = resolveObjectiveProgress({
-      objective: evTask,
-      device: charger({ kind: 'known', percent: 70, carChargeLimitPercent: 70 }),
-    });
+    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 70, carChargeLimitPercent: 70 }), () => 0);
     expect(progress).toMatchObject({ remainingUnits: 0, reasonCode: null });
   });
 });
 
 describe('resolveObjectiveProgress for temperature tasks', () => {
   it('measures cooling shortfall above the target', () => {
-    expect(resolveObjectiveProgress({
-      objective: coolingTask,
-      device: thermostat(26, 'cooling'),
-    })).toMatchObject({ remainingUnits: 4, currentTemperatureC: 26, reasonCode: null });
+    expect(resolveObjectiveProgress(coolingTask, thermostat(26, 'cooling'), () => 0)).toMatchObject({ remainingUnits: 4, currentValue: 26, reasonCode: null });
   });
 
   it('treats cooling below the target as complete', () => {
-    expect(resolveObjectiveProgress({
-      objective: coolingTask,
-      device: thermostat(19, 'cooling'),
-    })).toMatchObject({ remainingUnits: 0, currentTemperatureC: 19, reasonCode: null });
+    expect(resolveObjectiveProgress(coolingTask, thermostat(19, 'cooling'), () => 0)).toMatchObject({ remainingUnits: 0, currentValue: 19, reasonCode: null });
   });
 
   it('keeps heating shortfall below the target', () => {
-    expect(resolveObjectiveProgress({
-      objective: coolingTask,
-      device: thermostat(18, 'heating'),
-    })).toMatchObject({ remainingUnits: 4, currentTemperatureC: 18, reasonCode: null });
+    expect(resolveObjectiveProgress(coolingTask, thermostat(18, 'heating'), () => 0)).toMatchObject({ remainingUnits: 4, currentValue: 18, reasonCode: null });
   });
 });

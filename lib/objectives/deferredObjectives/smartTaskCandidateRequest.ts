@@ -35,7 +35,7 @@ const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MAX_DEADLINE_HORIZON_MS = 36 * 60 * 60 * 1000;
 
 const isObjectiveKind = (value: unknown): value is DeferredObjectiveSettingsKind => (
-  value === 'temperature' || value === 'ev_soc'
+  value === 'temperature' || value === 'ev_soc' || value === 'energy'
 );
 
 // Parse and shape-validate the candidate request body. Returns null on any
@@ -189,6 +189,25 @@ const buildCandidateRescue = (
   };
 };
 
+// The request's one `target` number read as the kind's own target field.
+const buildCandidateBase = (
+  request: SmartTaskCandidateRequest,
+  deadlineAtMs: number,
+): DeferredObjectivePlanPreviewCandidate => {
+  switch (request.kind) {
+    case 'ev_soc':
+      return { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs };
+    case 'temperature':
+      return { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
+    case 'energy':
+      return { kind: 'energy', enforcement: 'soft', targetEnergyKWh: request.target, deadlineAtMs };
+    default: {
+      const exhaustive: never = request.kind;
+      return exhaustive;
+    }
+  }
+};
+
 // Build and VALIDATE the preview/persist candidate (the settings entry shape
 // minus `enabled`) from a request + resolved deadline. Validation runs through
 // the same `normalizeDeferredObjectiveSettingsEntry` the create path uses, so a
@@ -204,9 +223,7 @@ export const buildValidSmartTaskCandidate = (
   // without them (the create widget) mints `'always'` as before.
   standingRescue?: DeferredObjectiveRescuePermissions,
 ): DeferredObjectivePlanPreviewCandidate | null => {
-  const base: DeferredObjectivePlanPreviewCandidate = request.kind === 'ev_soc'
-    ? { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs }
-    : { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
+  const base = buildCandidateBase(request, deadlineAtMs);
   const rescue = buildCandidateRescue(request, standingRescue);
   const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;

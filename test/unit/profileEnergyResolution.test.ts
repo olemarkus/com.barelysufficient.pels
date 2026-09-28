@@ -337,36 +337,23 @@ describe('resolveProfileEnergy variance buffer', () => {
 });
 
 describe('progressCurrentValue', () => {
-  const okProgress = (
-    overrides: Partial<DeferredObjectiveProgressResolution>,
-  ): DeferredObjectiveProgressResolution => ({
+  const okProgress = (currentValue: number): DeferredObjectiveProgressResolution => ({
     remainingUnits: 5,
     progressDirection: 'increasing',
-    currentPercent: null,
-    currentTemperatureC: null,
+    currentValue,
     reasonCode: null,
-    ...overrides,
-  } as DeferredObjectiveProgressResolution);
-
-  it('returns currentPercent for ev_soc objectives', () => {
-    expect(progressCurrentValue({
-      progress: okProgress({ currentPercent: 65 }),
-      objectiveKind: 'ev_soc',
-    })).toBe(65);
   });
 
-  it('returns currentTemperatureC for temperature objectives', () => {
-    expect(progressCurrentValue({
-      progress: okProgress({ currentTemperatureC: 55 }),
-      objectiveKind: 'temperature',
-    })).toBe(55);
+  it('returns the reading for ev_soc objectives', () => {
+    expect(progressCurrentValue({ progress: okProgress(65), objectiveKind: 'ev_soc' })).toBe(65);
   });
 
-  it('returns undefined for generic_energy (no banded path)', () => {
-    expect(progressCurrentValue({
-      progress: okProgress({ currentTemperatureC: 55 }),
-      objectiveKind: 'generic_energy',
-    })).toBeUndefined();
+  it('returns the reading for temperature objectives', () => {
+    expect(progressCurrentValue({ progress: okProgress(55), objectiveKind: 'temperature' })).toBe(55);
+  });
+
+  it('returns undefined for energy objectives (exact rate, no banded path)', () => {
+    expect(progressCurrentValue({ progress: okProgress(5), objectiveKind: 'energy' })).toBeUndefined();
   });
 
   it('returns undefined when progress has a reasonCode', () => {
@@ -374,17 +361,9 @@ describe('progressCurrentValue', () => {
       progress: {
         remainingUnits: 0,
         progressDirection: 'increasing',
-        currentPercent: 50,
-        currentTemperatureC: null,
+        currentValue: 50,
         reasonCode: 'objective_progress_stale',
       },
-      objectiveKind: 'ev_soc',
-    })).toBeUndefined();
-  });
-
-  it('returns undefined when the relevant value is missing', () => {
-    expect(progressCurrentValue({
-      progress: okProgress({ currentPercent: null }),
       objectiveKind: 'ev_soc',
     })).toBeUndefined();
   });

@@ -4,6 +4,7 @@ import type {
 } from './activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 
 export type DeferredObjectiveChangeInput = {
   deviceId: string;
@@ -29,6 +30,9 @@ const objectivesMatch = (
   if (a.kind === 'ev_soc' && b.kind === 'ev_soc') {
     return a.targetPercent === b.targetPercent && a.enforcement === b.enforcement;
   }
+  if (a.kind === 'energy' && b.kind === 'energy') {
+    return a.targetEnergyKWh === b.targetEnergyKWh;
+  }
   return false;
 };
 
@@ -40,8 +44,7 @@ const seedFromEntry = (
   deviceId,
   deviceName,
   objectiveKind: entry.kind,
-  targetTemperatureC: entry.kind === 'temperature' ? entry.targetTemperatureC : null,
-  targetPercent: entry.kind === 'ev_soc' ? entry.targetPercent : null,
+  targetValue: resolveObjectiveTargetValue(entry),
   deadlineAtMs: entry.deadlineAtMs,
   enforcement: entry.enforcement,
   ...(entry.rescue ? { rescue: entry.rescue } : {}),

@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type {
   ObservedStateOfCharge,
   SteppedLoadProfile,
@@ -17,20 +18,22 @@ export type {
 export type ObjectiveProgressDirection = ObjectiveProfileProgressDirection;
 export type ObjectiveProgressDirectionRead = ObjectiveProgressDirection | 'unknown';
 
+// A battery level and an amount of energy delivered only ever rise; only a
+// temperature can be driven down (a cooling thermostat).
 export const resolveObjectiveProgressDirection = (params: {
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   thermalDirection: ThermalDirection;
 }): ObjectiveProgressDirection => (
-  params.objectiveKind === 'ev_soc' || params.thermalDirection === 'heating'
+  params.objectiveKind !== 'temperature' || params.thermalDirection === 'heating'
     ? 'increasing'
     : 'decreasing'
 );
 
 export const resolveObjectiveProgressDirectionRead = (params: {
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   thermalDirection: ThermalDirection | 'unknown';
 }): ObjectiveProgressDirectionRead => {
-  if (params.objectiveKind === 'ev_soc') return 'increasing';
+  if (params.objectiveKind !== 'temperature') return 'increasing';
   if (params.thermalDirection === 'unknown') return 'unknown';
   return resolveObjectiveProgressDirection({
     objectiveKind: params.objectiveKind,

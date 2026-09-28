@@ -1,4 +1,4 @@
-import type { DeferredObjectivePlanHistoryProgressSample } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { ResolvedDeferredObjectivePlanHistoryProgressSample } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   drainProgressSamples,
@@ -90,7 +90,7 @@ describe('recordProgressSample (15-minute grid)', () => {
     ring = recordProgressSample(ring, tempDiag(53), 50 * 60 * 1000);
     // 0:00 / 0:20 / 0:40 / 0:50 are four distinct 15-minute buckets — the
     // old hourly grid would have collapsed them into a single sample.
-    expect(drainProgressSamples(ring).map((s) => s.valueC)).toEqual([50, 51, 52, 53]);
+    expect(drainProgressSamples(ring).map((s) => s.value)).toEqual([50, 51, 52, 53]);
   });
 
   it('upserts within a bucket: latest reading wins and keeps its real timestamp', () => {
@@ -99,7 +99,7 @@ describe('recordProgressSample (15-minute grid)', () => {
     ring = recordProgressSample(ring, tempDiag(50.9), 14 * 60 * 1000);
     const drained = drainProgressSamples(ring);
     expect(drained).toHaveLength(1);
-    expect(drained[0]!.valueC).toBe(50.9);
+    expect(drained[0]!.value).toBe(50.9);
     // The sample keeps the observation's real time, not the bucket start.
     expect(drained[0]!.atMs).toBe(14 * 60 * 1000);
   });
@@ -119,7 +119,7 @@ describe('recordProgressSample (15-minute grid)', () => {
   });
 
   it('re-buckets onto a coarser grid when an upsert exceeds the cap', () => {
-    let ring = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+    let ring = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
     for (let i = 0; i <= PROGRESS_SAMPLES_PER_ENTRY_CAP; i += 1) {
       ring = recordProgressSample(ring, tempDiag(20 + i * 0.1), i * QUARTER_MS);
     }
@@ -137,10 +137,10 @@ describe('recordProgressSample (15-minute grid)', () => {
 });
 
 describe('rebucketProgressSamples', () => {
-  const ringOfQuarters = (count: number): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
-    const ring = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+  const ringOfQuarters = (count: number): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
+    const ring = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
     for (let i = 0; i < count; i += 1) {
-      ring.set(i * QUARTER_MS, { atMs: i * QUARTER_MS, valueC: 20 + i, valuePercent: null });
+      ring.set(i * QUARTER_MS, { atMs: i * QUARTER_MS, value: 20 + i });
     }
     return ring;
   };
@@ -161,7 +161,7 @@ describe('rebucketProgressSamples', () => {
     // Each kept sample is the LATEST reading of its hour (quarters 3, 7, 11),
     // mirroring the per-cycle upsert's latest-reading-wins semantics.
     expect(drained.map((s) => s.atMs)).toEqual([3 * QUARTER_MS, 7 * QUARTER_MS, 11 * QUARTER_MS]);
-    expect(drained.map((s) => s.valueC)).toEqual([23, 27, 31]);
+    expect(drained.map((s) => s.value)).toEqual([23, 27, 31]);
   });
 
   it('is deterministic: a pure function of the sample timestamps', () => {
@@ -173,19 +173,19 @@ describe('rebucketProgressSamples', () => {
 
 describe('drainProgressSamples', () => {
   it('returns samples sorted ascending by atMs regardless of insertion order', () => {
-    const ring = new Map<number, DeferredObjectivePlanHistoryProgressSample>([
-      [2 * HOUR_MS, { atMs: 2 * HOUR_MS, valueC: 60, valuePercent: null }],
-      [0, { atMs: 0, valueC: 50, valuePercent: null }],
-      [QUARTER_MS, { atMs: QUARTER_MS, valueC: 52, valuePercent: null }],
+    const ring = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>([
+      [2 * HOUR_MS, { atMs: 2 * HOUR_MS, value: 60 }],
+      [0, { atMs: 0, value: 50 }],
+      [QUARTER_MS, { atMs: QUARTER_MS, value: 52 }],
     ]);
     expect(drainProgressSamples(ring).map((s) => s.atMs)).toEqual([0, QUARTER_MS, 2 * HOUR_MS]);
   });
 
   it('re-buckets (never truncates) as a backstop when handed an over-cap ring', () => {
-    const ring = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+    const ring = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
     const count = PROGRESS_SAMPLES_PER_ENTRY_CAP + 40;
     for (let i = 0; i < count; i += 1) {
-      ring.set(i * QUARTER_MS, { atMs: i * QUARTER_MS, valueC: 20 + i, valuePercent: null });
+      ring.set(i * QUARTER_MS, { atMs: i * QUARTER_MS, value: 20 + i });
     }
     const drained = drainProgressSamples(ring);
     expect(drained.length).toBeLessThanOrEqual(PROGRESS_SAMPLES_PER_ENTRY_CAP);
@@ -206,9 +206,9 @@ describe('mergeRecord × stall freeze at the 15-minute cadence', () => {
     const merged = mergeRecord(stalled, tempDiag(61.5), 3 * HOUR_MS + QUARTER_MS, undefined);
     expect(merged.satisfied).toBe(true);
     expect(merged.metAtMs).toBe(3 * HOUR_MS);
-    expect(merged.finalProgressC).toBeCloseTo(61.8, 5);
+    expect(merged.finalProgressValue).toBeCloseTo(61.8, 5);
     const drained = drainProgressSamples(merged.progressSamples);
-    expect(drained.map((s) => s.valueC)).toEqual([60.9, 61.5]);
+    expect(drained.map((s) => s.value)).toEqual([60.9, 61.5]);
     expect(drained.map((s) => s.atMs)).toEqual([0, 3 * HOUR_MS + QUARTER_MS]);
   });
 });

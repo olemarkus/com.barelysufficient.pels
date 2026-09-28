@@ -1,3 +1,4 @@
+import type { DeferredObjectiveGoal } from '../../contracts/src/deferredObjectiveSettings';
 // Single source of truth for resolving the unit-agnostic numeric value out of a
 // deferred objective's kind-split (°C vs %) field pair.
 //
@@ -60,3 +61,21 @@ export const resolveFinalProgressValue = (
 export const resolveSampleValue = (
   fields: DeferredObjectiveSampleValueFields,
 ): number | null => fields.valuePercent ?? fields.valueC ?? null;
+
+/**
+ * A configured task's target in the task's own unit (°C, % or kWh) — the one
+ * place a settings entry's kind picks its target column. Every consumer that
+ * needs "the target" as a number, not as a labelled field, reads it here:
+ * signatures, previews, history seeds and the settings UI alike.
+ */
+export const resolveObjectiveTargetValue = (goal: DeferredObjectiveGoal): number => {
+  switch (goal.kind) {
+    case 'ev_soc': return goal.targetPercent;
+    case 'temperature': return goal.targetTemperatureC;
+    case 'energy': return goal.targetEnergyKWh;
+    default: {
+      const exhaustive: never = goal;
+      return exhaustive;
+    }
+  }
+};

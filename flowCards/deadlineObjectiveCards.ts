@@ -1,17 +1,12 @@
-import {
-  resolveDeferredObjectiveDeadline,
-  type DeferredObjectivePlanRevisionEvent,
-  type DeferredObjectiveSettingsEntry,
+import type {
+  DeferredObjectivePlanRevisionEvent,
+  DeferredObjectiveSettingsEntry,
 } from '../lib/objectives/deferredObjectives';
-import type { ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import {
-  resolveObjectiveWriteRefusalMessage,
-} from '../packages/shared-domain/src/objectiveWriteStrings';
 import {
   isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
@@ -19,6 +14,7 @@ import {
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
+import { registerSetEnergyDeadlineCard } from './energyDeadlineCard';
 import {
   buildSmartTaskEndedTokens,
   buildSmartTaskHoursRemainingTokens,
@@ -27,8 +23,13 @@ import {
   type SmartTaskStatusId,
 } from './smartTaskTokens';
 import type { FlowCardDeps } from './registerFlowCards';
-
-const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+import {
+  isOfferedDevice,
+  resolveReadyByToDeadlineAtMs,
+  throwIfWriteRefused,
+  validateNumberInRange,
+  validateReadyBy,
+} from './deadlineCardWrites';
 
 type SmartTaskActiveFlowStatus = SmartTaskStatusId;
 
@@ -44,27 +45,6 @@ export const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
 
-// A device-scoped write can refuse to persist on a transient un-confirmable
-// migration / untrustworthy settings read / provisional ownership fence. The Flow-card run listeners are
-// async, so throwing here lets Homey surface a retryable failure to the user
-// instead of the card reporting a (false) success while nothing was written.
-// Durable scope refusals (`device_in_sub_home` / `device_not_planned`) throw
-// their own honest lines instead of the misleading "try again" framing.
-const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
-  if (outcome.persisted) return;
-  throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
-};
-
-// Autocomplete filter for the two set-deadline (task-creating) cards: offer
-// main-home devices only (multi-home v1 — smart tasks plan against the main
-// home's meter budget), mirroring the write gate so the picker never offers a
-// device whose card run would then reject with the scope error. The clear and
-// trigger cards stay unfiltered: an existing task on a relocated device must
-// remain clearable and observable.
-const isOfferedDevice = (deps: FlowCardDeps) => (device: TargetDeviceSnapshot): boolean => (
-  deps.hasMainHomeSmartTaskAuthority(device.id)
-);
-
 // Resolve the condition's device against current membership before it can
 // inspect clock-refreshed active-plan state. Kept outside the listener so the
 // listener's already-dense status compatibility path stays within the
@@ -76,30 +56,6 @@ const resolveStatusConditionDeviceId = (
   const deviceId = getDeviceIdFromFlowArg(rawDevice);
   if (!deviceId || !deps.isDeviceInMainHome(deviceId)) return null;
   return deviceId;
-};
-
-const validateReadyBy = (raw: unknown): string => {
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!LOCAL_TIME_PATTERN.test(value)) {
-    throw new Error('Ready by must be HH:mm in 24-hour local time (e.g. "07:00").');
-  }
-  return value;
-};
-
-const validateNumberInRange = (
-  raw: unknown,
-  fieldLabel: string,
-  min: number,
-  max: number,
-): number => {
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(value)) {
-    throw new Error(`${fieldLabel} must be a number.`);
-  }
-  if (value < min || value > max) {
-    throw new Error(`${fieldLabel} must be between ${min} and ${max}.`);
-  }
-  return value;
 };
 
 // Maps a raw dropdown arg to the canonical SmartTaskActiveFlowStatus used
@@ -216,6 +172,7 @@ const isLegacyNoneStatusMatch = (
 export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   registerSetTemperatureDeadlineCard(deps);
   registerSetEvChargeDeadlineCard(deps);
+  registerSetEnergyDeadlineCard(deps);
   registerClearDeadlineCard(deps);
   registerDeadlineStatusChangedTrigger(deps);
   registerDeadlineEndedTrigger(deps);
@@ -320,19 +277,6 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     );
   });
 }
-
-const resolveReadyByToDeadlineAtMs = (deps: FlowCardDeps, deadlineLocalTime: string): number => {
-  const nowMs = deps.getNow().getTime();
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone: deps.getTimeZone(),
-    deadlineLocalTime,
-  });
-  if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) {
-    throw new Error(`Could not resolve "${deadlineLocalTime}" to a future moment in time.`);
-  }
-  return resolution.deadlineAtMs;
-};
 
 const resolveDeviceName = async (deps: FlowCardDeps, deviceId: string): Promise<string | null> => {
   try {

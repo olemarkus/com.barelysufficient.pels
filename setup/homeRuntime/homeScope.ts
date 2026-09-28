@@ -29,6 +29,7 @@
  * restore anchor; see `getModeDeviceTargets` below.
  */
 import { requirePlanService } from '../appInit/contextGuards';
+import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
@@ -238,6 +239,11 @@ export function buildMainHomeScope(
     // The same idle-classifier reader the lifecycle emitter gets, so both lanes
     // allocate lower-priority tasks against the same reservation ledger.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
+    // The count the lifecycle clock books, read lazily: the tracker is built
+    // with the plan runtime, after this scope.
+    getDeliveredEnergyKWh: (deviceId, deadlineAtMs) => (
+      requireDeferredObjectiveEnergyDelivery(ctx).getDeliveredKWh(deviceId, deadlineAtMs)
+    ),
   });
   const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
     void requirePlanService(ctx).rebuildPlanFromCache(trigger);

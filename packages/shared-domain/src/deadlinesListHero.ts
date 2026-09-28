@@ -208,14 +208,16 @@ const isAtRiskCard = (card: DeadlinesListHeroCard): card is AtRiskHeroCard => (
 // exhaustiveness: adding a new kind forces an update to the literal here.
 // Kept as data tables (not switches with `never` guards) so the kind →
 // verb / noun mapping reads at a glance.
-const KIND_VERB: Record<DeferredObjectiveSettingsKind, 'charging' | 'heating'> = {
+const KIND_VERB: Record<DeferredObjectiveSettingsKind, 'charging' | 'heating' | 'running'> = {
   ev_soc: 'charging',
   temperature: 'heating',
+  energy: 'running',
 };
 
-const KIND_NAME_FALLBACK: Record<DeferredObjectiveSettingsKind, 'EV' | 'Heater'> = {
+const KIND_NAME_FALLBACK: Record<DeferredObjectiveSettingsKind, 'EV' | 'Heater' | 'Device'> = {
   ev_soc: 'EV',
   temperature: 'Heater',
+  energy: 'Device',
 };
 
 // Hero-specific reason phrasing for at-risk cards. Distinct from

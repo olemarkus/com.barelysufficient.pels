@@ -194,6 +194,11 @@ abstract class AppRuntimeApi extends Base {
   public getThermalDirection(deviceId: string): ThermalDirection {
     return this.observedDeviceStateProjection.getThermalDirection(deviceId);
   }
+
+  /** Whether this device's power reading is a live measurement — the observer projection's answer. */
+  public isLiveMeasuredDraw(deviceId: string): boolean {
+    return this.observedDeviceStateProjection.isLiveMeasuredDraw(deviceId);
+  }
   public async logTargetRetryComparison(params: {
     deviceId: string; name: string; target: 'temperature'; desired: number; observedValue?: unknown;
     observedSource?: string; retryCount: number; skipContext: 'plan' | 'shedding' | 'overshoot';

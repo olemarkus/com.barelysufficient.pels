@@ -97,14 +97,14 @@ const makeDiag = (
   // Keep the unit-agnostic pair consistent with whatever kind-split fields the
   // override set, unless the override set the pair explicitly.
   const targetValue = overrides.targetValue
-    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent);
+    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? 0);
   return {
     ...diag,
     currentValue: overrides.currentValue
       ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
     targetValue,
     // No car limit unless the case sets one: the reachable target is the target.
-    reachableTargetValue: overrides.reachableTargetValue ?? targetValue ?? 0,
+    reachableTargetValue: overrides.reachableTargetValue ?? targetValue,
   };
 };
 
@@ -148,10 +148,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
     const trajectory = recorder.getInProgressTrajectory('dev');
     expect(trajectory).not.toBeNull();
-    expect(trajectory!.startProgressC).toBe(50);
-    expect(trajectory!.startProgressPercent).toBeNull();
+    expect(trajectory!.startProgressValue).toBe(50);
     // One sample per occupied 15-minute bucket, sorted ascending by atMs.
-    expect(trajectory!.progressSamples.map((s) => s.valueC)).toEqual([50, 58]);
+    expect(trajectory!.progressSamples.map((s) => s.value)).toEqual([50, 58]);
     const ats = trajectory!.progressSamples.map((s) => s.atMs);
     expect(ats).toEqual([...ats].sort((a, b) => a - b));
 
@@ -338,6 +337,46 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(entry.finalProgressValue).toBe(66);
   });
 
+  it('records an energy run in kWh', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 8 * HOUR_MS;
+    // An energy task: its progress is the energy fed so far (`currentValue`),
+    // with no temperature or percent column.
+    const energyDiag = (
+      deliveredKWh: number,
+      overrides: Partial<Pick<DeferredObjectiveDiagnostic, 'trajectory' | 'horizonPlan'>> = {},
+    ): DeferredObjectiveDiagnostic => {
+      const { targetTemperatureC: _target, currentTemperatureC: _current, ...rest } = makeDiag({
+        deviceId: 'relay',
+        deadlineAtMs,
+        objectiveId: 'relay:energy',
+        currentValue: deliveredKWh,
+        targetValue: 16,
+        kwhPerUnitSource: 'exact',
+        ...overrides,
+      });
+      return { ...rest, objectiveKind: 'energy', targetEnergyKWh: 16 };
+    };
+
+    recorder.observe([energyDiag(0)], 0, null);
+    recorder.observe([energyDiag(8)], 3 * HOUR_MS, null);
+    recorder.observe([energyDiag(16, {
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 5 * HOUR_MS, null);
+    recorder.observe([], deadlineAtMs, null);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry).toMatchObject({
+      outcome: 'met',
+      targetValue: 16,
+      startProgressValue: 0,
+      finalProgressValue: 16,
+    });
+  });
+
   it('finalizes as `missed` when the deadline passes with progress below target', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
@@ -457,10 +496,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     // them — they must never reach the bus retroactively.
     recorder.backfillFromConfig([{
       deviceId: 'backfill-dev',
-      objectiveKind: 'temperature',
       deadlineAtMs: 5 * HOUR_MS,
-      targetTemperatureC: 65,
-      targetPercent: null,
+      targetValue: 65,
     }], 0, 7 * HOUR_MS);
     expect(events).toHaveLength(3);
   });
@@ -670,17 +707,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       [
         {
           deviceId: 'dev_a',
-          objectiveKind: 'temperature',
           deadlineAtMs: deadlineA,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
         },
         {
           deviceId: 'dev_b',
-          objectiveKind: 'temperature',
           deadlineAtMs: deadlineC,
-          targetTemperatureC: 28,
-          targetPercent: null,
+          targetValue: 28,
         },
       ],
       deadlineA - HOUR_MS,
@@ -705,26 +738,20 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         // Inside window — included.
         {
           deviceId: 'in_window',
-          objectiveKind: 'temperature',
           deadlineAtMs: deadlineB,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
         },
         // At fromMs (strict >) — excluded.
         {
           deviceId: 'on_lower_boundary',
-          objectiveKind: 'temperature',
           deadlineAtMs: deadlineA,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
         },
         // Past toMs — excluded.
         {
           deviceId: 'future',
-          objectiveKind: 'temperature',
           deadlineAtMs: deadlineC + HOUR_MS,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
         },
       ],
       deadlineA,
@@ -740,10 +767,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const configs = [{
       deviceId: 'dev',
-      objectiveKind: 'temperature' as const,
       deadlineAtMs: deadlineA,
-      targetTemperatureC: 65,
-      targetPercent: null,
+      targetValue: 65,
     }];
     recorder.backfillFromConfig(configs, deadlineA - HOUR_MS, deadlineA + HOUR_MS);
     recorder.backfillFromConfig(configs, deadlineA - HOUR_MS, deadlineA + HOUR_MS);
@@ -764,10 +789,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.backfillFromConfig(
       [{
         deviceId: 'dev',
-        objectiveKind: 'temperature',
         deadlineAtMs: deadlineA,
-        targetTemperatureC: 65,
-        targetPercent: null,
+        targetValue: 65,
       }],
       deadlineA - HOUR_MS,
       deadlineA + HOUR_MS,
@@ -883,10 +906,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const config = (deadlineAtMs: number) => ({
       deviceId: 'dev',
       deviceName: 'Water Heater',
-      objectiveKind: 'temperature' as const,
       deadlineAtMs,
-      targetTemperatureC: 65,
-      targetPercent: null,
+      targetValue: 65,
     });
     recorder.backfillFromConfig(
       [config(durableDeadline), config(localDeadline)],
@@ -1186,8 +1207,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: params.deadlineAtMs,
           startedAtMs: 0,
           pending: false,
@@ -1266,8 +1286,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
             deviceId: 'dev',
             deviceName: 'EV',
             objectiveKind: 'ev_soc' as const,
-            targetTemperatureC: null,
-            targetPercent: 80,
+            targetValue: 80,
             deadlineAtMs,
             startedAtMs: 0,
             pending: false,
@@ -1577,8 +1596,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: params.deadlineAtMs,
           startedAtMs: 0,
           pending: false,
@@ -2152,10 +2170,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       afterRestart.backfillFromConfig([{
         deviceId: 'dev',
-        objectiveKind: 'temperature',
         deadlineAtMs,
-        targetTemperatureC: 65,
-        targetPercent: null,
+        targetValue: 65,
       }], 0, 11 * 60_000);
       expect(afterRestart.getHistorySnapshot().entries).toEqual([]);
 
@@ -2888,8 +2904,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
-          targetTemperatureC: 65,
-          targetPercent: null,
+          targetValue: 65,
           deadlineAtMs: params.deadlineAtMs,
           startedAtMs: 0,
           pending: false,
@@ -3013,8 +3028,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
             deviceId: 'dev',
             deviceName: 'Water Heater',
             objectiveKind: 'temperature' as const,
-            targetTemperatureC: 65,
-            targetPercent: null,
+            targetValue: 65,
             deadlineAtMs,
             startedAtMs: 0,
             pending: false,

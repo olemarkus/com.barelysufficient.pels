@@ -7,6 +7,7 @@
 // additive logging. Lives beside `activePlanRecorder.ts` so that file stays
 // under the `max-lines` lint cap.
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export const buildActivePlanLifecycleFields = (
   diag: DeferredObjectiveDiagnostic,
@@ -14,13 +15,17 @@ export const buildActivePlanLifecycleFields = (
 ): {
   startedAtMs: number;
   deadlineAtMs: number | null;
-  objectiveKind: 'temperature' | 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsKind;
   targetTemperatureC: number | null;
   targetPercent: number | null;
+  // The target in the task's own unit, for every kind (an energy task's kWh
+  // has no column of its own above).
+  targetValue: number;
 } => ({
   startedAtMs,
   deadlineAtMs: diag.deadlineAtMs,
   objectiveKind: diag.objectiveKind,
   targetTemperatureC: diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null,
   targetPercent: diag.targetPercent,
+  targetValue: diag.targetValue,
 });

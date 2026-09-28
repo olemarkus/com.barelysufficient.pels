@@ -3,7 +3,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
+import { buildObjectiveSignatureForEntry, compareObjectiveSignatures } from './activePlanSignature';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 
@@ -15,15 +15,7 @@ export type ResolvedActiveCommittedPlan = {
 const objectiveSignatureFor = (
   objective: DeferredObjectiveSettingsEntry,
   progressDirection: ObjectiveProgressDirectionRead,
-): string => buildObjectiveSignature({
-  objectiveKind: objective.kind,
-  targetTemperatureC: objective.kind === 'temperature' ? objective.targetTemperatureC : null,
-  targetPercent: objective.kind === 'ev_soc' ? objective.targetPercent : null,
-  deadlineAtMs: objective.deadlineAtMs,
-  enforcement: objective.enforcement,
-  progressDirection,
-  rescue: objective.rescue,
-});
+): string => buildObjectiveSignatureForEntry(objective, progressDirection);
 
 // Returns the coherent active-plan view runtime consumers are allowed to use for
 // committed smart-task control. Raw persisted plans are deliberately loose for

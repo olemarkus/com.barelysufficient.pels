@@ -104,7 +104,8 @@ const formatTarget = (card: DeadlinesListCard): string => {
   // the detail hero's target/trajectory lines (`formatProgressValueForUnit`).
   const target = card.targetValue;
   if (target === null) return '—';
-  if (card.kind === 'temperature') {
+  // °C and kWh read to one decimal; a battery target is a whole percent.
+  if (labels.targetUnit !== '%') {
     return `${target.toFixed(1)} ${labels.targetUnit}`;
   }
   return `${Math.round(target)} ${labels.targetUnit}`;
@@ -371,11 +372,15 @@ const EmptyBody = () => (
       {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
       <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
       {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-      <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.conjunction}{' '}
+      <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>
+      {SMART_TASK_LIST_EMPTY_COPY.listSeparator}{' '}
       <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
       {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
       <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.energyConjunction}{' '}
+      <strong>{SMART_TASK_LIST_EMPTY_COPY.energyAction}</strong>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
+      <em>{SMART_TASK_LIST_EMPTY_COPY.energyExample}</em>{' '}
       {SMART_TASK_LIST_EMPTY_COPY.outro}
     </p>
     <p class="plan-hero__subline deadlines-list-body" data-state="empty-widget-route">

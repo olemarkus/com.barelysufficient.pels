@@ -27,7 +27,9 @@ import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import {
   createDeferredObjectiveActivePlanRecorder,
+  createDeferredObjectiveEnergyDelivery,
   createDeferredObjectivePlanHistoryRecorder,
+  flushDeferredObjectiveRecorders,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
   createPriceCoordinator,
@@ -456,12 +458,9 @@ export class AppServiceWiring {
    */
   initPlanRuntime(): void {
     const { ctx } = this.deps;
-    if (!ctx.deferredObjectivePlanHistoryRecorder) {
-      ctx.deferredObjectivePlanHistoryRecorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-    }
-    if (!ctx.deferredObjectiveActivePlanRecorder) {
-      ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
-    }
+    ctx.deferredObjectivePlanHistoryRecorder ??= createDeferredObjectivePlanHistoryRecorder(ctx);
+    ctx.deferredObjectiveActivePlanRecorder ??= createDeferredObjectiveActivePlanRecorder(ctx);
+    ctx.deferredObjectiveEnergyDelivery ??= createDeferredObjectiveEnergyDelivery(ctx);
     // The warmup gate leads: the plan service reads it off `ctx` at
     // construction, and it holds the first `rebuildPlanFromCache` (any source)
     // until the bootstrap's first `refreshSnapshot()` resolves, so the planner
@@ -712,8 +711,7 @@ export class AppServiceWiring {
     this.deps.planRebuildScheduler.cancelAll('app_uninit');
     ctx.deviceDiagnosticsService?.destroy();
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
-    ctx.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
-    ctx.deferredObjectiveActivePlanRecorder?.flushIfDirty();
+    flushDeferredObjectiveRecorders(ctx);
     flushDailyBudgetStateOnUninit(ctx);
     // Flush bypasses the debounce window so any samples accepted since the
     // last persist tick reach settings before shutdown. Without this, samples

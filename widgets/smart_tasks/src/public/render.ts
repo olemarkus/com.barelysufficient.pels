@@ -47,7 +47,7 @@ export type RenderTargets = {
   detailConfidenceEl: HTMLElement;
 };
 
-const formatValue = (value: number, unitSymbol: '°C' | '%'): string => {
+const formatValue = (value: number, unitSymbol: '°C' | '%' | 'kWh'): string => {
   const rounded = Math.round(value * 10) / 10;
   const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
   return `${text} ${unitSymbol}`;
@@ -70,7 +70,7 @@ const formatRowEta = (row: SmartTasksWidgetRow): string => {
   return `${row.etaVerb} ${row.finishLabel}`;
 };
 
-const targetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%'): string => (
+const targetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%' | 'kWh'): string => (
   `${verb} ${formatValue(targetValue, unitSymbol)}`
 );
 

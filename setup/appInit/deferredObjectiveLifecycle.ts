@@ -19,6 +19,7 @@ import {
   runPendingDeferredObjectiveBackfill,
   WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
+  requireDeferredObjectiveEnergyDelivery,
 } from './deferredRecorders';
 import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
 import { projectLifecycleFallbackCommandState } from '../lifecycleFallbackDeviceProjection';
@@ -294,5 +295,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       recorder.flushIfDirty();
     },
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
+    energyDelivery: requireDeferredObjectiveEnergyDelivery(ctx),
   });
 }

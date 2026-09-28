@@ -1102,12 +1102,17 @@
   // start-progress, and per-sample value pairs already resolved to flat fields.
   // Fixtures (sample + scenario patches) inject raw plans, so resolve them here.
   // Idempotent (nullish-keeps an already-resolved value); leftover raw columns are
-  // harmless — the UI reads only the resolved fields.
+  // harmless — the UI reads only the resolved fields. `progressSource` mirrors
+  // `resolveActivePlanProgressSource`: an energy task reads the energy delivered
+  // so far (0 for a run the tracker has not opened), every other task the device.
   const toResolvedActivePlan = (plan) => ({
     ...plan,
     progressDirection: plan.latest === null
       ? 'unknown'
       : plan.latest.progressDirection ?? 'increasing',
+    progressSource: plan.progressSource ?? (plan.objectiveKind === 'energy'
+      ? { kind: 'delivered_energy', deliveredKWh: 0 }
+      : { kind: 'device_reading' }),
     targetValue: plan.targetValue ?? plan.targetPercent ?? plan.targetTemperatureC ?? null,
     ...(plan.startProgressC !== undefined
       || plan.startProgressPercent !== undefined
@@ -1286,6 +1291,7 @@
           objectiveKind: objective.kind ?? 'temperature',
           targetTemperatureC: typeof objective.targetTemperatureC === 'number' ? objective.targetTemperatureC : null,
           targetPercent: typeof objective.targetPercent === 'number' ? objective.targetPercent : null,
+          targetEnergyKWh: null,
           deadlineAtMs,
           startedAtMs: nowMs,
           pending: false,

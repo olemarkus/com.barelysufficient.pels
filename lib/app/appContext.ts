@@ -86,6 +86,7 @@ import type {
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 import type { FlowBackedCapabilityReportOutcome } from '../device/flowBackedCapabilityReport';
+import type { EnergyTaskDeliveryTracker } from '../objectives/deferredObjectives/energyDelivery';
 
 // Declared with the device layer, which produces it; re-exported here so the
 // existing import sites are unchanged.
@@ -208,6 +209,12 @@ export type AppContext = {
    * `appHostApi` — do not each import the observer to get it.
    */
   getThermalDirection: (deviceId: string) => ThermalDirection;
+  /**
+   * The observer's answer to whether a device's power reading is a live
+   * measurement of its draw, not a rate derived from a cumulative meter. Read by
+   * the energy-task delivery count, which books only live readings.
+   */
+  isLiveMeasuredDraw: (deviceId: string) => boolean;
   getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
   getObservationRevision: () => number;
@@ -321,6 +328,7 @@ export type AppContext = {
   dailyBudgetService?: DailyBudgetService;
   deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
+  deferredObjectiveEnergyDelivery?: EnergyTaskDeliveryTracker;
   // Latched when startup back-fill bailed because the per-key migration marker was not yet
   // set (a boot-time empty `getKeys()` flake). The first observe tick after an in-session
   // migration retry completes re-runs the back-fill for the still-pending offline window

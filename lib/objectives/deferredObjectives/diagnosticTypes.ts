@@ -111,18 +111,19 @@ type BaseDeferredObjectiveDiagnostic = {
   externalOffHoldActive?: true;
   targetPercent: number | null;
   currentPercent: number | null;
-  // Unit-AGNOSTIC current/target reading, identical to the kind-split
-  // `currentTemperatureC`/`targetTemperatureC` (temperature) or
-  // `currentPercent`/`targetPercent` (ev_soc) for this diagnostic. A heater and
-  // an EV are the same planning problem; the unit is only a display label
-  // (resolve it via `unitForObjectiveKind(objectiveKind)`). Consumers read these
-  // instead of forking on `objectiveKind` to pick a value. Invariant, for every
-  // diagnostic:
-  //   currentValue === (objectiveKind === 'temperature' ? currentTemperatureC : currentPercent)
-  //   targetValue  === (objectiveKind === 'temperature' ? targetTemperatureC  : targetPercent)
-  // (a `?: never` ev-variant temperature field counts as null).
+  // Unit-AGNOSTIC current/target reading, in the task's own unit, identical to
+  // the kind-split `currentTemperatureC`/`targetTemperatureC` (temperature),
+  // `currentPercent`/`targetPercent` (ev_soc) or the kWh delivered /
+  // `targetEnergyKWh` (energy, which has no current column of its own). A
+  // heater, an EV and a relay are the same planning problem; the unit is only a
+  // display label (resolve it via `unitForObjectiveKind(objectiveKind)`).
+  // Consumers read these instead of forking on `objectiveKind` to pick a value.
+  // Invariant, for every diagnostic:
+  //   temperature: currentValue === currentTemperatureC, targetValue === targetTemperatureC
+  //   ev_soc:      currentValue === currentPercent,      targetValue === targetPercent
+  //   energy:      targetValue === targetEnergyKWh, and currentPercent is null
   currentValue: number | null;
-  targetValue: number | null;
+  targetValue: number;
   // The target this task can reach, same unit: `targetValue`, capped by the
   // car's own charge limit when an EV task's car stops below it
   // (`resolveReachableTargetValue`). Progress and satisfaction are judged
@@ -223,7 +224,9 @@ export type { BaseDeferredObjectiveDiagnostic };
 // numeric `targetTemperatureC` (the setting requires it); EV variants omit
 // both temperature fields entirely so consumers can't accidentally read
 // them. `currentTemperatureC` stays `number | null` on the temperature
-// variant because sensor reads can legitimately fail.
+// variant because sensor reads can legitimately fail. The energy variant
+// carries its target in kWh and reads its progress as `currentValue` (energy fed
+// since the task started); it has neither a percent nor a temperature.
 export type DeferredObjectiveDiagnostic =
   | (BaseDeferredObjectiveDiagnostic & {
     objectiveKind: 'temperature';
@@ -232,6 +235,12 @@ export type DeferredObjectiveDiagnostic =
   })
   | (BaseDeferredObjectiveDiagnostic & {
     objectiveKind: 'ev_soc';
+    targetTemperatureC?: never;
+    currentTemperatureC?: never;
+  })
+  | (BaseDeferredObjectiveDiagnostic & {
+    objectiveKind: 'energy';
+    targetEnergyKWh: number;
     targetTemperatureC?: never;
     currentTemperatureC?: never;
   });

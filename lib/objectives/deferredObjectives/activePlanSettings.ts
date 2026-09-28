@@ -13,6 +13,7 @@ import {
   normalizeDeferredObjectiveActivePlansShape,
 } from '../../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
+import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 // Re-exported from shared-domain (its long-term home) so existing runtime
 // importers (`activePlanRecorder.ts`) keep their `./activePlanSettings` path.
@@ -47,8 +48,8 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'flow_permission_changed',
 ]);
 
-const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' => (
-  value === 'learned' || value === 'bootstrap'
+const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' | 'exact' => (
+  value === 'learned' || value === 'bootstrap' || value === 'exact'
 );
 
 const isOptionalProgressDirection = (value: unknown): boolean => (
@@ -87,8 +88,8 @@ const isFiniteOrNull = (value: unknown): value is number | null => (
   value === null || isFiniteNumber(value)
 );
 
-const isObjectiveKind = (value: unknown): value is 'temperature' | 'ev_soc' => (
-  value === 'temperature' || value === 'ev_soc'
+const isObjectiveKind = (value: unknown): value is DeferredObjectiveSettingsKind => (
+  value === 'temperature' || value === 'ev_soc' || value === 'energy'
 );
 
 // Mirrors `isPlanStatus` in `planHistorySettings.ts`. The persisted revision's
@@ -291,8 +292,6 @@ const hasValidPlanIdentity = (v: Record<string, unknown>): boolean => (
   typeof v.deviceId === 'string'
     && (v.deviceName === null || typeof v.deviceName === 'string')
     && isObjectiveKind(v.objectiveKind)
-    && isFiniteOrNull(v.targetTemperatureC)
-    && isFiniteOrNull(v.targetPercent)
     && isFiniteNumber(v.deadlineAtMs)
     && isFiniteNumber(v.startedAtMs)
     && typeof v.pending === 'boolean'
@@ -318,7 +317,25 @@ const isOptionalCarChargeLimit = (value: unknown): boolean => {
   return isFiniteNumber(v.limitValue) && typeof v.reached === 'boolean';
 };
 
-const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 => {
+// A plan as stored. One saved before `targetValue` carries its target in its
+// kind's own column instead — `targetTemperatureC` for a temperature task,
+// `targetPercent` for an EV task, the other `null` — which
+// `normalizeDeferredObjectiveActivePlans` moves to `targetValue` once.
+// The guard does not check the three target fields; `readStoredTargetValue`
+// reads them from the raw record, so they stay `unknown` here.
+type StoredActivePlan = Omit<DeferredObjectiveActivePlanV1, 'targetValue'> & {
+  targetValue?: unknown;
+  targetTemperatureC?: unknown;
+  targetPercent?: unknown;
+};
+
+const readStoredTargetValue = (v: Record<string, unknown>): number | undefined => {
+  if (isFiniteNumber(v.targetValue)) return v.targetValue;
+  const legacy = v.objectiveKind === 'temperature' ? v.targetTemperatureC : v.targetPercent;
+  return v.objectiveKind !== 'energy' && isFiniteNumber(legacy) ? legacy : undefined;
+};
+
+const isActivePlan = (value: unknown): value is StoredActivePlan => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidPlanIdentity(v)
@@ -353,6 +370,20 @@ const stripRetiredRevisionFields = (
   return rest;
 };
 
+// A plan with no readable target has nothing to plan toward: dropped like any
+// other malformed plan.
+const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | undefined => {
+  const { targetTemperatureC: _legacyC, targetPercent: _legacyPercent, ...current } = plan;
+  const targetValue = readStoredTargetValue(plan);
+  if (targetValue === undefined) return undefined;
+  return {
+    ...current,
+    targetValue,
+    latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),
+    ...(plan.history ? { history: plan.history.map(stripRetiredRevisionFields) } : {}),
+  };
+};
+
 export const normalizeDeferredObjectiveActivePlans = (
   raw: unknown,
 ): DeferredObjectiveActivePlansV1 => {
@@ -360,14 +391,12 @@ export const normalizeDeferredObjectiveActivePlans = (
     isValidPlan: isActivePlan,
     empty: createEmptyActivePlans,
   });
+  const stored: Record<string, StoredActivePlan> = normalized.plansByDeviceId;
   return {
     ...normalized,
-    plansByDeviceId: Object.fromEntries(
-      Object.entries(normalized.plansByDeviceId).map(([deviceId, plan]) => [deviceId, {
-        ...plan,
-        latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),
-        ...(plan.history ? { history: plan.history.map(stripRetiredRevisionFields) } : {}),
-      }]),
-    ),
+    plansByDeviceId: Object.fromEntries(Object.entries(stored).flatMap(([deviceId, plan]) => {
+      const loaded = toLoadedPlan(plan);
+      return loaded === undefined ? [] : [[deviceId, loaded] as const];
+    })),
   };
 };

@@ -87,8 +87,7 @@ const seed = (deadlineAtMs: number): ActivePlanFlowCardSeed => ({
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',
-  targetTemperatureC: TARGET_TEMPERATURE_C,
-  targetPercent: null,
+  targetValue: TARGET_TEMPERATURE_C,
   deadlineAtMs,
   enforcement: 'soft',
 });

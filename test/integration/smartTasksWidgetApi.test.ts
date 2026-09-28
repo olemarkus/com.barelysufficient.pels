@@ -10,10 +10,9 @@
  */
 import { getSmartTasks } from '../../widgets/smart_tasks/src/api';
 import type {
-  DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import { toResolvedActivePlans } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
+import { type ActivePlanFixture, resolveActivePlanFixtures } from '../helpers/activePlanFixtures';
 import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -26,12 +25,11 @@ import type { SmartTaskHistoryHostApi } from '../../packages/contracts/src/widge
 const NOW = Date.now();
 const H = 60 * 60 * 1000;
 
-const activePlan = (o: Partial<DeferredObjectiveActivePlanV1> = {}): DeferredObjectiveActivePlanV1 => ({
+const activePlan = (o: Partial<ActivePlanFixture> = {}): ActivePlanFixture => ({
   deviceId: 'wh',
   deviceName: 'Water heater',
   objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: NOW + 5 * H,
   startedAtMs: NOW - 2 * H,
   pending: false,
@@ -111,22 +109,20 @@ const run = (app: AppMock, timeZone = 'UTC') => getSmartTasks({
 });
 
 // The app's `getDeferredObjectiveActivePlansUiPayload` returns the RESOLVED
-// container in production (the assembler stitches trajectory then resolves the
-// kind-split columns), so resolve the raw fixtures here at the same boundary.
-const plansOf = (...plans: DeferredObjectiveActivePlanV1[]): ResolvedDeferredObjectiveActivePlansV1 =>
-  toResolvedActivePlans({
-    version: 1,
-    plansByDeviceId: Object.fromEntries(plans.map((p) => [p.deviceId, p])),
-  });
+// container in production (the assembler resolves each plan with its
+// trajectory), so resolve the fixtures here at the same boundary.
+const plansOf = (...plans: ActivePlanFixture[]): ResolvedDeferredObjectiveActivePlansV1 => (
+  resolveActivePlanFixtures(Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])))
+);
 
 describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
   test('active task with stitched start + samples renders a planned+observed trajectory', async () => {
     const payload = await run({
       getDeferredObjectiveActivePlansUiPayload: () => plansOf(activePlan({
-        startProgressC: 42,
+        startProgressValue: 42,
         progressSamples: [
-          { atMs: NOW - 2 * H, valueC: 42, valuePercent: null },
-          { atMs: NOW - H, valueC: 48, valuePercent: null },
+          { atMs: NOW - 2 * H, value: 42 },
+          { atMs: NOW - H, value: 48 },
         ],
       })),
       getDeferredObjectivePlanHistoryRecentUiPayload: () => emptyHistory,

@@ -14,9 +14,9 @@ import {
 } from './deferredPlanHistoryReceiptStrings';
 import {
   formatClockTime,
+  formatHistoryValueForKind,
   HOUR_MS,
-  OVERSHOOT_PERCENT_THRESHOLD_PUBLIC,
-  OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC,
+  OVERSHOOT_THRESHOLD_BY_KIND,
   pickLastPlan,
   snapshotShowsBudgetExhausted,
 } from './deferredPlanHistoryShared';
@@ -60,14 +60,6 @@ export const formatPlanHistoryDeadlineLine = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'deadlineAtMs'>,
   timeZone = 'UTC',
 ): string => formatSmartTaskListDateTime(entry.deadlineAtMs, timeZone);
-
-const formatTemperature = (value: number | null): string | null => (
-  value === null ? null : `${value.toFixed(1)} °C`
-);
-
-const formatPercent = (value: number | null): string | null => (
-  value === null ? null : `${value.toFixed(0)} %`
-);
 
 // `'abandoned'` and `'replaced'` runs are finalized before the device ever
 // reached (or even attempted) the target — the persisted `finalProgressC` /
@@ -127,7 +119,9 @@ export const formatPlanHistoryProgressLine = (
   const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
   // Value selection is unit-agnostic (resolved on the producer boundary);
   // only the formatter (°C vs %) stays kind-specific.
-  const formatValue = entry.objectiveKind === 'temperature' ? formatTemperature : formatPercent;
+  const formatValue = (value: number | null): string | null => (
+    value === null ? null : formatHistoryValueForKind(entry.objectiveKind, value)
+  );
   const startValue = entry.startProgressValue;
   const targetValue = entry.targetValue;
   const start = formatValue(startValue);
@@ -242,12 +236,8 @@ export const formatPlanHistoryOvershootLine = (
   if (finalValue === null || targetValue === null) return null;
   const delta = resolveDirectionalOvershoot(entry.progressDirection, finalValue, targetValue);
   if (delta === null) return null;
-  if (entry.objectiveKind === 'temperature') {
-    if (delta <= OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC) return null;
-    return `Overshoot ${delta.toFixed(1)} °C`;
-  }
-  if (delta <= OVERSHOOT_PERCENT_THRESHOLD_PUBLIC) return null;
-  return `Overshoot ${delta.toFixed(0)} %`;
+  if (delta <= OVERSHOOT_THRESHOLD_BY_KIND[entry.objectiveKind]) return null;
+  return `Overshoot ${formatHistoryValueForKind(entry.objectiveKind, delta)}`;
 };
 
 /**
@@ -658,11 +648,13 @@ export const formatPlanHistoryObservedCoverage = (
 // the formatters here inside the 500-LOC ESLint cap.
 export {
   resolveHistoryDetailChartData,
-  historyDetailChartLabels,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
-  type HistoryDetailChartLabels,
 } from './deferredPlanHistoryChartData';
+export {
+  historyDetailChartLabels,
+  type HistoryDetailChartLabels,
+} from './deferredPlanHistoryChartLabels';
 
 // ─── Per-hour bar strip (v2.7.3) ──────────────────────────────────────────────
 //

@@ -27,6 +27,7 @@ import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
+import type { DeliveredEnergyReader } from './energyDelivery';
 
 export type DeferredObjectiveDecorationControllerDeps = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
@@ -56,6 +57,9 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // commits. It does not resolve the status here: admission keeps reading the
   // raw trajectory status.
   getStallClassification: DeferredObjectiveStallClassificationReader;
+  // Energy fed under each energy task so far; the lifecycle clock counts it, and
+  // this path reads the same count so admission plans from the same progress.
+  getDeliveredEnergyKWh: DeliveredEnergyReader;
 };
 
 /**
@@ -127,6 +131,7 @@ export class DeferredObjectiveDecorationController {
         getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
         getStallClassification: this.deps.getStallClassification,
+        getDeliveredEnergyKWh: this.deps.getDeliveredEnergyKWh,
       });
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);

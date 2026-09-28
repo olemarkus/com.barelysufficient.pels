@@ -24,30 +24,68 @@ export type DeferredObjectiveRescuePermissions = {
   pauseLowerPriorityDevices?: DeferredObjectiveRescueMode;
 };
 
-export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature';
+/**
+ * The quantity a smart task drives toward its target: a charger's battery level
+ * (`ev_soc`), a device's measured temperature (`temperature`), or an amount of
+ * energy fed to the device (`energy`). The kind is the task's unit carrier; the
+ * allocator below the progress read never branches on it.
+ */
+export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature' | 'energy';
+
+/** The unit a task's values are in: °C for temperature, % for EV SoC, kWh for energy. */
+export type DeferredObjectiveUnit = '°C' | '%' | 'kWh';
 
 type DeferredObjectiveSettingsEntryBase = {
   enabled: boolean;
-  kind: DeferredObjectiveSettingsKind;
   deadlineAtMs: number;
   rescue?: DeferredObjectiveRescuePermissions;
 };
 
-export type DeferredObjectiveEvSocSettingsEntry = DeferredObjectiveSettingsEntryBase & {
+/**
+ * What a task asks for: its kind, enforcement and target in the kind's own unit.
+ * One member per kind, so the kind picks the target column and a target of the
+ * wrong unit does not type.
+ */
+export type DeferredObjectiveEvSocGoal = {
   kind: 'ev_soc';
   enforcement: DeferredObjectiveEnforcement;
   targetPercent: number;
 };
 
-export type DeferredObjectiveTemperatureSettingsEntry = DeferredObjectiveSettingsEntryBase & {
+export type DeferredObjectiveTemperatureGoal = {
   kind: 'temperature';
   enforcement: 'soft';
   targetTemperatureC: number;
 };
 
+/**
+ * "Feed this device `targetEnergyKWh` by the deadline." Progress is the energy
+ * the device has taken since the task started, so the task needs no level of the
+ * device's own — the one this kind exists for is a relay-switched water heater,
+ * which has neither a temperature nor a battery level to read.
+ */
+export type DeferredObjectiveEnergyGoal = {
+  kind: 'energy';
+  enforcement: 'soft';
+  targetEnergyKWh: number;
+};
+
+export type DeferredObjectiveGoal =
+  | DeferredObjectiveEvSocGoal
+  | DeferredObjectiveTemperatureGoal
+  | DeferredObjectiveEnergyGoal;
+
+export type DeferredObjectiveEvSocSettingsEntry = DeferredObjectiveSettingsEntryBase & DeferredObjectiveEvSocGoal;
+
+export type DeferredObjectiveTemperatureSettingsEntry = DeferredObjectiveSettingsEntryBase
+  & DeferredObjectiveTemperatureGoal;
+
+export type DeferredObjectiveEnergySettingsEntry = DeferredObjectiveSettingsEntryBase & DeferredObjectiveEnergyGoal;
+
 export type DeferredObjectiveSettingsEntry =
   | DeferredObjectiveEvSocSettingsEntry
-  | DeferredObjectiveTemperatureSettingsEntry;
+  | DeferredObjectiveTemperatureSettingsEntry
+  | DeferredObjectiveEnergySettingsEntry;
 
 export type DeferredObjectiveSettingsV1 = {
   version: 1;

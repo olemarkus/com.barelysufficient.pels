@@ -5,7 +5,7 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import {
-  resolveSmartTaskDeviceKind,
+  supportsSmartTaskKind,
   resolveSmartTaskGoalBounds,
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
 import {
@@ -29,6 +29,8 @@ import {
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { requirePlanService } from './appInit/contextGuards';
+import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';
+import { resolveObjectiveTargetValue } from '../packages/shared-domain/src/deferredObjectiveValues';
 import {
   resolveSmartTaskDeviceExclusion,
   mapObjectiveWriteRefusalReason,
@@ -212,6 +214,7 @@ export class AppSmartTaskApi {
       getPrioritiesForDevices: this.getPrioritiesForDevices,
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
       getStallClassification: (id) => planService.getStallEvidence(id),
+      getDeliveredEnergyKWh: requireDeferredObjectiveEnergyDelivery(this.ctx).getDeliveredKWh,
       powerTracker: this.ctx.powerTracker,
       dailyBudgetSnapshot,
       buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
@@ -263,10 +266,10 @@ export class AppSmartTaskApi {
     if (homeScope === 'unavailable') return { ok: false, reason: 'write_refused' };
     // The device must support the goal kind the candidate claims — an EV-SoC
     // goal on a thermostat (or vice versa) is rejected before it can persist.
-    const kind = resolveSmartTaskDeviceKind(device);
-    if (kind !== candidate.kind) {
+    if (!supportsSmartTaskKind(meteredDevice, candidate.kind)) {
       return { ok: false, reason: 'device_not_eligible' };
     }
+    const kind = candidate.kind;
     // Validate the target against the DEVICE's actual setpoint range, not just
     // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
     // Flow-card `validateTargetTemperature` (which reads the device capability
@@ -274,7 +277,7 @@ export class AppSmartTaskApi {
     // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
     // persisting one the device can never reach.
     const bounds = resolveSmartTaskGoalBounds(device, kind);
-    const targetValue = candidate.kind === 'temperature' ? candidate.targetTemperatureC : candidate.targetPercent;
+    const targetValue = resolveObjectiveTargetValue(candidate);
     if (!Number.isFinite(targetValue) || targetValue < bounds.min || targetValue > bounds.max) {
       return { ok: false, reason: 'invalid_candidate' };
     }

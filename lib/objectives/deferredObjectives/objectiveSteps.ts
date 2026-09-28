@@ -1,6 +1,5 @@
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
-import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { drawWhenActivelyDrawingKw } from './planningSpeed';
@@ -128,11 +127,15 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // `thermostat`, `onoff` + `target_temperature` + `measure_power`, no
   // stepped controls; before this branch they kept `pendingReason:
   // missing_capacity` indefinitely even with a converged learned profile.
-  if (isTemperatureControlDevice(device)) {
-    const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
-    return withResolvedAdmission([
-      buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),
-    ]);
-  }
-  return [];
+  //
+  // Every other device PELS can only switch takes the same single rung, because
+  // running is the one thing it can do: a plain on/off device (a relay-switched
+  // water heater carrying an energy task), and equally an on/off device with a
+  // settable target that a heating Flow card gave a task, which used to stay at
+  // `missing_capacity` for want of a rung. MOVES WITH the mirror in
+  // `planningSpeed.ts`.
+  const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
+  return withResolvedAdmission([
+    buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),
+  ]);
 };

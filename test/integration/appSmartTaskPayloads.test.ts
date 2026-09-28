@@ -16,6 +16,8 @@ import {
   AppSmartTaskPayloads,
   type SmartTaskPayloadsContext,
 } from '../../setup/appSmartTaskPayloads';
+import { EnergyTaskDeliveryTracker, type EnergyDeliveryRun } from '../../lib/objectives/deferredObjectives/energyDelivery';
+import { createMemoryEnergyDeliveryStore, everyReadingLive } from '../helpers/deferredObjectiveWiringFixtures';
 
 // Read-only payload assembly over the two deferred-objective recorders. Only
 // the recorders (the layer's outward seam) are stubbed; the trajectory stitcher
@@ -34,8 +36,7 @@ const buildActivePlan = (
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',
-  targetTemperatureC: 65,
-  targetPercent: null,
+  targetValue: 65,
   deadlineAtMs: 5_000,
   startedAtMs: 1_000,
   pending: false,
@@ -72,6 +73,7 @@ type Recorders = {
   history?: DeferredObjectivePlanHistoryV5;
   trajectoryByDeviceId?: Record<string, ReturnType<DeferredObjectivePlanHistoryRecorder['getInProgressTrajectory']>>;
   wireHistoryRecorder?: boolean;
+  energyRuns?: readonly EnergyDeliveryRun[];
 };
 
 type HistoryDevice = {
@@ -79,6 +81,8 @@ type HistoryDevice = {
   name: string;
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  binaryControllable?: boolean;
+  targets: [];
   temperature?: {
     currentTemperature: number;
     target: { id: 'target_temperature'; value: number };
@@ -90,8 +94,14 @@ const TEMPERATURE = {
   target: { id: 'target_temperature' as const, value: 65 },
 };
 const DEFAULT_HISTORY_DEVICES: readonly HistoryDevice[] = [
-  { id: 'dev-1', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', temperature: TEMPERATURE },
-  { id: 'dev-2', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', temperature: TEMPERATURE },
+  {
+    id: 'dev-1', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', targets: [],
+    temperature: TEMPERATURE,
+  },
+  {
+    id: 'dev-2', name: 'Connected 300', deviceClass: 'thermostat', deviceType: 'temperature', targets: [],
+    temperature: TEMPERATURE,
+  },
 ];
 
 const buildPayloads = (
@@ -108,6 +118,10 @@ const buildPayloads = (
   const ctx: SmartTaskPayloadsContext = {
     deferredObjectiveActivePlanRecorder: activePlanRecorder,
     deferredObjectivePlanHistoryRecorder: options.wireHistoryRecorder === false ? undefined : historyRecorder,
+    deferredObjectiveEnergyDelivery: new EnergyTaskDeliveryTracker(
+      createMemoryEnergyDeliveryStore(options.energyRuns),
+      everyReadingLive,
+    ),
     getDeviceSurfaces: () => devices as never,
   };
   return new AppSmartTaskPayloads(ctx);
@@ -118,11 +132,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectiveActivePlansUiPayload', () => 
     const payload = buildPayloads({
       activePlans: { version: 1, plansByDeviceId: { 'dev-1': buildActivePlan() } },
       trajectoryByDeviceId: {
-        'dev-1': {
-          startProgressC: 42,
-          startProgressPercent: null,
-          progressSamples: [{ atMs: 2_000, valueC: 50, valuePercent: null }],
-        },
+        'dev-1': { startProgressValue: 42, progressSamples: [{ atMs: 2_000, value: 50 }] },
       },
     }).getDeferredObjectiveActivePlansUiPayload();
     const plan = payload?.plansByDeviceId['dev-1'];
@@ -139,17 +149,25 @@ describe('AppSmartTaskPayloads.getDeferredObjectiveActivePlansUiPayload', () => 
     expect(payload?.plansByDeviceId['dev-1']).not.toHaveProperty('progressSamples');
   });
 
+  it('passes a null plan through untouched (degraded-state defense, no crash)', () => {
+    const payload = buildPayloads({
+      // The record type is non-null, but degraded runtime states can yield null.
+      activePlans: { version: 1, plansByDeviceId: { 'dev-1': null as unknown as DeferredObjectiveActivePlanV1 } },
+    }).getDeferredObjectiveActivePlansUiPayload();
+    expect(payload?.plansByDeviceId['dev-1']).toBeNull();
+  });
+
   it('does not mutate the recorder snapshot it was handed', () => {
     const plan = buildActivePlan();
     const snapshot: DeferredObjectiveActivePlansV1 = { version: 1, plansByDeviceId: { 'dev-1': plan } };
     buildPayloads({
       activePlans: snapshot,
       trajectoryByDeviceId: {
-        'dev-1': { startProgressC: 42, startProgressPercent: null, progressSamples: [] },
+        'dev-1': { startProgressValue: 42, progressSamples: [] },
       },
     }).getDeferredObjectiveActivePlansUiPayload();
     expect(snapshot.plansByDeviceId['dev-1']).toBe(plan);
-    expect(plan).not.toHaveProperty('startProgressC');
+    expect(plan).not.toHaveProperty('startProgressValue');
   });
 });
 
@@ -186,7 +204,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
   it('uses the current device name and inferred objective kind', () => {
     const payload = buildPayloads({
       history: { version: 5, entries: [buildHistoryEntry()] },
-    }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger' }])
+    }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger', targets: [] }])
       .getDeferredObjectivePlanHistoryUiPayload();
     expect(payload.entriesByDeviceId['dev-1']?.[0]).toMatchObject({
       deviceName: 'Renamed charger',
@@ -225,5 +243,36 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload', 
       },
     }).getDeferredObjectivePlanHistoryRecentUiPayload(0);
     expect(payload.entriesByDeviceId).toEqual({});
+  });
+});
+
+describe('AppSmartTaskPayloads energy tasks', () => {
+  const energyPlan = buildActivePlan({
+    deviceId: 'relay-1',
+    deviceName: 'Water heater relay',
+    objectiveKind: 'energy',
+    targetValue: 16,
+  });
+
+  it('reads an energy plan\'s progress from the energy fed so far, every other plan\'s from the device', () => {
+    const payload = buildPayloads({
+      activePlans: { version: 1, plansByDeviceId: { 'relay-1': energyPlan, 'dev-1': buildActivePlan() } },
+      energyRuns: [{ deviceId: 'relay-1', deadlineAtMs: 5_000, startedAtMs: 1_000, deliveredKWh: 6.5 }],
+    }).getDeferredObjectiveActivePlansUiPayload();
+    expect(payload?.plansByDeviceId['relay-1']).toMatchObject({ targetValue: 16, deliveredKWh: 6.5 });
+    expect(payload?.plansByDeviceId['dev-1']).not.toHaveProperty('deliveredKWh');
+  });
+
+  it('reads an energy run in history as an energy run, off the on/off device it ran on', () => {
+    const payload = buildPayloads({
+      history: {
+        version: 5,
+        entries: [buildHistoryEntry({ id: 'energy-run', deviceId: 'relay-1', targetValue: 6 })],
+      },
+    }, [{ id: 'relay-1', name: 'Water heater relay', deviceType: 'onoff', binaryControllable: true, targets: [] }])
+      .getDeferredObjectivePlanHistoryUiPayload();
+    expect(payload.entriesByDeviceId['relay-1']?.map((entry) => [entry.id, entry.objectiveKind])).toEqual([
+      ['energy-run', 'energy'],
+    ]);
   });
 });

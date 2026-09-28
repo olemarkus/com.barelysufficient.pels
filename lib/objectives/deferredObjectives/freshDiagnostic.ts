@@ -39,11 +39,7 @@ export const buildPolicyGatedKnownInputs = (
     ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits, progress })
     : null;
 
-  const withProgress = mergeProgressFields(
-    base,
-    !progress.reasonCode ? progress.currentPercent : null,
-    !progress.reasonCode ? progress.currentTemperatureC : null,
-  );
+  const withProgress = mergeProgressFields(base, progress.reasonCode ? null : progress.currentValue);
   return {
     ...withProgress,
     ...(!progress.reasonCode && remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
@@ -129,7 +125,7 @@ export const buildFreshDiagnostic = (params: {
   };
 
   return {
-    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
+    ...mergeProgressFields(base, progress.currentValue),
     trajectory: { kind: 'resolved', status: planWithPriceWatermark.status },
     reasonCode: planWithPriceWatermark.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),

@@ -40,7 +40,7 @@ import {
   resolveDisplayRateAndSpeedMode,
   resolveEnergyNeededKWh,
   resolveProfile,
-  resolveProgress,
+  resolveTaskProgress,
   withCarChargeLimitProgress,
 } from './deadlinePlanResolvers.ts';
 import {
@@ -182,7 +182,7 @@ type ObjectivePayloadReady = {
   ctx: ResolvedObjectiveContext;
   bootstrap: SettingsUiBootstrap;
   profile: ReturnType<typeof resolveProfile>;
-  progress: NonNullable<ReturnType<typeof resolveProgress>>;
+  progress: NonNullable<ReturnType<typeof resolveTaskProgress>>;
   hours: HorizonHour[];
   energy: ReturnType<typeof resolveEnergyNeededKWh>;
   costDisplay: CostDisplay;
@@ -215,6 +215,7 @@ const resolveDirectionUnavailable = (
   return { kind: 'unavailable', reason: 'direction_unavailable' };
 };
 
+
 const prepareObjectivePayload = (
   params: ObjectivePlanInput,
 ): ObjectivePayloadReady | ObjectivePayloadResult | null => {
@@ -230,11 +231,7 @@ const prepareObjectivePayload = (
   const progressDirection = ctx.activePlan.progressDirection;
   const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
   if (directionUnavailable !== null) return directionUnavailable;
-  const observedProgress = resolveProgress(
-    ctx.device,
-    ctx.objective,
-    progressDirection,
-  );
+  const observedProgress = resolveTaskProgress(ctx.device, ctx.objective, ctx.activePlan);
   const carChargeLimit = resolveSmartTaskCarChargeLimit(
     ctx.activePlan.carChargeLimit,
     ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null,

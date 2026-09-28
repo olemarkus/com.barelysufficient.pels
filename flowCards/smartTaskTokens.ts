@@ -63,7 +63,7 @@ export const buildSmartTaskEndedTokens = (
 ): Record<string, unknown> => {
   const shortfall = computeShortfall(event);
   return {
-    device_name: event.deviceName ?? event.deviceId,
+    device_name: event.deviceName,
     outcome: event.outcome,
     shortfall: roundForToken(shortfall.value, 2),
     shortfall_known: shortfall.known,

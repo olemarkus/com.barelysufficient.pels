@@ -1,4 +1,8 @@
-import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type {
+  DeferredObjectiveEnergySettingsEntry,
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveUnit,
+} from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { getSteppedLoadLowestActiveStep } from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
   DeviceObjectiveProfile,
@@ -61,7 +65,7 @@ export type DeadlineProgress = {
   // The target the plan works to: the owner's, or the car's own charge limit
   // below it when that caps an EV task (`withCarChargeLimitProgress`).
   plannedTargetValue: number;
-  unit: '°C' | '%';
+  unit: DeferredObjectiveUnit;
 };
 
 /**
@@ -109,7 +113,8 @@ export const resolveProgress = (
   // the transport's bag would let a `report.percent` read compile and then find
   // `undefined` at runtime.
   device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe,
-  objective: DeferredObjectiveSettingsEntry,
+  // An energy task reads no device reading: `resolveEnergyProgress`.
+  objective: Exclude<DeferredObjectiveSettingsEntry, DeferredObjectiveEnergySettingsEntry>,
   progressDirection: 'increasing' | 'decreasing' | 'unknown',
 ): DeadlineProgress | null => {
   if (objective.kind === 'temperature') {
@@ -140,6 +145,43 @@ export const resolveProgress = (
     unit: '%',
   };
 };
+
+/**
+ * An energy task's progress: the energy fed since it started, which an energy
+ * plan carries (the runtime's delivery count, the same count the runtime plans
+ * from). The device has no reading this task is measured by, so a plan still
+ * standing from the device's previous task of another kind has no progress to
+ * show for this one.
+ */
+export const resolveEnergyProgress = (
+  objective: DeferredObjectiveEnergySettingsEntry,
+  activePlan: ResolvedDeferredObjectiveActivePlanV1,
+): DeadlineProgress | null => {
+  if (activePlan.objectiveKind !== 'energy') return null;
+  const delivered = activePlan.deliveredKWh;
+  return {
+    currentValue: delivered,
+    progressDirection: 'increasing',
+    remainingUnits: Math.max(0, objective.targetEnergyKWh - delivered),
+    targetValue: objective.targetEnergyKWh,
+    plannedTargetValue: objective.targetEnergyKWh,
+    unit: 'kWh',
+  };
+};
+
+/**
+ * A task's progress for the page: an energy task's rides on its plan (the
+ * energy delivered so far); every other kind reads its level off the device.
+ */
+export const resolveTaskProgress = (
+  device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe,
+  objective: DeferredObjectiveSettingsEntry,
+  activePlan: ResolvedDeferredObjectiveActivePlanV1,
+): DeadlineProgress | null => (
+  objective.kind === 'energy'
+    ? resolveEnergyProgress(objective, activePlan)
+    : resolveProgress(device, objective, activePlan.progressDirection)
+);
 
 function buildTemperatureProgress(
   currentTemperature: number,
@@ -187,6 +229,10 @@ export const resolveDisplayRateAndSpeedMode = (params: {
   if (params.latest.rateMean !== undefined) {
     return { rateMean: params.latest.rateMean, usingBootstrap, speedMode };
   }
+  // An energy task's rate is exact (one kWh per kWh), so the recorder stores no
+  // rate and there is no per-unit rate row to show; a profile the device may
+  // have learned for another kind says nothing about it.
+  if (params.objectiveKind === 'energy') return { rateMean: null, usingBootstrap, speedMode };
   // Legacy revision without the flat rate: reconstruct it the way the old UI
   // resolver did, so pre-upgrade plans keep rendering the right rate until the
   // next replan re-records the producer field.

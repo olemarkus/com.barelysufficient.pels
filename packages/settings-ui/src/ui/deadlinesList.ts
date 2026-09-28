@@ -61,8 +61,12 @@ const resolveCurrentValue = (
   // payload serves is the level, so declaring the transport's bag here would let
   // a `report.percent` read compile and then find `undefined` at runtime.
   device: (ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe) | undefined,
-  kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
+  plan: ResolvedDeferredObjectiveActivePlanV1,
 ): number | null => {
+  // An energy task's current value is the energy fed so far, which the plan
+  // carries; the device has no reading this task is measured by.
+  if (plan.objectiveKind === 'energy') return plan.deliveredKWh;
+  const kind = plan.objectiveKind;
   if (!device) return null;
   if (kind === 'temperature') {
     return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
@@ -102,7 +106,7 @@ const buildCard = (params: {
     profileConfidence: null,
   });
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
-  const currentValue = resolveCurrentValue(device, plan.objectiveKind);
+  const currentValue = resolveCurrentValue(device, plan);
   // A cached schedule stops governing the moment the device leaves the planned
   // set, whether by meter reassignment (`unavailable`) or by the owner turning
   // "Managed by PELS" off. `paused_unplugged` is deliberately NOT here: that

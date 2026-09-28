@@ -17,6 +17,7 @@ import {
   resolveStartProgressValue,
   resolveTargetValue,
 } from './deferredObjectiveValues';
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 
 const isCompactHistoryRecord = (
   entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord,
@@ -70,7 +71,7 @@ export const toPlanHistoryRecord = (
 
 export const toResolvedPlanHistoryEntry = (
   entry: DeferredObjectivePlanHistoryEntry | DeferredObjectivePlanHistoryRecord,
-  device: { name: string; objectiveKind: 'temperature' | 'ev_soc' },
+  device: { name: string; objectiveKind: DeferredObjectiveSettingsKind },
 ): ResolvedDeferredObjectivePlanHistoryEntry => {
   const record = toPlanHistoryRecord(entry);
   return {

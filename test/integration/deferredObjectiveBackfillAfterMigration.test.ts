@@ -12,6 +12,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import { getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
+import { createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
 import { createPlanHistoryStore, type PlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 
@@ -70,6 +71,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
         evaluateHeadroomForDevice: vi.fn(() => null),
         syncLivePlanStateInline: vi.fn(() => false),
       } as unknown as AppContext['planService'],
+      deferredObjectiveEnergyDelivery: createInertEnergyDelivery(),
     });
   };
 

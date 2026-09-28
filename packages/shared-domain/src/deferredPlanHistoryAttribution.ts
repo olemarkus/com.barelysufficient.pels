@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 // Miss-attribution producer for finalized smart-task history entries
 // (Session A of the "Cannot finish / missed streaks don't match reality"
 // investigation — see notes/smart-task-miss-attribution.md).
@@ -102,6 +103,15 @@ const NO_DELIVERY_KWH_FLOOR = 0.1;
 // produces a delta below the deadband and reads as no delivery. Tunable.
 const NO_DELIVERY_PROGRESS_DEADBAND_C = 0.5;
 const NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
+// An energy task's progress is the energy fed itself, measured to a fraction of
+// a kWh: less than this over a whole run is no delivery.
+const NO_DELIVERY_PROGRESS_DEADBAND_KWH = 0.1;
+
+const NO_DELIVERY_PROGRESS_DEADBAND: Record<DeferredObjectiveSettingsKind, number> = {
+  temperature: NO_DELIVERY_PROGRESS_DEADBAND_C,
+  ev_soc: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT,
+  energy: NO_DELIVERY_PROGRESS_DEADBAND_KWH,
+};
 
 type AttributionSnapshot = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -190,11 +200,8 @@ const resolveProgressTowardTarget = (
   const final = entry.finalProgressValue;
   if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)
     || entry.progressDirection === 'unknown') return null;
-  const deadband = entry.objectiveKind === 'temperature'
-    ? NO_DELIVERY_PROGRESS_DEADBAND_C
-    : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
   const delta = entry.progressDirection === 'increasing' ? final - start : start - final;
-  return { delta, deadband };
+  return { delta, deadband: NO_DELIVERY_PROGRESS_DEADBAND[entry.objectiveKind] };
 };
 
 // True when the device delivered essentially nothing. Primary signal is the flat
@@ -377,6 +384,13 @@ const resolveDeliveredAtOrAboveCommitment = (
  * Returns a fully-populated structure on every call (payload fields null when
  * their input wasn't recorded) so the structured log can forward it verbatim.
  */
+// An energy task's requirement is its target and its rate is exact, so nothing
+// about it was estimated or learned: a miss that is neither the budget's nor a
+// device that took nothing was short of power or time.
+const withoutEstimateCauses = (cause: DeferredPlanHistoryMissCause | null): DeferredPlanHistoryMissCause | null => (
+  cause === 'energy_underestimate' || cause === 'low_confidence' ? 'capacity_shortfall' : cause
+);
+
 export const resolveDeferredPlanHistoryMissAttribution = (
   entry: AttributionEntry,
 ): DeferredPlanHistoryMissAttribution => {
@@ -389,13 +403,14 @@ export const resolveDeferredPlanHistoryMissAttribution = (
     deliveredKWh,
     asRemainingEnergyKWh(entry.initialEnergyExpectedKWh),
   );
+  const cause = resolveCause({
+    outcome: entry.outcome,
+    finalRevision,
+    deliveredAtOrAbovePlan,
+    noDelivery: resolveNoDelivery(entry, deliveredKWh),
+  });
   return {
-    cause: resolveCause({
-      outcome: entry.outcome,
-      finalRevision,
-      deliveredAtOrAbovePlan,
-      noDelivery: resolveNoDelivery(entry, deliveredKWh),
-    }),
+    cause: entry.objectiveKind === 'energy' ? withoutEstimateCauses(cause) : cause,
     plannedKWh: plannedFloorKWh,
     deliveredKWh,
     planningSpeedKw: finalRevision?.planningSpeedKw ?? null,
@@ -440,13 +455,17 @@ const STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
  * Tone matches the surrounding blameless receipt copy; kept tight so it fits the
  * one-line list-card reason slot at 320px (the consumer prefixes "Why:").
  */
+const NO_DELIVERY_CAUSE_LINE: Record<DeferredObjectiveSettingsKind, string> = {
+  temperature: 'Made almost no temperature progress before the deadline.',
+  ev_soc: 'Delivered almost no charge before the deadline.',
+  energy: 'Delivered almost no energy before the deadline.',
+};
+
 export const formatRefinedMissCause = (entry: AttributionEntry): string | null => {
   const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
   switch (attribution.cause) {
     case 'no_delivery':
-      return entry.objectiveKind === 'temperature'
-        ? 'Made almost no temperature progress before the deadline.'
-        : 'Delivered almost no charge before the deadline.';
+      return NO_DELIVERY_CAUSE_LINE[entry.objectiveKind];
     case 'energy_underestimate':
       return 'Target needed more energy than estimated.';
     case 'capacity_shortfall':

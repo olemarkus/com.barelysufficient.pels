@@ -1,5 +1,5 @@
 // Integration coverage for the "device is no longer managed" smart-task pause
-import { noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // (`unmanaged` exclusion → `objective_device_unmanaged`):
 // - un-managing a device does NOT end its task; the diagnostic reports the
 //   dedicated paused code instead of the misleading `objective_missing_device`
@@ -104,6 +104,7 @@ const buildDiagnosticsParams = (overrides: {
   priceOptimizationEnabled: true,
   activePlans: null,
   getStallClassification: noStallEvidence,
+  getDeliveredEnergyKWh: noDeliveredEnergy,
   resolveDeviceExclusion: overrides.resolveDeviceExclusion ?? noDeviceExclusion,
 });
 

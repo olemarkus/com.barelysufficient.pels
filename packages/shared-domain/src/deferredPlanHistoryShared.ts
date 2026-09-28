@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -20,6 +21,35 @@ export const HOUR_MS = 60 * MINUTE_MS;
 // threshold definition (5 °C / 10 %).
 export const OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC = 5;
 export const OVERSHOOT_PERCENT_THRESHOLD_PUBLIC = 10;
+// An energy task stands the device down at its target, so the energy fed runs
+// over only by the draw between two lifecycle ticks; a kWh past that is worth
+// a line.
+export const OVERSHOOT_ENERGY_THRESHOLD_KWH_PUBLIC = 1;
+
+export const OVERSHOOT_THRESHOLD_BY_KIND: Record<DeferredObjectiveSettingsKind, number> = {
+  temperature: OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC,
+  ev_soc: OVERSHOOT_PERCENT_THRESHOLD_PUBLIC,
+  energy: OVERSHOOT_ENERGY_THRESHOLD_KWH_PUBLIC,
+};
+
+/**
+ * A history value in its task's unit: "65.0 °C", "80 %", "9.2 kWh". The one
+ * place the history surfaces pick a precision and a suffix per kind.
+ */
+export const formatHistoryValueForKind = (
+  kind: DeferredObjectiveSettingsKind,
+  value: number,
+): string => {
+  switch (kind) {
+    case 'temperature': return `${value.toFixed(1)} °C`;
+    case 'ev_soc': return `${value.toFixed(0)} %`;
+    case 'energy': return `${value.toFixed(1)} kWh`;
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+};
 
 export const formatClockTime = (ms: number, timeZone: string): string | null => {
   if (!Number.isFinite(ms)) return null;
