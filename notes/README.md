@@ -7,8 +7,8 @@ work it carries a status line; treat anything without one as still-forward desig
 
 Agent-context invariant digests live next to the code they protect, in per-module `AGENTS.md`
 files (`lib/device/AGENTS.md` for state management, `lib/observer/AGENTS.md` for observation
-quiescence, `lib/diagnostics/AGENTS.md` for starvation) — see the per-directory docs index in the
-root `AGENTS.md`. The notes here are the design-of-record behind those digests.
+quiescence, `lib/diagnostics/AGENTS.md` for starvation). The notes here are the
+design-of-record behind those digests.
 
 ## Conventions & references
 

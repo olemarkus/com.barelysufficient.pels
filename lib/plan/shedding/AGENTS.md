@@ -1,124 +1,22 @@
-# Shedding Planner Boundary
+# Shedding Planner
 
-Shedding selection belongs in `lib/plan/shedding`; `planDevices.ts` materializes decisions and must not select new shed devices.
+`lib/plan/shedding/` is the sole owner of selecting devices to limit for capacity, daily budget, and hourly budget. `planDevices.ts` materializes its `shedSet`, reasons, and step targets; it does not select additional devices. Execution and transport remain outside this module.
 
-Keep this module as the single place that chooses devices for capacity, daily-budget, or hourly-budget shedding. Plan materialization may copy `shedSet`, `shedReasons`, and `shedStepTargets`, but it should not independently set a device to `plannedState: 'shed'` as a new selection decision.
+## Candidate and step decisions
 
-The shedding planner decides what to shed and HOW FAR — for a stepped device, which rung of its own ladder the shed leaves it at. It does not decide how to actuate that: the transport, the command ordering, and the temperature-target projection stay outside. The distinction is what `shedStepTargets` respects — it names a destination the module already priced its decision on, not an instruction to a device.
+- Select a device only when limiting it releases measured power. A zero-draw candidate offers no relief and must not receive a speculative shed command. A preemptive need to keep a device off belongs in admission, not shedding.
+- For a stepped device, price every reachable lower rung with `resolveSteppedShedLadder`; rejecting the next rung because it frees nothing must not hide a deeper useful rung. `set_step` stops at the deepest non-off-classified rung; `turn_off` may include the off rung. Use `isSteppedLoadOffStep` for that classification.
+- `resolveStepChangeKw` is the common price of a step transition. A descent cannot credit more than measured draw. A climb uses the smaller current estimate to avoid understating new commitment. Determine direction from profile order, with an observed-off device at position zero.
+- Choose a stepped rung when the ranked candidate is spent, using the deficit still open at that turn. The chosen `shedStepTargets` rung is the delivered rung; materialization does not recompute it. Ranking may use the maximum available relief, but not a rung that has not yet been chosen. Bank relief before asking whether the deficit remains.
+- The start-policy hold applies only while Power-limit control is off. Readers of the active policy use `startPolicyInForce`; the stored `startPolicy` records the owner's choice and is used to detect its withdrawal. Power limiting being turned on pauses, rather than erases, that choice.
 
-## Module layout
+## Evidence and reporting
 
-- `candidates.ts` — the collect loop and the candidate ranking, plus the one cycle-level quantity per-device pricing needs: it hands `deficitKw` down so the stepped builder can rank on the rung a first pick would take.
-- `candidateBuilders.ts` — binary + temperature builders, and the two eligibility predicates.
-- `steppedCandidates.ts` — every stepped builder, plus the ladder pricing (`resolveSteppedShedLadder`) and the rung choice (`chooseShedRung`) that selection spends against.
-- `candidateSkipLog.ts` — why a controlled device did not become a candidate.
-- `selection.ts` — the greedy pick over the ranked candidates, and the rung each one is taken at.
-- `sheddingLatch.ts` — the shedding-active latch a build leaves behind.
-- `shortfallVerdict.ts` — what a build tells the capacity guard: over the hard-cap threshold, a verdict whose actionable load is the relief this build's candidates still hold after selection; otherwise, only the reading. Only a verdict can open an incident, and it lives here because it is a question about these candidates — a rebuild that changed nothing is not one (the planner also changes nothing while it waits out a shed grace), and a separate count of managed load credits devices the candidate walk skips.
-
-## A device may only be selected when limiting it releases power
-
-Every selection site here already enforces it — `buildBinaryCandidate`, `buildTemperatureCandidate`, `buildSteppedCandidate` and `buildPreparedSteppedBinaryOffCandidate` all reject a candidate whose `effectivePower <= 0`, and `buildSwapCandidates` skips `pwr <= 0` the same way. Keep it that way.
-
-Shedding a device already drawing nothing frees nothing, but it still costs a write and then makes the device fight back through restore cooldown and backoff. The one lane that ignored this (`pauseHold.ts`, deleted) turned off ten zero-draw devices in production on 2026-07-31 while 2.48 kW sat available. Needing a device to stay off *pre-emptively* is not a shed decision — express it as an admission term instead (`lib/plan/admission/headroomReserve.ts`).
-
-## …but ask the whole ladder, not just the next rung
-
-The rule above is about the ANSWER, not about how hard you looked for it. For a stepped device the two got conflated: `getSteppedLoadShedTargetStep` returns one rung down, and pricing only that rung made "this rung frees nothing" read as "this device frees nothing".
-
-A rung whose admission estimate sits at or above the measured draw prices at exactly zero, for any from-step. A device pinned at `max` and one idling at `low` price identically. Prod 2026-08-05 (`inc_26449fb9`): a water heater's `measure_power` lagged its step-up by ~5 minutes, `max → medium` priced at 0, the heater was never a candidate, and the house sat 526 W over the hard cap for 4.5 minutes while the meter showed it drawing 2.9 kW.
-
-`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveStepChangeKw`, whose descent arm bounds the before-side at the MEASURED draw, so the deepest rung buys what the meter says the device is pulling and no more. Both shed behaviours descend the whole ladder; they differ only in where the descent stops:
-
-- **`set_step` descends to the deepest NOT-OFF-CLASSIFIED rung and never reaches the off step.** The owner's "lower it" means as far down as the deficit needs, never off. That floor is asked of `isSteppedLoadOffStep`, NOT read off the floor the walk used: `getSteppedLoadLowestActiveStep` tests `planningPowerW > 0` and ignores the step's name, while the off rule also counts a step named `off`, so a hand-configured `{ id: 'off', planningPowerW: 1200 }` is active to the first and off to the second. Keep the reconciliation at the call site in `buildSteppedShedDescentTargets` — the two helpers' meanings are load-bearing for their other callers.
-- **`turn_off` descends the same rungs and then gets the off step appended**, because the floor above keeps the off step off the walk.
-
-`set_step` used to be offered its adjacent rung alone. That was a pricing constraint, not a product one: materialization recomputed the step from the device, so a credited deeper rung would have decremented the deficit by relief the executor never commanded. It no longer recomputes (below), so credited relief equals delivered relief for both behaviours.
-
-## One function prices a step change, and the direction picks the before-side
-
-`resolveStepChangeKw(device, from, to)` (`lib/plan/planSteppedLoad.ts`) is the only place a step delta is computed. Shedding asks it what a descent releases, restore asks it what a climb commits; there is no second helper with its own rules, and there was: two functions and a wrapper, each reconciling the meter and the step model differently.
-
-Two sources can answer "what is this device drawing now" — the meter (`currentDrawKw`) and the model (calibrated, else nameplate, power for the step the device REPORTS). Only the model can answer the after-side. The direction owns the before-side, because the two directions have opposite pessimism:
-
-- **Down**, the meter is the BOUND. A device cannot release more than it is drawing. Clamping the before-side to the model as well under-credits every descent where the step report is the stale half — a 3.645 kW charger reporting a 1.38 kW rung had a full turn-off priced at 1.38 kW, and the selection loop went on shedding devices the owner ranked higher against 2.27 kW it had already freed.
-- **Up**, the before-side takes the SMALLER of the two. Over-stating what is already accounted for under-states the commitment and admits a device into a breach.
-
-Both ends are pessimistic about headroom. What the rule deliberately does not do is let the model out-price the meter on a descent: a reading below what the reported step should draw is either a stale meter (`inc_26449fb9`) or a device genuinely idle at its setpoint — ordinary for a thermostat or a tapering charger — and one sample cannot tell them apart. Crediting the model there would declare a breach closed on watts that never flowed. The stale-meter case is covered instead by the ladder walking to a deeper rung.
-
-Direction is read off the PROFILE's ordering, never off the estimates, so a step whose calibration learned oddly cannot invert which way the ladder runs. And a device the producer resolved as off is at position ZERO, whatever step id it still carries — not at its profile's off step, which a hand-configured ladder need not have. Otherwise a restore reads as a descent (`medium` → `low` runs down the ladder, but from off it is a climb) and answers nothing for a device about to start drawing.
-
-## The rung is chosen when the candidate is SPENT, not when it is built
-
-`chooseShedRung(rungs, neededKw)` answers the gentlest rung whose priced relief covers `neededKw`, and the deepest priced rung when none does. `selectShedDevices` calls it with the deficit still open at that candidate's turn.
-
-It has to be that way round. Every candidate is priced and ranked before the loop spends anything, so a rung fixed at build time is sized against the cycle's OPENING deficit and knows nothing about what earlier picks already covered. Two stepped devices eligible in one cycle is enough: a 3 kW deficit, 2 kW banked by the first, and the second still cut for a full 3 kW — 5 kW shed to close 3. The over-shoot grows with the deficit, and it was masked for as long as a `turn_off` device was delivered as a full cut whatever rung was credited.
-
-The kW compared must be a measured deficit (`deficitKw` and the remainder derived from it), never `needed`, which carries `Number.POSITIVE_INFINITY` as a severity sentinel in an exhausted hour (`ShedCandidateParams`). Fed the sentinel, no rung covers and every stepped `turn_off` candidate collapses to its off rung.
-
-An unconfirmed candidate banks nothing, so everything behind it is sized as though it had not been taken. That is deliberate — the watts have not moved, and covering a deficit on a promise declares a breach closed while it is open — and it errs toward covering the breach rather than under-shedding it.
-
-## The chosen rung is the delivered rung
-
-`shedStepTargets` carries the chosen rung from `selectShedDevices` into materialization, alongside `shedReasons`, and `resolveSteppedLoadDirectShedStepId` returns it unchanged. So credited relief equals delivered relief by construction, and the configured shed behaviour is only the FLOOR — the deepest this cycle may go — read solely as a fallback when no rung was decided.
-
-It did not use to be. Materialization recomputed the step from the device alone and answered the off step for every `turn_off` device, so the chosen rung decided **candidacy and nothing else**: a `turn_off` shed shipped as a full cut whatever rung the deficit was credited against. That made under-shedding invisible — 15 of 70 trim decisions on one production charger (11–17 Aug) chose a rung smaller than the deficit, worst case 3.77 kW answered with a 1.01 kW rung — and the full cut over-covered it every time.
-
-Two consequences to keep straight:
-
-- **`turn_off` no longer implies a full cut**, so the decided end state, not the behaviour, is what downstream reads: `resolvePlannedShedTargetKind` answers `step` for a device parked at an active rung, `resolveSteppedLoadTransition` enters `full_shed_to_off` only for the `binary_off` end state, and the executor converges on that kind (`lib/executor/AGENTS.md`).
-- **The ranking keys must not depend on the chosen rung**, since the rung is not known until spend time. `effectivePower` is therefore the device's deepest priced relief — everything limiting it can free — and `preemptiveStepDown` asks `chooseShedRung` against the cycle's OPENING deficit: "if this candidate went first, would it still be running?". For a first pick that is not an approximation, it is the question. Do not loosen it to "has any lower rung at all": that ranks a device ahead of the owner's priority order on the strength of a reduction it will not take — a 1 kW stepped load against a 3 kW deficit sorts first, finds no covering rung, takes its off rung anyway, and the binary load the owner ranked as sheddable-first is shed as well.
-
-A descent that lands on the off step is a full turn-off, and `sortCandidates` is explicit that those follow normal priority ordering — marking one preemptive would jump the queue past devices the owner ranked as sheddable first.
-
-Selection stops on the deficit and on nothing else (`selection.ts`): the relief of the candidate just taken is banked before the loop asks again. It used to break right after a preemptive step-down, which — while the rung was unsized — ended a cycle on a step-down worth a fraction of the deficit with the breach still open and nothing else limited.
-
-## "Only PELS starts this device" applies only while Power-limit control is off
-
-Owner ruling 2026-09-25. The start-policy hold (`startPolicyHold.ts`) is the lever for a managed
-device whose Power-limit control is OFF — a load PELS watches but may not otherwise command, where
-the policy is PELS's only authority to keep an unplanned start off. With power limiting ON, PELS
-already owns the device's on/off: it limits it under the cap and starts it again when there is room.
-A baseline of off on top of that only overrides PELS's own capacity decisions with "stay off unless a
-smart task says so". Production 2026-09-25: an EV charger with both on sat `awaiting_pels_start` at
-46% from the moment its task's deadline passed, with the house under its cap.
-
-So the producer resolves the policy IN FORCE (`resolveStartPolicyInForce`,
-`lib/device/temperatureControlPosture.ts`) onto `PlanInputDevice.startPolicyInForce`:
-the owner's policy while power limiting is off, `unrestricted` while it is on. Review rules:
-
-- **Every "does the policy act this cycle" reader takes `startPolicyInForce`**: the hold, the
-  smart-task lift (`admission.ts`), and the baseline-off stamp (`ShedDecisions.recordPlannedShed`,
-  `releaseAbandonedSurplusPosture`'s keep-alive set). Reading the stored `startPolicy` there brings
-  the prod bug back.
-- **The stored `startPolicy` answers exactly one question: did the owner withdraw it.** Turning power
-  limiting on is not a withdrawal, so a device the hold had off is released plainly (the restore lane
-  starts it when there is room), never answered with "Leave off until turned on again". That is why
-  the stamp records which posture earned it (`BaselineOffPosture`) and the release judges each
-  against its own stored setting (`isBaselineOffStillWanted`).
-- **The stored choice is never rewritten.** It applies again when power limiting goes off — a Flow
-  can do that (`disable_device_capacity_control`) — so the settings row stays visible for an
-  opted-in device, marked paused, and stays hidden for one that is not.
-
-Regression cover: `test/integration/startPolicyPlanBuild.test.ts` § "with Power-limit control on",
-`test/integration/surplusDumpLoadPlan.test.ts` (withdrawal while a paused policy is stored).
-
-## A skip must be reviewable
-
-Candidate gathering has a dozen exits that drop a device. Each one records a reason through `candidateSkipLog.ts`, rolled up into one `plan_shed_candidates_skipped` event per cycle and counted onto `OvershootStats`. Do not add a bare `continue` / `return null` to the collect loop or the builders without a reason code.
-
-This exists because the counters in `hard_cap_shortfall_detected` cannot answer the question: `blockedByCooldownDevices`, `blockedByPenaltyDevices` and `blockedByInvariantDevices` are all RESTORE-side holds (`lib/planContract/planDecisionSemantics.ts`). All three read zero through the incident above, which made "nothing was blocking" look like a finding when the truth was "the one device that mattered was never a candidate". Devices that are not controllable at all are out of scope rather than skipped, and are deliberately not recorded — matching `controlledDevices` in the capacity summary.
-
-## An unchanged reading is not new evidence
-
-Whole-home power lags the switch: the meter aggregate (and the 10 s `homey_energy` poll behind it) can repeat the pre-shed watts for a poll or two after a device is confirmed off. A repeat is a re-delivery of the reading the last shed was already decided on, so `resolveSameMeasurementSheddingDecision` refuses to deepen on it for a short hold (`UNCHANGED_READING_SHED_HOLD_MS`, `overshoot.ts`) — otherwise the planner cuts into devices the user ranked higher for a deficit the previous shed already covered. Equality is exact so that any real movement, in either direction, is still acted on at full speed, and the hold releases early if the deficit itself grows (a tightened soft limit is a new question, not a re-delivered answer). Do not remove the hold to make shedding "more responsive": the deficit it protects against is imaginary.
-
-A held cycle re-asserts the shed this module itself decided (`PlanEngineState.shedPlanLatch.shedIds`) and adds nothing. It must never re-derive that set from the FINAL plan's shed set (`shedDecisions.lastPlannedShedIds`), which carries holds merged in after this module ran; handing one of those a capacity shed reason mislabels it and clamps unrelated stepped loads. Its window is anchored on `shedPlanLatch.atMs`, not the overshoot mitigation clock, because `PlanBuilder` runs shedding *before* `OvershootTracker.updateOvershootState` nulls that clock on overshoot entry.
+- Record a reason through `candidateSkipLog.ts` when a controlled device is excluded from candidate gathering. An uncommandable device is outside candidate scope.
+- A repeated whole-home reading after a confirmed shed is not fresh evidence for deeper shedding. `resolveSameMeasurementSheddingDecision` holds the previous shed set briefly; real meter movement or a larger deficit ends that hold. Use `PlanEngineState.shedPlanLatch.shedIds`, not the final plan's merged shed set, for this module's own hold.
 
 ## Declining to shed is not deciding there is no overshoot
 
-`buildSheddingPlan` takes both halves of the soft-overshoot decision (`SheddingOvershootInput`). `shedActionable` gates SELECTION — may this cycle choose devices. `actionable` gates the shedding-active LATCH through `resolveSheddingLatch`. Never collapse them back into one flag.
+- `shedActionable` controls whether this cycle selects new devices. `actionable` controls the shedding-active latch. When selection is deferred but overshoot remains, keep the latch active so already limited devices do not resume into the breach. An empty new `shedSet` is not a release decision.
 
-The whole restore side stands down while headroom is negative, on the assumption that this module has already said what stays limited: `resolveOffDeviceReason` returns the caller's own reason on `activeOvershoot`, `resolveCapacityRestoreBlockReason` returns `null`, and `applyRestorePlan` reaches its stay-off marking through `sheddingActive`. So a cycle that both selects nothing *and* leaves the latch off has nothing at all holding a device that is already off — it materializes as `keep`, and the executor turns it on. That is the 2026-08-16 restore-all: the shed grace (`resolveShedGraceMs`) deferred a shed, the latch went with it, and five thermostats came back on into a hard-cap crossing. Regression cover: `test/integration/planShedGraceHoldsExistingShed.test.ts`.
-
-The general form: an empty `shedSet` this cycle means "nothing NEW to limit", never "release what is limited". Any future reason to withhold selection has to keep saying the overshoot is real.
+See `notes/state-management/actuation-clocks-and-settle.md` for timing and `lib/plan/AGENTS.md` for planner-wide boundaries.

@@ -1,123 +1,19 @@
-# Deferred Objectives — review & test rules
+# Deferred Objectives
 
-This module has a **two-clock** design: the allocator runs only at the `:58` settle / bootstrap
-(`activePlanSchedule.ts`, `settleWindow.ts`); between settles a **frozen read** serves the committed
-plan (`frozenHorizonPlan.ts`). Several per-cycle release decisions are layered on top at admission
-time (`admission.ts`, mapping the producer-resolved `currentHourClaim` 1:1 onto a decision — the
-claim itself is resolved once by `resolveCurrentHourClaim` in `currentHourClaim.ts`):
-`priceDeferralEligible`
-(WI-2), `coldStartReleaseEligible` (WI-4), and the sufficiency gate below. Get the interaction
-between these wrong and you will "find" bugs that are not there.
+Smart tasks use two clocks: the allocator settles at `:58` or bootstrap, while `frozenHorizonPlan.ts` serves that commitment between settles. Admission can make per-cycle release decisions without rerunning allocation. The design record is `notes/deferred-load-objectives/README.md`; execution details are in `notes/deferred-load-objectives/execution-adaptation.md`.
 
 ## An unbooked hour is not a stand-down
 
-An hour booked at 0 kWh does **not** mean "idle the device". The producer resolves one flat
-`currentHourClaim` (`currentHourClaim.ts`) that admission maps 1:1 — `claimed` drives the device,
-`released` stands it down, `unclaimed` hands it to the planner as managed so it competes on its own
-priority with no forced shed, no release intent, no deadline floor and none of the rescue claims.
-
-`unclaimed` is reached only when the task cannot finish without the hour, which is narrower than
-"the floor was short". It keys on the settled `floorShortfallCause`, mapping an unbooked hour to a
-claim: `budget` → `unclaimed`, `time_capacity` → `unclaimed`, `step_power` → `released`,
-`estimate` → `released`, `none` → `released`. The two that release are the ones where the task can
-still finish — `step_power` means the climbed-band probe already proved the booked hours do the job
-once the executor climbs (the normal state of a stepped thermal task), and `estimate` means the gap
-is entirely the `k·SE` variance padding. Gating on the raw floor shortfall instead would switch
-price optimisation off for most stepped tasks.
-
-Three things that look like regressions and are not:
-
-- A budget-bound or infeasible task never releases **on the unbooked-hour path** — there is no later
-  hour to defer into. It can still release from a hour it DID book, via `priceDeferralEligible`.
-- An empty horizon still releases: no schedule demands the hour.
-- The frozen read replays the settle's `floorShortfallCause` rather than recomputing sufficiency
-  from the live need. That is deliberate — a live comparison would put the decision back on the
-  per-cycle clock, and a device idling in a released hour drifts, so the answer would cross back and
-  forth mid-hour with no cooldown able to damp it (a lifecycle release never stamps
-  `lastInstabilityMs`, so the 60-300 s restore back-off never engages).
-
-Design of record: `notes/deferred-load-objectives/README.md` § "An unbooked hour is not a
-stand-down"; proof: `test/integration/smartTaskUnclaimedHourLifecycle.test.ts`.
+`currentHourClaim.ts` resolves `claimed`, `released`, or `unclaimed` once. An unclaimed hour returns the device to ordinary managed planning; it does not force it off or release it. Use the settled `floorShortfallCause` to distinguish a truly needed unbooked hour from a gap caused by step power or estimate padding. The frozen read replays the settled cause rather than recomputing sufficiency from live drift.
 
 ## During an active smart task, the task decides whether the device runs
 
-Owner ruling 2026-09-25, and it holds with Power-limit control ON. A task can aim higher than the
-mode would (a water heater at 65 °C where the mode says 45 °C), so letting the device "run as
-normal" in an hour the task deferred spends energy the task has already scheduled for a cheaper
-hour. In the owner's words: "during the smart task, it is the smart task logic that wins".
-
-So a `released` hour (`idle` decision) stands the device down whatever its power-limit setting:
-
-- **PELS has standing authority over the device** (Power-limit control on, or "Only PELS starts
-  this device" in force, which applies with power limiting off): `holdsDeviceOff` in
-  `admission.ts` force-sheds it and stamps `deferredHoldActive`. The planner sheds it to OFF, not
-  to the owner's limiting floor, which answers capacity pressure and still draws
-  (`isDeferredHoldShed`, `lib/plan/shedding/deferredHold.ts`). The hold alone is not capacity
-  pressure: all four readers of the stepped fairness invariant exclude it — the plan's
-  keep-invariant clamp (`planDevices.ts`), the shed side (`isNonSteppedDeviceRecovering`, which
-  excludes the active hold as starvation does, so a held binary device does not send every
-  `set_step` device being shed to its lowest active step), the restore side
-  (`countShedDevices`) and the executor (`hasExecutableShedDevices`), the last two through
-  `nonCapacityHoldShed`. The executor records its turn-off as a release, not a capacity shed,
-  so it starts no house-wide shed cooldown or restore back-off
-  (`PlanExecutor.recordShedActuation`); the home's status reports no limiting for it
-  (`pelsStatus.ts`), whatever reason text it carries; and starvation excludes the device while
-  the hold is active. Its card reads "Waiting for cheaper hours" whatever the task's status: the
-  avoid set is the `idle` decisions themselves (`resolveDeferredAvoidDeviceIds`), because an
-  `at_risk` task (`feasible_above_floor` is the normal state of a stepped water heater) holds its
-  device exactly as an `on_track` one does. Do not gate it on status again: an unstated reason
-  falls to `capacity` and blames the house's limit for the task's own hold. A device with
-  no OFF to reach (temperature-only: no on/off handle, no step ladder) keeps its configured
-  setback, since an OFF there would issue no command at all.
-- **The task lends the device authority** (no standing authority: power limiting off and no
-  start policy): unchanged, force-shed with a release to its configured posture
-  (`contributesCommandAuthority`). That route still counts toward the fairness invariant, because
-  its device is overridden to `commandAuthority: true` and shed like a capacity shed; it predates
-  this ruling and is not covered by it.
-
-What this does not change: `claimed` and `unclaimed` hours hand the device to the planner as
-before, and a task that is not plannable (`inactive`: satisfied, invalid, no horizon) leaves the
-device on its normal lane — the ruling is about an ACTIVE task. Do not reintroduce "a power-limited
-device stays on the planner's normal lane in a released hour": that lane had nothing to hold a
-stepped device with, so it charged on spare capacity, and a binary one was released off by command
-while the plan kept it on. Proof: `test/integration/smartTaskDeferredHourPlanBuild.test.ts`,
-`test/e2e/deferredObjectiveBoostNoBudgetStepUpE2E.test.ts` (released hour).
+A `released` hour stands the task's device down even when Power-limit control is on. With standing command authority, `admission.ts` holds that device off without classifying the hold as capacity pressure; a temperature-only device with no off command keeps its configured setback. `claimed` and `unclaimed` hours continue through normal planning. Do not infer the release rule from task status text or stored start policy; use the resolved active claim and authority.
 
 ## The step-ladder gap is the producer's answer, and its two readers are mirrors
 
-"Configured as a stepped load, but no live ladder this cycle" is resolved at `toPlanDevice` and
-arrives here as the flat `steppedLadderMissing` bit. Do **not** re-derive it from `controlModel`,
-profile presence, or a missing power figure — this layer cannot see both halves of the question, and
-each of those proxies has already failed once in production. `resolveObjectiveSteps` (→
-`liveStepsUnavailable` → frozen serve) and `resolvePlanningSpeedKw` (hero copy) are the only two
-readers, and they **move together**; changing one alone makes the diagnostic and the hero disagree
-about the same device in the same cycle. Background: `notes/deferred-load-objectives/execution-adaptation.md`
-§ "Live step-ladder gap — the frozen read also bridges missing steps".
+`steppedLadderMissing` is resolved by the producer. `resolveObjectiveSteps` and `resolvePlanningSpeedKw` read that same fact for frozen serving and user-facing diagnostics. Change both together; do not re-derive the gap from profile presence or a missing power value.
 
-## E2E must drive the real stack from the Homey SDK boundary
+## Testing and review
 
-When testing or reproducing deferred-objective behaviour across cycles, simulate **only** the Homey
-SDK boundary — **device temperature / SoC, prices, and the clock** — and drive the real
-`buildDeferredObjectiveDiagnostics` + `DeferredObjectiveActivePlanRecorder` +
-`applyDeferredObjectiveAdmission`. Loop: read `recorder.getActivePlansSnapshot()` → bridge →
-`recorder.observe()` → admission → apply the decision to a thermal/SoC model → advance the clock.
-See `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts` for the canonical harness.
-
-**Never mock PELS internals** — `aheadOfHourMilestone`, the fresh/frozen dispatch, the allocator,
-the milestone stamping. Mocking any of them makes the test confirm your *assumptions* instead of the
-*system's behaviour*. A reproduction that pins `aheadOfHourMilestone = false` severs the
-price-deferral backstop and manufactures a cold-start "catastrophe" that does not happen in
-production.
-
-## Cold-start ⇄ price-deferral: the standing misread
-
-`frozenHorizonPlan.ts` hardcodes `coldStartReleaseEligible: false` on the mid-hour read; cold-start
-is recomputed only on the fresh path. This is **not** a mid-hour regression. WI-2 price-deferral is
-the backstop: the cold-start hour's `plannedUnitMilestone` is seeded low at the cold measured value
-when first committed (frozen thereafter), so once the device delivers its floor booking and crosses
-that milestone, `priceDeferralEligible`
-idles it for the rest of the hour. Residual peak draw = the floor bookings spilled onto the
-expensive hours (marginal), not the full element run. Before escalating any "cold-start is defeated
-mid-hour" finding to P0/P1, reproduce it through the SDK-boundary harness above — unmocked. Full
-write-up: `notes/deferred-load-objectives/execution-adaptation.md` → "Interaction with the per-cycle
-frozen read".
+For a cross-cycle reproduction, drive the real bridge, recorder, allocator, and admission through the Homey SDK boundary: device temperature/SoC, prices, and clock. Do not mock internal milestones or fresh/frozen dispatch. `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts` is the reference harness. A mid-hour cold-start finding must account for the committed milestone and price-deferral backstop before being treated as a regression.

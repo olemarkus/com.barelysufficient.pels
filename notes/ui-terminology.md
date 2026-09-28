@@ -11,6 +11,10 @@ Avoid: `restore blocked: insufficient headroom`
 
 Concrete words over jargon: `limited`, not `shed`; `resume`, not `restore`; `available power`, not `headroom`; `safety margin`, not `soft margin`. The migration to this vocabulary is complete in the settings UI — the older terms only survive in internal code identifiers, legacy Homey flow card names (see [`docs/flow-cards.md`](../docs/flow-cards.md)), and raw planner reason strings documented in [`docs/plan-states.md`](../docs/plan-states.md).
 
+## Language across surfaces
+
+PELS UI, widgets, and Flow card labels remain English in every market. Localized store descriptions translate their prose but cite any in-app PELS label in English so owners can find it. Homey's own menu paths use the target language because Homey translates those labels.
+
 ## Hero bar vocabulary
 
 The overview hero uses a specific vocabulary to keep the power/energy distinction clear.

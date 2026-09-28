@@ -71,9 +71,9 @@ const peerAllowlistFile = path.join(rootDir, 'scripts/setup-peer-allowlist.txt')
 const sdkAllowlistFile = path.join(rootDir, 'scripts/setup-sdk-allowlist.txt');
 
 /**
- * The thirteen domain peers, as `AGENTS.md` § "Hard rules" lists them. Keep this
- * set and that list in step — a peer missing here is a coupling this guard
- * cannot see.
+ * The domain peer set for this guard. Keep it aligned with the corresponding
+ * architecture rule in `.dependency-cruiser.cjs`; a missing peer is a coupling
+ * this guard cannot see.
  */
 const PEERS = new Set([
   'device', 'power', 'objectives', 'plan', 'price', 'dailyBudget',

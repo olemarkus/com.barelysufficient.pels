@@ -170,8 +170,8 @@ describe('Mixed Type Restoration Throttling', () => {
         // flipped it to capacity on a deliberate position: the restore cooldown
         // is plan-global (`state.actuation.lastRestoreMs`, bumped by ANY device), so it
         // read as the other device's label. That position is reversed here, for
-        // two reasons — root `AGENTS.md` § "Device card reason lines" admits the
-        // countdowns as holds power cannot lift, and the binary peer in this very
+        // two reasons — `notes/ui-terminology.md` § "Device cards say what a device needs"
+        // admits countdowns as holds power cannot lift, and the binary peer in this very
         // cycle already shows the same countdown via `markOffDevicesStayOff`.
         // A global timer still holds THIS device; naming it is not borrowing.
         if (d1Restored) {

@@ -1,42 +1,12 @@
-# Diagnostics Layer — Orientation and Starvation Invariants
+# Diagnostics
 
-`lib/diagnostics` records per-device diagnostics and app-health telemetry. It observes planner output and device state; it must never feed decisions back into the planner.
+`lib/diagnostics/` records device health, starvation, and app resource telemetry. It observes decisions and device state; diagnostics do not feed planner choices. The detailed starvation model is in `notes/starvation/README.md`.
 
-## Map
+## Temperature device starvation
 
-- `deviceDiagnosticsService.ts` — per-device diagnostics hub, including the starvation state machine (entry/clear constants live here).
-- `deviceDiagnosticsModel.ts` / `deviceDiagnosticsStateStore.ts` — diagnostics types and typed persistence boundary.
-- `periodicStatus.ts` — periodic status snapshot logging.
-- `perfLogging.ts` / `gcObserver.ts` / `resourceWarnings.ts` / `smapsRollup.ts` / `heapSnapshotHandler.ts` — performance and memory telemetry (Homey RSS ceiling is 160 MB; baseline ~130 MB).
-- `heapReclaim.ts` — the app's one memory lever: obtains V8's collector at runtime and runs a `last-resort` collection, which returns the emptied-but-committed pages an ordinary collection keeps (`reclaimed`, with a before/after footprint) or answers `unavailable` once on a runtime that cannot expose it. Driven only by `resourceWarnings.ts`: every Homey `memwarn` (rate-limited to one per 30 s) and a ten-minute backstop interval, both torn down with the resource-warnings task. Telemetry-side only — it never feeds a planner decision.
+- Count starvation only for managed temperature devices that PELS holds below their intended mode target. Use the producer-resolved `pelsHoldsBelowTarget` fact from `lib/plan/planDiagnostics.ts`; physical temperature alone does not establish a PELS hold. Starvation is metadata, not an automatic change to shed order or priority. A user-requested rescue is a separate action.
+- Entry requires 15 minutes of continuous counting suppression. Clearing requires 10 minutes continuously commanded at the full target. Capacity control being disabled clears the episode. Track accumulated counting time, not a single start timestamp; duration Flow thresholds fire once per episode.
+- PELS-imposed off periods, cooldowns, restore throttles, and reservations count. Owner-controlled or non-counting holds pause a latched episode and cannot start one. A silent device observation does not pause the clock; a gap over ten minutes in PELS's own plan samples does.
+- Budget-denial learning is a separate persisted measure of unmet demand while the daily budget is below sustainable capacity. Do not gate it on the starvation latch or the planner's instantaneous block reason. See the governing note for cause and day-boundary details.
 
-Design-of-record: `notes/starvation/README.md`; intended-target model also in `lib/plan/planDiagnostics.ts`.
-
-## Temperature Device Starvation — Invariants
-
-**Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
-
-**Core constraint:** starvation is orthogonal metadata — the *planner* must **never** read it to change its decisions (shed order, restore order, priority). Detection stays planner-orthogonal. The shipped v2 rescue widget (see `notes/starvation/README.md`) is a **separate, user-initiated lane**: the owner explicitly chooses to exempt a starved device from its budget, which is not the planner consuming starvation state. Do not collapse the two — automatic planner behaviour stays detection-only.
-
-- **Starve only when PELS holds a device below its mode target.** The signal is `commandedTargetC < intendedNormalTargetC` (commanded = `plannedTarget ?? currentTarget`) under a real counting cause — NOT the physical temperature. A device PELS commands in full (`keep`) is never starved, however cold it is. The old physical-temperature deficit thresholds (anchor table in the deleted `starvationThresholds.ts`) are gone.
-- Entry requires 15 minutes of continuous below-target counting suppression — not a single-cycle check.
-- **The clock runs whenever PELS has turned the device off** (owner ruling, 2026-08-08). Its own cooldowns, restore throttling, activation backoff, pending restores and startup reservations COUNT — they used to pause, and a device cycling between a capacity hold and its 60 s cooldown was never being served. Non-counting holds (`keep`, `inactive`, a step-up `restore_need`, and the owner-set `deferred_objective_avoid` / `awaiting_solar_surplus`) **cannot start** starvation; on a latched episode they **pause** accumulation and retain the original counting cause.
-- `capacity control off` must **clear and reset** starvation entirely.
-- Clear requires PELS to command the full mode target (`commandedTargetC >= intendedNormalTargetC`) for 10 continuous minutes (hysteresis — partial recovery does not clear starvation).
-- **No overview/badge cause bucket** (the flat `capacity | budget` fold was removed 2026-08-04). It was overwritten on every accumulation tick, so a device held steadily across a budget-bound and a capacity-bound cycle flipped its badge, its copy, and its rescue button with nothing about the device having changed. The overview payload carries `isStarved` and `accumulatedMs` only (`startedAtMs` went with it on 2026-08-07 — no surface ever read it, and an episode's start says nothing about how much of it counted); the granular counting cause below is unaffected and still feeds device detail and the `device_starvation_*` logs. No `manual`/`external` bucket either.
-- Duration-threshold flow triggers must fire **once per episode per threshold**, not every planning cycle.
-- Accumulated duration must be tracked explicitly — a single start timestamp is insufficient.
-
-**Counting causes:** `shed due to capacity`, `shed due to daily budget`, `shed due to hourly budget`, shortfall, swap pending/out, insufficient headroom, shedding active, cooldown, restore, restore throttled, activation backoff, reserved for start.
-
-**Pause reasons (cannot start starvation; pause a latched episode):** keep, inactive, restore (the step-up `restore_need` only — a keep-state device that is ON), deferred_objective_avoid, awaiting_solar_surplus, plus the observation-quality ones (invalid_observation, sample_gap, suppression_none, unknown_suppression_reason). `external_off_hold` never reaches the classifier — it is excluded from eligibility upstream.
-
-**Does not add starvation time:** invalid observations, long sample gaps (no plan sample for >10 min), any non-counting hold, capacity control off.
-
-**A device that has simply gone quiet DOES add starvation time (2026-08-30).** There used to be an `observationFresh` term in sample validity: a device whose telemetry was older than 40 minutes stopped counting. That contradicted the rule directly above it — starvation is evaluated from `commandedTargetC` vs `intendedNormalTargetC`, both values PELS itself owns, and observed temperature is explicitly display-only. It also inverted the feature: a Homey driver republishes a capability only on value CHANGE, so a device PELS is holding below target is precisely the one that stops reporting. The model went blind exactly while the starvation ran. The gate is gone and must not return. What still pauses accumulation is a gap in PELS's own **plan samples** (`DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS`, 10 min) — that is PELS not deciding, which is a real loss of evidence, unlike a device not repeating itself.
-
-**Consequence of the 2026-08-08 rule:** starvation is strictly more sensitive — more devices reach `Held back` and more are offered `Let it run now`. The gate on that offer did not move: entry still needs 15 continuous minutes of below-target counting suppression, so a device inside an ordinary 60 s cooldown is nowhere near a rescue offer. The weather advisor's day totals (`targetDeficitMs` / `blockedByHeadroomMs`) derive from `blockCause`, not the suppression state, so that loop is untouched.
-
-**`pelsHoldsBelowTarget` is producer-owned (2026-08-11).** "PELS holds this device below its intended target" — a lowered commanded setpoint OR a turn_off shed while the room sits below target — is resolved once, in `lib/plan/planDiagnostics.ts`, and carried on the observation. `normalizeStarvationObservation` copies it; never recompute it in this layer. `resolveUnmetDemand` consults the same signal, because the setpoint-gap test alone read a turn_off-shed device as fully satisfied — that zeroed `unmetDemandMs`/`blockedByHeadroomMs` for a week on production (2026-08-03 → 08-10, not backfillable) while the starvation clock correctly counted hours.
-
-**Budget-denial pressure is a persisted, cause-independent integral (2026-09-21).** Every continuously observed span with unmet demand contributes while the configured daily budget is below sustainable capacity (`hard cap - margin`). The planner's instantaneous block reason is irrelevant: a hard-cap refusal can still be evidence that the softer budget is set too low. Energy is priced at the device's expected running draw and split at local-day boundaries; plan-sample gaps over ten minutes contribute nothing, while already recorded spans remain. `budgetDenialObserved` distinguishes a genuinely observed zero from a pre-integrator persisted row whose new counters sanitize to zero. Starvation remains a separate latched, temperature-only product signal and must not gate this learning loop.
+Resource telemetry and memory-reclaim tasks remain observational and must not influence planning.

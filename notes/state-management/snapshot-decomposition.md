@@ -447,7 +447,7 @@ that feed it live in `setup/`.
 
 Naming it (an `api/` peer that may import `lib/**` and `packages/**`, that
 `setup/` wires and that nothing in `lib/` may import) is a migration, not a file
-move: it needs a dependency-cruiser peer entry, the AGENTS.md layer table, and
+move: it needs a dependency-cruiser peer entry, the architecture layer map, and
 the `setup/settingsUi*` payload modules moved together. Out of scope for the
 decomposition stages, but it is why 6.4's builder sits where it does.
 
