@@ -224,6 +224,7 @@ export function createDeferredObjectiveLifecycleEmitter(
     },
     getTimeZone: () => ctx.getTimeZone(),
     getDevices: () => requirePlanService(ctx).getPlanDevices(),
+    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     // Allocation-horizon price source, resolved from the price layer; shared

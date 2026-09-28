@@ -15,6 +15,7 @@ import {
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveStep } from './types';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
+import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 import {
   buildKnownEnergyFields,
   isCurrentBucketPlanned,
@@ -88,12 +89,14 @@ const resolveFrozenReadInputs = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
+  progressDirection: ObjectiveProgressDirectionRead;
   nowMs: number;
 }): FrozenReadInputs | null => {
   const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
     deviceId: params.deviceId,
     objective: params.objective,
+    progressDirection: params.progressDirection,
   });
   if (activePlan === undefined) return null;
   const currentHourStartMs = Math.floor(params.nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
@@ -114,6 +117,7 @@ export const resolveDeadlineBoundFrozenReadInputs = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
+  progressDirection: ObjectiveProgressDirectionRead;
   nowMs: number;
 }): FrozenReadInputs | null => (
   params.objective.deadlineAtMs > params.nowMs ? resolveFrozenReadInputs(params) : null

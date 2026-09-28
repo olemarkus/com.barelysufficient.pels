@@ -168,6 +168,16 @@ describe('live-page two-chart split copy', () => {
       priceLabel: '0.62 kr/kWh',
       planned: true,
       plannedKwh: 2,
+      kindVerb: 'Cooling',
+      isNow: false,
+      nextStartLabel: null,
+      measuredKwh: 1.8,
+    })).toBe('13:00 · 0.62 kr/kWh · Cooling 2.0 kWh planned · Measured 1.8 kWh');
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: '13:00',
+      priceLabel: '0.62 kr/kWh',
+      planned: true,
+      plannedKwh: 2,
       kindVerb: 'Charging',
       isNow: false,
       nextStartLabel: null,
@@ -188,6 +198,16 @@ describe('live-page two-chart split copy', () => {
       nextStartLabel: '08:00',
       measuredKwh: null,
     })).toBe('Now · 0.42 kr/kWh · Idle — heating starts 08:00');
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: 'Now',
+      priceLabel: '0.42 kr/kWh',
+      planned: false,
+      plannedKwh: 0,
+      kindVerb: 'Cooling',
+      isNow: true,
+      nextStartLabel: '08:00',
+      measuredKwh: null,
+    })).toBe('Now · 0.42 kr/kWh · Idle — cooling starts 08:00');
     expect(formatSmartTaskHourReadoutPrimary({
       timeLabel: 'Now',
       priceLabel: '0.42 kr/kWh',
@@ -507,6 +527,27 @@ describe('at_risk vs cannot_meet chip labels', () => {
       .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
     expect(deadlineLabels('ev_soc').atRiskChipLabel)
       .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
+  });
+});
+
+describe('temperature labels follow the resolved progress direction', () => {
+  it('uses cooling copy for decreasing tasks and neutral copy when direction is unknown', () => {
+    const cooling = deadlineLabels('temperature', 'decreasing');
+    const unknown = deadlineLabels('temperature', 'unknown');
+
+    expect(cooling.activeChipLabel).toBe('Cooling');
+    expect(cooling.sectionLabel).toBe('Cooling smart task');
+    expect(cooling.actualDeviceSeriesName).toBe('Measured Cooling');
+    expect(cooling.cannotMeetShortfall()).toBe(
+      'Not enough time for this target. Raise the temperature target or move the deadline.',
+    );
+    expect(unknown.activeChipLabel).toBe('Temperature');
+    expect(unknown.sectionLabel).toBe('Temperature smart task');
+    expect(unknown.actualDeviceSeriesName).toBe('Measured temperature');
+    expect(unknown.cannotMeetShortfall()).toBe(
+      'Not enough time for this target. Choose a temperature target closer to the current temperature '
+        + 'or move the deadline.',
+    );
   });
 });
 

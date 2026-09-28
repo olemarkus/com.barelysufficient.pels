@@ -10,7 +10,7 @@ import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
-import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
+import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
@@ -25,6 +25,7 @@ import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
+import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
 
 export type PowerSamplePipelineDeps = {
@@ -50,6 +51,7 @@ export type PowerSamplePipelineDeps = {
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
   getDeviceSurfaces: () => DeviceSurfaces[];
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   savePowerTracker: (state: PowerTrackerState) => void;
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
@@ -197,9 +199,8 @@ export class PowerSamplePipeline {
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
   // required, dropping this map is a compile error rather than a fleet learning
   // at 0 W.
-  // Resolves each device's measured quantity — temperature or SoC, one shape —
-  // before the objectives layer sees it. No observation time goes with it: the
-  // objectives layer samples on its own clock.
+  // The objectives owner resolves its progress quantity and observer direction
+  // from this power-scoped view. No observation time travels with the sample.
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
     updateObjectiveProfilesFromSnapshot({
       ...params,
@@ -208,12 +209,10 @@ export class PowerSamplePipeline {
       // and nothing downstream carries an absence. Profile retention is unaffected —
       // `pruneObjectiveProfiles` keeps anything touched inside its retention window,
       // so a device that simply goes quiet for a cycle does not lose what it learned.
-      devices: params.devices.flatMap((device) => {
-        const observedQuantity = resolveObjectiveObservedQuantity(device);
-        return observedQuantity === null
-          ? []
-          : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
-      }),
+      devices: resolveObjectiveSampleDevices(
+        params.devices.map(withHeadroomCurrentOn),
+        (deviceId) => this.deps.getThermalDirection(deviceId),
+      ),
       debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
       outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
     })

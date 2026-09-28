@@ -4,7 +4,10 @@ import {
   type DeferredObjectiveEnergyResolution,
   type DeferredObjectiveKwhPerUnitSource,
 } from './profileEnergyResolution';
-import type { ObjectiveDeviceInput } from '../../objectives/types';
+import {
+  resolveObjectiveProgressDirectionRead,
+  type ObjectiveDeviceInput,
+} from '../../objectives/types';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolvePlanningSpeedKw } from './planningSpeed';
 import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
@@ -71,6 +74,7 @@ export const resolveProgressEnergy = (params: {
   objectiveKind: params.objective.kind,
   enforcement: params.objective.enforcement,
   remainingUnits: params.remainingUnits,
+  progressDirection: params.progress.progressDirection,
   currentValue: progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind }),
 });
 
@@ -127,6 +131,10 @@ export const buildDiagnosticBase = (params: {
   });
   const common: BaseDeferredObjectiveDiagnostic = {
     deviceId: params.deviceId,
+    progressDirection: resolveObjectiveProgressDirectionRead({
+      objectiveKind: params.objective.kind,
+      thermalDirection: params.device?.thermalDirection ?? 'unknown',
+    }),
     deviceName: params.device?.name,
     objectiveId: `${params.deviceId}:${params.objective.kind}`,
     enforcement: params.objective.enforcement,

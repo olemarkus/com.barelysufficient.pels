@@ -6,7 +6,7 @@
 // a target reference line, and a marker at `metAtMs` for succeeded runs. The
 // original staircase integrates from the recorded start progress; the revised
 // staircase re-anchors at the measured progress when that revision was computed
-// so a mid-run replan does not read as "still climbing from the start
+// so a mid-run replan does not read as "still moving from the start
 // temperature" (see `notes/deferred-load-objectives/execution-adaptation.md`).
 //
 // Lives in its own file (alongside `deferredPlanHistory.ts`) so the legacy
@@ -161,22 +161,53 @@ export const resolveRunBands = (
   return merged;
 };
 
+type DirectionalProgress = {
+  direction: 'increasing' | 'decreasing';
+  changePerKwh: number;
+  limit: number | null;
+};
+
+const resolveDirectionalProgress = (
+  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'kwhPerUnitMean' | 'progressDirection'>,
+  capValue: number | null, anchorValue: number,
+): DirectionalProgress | null => {
+  const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
+  const direction = snapshot.progressDirection ?? 'increasing';
+  if (kwhPerUnitMean <= 0 || direction === 'unknown') return null;
+  let limit: number | null = null;
+  if (capValue !== null) {
+    limit = direction === 'increasing'
+      ? Math.max(capValue, anchorValue)
+      : Math.min(capValue, anchorValue);
+  }
+  return {
+    direction,
+    changePerKwh: direction === 'increasing' ? 1 / kwhPerUnitMean : -1 / kwhPerUnitMean,
+    limit,
+  };
+};
+
+const clampProgressToDirection = (
+  progressValue: number, limit: number | null, direction: DirectionalProgress['direction'],
+): number => {
+  if (limit === null) return progressValue;
+  return direction === 'increasing'
+    ? Math.min(progressValue, limit)
+    : Math.max(progressValue, limit);
+};
+
 // Exported so the live-task producer (`deferredActivePlanChartData.ts`) can
-// reuse the exact planned-staircase math. Narrowed to the two fields it reads
-// (`hours` + `kwhPerUnitMean`) so the active-plan revision — which carries the
-// same shape under a different name — can feed it without a full snapshot.
+// reuse the exact planned-staircase math. History and active-plan revisions
+// carry the same schedule/rate/direction shape under different names.
 export const integratePlannedStaircase = (
-  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'hours' | 'kwhPerUnitMean'>,
+  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot,
+    'hours' | 'kwhPerUnitMean' | 'progressDirection'>,
   anchorValue: number,
   anchorAtMs: number,
   windowEndMs: number,
-  // The objective target. The planner books a floor of energy that, with a
-  // conservative rate, integrates to MORE than the target (buffer + the device
-  // stops at its setpoint) — so the raw cumulative would imply "planned to heat
-  // to 108 °C" for a 65 °C goal. The plan's intent is to REACH the target, not
-  // exceed it, so cap the drawn trajectory there: the staircase rises to the
-  // target and then reads flat, and the y-axis no longer blows out past the
-  // goal. Null leaves it uncapped (legacy callers). Added 2026-06-02.
+  // The objective target. The planner books a buffered energy floor, so cap
+  // the drawn trajectory at the target in the direction of travel. Null leaves
+  // it uncapped for legacy callers.
   capValue: number | null = null,
 ): DeferredPlanHistoryChartPoint[] => {
   // Stepped line: one anchor at `anchorAtMs` (progress = `anchorValue`), plus a
@@ -199,28 +230,10 @@ export const integratePlannedStaircase = (
   // original staircase the anchor is the window start so nothing is dropped.
   //
   // `kwhPerUnitMean` is "kWh per unit" (kWh/°C or kWh/%) per
-  // `notes/objective-profile-bands.md` — so the planned progress rise for
-  // each hour is `plannedKWh / kwhPerUnitMean`. Guard against a zero or
-  // missing rate so a malformed snapshot returns an empty staircase rather
-  // than a divide-by-zero infinity.
-  const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
-  if (kwhPerUnitMean <= 0) return [];
-  // NOTE: there is deliberately NO "anchor >= target → omit" short-circuit here.
-  // Callers anchor the staircase at the observed value where booked heating
-  // STARTS (see `resolveStaircaseAnchor`), not at the task-start reading. For a
-  // draw-down/reheat objective (tank starts above target, drained below it, then
-  // reheated) the anchor is the drain trough — already below target — so the plan
-  // rises trough → target normally. Omitting on `anchorValue >= capValue` would
-  // hide a booked reheat on a MISSED run, where "PELS intended to reheat but
-  // didn't" is exactly the story to show.
-  //
-  // Effective ceiling is `max(target, anchor)` so the rise-cap below can never
-  // pull the line BELOW its anchor (a planned line must never descend). In every
-  // real reheat the anchor (trough) is below target, so this is just `target`;
-  // it only matters for the degenerate "already at/above target when heating
-  // would start" input the planner never actually emits (it books energy only
-  // while measured < target), where the line then reads flat at the anchor.
-  const effectiveCap = capValue === null ? null : Math.max(capValue, anchorValue);
+  // `notes/objective-profile-bands.md`. Guard against a zero or missing rate
+  // and an unresolved direction rather than inventing a trajectory.
+  const progressRate = resolveDirectionalProgress(snapshot, capValue, anchorValue);
+  if (progressRate === null) return [];
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points: DeferredPlanHistoryChartPoint[] = [
     { atMs: anchorAtMs, value: anchorValue },
@@ -266,12 +279,10 @@ export const integratePlannedStaircase = (
     if (hour.startsAtMs > lastAnchorAtMs) {
       points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
     }
-    cumulativeProgress += (plannedKWh * postAnchorFraction) / kwhPerUnitMean;
-    // Cap at the target so the planned line approaches the goal and flattens,
-    // instead of projecting past it and blowing out the y-axis. `effectiveCap`
-    // (= max(target, anchor)) guarantees this never drags the line below its
-    // anchor — see the header.
-    if (effectiveCap !== null && cumulativeProgress > effectiveCap) cumulativeProgress = effectiveCap;
+    cumulativeProgress += plannedKWh * postAnchorFraction * progressRate.changePerKwh;
+    // Clamp at the target in the direction of travel. The effective limit is
+    // never beyond the starting anchor, so the cap cannot reverse the plan.
+    cumulativeProgress = clampProgressToDirection(cumulativeProgress, progressRate.limit, progressRate.direction);
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
@@ -312,9 +323,8 @@ export const observedValueAt = (
 // Start of the first hour that actually books energy (`coversFromMs ?? startsAtMs`
 // of the earliest hour with `plannedKWh > 0`), or `null` when no hour books any.
 // This is where the staircase should anchor at observed reality — the device
-// only departs from its current value once booked heating begins, so anchoring
-// here (not at the run start) handles draw-down/reheat objectives where the
-// device drifts away from target before the booked reheat starts.
+// only departs from its current value once booked work begins, so anchoring here
+// handles objectives where the device first drifts away from its target.
 const firstBookedHourStartMs = (
   snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'hours'>,
 ): number | null => {
@@ -332,9 +342,9 @@ const firstBookedHourStartMs = (
 // integrated forward from. Anchors at the observed value at the first booked
 // hour's start (interpolated from the samples, seeded with the recorded start
 // progress so an early bracket exists). When that booked hour is still in the
-// future (no reheat hour has begun), `observedValueAt` returns the latest
-// sample, i.e. the live "now" value — so an in-flight task before its trough
-// anchors at the current reading. Falls back to `{ startProgress, windowStartMs }`
+// future (no booked hour has begun), `observedValueAt` returns the latest
+// sample, i.e. the live "now" value — so an in-flight task anchors at the
+// current reading. Falls back to `{ startProgress, windowStartMs }`
 // when there is no booked hour, or when no observation covers the booked-hour
 // start (e.g. samples begin after it). Producer-resolved per
 // `feedback_layering_resolution_in_producer`; consumers read flat points only.
@@ -384,8 +394,8 @@ const buildRevisedStaircase = (
 // Primary staircase for a run with no usable original (no original plan, or a
 // satisfied-then-drifted run whose original was empty/rate-less because target
 // was already met at creation): the final plan is the only real schedule, so
-// anchor it at the observed value where its booked heating starts (the trough)
-// rather than start-anchored — see `composeTrajectoryData`. Empty when there is
+// anchor it at the observed value where its booked work starts rather than
+// start-anchored — see `composeTrajectoryData`. Empty when there is
 // no final plan to fall back to.
 const resolveFallbackPrimaryStaircase = (
   finalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null,
@@ -531,6 +541,7 @@ const pickMetMarkerValue = (
 type ChartDataEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
   'objectiveKind'
+  | 'progressDirection'
   | 'targetValue'
   | 'startProgressValue'
   | 'finalProgressValue'
@@ -617,8 +628,7 @@ const buildTrajectoryPayload = (
     replanned,
     observed: resolveDisplayedObserved(entry, observed, frame),
     // Bands shade the schedule that was last in force — the final plan when the
-    // run replanned, else the original. That matches where heating/charging was
-    // actually booked to happen, which is the story the shading tells.
+    // run replanned, else the original — showing when planned work was booked.
     runBands: resolveRunBands(
       (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
       frame.windowStartMs,
@@ -630,11 +640,10 @@ const buildTrajectoryPayload = (
   };
 };
 
-// Heat-from-below trajectory (`startProgress < target`): the start-anchored
-// original is the genuine from-start intent reference, with a re-anchored
-// "Revised trajectory" overlay on a real replan. Split out so the parent's
-// branching complexity stays inside ESLint's threshold.
-const composeHeatFromBelowTrajectory = (
+// Standard trajectory: the start-anchored original is the from-start intent
+// reference, with a re-anchored "Revised trajectory" overlay on a real replan.
+// Split out so the parent's branching complexity stays inside ESLint's threshold.
+const composeDirectionalTrajectory = (
   entry: ChartDataEntry,
   observed: DeferredPlanHistoryChartPoint[],
   frame: TrajectoryFrame,
@@ -666,8 +675,8 @@ const composeHeatFromBelowTrajectory = (
   const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
   // Legacy entry with no recorded original: the final plan is the only schedule,
   // so surface it as the primary line anchored at the observed value where its
-  // booked heating starts rather than floating. (The satisfied-then-drift case,
-  // start ≥ target, is handled by the caller's early return.)
+  // booked work starts rather than floating. The satisfied-then-drift case is
+  // handled by the caller's early return.
   const fallbackPrimary = startProgress !== null
     ? resolveFallbackPrimaryStaircase(
       entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target },
@@ -678,9 +687,19 @@ const composeHeatFromBelowTrajectory = (
 };
 
 // Compose the trajectory-mode payload once the gate (`hasUsableTrajectory`)
-// has passed. Branches on whether the device started below target (heat from
-// below) or at/above it (satisfied-then-drift). The `target` cap keeps every
-// staircase from projecting past the goal (the planner books a buffered floor).
+// has passed. Handle a run that started on the satisfied side of its target
+// separately; ordinary runs retain their start-anchored comparison.
+const isProgressSatisfiedAtTarget = (
+  progressValue: number | null,
+  targetValue: number | null,
+  direction: ResolvedDeferredObjectivePlanHistoryEntry['progressDirection'],
+): boolean => {
+  if (progressValue === null || targetValue === null) return false;
+  if (direction === 'increasing') return progressValue >= targetValue;
+  if (direction === 'decreasing') return progressValue <= targetValue;
+  return false;
+};
+
 const composeTrajectoryData = (
   entry: ChartDataEntry,
   observed: DeferredPlanHistoryChartPoint[],
@@ -690,23 +709,22 @@ const composeTrajectoryData = (
   const startProgress = pickStartProgress(entry);
   const target = pickTargetValue(entry);
   const frame: TrajectoryFrame = { windowStartMs, windowEndMs, startProgress, target };
-  // Satisfied-then-drift: the device started at/above target (already met), was
-  // drained below it by exogenous use (e.g. a hot-water draw), then PELS booked
-  // reheat. The recorder promotes the RICHEST schedule (the reheat) into
-  // `originalPlan` (`pickRicherSnapshot` in `planHistoryInProgressState.ts`), so
-  // a start-anchored "Initial schedule" line would read flat at / re-climb from
-  // the above-target start (cap-flattened). There is no meaningful from-start
-  // intent here — draw ONE primary line anchored at the observed value where
-  // booked heating starts (the drain trough), rising to target. No "Revised
-  // trajectory" overlay (nothing to contrast against).
-  if (startProgress !== null && target !== null && startProgress >= target) {
+  const alreadySatisfiedAtStart = isProgressSatisfiedAtTarget(
+    startProgress,
+    target,
+    entry.progressDirection,
+  );
+  // If the run started satisfied and later drifted across its target, the
+  // recorded plan begins at that later observed value. Draw one primary line
+  // from where booked work starts instead of a flat start-anchored line.
+  if (startProgress !== null && target !== null && alreadySatisfiedAtStart) {
     const richest = entry.originalPlan ?? entry.finalPlan;
     const primary = resolveFallbackPrimaryStaircase(
       richest, observed, startProgress, { windowStartMs, windowEndMs, capValue: target },
     );
     return buildTrajectoryPayload(entry, primary, null, observed, frame);
   }
-  return composeHeatFromBelowTrajectory(entry, observed, frame);
+  return composeDirectionalTrajectory(entry, observed, frame);
 };
 
 const composeLegacyData = (
@@ -817,6 +835,8 @@ export type HistoryDetailChartLabels = {
 // Kind-aware question titles so the card states the question it answers
 // (chart-overhaul Phase 1B; replaces the prior "Progress history").
 const TRAJECTORY_CARD_TITLE_HEAT = 'Did it heat up as planned?';
+const TRAJECTORY_CARD_TITLE_COOL = 'Did it cool down as planned?';
+const TRAJECTORY_CARD_TITLE_TEMPERATURE = 'Did it change temperature as planned?';
 const TRAJECTORY_CARD_TITLE_CHARGE = 'Did it charge as planned?';
 const LEGACY_CARD_TITLE = 'Scheduled vs observed';
 const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
@@ -824,27 +844,33 @@ const EXPAND_TOGGLE_LABEL = 'View details';
 const COLLAPSE_TOGGLE_LABEL = 'Hide details';
 
 // Resolves the mode-aware chart-card title + the matching fallback note.
-// Trajectory mode asks the kind-aware question ("Did it heat up as
-// planned?" / "Did it charge as planned?"). Legacy mode keeps the prior
+// Trajectory mode asks a direction-aware temperature question or the
+// kind-aware charging question. Legacy mode keeps the prior
 // "Scheduled vs observed" copy so v3 entries land on the same wording they
 // did before PR 4. Picking once at the helper keeps the view's branching
 // shallow.
-const trajectoryCardTitle = (kind: 'temperature' | 'ev_soc'): string => (
-  kind === 'temperature' ? TRAJECTORY_CARD_TITLE_HEAT : TRAJECTORY_CARD_TITLE_CHARGE
-);
+const trajectoryCardTitle = (
+  kind: 'temperature' | 'ev_soc',
+  direction: ResolvedDeferredObjectivePlanHistoryEntry['progressDirection'],
+): string => {
+  if (kind === 'ev_soc') return TRAJECTORY_CARD_TITLE_CHARGE;
+  if (direction === 'decreasing') return TRAJECTORY_CARD_TITLE_COOL;
+  if (direction === 'unknown') return TRAJECTORY_CARD_TITLE_TEMPERATURE;
+  return TRAJECTORY_CARD_TITLE_HEAT;
+};
 
 export const historyDetailChartLabels = (
   mode: DeferredPlanHistoryChartMode,
   kind: 'temperature' | 'ev_soc',
+  progressDirection: ResolvedDeferredObjectivePlanHistoryEntry['progressDirection'],
   // True when the chart payload carries a drawable measured series
   // (`observed.length > 0` — the producer guarantees ≥ 2 points or none).
   // Trajectory mode without one surfaces the absent-observations caption so
   // a sample-less entry says so instead of implying the staircase was
-  // measured. Defaults to true so legacy callers (runtime log breadcrumbs)
-  // keep their prior trajectory-mode output.
+  // measured.
   hasMeasuredSeries = true,
 ): HistoryDetailChartLabels => ({
-  cardTitle: mode === 'trajectory' ? trajectoryCardTitle(kind) : LEGACY_CARD_TITLE,
+  cardTitle: mode === 'trajectory' ? trajectoryCardTitle(kind, progressDirection) : LEGACY_CARD_TITLE,
   fallbackNote: mode === 'trajectory' && hasMeasuredSeries ? null : LEGACY_FALLBACK_NOTE,
   expandToggleLabel: EXPAND_TOGGLE_LABEL,
   collapseToggleLabel: COLLAPSE_TOGGLE_LABEL,

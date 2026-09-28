@@ -446,7 +446,7 @@ describe('recordPowerSampleForApp', () => {
           const observedQuantity = resolveObjectiveObservedQuantity(device);
           return observedQuantity === null
             ? []
-            : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
+            : [{ ...withHeadroomCurrentOn(device), observedQuantity, thermalDirection: 'heating' as const }];
         }),
         debugStructured,
         outdoorTemperatureC: undefined,

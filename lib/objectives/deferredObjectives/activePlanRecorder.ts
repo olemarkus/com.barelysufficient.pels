@@ -59,7 +59,10 @@ import {
   stampUnitMilestones,
 } from './activePlanSchedule';
 import { SCHEDULE_SETTLE_OFFSET_MS } from './settleWindow';
-import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
+import {
+  buildObjectiveSignature,
+  compareObjectiveSignatures,
+} from './activePlanSignature';
 import {
   buildRevision,
   buildSignatureFromDiagnostic,
@@ -140,8 +143,10 @@ export class DeferredObjectiveActivePlanRecorder {
   // before the next plan cycle has a chance to compute a horizon.
   markPending(seed: ActivePlanFlowCardSeed, nowMs: number): void {
     const existing = this.plans[seed.deviceId];
-    const signature = buildObjectiveSignature(seed);
-    if (existing && existing.deadlineAtMs === seed.deadlineAtMs && existing.objectiveSignature === signature) {
+    const signature = buildObjectiveSignature({ ...seed, progressDirection: 'unknown' });
+    if (existing
+      && existing.deadlineAtMs === seed.deadlineAtMs
+      && !compareObjectiveSignatures(existing.objectiveSignature, signature).changed) {
       if (existing.deviceName !== seed.deviceName) {
         this.plans[seed.deviceId] = { ...existing, deviceName: seed.deviceName };
         this.dirty = true;
@@ -294,7 +299,7 @@ export class DeferredObjectiveActivePlanRecorder {
     nowMs: number,
   ): DeferredObjectiveActivePlanV1 {
     if (current.commitment) return current;
-    if (current.objectiveSignature !== currentSignature) return current;
+    if (compareObjectiveSignatures(current.objectiveSignature, currentSignature).changed) return current;
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     if (latest.hours.length === 0) return current;
     const backfilled: DeferredObjectiveActivePlanV1 = {
@@ -455,6 +460,7 @@ export class DeferredObjectiveActivePlanRecorder {
         objectiveKind: diag.objectiveKind,
         revision,
         reason,
+        progressDirection: diag.progressDirection,
         previousPlanStatus: null,
         previousWasPending: true,
         effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, firstDiagnosticReasonCode),
@@ -577,6 +583,7 @@ export class DeferredObjectiveActivePlanRecorder {
     })) return false;
     const reason = resolveReplanReason({
       objectiveChanged,
+      directionChanged: sigDiff.directionOnly,
       rescuePermissionOnlyChanged: sigDiff.rescueOnly,
       sourceRefined,
       measuredDeviation,

@@ -4,7 +4,10 @@ import type {
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { ObjectiveDeviceInput } from '../../objectives/types';
+import {
+  resolveObjectiveProgressDirectionRead,
+  type ObjectiveDeviceInput,
+} from '../../objectives/types';
 import { buildObjectiveSignature } from './activePlanSignature';
 import { buildLiveReservationSegments } from './activePlanSchedule';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
@@ -155,6 +158,10 @@ export const orderDeferredObjectives = (params: {
       activePlans: params.activePlans,
       deviceId,
       objective,
+      progressDirection: resolveObjectiveProgressDirectionRead({
+        objectiveKind: objective.kind,
+        thermalDirection: device?.thermalDirection ?? 'unknown',
+      }),
     });
     const reservationEligible = device !== undefined || (
       params.tracker
@@ -202,6 +209,10 @@ const objectiveSignature = (entry: OrderedDeferredObjective): string => buildObj
   targetPercent: entry.objective.kind === 'ev_soc' ? entry.objective.targetPercent : null,
   deadlineAtMs: entry.objective.deadlineAtMs,
   enforcement: entry.objective.enforcement,
+  progressDirection: resolveObjectiveProgressDirectionRead({
+    objectiveKind: entry.objective.kind,
+    thermalDirection: entry.device?.thermalDirection ?? 'unknown',
+  }),
   rescue: entry.objective.rescue,
 });
 
@@ -319,6 +330,7 @@ export const buildPriorityReservations = (params: {
     activePlans: params.activePlans,
     deviceId: params.diagnostic.deviceId,
     objective: params.objective,
+    progressDirection: params.diagnostic.progressDirection,
   });
   const persistedHours = (activePlan?.latest.hours ?? []).flatMap((hour): ReservationHour[] => {
     const startMs = hour.coversFromMs ?? hour.startsAtMs;

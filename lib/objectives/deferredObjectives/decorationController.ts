@@ -1,6 +1,7 @@
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
-import { selectObjectiveDevices } from '../types';
+import { resolveObjectiveDeviceInputs } from '../types';
+import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
 import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
@@ -28,6 +29,7 @@ import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/sr
 import { PriorityAllocationTracker } from './priorityAllocation';
 
 export type DeferredObjectiveDecorationControllerDeps = {
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
   getTimeZone: () => string;
@@ -113,7 +115,7 @@ export class DeferredObjectiveDecorationController {
       return buildDeferredObjectiveDiagnostics({
         nowMs: nowTs,
         timeZone: this.deps.getTimeZone(),
-        devices: selectObjectiveDevices(devices),
+        devices: resolveObjectiveDeviceInputs(devices, this.deps.getThermalDirection),
         settings,
         powerTracker: this.deps.getPowerTracker(),
         dailyBudgetSnapshot,

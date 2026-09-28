@@ -33,6 +33,9 @@ import {
 import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { resolveObjectiveDeviceInputs } from '../../lib/objectives/types';
+import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import {
   type MeteredDiscriminantProbe,
   type MeteredPlanInputDevice,
@@ -85,11 +88,12 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & MeteredDiscriminantProbe & FixtureBoostFields & {
     evChargingState?: string;
+    thermalDirection?: ThermalDirection;
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
+): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   expectedPowerKw: 1,
   name: 'Driveway EV',
@@ -107,20 +111,22 @@ const buildDevice = (
     ],
   },
   ...overrides,
+  thermalDirection: overrides.thermalDirection ?? 'heating',
   // The power axis: every fixture here has a reading, resolved the way the
   // shared builders resolve it when the spec does not spell one.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-})) as MeteredPlanInputDevice;
+})) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & MeteredDiscriminantProbe & {
+    thermalDirection?: ThermalDirection;
     // Fixture shorthands for the control posture, resolved by the shared
     // resolver exactly as `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   } = {},
-): MeteredPlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -137,10 +143,11 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
+  thermalDirection: overrides.thermalDirection ?? 'heating',
   currentDrawKw: fixtureCurrentDrawKw(overrides),
   control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
-}))) as MeteredPlanInputDevice;
+}))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -1103,6 +1110,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             targetPercent: objective.targetPercent,
             deadlineAtMs,
             enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS, hours: firstLowHours },
           original: lowLatest,
@@ -1166,6 +1174,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         targetPercent: objective.targetPercent,
         deadlineAtMs,
         enforcement: 'soft',
+    progressDirection: 'increasing',
       }),
       commitment: { committedAtMs: NOW_MS, hours },
       original: { ...latest, devicePriority: priority },
@@ -1235,6 +1244,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             targetPercent: 50,
             deadlineAtMs,
             enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: committedHours },
           original: latest,
@@ -1357,6 +1367,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           targetPercent: 50,
           deadlineAtMs,
           enforcement: 'soft',
+    progressDirection: 'increasing',
         }),
         commitment: { committedAtMs: NOW_MS, hours: params.hours },
         original: latest,
@@ -1444,6 +1455,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             targetPercent: 45,
             deadlineAtMs,
             enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
           original: latest,
@@ -1895,6 +1907,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           pending: false,
           objectiveSignature: buildObjectiveSignature({
             objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
           original: {
@@ -1950,6 +1963,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           pending: false,
           objectiveSignature: buildObjectiveSignature({
             objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
           original: null,
@@ -1999,6 +2013,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           pending: false,
           objectiveSignature: buildObjectiveSignature({
             objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
           original: {
@@ -2055,6 +2070,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           pending: false,
           objectiveSignature: buildObjectiveSignature({
             objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
           original: {
@@ -2137,6 +2153,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           pending: false,
           objectiveSignature: buildObjectiveSignature({
             objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
           }),
           commitment: { committedAtMs: NOW_MS - 3 * HOUR_MS, hours: elapsedHours },
           original: latest,
@@ -2193,6 +2210,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             pending: false,
             objectiveSignature: buildObjectiveSignature({
               objectiveKind: 'temperature', targetTemperatureC: 65, targetPercent: null, deadlineAtMs, enforcement: 'soft',
+    progressDirection: 'increasing',
             }),
             commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
             original: latest,
@@ -2253,6 +2271,57 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expectedStepId: 'heat',
       horizonBucketCount: 4,
     });
+  });
+
+  it('plans cooling progress toward a lower temperature target', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: resolveObjectiveDeviceInputs(
+        [buildTemperatureDevice({ currentTemperature: 26 })],
+        () => 'cooling',
+      ),
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({ targetTemperatureC: 22 })),
+      powerTracker: {
+        objectiveProfiles: {
+          'heater-1': {
+            updatedAtMs: NOW_MS,
+            lastSample: { observedAtMs: NOW_MS, value: 26 },
+            kwhPerUnit: {
+              sampleCount: 8,
+              mean: 0.8,
+              m2: 0,
+              min: 0.8,
+              max: 0.8,
+              confidence: 'high',
+              lastUpdatedMs: NOW_MS,
+            },
+            acceptedSamples: 8,
+            rejectedSamples: 0,
+            samples: Array.from({ length: 8 }, (_, index) => ({
+              observedAtMs: NOW_MS - index * HOUR_MS,
+              inputValue: 20 + index,
+              kwhPerUnit: 0.8,
+              progressDirection: 'decreasing' as const,
+            })),
+          },
+        },
+      },
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'temperature',
+      progressDirection: 'decreasing',
+      trajectory: { kind: 'resolved', status: 'on_track' },
+      currentTemperatureC: 26,
+      targetTemperatureC: 22,
+      energyNeededKWh: 3.2,
+      expectedStepId: 'heat',
+    });
+    expect(diagnostic?.horizonPlan?.plannedBuckets.length).toBeGreaterThan(0);
   });
 
   it('books the soft variance buffer (mean + k·SE) for a temperature objective while the displayed rate stays at the mean', () => {
@@ -2966,11 +3035,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
+      thermalDirection: 'heating',
       currentTemperature: 19,
       currentDrawKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
-    }))) as MeteredPlanInputDevice;
+    }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3059,11 +3129,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
+      thermalDirection: 'heating',
       currentTemperature: 19,
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
       expectedPowerKw: 2.0, expectedPowerSource: 'default',
-    }))) as MeteredPlanInputDevice;
+    }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3135,9 +3206,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
+      thermalDirection: 'heating',
       currentTemperature: 19,
       // No power fields populated at all.
-    }))) as MeteredPlanInputDevice;
+    }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3202,11 +3274,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
+      thermalDirection: 'heating',
       steppedLadderMissing: true as const,
       currentTemperature: 19,
       // No `steppedLoadProfile`: configured stepped, but the ladder is missing —
       // which is what the producer stamped `steppedLadderMissing` for.
-    }))) as MeteredPlanInputDevice;
+    }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -3405,7 +3478,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+    const buildPromotableDevice = (id: string): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withMaterializedEvPlugState(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
       surplusTracking: false,
       id,
       name: id,
@@ -3426,7 +3499,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       control: fixtureControlPosture({ controllable: true }),
       available: true,
-    })) as MeteredPlanInputDevice;
+      thermalDirection: 'heating',
+    })) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
     // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.
     const buildPromotableSettings = (
@@ -3764,6 +3838,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         ? {
           classification: 'near_target_idle' as const,
           classifiedAgainstTargetValue: 40 + (NEED_KWH_TO_REACH / 0.2),
+          temperatureGapC: 0,
         }
         : undefined);
       const lowerTaskBookedHourCount = (diagnostics: DeferredObjectiveDiagnostic[]) => (
@@ -3993,7 +4068,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     const [diagnostic] = buildReportedDiagnostics({
       ...params,
       getStallClassification: (id: string) => (id === 'ev-1'
-        ? { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }
+        ? { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }
         : undefined),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
@@ -4010,7 +4085,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
     const [diagnostic] = buildReportedDiagnostics({
       ...params,
-      getStallClassification: () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 60 }),
+      getStallClassification: () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
@@ -4021,7 +4096,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   it('never treats an unresponsive (likely-fault) device as satisfied', () => {
     const [diagnostic] = buildReportedDiagnostics({
       ...withEstablishedPlan(atRiskParams()),
-      getStallClassification: () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 60 }),
+      getStallClassification: () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
@@ -4032,7 +4107,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     // task to satisfied. Regression guard for the stale-classifier window.
     const [diagnostic] = buildReportedDiagnostics({
       ...atRiskParams(),
-      getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }),
+      getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });

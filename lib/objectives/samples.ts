@@ -3,10 +3,16 @@ import type {
   ObservedDeviceState,
   StateOfChargeObservedProbe,
   TemperatureObservedProbe,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import type { DeviceObjectiveProfileSample } from './types';
-import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
+import { resolveObjectiveProgressDirection } from './types';
+import {
+  resolveObjectiveObservedQuantity,
+  type ObjectiveObservedQuantity,
+} from '../../packages/shared-domain/src/objectiveObservedQuantity';
 
 /**
  * Below this, a reading is standby noise rather than a device doing work.
@@ -38,6 +44,7 @@ export type ObjectiveSampleDevice = ObservedDeviceState
   & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
   & {
     currentDrawKw: number;
+    thermalDirection: ThermalDirection;
     /**
      * The measured quantity this device's objective tracks. Temperature and SoC
      * resolve to the same shape here (`resolveObjectiveObservedQuantity`); the
@@ -52,6 +59,23 @@ export type ObjectiveSampleDevice = ObservedDeviceState
     observedQuantity: ObjectiveObservedQuantity;
   };
 
+export type ObjectiveSampleSourceDevice = Omit<ObjectiveSampleDevice, 'thermalDirection' | 'observedQuantity'>;
+
+/** Resolve observer-owned direction and the device's measured quantity before profiling. */
+export const resolveObjectiveSampleDevices = (
+  devices: readonly ObjectiveSampleSourceDevice[],
+  getThermalDirection: (deviceId: string) => ThermalDirection,
+): ObjectiveSampleDevice[] => devices.flatMap((device) => {
+  const observedQuantity = resolveObjectiveObservedQuantity(device);
+  return observedQuantity === null
+    ? []
+    : [{
+      ...device,
+      observedQuantity,
+      thermalDirection: getThermalDirection(device.id),
+    }];
+});
+
 // A sample is the device's quantity and draw as they stand at `nowMs`, the
 // caller's clock. Both are levels that hold until they change, so a device that
 // stopped reporting is still at its last value, and the profile bills each
@@ -63,6 +87,10 @@ export function buildObjectiveProfileSample(
   return {
     observedAtMs: nowMs,
     value: device.observedQuantity.value,
+    progressDirection: resolveObjectiveProgressDirection({
+      objectiveKind: isEvDevice(device) ? 'ev_soc' : 'temperature',
+      thermalDirection: device.thermalDirection,
+    }),
     ...resolveCredibleDevicePower(device),
   };
 }

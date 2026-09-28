@@ -156,7 +156,7 @@ const buildDeviceReading = (
 // `priority` is stamped here because `toPlanDevice` is only the per-device half
 // of the producer: `buildHomePlanDevices` ranks the whole planned set right
 // after it, and this spec drives the projection on its own.
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): MeteredPlanInputDevice => {
+const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): MeteredPlanInputDevice & { thermalDirection: 'heating' } => {
   const device: PlanInputDevice = {
     ...toPlanDevice(
       createAppContextMock({ getNow: () => new Date(nowMs) }),
@@ -165,7 +165,7 @@ const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean })
     priority: 1,
   };
   if (!isMeteredPlanDevice(device)) throw new Error('fixture: the reading must give the device a power axis');
-  return device;
+  return { ...device, thermalDirection: 'heating' };
 };
 
 // The learned kWh/°C rate is present and confident throughout — in prod it never
@@ -266,7 +266,7 @@ const buildSettings = () => normalizeDeferredObjectiveSettings({
 
 const buildDiagnostic = (
   nowMs: number,
-  device: MeteredPlanInputDevice,
+  device: MeteredPlanInputDevice & { thermalDirection: 'heating' },
   activePlans: DeferredObjectiveActivePlansV1 | null,
 ): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
   resolveDeviceExclusion: noDeviceExclusion,

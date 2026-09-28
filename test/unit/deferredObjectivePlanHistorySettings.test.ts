@@ -150,6 +150,28 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(round.revisions).toEqual(v4Entry.revisions);
   });
 
+  it('rejects an invalid progress direction on a compact v5 record', () => {
+    const validRecord = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [v3Entry],
+    }).entries[0]!;
+    expect(parseDeferredObjectivePlanHistory({
+      version: 5,
+      entries: [{ ...validRecord, progressDirection: 'sideways' }],
+    }).state).toBe('unavailable');
+  });
+
+  it('rejects an invalid progress direction on a compact v5 record', () => {
+    const validRecord = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [v3Entry],
+    }).entries[0]!;
+    expect(parseDeferredObjectivePlanHistory({
+      version: 5,
+      entries: [{ ...validRecord, progressDirection: 'sideways' }],
+    }).state).toBe('unavailable');
+  });
+
   it('loads mixed-cadence progressSamples without changing their cadence', () => {
     // Entries finalized before the 15-minute sampling change carry hourly
     // samples; entries finalized mid-upgrade can even mix both cadences in

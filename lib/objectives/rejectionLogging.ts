@@ -1,7 +1,7 @@
 const OBJECTIVE_PROFILE_REJECTION_LOG_THROTTLE_MS = 15 * 60 * 1000;
 const ROUTINE_PROFILE_REJECTION_REASONS = new Set([
-  'objective_profile_rise_too_small',
-  'objective_profile_value_fell',
+  'objective_profile_progress_too_small',
+  'objective_profile_value_moved_against_direction',
 ]);
 const rejectedProfileLogTimes = new Map<string, number>();
 

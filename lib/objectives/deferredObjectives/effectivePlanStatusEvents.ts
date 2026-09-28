@@ -51,6 +51,7 @@ export const publishOverlayOnlyStatusChange = (
     objectiveKind: plan.objectiveKind,
     revision: latest,
     reason: latest.reason,
+    progressDirection: latest.progressDirection ?? 'increasing',
     previousPlanStatus: previousEffective,
     previousWasPending: false,
     allocationChanged: false,

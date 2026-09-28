@@ -1,11 +1,11 @@
 import { OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS } from './bands';
-import type { DeviceObjectiveProfile } from './types';
+import type { DeviceObjectiveProfile, ObjectiveProgressDirection } from './types';
 
 /**
  * Is this window's kWh per unit credible *for this device*?
  *
- * Every window pairs a rise in the observed value with the energy billed across
- * it. Not every rise is representative of what the device ordinarily costs:
+ * Every window pairs movement in the observed value with the energy billed across
+ * it. Not every change is representative of what the device ordinarily costs:
  * draw hot water and the tank refills with cold, so recovering the same degree
  * costs several times what plain heating does; a charge report recalibrates and
  * the reported level steps without the matching energy having gone in; a door
@@ -131,11 +131,13 @@ export type EnergyPerUnitBand = {
 export function resolveEnergyPerUnitBand(
   profile: DeviceObjectiveProfile,
   nowMs: number,
+  progressDirection: ObjectiveProgressDirection,
 ): EnergyPerUnitBand {
   const horizonStartMs = nowMs - OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS;
   const logRates = (profile.samples ?? [])
     .filter((sample) => (
       sample.observedAtMs >= horizonStartMs
+      && (sample.progressDirection ?? 'increasing') === progressDirection
       && Number.isFinite(sample.kwhPerUnit)
       && sample.kwhPerUnit > 0
     ))

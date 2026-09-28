@@ -9,7 +9,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
-import { stallEvidenceCoversTarget } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import { stallEvidenceCoversTarget } from '../stallEvidence';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import {
   appendHourlyContribution,
@@ -214,7 +214,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     // task's target. Only evidence measured against a setpoint that covers the
     // target may promote. See `notes/deferred-load-objectives/README.md`
     // § "Observer stall evidence".
-    const reason = stallEvidenceCoversTarget(evidence, diag.targetValue)
+    const reason = stallEvidenceCoversTarget(evidence, diag.targetValue, diag.progressDirection)
       ? stallClassificationToMetReason(evidence.classification)
       : null;
     return reason === null

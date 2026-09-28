@@ -52,6 +52,22 @@ describe('toResolvedActivePlan', () => {
     expect(resolved.objectiveKind).toBe('temperature');
     expect(resolved.objectiveSignature).toBe('sig-2');
     expect(resolved.latest).toBeNull();
+    expect(resolved.progressDirection).toBe('unknown');
+  });
+
+  it('defaults a historical revision without direction to heating', () => {
+    const resolved = toResolvedActivePlan(buildRaw({
+      latest: {
+        revision: 1,
+        revisedAtMs: 0,
+        computedFromPricesUpTo: null,
+        reason: 'flow_card',
+        hours: [],
+        energyNeededKWh: 0,
+        planStatus: 'on_track',
+      },
+    }));
+    expect(resolved.progressDirection).toBe('increasing');
   });
 
   it('omits startProgressValue + progressSamples on a plan with no live trajectory', () => {

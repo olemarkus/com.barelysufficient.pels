@@ -34,6 +34,7 @@ export type DeadlinesListCard = {
   deviceId: string;
   deviceName: string;
   kind: DeferredObjectiveSettingsKind;
+  progressDirection: 'increasing' | 'decreasing' | 'unknown';
   targetValue: number | null;
   firstActionAtMs: number | null;
   deadlineAtMs: number;
@@ -96,7 +97,7 @@ const formatHourMinute = (ms: number): string => {
 };
 
 const formatTarget = (card: DeadlinesListCard): string => {
-  const labels = deadlineLabels(card.kind);
+  const labels = deadlineLabels(card.kind, card.progressDirection);
   // Value already resolved at the producer; only the rounding + unit suffix
   // stay kind-specific. Temperature always renders one decimal (65.0 °C) so
   // the same figure never reads at two precisions across the list card and
@@ -136,7 +137,7 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
 // red / amber pill. Resolved producer-side so the view dispatches on a
 // stable slug instead of branching on `statusId`.
 const Card = ({ card }: { card: DeadlinesListCard }) => {
-  const labels = deadlineLabels(card.kind);
+  const labels = deadlineLabels(card.kind, card.progressDirection);
   const confidenceLabel = formatSmartTaskListConfidenceChipLabel({
     confidence: card.confidence,
     statusId: card.statusId,

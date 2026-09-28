@@ -16,6 +16,7 @@ export type DeferredObjectiveActivePlanRevisionReason =
   | 'flow_card'
   | 'prices_arrived'
   | 'objective_changed'
+  | 'direction_changed'
   | 'prices_revised'
   | 'schedule_revised'
   | 'rate_refined'
@@ -168,6 +169,9 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
   reason: DeferredObjectiveActivePlanRevisionReason;
+  // Direction used to produce this revision. Missing only on historical
+  // heating-only records written before directional thermostat planning.
+  progressDirection?: 'increasing' | 'decreasing' | 'unknown';
   hours: DeferredObjectiveActivePlanHourV1[];
   reservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
   // Total energy the planner thinks is required to meet the deadline. Lets the
@@ -451,10 +455,13 @@ export type ResolvedDeferredObjectiveActivePlanProgressSampleV1 = {
 // The persisted `DeferredObjectiveActivePlanV1` keeps the raw columns.
 export type ResolvedDeferredObjectiveActivePlanV1 = Omit<
   DeferredObjectiveActivePlanV1,
-  'targetTemperatureC' | 'targetPercent'
+  'targetTemperatureC' | 'targetPercent' | 'progressDirection'
   | 'startProgressC' | 'startProgressPercent'
   | 'progressSamples'
 > & {
+  // Resolved from the latest revision at the producer boundary. Legacy plans
+  // without a direction retain their historical increasing interpretation.
+  progressDirection: 'increasing' | 'decreasing' | 'unknown';
   targetValue: number | null;
   startProgressValue?: number | null;
   progressSamples?: ResolvedDeferredObjectiveActivePlanProgressSampleV1[];

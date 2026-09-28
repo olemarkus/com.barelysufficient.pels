@@ -78,8 +78,8 @@ const emptyChart = (
 });
 
 // Where the live planned staircase should anchor. With a known run-start
-// reading, anchor at the observed value where booked heating STARTS (the first
-// booked hour) — the trough for a drain-reheat, ≈ start for heat-from-below.
+// reading, anchor at the observed value where booked work starts (the first
+// booked hour).
 // Without a recorded start (e.g. just after an app restart), anchor at the live
 // "now" reading so the plan still renders a "you are here" line. Null when there
 // is no value to integrate from. Pulled out to keep `resolveActivePlanChartData`
@@ -155,15 +155,20 @@ export const resolveActivePlanChartData = (
   // Truthy guard covers both `null` and a defensively-omitted `undefined`
   // `latest`, and narrows it for the `.hours` read.
   const latest = plan.latest;
-  // Anchor the planned staircase at the observed value where booked heating
-  // STARTS (the first booked hour), capped at target — so a draw-down/reheat
-  // task booked to reheat from a 20 °C trough rises 20 → target instead of
-  // climbing from the (stale) 65 °C start past target. `resolveStaircaseAnchor`
+  // Anchor the planned staircase at the observed value where booked work starts
+  // (the first booked hour), capped at target in its direction of travel.
+  // `resolveStaircaseAnchor`
   // interpolates start + samples (incl. the appended now-reading) at the
   // booked-hour start, falling back to the latest sample (the live "now") when
   // that hour is still in the future. No planned line when there is no value to
   // integrate from.
-  const snapshot = latest && rate !== null ? { hours: latest.hours, kwhPerUnitMean: rate } : null;
+  const snapshot = latest && rate !== null
+    ? {
+      hours: latest.hours,
+      kwhPerUnitMean: rate,
+      progressDirection: latest.progressDirection ?? plan.progressDirection,
+    }
+    : null;
   const anchor = snapshot === null
     ? null
     : resolveActivePlannedAnchor(snapshot, withNow, { startProgress, currentValue, windowStartMs, nowMs });

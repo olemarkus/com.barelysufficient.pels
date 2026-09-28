@@ -1,4 +1,5 @@
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { ObjectiveProgressDirectionRead } from '../types';
 
 type ObjectiveSignatureParams = {
   objectiveKind: 'temperature' | 'ev_soc';
@@ -6,6 +7,7 @@ type ObjectiveSignatureParams = {
   targetPercent: number | null;
   deadlineAtMs: number;
   enforcement: 'soft' | 'hard';
+  progressDirection: ObjectiveProgressDirectionRead;
   rescue?: DeferredObjectiveRescuePermissions;
 };
 
@@ -39,6 +41,7 @@ export const buildObjectiveSignature = (params: ObjectiveSignatureParams): strin
     params.targetPercent,
     params.deadlineAtMs,
     params.enforcement,
+    params.progressDirection,
   ];
   const rescue = buildRescueSignatureSegment(params.rescue);
   return JSON.stringify(rescue ? [...base, rescue] : base);
@@ -56,6 +59,7 @@ export const buildObjectiveSignature = (params: ObjectiveSignatureParams): strin
 // without re-encoding the persisted form.
 type ParsedObjectiveSignature = {
   base: string;
+  direction: string;
   rescue: string;
 };
 
@@ -69,24 +73,35 @@ const parseObjectiveSignature = (signature: string): ParsedObjectiveSignature =>
   try {
     parsed = JSON.parse(signature);
   } catch {
-    return { base: signature, rescue: 'null' };
+    return { base: signature, direction: 'invalid', rescue: 'null' };
   }
-  if (!Array.isArray(parsed)) return { base: signature, rescue: 'null' };
+  if (!Array.isArray(parsed)) return { base: signature, direction: 'invalid', rescue: 'null' };
   const parts: readonly unknown[] = parsed;
   const tail: unknown = parts.length > 0 ? parts[parts.length - 1] : null;
   const hasRescueTail = Array.isArray(tail) && tail[0] === 'rescue';
-  const baseParts = hasRescueTail ? parts.slice(0, -1) : parts;
+  const signatureParts = hasRescueTail ? parts.slice(0, -1) : parts;
+  // Signatures written before direction-aware objectives have five base
+  // fields. Their milestone trajectory was upward, so preserve that as the
+  // legacy direction when comparing against the first direction-aware read.
+  const hasDirection = signatureParts.length === 6
+    && (signatureParts[5] === 'increasing' || signatureParts[5] === 'decreasing' || signatureParts[5] === 'unknown');
+  const baseParts = hasDirection ? signatureParts.slice(0, 5) : signatureParts;
+  const direction = hasDirection ? String(signatureParts[5]) : 'increasing';
   const rescueSegment = hasRescueTail ? tail : null;
   return {
     base: JSON.stringify(baseParts),
+    direction,
     rescue: JSON.stringify(rescueSegment),
   };
 };
 
 export type ObjectiveSignatureDiff = {
-  // True when the two signatures are not byte-identical (i.e. the recorder
-  // should write a new revision).
+  // True when the parsed configurations differ in a plan-relevant way (i.e.
+  // the recorder should write a new revision).
   changed: boolean;
+  // True when the thermostat's resolved progress direction changed while all
+  // user-owned objective fields and Flow permissions stayed the same.
+  directionOnly: boolean;
   // True when the signatures differ AND the only differing segment is the
   // rescue tail. Drives the `flow_permission_changed` reason in
   // `maybeWriteReplanRevision`; otherwise the recorder falls back to
@@ -105,13 +120,17 @@ export const compareObjectiveSignatures = (
   previous: string,
   next: string,
 ): ObjectiveSignatureDiff => {
-  if (previous === next) return { changed: false, rescueOnly: false };
+  if (previous === next) return { changed: false, directionOnly: false, rescueOnly: false };
   const prevParts = parseObjectiveSignature(previous);
   const nextParts = parseObjectiveSignature(next);
   const baseChanged = prevParts.base !== nextParts.base;
+  const directionChanged = prevParts.direction !== nextParts.direction
+    && prevParts.direction !== 'unknown'
+    && nextParts.direction !== 'unknown';
   const rescueChanged = prevParts.rescue !== nextParts.rescue;
   return {
-    changed: true,
-    rescueOnly: !baseChanged && rescueChanged,
+    changed: baseChanged || directionChanged || rescueChanged,
+    directionOnly: !baseChanged && directionChanged && !rescueChanged,
+    rescueOnly: !baseChanged && !directionChanged && rescueChanged,
   };
 };

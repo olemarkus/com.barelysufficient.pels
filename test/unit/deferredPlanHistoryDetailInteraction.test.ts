@@ -220,6 +220,12 @@ describe('resolveHistoryRunBands', () => {
     expect(bands[0]!.label).toBe('Heating');
     expect(bands[1]!.label).toBeNull();
   });
+
+  it('uses cooling labels for decreasing temperature tasks', () => {
+    const entry = revisedEntry({ progressDirection: 'decreasing' });
+    const bands = resolveHistoryRunBands(entry, resolveHistoryDetailChartData(entry));
+    expect(bands[0]!.label).toBe('Cooling');
+  });
 });
 
 describe('resolveHistoryStripReadout', () => {

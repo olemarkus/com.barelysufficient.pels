@@ -25,6 +25,7 @@ export type DeferredObjectivePlanRevisionWrittenEvent = DeferredObjectivePlanRev
   eventType: 'revision_written';
   revision: DeferredObjectiveActivePlanRevisionV1;
   reason: DeferredObjectiveActivePlanRevisionReason;
+  progressDirection: 'increasing' | 'decreasing' | 'unknown';
   allocationChanged: boolean;
   // Estimated wall-clock time the device will finish charging under the new
   // plan, derived from the last bucket's fill ratio (plannedKWh / capacityKWh).

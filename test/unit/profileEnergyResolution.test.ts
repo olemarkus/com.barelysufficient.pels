@@ -55,6 +55,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
@@ -73,6 +74,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 10,
     });
@@ -92,6 +94,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 15,
       currentValue: 45,
@@ -99,6 +102,59 @@ describe('resolveProfileEnergy (banded)', () => {
     expect(result.energyNeededKWh).toBeCloseTo(9.5, 6);
     // Effective kWh/unit is total energy divided by remainingUnits.
     expect(result.kWhPerUnit).toBeCloseTo(9.5 / 15, 6);
+  });
+
+  it('integrates cooling across the descending temperature interval', () => {
+    const samples = Array.from({ length: 20 }, (_, index) => {
+      const lowerTemperatureBand = index < 10;
+      const bandIndex = index % 10;
+      return {
+        observedAtMs: index,
+        inputValue: lowerTemperatureBand ? 20 + bandIndex * 0.5 : 25 + bandIndex * 0.5,
+        kwhPerUnit: lowerTemperatureBand ? 0.1 : 0.9,
+        progressDirection: 'decreasing' as const,
+      };
+    });
+    const tracker = buildTracker(buildProfile({
+      kwhPerUnit: stat(0.3),
+      samples,
+    }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      progressDirection: 'decreasing',
+      enforcement: 'hard',
+      remainingUnits: 4,
+      currentValue: 26,
+    });
+    expect(result.energyExpectedKWh).toBeCloseTo(1.2, 6);
+    expect(result.kWhPerUnit).toBeCloseTo(0.3, 6);
+  });
+
+  it('does not reuse a heating profile to size a cooling objective', () => {
+    const profile = buildProfile({
+      kwhPerUnit: stat(0.5),
+      samples: Array.from({ length: 20 }, (_, index) => ({
+        observedAtMs: index,
+        inputValue: 30 + index,
+        kwhPerUnit: 0.5,
+        progressDirection: 'increasing' as const,
+      })),
+      bands: [band(30, 50, 0.5)],
+    });
+    const result = resolveProfileEnergy({
+      powerTracker: buildTracker(profile),
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      progressDirection: 'decreasing',
+      enforcement: 'soft',
+      remainingUnits: 4,
+      currentValue: 26,
+    });
+
+    expect(result.reasonCode).toBe('objective_missing_capacity');
+    expect(result.energyNeededKWh).toBeNull();
   });
 
   it('uses the global mean for portions outside the observed band range', () => {
@@ -113,6 +169,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 35,
       currentValue: 45,
@@ -132,6 +189,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 20,
       currentValue: 50,
@@ -145,6 +203,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
@@ -173,6 +232,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 10,
       currentValue: 50,
@@ -195,6 +255,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'soft',
       remainingUnits: 10,
       currentValue: 50,
@@ -212,6 +273,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 10,
       currentValue: 50,
@@ -226,6 +288,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 10,
       currentValue: 50,
@@ -243,6 +306,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 10,
       currentValue: 50,
@@ -261,6 +325,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 20,
       currentValue: 50,
@@ -276,6 +341,7 @@ describe('progressCurrentValue', () => {
     overrides: Partial<DeferredObjectiveProgressResolution>,
   ): DeferredObjectiveProgressResolution => ({
     remainingUnits: 5,
+    progressDirection: 'increasing',
     currentPercent: null,
     currentTemperatureC: null,
     reasonCode: null,
@@ -307,6 +373,7 @@ describe('progressCurrentValue', () => {
     expect(progressCurrentValue({
       progress: {
         remainingUnits: 0,
+        progressDirection: 'increasing',
         currentPercent: 50,
         currentTemperatureC: null,
         reasonCode: 'objective_progress_stale',
@@ -326,6 +393,7 @@ describe('progressCurrentValue', () => {
 describe('resolveDisplayConfidence (band-aware)', () => {
   it('falls back to the global confidence when bands are absent', () => {
     expect(resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: undefined,
       globalConfidence: 'low',
       remainingUnits: 5,
@@ -335,6 +403,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
 
   it('falls back to global when currentValue is missing', () => {
     expect(resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [band(40, 60, 0.3, 20)],
       globalConfidence: 'medium',
       remainingUnits: 5,
@@ -344,6 +413,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
 
   it('falls back to global when remainingUnits is non-positive', () => {
     expect(resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [band(40, 60, 0.3, 20)],
       globalConfidence: 'high',
       remainingUnits: 0,
@@ -356,6 +426,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
     // would lean on the global mean for that slice, so confidence isn't
     // band-aware-trustworthy.
     expect(resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [band(40, 60, 0.3, 3)],
       globalConfidence: 'low',
       remainingUnits: 5,
@@ -367,6 +438,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
     // Bands cover [40, 60) but the integration interval is [50, 70). The
     // upper half [60, 70) sits outside any band → fall back.
     expect(resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [band(40, 60, 0.3, 20)],
       globalConfidence: 'low',
       remainingUnits: 20,
@@ -378,6 +450,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
     // Integration over [50, 70) crosses two adjacent bands; min(high, medium)
     // = medium.
     const result = resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [
         { lowerInclusive: 40, upperExclusive: 60, sampleCount: 20, mean: 0.3, m2: 0, confidence: 'high' },
         { lowerInclusive: 60, upperExclusive: 80, sampleCount: 20, mean: 0.5, m2: 0, confidence: 'medium' },
@@ -394,6 +467,7 @@ describe('resolveDisplayConfidence (band-aware)', () => {
     // forces `low`, but bands are individually tight. The chip should reflect
     // band quality, not the global noise floor.
     const result = resolveDisplayConfidence({
+      progressDirection: 'increasing',
       bands: [
         { lowerInclusive: 40, upperExclusive: 50, sampleCount: 60, mean: 0.55, m2: 0, confidence: 'medium' },
         { lowerInclusive: 50, upperExclusive: 60, sampleCount: 80, mean: 0.38, m2: 0, confidence: 'high' },
@@ -419,6 +493,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
@@ -435,6 +510,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'ev_soc',
+      progressDirection: 'increasing',
       enforcement: 'hard',
       remainingUnits: 20,
       currentValue: 40,

@@ -232,6 +232,7 @@ describe('DeadlinesList header consumes the shared hero primitive', () => {
         deviceId: 'dev_water_heater',
         deviceName: 'Connected 300',
         kind: 'temperature',
+        progressDirection: 'increasing',
         targetValue: 65,
         firstActionAtMs: T0,
         deadlineAtMs: T0 + 6 * 3_600_000,

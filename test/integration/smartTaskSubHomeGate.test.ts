@@ -207,7 +207,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): MeteredPlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
+const buildHeaterDevice = (): MeteredPlanInputDevice & { thermalDirection: 'heating' } => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -224,10 +224,11 @@ const buildHeaterDevice = (): MeteredPlanInputDevice => withTemperatureDiscrimin
   controlCapabilityId: 'onoff' as const,
   currentTemperature: 40,
   lastFreshDataMs: NOW_MS,
-}))) as MeteredPlanInputDevice;
+  thermalDirection: 'heating',
+}))) as MeteredPlanInputDevice & { thermalDirection: 'heating' };
 
 const buildDiagnosticsParams = (overrides: {
-  devices: MeteredPlanInputDevice[];
+  devices: Array<MeteredPlanInputDevice & { thermalDirection: 'heating' }>;
   isDeviceInSubHome?: (deviceId: string) => boolean;
 }) => ({
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -792,6 +793,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
     );
     const controller = new DeferredObjectiveDecorationController({
+      getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
         version: 1,

@@ -88,6 +88,7 @@ const diagnosticFor = (
   objectiveId: `${DEVICE_ID}:temperature`,
   actuationSatisfied: plan.status === 'satisfied',
   objectiveKind: 'temperature',
+  progressDirection: 'increasing',
   enforcement: 'soft',
   trajectory: { kind: 'resolved', status: plan.status },
   reasonCode: plan.statusDetail,

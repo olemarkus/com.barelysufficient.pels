@@ -98,6 +98,7 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
     deviceName: 'Water Heater',
     objectiveId: `${overrides.deviceId}:temperature`,
     objectiveKind: 'temperature',
+    progressDirection: 'increasing',
     enforcement: 'soft',
     trajectory: { kind: 'resolved', status: 'on_track' },
     reasonCode: 'planned_with_margin',
@@ -487,6 +488,30 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       .toEqual([51, 52, 53]);
   });
 
+  it('replaces a legacy heating commitment with descending cooling milestones', () => {
+    const heating = buildPersistDeps();
+    const heatingRecorder = new DeferredObjectiveActivePlanRecorder(heating.deps);
+    heatingRecorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, targetTemperatureC: 45,
+    })], HOUR_MS);
+    heatingRecorder.flushIfDirty();
+
+    const cooling = buildPersistDeps(heating.saved() ?? undefined);
+    const coolingRecorder = new DeferredObjectiveActivePlanRecorder(cooling.deps);
+    coolingRecorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      targetTemperatureC: 45,
+      progressDirection: 'decreasing',
+    })], HOUR_MS + 1);
+    coolingRecorder.flushIfDirty();
+
+    const plan = cooling.saved()!.plansByDeviceId.dev;
+    expect(plan.latest?.reason).toBe('direction_changed');
+    expect(plan.latest?.hours.map((hour) => hour.plannedUnitMilestone)).toEqual([49, 48, 47]);
+    expect(JSON.parse(plan.objectiveSignature)[5]).toBe('decreasing');
+  });
+
   it('stamps the milestone at the BUFFERED rate so the cumulative lands on target, not over it', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -612,6 +637,27 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // the reason: leaving it absent let each consumer default locally, and both
     // defaulted to the price wait (prod 2026-07-26).
     expect(plan.pendingReason).toBe('not_yet_planned');
+  });
+
+  it('keeps a cooling plan when the same directionless flow-card seed is submitted again', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      progressDirection: 'decreasing',
+      targetTemperatureC: 22,
+      currentTemperatureC: 26,
+      currentValue: 26,
+      targetValue: 22,
+    })], HOUR_MS);
+    const coolingPlan = recorder.getPlanForTests('dev');
+
+    recorder.markPending(buildSeed({ deadlineAtMs, targetTemperatureC: 22 }), 2 * HOUR_MS);
+
+    expect(recorder.getPlanForTests('dev')).toEqual(coolingPlan);
   });
 
   it('emits a pending status event when replacing a settled active plan', () => {

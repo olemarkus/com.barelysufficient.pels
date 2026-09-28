@@ -95,17 +95,20 @@ const formatPercent = (value: number | null): string | null => (
 // (e.g. "settled at 61.8 °C"). Flooring those to target would invent a reading
 // the device never hit, so we leave their real final untouched — the floor
 // applies only to the legacy (absent `metReason`) reached-the-target shape.
-// Overshoot (`final > target`) is likewise preserved untouched — the dedicated
-// overshoot line surfaces that magnitude. Resolved producer-side so the view
-// never branches on outcome.
+// Overshoot in the task's direction is likewise preserved untouched — the
+// dedicated overshoot line surfaces that magnitude. Resolved producer-side so
+// the view never branches on outcome.
 const resolveDisplayedEndValue = (
   outcome: DeferredObjectivePlanOutcome,
   metReason: DeferredObjectivePlanMetReason | undefined,
   finalValue: number | null,
   targetValue: number | null,
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
 ): number | null => (
   outcome === 'met' && metReason === undefined
-    && finalValue !== null && targetValue !== null && finalValue < targetValue
+    && finalValue !== null && targetValue !== null
+    && (progressDirection === 'increasing' && finalValue < targetValue
+      || progressDirection === 'decreasing' && finalValue > targetValue)
     ? targetValue
     : finalValue);
 
@@ -115,6 +118,7 @@ export const formatPlanHistoryProgressLine = (
     'objectiveKind'
     | 'outcome'
     | 'metReason'
+    | 'progressDirection'
     | 'targetValue'
     | 'startProgressValue'
     | 'finalProgressValue'
@@ -131,7 +135,11 @@ export const formatPlanHistoryProgressLine = (
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  ·  target ${target}`;
   const endValue = resolveDisplayedEndValue(
-    entry.outcome, entry.metReason, entry.finalProgressValue, targetValue,
+    entry.outcome,
+    entry.metReason,
+    entry.finalProgressValue,
+    targetValue,
+    entry.progressDirection,
   );
   const end = formatValue(endValue);
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
@@ -192,6 +200,16 @@ export const getPlanHistoryOutcomeCardTone = (
   outcome: DeferredObjectivePlanOutcome,
 ): 'good' | 'warn' | 'muted' => (OUTCOME_TONES[outcome] === 'ok' ? 'good' : OUTCOME_TONES[outcome]);
 
+const resolveDirectionalOvershoot = (
+  progressDirection: ResolvedDeferredObjectivePlanHistoryEntry['progressDirection'],
+  finalValue: number,
+  targetValue: number,
+): number | null => {
+  if (progressDirection === 'increasing') return finalValue - targetValue;
+  if (progressDirection === 'decreasing') return targetValue - finalValue;
+  return null;
+};
+
 /**
  * Resolves a one-line "Overshoot {delta}" muted note for a Succeeded history entry whose
  * final reading exceeded the target by a meaningful margin. Threshold matches the
@@ -212,6 +230,7 @@ export const formatPlanHistoryOvershootLine = (
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome'
     | 'objectiveKind'
+    | 'progressDirection'
     | 'targetValue'
     | 'finalProgressValue'
   >,
@@ -221,7 +240,8 @@ export const formatPlanHistoryOvershootLine = (
   const finalValue = entry.finalProgressValue;
   const targetValue = entry.targetValue;
   if (finalValue === null || targetValue === null) return null;
-  const delta = finalValue - targetValue;
+  const delta = resolveDirectionalOvershoot(entry.progressDirection, finalValue, targetValue);
+  if (delta === null) return null;
   if (entry.objectiveKind === 'temperature') {
     if (delta <= OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC) return null;
     return `Overshoot ${delta.toFixed(1)} °C`;
@@ -371,7 +391,7 @@ export const formatPlanHistoryMissedReason = (
   entry: Pick<
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh' | 'objectiveKind'
-    | 'startProgressValue' | 'finalProgressValue'
+    | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;

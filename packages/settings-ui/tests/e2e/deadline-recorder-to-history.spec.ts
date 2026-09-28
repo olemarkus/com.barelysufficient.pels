@@ -35,6 +35,7 @@ type DeferredObjectiveDiagnosticLike = {
   currentPercent: number | null;
   targetTemperatureC: number | null;
   currentTemperatureC: number | null;
+  progressDirection: 'increasing' | 'decreasing' | 'unknown';
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;
@@ -129,6 +130,7 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   currentPercent: null,
   targetTemperatureC: overrides.targetTemperatureC,
   currentTemperatureC: overrides.currentTemperatureC,
+  progressDirection: 'increasing',
   deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '06:00',
   energyNeededKWh: 22.5,
@@ -209,6 +211,7 @@ const groupByDevice = (
       ...entry,
       deviceName: entry.deviceId === 'dev_connected300' ? 'Connected 300' : 'Pool pump',
       objectiveKind: 'temperature',
+      progressDirection: entry.progressDirection ?? 'increasing',
     });
     grouped[entry.deviceId] = bucket;
   }
@@ -298,6 +301,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',
         objectiveKind: 'temperature' as const,
+        progressDirection: 'increasing' as const,
         targetValue: 65,
         deadlineAtMs: T0 + 6 * HOUR,
         startedAtMs: T0,
@@ -397,6 +401,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',
         objectiveKind: 'temperature' as const,
+        progressDirection: 'increasing' as const,
         targetValue: 65,
         deadlineAtMs: T0 + 6 * HOUR,
         startedAtMs: T0,

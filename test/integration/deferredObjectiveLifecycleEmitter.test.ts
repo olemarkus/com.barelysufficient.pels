@@ -31,6 +31,7 @@ const buildEvDevice = (
 ): ObjectiveDeviceInput => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
+  thermalDirection: 'heating',
   deviceClass: 'evcharger',
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
@@ -65,6 +66,7 @@ const buildDeps = (
   getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
   getTimeZone: () => 'UTC',
   getDevices: () => [],
+  getThermalDirection: () => 'heating',
   getPowerTracker: () => ({ lastTimestamp: Date.now() } as PowerTrackerState),
   getDailyBudgetSnapshot: () => null,
   buildPriceHorizon: () => [],
@@ -153,7 +155,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
         (_, index) => ({ startMs: Math.floor(nowMs / HOUR_MS) * HOUR_MS + index * HOUR_MS, price: 5 }),
       ).filter((entry) => entry.startMs < endMs),
       getDeferredObjectiveActivePlans: () => activePlans,
-      getStallClassification: () => ({ classification: 'near_target_idle', classifiedAgainstTargetValue: 80 }),
+      getStallClassification: () => ({ classification: 'near_target_idle', classifiedAgainstTargetValue: 80, temperatureGapC: 0 }),
       observeDeferredObjectivePlanHistory,
     }));
 

@@ -8,7 +8,7 @@ import {
 import { resolveProfileEnergy } from '../../lib/objectives/deferredObjectives/profileEnergyResolution';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../packages/shared-domain/src/objectiveProfileBootstrap';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, ThermalDirection } from '../../packages/contracts/src/types';
 
 // EV kWhPerUnit learning end-to-end: snapshot ingest → profile sample acceptance/
 // rejection → resolveProfileEnergy switching between bootstrap and learned. The
@@ -21,14 +21,18 @@ const hourMs = 60 * 60 * 1000;
 
 // `MIN_SOC_RISE_PERCENT` in `lib/objectives/profiles.ts` (0.2 %) — the minimum
 // SoC delta that counts as a learnable rise. Anything strictly smaller and
-// non-negative produces `objective_profile_rise_too_small`. Kept here as a
+// non-negative produces `objective_profile_progress_too_small`. Kept here as a
 // local mirror so a future production change to the threshold trips the
 // rise-below-threshold assertion (which uses `MIN_SOC_RISE_PERCENT - 0.1`).
 const MIN_SOC_RISE_PERCENT = 0.2;
 
 const evDevice = (
   overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {},
-): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => withResolvedCurrentDraw({
+): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & {
+  currentDrawKw: number;
+  observedQuantity: ObjectiveObservedQuantity;
+  thermalDirection: ThermalDirection;
+} => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -74,6 +78,7 @@ const resolveEv = (params: {
   powerTracker: params.state,
   deviceId: params.deviceId ?? 'ev-1',
   objectiveKind: 'ev_soc',
+      progressDirection: 'increasing',
   enforcement: 'hard',
   remainingUnits: params.remainingUnits,
   currentValue: params.currentValue,
@@ -345,7 +350,7 @@ describe('EV kWhPerUnit learning', () => {
       expect(profile?.kwhPerUnit).toBeUndefined();
       expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
-        reasonCode: 'objective_profile_rise_too_small',
+        reasonCode: 'objective_profile_progress_too_small',
       }));
     });
   });

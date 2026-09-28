@@ -30,16 +30,22 @@
  * between the sensor and reality is visible to the user. PELS specifically
  * does not try to detect this.
  */
-import type { ObjectiveDeviceInput } from '../../objectives/types';
+import {
+  resolveObjectiveProgressDirection,
+  type ObjectiveDeviceInput,
+  type ObjectiveProgressDirection,
+} from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;
+  progressDirection: ObjectiveProgressDirection;
   currentPercent: number | null;
   currentTemperatureC: number | null;
   reasonCode: null;
 } | {
   remainingUnits: 0;
+  progressDirection: ObjectiveProgressDirection;
   currentPercent: number | null;
   currentTemperatureC: number | null;
   reasonCode:
@@ -131,11 +137,16 @@ export const resolveObjectiveProgress = (params: {
   device: ObjectiveDeviceInput;
 }): DeferredObjectiveProgressResolution => {
   const { objective, device } = params;
+  const progressDirection = resolveObjectiveProgressDirection({
+    objectiveKind: objective.kind,
+    thermalDirection: device.thermalDirection,
+  });
   if (objective.kind === 'ev_soc') {
     const progress = resolveEvObjectiveProgress(device);
     if (progress.reasonCode) {
       return {
         remainingUnits: 0,
+        progressDirection,
         currentPercent: progress.currentPercent,
         currentTemperatureC: null,
         reasonCode: progress.reasonCode,
@@ -162,6 +173,7 @@ export const resolveObjectiveProgress = (params: {
     // pre-emptively refusing to plan.
     return {
       remainingUnits,
+      progressDirection,
       currentPercent: progress.currentPercent,
       currentTemperatureC: null,
       reasonCode: null,
@@ -176,14 +188,19 @@ export const resolveObjectiveProgress = (params: {
     // per-session telemetry).
     return {
       remainingUnits: 0,
+      progressDirection,
       currentPercent: null,
       currentTemperatureC: null,
       reasonCode: 'objective_missing_temperature',
     };
   }
   const usableTemperatureC = Number(device.currentTemperature);
+  const remainingTemperature = device.thermalDirection === 'cooling'
+    ? usableTemperatureC - objective.targetTemperatureC
+    : objective.targetTemperatureC - usableTemperatureC;
   return {
-    remainingUnits: Math.max(0, objective.targetTemperatureC - usableTemperatureC),
+    remainingUnits: Math.max(0, remainingTemperature),
+    progressDirection,
     currentPercent: null,
     currentTemperatureC: usableTemperatureC,
     reasonCode: null,

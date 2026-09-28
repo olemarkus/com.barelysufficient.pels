@@ -19,7 +19,7 @@ Each `DeviceObjectiveProfile` keeps up to `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE 
 
 Consequence: `kwhPerUnit.sampleCount` counts what the buffer currently holds (≤ 64, within horizon), not a lifetime total. `profile.acceptedSamples` is the lifetime counter, and it is the one provenance reports (`kwhPerUnitAcceptedSamples`).
 
-`inputValue` is tagged with the **midpoint** of the rise (`(previousSample.value + sample.value) / 2`) rather than the start or end. This reflects where the energy was actually deposited along the input axis.
+`inputValue` is tagged with the **midpoint** of the accepted progress window (`(previousSample.value + sample.value) / 2`) rather than the start or end. This reflects where the energy was actually deposited along the input axis. Temperature samples are tagged with their progress direction, so a cooling rate is never mixed with a heating rate; legacy directionless samples are heating samples because the old learner only accepted rises.
 
 The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was present on the previous sample) and the window passed the learned energy band. Refused windows are not added — every rejection path returns before `buildAcceptedProfileSample` runs — and a refusal that voids the window also resets the baseline and drops the partial energy sum, so the refused window is discarded rather than deferred into the next one.
 
@@ -57,14 +57,14 @@ The `MIN_SSE_REDUCTION_FRACTION` floor prevents fragmenting bands that are alrea
 `resolveProfileEnergy` now accepts an optional `currentValue`. When bands exist AND `currentValue` is provided:
 
 ```
-energy = Σ over bands of (overlap(band, [current, target]) × band.mean)
+energy = Σ over bands of (overlap(band, interval between current and target) × band.mean)
        + uncoveredUnits × globalMean
 ```
 
 The global `kwhPerUnit.mean` is the fallback for:
 
 - Bands with `sampleCount < 4` (sparse — `MIN_BAND_SAMPLES_FOR_INTEGRATION`).
-- Portions of `[current, target]` outside any band's range (target above the highest observed value, current below the lowest).
+- Portions of the interval between current and target outside any band's range.
 - Calls without `currentValue` (no `progressCurrentValue` mapping — currently `generic_energy`).
 
 The effective `kWhPerUnit` reported back to the planner is `energy / remainingUnits` so the planner's existing kWh-per-unit reasoning collapses to the global mean cleanly when bands aren't usable.
@@ -76,10 +76,10 @@ Whether a window teaches the profile at all is decided before this file's machin
 - A refill cycle does not push samples into the buffer, and its several windows are simply several refusals.
 - Bands learned before a drop survive it unchanged: a refusal returns `{...previous, rejectedSamples + 1}` and touches neither `samples` nor `bands`.
 - The gate has its own two guards against eating its own inputs: the band is robust (median and median absolute deviation, so an admitted outlier moves the centre by one rank rather than dragging a mean and squaring into sigma), and its history is aged out after two weeks, so a device whose honest rate genuinely moved — a different car on the same charger — drops back to the coarse bootstrap bound and relearns instead of refusing every window forever. The horizon is applied on both sides: `appendSampleToBuffer` prunes on write (which is what keeps `bands` and `kwhPerUnit` recent), and `resolveEnergyPerUnitBand` filters on read (which is what runs when a locked-out device has stopped writing altogether). Worst case for the escape is therefore bounded by the horizon: two weeks of planning at the old rate.
-- A refusal **voids the open window** unless the refusal is about the sample rather than the window (`interval_too_short`, `non_monotonic_time`). The energy and value sums are cumulative from the baseline, so anything less defers the refused window into the next one instead of discarding it: a refused 2 kWh / 0.8-unit refill followed by an ordinary 2 kWh / 4-unit rise would otherwise arrive as 4 / 4.8 = 0.83 on a device whose rate is 0.5, inside the band and accepted. The disposition travels on the rejection itself (`ProfileSampleRejection.openWindow`) rather than as a list of reason strings read back at the far end.
+- A refusal **voids the open window** unless the refusal is about the sample rather than the window (`interval_too_short`, `non_monotonic_time`). The energy and value sums are cumulative from the baseline, so anything less defers the refused window into the next one instead of discarding it: a refused 2 kWh / 0.8-unit refill followed by an ordinary 2 kWh / 4-unit progress window would otherwise arrive as 4 / 4.8 = 0.83 on a device whose rate is 0.5, inside the band and accepted. The disposition travels on the rejection itself (`ProfileSampleRejection.openWindow`) rather than as a list of reason strings read back at the far end.
 - The two are not the same "band". The layout in this file partitions the device's **input range** (SoC, °C) so the estimator can integrate a taper; `energyBand.ts` bounds the **kWh/unit figure itself** and answers only "is this window credible". They are computed from the same buffer and never consult each other.
 
-The band replaced a recovery window (#775): a sharp fall used to arm a period in which *nothing* was learned until the value climbed back, 24 h elapsed, or four samples showed no forward progress. It was an indirect proxy — detect the fall, then blanket-suppress whatever followed — and its cost was everything ordinary caught in the blast radius, plus a no-progress counter and a safety timeout whose only job was to release a capacity-shed thermostat that had cooled away and would never climb back. Judging each window on its own merit needs none of that: the shed thermostat's next honest rise is learned at once.
+The band replaced a recovery window (#775): a sharp fall used to arm a period in which *nothing* was learned until the value climbed back, 24 h elapsed, or four samples showed no forward progress. It was an indirect proxy — detect the fall, then blanket-suppress whatever followed — and its cost was everything ordinary caught in the blast radius, plus a no-progress counter and a safety timeout whose only job was to release a capacity-shed thermostat that had cooled away and would never climb back. Judging each window on its own merit needs none of that: the next honest temperature movement in the task's direction can be learned at once.
 
 ## Why not …
 

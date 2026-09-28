@@ -30,6 +30,7 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'flow_card',
   'prices_arrived',
   'objective_changed',
+  'direction_changed',
   'prices_revised',
   // v2.7.3: schedule shifted without a fresher price horizon — daily-budget
   // pressure flipped a bucket, planStatus drifted, source flipped, etc.
@@ -48,6 +49,13 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
 
 const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' => (
   value === 'learned' || value === 'bootstrap'
+);
+
+const isOptionalProgressDirection = (value: unknown): boolean => (
+  value === undefined
+    || value === 'increasing'
+    || value === 'decreasing'
+    || value === 'unknown'
 );
 
 // `rateMean` is the producer-resolved display rate; the contract allows
@@ -216,6 +224,7 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isFiniteNumber(v.revisedAtMs)
     && isFiniteOrNull(v.computedFromPricesUpTo)
     && isReason(v.reason)
+    && isOptionalProgressDirection(v.progressDirection)
     && Array.isArray(v.hours)
     && v.hours.every(isPlanHour)
     && isOptionalReservationSegments(v.reservationSegments)

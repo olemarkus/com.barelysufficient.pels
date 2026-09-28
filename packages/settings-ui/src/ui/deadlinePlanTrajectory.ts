@@ -95,12 +95,38 @@ const SHORTFALL_DISPLAY_EPSILON: Record<'°C' | '%', number> = { '°C': 0.05, '%
 // planned hour's start (the same idiom the signed-off mock uses). Risers cap
 // at the target; `readyAtMs` is the end of the hour that tops out (within
 // display tolerance — see the epsilon note above).
+const applyDirectionalStep = (
+  progressDirection: 'increasing' | 'decreasing',
+  projected: number,
+  step: number,
+  targetValue: number,
+): number => progressDirection === 'increasing'
+  ? Math.min(targetValue, projected + step)
+  : Math.max(targetValue, projected - step);
+
+const movedInDirection = (
+  progressDirection: 'increasing' | 'decreasing',
+  currentValue: number,
+  nextValue: number,
+): boolean => progressDirection === 'increasing'
+  ? nextValue > currentValue
+  : nextValue < currentValue;
+
+const remainingTowardTarget = (
+  progressDirection: 'increasing' | 'decreasing',
+  targetValue: number,
+  currentValue: number,
+): number => progressDirection === 'increasing'
+  ? targetValue - currentValue
+  : currentValue - targetValue;
+
 const buildPlannedStaircase = (params: {
   hours: HorizonHour[];
   currentChargeByStartMs: Map<number, number>;
   currentCoverStartByStartMs: Map<number, number>;
   currentValue: number;
   targetValue: number;
+  progressDirection: 'increasing' | 'decreasing';
   progressPerKWh: number;
   unit: '°C' | '%';
   deadlineAtMs: number;
@@ -138,12 +164,15 @@ const buildPlannedStaircase = (params: {
       : 0;
     const remainingKwh = plannedKwh * remainingFraction;
     if (remainingKwh <= 0) continue;
-    const next = Math.min(params.targetValue, projected + remainingKwh * params.progressPerKWh);
-    if (next <= projected) continue;
+    const step = remainingKwh * params.progressPerKWh;
+    const next = applyDirectionalStep(params.progressDirection, projected, step, params.targetValue);
+    if (!movedInDirection(params.progressDirection, projected, next)) continue;
     const riserX = Math.max(hour.startsAtMs, params.nowMs);
     points.push([riserX, projected], [riserX, next]);
     projected = next;
-    if (readyAtMs === null && params.targetValue - projected < SHORTFALL_DISPLAY_EPSILON[params.unit]) {
+    if (readyAtMs === null
+      && remainingTowardTarget(params.progressDirection, params.targetValue, projected)
+        < SHORTFALL_DISPLAY_EPSILON[params.unit]) {
       readyAtMs = Math.min(hour.endMs, params.deadlineAtMs);
     }
   }
@@ -162,11 +191,12 @@ export const buildTrajectory = (params: {
   currentCoverStartByStartMs: Map<number, number>;
   currentValue: number;
   targetValue: number;
+  progressDirection: 'increasing' | 'decreasing';
   progressPerKWh: number;
   unit: '°C' | '%';
   deadlineAtMs: number;
   nowMs: number;
-  // Scheduled-run band label — the kind verb ("Heating" / "Charging") shared
+  // Scheduled-run band label — the kind verb ("Heating" / "Cooling" / "Charging") shared
   // with the schedule chart's planned band via `labels.deviceSeriesName`, so
   // the two cards' bands speak one word.
   runBandLabel: string;
@@ -203,11 +233,13 @@ export const buildTrajectory = (params: {
     }];
   });
   const observedValues = measuredPoints.map((point) => point[1]);
-  const minValue = Math.min(...observedValues, params.currentValue);
+  const minValue = Math.min(targetValue, ...observedValues, params.currentValue);
   const pad = unit === '%' ? 5 : 2;
   const yMin = unit === '%' ? Math.max(0, Math.floor(minValue - pad)) : Math.floor(minValue - pad);
   const yMax = Math.ceil(Math.max(targetValue, ...observedValues) + pad);
-  const shortBy = targetValue - projected;
+  const shortBy = params.progressDirection === 'increasing'
+    ? targetValue - projected
+    : projected - targetValue;
   // A trajectory already at/within display tolerance of the target (e.g.
   // 64.96 °C now vs target 65.0) leaves `readyAtMs` null — no future riser
   // ever crosses the target, and with nothing booked the staircase never

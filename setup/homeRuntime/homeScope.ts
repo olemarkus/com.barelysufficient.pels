@@ -208,6 +208,7 @@ export function buildMainHomeScope(
   // controller dep is a lazy getter, so building it before the price/plan
   // services exist is safe.
   const deferredObjectiveController = new DeferredObjectiveDecorationController({
+    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done), so

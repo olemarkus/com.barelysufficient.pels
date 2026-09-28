@@ -234,7 +234,7 @@ export const buildHistoryDetailChartOption = (
       left: 0,
       // Pin the legend to the chart's full width and let ECharts wrap onto
       // additional lines as needed. Without `width: '100%'`, the legend would
-      // assume an unbounded layout and labels like "Measured Heating" would
+      // assume an unbounded layout and labels like "Measured Heating" / "Measured Cooling" would
       // truncate to "Measured Heati…" inside a 320–480 px container. Matches
       // the legend behavior of the live deadline-plan chart.
       width: '100%',
@@ -1316,7 +1316,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   // inspects `hourlyContributions` or the snapshot's planned hours. When
   // the producer returns `absent` the strip is suppressed.
   const hourlyStrip = resolveHistoryDetailHourlyStrip(entry);
-  const labels = deadlineLabels(entry.objectiveKind);
+  const labels = deadlineLabels(entry.objectiveKind, entry.progressDirection);
   const observedSeriesName = labels.actualDeviceSeriesName;
   // Legacy mode also drives the row builder so the existing kWh-bar fallback
   // keeps rendering for v3 entries. Built unconditionally so the empty-chart
@@ -1343,6 +1343,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const chartLabels: HistoryDetailChartLabels = historyDetailChartLabels(
     chartData.mode,
     entry.objectiveKind,
+    entry.progressDirection,
     // Trajectory mode without a drawable measured series surfaces the
     // absent-observations caption (`fallbackNote`) instead of implying the
     // staircase was measured.

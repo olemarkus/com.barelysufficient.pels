@@ -21,12 +21,14 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
   currentDrawKw: 0,
   expectedPowerKw: 7,
   objectiveSessionInactive: false,
+  thermalDirection: 'heating',
   ...extra,
 });
 
 // Non-EV, non-temperature device with the same power: no synthetic charge step.
 const plainOnOff: ObjectiveDeviceInput = {
-  id: 'x', name: 'Plain', currentDrawKw: 0, expectedPowerKw: 7, objectiveSessionInactive: false,
+  id: 'x', name: 'Plain', currentDrawKw: 0, expectedPowerKw: 7,
+  objectiveSessionInactive: false, thermalDirection: 'heating',
 };
 
 describe('lib/objectives de-kind — capability-only EV takes the EV branch', () => {
@@ -65,6 +67,7 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
       ...observed,
       // Producer-resolved: this charger has no meter, which resolves to 0 kW.
       currentDrawKw: 0,
+      thermalDirection: 'heating',
       observedQuantity: observedQuantity as NonNullable<typeof observedQuantity>,
     };
     const sample = buildObjectiveProfileSample(device, NOW);

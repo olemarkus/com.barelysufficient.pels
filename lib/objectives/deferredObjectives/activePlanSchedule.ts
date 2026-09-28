@@ -207,7 +207,7 @@ export const buildReservationSegmentsFromHorizonPlan = (params: {
 // hour's `plannedKWh` is booked in. Converting buffered planned energy at the
 // mean rate (`kWhPerUnitBanded`, which is `energyExpectedKWh /
 // remainingUnits`) would overshoot the cumulative milestone by the buffer ratio,
-// leaving the final milestone above target and making `isAheadOfHourMilestone`
+// leaving the final milestone past target in its progress direction and making `isAheadOfHourMilestone`
 // under-fire (the device under-defers). Falls back to the mean rate when the
 // buffered rate is absent (legacy diagnostics / bootstrap, where the two coincide
 // so the result is unchanged).
@@ -249,7 +249,7 @@ export const stampUnitMilestones = (
   nowMs: number,
 ): DeferredObjectiveActivePlanHourV1[] => {
   const anchor = resolveUnitTrajectoryAnchor(diag);
-  if (!anchor) return hours;
+  if (!anchor || diag.progressDirection === 'unknown') return hours;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   let lastMilestone: number | null = null;
   return [...hours]
@@ -267,7 +267,8 @@ export const stampUnitMilestones = (
       // New current/future hour: build on the last frozen milestone, or seed the
       // very first hour of a brand-new plan at the live measured anchor.
       const base = lastMilestone ?? anchor.anchorUnit;
-      lastMilestone = base + hour.plannedKWh / anchor.ratePerUnit;
+      const signedUnits = diag.progressDirection === 'increasing' ? 1 : -1;
+      lastMilestone = base + signedUnits * hour.plannedKWh / anchor.ratePerUnit;
       return { ...hour, plannedUnitMilestone: lastMilestone };
     });
 };

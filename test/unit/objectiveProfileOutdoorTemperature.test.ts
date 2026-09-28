@@ -6,7 +6,7 @@ import {
 } from '../../lib/objectives/profiles';
 import type { DeviceObjectiveProfileSample } from '../../lib/objectives/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermalDirection } from '../../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 10, 10, 0, 0);
 const HALF_HOUR_MS = 30 * 60 * 1000;
@@ -18,9 +18,9 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
 });
 
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
-  & MeasuredPowerObservedProbe> & { currentTemperature?: number };
+  & MeasuredPowerObservedProbe> & { currentTemperature?: number; thermalDirection?: ThermalDirection };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity; thermalDirection: ThermalDirection } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({

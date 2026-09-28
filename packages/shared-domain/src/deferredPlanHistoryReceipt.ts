@@ -82,8 +82,10 @@ import {
   RECEIPT_LAST_STATE_BEHIND_NO_TIME_HEAT,
   RECEIPT_LAST_STATE_BEHIND_SCHEDULE,
   RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE,
+  RECEIPT_LAST_STATE_COOLING_ON_SCHEDULE,
   RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE,
   RECEIPT_LAST_STATE_TARGET_REACHED,
+  RECEIPT_LAST_STATE_TEMPERATURE_ON_SCHEDULE,
   RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
   RECEIPT_ROW_LABEL_READY,
   RECEIPT_ROW_LABEL_STARTED,
@@ -303,7 +305,7 @@ const sumPlannedKWh = (
 const estimateTimeShortfall = (
   entry: Pick<
     ResolvedDeferredObjectivePlanHistoryEntry,
-    'startProgressValue' | 'finalProgressValue' | 'targetValue'
+    'startProgressValue' | 'finalProgressValue' | 'targetValue' | 'progressDirection'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): number | null => {
@@ -320,8 +322,13 @@ const estimateTimeShortfall = (
   // run started above zero — better to suppress the chip than fabricate.
   const startValue = entry.startProgressValue;
   if (startValue === null) return null;
-  const gap = targetValue - finalValue;
-  const totalSpan = targetValue - startValue;
+  if (entry.progressDirection === 'unknown') return null;
+  const gap = entry.progressDirection === 'increasing'
+    ? targetValue - finalValue
+    : finalValue - targetValue;
+  const totalSpan = entry.progressDirection === 'increasing'
+    ? targetValue - startValue
+    : startValue - targetValue;
   if (gap <= 0 || totalSpan <= 0) return null;
   return Math.round(windowMs * (gap / totalSpan));
 };
@@ -340,6 +347,7 @@ export const formatPlanHistoryShortfallChip = (
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
     | 'startProgressValue' | 'finalProgressValue' | 'targetValue'
+    | 'progressDirection'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): string | null => {
@@ -482,7 +490,8 @@ export type PlanHistoryAbandonedDetails = {
 };
 
 const formatLastDeviceState = (
-  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'objectiveKind' | 'finalPlan' | 'originalPlan'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry,
+    'objectiveKind' | 'progressDirection' | 'finalPlan' | 'originalPlan'>,
 ): string | null => {
   const lastPlan = entry.finalPlan ?? entry.originalPlan;
   if (lastPlan === null) return null;
@@ -491,9 +500,10 @@ const formatLastDeviceState = (
   // line reads consistently with how a live plan would describe itself.
   switch (lastPlan.planStatus) {
     case 'on_track':
-      return entry.objectiveKind === 'ev_soc'
-        ? RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE
-        : RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE;
+      if (entry.objectiveKind === 'ev_soc') return RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE;
+      if (entry.progressDirection === 'decreasing') return RECEIPT_LAST_STATE_COOLING_ON_SCHEDULE;
+      if (entry.progressDirection === 'unknown') return RECEIPT_LAST_STATE_TEMPERATURE_ON_SCHEDULE;
+      return RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE;
     case 'at_risk':
       return RECEIPT_LAST_STATE_BEHIND_SCHEDULE;
     case 'cannot_meet':
@@ -533,7 +543,7 @@ export const formatPlanHistoryAbandonedDetails = (
   entry: Pick<
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'finalizedAtMs' | 'deliveredKWh'
-    | 'finalPlan' | 'originalPlan' | 'objectiveKind'
+    | 'finalPlan' | 'originalPlan' | 'objectiveKind' | 'progressDirection'
   >,
   timeZone: string,
 ): PlanHistoryAbandonedDetails | null => {

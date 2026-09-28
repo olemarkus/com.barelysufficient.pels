@@ -25,12 +25,20 @@ const computeShortfall = (diagnostic: DeferredObjectiveDiagnostic): {
     ? Math.round(energy * 100) / 100
     : null;
 
-  if (diagnostic.currentValue !== null && diagnostic.targetValue !== null) {
-    const delta = diagnostic.targetValue - diagnostic.currentValue;
+  if (
+    diagnostic.currentValue !== null
+    && diagnostic.targetValue !== null
+    && diagnostic.progressDirection !== 'unknown'
+  ) {
+    const isIncreasing = diagnostic.progressDirection === 'increasing';
+    const delta = isIncreasing
+      ? diagnostic.targetValue - diagnostic.currentValue
+      : diagnostic.currentValue - diagnostic.targetValue;
     if (delta > 0) {
       return {
         shortfallKwh,
-        shortfallText: `${formatNumber(delta)} ${unitForObjectiveKind(diagnostic.objectiveKind)} below target`,
+        shortfallText: `${formatNumber(delta)} ${unitForObjectiveKind(diagnostic.objectiveKind)} `
+          + `${isIncreasing ? 'below' : 'above'} target`,
       };
     }
   }

@@ -1,17 +1,18 @@
 import type { DeferredObjectiveActivePlanHourV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { ObjectiveProgressDirection } from '../../objectives/types';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 // Fraction by which the still-needed energy must sit below the committed future
 // energy before we release the current hour. A small relative, rate-free margin
-// (~2%) that biases toward heating ("early is safer") and absorbs jitter at the
+// (~2%) that biases toward making progress early and absorbs jitter at the
 // threshold; the downstream shed/restore cooldowns (60–300 s) are the backstop
 // against any residual control flap (the flag itself is stateless per cycle to
 // keep the recorder insulated — no two-sided latch here).
 const MILESTONE_AHEAD_MARGIN = 0.02;
 
-// True when the device is already at/above the committed plan's end-of-this-hour
-// trajectory milestone — i.e. the buffered energy still needed to reach target is
+// True when the device has reached the committed plan's end-of-this-hour
+// trajectory milestone in its progress direction — i.e. the buffered energy still needed to reach target is
 // already covered by the energy the LATER committed hours will deliver:
 //
 //   ahead  ⟺  energyNeededKWh ≤ futureCommittedKWh × (1 − MILESTONE_AHEAD_MARGIN)
@@ -19,7 +20,7 @@ const MILESTONE_AHEAD_MARGIN = 0.02;
 // Both sides are in the SAME buffered-energy currency: `energyNeededKWh` is the
 // buffered floor (`mean + k·SE`) for the current measured `remainingUnits`
 // (recomputed every cycle from the RAW reading, so a hot-water draw-off raises it
-// and re-engages heating), and `futureCommittedKWh` is the energy the committed
+// and re-engages the device), and `futureCommittedKWh` is the energy the committed
 // plan booked for the hours after the current one — also sized at the buffered
 // rate. Comparing buffered-to-buffered keeps it rate-consistent: there is no
 // division by a learned rate, so no mean-vs-buffered bias, and a rate drift
@@ -35,7 +36,7 @@ const MILESTONE_AHEAD_MARGIN = 0.02;
 //
 // Conservative `false` when `energyNeededKWh` is non-finite/negative or when there
 // is no committed future energy (no commitment, or only the current/past hours
-// are booked) — in either case keep heating.
+// are booked) — in either case keep the device engaged.
 //
 // PREFERS the UNIT trajectory when the commitment carries persisted
 // `plannedUnitMilestone` values: it compares the live measured value directly
@@ -49,6 +50,7 @@ export const isAheadOfHourMilestone = (params: {
   // Live measured progress in the objective's own unit (°C / %). Drives the
   // preferred unit-based comparison. Optional/back-compat: absent → energy gate.
   measuredValue?: number | null;
+  progressDirection: ObjectiveProgressDirection;
   committedHours: readonly DeferredObjectiveActivePlanHourV1[];
   nowMs: number;
 }): boolean => {
@@ -82,6 +84,7 @@ const nextHourStart = (nowMs: number): number => Math.floor(nowMs / ONE_HOUR_MS)
 // (early-is-safer); the shed/restore cooldowns absorb threshold jitter.
 const resolveAheadByUnitMilestone = (params: {
   measuredValue?: number | null;
+  progressDirection: ObjectiveProgressDirection;
   committedHours: readonly DeferredObjectiveActivePlanHourV1[];
   nowMs: number;
 }): boolean | null => {
@@ -108,8 +111,10 @@ const resolveAheadByUnitMilestone = (params: {
   // hour's lower milestone — which would understate the target and mis-release.
   const currentHourMilestone = latestStartedHour?.plannedUnitMilestone;
   if (typeof currentHourMilestone !== 'number' || !Number.isFinite(currentHourMilestone)) return null;
-  if (futureBookedKWh <= 0) return false; // no future committed hours to defer into → keep heating
-  return measuredValue >= currentHourMilestone;
+  if (futureBookedKWh <= 0) return false; // no future committed hours to defer into → keep the device active
+  return params.progressDirection === 'increasing'
+    ? measuredValue >= currentHourMilestone
+    : measuredValue <= currentHourMilestone;
 };
 
 // Legacy energy comparison: `energyNeededKWh ≤ futureCommittedKWh × (1 − margin)`,

@@ -95,6 +95,7 @@ export const hasPriceHorizonAdvanced = (
 // actually advanced.
 export const resolveReplanReason = (params: {
   objectiveChanged: boolean;
+  directionChanged: boolean;
   rescuePermissionOnlyChanged: boolean;
   sourceRefined: boolean;
   // The live learned per-unit energy rate diverged from the rate the committed
@@ -106,6 +107,7 @@ export const resolveReplanReason = (params: {
   pricesAdvanced: boolean;
 }): DeferredObjectiveActivePlanRevisionReason => {
   if (params.rescuePermissionOnlyChanged) return 'flow_permission_changed';
+  if (params.directionChanged) return 'direction_changed';
   if (params.objectiveChanged) return 'objective_changed';
   if (params.sourceRefined) return 'rate_refined';
   if (params.measuredDeviation) return 'measured_deviation';

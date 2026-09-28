@@ -92,7 +92,7 @@ const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
-const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
+const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice & { thermalDirection: 'heating' } => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   currentDrawKw: 0,
   expectedPowerKw: 1,
@@ -111,6 +111,7 @@ const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice => wi
   binaryControl: { on: false },
   control: fixtureControlPosture({ controllable: false }), // cap-off: the smart task is the only reason PELS drives it
   deviceType: 'temperature',
+  thermalDirection: 'heating',
   controlModel: 'stepped_load',
   currentTemperature: tempC,
   lastFreshDataMs: nowMs,
@@ -121,7 +122,7 @@ const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice => wi
       { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
     ],
   },
-})) as MeteredPlanInputDevice;
+})) as MeteredPlanInputDevice & { thermalDirection: 'heating' };
 
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   objectiveProfiles: {

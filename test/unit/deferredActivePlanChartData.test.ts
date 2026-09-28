@@ -123,37 +123,44 @@ describe('resolveActivePlanChartData', () => {
     expect(data.observed[0]).toEqual({ atMs: START_MS, value: 50 });
   });
 
-  test('draws a draw-down/reheat plan anchored at the trough, rising to target (not omitted, never descending)', () => {
-    // "Guarantee ≥ 40 °C": tank starts at 65 (already met), a hot-water draw
-    // pulls it to a 20 °C trough, then PELS books reheat. The planned line must
-    // anchor at the ~20 °C trough where booked heating begins and rise to 40 —
-    // NOT be omitted, and NOT climb from 65 past target.
-    const reheatStart = START_MS + 2 * HOUR_MS;
+  test('draws a cooling plan down to target from the observed value when booked work starts', () => {
+    const coolingStart = START_MS + HOUR_MS;
     const data = resolveChart(buildPlan({
       targetTemperatureC: 40,
       startProgressC: 65,
       latest: {
         ...buildPlan().latest!,
-        // 5 kWh each ÷ 0.5 kWh/°C would raise +20 °C past target → cap holds.
+        progressDirection: 'decreasing',
+        // 5 kWh each ÷ 0.5 kWh/°C changes the temperature by 10 °C.
         hours: [
-          { startsAtMs: reheatStart, plannedKWh: 5 },
-          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: coolingStart, plannedKWh: 5 },
+          { startsAtMs: coolingStart + HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: coolingStart + 2 * HOUR_MS, plannedKWh: 5 },
         ],
         rateMean: 0.5,
       },
       progressSamples: [
         { atMs: START_MS, valueC: 65, valuePercent: null },
-        { atMs: START_MS + HOUR_MS, valueC: 40, valuePercent: null },
-        { atMs: reheatStart, valueC: 20, valuePercent: null },
+        { atMs: coolingStart, valueC: 55, valuePercent: null },
+        { atMs: coolingStart + HOUR_MS, valueC: 45, valuePercent: null },
       ],
     }));
-    expect(data.plannedOriginal[0]).toEqual({ atMs: reheatStart, value: 20 });
+    expect(data.plannedOriginal[0]).toEqual({ atMs: coolingStart, value: 55 });
     const values = data.plannedOriginal.map((p) => p.value);
     for (let i = 1; i < values.length; i += 1) {
-      expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]!); // never descends
-      expect(values[i]!).toBeLessThanOrEqual(40); // never exceeds target
+      expect(values[i]!).toBeLessThanOrEqual(values[i - 1]!);
+      expect(values[i]!).toBeGreaterThanOrEqual(40);
     }
     expect(values.at(-1)).toBe(40);
+  });
+
+  test('does not invent a planned direction when the live direction is unknown', () => {
+    const data = resolveChart(buildPlan({
+      latest: { ...buildPlan().latest!, progressDirection: 'unknown' },
+    }));
+    expect(data.mode).toBe('trajectory');
+    expect(data.plannedOriginal).toEqual([]);
+    expect(data.observed).toHaveLength(2);
   });
 
   test('renders the planned line from the live reading when the stitch gave no start/samples', () => {

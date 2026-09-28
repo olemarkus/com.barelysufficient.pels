@@ -194,6 +194,7 @@
     flow_card: "Updated after a flow card fired",
     prices_arrived: "Updated as prices became available",
     objective_changed: "Updated after the target changed",
+    direction_changed: "Updated after thermostat direction changed",
     // Only fires when the planner consumed a newer price horizon than the
     // previous revision. `schedule_revised` carries internal replans.
     prices_revised: "Updated as new prices arrived",
@@ -274,6 +275,18 @@
     readingNoun: "current temperature",
     fallbackDeviceNoun: "the heater"
   });
+  var COOLING_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+    headline: "Waiting for a reading from the device",
+    body: "PELS needs a current temperature, useful capacity, or a recent observation from this cooling device before it can plan the smart task.",
+    readingNoun: "current temperature",
+    fallbackDeviceNoun: "the cooling device"
+  });
+  var TEMPERATURE_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+    headline: "Waiting for a reading from the device",
+    body: "PELS needs a current temperature, useful capacity, or a recent observation from this device before it can plan the smart task.",
+    readingNoun: "current temperature",
+    fallbackDeviceNoun: "this device"
+  });
   var EV_DEVICE_DATA_MISSING = deviceDataMissingResolver({
     headline: "Waiting for a reading from the EV",
     body: "PELS needs a current state of charge, a charge rate, or a recent observation from this EV before it can plan the smart task.",
@@ -349,6 +362,10 @@
         no_current_reading: {
           headline: "Waiting for the first temperature reading",
           body: "The schedule will appear once the device reports its current temperature."
+        },
+        direction_unavailable: {
+          headline: "Waiting for thermostat mode",
+          body: "PELS needs to know whether this thermostat is heating or cooling to interpret progress."
         },
         already_satisfied: {
           headline: "Satisfied",
@@ -438,6 +455,10 @@
         no_current_reading: {
           headline: "Waiting for the first state-of-charge reading",
           body: "The schedule will appear once the EV reports its current state of charge."
+        },
+        direction_unavailable: {
+          headline: "Progress direction unavailable",
+          body: "PELS could not resolve the EV charge direction."
         },
         already_satisfied: {
           headline: "Satisfied",

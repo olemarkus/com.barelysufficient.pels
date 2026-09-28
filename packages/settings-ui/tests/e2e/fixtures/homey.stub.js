@@ -1105,6 +1105,9 @@
   // harmless — the UI reads only the resolved fields.
   const toResolvedActivePlan = (plan) => ({
     ...plan,
+    progressDirection: plan.latest === null
+      ? 'unknown'
+      : plan.latest.progressDirection ?? 'increasing',
     targetValue: plan.targetValue ?? plan.targetPercent ?? plan.targetTemperatureC ?? null,
     ...(plan.startProgressC !== undefined
       || plan.startProgressPercent !== undefined

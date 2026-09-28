@@ -17,14 +17,13 @@ import type {
   DeferredObjectivePlanTerminalOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 import {
   resolveFinalProgressValue,
   resolveTargetValue,
 } from '../../../packages/shared-domain/src/deferredObjectiveValues';
-import {
-  classificationImpliesStallSatisfied,
-  type IdleClassification,
-} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { IdleClassification } from '../../../packages/contracts/src/idleClassification';
+import { classificationImpliesStallSatisfied } from '../stallEvidence';
 import {
   appendRevisionLogIfNew,
   captureRevisionSnapshot,
@@ -69,6 +68,9 @@ export type InProgressRecord = Omit<
   | 'initialEnergyExpectedKWh'
 > & {
   commitment: InProgressCommitment;
+  // Direction paired with `finalProgress*`; the persisted history format only
+  // needs the resolved outcome, so this stays on the recorder's in-memory row.
+  finalProgressDirection: ObjectiveProgressDirectionRead;
   satisfied: boolean;
   // `null` for target-reached / in-flight; `'stalled'` once the idle
   // classifier promoted the run. Sticky, reset only by clearSatisfiedWithProgress.
@@ -237,8 +239,10 @@ const captureTrustedProgressPercent = (diag: DeferredObjectiveDiagnostic): numbe
 // limit is at its target there, and must not be re-opened by a reading below the
 // owner's.
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (diag.currentValue === null) return false;
-  return diag.currentValue >= diag.reachableTargetValue;
+  if (diag.currentValue === null || diag.progressDirection === 'unknown') return false;
+  return diag.progressDirection === 'increasing'
+    ? diag.currentValue >= diag.reachableTargetValue
+    : diag.currentValue <= diag.reachableTargetValue;
 };
 
 // A run satisfied short of the owner's target was met at the car's own charge
@@ -305,6 +309,7 @@ export const startRecord = (
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
+    finalProgressDirection: diag.progressDirection,
     targetTemperatureC: diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null,
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
@@ -489,6 +494,7 @@ const computeMergedMetState = (
   metReason: DeferredObjectivePlanMetReason | null;
   finalProgressC: number | null;
   finalProgressPercent: number | null;
+  finalProgressDirection: InProgressRecord['finalProgressDirection'];
 } => {
   const stallPromoted = record.satisfied && isStallMetReason(record.metReason);
   if (stallPromoted) {
@@ -498,6 +504,7 @@ const computeMergedMetState = (
       metReason: record.metReason,
       finalProgressC: record.finalProgressC,
       finalProgressPercent: record.finalProgressPercent,
+      finalProgressDirection: record.finalProgressDirection,
     };
   }
   const currentlySatisfied = isSatisfiedStatus(rawHorizonStatus(diag));
@@ -507,6 +514,9 @@ const computeMergedMetState = (
     metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
     finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    finalProgressDirection: hasTrustworthyProgress(diag)
+      ? diag.progressDirection
+      : record.finalProgressDirection,
   };
 };
 
@@ -524,6 +534,7 @@ export const mergeRecord = (
     commitment: backfillCommitment(record, diag),
     finalProgressC: merged.finalProgressC,
     finalProgressPercent: merged.finalProgressPercent,
+    finalProgressDirection: merged.finalProgressDirection,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: merged.satisfied,
@@ -546,6 +557,9 @@ const clearSatisfiedWithProgress = (
     ...backfillStartProgress(record, diag),
     finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    finalProgressDirection: hasTrustworthyProgress(diag)
+      ? diag.progressDirection
+      : record.finalProgressDirection,
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: false,
     metAtMs: null,
@@ -595,6 +609,7 @@ export const promoteRecordToStalled = (
     finalProgressPercent: captureFromDiag
       ? (captureProgressPercent(diag) ?? record.finalProgressPercent)
       : record.finalProgressPercent,
+    finalProgressDirection: captureFromDiag ? diag.progressDirection : record.finalProgressDirection,
     satisfied: true,
     metAtMs: nowMs,
     metReason: reason,
@@ -620,7 +635,7 @@ export const recordNonPlannableTick = (
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
-  // Stalled records skip the re-open path: "device settled below target" is
+  // Stalled records skip the re-open path: "device settled short of target" is
   // exactly the state the stall promotion accepts as terminal. Re-opening
   // would discard the carefully-frozen `metAtMs` / `finalProgress*` we
   // captured at the plateau and produce a noisy "satisfied → not satisfied"
@@ -638,11 +653,12 @@ export const recordNonPlannableTick = (
 };
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
-  // Value selection is unit-agnostic; the >= comparison is identical for °C / %.
+  // Value selection is unit-agnostic; direction is captured with the final
+  // trustworthy reading so terminal classification follows the device mode.
   const target = resolveTargetValue(record);
   const final = resolveFinalProgressValue(record);
-  if (target === null || final === null) return false;
-  return final >= target;
+  if (target === null || final === null || record.finalProgressDirection === 'unknown') return false;
+  return record.finalProgressDirection === 'increasing' ? final >= target : final <= target;
 };
 
 const classifyOutcome = (
@@ -677,6 +693,7 @@ export const finalizeRecord = (
     startProgressPercent: record.startProgressPercent,
     finalProgressC: record.finalProgressC,
     finalProgressPercent: record.finalProgressPercent,
+    progressDirection: record.finalProgressDirection,
     initialEnergyNeededKWh: record.initialEnergyNeededKWh,
     ...(record.commitment.kind === 'known'
       ? { initialEnergyExpectedKWh: record.commitment.kwh }

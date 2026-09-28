@@ -33,10 +33,8 @@ import {
   orderDeferredObjectives,
   type PriorityAllocationTracker,
 } from './priorityAllocation';
-import {
-  stallEvidenceCoversTarget,
-  type StallEvidence,
-} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { StallEvidence } from '../../../packages/contracts/src/idleClassification';
+import { stallEvidenceCoversTarget } from '../stallEvidence';
 import {
   buildObjectiveDeviceExclusionPredicate,
   OBJECTIVE_EXCLUSION_REASON_CODES,
@@ -300,7 +298,7 @@ const stallAtTarget = (
   // a device idling there is `near_target_idle` without having delivered this
   // task's target. Mirrors `maybePromoteOnStall` so the live status and the
   // recorded outcome cannot disagree.
-  if (!stallEvidenceCoversTarget(evidence, diagnostic.targetValue)) return null;
+  if (!stallEvidenceCoversTarget(evidence, diagnostic.targetValue, diagnostic.progressDirection)) return null;
   if (!STALL_RESOLVABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) return null;
   return evidence;
 };
@@ -489,7 +487,13 @@ const buildDeferredObjectiveDiagnostic = (params: {
   // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
   // a gap that coincides with the settle window). See
   // notes/deferred-load-objectives/execution-adaptation.md.
-  const frozenFallback = resolveDeadlineBoundFrozenReadInputs({ activePlans, deviceId, objective, nowMs });
+  const frozenFallback = resolveDeadlineBoundFrozenReadInputs({
+    activePlans,
+    deviceId,
+    objective,
+    progressDirection: progress.progressDirection,
+    nowMs,
+  });
   const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon({
     nowMs,
     deadlineAtMs: objective.deadlineAtMs,
@@ -649,6 +653,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     activePlans,
     deviceId,
     objective,
+    progressDirection: progress.progressDirection,
   });
   const commitment = activeCommittedPlan?.commitmentHours;
   const milestoneHours = effectiveFrozenRead ? effectiveFrozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
@@ -672,6 +677,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     // unit-milestone comparison (rate-free); `energyNeededKWh` is the legacy
     // fallback for commitments without persisted `plannedUnitMilestone`.
     measuredValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
+    progressDirection: progress.progressDirection,
     committedHours: milestoneHours,
     nowMs,
   });

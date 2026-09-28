@@ -112,6 +112,7 @@ const buildCard = (params: {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
+    progressDirection: plan.progressDirection,
     targetValue: plan.targetValue,
     // A committed revision can outlive a meter reassignment or an un-manage.
     // Its cached first hour no longer governs the device, so those cards expose

@@ -1,7 +1,9 @@
 import type {
   ObservedStateOfCharge,
   SteppedLoadProfile,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
+import type { ObjectiveProfileProgressDirection } from '../../packages/contracts/src/objectiveProfileTypes';
 
 export type {
   DeviceObjectiveProfile,
@@ -12,26 +14,50 @@ export type {
   ObjectiveProfileStat,
 } from '../../packages/contracts/src/objectiveProfileTypes';
 
+export type ObjectiveProgressDirection = ObjectiveProfileProgressDirection;
+export type ObjectiveProgressDirectionRead = ObjectiveProgressDirection | 'unknown';
+
+export const resolveObjectiveProgressDirection = (params: {
+  objectiveKind: 'temperature' | 'ev_soc';
+  thermalDirection: ThermalDirection;
+}): ObjectiveProgressDirection => (
+  params.objectiveKind === 'ev_soc' || params.thermalDirection === 'heating'
+    ? 'increasing'
+    : 'decreasing'
+);
+
+export const resolveObjectiveProgressDirectionRead = (params: {
+  objectiveKind: 'temperature' | 'ev_soc';
+  thermalDirection: ThermalDirection | 'unknown';
+}): ObjectiveProgressDirectionRead => {
+  if (params.objectiveKind === 'ev_soc') return 'increasing';
+  if (params.thermalDirection === 'unknown') return 'unknown';
+  return resolveObjectiveProgressDirection({
+    objectiveKind: params.objectiveKind,
+    thermalDirection: params.thermalDirection,
+  });
+};
+
 /**
  * Narrow device-data contract the smart-task controller reads to compute
  * lifecycle (progress, hours-remaining, feasibility, step power). It is the
- * subset of the planner's `PlanInputDevice` the controller actually consumes,
- * declared independently so the controller does not import `lib/plan` — the
- * precondition for relocating it out of the planner into a leafward peer
- * (`no-objectives-to-peer-except-power`). `PlanInputDevice` stays structurally
- * assignable to this by width-subtyping, so the planner passes its device list
- * straight through with no runtime adapter.
+ * subset of planner device data the controller actually consumes, declared
+ * independently so the controller does not import `lib/plan` — the precondition
+ * for relocating it out of the planner into a leafward peer
+ * (`no-objectives-to-peer-except-power`). The objective boundary selects devices
+ * with a power reading and attaches the observer-resolved thermal direction;
+ * source devices therefore do not satisfy this contract by width-subtyping.
  *
- * **That width-subtyping is load-bearing AND a trap, so every field here must be
- * one the producer resolves.** There is no adapter to fail: when a field this
- * type declares as optional stops being emitted upstream, the assignment still
- * compiles and the field reads `undefined` forever. That is exactly how the
- * `evChargingState` read died silently once `toPlanDevice` began stripping the
- * raw plug-state — tsc saw a satisfied contract while an unplugged charger went
- * a whole night reported as a stale reading. Prefer a producer-resolved answer
- * (`objectiveSessionInactive`, `steppedLadderMissing`, `externalOffHoldActive`) over a raw
- * observed value, and never widen this type on the strength of a comment
- * upstream: check the producer.
+ * **The boundary projection is load-bearing: every required field must be
+ * resolved there, and every forwarded field must survive its source contract.**
+ * An optional source field can still be stripped without a type error and then
+ * read as `undefined` forever. That is exactly how the `evChargingState` read
+ * died silently once `toPlanDevice` began stripping the raw plug-state — tsc
+ * saw a satisfied contract while an unplugged charger went a whole night
+ * reported as a stale reading. Prefer a producer-resolved answer
+ * (`objectiveSessionInactive`, `steppedLadderMissing`, `externalOffHoldActive`)
+ * over a raw observed value, and never widen this type on the strength of a
+ * comment upstream: check the producer.
  *
  * Kept deliberately separate from `PlanInputDevice` per the architecture
  * boundary (AGENTS.md: accept duplication when consolidation would cross a
@@ -68,8 +94,10 @@ export type ObjectiveDeviceInput = {
    * an unplugged charger reported `objective_progress_stale` for whole task
    * windows. Every field here must be one the producer resolves, and one whose
    * absence tsc would catch.
-   */
+  */
   objectiveSessionInactive: boolean;
+  /** Observer-resolved direction of temperature demand, attached at the objective boundary. */
+  thermalDirection: ThermalDirection;
   // Producer-resolved "Leave off until turned on again" posture: the user turned
   // the device off outside PELS and asked PELS to respect that. Structurally
   // assignable from `PlanInputDevice`, which carries the same flat bit.
@@ -121,8 +149,8 @@ export type ObjectiveStateOfCharge = {
     | Extract<ObservedStateOfCharge['level'], { kind: 'unavailable' }>;
 };
 
-/** A plan device as it reaches this layer: with or without a power axis. */
-export type ObjectiveDeviceSource = Omit<ObjectiveDeviceInput, 'currentDrawKw'>;
+/** Planner device data before metering and observer direction are resolved. */
+export type ObjectiveDeviceSource = Omit<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>;
 
 /**
  * The devices a smart task can plan for: those with a power reading. A
@@ -141,4 +169,15 @@ export const selectObjectiveDevices = <T extends ObjectiveDeviceSource>(
   devices.filter((device): device is T & Pick<ObjectiveDeviceInput, 'currentDrawKw'> => (
     'currentDrawKw' in device && typeof device.currentDrawKw === 'number'
   ))
+);
+
+/** Add the observer's resolved temperature-demand direction to metered inputs. */
+export const resolveObjectiveDeviceInputs = <T extends ObjectiveDeviceSource>(
+  devices: readonly T[],
+  getThermalDirection: (deviceId: string) => ThermalDirection,
+): Array<T & Pick<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>> => (
+  selectObjectiveDevices(devices).map((device) => ({
+    ...device,
+    thermalDirection: getThermalDirection(device.id),
+  }))
 );

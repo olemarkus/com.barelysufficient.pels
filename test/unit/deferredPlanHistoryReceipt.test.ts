@@ -200,6 +200,22 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       originalPlan: null,
     }))).toBeNull();
   });
+
+  it('estimates a cooling shortfall in the decreasing direction', () => {
+    const line = formatPlanHistoryShortfallChip(buildEntry({
+      outcome: 'missed',
+      objectiveKind: 'temperature',
+      progressDirection: 'decreasing',
+      targetTemperatureC: 22,
+      targetPercent: null,
+      startProgressC: 30,
+      startProgressPercent: null,
+      finalProgressC: 26,
+      finalProgressPercent: null,
+      deliveredKWh: 1,
+    }));
+    expect(line).toContain('short ≈\u00a04\u00a0h');
+  });
 });
 
 describe('formatPlanHistoryCostNarrative', () => {
@@ -303,6 +319,22 @@ describe('formatPlanHistoryAbandonedDetails', () => {
       finalPlan: null,
       originalPlan: null,
     }), 'UTC')).toBeNull();
+  });
+
+  it('names cooling in the abandoned last-state receipt', () => {
+    const details = formatPlanHistoryAbandonedDetails(buildEntry({
+      outcome: 'abandoned',
+      objectiveKind: 'temperature',
+      progressDirection: 'decreasing',
+      targetTemperatureC: 22,
+      targetPercent: null,
+      startProgressC: 30,
+      startProgressPercent: null,
+      finalProgressC: 26,
+      finalProgressPercent: null,
+      finalPlan: buildSnapshot({ planStatus: 'on_track' }),
+    }), 'UTC');
+    expect(details?.lines).toContain('Last device state: cooling on schedule.');
   });
 });
 

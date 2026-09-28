@@ -23,7 +23,8 @@
  * are present and finite; copy degrades gracefully when they are not.
  */
 
-export type IdleClassification = 'near_target_idle' | 'unresponsive' | 'capped_idle';
+import type { IdleClassification } from '../../contracts/src/idleClassification';
+export type { IdleClassification } from '../../contracts/src/idleClassification';
 
 /**
  * Single source of truth for "which idle classifications mean the device has
@@ -42,77 +43,6 @@ export type IdleClassification = 'near_target_idle' | 'unresponsive' | 'capped_i
  * user-facing live status and the recorded outcome can never disagree about
  * what counts as a stall.
  */
-export const classificationImpliesStallSatisfied = (
-  classification: IdleClassification | undefined,
-): boolean => {
-  switch (classification) {
-    case 'near_target_idle':
-    case 'capped_idle':
-      return true;
-    case 'unresponsive':
-    case undefined:
-      return false;
-    default: {
-      // Exhaustiveness guard: a new IdleClassification member must make an
-      // explicit stall-satisfied decision here (and so at every call site)
-      // rather than silently defaulting to false.
-      const exhaustive: never = classification;
-      return exhaustive;
-    }
-  }
-};
-
-/**
- * A stall verdict together with the setpoint it was measured against.
- *
- * The setpoint is load-bearing, not decoration: `near_target_idle` means only
- * "parked near *this* setpoint". PELS parks a managed device by writing a lower
- * setback setpoint, so a device idling at that setback is trivially near target
- * while having delivered nothing toward a higher smart-task target.
- */
-export type StallEvidence = {
-  classification: IdleClassification;
-  /**
-   * The device setpoint the verdict was measured against, in the objective's
-   * own unit — comparable to `DeferredObjectiveDiagnostic.targetValue`. Only
-   * temperature-bearing devices are ever classified (`idleDetector` excludes EV
-   * chargers, which have their own release modelling), so this is °C today.
-   *
-   * NOT nullable: a reportable classification requires `passesCommonEligibility`,
-   * which requires the atomic temperature cluster, whose `currentTarget` is a
-   * finite `number`. The producer (`idleClassifier.getStallEvidence`) resolves
-   * that invariant and withholds the evidence entirely rather than handing a
-   * consumer a null to hedge on.
-   */
-  classifiedAgainstTargetValue: number;
-};
-
-/**
- * Whether a stall verdict may satisfy an objective asking for `targetValue`.
- *
- * Design of record — `notes/deferred-load-objectives/README.md`
- * § "Observer stall evidence": the evidence "applies only when that setpoint is
- * at least the smart-task target. A classification against a lowered
- * ordinary-mode setpoint must never satisfy a higher smart-task target."
- *
- * A missing objective target refuses: the check exists to prove the device was
- * asked for at least what the task wants, and an absent target proves nothing.
- * (`targetValue` is genuinely nullable — an objective can lack one. The verdict
- * setpoint is not; see `StallEvidence`.)
- *
- * Paired with `classificationImpliesStallSatisfied` at BOTH stall consumers so
- * the live status and the recorded outcome cannot disagree.
- */
-export const stallEvidenceCoversTarget = (
-  evidence: StallEvidence | undefined,
-  targetValue: number | null,
-): evidence is StallEvidence => {
-  if (evidence === undefined) return false;
-  if (!classificationImpliesStallSatisfied(evidence.classification)) return false;
-  if (targetValue === null) return false;
-  return evidence.classifiedAgainstTargetValue >= targetValue;
-};
-
 export type IdleClassificationCopyInput = {
   classification: IdleClassification;
   currentTemperatureC?: number;

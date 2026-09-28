@@ -107,6 +107,7 @@ export const notifyRevisionWrittenIfPubliclyObservable = (params: {
     objectiveKind: params.diag.objectiveKind,
     revision: params.revision,
     reason: params.reason,
+    progressDirection: params.diag.progressDirection,
     previousPlanStatus: params.previousEffectivePlanStatus,
     previousWasPending: false,
     allocationChanged: params.allocationChanged,
@@ -123,6 +124,7 @@ export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic):
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
     enforcement: diag.enforcement,
+    progressDirection: diag.progressDirection,
     rescue: diag.rescue,
   });
 };
@@ -149,6 +151,9 @@ export const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number):
     targetPercent: seed.targetPercent,
     deadlineAtMs: seed.deadlineAtMs,
     enforcement: seed.enforcement,
+    // Flow creation precedes the first observer read. The record is pending and
+    // this placeholder is replaced before it can become a committed plan.
+    progressDirection: 'unknown',
     rescue: seed.rescue,
   }),
   original: null,
@@ -328,6 +333,7 @@ export const buildRevision = (params: {
       params.previousPricesUpTo,
     ),
     reason: params.reason,
+    progressDirection: params.diag.progressDirection,
     hours: params.hours,
     reservationSegments,
     // Round to milliWh to match `plannedKWh`. Without rounding,

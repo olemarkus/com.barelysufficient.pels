@@ -367,6 +367,11 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(option.legend.data.map((l) => l.name)).toContain('Measured Heating');
   });
 
+  it('uses cooling labels for decreasing thermostat history', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    expect(deadlineLabels('temperature', 'decreasing').actualDeviceSeriesName).toBe('Measured Cooling');
+  });
+
   // Missed-history detail used to render a chart + chip only; users opening
   // a missed run had no copy explaining *why*. The reason resolver now plumbs
   // a postmortem sentence under the progress line so the surface mirrors the
@@ -732,6 +737,32 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.textContent).toContain('Did it heat up as planned?');
       expect(root.textContent).not.toContain('Progress history');
       expect(root.textContent).not.toContain('Scheduled vs observed');
+      expect(root.querySelector('.deadline-history-trajectory-chart')).not.toBeNull();
+    });
+
+    it('renders the cooling question for a decreasing temperature objective', async () => {
+      const revision = trajectoryRevision({
+        progressDirection: 'decreasing',
+        hours: [
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 5 },
+        ],
+      });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        targetTemperatureC: 40,
+        startProgressC: 65,
+        finalProgressC: 45,
+        progressDirection: 'decreasing',
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 3 * HOUR_MS, valueC: 65, valuePercent: null },
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 55, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 45, valuePercent: null },
+        ],
+      }));
+      expect(root.textContent).toContain('Did it cool down as planned?');
       expect(root.querySelector('.deadline-history-trajectory-chart')).not.toBeNull();
     });
 

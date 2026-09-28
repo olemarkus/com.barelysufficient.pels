@@ -106,9 +106,12 @@ const formatShortfallValue = (
   kind: 'temperature' | 'ev_soc',
   finalProgressValue: number | null,
   targetValue: number | null,
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
 ): string | null => {
-  if (finalProgressValue === null || targetValue === null) return null;
-  const gap = targetValue - finalProgressValue;
+  if (finalProgressValue === null || targetValue === null || progressDirection === 'unknown') return null;
+  const gap = progressDirection === 'increasing'
+    ? targetValue - finalProgressValue
+    : finalProgressValue - targetValue;
   if (gap <= 0) return null;
   return kind === 'temperature' ? `${gap.toFixed(1)} °C` : `${gap.toFixed(0)} %`;
 };
@@ -121,12 +124,16 @@ const wasOvershoot = (
   kind: 'temperature' | 'ev_soc',
   finalProgressValue: number | null,
   targetValue: number | null,
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
 ): boolean => {
-  if (finalProgressValue === null || targetValue === null) return false;
+  if (finalProgressValue === null || targetValue === null || progressDirection === 'unknown') return false;
   const threshold = kind === 'temperature'
     ? OVERSHOOT_TEMPERATURE_THRESHOLD_C
     : OVERSHOOT_PERCENT_THRESHOLD;
-  return finalProgressValue - targetValue > threshold;
+  const overshoot = progressDirection === 'increasing'
+    ? finalProgressValue - targetValue
+    : targetValue - finalProgressValue;
+  return overshoot > threshold;
 };
 
 type PostmortemEntry = Pick<
@@ -134,6 +141,7 @@ type PostmortemEntry = Pick<
   'outcome'
   | 'metReason'
   | 'objectiveKind'
+  | 'progressDirection'
   | 'targetValue'
   | 'finalProgressValue'
   | 'metAtMs'
@@ -259,7 +267,12 @@ const resolveMetPostmortem = (
     return resolveCarLimitMetPostmortem(entry);
   }
   const timing = resolveMetTimingLabels(entry, timeZone);
-  const overshot = wasOvershoot(entry.objectiveKind, entry.finalProgressValue, entry.targetValue);
+  const overshot = wasOvershoot(
+    entry.objectiveKind,
+    entry.finalProgressValue,
+    entry.targetValue,
+    entry.progressDirection,
+  );
   if (overshot && timing !== null) {
     // The `Overshoot N °C` muted subline (rendered separately by
     // `DeadlinePlanHistoryDetail.tsx`) already carries the magnitude — folding
@@ -329,6 +342,7 @@ const resolveMissedPostmortem = (
     entry.objectiveKind,
     entry.finalProgressValue,
     entry.targetValue,
+    entry.progressDirection,
   );
   if (
     finalLabel !== null
@@ -338,7 +352,9 @@ const resolveMissedPostmortem = (
   ) {
     return {
       variant: 'missed-by-shortfall',
-      sentence: `Reached ${finalLabel} by ${deadlineLabel} — ${shortfallLabel} short of ${targetLabel}.`,
+      sentence: entry.progressDirection === 'decreasing'
+        ? `Reached ${finalLabel} by ${deadlineLabel} — ${shortfallLabel} above ${targetLabel}.`
+        : `Reached ${finalLabel} by ${deadlineLabel} — ${shortfallLabel} short of ${targetLabel}.`,
     };
   }
   return {

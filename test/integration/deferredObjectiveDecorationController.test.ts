@@ -31,6 +31,7 @@ describe('DeferredObjectiveDecorationController', () => {
       objectivesByDeviceId: {},
     } as const));
     const controller = new DeferredObjectiveDecorationController({
+      getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings,
       getTimeZone: () => 'UTC',
@@ -55,6 +56,7 @@ describe('DeferredObjectiveDecorationController', () => {
     // task's reservations at the settle and disagree with the committed plan.
     const getStallClassification = vi.fn(() => undefined);
     const controller = new DeferredObjectiveDecorationController({
+      getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => ({
         version: 1,
@@ -85,6 +87,7 @@ describe('DeferredObjectiveDecorationController', () => {
 
   it('returns the identity bundle (devices untouched) when the settings read returns nothing', () => {
     const controller = new DeferredObjectiveDecorationController({
+      getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,

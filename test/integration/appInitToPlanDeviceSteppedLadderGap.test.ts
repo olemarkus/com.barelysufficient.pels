@@ -30,7 +30,11 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
-import { type ObjectiveDeviceInput, type ObjectiveDeviceSource, selectObjectiveDevices } from '../../lib/objectives/types';
+import {
+  type ObjectiveDeviceInput,
+  type ObjectiveDeviceSource,
+  resolveObjectiveDeviceInputs,
+} from '../../lib/objectives/types';
 import type {
   DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
@@ -169,7 +173,7 @@ describe('toPlanDevice step-ladder gap', () => {
 // either consumer is asked, so the join does the same, and its snapshots carry
 // an idle reading.
 const asObjectiveDevice = (device: ObjectiveDeviceSource): ObjectiveDeviceInput => {
-  const [selected] = selectObjectiveDevices([device]);
+  const [selected] = resolveObjectiveDeviceInputs([device], () => 'heating');
   if (!selected) throw new Error('fixture: the reading must make the device an objective device');
   return selected;
 };

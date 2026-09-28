@@ -8,7 +8,8 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveHorizonPlan } from './types';
-import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { ObjectiveProgressDirectionRead } from '../types';
+import type { StallEvidence } from '../../../packages/contracts/src/idleClassification';
 
 // Injected by the wiring layer: resolves the price-layer allocation horizon for
 // `[nowMs, deadlineAtMs)`. Defined as a closure (not a `CombinedPricesV2` input)
@@ -67,6 +68,9 @@ export type DeferredObjectiveDiagnosticReasonCode =
 
 type BaseDeferredObjectiveDiagnostic = {
   deviceId: string;
+  // Whether progress toward this task moves up or down. Resolved at the
+  // device/progress boundary, then carried through gates that compare units.
+  progressDirection: ObjectiveProgressDirectionRead;
   deviceName?: string;
   objectiveId: string;
   enforcement: DeferredObjectiveSettingsEntry['enforcement'];

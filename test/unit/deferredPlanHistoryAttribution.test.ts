@@ -416,7 +416,7 @@ describe('formatRefinedMissCause', () => {
     );
   });
 
-  it('explains no heat delivered for a temperature task', () => {
+  it('explains when almost no temperature progress was made', () => {
     const entry = buildEntry({
       deliveredKWh: 0.01,
       startProgressC: 18.3,
@@ -424,7 +424,22 @@ describe('formatRefinedMissCause', () => {
       finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1141 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
-      'Delivered almost no heat before the deadline.',
+      'Made almost no temperature progress before the deadline.',
+    );
+  });
+
+  it('recognizes cooling progress when resolving a no-delivery miss', () => {
+    const entry = buildEntry({
+      progressDirection: 'decreasing',
+      startProgressC: 28,
+      finalProgressC: 26,
+      targetTemperatureC: 22,
+      deliveredKWh: 0.01,
+      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 100 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).not.toBe('no_delivery');
+    expect(formatRefinedMissCause(entry)).not.toBe(
+      'Made almost no temperature progress before the deadline.',
     );
   });
 

@@ -224,6 +224,7 @@ export const captureRevisionSnapshot = (
     energyNeededKWh: revision.energyNeededKWh,
     planStatus: revision.planStatus,
     revisedAtMs: revision.revisedAtMs,
+    progressDirection: revision.progressDirection ?? 'increasing',
     // Captured here, from THIS revision, alongside `energyNeededKWh` — not
     // stamped on afterwards from the finalize moment. The original snapshot now
     // carries the original revision's requirement, which is what the

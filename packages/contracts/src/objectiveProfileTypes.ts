@@ -1,4 +1,5 @@
 export type ObjectiveProfileKind = 'temperature' | 'ev_soc';
+export type ObjectiveProfileProgressDirection = 'increasing' | 'decreasing';
 
 export type ObjectiveProfileConfidence = 'low' | 'medium' | 'high';
 
@@ -99,6 +100,9 @@ export type ObjectiveProfileSampleObservation = {
   observedAtMs: number;
   inputValue: number;
   kwhPerUnit: number;
+  // Missing only on profiles persisted before directional learning; those
+  // profiles could record rises only, so their samples mean `increasing`.
+  progressDirection?: ObjectiveProfileProgressDirection;
   // Outdoor temperature when the rise window closed, recorded so a future
   // estimator can condition heating rates on weather. Written only when a
   // reading was available (`profiles.ts` spreads it conditionally), so absence
@@ -121,6 +125,9 @@ export type DeviceObjectiveProfileSample = {
   // The persisted name predates that.
   observedAtMs: number;
   value: number;
+  // Missing only on a persisted pre-direction sample; interpret it as an
+  // increasing sample because the old learner accepted rises only.
+  progressDirection?: ObjectiveProfileProgressDirection;
   // A measured draw above the 5 W noise floor, and only that: configured step
   // power is expected draw, never actual (`lib/objectives/samples.ts`). Samples
   // persisted with a `powerSource` tag still load; the key is no longer read.

@@ -183,13 +183,13 @@ the problem, not the safety net.
   The executor never orders setpoints either: its restore guard asks only
   whether the observation is still on the side of the target the plan decided
   from (`ExecutableTargetIntent.restoreFromTarget`).
-  **Readers outside that module still assume heating, and that list is not closed.**
-  A smart task's temperature progress is `target - current`
-  (`lib/objectives/deferredObjectives/diagnosticProgress.ts`), so a cooling unit
-  above its target reads as done; `computeTemperatureGap`
-  (`lib/observer/idleDetector.ts`) is `target - current`, so a cooling unit above
-  its setpoint — working hardest — reads as `near_target_idle`; and the
-  temperature boost trigger (`lib/device/deviceActionProjection.ts`) fires when
-  the room is BELOW `boostBelowC`, which for a cooling unit is when it is already
-  satisfied. Treat these three as the known cases, not the complete set:
-  anything that compares a temperature against a target has a direction in it.
+  **Other temperature readers still assume heating, and the list is not closed.**
+  Smart-task progress, learned-energy bands, milestones, and terminal history now
+  use the device's resolved direction. `computeTemperatureGap`
+  (`lib/observer/idleDetector.ts`) still computes `target - current`, so a
+  cooling unit above its setpoint — working hardest — reads as `near_target_idle`;
+  and the temperature boost trigger (`lib/device/deviceActionProjection.ts`)
+  fires when the room is BELOW `boostBelowC`, which for a cooling unit is when it
+  is already satisfied. Treat these as known remaining cases, not the complete
+  set: anything that compares a temperature against a target has a direction in
+  it.

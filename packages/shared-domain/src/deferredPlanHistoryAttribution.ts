@@ -173,29 +173,28 @@ export type DeferredPlanHistoryMissAttribution = {
 type AttributionEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
   'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-  | 'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
+  | 'objectiveKind' | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
   | 'initialEnergyExpectedKWh'
 >;
 
-// Signed progress toward target (`final − start`) plus the per-kind deadband, or
-// null when the relevant progress samples weren't recorded. Deadlines are
-// heat-up / charge-up, so a delta at/above the deadband means the device made
-// real progress; below it (flat, or a cooling start-above-target task) means it
-// effectively didn't move.
+// Signed progress toward the target plus the per-kind deadband, or null when
+// readings or direction weren't recorded.
 const resolveProgressTowardTarget = (
   entry: Pick<
     AttributionEntry,
-    'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
+    'objectiveKind' | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
   >,
 ): { delta: number; deadband: number } | null => {
   // Value selection is unit-agnostic; only the deadband stays kind-specific.
   const start = entry.startProgressValue;
   const final = entry.finalProgressValue;
-  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
+  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)
+    || entry.progressDirection === 'unknown') return null;
   const deadband = entry.objectiveKind === 'temperature'
     ? NO_DELIVERY_PROGRESS_DEADBAND_C
     : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
-  return { delta: final - start, deadband };
+  const delta = entry.progressDirection === 'increasing' ? final - start : start - final;
+  return { delta, deadband };
 };
 
 // True when the device delivered essentially nothing. Primary signal is the flat
@@ -206,7 +205,7 @@ const resolveProgressTowardTarget = (
 const resolveNoDelivery = (
   entry: Pick<
     AttributionEntry,
-    'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
+    'objectiveKind' | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
   >,
   deliveredKWh: DeliveredEnergyKWh | null,
 ): boolean => {
@@ -446,7 +445,7 @@ export const formatRefinedMissCause = (entry: AttributionEntry): string | null =
   switch (attribution.cause) {
     case 'no_delivery':
       return entry.objectiveKind === 'temperature'
-        ? 'Delivered almost no heat before the deadline.'
+        ? 'Made almost no temperature progress before the deadline.'
         : 'Delivered almost no charge before the deadline.';
     case 'energy_underestimate':
       return 'Target needed more energy than estimated.';

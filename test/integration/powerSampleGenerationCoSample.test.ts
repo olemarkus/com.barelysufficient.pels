@@ -84,6 +84,7 @@ const buildPipeline = (
     } as unknown as PlanService),
     planRebuildThrottle: throttle,
     getDeviceSurfaces: () => [],
+    getThermalDirection: () => 'heating',
     // Production's `savePowerTracker` calls `setPowerTracker`, so the next
     // `getPowerTracker()` sees the admitted sample. Discarding the write leaves
     // the tracker permanently unlatched — a state no admitted sample produces.

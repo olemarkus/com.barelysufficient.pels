@@ -14,7 +14,8 @@ import type {
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
-import { selectObjectiveDevices, type ObjectiveDeviceSource } from '../../objectives/types';
+import { resolveObjectiveDeviceInputs, type ObjectiveDeviceSource } from '../../objectives/types';
+import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
@@ -33,6 +34,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
 export type PreviewDeferredObjectivePlanParams = {
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   nowMs: number;
   timeZone: string;
   deviceId: string;
@@ -95,7 +97,7 @@ export const previewDeferredObjectivePlan = (
   const diag = buildDeferredObjectiveDiagnostics({
     nowMs: params.nowMs,
     timeZone: params.timeZone,
-    devices: selectObjectiveDevices(params.devices),
+    devices: resolveObjectiveDeviceInputs(params.devices, params.getThermalDirection),
     settings: {
       ...params.settings,
       objectivesByDeviceId: {

@@ -12,6 +12,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceName: 'Boiler',
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
+  progressDirection: 'increasing',
   enforcement: 'soft',
   reasonCode: overrides.reasonCode ?? 'objective_invalid_deadline',
   actuationSatisfied: overrides.trajectory.kind === 'resolved'
@@ -71,6 +72,36 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     const next = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'at_risk' } });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [next], statusBus: bus, nowMs: 3 });
     expect(transitions).toEqual(['on_track', 'at_risk']);
+  });
+
+  it('reports a cooling task shortfall above its lower target', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const diag = baseDiagnostic({
+      deviceId: 'cooler-1',
+      trajectory: { kind: 'resolved', status: 'on_track' },
+      progressDirection: 'decreasing',
+      targetTemperatureC: 22,
+      currentTemperatureC: 26,
+    });
+
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
+
+    expect(bus.getCurrent('cooler-1')?.shortfallText).toBe('4 °C above target');
+  });
+
+  it('does not report a cooling shortfall once the temperature is at or below target', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const diag = baseDiagnostic({
+      deviceId: 'cooler-1',
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      progressDirection: 'decreasing',
+      targetTemperatureC: 22,
+      currentTemperatureC: 20,
+    });
+
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
+
+    expect(bus.getCurrent('cooler-1')?.shortfallText).toBeNull();
   });
 
   it('fires onDeadlineReached (deviceId, deadlineAtMs, nowMs) once the deadline has passed', () => {

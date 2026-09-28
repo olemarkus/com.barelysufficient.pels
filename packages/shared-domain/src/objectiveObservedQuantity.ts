@@ -11,7 +11,7 @@ import type {
 /**
  * The quantity an objective measures progress in.
  *
- * Temperature and state-of-charge are the SAME thing — a value that rises toward
+ * Temperature and state-of-charge are the SAME thing — a value that moves toward
  * a target — and nothing downstream is told which it was. There is no unit here:
  * `lib/objectives` holds no concept of one, and everything in it is state of
  * charge even when the charge is heat. Only what feeds this seam, and the UI that
@@ -56,7 +56,7 @@ export function resolveObjectiveObservedQuantity(
 
   if (isTemperatureControlDevice(device) && hasObservedTemperature(device)) {
     return {
-      // Tenths: the profile's rise thresholds are in tenths of a degree, and an
+      // Tenths: the profile's movement thresholds are in tenths of a degree, and an
       // un-rounded sensor value would make two identical readings compare unequal.
       value: Math.round(device.temperature.currentTemperature * 10) / 10,
     };

@@ -20,6 +20,8 @@ import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjecti
 import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type {
   MeteredPlanInputDevice,
   TemperatureDiscriminantProbe,
@@ -43,7 +45,10 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // the live diagnostic path uses) ────────────────────────────────────────────
 
 const buildEvDevice = (
-  overrides: Partial<MeteredPlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
+  overrides: Partial<MeteredPlanInputDevice> & FixtureBoostFields & {
+    evChargingState?: string;
+    thermalDirection?: ThermalDirection;
+  } = {},
 // `withMaterializedEvPlugState` is the fixture boundary here: the preview never
 // reads a raw plug-state. It runs the same diagnostic pipeline the live cycle
 // does, and that pipeline reads the producer-resolved `objectiveSessionInactive`
@@ -53,7 +58,7 @@ const buildEvDevice = (
 // so its return type is `Omit<T, 'evChargingState'>`. Setting `evChargingState` on
 // a fixture without it would leave the resolved bits unset and hand these tests a
 // plan device the producer would never build.
-): MeteredPlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
+): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -70,19 +75,22 @@ const buildEvDevice = (
     ],
   },
   ...overrides,
+  thermalDirection: overrides.thermalDirection ?? 'heating',
   // The power axis: a smart task plans only for a device with a reading, so
   // every fixture here has one, resolved the way the shared builders resolve it.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
-})) as unknown as MeteredPlanInputDevice;
+})) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const buildTemperatureDevice = (
-  overrides: Partial<MeteredPlanInputDevice> & TemperatureDiscriminantProbe = {},
+  overrides: Partial<MeteredPlanInputDevice> & TemperatureDiscriminantProbe & {
+    thermalDirection?: ThermalDirection;
+  } = {},
 // This fixture carries `binaryControl` WITHOUT a `binaryCapabilityId`, so it must
 // NOT route through `withBinaryDiscriminant` (whose runtime stripping drops
 // `binaryControl` when the capability id is absent). Keep the additive
 // `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the
 // `binaryControl` + `controlModel` survive verbatim, matching the original literal.
-): MeteredPlanInputDevice => withTemperatureDiscriminant(withFixtureResidualKw({
+): MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'> => withTemperatureDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
@@ -98,10 +106,11 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
+  thermalDirection: overrides.thermalDirection ?? 'heating',
   // The power axis: a smart task plans only for a device with a reading, so
   // every fixture here has one, resolved the way the shared builders resolve it.
   currentDrawKw: fixtureCurrentDrawKw(overrides),
-})) as unknown as MeteredPlanInputDevice;
+})) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });
@@ -309,6 +318,7 @@ const runPreview = (params: {
 }) => previewDeferredObjectivePlan({
   nowMs: NOW_MS,
   timeZone: 'UTC',
+  getThermalDirection: () => 'heating',
   deviceId: params.deviceId,
   candidate: params.candidate,
   // A context without a roster is the candidate's device alone (or nothing,
@@ -865,7 +875,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
   const fidelityCases: ReadonlyArray<{
     name: string;
     deviceId: string;
-    device: MeteredPlanInputDevice;
+    device: MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     powerTracker: PowerTrackerState;
     candidate: DeferredObjectivePlanPreviewCandidate;
   }> = [

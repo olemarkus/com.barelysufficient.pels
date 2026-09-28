@@ -16,10 +16,25 @@ import { partialDouble } from '../helpers/partialDouble';
 
 const evTask = partialDouble<DeferredObjectiveSettingsEntry>({ kind: 'ev_soc', targetPercent: 80 });
 const heaterTask = partialDouble<DeferredObjectiveSettingsEntry>({ kind: 'temperature', targetTemperatureC: 65 });
+const coolingTask = partialDouble<DeferredObjectiveSettingsEntry>({ kind: 'temperature', targetTemperatureC: 22 });
 
 const charger = (level: ObjectiveStateOfCharge['level']): ObjectiveDeviceInput => partialDouble<ObjectiveDeviceInput>({
   objectiveSessionInactive: false,
+  thermalDirection: 'heating',
   stateOfCharge: { level },
+});
+
+const thermostat = (
+  currentTemperature: number,
+  thermalDirection: 'heating' | 'cooling',
+): ObjectiveDeviceInput => partialDouble<ObjectiveDeviceInput>({
+  id: 'thermostat',
+  name: 'Thermostat',
+  objectiveSessionInactive: false,
+  expectedPowerKw: 1,
+  currentDrawKw: 1,
+  currentTemperature,
+  thermalDirection,
 });
 
 describe('resolveReachableTargetValue', () => {
@@ -57,5 +72,28 @@ describe('resolveObjectiveProgress under a car limit', () => {
       device: charger({ kind: 'known', percent: 70, carChargeLimitPercent: 70 }),
     });
     expect(progress).toMatchObject({ remainingUnits: 0, reasonCode: null });
+  });
+});
+
+describe('resolveObjectiveProgress for temperature tasks', () => {
+  it('measures cooling shortfall above the target', () => {
+    expect(resolveObjectiveProgress({
+      objective: coolingTask,
+      device: thermostat(26, 'cooling'),
+    })).toMatchObject({ remainingUnits: 4, currentTemperatureC: 26, reasonCode: null });
+  });
+
+  it('treats cooling below the target as complete', () => {
+    expect(resolveObjectiveProgress({
+      objective: coolingTask,
+      device: thermostat(19, 'cooling'),
+    })).toMatchObject({ remainingUnits: 0, currentTemperatureC: 19, reasonCode: null });
+  });
+
+  it('keeps heating shortfall below the target', () => {
+    expect(resolveObjectiveProgress({
+      objective: coolingTask,
+      device: thermostat(18, 'heating'),
+    })).toMatchObject({ remainingUnits: 4, currentTemperatureC: 18, reasonCode: null });
   });
 });

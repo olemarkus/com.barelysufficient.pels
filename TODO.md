@@ -329,20 +329,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
       2026-09-03. [P3]
 
-- [ ] **A smart task on a cooling device reads as done while the room is still too warm.**
-      `resolveObjectiveProgress` (`lib/objectives/deferredObjectives/diagnosticProgress.ts`)
-      computes `remainingUnits` as `max(0, targetTemperatureC - usableTemperatureC)`, so a cooling
-      unit at 26 °C with a 22 °C target has nothing left to do and the task plans no hours. The
-      deadline FLOOR it commands is already applied in the device's direction
-      (`lib/thermostat/temperatureSetpoints.ts`); the progress model is what still assumes heating,
-      and `docs/cost-saving-functions.md` warns owners off smart tasks on a cooling device until it
-      does not. Change: the objective input carries the device's direction (the decoration's
-      `DeferredDecorationInput` devices, stamped by the wiring from `AppContext.getThermalDirection`,
-      since `lib/objectives` cannot import the observer), and progress takes the shortfall on that
-      axis. Done when a cooling temperature task above its target reports remaining units and plans
-      hours, pinned by a `diagnosticProgress` test, and the docs warning is removed. Source: the
-      setpoint-resolution move, 2026-09-15. [P2]
-
 - [ ] **The surplus allocator still decides "willing with a lift" from the raw price-opt entry.**
       `resolvePriceOptimizationConfig` (`lib/price/priceOptimizer.ts`) resolves a device's entry
       into required fields, and the setpoint resolver and the planner's lift gate read it. The

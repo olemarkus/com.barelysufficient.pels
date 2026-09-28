@@ -31,6 +31,9 @@ export const toResolvedActivePlan = (
   } = plan;
   const resolved: ResolvedDeferredObjectiveActivePlanV1 = {
     ...rest,
+    progressDirection: plan.latest === null
+      ? 'unknown'
+      : plan.latest.progressDirection ?? 'increasing',
     targetValue: resolveTargetValue(plan),
   };
   // `startProgress*` and `progressSamples` are UI-derived (stitched onto the

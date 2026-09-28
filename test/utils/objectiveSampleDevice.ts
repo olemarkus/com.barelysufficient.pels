@@ -4,7 +4,7 @@ import {
   type ObjectiveObservedQuantity,
   type ObjectiveQuantityDevice,
 } from '../../packages/shared-domain/src/objectiveObservedQuantity';
-import type { MeasuredPowerObservedProbe } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, ThermalDirection } from '../../packages/contracts/src/types';
 
 /**
  * Test-side twin of the production producer boundary
@@ -20,6 +20,7 @@ import type { MeasuredPowerObservedProbe } from '../../packages/contracts/src/ty
 export const withResolvedCurrentDraw = <
   T extends MeasuredPowerObservedProbe
     & ObjectiveQuantityDevice
+    & { thermalDirection?: ThermalDirection }
     & { available?: boolean; lastFreshDataMs?: number },
 >(
   device: T,
@@ -27,10 +28,12 @@ export const withResolvedCurrentDraw = <
   available: boolean;
   currentDrawKw: number;
   observedQuantity: ObjectiveObservedQuantity;
+  thermalDirection: ThermalDirection;
 } => ({
   ...device,
   available: device.available ?? true,
   currentDrawKw: getCurrentDrawKw(device),
+  thermalDirection: device.thermalDirection ?? 'heating',
   // Mirrors the production seam (`setup/powerSamplePipeline.ts`) by calling the
   // same resolver, so fixtures exercise the real mapping rather than hand-feeding
   // the contract.

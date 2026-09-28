@@ -198,6 +198,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
+    getThermalDirection: () => 'heating',
     getPrioritiesForDevices: createFixturePriorityQuery(),
     getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',

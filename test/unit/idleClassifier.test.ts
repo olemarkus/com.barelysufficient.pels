@@ -52,6 +52,7 @@ describe('createIdleClassifier', () => {
       expect(classifier.getStallEvidence('heater-1')).toEqual({
         classification: 'near_target_idle',
         classifiedAgainstTargetValue: 65,
+        temperatureGapC: 0.5,
       });
     });
 

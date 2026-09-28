@@ -30,8 +30,8 @@ import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import {
   formatIdleClassificationCopy,
-  type StallEvidence,
 } from '../../packages/shared-domain/src/idleClassificationCopy';
+import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
 import type { ObservedTemperatureState } from './observedDeviceStateProjection';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
@@ -274,13 +274,17 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
   const getStallEvidence = (deviceId: string): StallEvidence | undefined => {
     const result = lastResultById.get(deviceId);
     if (result === undefined || result.classification === 'active') return undefined;
-    const { classifiedAgainstTargetValue } = result;
+    const { classifiedAgainstTargetValue, temperatureGapC } = result;
     // Eligibility required the temperature cluster, so a reportable verdict
     // always carries a finite setpoint. A non-finite one here is a producer
     // contract violation, not a state worth modelling — withhold the evidence
     // rather than widen `StallEvidence` and make every consumer hedge.
     if (!isFiniteNumber(classifiedAgainstTargetValue)) return undefined;
-    return { classification: result.classification, classifiedAgainstTargetValue };
+    // A reportable parked verdict has a live temperature gap. Keep that
+    // signed evidence so cooling consumers can distinguish "at/below the
+    // cooling setpoint" from merely idle while still warmer than it.
+    if (!isFiniteNumber(temperatureGapC)) return undefined;
+    return { classification: result.classification, classifiedAgainstTargetValue, temperatureGapC };
   };
 
   return { classifyAll, getClassification, getStallEvidence };

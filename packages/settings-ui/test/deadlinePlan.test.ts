@@ -51,6 +51,7 @@ const buildHeaterActivePlan = (params: {
   energyNeededKWh?: number;
   energyExpectedKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
+  progressDirection?: 'increasing' | 'decreasing' | 'unknown';
   // Producer-resolved verdict for the floor shortfall, and the only budget
   // signal a revision carries. Set it to mirror the producer's mapping for the
   // scenario under test; absence means the floor was not short at all.
@@ -73,6 +74,7 @@ const buildHeaterActivePlan = (params: {
     revisedAtMs,
     computedFromPricesUpTo: params.deadline.getTime(),
     reason: 'flow_card' as const,
+    ...(params.progressDirection !== undefined ? { progressDirection: params.progressDirection } : {}),
     hours: originalHours,
     energyNeededKWh: params.energyNeededKWh
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
@@ -164,6 +166,82 @@ const buildBootstrap = (
 });
 
 describe('deadline plan page payload', () => {
+  it('resolves cooling progress and draws the planned trajectory downward', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [{
+      available: true,
+      expectedPowerKw: 1,
+      expectedPowerSource: 'default',
+      id: 'heater',
+      name: 'Connected 300',
+      binaryControl: { on: false },
+      temperature: { currentTemperature: 26, target: { id: 'target_temperature', unit: 'C', value: 22 } },
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      priceArea: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+      pvForecastSource: { kind: 'unknown' },
+      homeyPriceFormula: { kind: 'unknown' },
+      powerhourCurrency: null,
+      powerhourToday: null,
+      powerhourTomorrow: null,
+      powerhourSource: { kind: 'unknown' },
+      priceOptimizationSetup: { state: 'unavailable' },
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0],
+        plannedKWhPerHour: 2,
+        energyNeededKWh: 2,
+        targetTemperatureC: 22,
+        progressDirection: 'decreasing',
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.labels.sectionLabel).toBe('Cooling smart task');
+    expect(payload.trajectory.nowPoint).toEqual([now.getTime(), 26]);
+    expect(payload.trajectory.targetValue).toBe(22);
+    expect(payload.trajectory.plannedPoints).toEqual([
+      [now.getTime(), 26],
+      [now.getTime(), 26], [now.getTime(), 22],
+      [payload.trajectory.xMaxMs, 22],
+    ]);
+    expect(payload.trajectory.shortfall).toBeNull();
+  });
+
   it('builds a device plan from saved objective settings and stops at the deadline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
@@ -4097,6 +4175,7 @@ describe('deadline plan page payload', () => {
       currentChargeByStartMs: Map<number, number>;
       currentCoverStartByStartMs?: Map<number, number>;
       currentValue?: number;
+      progressDirection?: 'increasing' | 'decreasing';
       progressSamples?: Array<{ atMs: number; value: number | null }>;
     }) => {
       const resolved = buildActivePlans(buildHeaterActivePlan({
@@ -4116,6 +4195,7 @@ describe('deadline plan page payload', () => {
         currentCoverStartByStartMs: overrides.currentCoverStartByStartMs ?? new Map<number, number>(),
         currentValue: overrides.currentValue ?? 18,
         targetValue: 22,
+        progressDirection: overrides.progressDirection ?? 'increasing',
         progressPerKWh: 1,
         unit: '°C' as const,
         deadlineAtMs: deadline.getTime(),

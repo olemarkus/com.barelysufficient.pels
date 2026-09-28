@@ -22,6 +22,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
@@ -29,9 +30,9 @@ const hourMs = 60 * 60 * 1000;
 
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe
-  & ReportedStepObservedProbe> & { currentTemperature?: number };
+  & ReportedStepObservedProbe> & { currentTemperature?: number; thermalDirection?: ThermalDirection };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity; thermalDirection: ThermalDirection } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -49,7 +50,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity; thermalDirection: ThermalDirection } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -63,6 +64,50 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
 });
 
 describe('objective profiles', () => {
+  it('learns cooling rates in the decreasing direction and resets its window on a mode change', () => {
+    let state: PowerTrackerState = {};
+    state = updateObjectiveProfilesFromSnapshot({
+      state,
+      devices: [temperatureDevice({ currentTemperature: 26, thermalDirection: 'cooling' })],
+      nowMs: startMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
+    });
+    state = updateObjectiveProfilesFromSnapshot({
+      state,
+      devices: [temperatureDevice({
+        currentTemperature: 24,
+        thermalDirection: 'cooling',
+        lastFreshDataMs: startMs + hourMs,
+      })],
+      nowMs: startMs + hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
+    });
+
+    const coolingProfile = state.objectiveProfiles?.['heater-1'];
+    expect(coolingProfile?.acceptedSamples).toBe(1);
+    expect(coolingProfile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
+    expect(coolingProfile?.samples?.[0]?.progressDirection).toBe('decreasing');
+
+    state = updateObjectiveProfilesFromSnapshot({
+      state,
+      devices: [temperatureDevice({
+        currentTemperature: 52,
+        thermalDirection: 'heating',
+        lastFreshDataMs: startMs + 2 * hourMs,
+      })],
+      nowMs: startMs + 2 * hourMs,
+      debugStructured: () => undefined,
+      outdoorTemperatureC: undefined,
+    });
+
+    const afterModeChange = state.objectiveProfiles?.['heater-1'];
+    expect(afterModeChange?.acceptedSamples).toBe(1);
+    expect(afterModeChange?.lastSample.value).toBe(52);
+    expect(afterModeChange?.samples?.[0]?.progressDirection).toBe('decreasing');
+  });
+
   it('learns compact kWh-per-degree and degree-per-hour stats for temperature devices', () => {
     let state: PowerTrackerState = {};
     state = updateObjectiveProfilesFromSnapshot({
@@ -453,7 +498,7 @@ describe('objective profiles', () => {
     expect(profile?.lastSample.value).toBe(51.5);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'objective_profile_sample_rejected',
-      reasonCode: 'objective_profile_value_fell',
+      reasonCode: 'objective_profile_value_moved_against_direction',
     }));
   });
 
@@ -495,7 +540,7 @@ describe('objective profiles', () => {
       expect(debugStructured).toHaveBeenCalledTimes(1);
       expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
-        reasonCode: 'objective_profile_value_fell',
+        reasonCode: 'objective_profile_value_moved_against_direction',
       }));
     } finally {
       vi.useRealTimers();

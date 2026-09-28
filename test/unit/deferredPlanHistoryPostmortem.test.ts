@@ -295,6 +295,20 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.sentence).toContain('16:00');
     });
 
+    it('describes a cooling miss as remaining above the target', () => {
+      const entry = buildEntry({
+        outcome: 'missed',
+        progressDirection: 'decreasing',
+        startProgressC: 30,
+        finalProgressC: 26,
+        targetTemperatureC: 22,
+        finalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-shortfall');
+      expect(result.sentence).toContain('4.0 °C above 22.0 °C');
+    });
+
     it('falls through to a plain shortfall sentence when the figures are missing', () => {
       const entry = buildEntry({
         outcome: 'missed',
@@ -514,6 +528,21 @@ describe('formatPlanHistoryOvershootLine', () => {
     expect(formatPlanHistoryOvershootLine(entry)).toBe('Overshoot 12.7 °C');
   });
 
+  it('renders a cooling overshoot below the target', () => {
+    const entry = buildEntry({
+      outcome: 'met',
+      progressDirection: 'decreasing',
+      startProgressC: 30,
+      finalProgressC: 10,
+      targetTemperatureC: 22,
+    });
+    expect(formatPlanHistoryOvershootLine(entry)).toBe('Overshoot 12.0 °C');
+    expect(formatPlanHistoryPostmortem({
+      ...entry,
+      metAtMs: DEADLINE_MS - 2 * HOUR_MS,
+    }, 'UTC').variant).toBe('met-with-overshoot');
+  });
+
   it('returns null when temperature delta is at or below the 5 °C threshold', () => {
     // Threshold is strict (`> 5`), so exactly 5 °C overshoot stays muted.
     expect(formatPlanHistoryOvershootLine(buildEntry({
@@ -663,6 +692,16 @@ describe('formatPlanHistoryProgressLine', () => {
       finalProgressC: 39.2,
       targetTemperatureC: 65,
     }))).toBe('64.0 °C → 65.0 °C  ·  target 65.0 °C');
+  });
+
+  it('floors the displayed end at target on a met cooling run that later warmed', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      progressDirection: 'decreasing',
+      startProgressC: 30,
+      finalProgressC: 25,
+      targetTemperatureC: 22,
+    }))).toBe('30.0 °C → 22.0 °C  ·  target 22.0 °C');
   });
 
   it('does NOT floor a stall-promoted met (the plateau below target is intentional)', () => {

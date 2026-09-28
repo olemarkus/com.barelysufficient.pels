@@ -77,6 +77,7 @@ export const toResolvedPlanHistoryEntry = (
     ...record,
     deviceName: device.name,
     objectiveKind: device.objectiveKind,
+    progressDirection: record.progressDirection ?? 'increasing',
   };
 };
 

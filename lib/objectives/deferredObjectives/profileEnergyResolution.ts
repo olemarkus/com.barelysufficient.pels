@@ -5,8 +5,11 @@ import type {
   ObjectiveProfileBand,
   ObjectiveProfileConfidence,
   ObjectiveProfileStat,
+  ObjectiveProgressDirection,
 } from '../../objectives/types';
 import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './types';
+import { fitBandsFromSamples, resolveKwhPerUnitStat } from '../bands';
+import { applyBandedConfidence } from '../stats';
 
 export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap';
 
@@ -128,15 +131,18 @@ export const resolveProfileEnergy = (params: {
   enforcement: DeferredObjectiveEnforcement;
   remainingUnits: number;
   currentValue?: number;
+  progressDirection: ObjectiveProgressDirection;
 }): DeferredObjectiveEnergyResolution => {
   const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  const kWhPerUnit = profile?.kwhPerUnit;
+  const directionProfile = resolveDirectionProfile(profile, params.progressDirection);
+  const kWhPerUnit = directionProfile?.kwhPerUnit;
   if (kWhPerUnit && Number.isFinite(kWhPerUnit.mean) && kWhPerUnit.mean > 0) {
     return buildLearnedResolution({
-      profile,
+      profile: directionProfile,
       kWhPerUnit,
       remainingUnits: params.remainingUnits,
       currentValue: params.currentValue,
+      progressDirection: params.progressDirection,
       k: resolveBufferK(params.enforcement),
     });
   }
@@ -178,14 +184,40 @@ export const resolveProfileEnergy = (params: {
   };
 };
 
+const resolveDirectionProfile = (
+  profile: DeviceObjectiveProfile | undefined,
+  progressDirection: ObjectiveProgressDirection,
+): Pick<DeviceObjectiveProfile, 'kwhPerUnit' | 'bands'> | undefined => {
+  if (profile === undefined) return undefined;
+  const samples = (profile.samples ?? []).filter((sample) => (
+    (sample.progressDirection ?? 'increasing') === progressDirection
+  ));
+  if (samples.length > 0) {
+    const bands = fitBandsFromSamples({ samples });
+    const kwhPerUnit = resolveKwhPerUnitStat(samples, profile.updatedAtMs);
+    return {
+      kwhPerUnit: applyBandedConfidence(kwhPerUnit, bands),
+      bands,
+    };
+  }
+  // A pre-direction profile contains heating-only rates and no tagged sample
+  // buffer. Keep that history usable for increasing objectives; never reuse it
+  // to size a cooling objective.
+  if (progressDirection === 'increasing' && (profile.samples === undefined || profile.samples.length === 0)) {
+    return { kwhPerUnit: profile.kwhPerUnit, bands: profile.bands };
+  }
+  return undefined;
+};
+
 const buildLearnedResolution = (params: {
-  profile: DeviceObjectiveProfile | undefined;
+  profile: Pick<DeviceObjectiveProfile, 'bands'> | undefined;
   kWhPerUnit: ObjectiveProfileStat;
   remainingUnits: number;
   currentValue: number | undefined;
+  progressDirection: ObjectiveProgressDirection;
   k: number;
 }): DeferredObjectiveEnergyResolution => {
-  const { profile, kWhPerUnit, remainingUnits, currentValue, k } = params;
+  const { profile, kWhPerUnit, remainingUnits, currentValue, progressDirection, k } = params;
   const globalMean = kWhPerUnit.mean;
   const globalSigma = sampleStdDev(kWhPerUnit);
   const globalSampleCount = kWhPerUnit.sampleCount;
@@ -196,6 +228,7 @@ const buildLearnedResolution = (params: {
     globalSampleCount,
     remainingUnits,
     currentValue,
+    progressDirection,
     k,
   });
   // `banded` is now null for exactly one reason — no usable `currentValue`, so
@@ -227,6 +260,7 @@ const buildLearnedResolution = (params: {
       globalConfidence: kWhPerUnit.confidence,
       remainingUnits,
       currentValue,
+      progressDirection,
     }),
     kwhPerUnitSource: 'learned',
     reasonCode: null,
@@ -250,17 +284,20 @@ export const resolveDisplayConfidence = (params: {
   globalConfidence: ObjectiveProfileConfidence;
   remainingUnits: number;
   currentValue: number | undefined;
+  progressDirection: ObjectiveProgressDirection;
 }): ObjectiveProfileConfidence => {
-  const { bands, globalConfidence, remainingUnits, currentValue } = params;
+  const { bands, globalConfidence, remainingUnits, currentValue, progressDirection } = params;
   if (!bands || bands.length === 0) return globalConfidence;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return globalConfidence;
   if (remainingUnits <= 0) return globalConfidence;
-  const targetValue = currentValue + remainingUnits;
+  const targetValue = currentValue + (progressDirection === 'increasing' ? remainingUnits : -remainingUnits);
+  const intervalLow = Math.min(currentValue, targetValue);
+  const intervalHigh = Math.max(currentValue, targetValue);
   let coveredUnits = 0;
   const overlappingConfidences: ObjectiveProfileConfidence[] = [];
   for (const band of bands) {
-    const overlapLow = Math.max(band.lowerInclusive, currentValue);
-    const overlapHigh = Math.min(band.upperExclusive, targetValue);
+    const overlapLow = Math.max(band.lowerInclusive, intervalLow);
+    const overlapHigh = Math.min(band.upperExclusive, intervalHigh);
     const overlap = Math.max(0, overlapHigh - overlapLow);
     if (overlap <= 0) continue;
     // Any underpopulated band that touches the interval forces the fallback —
@@ -295,8 +332,8 @@ const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileCo
   return lowest;
 };
 
-// Integrates the learned per-band rates across `[currentValue, currentValue +
-// remainingUnits]`, leaning on the global mean for any slice the bands can't
+// Integrates learned per-band rates across the directional interval between
+// current and target, leaning on the global mean for any slice the bands can't
 // support — an underpopulated band, and any part of the interval outside the
 // observed range.
 //
@@ -319,19 +356,22 @@ const integrateBands = (params: {
   globalSampleCount: number;
   remainingUnits: number;
   currentValue: number | undefined;
+  progressDirection: ObjectiveProgressDirection;
   k: number;
 }): { energyExpectedKWh: number; energyPlannedKWh: number } | null => {
   const {
-    bands, globalMean, globalSigma, globalSampleCount, remainingUnits, currentValue, k,
+    bands, globalMean, globalSigma, globalSampleCount, remainingUnits, currentValue, progressDirection, k,
   } = params;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return null;
   if (remainingUnits <= 0) return { energyExpectedKWh: 0, energyPlannedKWh: 0 };
-  const targetValue = currentValue + remainingUnits;
+  const targetValue = currentValue + (progressDirection === 'increasing' ? remainingUnits : -remainingUnits);
+  const intervalLow = Math.min(currentValue, targetValue);
+  const intervalHigh = Math.max(currentValue, targetValue);
   let expected = 0;
   let planned = 0;
   let coveredUnits = 0;
   for (const band of bands ?? []) {
-    const overlap = computeOverlap(band, currentValue, targetValue);
+    const overlap = computeOverlap(band, intervalLow, intervalHigh);
     if (overlap <= 0) continue;
     // An underpopulated band leans on the global mean *and* the global buffer
     // for its slice — same fallback the expected estimate uses.
@@ -343,9 +383,8 @@ const integrateBands = (params: {
     planned += overlap * bufferedRate({ mean, sigma, sampleCount, k });
     coveredUnits += overlap;
   }
-  // Bands may not cover the entire [current, target] interval — anything
-  // outside the observed range (e.g., target above the highest band edge or
-  // current below the lowest) gets the global mean (buffered for the plan).
+  // Bands may not cover the entire interval between current and target — any
+  // portion outside the observed range gets the global mean (buffered for the plan).
   const uncoveredUnits = Math.max(0, remainingUnits - coveredUnits);
   expected += uncoveredUnits * globalMean;
   planned += uncoveredUnits * bufferedRate({

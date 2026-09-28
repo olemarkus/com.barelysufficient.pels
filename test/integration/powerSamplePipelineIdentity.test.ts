@@ -77,6 +77,7 @@ const buildPipeline = (
     } as unknown as PlanService),
     planRebuildThrottle: throttle,
     getDeviceSurfaces: () => [],
+    getThermalDirection: () => 'heating',
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getCoSampledGenerationW: () => undefined,
     getObservedGenerationSegments: () => [],

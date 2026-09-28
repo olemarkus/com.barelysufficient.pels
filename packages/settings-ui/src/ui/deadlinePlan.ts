@@ -108,7 +108,7 @@ const buildPendingPayload = (
   priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
   reasonOverride?: DeadlinePlanPendingReason,
 ): DeadlinePlanPendingPayload => {
-  const labels = deadlineLabels(ctx.objective.kind);
+  const labels = deadlineLabels(ctx.objective.kind, ctx.activePlan?.progressDirection ?? 'unknown');
   const reason = reasonOverride ?? resolvePendingReason(ctx.activePlan);
   // Resolve device + deadline strings on this side of the layer so shared-
   // domain copy helpers stay free of locale and Date helpers (same rule as
@@ -195,6 +195,26 @@ const doneAtCarLimit = (carChargeLimit: SmartTaskCarChargeLimit): ObjectivePaylo
   body: formatSmartTaskCarLimitReason({ ...carChargeLimit, reached: true }),
 });
 
+const alreadySatisfiedResult = (
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'],
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
+  carChargeLimit: SmartTaskCarChargeLimit | null,
+): ObjectivePayloadResult => {
+  if (carChargeLimit !== null) return doneAtCarLimit(carChargeLimit);
+  return {
+    kind: 'unavailable', reason: 'already_satisfied',
+    body: deadlineLabels(objectiveKind, progressDirection).unavailableByReason.already_satisfied.body,
+  };
+};
+
+const resolveDirectionUnavailable = (
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'],
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
+): ObjectivePayloadResult | null => {
+  if (objectiveKind !== 'temperature' || progressDirection !== 'unknown') return null;
+  return { kind: 'unavailable', reason: 'direction_unavailable' };
+};
+
 const prepareObjectivePayload = (
   params: ObjectivePlanInput,
 ): ObjectivePayloadReady | ObjectivePayloadResult | null => {
@@ -207,7 +227,14 @@ const prepareObjectivePayload = (
   if (!ctx.activePlan?.latest) return null;
 
   const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
-  const observedProgress = resolveProgress({ device: ctx.device, objective: ctx.objective });
+  const progressDirection = ctx.activePlan.progressDirection;
+  const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
+  if (directionUnavailable !== null) return directionUnavailable;
+  const observedProgress = resolveProgress(
+    ctx.device,
+    ctx.objective,
+    progressDirection,
+  );
   const carChargeLimit = resolveSmartTaskCarChargeLimit(
     ctx.activePlan.carChargeLimit,
     ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null,
@@ -218,9 +245,7 @@ const prepareObjectivePayload = (
   if (!observedProgress) return { kind: 'unavailable', reason: 'no_current_reading' };
   const progress = withCarChargeLimitProgress(observedProgress, carChargeLimit?.limitValue ?? null);
   if (progress.remainingUnits <= 0) {
-    return carChargeLimit === null
-      ? { kind: 'unavailable', reason: 'already_satisfied' }
-      : doneAtCarLimit(carChargeLimit);
+    return alreadySatisfiedResult(ctx.objective.kind, progressDirection, carChargeLimit);
   }
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
@@ -395,7 +420,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const { ctx, bootstrap, profile, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
   const latest = activePlan!.latest!;
-  const labels = deadlineLabels(objective.kind);
+  const labels = deadlineLabels(objective.kind, progress.progressDirection);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
   const heroEnergy = resolveHeroEnergyFields(energy, energyNeededKWh);
   const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
@@ -432,8 +457,11 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // case is already gated by `deliveredKWh <= 0`.
   const startProgress = (() => {
     if (progressPerKWh <= 0 || costAndDelivery.deliveredKWh <= 0) return null;
-    const candidate = progress.currentValue - costAndDelivery.deliveredKWh * progressPerKWh;
-    if (!Number.isFinite(candidate) || candidate < 0) return null;
+    const deliveredProgress = costAndDelivery.deliveredKWh * progressPerKWh;
+    const candidate = progress.progressDirection === 'increasing'
+      ? progress.currentValue - deliveredProgress
+      : progress.currentValue + deliveredProgress;
+    if (!Number.isFinite(candidate) || (progress.unit === '%' && candidate < 0)) return null;
     return candidate;
   })();
   // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
@@ -518,6 +546,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       currentCoverStartByStartMs: buildCoverStartByStartMs(latest),
       currentValue: progress.currentValue,
       targetValue: progress.plannedTargetValue,
+      progressDirection: progress.progressDirection,
       progressPerKWh,
       unit: progress.unit,
       deadlineAtMs,

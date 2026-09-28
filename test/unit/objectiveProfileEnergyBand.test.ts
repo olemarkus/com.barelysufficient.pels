@@ -16,16 +16,16 @@ import type {
   DeviceObjectiveProfileSample,
 } from '../../lib/objectives/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermalDirection } from '../../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;
 const WINDOW_POWER_W = 2000;
 
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
-  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> & { currentTemperature?: number };
+  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> & { currentTemperature?: number; thermalDirection?: ThermalDirection };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity; thermalDirection: ThermalDirection } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 75, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -44,7 +44,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity; thermalDirection: ThermalDirection } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1,
@@ -126,7 +126,8 @@ const applyWindow = (
 const bandAt = (
   nowMs: number,
   profile: DeviceObjectiveProfile,
-): ReturnType<typeof resolveEnergyPerUnitBand> => resolveEnergyPerUnitBand(profile, nowMs);
+  progressDirection: 'increasing' | 'decreasing' = 'increasing',
+): ReturnType<typeof resolveEnergyPerUnitBand> => resolveEnergyPerUnitBand(profile, nowMs, progressDirection);
 
 describe('objective profile energy band', () => {
   it('learns an ordinary window against the device\'s own history', () => {
@@ -302,6 +303,16 @@ describe('resolveEnergyPerUnitBand', () => {
     });
   });
 
+  it('does not reuse legacy heating samples for cooling', () => {
+    const band = bandAt(startMs, profileWithHistory([0.4, 0.5, 0.6]), 'decreasing');
+
+    expect(band).toEqual({
+      basis: 'bootstrap',
+      lowerKwhPerUnit: 0,
+      upperKwhPerUnit: OBJECTIVE_PROFILE_BOOTSTRAP_MAX_KWH_PER_UNIT,
+    });
+  });
+
   it('keeps a ratio floor under the band so a device seen in one regime is not pinned to it', () => {
     // Every observation identical: the robust spread is zero. A band of three
     // times nothing would refuse the next window over a rounding difference, and
@@ -331,8 +342,8 @@ describe('resolveEnergyPerUnitBand', () => {
     const profile = profileWithHistory(ORDINARY_HISTORY);
     const muchLater = startMs + OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS + hourMs;
 
-    expect(resolveEnergyPerUnitBand(profile, startMs).basis).toBe('learned');
-    expect(resolveEnergyPerUnitBand(profile, muchLater)).toEqual({
+    expect(resolveEnergyPerUnitBand(profile, startMs, 'increasing').basis).toBe('learned');
+    expect(resolveEnergyPerUnitBand(profile, muchLater, 'increasing')).toEqual({
       basis: 'bootstrap',
       lowerKwhPerUnit: 0,
       upperKwhPerUnit: OBJECTIVE_PROFILE_BOOTSTRAP_MAX_KWH_PER_UNIT,

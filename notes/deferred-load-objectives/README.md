@@ -110,16 +110,16 @@ deadline is far enough in the future that tomorrow's prices are required, planni
 fall back to neutral or whole-range planning when the price horizon is incomplete.
 
 That gate applies only while the objective still needs future energy. When fresh EV SoC or
-temperature progress already meets the target, the bridge emits `satisfied` before price or
+temperature progress has reached the target in its progress direction, the bridge emits `satisfied` before price or
 horizon gating because no future allocation is needed. `satisfied` remains a live evaluation,
-not a terminal completion before the deadline: if a later fresh reading drops below the target,
+not a terminal completion before the deadline: if a later fresh reading moves away from the target,
 the next cycle returns to normal deadline tracking.
 
 Observer stall evidence may also report a temperature objective as satisfied when the device's
-own thermostat has stopped or capped below the requested value. That evidence carries the exact
-setpoint against which it was classified and applies only when that setpoint is at least the
-smart-task target. A classification against a lowered ordinary-mode setpoint must never satisfy
-a higher smart-task target.
+own thermostat has stopped or capped before reaching the requested value. That evidence carries
+the exact setpoint against which it was classified and applies only when the setpoint covers the
+smart-task target in the objective's progress direction. A classification against a setpoint
+that does not cover the task target must never satisfy it.
 
 The verdict and its setpoint travel together as `StallEvidence`, and
 `stallEvidenceCoversTarget` (`packages/shared-domain/src/idleClassificationCopy.ts`) is the one
@@ -450,11 +450,12 @@ as an in-page route off `index.html`.):
 - The recorder observes the diagnostic stream once per plan cycle. It starts an in-progress
   record on the first plannable diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
   progress + planning flags each cycle, and stamps `metAtMs` while the status is `satisfied`.
-  If progress drops below the target again before the deadline, the recorder clears that live
+  If progress moves away from the target before the deadline, the recorder clears that live
   satisfied marker and continues tracking; a later recovered `satisfied` status stamps the later
   met time.
-- A run is finalized as `met` when the latest trustworthy progress at finalization is at or
-  above the target, `missed` when the deadline passed below target, `abandoned` when the user
+- A run is finalized as `met` when the latest trustworthy progress at finalization has reached
+  the target in its progress direction, `missed` when the deadline passed short of the target,
+  `abandoned` when the user
   clears the objective (or when the diagnostic stops appearing for >1 hour with the deadline
   still in the future), `replaced` when the user picks a new deadline or changes the target
   value on the same deadline, and `unknown` when there's not enough fresh input to classify.
@@ -640,10 +641,11 @@ deadline can be met. The EV settings bridge started from that foundation: it use
 kWh-per-percent to calculate required energy. EV admission and pause/resume actuation have since
 shipped (see `notes/ev-ready-by/README.md`).
 
-For temperature devices, the useful learned unit is energy per degree:
+For temperature devices, the useful learned unit is energy per degree of movement toward the
+task target:
 
 ```text
-kWh per 1 C temperature increase
+kWh per 1 C temperature change in the resolved direction
 ```
 
 For EVs, the equivalent is energy per percent:
@@ -657,7 +659,7 @@ sample per device, not raw history. The profile should carry confidence and prov
 must remain diagnostic until enough valid observations exist to support planner decisions.
 
 Temperature-device profiling should not require tank volume or static thermal capacity. Real
-devices may change mode, set temperature, usable capacity, and heat-loss behavior. Until a native
+devices may change mode, set temperature, usable capacity, and heat-transfer behavior. Until a native
 adapter or user setting supplies trusted capacity facts, PELS should learn from observed
 temperature changes and credible energy evidence instead.
 
@@ -692,13 +694,18 @@ Those may exist internally or diagnostically, but users will expect "hit tempera
 
 ### Thermal Energy Semantics
 
-Shipped v1 uses a learned `kWhPerUnit` (kWh per 1°C) multiplied by the remaining `ΔT` to derive
-`energyNeededKWh`. The profile learns from observed temperature rises with credible energy
-evidence (`lib/objectives/profiles.ts`). There is no anchored "baseline temperature" in the
-shipped path — the profile is unit-rate based and `ΔT` carries the rest:
+Shipped v1 uses a learned `kWhPerUnit` (kWh per 1°C) multiplied by the remaining temperature
+gap in the device's progress direction to derive `energyNeededKWh`. The profile learns from
+temperature movement toward the task target with credible energy evidence
+(`lib/objectives/profiles.ts`), keeping heating and cooling rates separate. There is no anchored
+"baseline temperature" in the shipped path — the profile is unit-rate based and the directional
+temperature gap carries the rest:
 
 ```ts
-energyNeededKwh = Math.max(0, kWhPerUnit.mean * (targetTemperatureC - currentTemperatureC));
+remainingDegrees = progressDirection === 'increasing'
+  ? Math.max(0, targetTemperatureC - currentTemperatureC)
+  : Math.max(0, currentTemperatureC - targetTemperatureC);
+energyNeededKwh = kWhPerUnit.mean * remainingDegrees;
 ```
 
 This is intentionally simpler than the tank-volume / baseline-temperature math required for
@@ -851,7 +858,7 @@ Shipped v1 uses a single path:
 energyNeededKwh = Math.max(0, kWhPerUnit.mean * remainingUnits);
 ```
 
-where `remainingUnits` is `(targetTemperatureC - currentTemperatureC)` for thermal or
+where `remainingUnits` is the temperature gap in the device's progress direction for thermal or
 `(targetPercent - currentPercent)` for EV. The `kWhPerUnit` value comes from the learned
 profile, or for EV from the conservative bootstrap (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`)
 until learning matures. Source: `lib/objectives/deferredObjectives/profileEnergyResolution.ts`.
@@ -962,9 +969,10 @@ The shipped status values on the diagnostic
 - `cannot_meet` — even using the reserve hour at the highest allowed hard-cap-safe
   behavior cannot plausibly meet the target before the deadline. (`hard-cap-safe` here
   means within the physical capacity hard cap.)
-- `satisfied` — current progress is at or above target, or target-matched observer evidence says
-  the device has settled at its own thermostat/cap. Live; if a later reading drops below target
-  without applicable stall evidence, the next cycle returns to one of the values above.
+- `satisfied` — current progress has reached the target in its progress direction, or
+  target-matched observer evidence says the device has settled at its own thermostat/cap. Live;
+  if a later reading moves away from target without applicable stall evidence, the next cycle
+  returns to one of the values above.
 
 Live diagnostic status transitions still publish immediately on change (no hysteresis) for
 runtime lifecycle/debug handling. Public Flow/UI status is read from the active-plan record's

@@ -50,10 +50,12 @@ injected seam — never by importing this module (whole-module ban enforced by `
   bad window, it defers it into the next one, where the two add up and can land inside the band.
   The disposition rides on the rejection (`ProfileSampleRejection.openWindow`); decide it where the
   reason is decided, never as a list of reason strings matched at the far end.
-- **Read producer-resolved bits off `ObjectiveDeviceInput`, never raw observed state.** The input is
-  satisfied by `PlanInputDevice` through width-subtyping with no adapter, so when the producer stops
-  emitting a field this type declares as optional, the assignment still compiles and the field reads
-  `undefined` forever. `evChargingState` failed exactly this way: `toPlanDevice` strips it, the two
+- **Read producer-resolved bits off `ObjectiveDeviceInput`, never raw observed state.** The
+  objective boundary selects metered planner devices and adds observer-resolved thermal direction
+  through an injected reader; objectives does not import `lib/observer`. Source planner devices do
+  not satisfy the input contract by width-subtyping, so when the producer stops emitting a field
+  this type declares as optional, the assignment still compiles and the field reads `undefined`
+  forever. `evChargingState` failed exactly this way: `toPlanDevice` strips it, the two
   `isEvSessionInactive(device.evChargingState)` reads here were dead for months, and an unplugged
   charger was reported as `objective_progress_stale` — a reading problem — for entire task windows
   while `objective_invalid_session` was never emitted once. Ask `objectiveSessionInactive`,

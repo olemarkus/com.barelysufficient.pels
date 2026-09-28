@@ -318,6 +318,52 @@ describe('resolveHistoryDetailChartData', () => {
     });
   });
 
+  describe('direction-aware temperature trajectories', () => {
+    it('integrates a cooling revision down to its target', () => {
+      const snapshot = buildSnapshot({
+        progressDirection: 'decreasing',
+        hours: [
+          { startsAtMs: START_MS, plannedKWh: 5 },
+          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 5 },
+        ],
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        progressDirection: 'decreasing',
+        targetTemperatureC: 40,
+        startProgressC: 65,
+        originalPlan: snapshot,
+        finalPlan: snapshot,
+        progressSamples: [
+          { atMs: START_MS, valueC: 65, valuePercent: null },
+          { atMs: START_MS + HOUR_MS, valueC: 55, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      const values = data.plannedOriginal.map(observedPointValue);
+      expect(values).toEqual([65, 55, 45, 40]);
+      expect(values.every((value, index) => index === 0 || value <= values[index - 1]!)).toBe(true);
+    });
+
+    it('keeps measured progress but omits a planned line when direction is unknown', () => {
+      const snapshot = buildSnapshot({ progressDirection: 'unknown' });
+      const entry = buildEntry({
+        progressDirection: 'unknown',
+        originalPlan: snapshot,
+        finalPlan: snapshot,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: START_MS + HOUR_MS, valueC: 53, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('trajectory');
+      expect(data.plannedOriginal).toEqual([]);
+      expect(data.observed).toHaveLength(2);
+    });
+  });
+
   describe('plannedFinal overlay', () => {
     it('omits plannedFinal when the original and final staircases are identical', () => {
       const snapshot = buildSnapshot();
@@ -915,7 +961,7 @@ describe('resolveHistoryDetailChartData', () => {
 // shipped strings so a copy tweak surfaces here rather than silently in the UI.
 describe('historyDetailChartLabels', () => {
   it('exposes every expected key', () => {
-    const labels = historyDetailChartLabels('trajectory', 'temperature');
+    const labels = historyDetailChartLabels('trajectory', 'temperature', 'increasing');
     expect(Object.keys(labels).sort()).toEqual([
       'cardTitle',
       'collapseToggleLabel',
@@ -928,29 +974,33 @@ describe('historyDetailChartLabels', () => {
   });
 
   it('returns the kind-aware question title with no fallback note in trajectory mode', () => {
-    expect(historyDetailChartLabels('trajectory', 'temperature').cardTitle)
+    expect(historyDetailChartLabels('trajectory', 'temperature', 'increasing').cardTitle)
       .toBe('Did it heat up as planned?');
-    expect(historyDetailChartLabels('trajectory', 'ev_soc').cardTitle)
+    expect(historyDetailChartLabels('trajectory', 'temperature', 'decreasing').cardTitle)
+      .toBe('Did it cool down as planned?');
+    expect(historyDetailChartLabels('trajectory', 'temperature', 'unknown').cardTitle)
+      .toBe('Did it change temperature as planned?');
+    expect(historyDetailChartLabels('trajectory', 'ev_soc', 'increasing').cardTitle)
       .toBe('Did it charge as planned?');
-    expect(historyDetailChartLabels('trajectory', 'temperature').fallbackNote).toBeNull();
+    expect(historyDetailChartLabels('trajectory', 'temperature', 'increasing').fallbackNote).toBeNull();
   });
 
   it('surfaces the absent-observations caption in trajectory mode when no measured series draws', () => {
-    const labels = historyDetailChartLabels('trajectory', 'temperature', false);
+    const labels = historyDetailChartLabels('trajectory', 'temperature', 'increasing', false);
     expect(labels.cardTitle).toBe('Did it heat up as planned?');
     expect(labels.fallbackNote).toBe('Schedule only — observations not recorded for this run.');
   });
 
   it('returns the legacy card title + fallback note in legacy_kwh mode (kind-agnostic)', () => {
     for (const kind of ['temperature', 'ev_soc'] as const) {
-      const labels = historyDetailChartLabels('legacy_kwh', kind);
+      const labels = historyDetailChartLabels('legacy_kwh', kind, 'increasing');
       expect(labels.cardTitle).toBe('Scheduled vs observed');
       expect(labels.fallbackNote).toBe('Schedule only — observations not recorded for this run.');
     }
   });
 
   it('composes the aria-label with the caller-supplied name', () => {
-    const labels = historyDetailChartLabels('trajectory', 'temperature');
+    const labels = historyDetailChartLabels('trajectory', 'temperature', 'increasing');
     expect(labels.formatTrajectoryAriaLabel('Connected 300')).toBe('Progress trajectory for Connected 300');
     // Caller-resolved fallback: the view passes `'this smart task'` when no
     // device name is recorded — shared-domain just templates whatever string

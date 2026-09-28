@@ -3,20 +3,25 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { buildObjectiveSignature } from './activePlanSignature';
+import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 
 export type ResolvedActiveCommittedPlan = {
   commitmentHours: DeferredObjectiveActivePlanHourV1[];
   latest: DeferredObjectiveActivePlanRevisionV1;
 };
 
-const objectiveSignatureFor = (objective: DeferredObjectiveSettingsEntry): string => buildObjectiveSignature({
+const objectiveSignatureFor = (
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+): string => buildObjectiveSignature({
   objectiveKind: objective.kind,
   targetTemperatureC: objective.kind === 'temperature' ? objective.targetTemperatureC : null,
   targetPercent: objective.kind === 'ev_soc' ? objective.targetPercent : null,
   deadlineAtMs: objective.deadlineAtMs,
   enforcement: objective.enforcement,
+  progressDirection,
   rescue: objective.rescue,
 });
 
@@ -28,12 +33,16 @@ export const resolveActiveCommittedPlan = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
+  progressDirection: ObjectiveProgressDirectionRead;
 }): ResolvedActiveCommittedPlan | undefined => {
   const plan = params.activePlans?.plansByDeviceId[params.deviceId];
   if (!plan || plan.pending || !plan.commitment || plan.latest == null) return undefined;
   if (plan.deadlineAtMs !== params.objective.deadlineAtMs) return undefined;
   if (plan.objectiveKind !== params.objective.kind) return undefined;
-  if (plan.objectiveSignature !== objectiveSignatureFor(params.objective)) return undefined;
+  if (compareObjectiveSignatures(
+    plan.objectiveSignature,
+    objectiveSignatureFor(params.objective, params.progressDirection),
+  ).changed) return undefined;
   return {
     commitmentHours: plan.commitment.hours,
     latest: plan.latest,
@@ -52,6 +61,7 @@ export const resolveCommittedHours = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
+  progressDirection: ObjectiveProgressDirectionRead;
 }): DeferredObjectiveActivePlanHourV1[] | undefined => (
   resolveActiveCommittedPlan(params)?.commitmentHours
 );

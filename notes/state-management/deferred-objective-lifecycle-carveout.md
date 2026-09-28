@@ -170,10 +170,11 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs`, later 
 1b. **Shipped (`fix/device-control-intent`, PR #1296):** the `shedDecidedMs` marker-ownership
    decomposition.
 2. **PR-A — device input contract.** Narrow `ObjectiveDeviceInput` read contract in
-   `lib/objectives/types.ts` (replaces the 7 `PlanInputDevice` imports). `PlanInputDevice` stays
-   structurally assignable, so no runtime adapter — the planner passes its device list straight
-   through. Behavior-neutral; no move. Lands the design note + the tracked `no-plan-to-smarttasks`
-   dep-cruiser rule (`warn`) so the debt is visible.
+   `lib/objectives/types.ts` (replaces the 7 `PlanInputDevice` imports). At introduction,
+   `PlanInputDevice` was structurally assignable and passed through directly; the cooling-direction
+   fix later added an objective-boundary adapter that selects metered devices and attaches the
+   observer-resolved direction. No peer import was introduced. Lands the design note + the tracked
+   `no-plan-to-smarttasks` dep-cruiser rule (`warn`) so the debt is visible.
 2b. **PR-A2 — DailyBudget-payload hoist.** Move `DailyBudgetUiPayload` / `DailyBudgetDayPayload`
    (+ their type closure) to `packages/contracts`, re-export from `lib/dailyBudget/dailyBudgetTypes`
    (keeps the other ~33 consumers untouched), repoint the 4 producer files. After A + A2,

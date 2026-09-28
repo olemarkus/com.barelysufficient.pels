@@ -101,6 +101,7 @@ const diagnosticFor = (
   objectiveId: `${DEVICE_ID}:temperature`,
   actuationSatisfied: plan.status === 'satisfied',
   objectiveKind: 'temperature',
+  progressDirection: 'increasing',
   enforcement: 'soft',
   trajectory: { kind: 'resolved', status: plan.status },
   reasonCode: plan.statusDetail,
@@ -155,6 +156,7 @@ const runCycle = (params: {
   // future, exactly as `diagnosticsBridge` does in production.
   const ahead = isAheadOfHourMilestone({
     energyNeededKWh: params.energyNeededKWh,
+      progressDirection: 'increasing',
     committedHours,
     nowMs,
   });

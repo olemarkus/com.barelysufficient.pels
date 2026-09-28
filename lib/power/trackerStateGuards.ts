@@ -121,6 +121,10 @@ const isObjectiveProfileConfidence = (value: unknown): boolean => (
   value === 'low' || value === 'medium' || value === 'high'
 );
 
+const isObjectiveProfileProgressDirection = (value: unknown): boolean => (
+  value === 'increasing' || value === 'decreasing'
+);
+
 const isObjectiveProfileStat = (value: unknown): boolean => (
   isPlainObjectRecord(value)
   && isFiniteNumber(value.sampleCount)
@@ -136,6 +140,7 @@ const isObjectiveProfileSample = (value: unknown): boolean => (
   isPlainObjectRecord(value)
   && isFiniteNumber(value.observedAtMs)
   && isFiniteNumber(value.value)
+  && isOptional(value.progressDirection, isObjectiveProfileProgressDirection)
   && isOptionalFiniteNumber(value.crediblePowerW)
 );
 
@@ -144,6 +149,7 @@ const isObjectiveProfileObservation = (value: unknown): boolean => (
   && isFiniteNumber(value.observedAtMs)
   && isFiniteNumber(value.inputValue)
   && isFiniteNumber(value.kwhPerUnit)
+  && isOptional(value.progressDirection, isObjectiveProfileProgressDirection)
   && isOptionalFiniteNumber(value.outdoorTemperatureC)
 );
 

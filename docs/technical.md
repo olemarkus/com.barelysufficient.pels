@@ -317,6 +317,8 @@ A reversible unit — an air conditioner or a heat pump that also cools — has 
 
 PELS reads which way the device is running from the device itself (its `thermostat_mode` capability) and applies the matching limit. A device that does not report a mode — a water heater, a radiator, floor heating — is treated as heating and only ever has the one limit.
 
+Smart tasks measure temperature progress in the same direction: with an explicit cooling mode, the room must cool to reach its target; heating devices move toward the target as they warm. A device that does not report a mode, or reports `auto`, is treated as heating.
+
 Caveats, in the order they tend to matter:
 
 - **The cooling limit starts at 28 °C.** PELS fills it in alongside the heating limit, so a reversible unit is limited from its first peak rather than left running; change it to suit the room. It is used only while the device reports that it is cooling.
@@ -324,7 +326,6 @@ Caveats, in the order they tend to matter:
 - **`auto` mode is treated as heating.** A unit in `auto` may be cooling, but the mode alone cannot say, and PELS does not guess from the room temperature: the guess would flip every time the setpoint moved. A unit in `auto` that is actually cooling can be made to work *harder* by a heating limit, so do not leave limiting by temperature on for it: set its mode explicitly — cooling for the summer, heating for the winter — or have PELS limit it without changing its temperature, by turning it off or stepping it down instead.
 - **Both limits stay in force under "Save as current mode target".** That policy switches off the price and solar offsets, not power limiting. If the device's temperature is changed outside PELS *while PELS is limiting its temperature*, that change is not saved as the mode's target — it is treated like any other outside change, and PELS brings the device back to its limit. A change made at any other time — including while PELS has the device turned off — is saved as usual.
 - **"Keep the new temperature" still means no setpoint writes at all.** PELS limits such a device only by turning it off, or by stepping it down if it has power levels.
-- **Smart tasks still assume heating.** A Smart task measures progress as if the device were a heater, so on a cooling unit it can decide the task is already done. Leave Smart tasks off on a cooling device. The price-based shift and "Use solar surplus" both follow the device's mode.
 
 ### Available-Power Check For Devices With Power-Limit Control
 

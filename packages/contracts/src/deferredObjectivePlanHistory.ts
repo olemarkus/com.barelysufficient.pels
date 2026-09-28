@@ -60,6 +60,9 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   energyNeededKWh: number;
   planStatus: DeferredObjectiveActivePlanStatusV1;
   revisedAtMs: number;
+  // Direction for the temperature progress axis used by this revision. Older
+  // heating-only snapshots omit it and resolve to `increasing` at the consumer.
+  progressDirection?: 'increasing' | 'decreasing' | 'unknown';
   // Effective kWh-per-unit the planner used when this revision was written.
   // Captures `kwhPerUnitProvenance.kWhPerUnit` from the active plan at
   // snapshot time so the history detail page can render the planned
@@ -220,6 +223,9 @@ export type DeferredObjectivePlanHistoryEntry = {
   deviceId: string;
   deviceName: string | null;
   objectiveKind: 'temperature' | 'ev_soc';
+  // Final resolved direction for this run. Missing only on historical heating-
+  // only entries; explicit `unknown` is a current observation state.
+  progressDirection?: 'increasing' | 'decreasing' | 'unknown';
   targetTemperatureC: number | null;
   targetPercent: number | null;
   deadlineAtMs: number;
@@ -394,6 +400,7 @@ export type DeferredObjectivePlanHistoryRecord = Omit<
 export type ResolvedDeferredObjectivePlanHistoryEntry = DeferredObjectivePlanHistoryRecord & {
   deviceName: string;
   objectiveKind: 'temperature' | 'ev_soc';
+  progressDirection: 'increasing' | 'decreasing' | 'unknown';
 };
 
 export type DeferredObjectivePlanHistoryV4 = {

@@ -88,6 +88,10 @@ const isPlanStatus = (value: unknown): value is DeferredObjectiveActivePlanStatu
     || value === 'satisfied'
 );
 
+const isProgressDirection = (value: unknown): boolean => (
+  value === 'increasing' || value === 'decreasing' || value === 'unknown'
+);
+
 const isPlanHour = (value: unknown): value is DeferredObjectiveActivePlanHourV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -103,6 +107,7 @@ const isRevisionSnapshot = (
   if (!isFiniteNumber(v.energyNeededKWh)) return false;
   if (!isPlanStatus(v.planStatus)) return false;
   if (!isFiniteNumber(v.revisedAtMs)) return false;
+  if (v.progressDirection !== undefined && !isProgressDirection(v.progressDirection)) return false;
   // `kwhPerUnitMean` added in v4. Optional — absence is the legacy shape.
   // When present it must be a finite positive number (kWh/°C or kWh/%);
   // anything else means the persisted snapshot was tampered with so drop it.
@@ -246,6 +251,7 @@ const hasValidCostFields = (v: Record<string, unknown>): boolean => {
 };
 
 const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
+  if (v.progressDirection !== undefined && !isProgressDirection(v.progressDirection)) return false;
   if (v.progressSamples !== undefined
     && (!Array.isArray(v.progressSamples) || !v.progressSamples.every(isProgressSample))) return false;
   if (!hasValidCostFields(v)) return false;
@@ -364,6 +370,7 @@ const hasValidRecordProgress = (v: Record<string, unknown>): boolean => (
 
 const hasValidRecordExtensions = (v: Record<string, unknown>): boolean => (
   hasValidCostFields(v)
+    && (v.progressDirection === undefined || isProgressDirection(v.progressDirection))
     && (v.revisions === undefined
       || (Array.isArray(v.revisions) && v.revisions.every(isRevisionLogEntry)))
     && (v.hourlyContributions === undefined

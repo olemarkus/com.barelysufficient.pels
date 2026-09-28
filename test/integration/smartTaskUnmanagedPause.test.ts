@@ -56,7 +56,7 @@ const heaterEntry: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: DEADLINE_MS,
 };
 
-const buildHeaterDevice = (id: string): MeteredPlanInputDevice => withTemperatureDiscriminant(
+const buildHeaterDevice = (id: string): MeteredPlanInputDevice & { thermalDirection: 'heating' } => withTemperatureDiscriminant(
   withBinaryDiscriminant(withFixtureResidualKw({
     control: fixtureControlPosture({ controllable: true }),
     available: true,
@@ -78,11 +78,12 @@ const buildHeaterDevice = (id: string): MeteredPlanInputDevice => withTemperatur
     controlCapabilityId: 'onoff' as const,
     currentTemperature: 40,
     lastFreshDataMs: NOW_MS,
+    thermalDirection: 'heating',
   })),
-) as MeteredPlanInputDevice;
+) as MeteredPlanInputDevice & { thermalDirection: 'heating' };
 
 const buildDiagnosticsParams = (overrides: {
-  devices: MeteredPlanInputDevice[];
+  devices: Array<MeteredPlanInputDevice & { thermalDirection: 'heating' }>;
   deviceIds?: string[];
   resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 }) => ({

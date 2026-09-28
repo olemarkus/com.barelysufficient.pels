@@ -6,7 +6,8 @@ import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { selectObjectiveDevices, type ObjectiveDeviceSource } from '../types';
+import { resolveObjectiveDeviceInputs, type ObjectiveDeviceSource } from '../types';
+import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   buildDeferredObjectiveDiagnostics,
@@ -60,6 +61,7 @@ import { PriorityAllocationTracker } from './priorityAllocation';
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
 export type DeferredObjectiveLifecycleEmitterDeps = {
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
   getTimeZone: () => string;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
@@ -158,7 +160,7 @@ export class DeferredObjectiveLifecycleEmitter {
     // history record). The read itself is in-memory (no SDK call).
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
-    const devices = selectObjectiveDevices(this.deps.getDevices());
+    const devices = resolveObjectiveDeviceInputs(this.deps.getDevices(), this.deps.getThermalDirection);
     // Resolve the user-facing status to `satisfied` for parked/stalled devices
     // so the status chip, notifications, Flows (active-plan recorder) and the
     // postmortem all agree. The decoration/actuation path builds its own

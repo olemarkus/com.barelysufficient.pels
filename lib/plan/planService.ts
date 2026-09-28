@@ -56,7 +56,7 @@ import {
   type IdleClassifier,
   type IdleClassifierDeviceInput,
 } from '../observer/idleClassifier';
-import type { StallEvidence } from '../../packages/shared-domain/src/idleClassificationCopy';
+import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';

@@ -103,6 +103,7 @@ const diagnosticFor = (
   objectiveId: `${DEVICE_ID}:temperature`,
   actuationSatisfied: plan.status === 'satisfied',
   objectiveKind: 'temperature',
+  progressDirection: 'increasing',
   enforcement: 'soft',
   trajectory: { kind: 'resolved', status: plan.status },
   reasonCode: plan.statusDetail,
@@ -166,6 +167,7 @@ const runSimulation = (params: {
       activePlans: recorder.getActivePlansSnapshot(),
       deviceId: DEVICE_ID,
       objective: settingsEntry(deadlineAtMs),
+      progressDirection: 'increasing',
     });
     const plan = planDeferredObjectiveHorizon({
       nowMs,
@@ -181,6 +183,7 @@ const runSimulation = (params: {
       activePlans: recorder.getActivePlansSnapshot(),
       deviceId: DEVICE_ID,
       objective: settingsEntry(deadlineAtMs),
+      progressDirection: 'increasing',
     }) ?? [];
     records.push({
       hourIndex,

@@ -2,6 +2,7 @@ import type { ObjectiveSampleDevice } from './samples';
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
+  ObjectiveProgressDirection,
 } from './types';
 import type { PowerTrackerState } from '../power/trackerTypes';
 import { shouldEmitRejectedProfileSample } from './rejectionLogging';
@@ -30,12 +31,12 @@ export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
-// One rise floor and one rate ceiling, on the value's own scale — this layer has
+// One progress floor and one rate ceiling, on the value's own scale — this layer has
 // no unit to pick between. The energy side has no constant here at all: what a
 // window may cost per unit is the device's own learned band (`energyBand.ts`),
 // because one fleet-wide number cannot tell a tank's ordinary heating from its
 // refill and calls both plausible.
-const MIN_VALUE_RISE = 0.2;
+const MIN_VALUE_PROGRESS = 0.2;
 const MAX_UNIT_PER_HOUR = 100;
 
 export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) => void;
@@ -152,6 +153,18 @@ export function updateDeviceObjectiveProfile(params: {
   if (!previous) return buildInitialProfile(sample);
 
   const previousSample = previous.lastSample;
+  if (resolveSampleProgressDirection(previousSample) !== resolveSampleProgressDirection(sample)) {
+    // A mode switch changes which way temperature movement represents progress.
+    // Do not bill one window across both modes or judge its rate against the
+    // other mode's history; start a clean baseline at the first new-mode sample.
+    return {
+      ...previous,
+      updatedAtMs: sample.observedAtMs,
+      lastSample: sample,
+      ...CLEARED_ENERGY_ACCUMULATOR,
+      baselineMidStep: undefined,
+    };
+  }
   // The quantity is a level that holds until it changes, so a sample with the
   // same value is not an observation to judge. It only moves the energy window
   // onto a changed draw; an unchanged draw bills the same either way, so the
@@ -165,7 +178,7 @@ export function updateDeviceObjectiveProfile(params: {
   const valueDelta = getProfileValueDelta(previousSample, sample);
 
   // A mid-step baseline cannot open a window (`baselineMidStep`): the first
-  // change after it is where one can start, not a rise to bill. Ahead of the
+  // change after it is where one can start, not a progress step to bill. Ahead of the
   // interval checks on purpose — a change that lands too soon to bill is still
   // the step edge, and holding the baseline past it until the minimum interval
   // re-anchors a later, mid-step moment instead.
@@ -205,19 +218,21 @@ export function updateDeviceObjectiveProfile(params: {
   // and the recorded value rest on the same figure.
   const windowEnergyKwh = calculateWindowEnergyKwh(previous, sample);
 
+  const progressDirection = resolveSampleProgressDirection(sample);
   const rejection = resolveProfileValueOrEnergyRejection(
     previous,
     sample.observedAtMs,
     intervalMs,
     valueDelta,
     windowEnergyKwh,
+    progressDirection,
   );
-  // `rise_too_small` is the documented poisoning vector: a still-powered sample
-  // whose value barely moved. Instead of discarding it (which billed the eventual
-  // accepted rise at a single baseline power), close its sub-interval into the
-  // accumulator and keep the baseline so the next real rise integrates the true
+  // `progress_too_small` is the documented poisoning vector: a still-powered
+  // sample whose value barely moved. Instead of discarding it, close its
+  // sub-interval into the accumulator and keep the baseline so the next real
+  // progress step integrates the true
   // per-step power profile.
-  if (rejection?.reason === 'objective_profile_rise_too_small') {
+  if (rejection?.reason === 'objective_profile_progress_too_small') {
     emitRejectedProfileSample({
       deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection,
     });
@@ -254,8 +269,8 @@ export function updateDeviceObjectiveProfile(params: {
 
 // Close the open sub-interval at its left-edge power into `pendingEnergyKWh`,
 // advance the sub-interval pointer to this sample, and keep the baseline
-// (`lastSample`) so the value delta still measures the full rise. Runs for a
-// draw change at an unchanged value, and for a `rise_too_small` skip.
+// (`lastSample`) so the value delta still measures the full progress. Runs for
+// a draw change at an unchanged value, and for a `progress_too_small` skip.
 // A sub-interval whose left-edge power is absent or non-positive is thermally
 // contaminated (the device coasted, not heated electrically) — discard the
 // partial window and reset the baseline to this sample instead of averaging
@@ -318,7 +333,7 @@ function buildAcceptedProfileSample(params: {
     // `kwhPerUnit` arrives inside the update, derived from the same buffer the
     // bands are fitted from, rather than accumulated separately here.
     ...learnedRateUpdate,
-    // The accepted rise closes the window; the next sample starts a fresh one
+    // The accepted progress closes the window; the next sample starts a fresh one
     // measured from this baseline.
     ...CLEARED_ENERGY_ACCUMULATOR,
     baselineMidStep: undefined,
@@ -435,9 +450,10 @@ function resolveProfileValueOrEnergyRejection(
   intervalMs: number,
   valueDelta: number,
   windowEnergyKwh: number | undefined,
+  progressDirection: ObjectiveProgressDirection,
 ): ProfileSampleRejection | null {
   return resolveProfileValueRejection(intervalMs, valueDelta)
-    ?? resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh);
+    ?? resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh, progressDirection);
 }
 
 function resolveProfileIntervalRejection(params: {
@@ -465,14 +481,13 @@ function resolveProfileValueRejection(
   intervalMs: number,
   valueDelta: number,
 ): ProfileSampleRejection | null {
-  if (valueDelta < MIN_VALUE_RISE) {
-    // A rise too small to bill keeps the window: the caller banks its
-    // sub-interval into the accumulator instead (`accrueSubIntervalSkip`), which
-    // is the whole point of that path. A fall voids it — the next accepted rise
-    // must be measured against the new low, not a stale pre-drop value.
+  if (valueDelta < MIN_VALUE_PROGRESS) {
+    // A small positive move keeps the window: the caller banks its sub-interval
+    // into the accumulator. A move against the resolved direction voids it, so
+    // the next accepted sample starts from the new baseline.
     return valueDelta >= 0
-      ? { reason: 'objective_profile_rise_too_small', openWindow: 'keep' }
-      : { reason: 'objective_profile_value_fell', openWindow: 'void' };
+      ? { reason: 'objective_profile_progress_too_small', openWindow: 'keep' }
+      : { reason: 'objective_profile_value_moved_against_direction', openWindow: 'void' };
   }
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   if (!Number.isFinite(unitPerHour) || unitPerHour <= 0 || unitPerHour > MAX_UNIT_PER_HOUR) {
@@ -487,8 +502,8 @@ function resolveProfileValueRejection(
 /**
  * The one contamination test. A window that cost far more or far less energy per
  * unit than this device has ever needed did not measure ordinary operation — a
- * tank refilling with cold water, a charge report that stepped, a room bleeding
- * heat out of an open door — and folding it in poisons every smart task sized
+ * tank refilling with cold water, a charge report that stepped, or a thermostat
+ * fighting an open door — and folding it in poisons every smart task sized
  * from the rate afterwards. The verdict is the device's own band; no cause is
  * diagnosed and none needs to be. `energyBand.ts` carries the reasoning.
  */
@@ -497,13 +512,14 @@ function resolveProfileEnergyRejection(
   observedAtMs: number,
   valueDelta: number,
   windowEnergyKwh: number | undefined,
+  progressDirection: ObjectiveProgressDirection,
 ): ProfileSampleRejection | null {
   // No credible power across the window (device idle / coasting) → no energy
-  // estimate to range-check; the sample can still be accepted on its value rise
+  // estimate to range-check; the sample can still be accepted on progress
   // and simply contributes no `kwhPerUnit`.
   if (windowEnergyKwh === undefined) return null;
   const kwhPerUnit = calculateKwhPerUnit({ energyKwh: windowEnergyKwh, valueDelta });
-  const band = resolveEnergyPerUnitBand(previous, observedAtMs);
+  const band = resolveEnergyPerUnitBand(previous, observedAtMs, progressDirection);
   if (
     !Number.isFinite(kwhPerUnit)
     || kwhPerUnit <= 0
@@ -525,9 +541,15 @@ function getProfileIntervalMs(prev: DeviceObjectiveProfileSample, s: DeviceObjec
   return s.observedAtMs - prev.observedAtMs;
 }
 
-function getProfileValueDelta(prev: DeviceObjectiveProfileSample, s: DeviceObjectiveProfileSample): number {
-  return s.value - prev.value;
+function getProfileValueDelta(prev: DeviceObjectiveProfileSample, sample: DeviceObjectiveProfileSample): number {
+  return resolveSampleProgressDirection(sample) === 'increasing'
+    ? sample.value - prev.value
+    : prev.value - sample.value;
 }
+
+const resolveSampleProgressDirection = (
+  sample: DeviceObjectiveProfileSample,
+): ObjectiveProgressDirection => sample.progressDirection ?? 'increasing';
 
 function calculateUnitPerHour(params: { intervalMs: number; valueDelta: number }): number {
   return params.valueDelta / (params.intervalMs / 3_600_000);
@@ -554,38 +576,51 @@ function resolveLearnedRateUpdate(params: {
 }): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands' | 'kwhPerUnit'>> {
   const { previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC } = params;
   if (kwhPerUnit === undefined) return {};
-  // Tag the sample by the midpoint of the rise so the band layout reflects
+  // Tag the sample by the midpoint of the change so the band layout reflects
   // where the energy was actually deposited, not just the end value.
   const inputValue = (previousSample.value + sample.value) / 2;
+  const progressDirection = resolveSampleProgressDirection(sample);
   const samples = appendSampleToBuffer(previous.samples, {
     observedAtMs: sample.observedAtMs,
     inputValue,
     kwhPerUnit,
+    progressDirection,
     ...(outdoorTemperatureC !== undefined ? { outdoorTemperatureC } : {}),
   });
-  const bands = fitBandsFromSamples({ samples });
+  const samplesInDirection = samples.filter(
+    (entry) => resolveObservationProgressDirection(entry) === progressDirection,
+  );
+  const bands = fitBandsFromSamples({ samples: samplesInDirection });
   // Explicit `bands: undefined` clears any prior layout if the fitter declines
   // to publish one (e.g., the buffer dipped under the split threshold). The
   // undefined key is dropped when the tracker store serialises the profiles.
-  return { samples, bands, kwhPerUnit: resolveKwhPerUnitStat(samples, sample.observedAtMs) };
+  return {
+    samples,
+    bands,
+    kwhPerUnit: resolveKwhPerUnitStat(samplesInDirection, sample.observedAtMs),
+  };
 }
+
+const resolveObservationProgressDirection = (
+  sample: { progressDirection?: ObjectiveProgressDirection },
+): ObjectiveProgressDirection => sample.progressDirection ?? 'increasing';
 
 /**
  * Whether the draw returning at `sample` leaves the baseline mid-step: the
- * device was paused part-way through a step it had risen onto, and the pause
+ * device was paused part-way through a step it had moved onto, and the pause
  * showed no change. Then the reset lands inside a reading the device had already
- * made progress through, and the first rise out of it would bill a whole step
+ * made progress through, and the first movement out of it would bill a whole step
  * for the part left. A battery holds its charge while paused, so this is the
  * progress made before every pause, lost each time: an EV paused and resumed 18
  * times in a day learned 0.108-0.28 kWh/% against a real ~1.4.
  *
  * Only that case. A reset after the value FELL, or after any baseline that was
- * not an accepted rise, keeps learning as it always has: a thermostat's first
- * rise after power-on carries the energy it spends warming up before the room
+ * not an accepted progress step, keeps learning as it always has: a thermostat's
+ * first movement after power-on carries the energy it spends before the room
  * responds, and production thermostat windows starting there learned higher
  * rates, not lower (2026-09-15..26), so discarding them would size a task that
- * starts from a cold room too small. The baseline is an accepted rise exactly
- * when the newest buffered observation was recorded at it; a pause that repeats
+ * starts from a cold room too small. The baseline is accepted at a progress step
+ * only when the newest buffered observation was recorded at it; a pause that repeats
  * before the next change stays mid-step.
  *
  * `undefined` rather than `false` for an anchored baseline, so the key drops

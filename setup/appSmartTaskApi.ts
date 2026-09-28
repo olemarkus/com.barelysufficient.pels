@@ -198,6 +198,7 @@ export class AppSmartTaskApi {
     return previewDeferredObjectivePlan({
       nowMs: this.ctx.getNow().getTime(),
       timeZone: this.ctx.getTimeZone(),
+      getThermalDirection: (id) => this.ctx.getThermalDirection(id),
       deviceId,
       candidate: gatedCandidate,
       // Converted through the same metered producer the plan cycle uses so

@@ -27,6 +27,7 @@ import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
+  | 'direction_unavailable'
   | 'already_satisfied';
 
 export type DeadlinePlanPendingReason =
@@ -1625,8 +1626,8 @@ export type DeadlineLabels = {
   // thermal instead of the planner-layer "Target progress".
   progressSeriesName: string;
   // Chart-tooltip word for idle (not-planned) hours. Planned hours are already
-  // identified by the device-series line ("Heating 2.0 kWh" / "Charging 2.0 kWh"),
-  // so only the idle case needs its own copy line.
+  // identified by the device-series line ("Heating 2.0 kWh", "Cooling 2.0 kWh",
+  // or "Charging 2.0 kWh"), so only the idle case needs its own copy line.
   planTooltipIdle: string;
   pendingHeroByReason: Record<DeadlinePlanPendingReason, DeadlinePendingCopyResolver>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
@@ -1696,6 +1697,7 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
   flow_card: 'Updated after a flow card fired',
   prices_arrived: 'Updated as prices became available',
   objective_changed: 'Updated after the target changed',
+  direction_changed: 'Updated after thermostat direction changed',
   // Only fires when the planner consumed a newer price horizon than the
   // previous revision. `schedule_revised` carries internal replans.
   prices_revised: 'Updated as new prices arrived',
@@ -1733,6 +1735,7 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
   schedule_revised: 'Schedule revised',
   rate_refined: 'Rate estimate refined',
   objective_changed: 'Smart task settings changed',
+  direction_changed: 'Thermostat direction changed',
   // Per `feedback_homey_sdk_unreliable.md`: a single SDK read miss triggers this
   // reason — the recorder doesn't witness a sustained "offline" state. Copy
   // names the *event the recorder saw* ("couldn't read"), not a state it
@@ -1973,7 +1976,9 @@ const deviceUnmanagedResolver: DeadlinePendingCopyResolver = (ctx) => ({
 // really are missing would be told PELS is working "from the prices it already
 // has", trading the price-wait overclaim this fix removes for its mirror image.
 // The first lifecycle tick states the real reason either way.
-const notYetPlannedCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
+type SmartTaskPlanNoun = 'heat plan' | 'cooling plan' | 'temperature plan' | 'charging plan';
+
+const notYetPlannedCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
     headline: 'Choosing the cheapest hours',
     body: `PELS is working out the ${kindNoun}. `
@@ -1983,7 +1988,7 @@ const notYetPlannedCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePen
   })
 );
 
-const awaitingHorizonCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
+const awaitingHorizonCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   (ctx) => {
     const isFlow = ctx.priceSource === 'external_flow';
     const body = isFlow
@@ -2012,7 +2017,7 @@ const deviceDataMissingResolver = (kind: {
   headline: string;
   body: string;
   readingNoun: 'current temperature' | 'state of charge';
-  fallbackDeviceNoun: 'the heater' | 'the EV';
+  fallbackDeviceNoun: 'the heater' | 'the cooling device' | 'this device' | 'the EV';
 }): DeadlinePendingCopyResolver => (ctx) => ({
   headline: kind.headline,
   body: kind.body,
@@ -2042,6 +2047,22 @@ const HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
     + 'from this heater before it can plan the smart task.',
   readingNoun: 'current temperature',
   fallbackDeviceNoun: 'the heater',
+});
+
+const COOLING_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+  headline: 'Waiting for a reading from the device',
+  body: 'PELS needs a current temperature, useful capacity, or a recent observation '
+    + 'from this cooling device before it can plan the smart task.',
+  readingNoun: 'current temperature',
+  fallbackDeviceNoun: 'the cooling device',
+});
+
+const TEMPERATURE_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+  headline: 'Waiting for a reading from the device',
+  body: 'PELS needs a current temperature, useful capacity, or a recent observation '
+    + 'from this device before it can plan the smart task.',
+  readingNoun: 'current temperature',
+  fallbackDeviceNoun: 'this device',
 });
 
 const EV_DEVICE_DATA_MISSING = deviceDataMissingResolver({
@@ -2121,6 +2142,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       no_current_reading: {
         headline: 'Waiting for the first temperature reading',
         body: 'The schedule will appear once the device reports its current temperature.',
+      },
+      direction_unavailable: {
+        headline: 'Waiting for thermostat mode',
+        body: 'PELS needs to know whether this thermostat is heating or cooling to interpret progress.',
       },
       already_satisfied: {
         headline: 'Satisfied',
@@ -2219,6 +2244,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         headline: 'Waiting for the first state-of-charge reading',
         body: 'The schedule will appear once the EV reports its current state of charge.',
       },
+      direction_unavailable: {
+        headline: 'Progress direction unavailable',
+        body: 'PELS could not resolve the EV charge direction.',
+      },
       already_satisfied: {
         headline: 'Satisfied',
         body: 'The EV is already at or above the smart task target. PELS will schedule it again '
@@ -2253,7 +2282,82 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   },
 };
 
-export const deadlineLabels = (kind: DeferredObjectiveSettingsKind): DeadlineLabels => DEADLINE_LABELS[kind];
+export const deadlineLabels = (
+  kind: DeferredObjectiveSettingsKind,
+  progressDirection: 'increasing' | 'decreasing' | 'unknown' = 'increasing',
+): DeadlineLabels => {
+  const labels = DEADLINE_LABELS[kind];
+  if (kind !== 'temperature') return labels;
+  if (progressDirection === 'unknown') {
+    return {
+      ...labels,
+      activeChipLabel: 'Temperature',
+      sectionLabel: 'Temperature smart task',
+      liveStateChipLabel: { ...labels.liveStateChipLabel, active: 'Temperature' },
+      deviceSeriesName: 'Temperature',
+      originalDeviceSeriesName: 'Original temperature',
+      actualDeviceSeriesName: 'Measured temperature',
+      pendingHeroByReason: {
+        ...labels.pendingHeroByReason,
+        not_yet_planned: notYetPlannedCopy('temperature plan'),
+        awaiting_horizon_plan: awaitingHorizonCopy('temperature plan'),
+        price_feature_disabled: () => ({
+          headline: 'Price-aware optimisation is off',
+          body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a temperature plan.',
+          headlineReason: 'Price-aware optimisation is off in Settings.',
+          recourse: { label: 'Open Settings', targetTab: 'settings' },
+        }),
+        device_data_missing: TEMPERATURE_DEVICE_DATA_MISSING,
+        invalid_session: TEMPERATURE_DEVICE_DATA_MISSING,
+      },
+      unavailableByReason: {
+        ...labels.unavailableByReason,
+        already_satisfied: {
+          headline: 'Satisfied',
+          body: 'The current temperature already meets the smart task target.',
+        },
+      },
+      cannotMeetShortfall: () => (
+        'Not enough time for this target. Choose a temperature target closer to the current temperature '
+          + 'or move the deadline.'
+      ),
+    };
+  }
+  if (progressDirection !== 'decreasing') return labels;
+  return {
+    ...labels,
+    activeChipLabel: 'Cooling',
+    sectionLabel: 'Cooling smart task',
+    liveStateChipLabel: { ...labels.liveStateChipLabel, active: 'Cooling' },
+    deviceSeriesName: 'Cooling',
+    originalDeviceSeriesName: 'Original Cooling',
+    actualDeviceSeriesName: 'Measured Cooling',
+    pendingHeroByReason: {
+      ...labels.pendingHeroByReason,
+      not_yet_planned: notYetPlannedCopy('cooling plan'),
+      awaiting_horizon_plan: awaitingHorizonCopy('cooling plan'),
+      price_feature_disabled: () => ({
+        headline: 'Price-aware optimisation is off',
+        body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a cooling plan.',
+        headlineReason: 'Price-aware optimisation is off in Settings.',
+        recourse: { label: 'Open Settings', targetTab: 'settings' },
+      }),
+      device_data_missing: COOLING_DEVICE_DATA_MISSING,
+      invalid_session: COOLING_DEVICE_DATA_MISSING,
+    },
+    unavailableByReason: {
+      ...labels.unavailableByReason,
+      already_satisfied: {
+        headline: 'Satisfied',
+        body: 'The current temperature already meets the smart task target. PELS will schedule it '
+          + 'again if the temperature rises above target.',
+      },
+    },
+    cannotMeetShortfall: () => (
+      'Not enough time for this target. Raise the temperature target or move the deadline.'
+    ),
+  };
+};
 
 // ─── EV device-card state lines ───────────────────────────────────────────────
 
@@ -2518,7 +2622,7 @@ export const formatCheapestHoursCaption = (params: {
 // (per `feedback_layering_resolution_in_producer.md`).
 
 // Card title for the schedule chart. Kind-agnostic — the kind verb lives on
-// the trajectory chart's labelled run band ("Heating"/"Charging" via
+// the trajectory chart's labelled run band ("Heating"/"Cooling"/"Charging" via
 // `deviceSeriesName`).
 export const SMART_TASK_SCHEDULE_CARD_TITLE = 'When will it run, and at what price?';
 
@@ -2566,16 +2670,16 @@ export const formatSmartTaskTargetLabel = (params: {
 // Primary line of the pinned hour readout under the schedule chart.
 // Shapes (all parts pre-resolved by the producer — locale time formatting and
 // price scaling never happen here):
-//   planned:            `13:00 · 0.62 kr/kWh · Heating 2.0 kWh planned`
+//   planned:            heating or cooling kWh planned
 //   planned + measured: `… planned · Measured 1.8 kWh`
-//   idle current hour:  `Now · 0.42 kr/kWh · Idle — heating starts 08:00`
+//   idle current hour:  `Now · 0.42 kr/kWh · Idle — {heating|cooling} starts 08:00`
 //   idle current hour, nothing scheduled: `Now · 0.42 kr/kWh · Idle`
 //   idle other hour:    `13:00 · 0.62 kr/kWh · Not scheduled`
 // The idle current hour must never claim the kind verb as active — the hero
-// already says when it starts, so the readout agrees ("Idle — heating starts
-// 08:00") instead of contradicting it. The third segment is capitalized like
-// its siblings ("Not scheduled", "Heating … planned"); the embedded kind verb
-// stays lowercase mid-sentence ("heating starts").
+// already says when it starts, so the readout agrees ("Idle — heating starts"
+// / "Idle — cooling starts") instead of contradicting it. The third segment is
+// capitalized like its siblings ("Not scheduled", "Heating/Cooling … planned");
+// the embedded kind verb stays lowercase mid-sentence ("heating starts").
 export const formatSmartTaskHourReadoutPrimary = (params: {
   timeLabel: string;
   priceLabel: string;

@@ -189,18 +189,20 @@ export type HistoryRunBand = { fromMs: number; toMs: number; label: string | nul
  * Labelled run bands for the history trajectory chart. The band geometry is
  * the chart payload's own producer-resolved `runBands` (final-preferred plan,
  * merged + window-clamped in `deferredPlanHistoryChartData.ts`) — this helper
- * only decorates the first band with the kind verb ("Heating" / "Charging"),
+ * only decorates the first band with the kind verb ("Heating" / "Cooling" / "Charging"),
  * same grammar as the live trajectory card. One semantic source: re-deriving
  * the spans from `finalPlan ?? originalPlan` here would let the labelled
  * bands drift from the widget/chart bands (review round 2 P2 #8).
  */
 export const resolveHistoryRunBands = (
-  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'objectiveKind'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'objectiveKind' | 'progressDirection'>,
   chartData: Pick<DeferredPlanHistoryChartData, 'runBands'>,
 ): HistoryRunBand[] => chartData.runBands.map((band, index) => ({
   fromMs: band.fromMs,
   toMs: band.toMs,
-  label: index === 0 ? deadlineLabels(entry.objectiveKind).deviceSeriesName : null,
+  label: index === 0
+    ? deadlineLabels(entry.objectiveKind, entry.progressDirection).deviceSeriesName
+    : null,
 }));
 
 // ─── Trajectory pinned readout ────────────────────────────────────────────────

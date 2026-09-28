@@ -642,33 +642,33 @@ reads the mode target being re-applied as a bug.
 
 ## Smart task vocabulary
 
-Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
+Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind, progressDirection)` rather than hardcoding strings. Temperature tasks use `increasing` for heating and `decreasing` for cooling; an unresolved direction uses neutral temperature wording, and legacy records without a direction retain the original heating wording. EV state of charge always increases.
 
-| Concept | Temperature device | EV-SoC device |
-|---|---|---|
-| Kind chip | `Temperature` | `EV` |
-| Hero section label (eyebrow — pending hero only) | `Heating smart task` | `EV smart task` |
-| Live state chip — active (pending hero only) | `Heating` | `Charging` |
-| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` |
-| Live state chip — plan ready, first hour later (list only) | `On track` | `On track` |
-| Live state chip — session ended (pending hero / list) | (n/a) | `Paused — unplugged` |
-| Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` |
-| Live state chip — on track, no active hour | `On track` | `On track` |
-| At-risk chip | `At risk` | `At risk` |
-| Cannot-finish chip | `Cannot finish` | `Cannot finish` |
-| Device load series (legend) | `Heating` | `Charging` |
-| Measured device series (legend) | `Measured Heating` | `Measured Charging` |
-| Background load series | `Background usage` | `Background usage` |
-| Progress series (legend) | `Temperature` | `Charge level` |
-| Active-hour tooltip word | `Heating` | `Charging` |
-| Target unit | `°C` | `%` |
-| Plan inputs card title | `What PELS has learned` | `What PELS has learned` |
+| Concept | Heating temperature task | Cooling temperature task | EV-SoC device |
+|---|---|---|---|
+| Kind chip | `Temperature` | `Temperature` | `EV` |
+| Hero section label (eyebrow — pending hero only) | `Heating smart task` | `Cooling smart task` | `EV smart task` |
+| Live state chip — active (pending hero only) | `Heating` | `Cooling` | `Charging` |
+| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` | `Building plan…` |
+| Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` |
+| Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` |
+| Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
+| Live state chip — on track, no active hour | `On track` | `On track` | `On track` |
+| At-risk chip | `At risk` | `At risk` | `At risk` |
+| Cannot-finish chip | `Cannot finish` | `Cannot finish` | `Cannot finish` |
+| Device load series (legend) | `Heating` | `Cooling` | `Charging` |
+| Measured device series (legend) | `Measured Heating` | `Measured Cooling` | `Measured Charging` |
+| Background load series | `Background usage` | `Background usage` | `Background usage` |
+| Progress series (legend) | `Temperature` | `Temperature` | `Charge level` |
+| Active-hour tooltip word | `Heating` | `Cooling` | `Charging` |
+| Target unit | `°C` | `°C` | `%` |
+| Plan inputs card title | `What PELS has learned` | `What PELS has learned` | `What PELS has learned` |
 
 The live deadline-plan hero shows only the kind chip plus a risk/failure chip
 (`At risk` or `Cannot finish`) and confidence as `Estimating` / `Refining` when
 learning is in progress, except on true cannot-finish heroes where the
 cannot-finish chip and reason own that row. The headline carries normal live
-state directly (`Heating from HH:MM`, `Charging now`, `On track — no action
+state directly (`Heating from HH:MM`, `Cooling from HH:MM`, `Charging now`, `On track — no action
 needed yet`), so a separate state chip duplicated information. The pending hero
 and the smart-task list still emit a state chip because there the state is the
 only available signal.
@@ -1015,8 +1015,8 @@ The live smart-task detail page renders two question-titled chart cards. All str
 - Time segment: `Now` for the current hour (canonical `NOW_MARKER_WORD`, also the axis label at the now column), else `HH:MM`.
 - Price segment: `0.62 kr/kWh` (two decimals, display-scaled unit).
 - Third segment, one of:
-  - `{Kind verb} N kWh planned` — planned hour (`Heating 2.0 kWh planned`), optionally suffixed `· Measured N kWh` when the tracker saw real energy that hour.
-  - `Idle — heating starts HH:MM` — idle current hour with a later run scheduled. Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
+  - `{Kind verb} N kWh planned` — planned hour (`Heating 2.0 kWh planned` / `Cooling 2.0 kWh planned`), optionally suffixed `· Measured N kWh` when the tracker saw real energy that hour.
+  - `Idle — {kind verb} starts HH:MM` — idle current hour with a later run scheduled (`heating` / `cooling`). Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
   - `Idle` — idle current hour, nothing scheduled.
   - `Not scheduled` — idle non-current hour.
 - Secondary line: at rest (no explicit selection) it is always the scrub hint `Drag across the chart to read any hour`; once the user actively selects an hour (including re-selecting Now) it shows that hour's revision-reason sentence (e.g. `Updated as new prices arrived`) when one exists, else the hint.
@@ -1026,7 +1026,7 @@ The live smart-task detail page renders two question-titled chart cards. All str
 - On-track: `{X} now · on track — projected ready ≈ {T}, {N} hours before the deadline` (full word `hours`, singular-aware `1 hour`; `just before the deadline` under one hour). The status word is the lowercase mid-sentence form of the chip vocabulary (`on track` / `at risk`); plan status `invalid` renders no status word at all.
 - Danger: `Projected {X} at the deadline · {Y} short` (e.g. `Projected 58.0 °C at the deadline · 7 °C short`). The shortfall amount label (`7 °C short` / `12% short`) is shared with the on-chart gap annotation.
 
-**Picked hours / run band**: the schedule chart encodes picked hours directly in its bars — filled mint = picked, the same hue dimmed/outlined = eligible but not picked — decoded by the one-line caption key `SMART_TASK_SCHEDULE_CHART_KEY` (`Filled bars are the picked hours · dimmed bars were not picked`); it carries no band. The trajectory chart keeps its labelled run band with the kind verb — `Heating` / `Charging` (`deviceSeriesName`); never a different word (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.
+**Picked hours / run band**: the schedule chart encodes picked hours directly in its bars — filled mint = picked, the same hue dimmed/outlined = eligible but not picked — decoded by the one-line caption key `SMART_TASK_SCHEDULE_CHART_KEY` (`Filled bars are the picked hours · dimmed bars were not picked`); it carries no band. The trajectory chart keeps its labelled run band with the kind verb — `Heating`, `Cooling`, or `Charging` (`deviceSeriesName`); never a different word (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.
 
 **Deadline marker**: the marker word is `deadline` on both charts. The schedule chart appends the full form (`deadline Sun 09:00`); the trajectory chart uses the bare word on-track and appends the clock time (`deadline 16:00`) only on the danger variant. The trajectory target line is labelled `Target {value}` (`formatSmartTaskTargetLabel`).
 

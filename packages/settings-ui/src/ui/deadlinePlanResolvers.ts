@@ -53,6 +53,7 @@ export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number
 
 export type DeadlineProgress = {
   currentValue: number;
+  progressDirection: 'increasing' | 'decreasing';
   // Counted to `plannedTargetValue`, the target the plan works to.
   remainingUnits: number;
   // The owner's target, as the task shows it.
@@ -99,7 +100,7 @@ const observedStateOfChargePercent = (
 // profile's last sample is not a stand-in: it is an older reading of the same
 // absent thing, and drawing a trajectory from it put the page on track for a task
 // the runtime had stopped.
-export const resolveProgress = (params: {
+export const resolveProgress = (
   // Probe-widened: the live reading (temperature or SoC) rides on the
   // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
   // `hasObservedStateOfCharge` narrow it (present implies finite). Widened onto
@@ -107,15 +108,16 @@ export const resolveProgress = (params: {
   // here. SoC is the RESOLVED probe — the payload serves the level, so declaring
   // the transport's bag would let a `report.percent` read compile and then find
   // `undefined` at runtime.
-  device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe;
-  objective: DeferredObjectiveSettingsEntry;
-}): DeadlineProgress | null => {
-  const { device, objective } = params;
+  device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe,
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: 'increasing' | 'decreasing' | 'unknown',
+): DeadlineProgress | null => {
   if (objective.kind === 'temperature') {
-    if (!hasObservedTemperature(device)) return null;
+    if (!hasObservedTemperature(device) || progressDirection === 'unknown') return null;
     return buildTemperatureProgress(
       device.temperature.currentTemperature,
       objective.targetTemperatureC,
+      progressDirection,
     );
   }
 
@@ -131,6 +133,7 @@ export const resolveProgress = (params: {
   if (!isFiniteNumber(percent)) return null;
   return {
     currentValue: Math.min(100, Math.max(0, percent)),
+    progressDirection: 'increasing',
     remainingUnits: Math.max(0, objective.targetPercent - percent),
     targetValue: objective.targetPercent,
     plannedTargetValue: objective.targetPercent,
@@ -141,10 +144,15 @@ export const resolveProgress = (params: {
 function buildTemperatureProgress(
   currentTemperature: number,
   targetTemperature: number,
+  progressDirection: 'increasing' | 'decreasing',
 ): DeadlineProgress {
+  const delta = progressDirection === 'increasing'
+    ? targetTemperature - currentTemperature
+    : currentTemperature - targetTemperature;
   return {
     currentValue: currentTemperature,
-    remainingUnits: Math.max(0, targetTemperature - currentTemperature),
+    progressDirection,
+    remainingUnits: Math.max(0, delta),
     targetValue: targetTemperature,
     plannedTargetValue: targetTemperature,
     unit: '°C',
