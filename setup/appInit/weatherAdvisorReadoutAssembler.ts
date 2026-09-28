@@ -7,6 +7,8 @@ import { getRawDevice } from '../../lib/device/transport/managerHomeyApi';
 import { readDeviceTemperature } from '../../lib/weather/weatherDeviceRead';
 import { resolveWeatherSustainableCapacityKw } from '../../lib/weather/weatherCapacity';
 
+type DailyBudgetService = NonNullable<AppContext['dailyBudgetService']>;
+
 /**
  * Wires the pure readout builder (`lib/weather/weatherAdvisorReadout`) to the
  * app: resolves each device's name AND its live temperature over the transport's
@@ -22,8 +24,7 @@ import { resolveWeatherSustainableCapacityKw } from '../../lib/weather/weatherCa
 export async function assembleWeatherAdvisorReadout(
   ctx: Pick<AppContext, 'homey' | 'getNow' | 'getTimeZone' | 'capacitySettings'>,
   collector: WeatherCollector,
-  currentDailyBudgetKwh: number | undefined,
-  dailyBudgetEnabled: boolean,
+  dailyBudget: DailyBudgetService,
 ): Promise<WeatherAdvisorReadout> {
   const settings = buildWeatherAdvisorSettings({ settings: ctx.homey.settings });
   if (!settings.enabled) return { kind: 'inactive' };
@@ -31,6 +32,7 @@ export async function assembleWeatherAdvisorReadout(
   // outdoor (historical) device is read here, for its name + live validity line.
   const outdoor = await readDevice(settings.outdoorDeviceId);
   const limitKw = resolveWeatherSustainableCapacityKw(ctx.capacitySettings);
+  const currentDailyBudgetKwh = dailyBudget.getAppliedBudgetKwh();
   // Validity uses ONLY the on-demand read (which reads the currently-selected
   // device id), never the collector's device-unstamped cache: right after a
   // selection change the cache may still hold the PREVIOUS device's sample, and
@@ -45,7 +47,7 @@ export async function assembleWeatherAdvisorReadout(
     ...(outdoor.name !== undefined ? { outdoorDeviceName: outdoor.name } : {}),
     ...(outdoor.temperatureC !== undefined ? { currentOutdoorTempC: outdoor.temperatureC } : {}),
     ...(currentDailyBudgetKwh !== undefined ? { currentDailyBudgetKwh } : {}),
-    dailyBudgetEnabled,
+    dailyBudgetEnabled: dailyBudget.isEnabled(),
     ...(Number.isFinite(limitKw) && limitKw > 0 ? { capacityLimitKw: limitKw } : {}),
     nowMs: ctx.getNow().getTime(),
     timeZone: ctx.getTimeZone(),

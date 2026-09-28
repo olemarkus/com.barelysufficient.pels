@@ -31,9 +31,13 @@ describe('assembleWeatherAdvisorReadout', () => {
       isBackfillRunning: () => false,
     });
 
-    // These are the service's applied values, passed by the host API. The
-    // assembler must not replace them with the stale persisted settings above.
-    const readout = await assembleWeatherAdvisorReadout(context, collector, 42, true);
+    // The assembler reads the owner directly. It must not replace the applied
+    // values with the stale persisted settings above.
+    const dailyBudget = partialDouble<NonNullable<AppContext['dailyBudgetService']>>({
+      getAppliedBudgetKwh: () => 42,
+      isEnabled: () => true,
+    });
+    const readout = await assembleWeatherAdvisorReadout(context, collector, dailyBudget);
 
     expect(readout).toMatchObject({
       kind: 'readout',
