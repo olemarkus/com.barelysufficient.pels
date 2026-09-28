@@ -69,6 +69,18 @@ export function resolvePlanService(ctx: AppContext): PlanServiceResolution {
   return { state: 'ready', planService };
 }
 
+/**
+ * The price coordinator, which owns the combined-prices reader every price
+ * consumer reads through. Built at the `initPriceCoordinator` boot step, before
+ * any of them.
+ */
+export function requirePriceCoordinator(ctx: AppContext): NonNullable<AppContext['priceCoordinator']> {
+  if (!ctx.priceCoordinator) {
+    throw new Error('PriceCoordinator must be initialized before use.');
+  }
+  return ctx.priceCoordinator;
+}
+
 export function requireDailyBudgetService(ctx: AppContext) {
   if (!ctx.dailyBudgetService) {
     throw new Error('DailyBudgetService must be initialized before flow card registration.');

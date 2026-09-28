@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import { requirePriceCoordinator } from './contextGuards';
 import type { BuildPriceHorizon } from '../../lib/objectives/deferredObjectives';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 
@@ -10,7 +11,7 @@ import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 // create-task preview wiring.
 export const createObjectivePriceHorizonBuilder = (ctx: AppContext): BuildPriceHorizon => (
   (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(
-    ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
+    requirePriceCoordinator(ctx).combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
     nowMs,
     deadlineAtMs,
   )

@@ -1,10 +1,10 @@
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
@@ -31,6 +31,7 @@ type EaseeChargingState =
 
 type InternalApp = {
   deviceManager: DeviceTransport;
+  priceCoordinator: PriceCoordinator;
   planEngine: PlanEngine;
   onInit(): Promise<void>;
   onUninit(): Promise<void>;
@@ -700,8 +701,9 @@ async function createEvApp(
     // The allocation horizon now sources price from the price layer. Seed
     // COMBINED_PRICES with the SAME per-hour prices the snapshot carries so the
     // deferred objective can build its horizon (the snapshot is the budget overlay).
-    mockHomeyInstance.settings.set(
-      COMBINED_PRICES,
+    // They live in the booted app's price cache, which holds its rows in memory,
+    // so the seed goes through the app's own store.
+    app.priceCoordinator['deps'].priceDataStore.writeCombined(
       buildEvDeadlineCombinedPrices(options.evDeadlinePricesByRelativeHour!),
     );
   }

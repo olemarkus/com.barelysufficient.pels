@@ -21,7 +21,7 @@ import type { Mock } from 'vitest';
 import https from 'https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPriceCacheForTests } from '../utils/appTestUtils';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import {
   getDateKeyInTimeZone,
@@ -79,7 +79,7 @@ const bootAndBuild = async (): Promise<CombinedPricesV2 | null> => {
   await app.onInit();
   await app.priceCoordinator.refreshSpotPrices(true); // awaited fetch + store
   app.priceCoordinator.updateCombinedPrices(); // build + persist combined_prices
-  return mockHomeyInstance.settings.get(COMBINED_PRICES) as CombinedPricesV2 | null;
+  return getStoredPriceCacheForTests(COMBINED_PRICES) as CombinedPricesV2 | null;
 };
 
 describe('Export (feed-in) pricing per market (SDK-boundary e2e)', () => {

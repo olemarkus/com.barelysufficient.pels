@@ -114,6 +114,8 @@ export function shouldRebuildDailyBudgetPlan(params: {
   lastPlanBucketStartUtcMs?: number | null;
   lastUsedNowKWh?: number;
   lastPlanRebuildMs: number;
+  /** The prices the plan is shaped on differ from those of the last build. */
+  pricesChanged?: boolean;
 }): boolean {
   const {
     context,
@@ -125,6 +127,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
     lastPlanBucketStartUtcMs,
     lastUsedNowKWh,
     lastPlanRebuildMs,
+    pricesChanged,
   } = params;
   if (!enabled) return false;
   if (frozen && !recomputeFrozenPlan) return false;
@@ -137,6 +140,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
   return (
     planStateMismatch
     || Boolean(forcePlanRebuild)
+    || Boolean(pricesChanged)
     || usageChanged
     || lastPlanBucketStartUtcMs !== currentBucketStartUtcMs
     || context.nowMs - lastPlanRebuildMs >= PLAN_REBUILD_INTERVAL_MS

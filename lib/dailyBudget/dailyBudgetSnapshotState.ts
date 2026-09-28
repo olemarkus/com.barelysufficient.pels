@@ -42,7 +42,8 @@ const preserveAdjacentDay = (
   previous?.[side] === expectedKey ? previous.days[expectedKey] ?? null : null
 );
 
-// Hot-path debounce key for the adjacent-days re-seed. Cheap to compute and
+// Hot-path debounce key for the adjacent-days re-seed, and the price
+// fingerprint `DailyBudgetManager` reshapes today's plan on. Cheap to compute and
 // changes whenever the underlying `combined_prices` horizon shifts (entry
 // count changes or the first/last `startsAt` moves), when per-entry price
 // tier flags flip, or when per-entry `total` values change (e.g., a

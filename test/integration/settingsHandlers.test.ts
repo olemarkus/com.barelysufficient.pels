@@ -479,69 +479,19 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
 
-  it('debounces combined price updates into one daily budget sync', async () => {
+  // The combined prices live in the price cache, and a change of price is not a
+  // rebuild trigger (`lib/plan/planRebuildTrigger.ts`): the daily budget shaped
+  // on them is recomputed at the next reading's rebuild.
+  it('does not sync the daily budget or rebuild on a combined_prices key', async () => {
     vi.useFakeTimers();
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 
     await handler(COMBINED_PRICES);
-    await handler(COMBINED_PRICES);
+    await vi.advanceTimersByTimeAsync(5000);
 
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-  });
-
-  it('coalesces combined price updates while a sync is still running', async () => {
-    vi.useFakeTimers();
-    let resolveFirstRebuild: (() => void) | null = null;
-    const firstRebuildPromise = new Promise<void>((resolve) => {
-      resolveFirstRebuild = resolve;
-    });
-    const deps = buildDeps({
-      rebuildPlanFromCache: vi.fn()
-        .mockImplementationOnce(() => firstRebuildPromise)
-        .mockResolvedValue(undefined),
-    });
-    const handler = createSettingsHandler(deps);
-
-    const first = handler(COMBINED_PRICES);
-    await vi.advanceTimersByTimeAsync(1000);
-    await flushMicrotasks();
-
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-
-    const second = handler(COMBINED_PRICES);
-    const third = handler(COMBINED_PRICES);
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await flushMicrotasks();
-
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-
-    (resolveFirstRebuild as (() => void) | null)?.();
-    await flushMicrotasks();
-
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(999);
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    await flushMicrotasks();
-    await Promise.all([first, second, third]);
-
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
 
   it('debounces daily budget setting writes into one sync and rebuild', async () => {

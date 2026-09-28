@@ -45,7 +45,6 @@ import type { PvForecastController } from './setup/appInit/createPvForecastServi
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SettingsRepository } from './setup/settingsRepository';
-import { createCombinedPricesReader } from './lib/price/combinedPricesReader';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
@@ -98,20 +97,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   // was not yet set; consumed by the deferred-objective back-fill (see
   // `setup/appInit/deferredRecorders.ts`).
   public deferredObjectiveBackfillPending?: boolean;
-  public readonly combinedPricesReader = createCombinedPricesReader(
-    this.homey.settings,
-    () => {
-      // `priceCoordinator` is constructed during startup, after this field
-      // initializes, so a read landing before then has nobody to ask for a
-      // rebuild — the periodic refresher populates the store on its own.
-      // The field is declared `!`, so the compiler believes it is always
-      // present and would read the guard below as redundant. Widening it back
-      // here is what keeps the hole in the TYPE rather than only in a comment,
-      // and out of reach of a future "drop the pointless `?.`" cleanup.
-      const coordinator: PriceCoordinator | undefined = this.priceCoordinator;
-      coordinator?.updateCombinedPrices();
-    },
-  );
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
   public resetMainPowerTrackerFreshness(): void { this.mainTracker.resetFreshness(); }
@@ -366,6 +351,10 @@ class PelsApp extends PelsAppBase implements AppContext {
     powerhourToday: null,
     powerhourTomorrow: null,
   });
+
+  // The stored combined prices, for the settings UI and the plan widget.
+  // Replaced when the price coordinator is wired; nothing stored until then.
+  public getCombinedPricesForUi: () => unknown = () => null;
 
   // "Not started" is a named lifecycle state, not an absent field: the
   // controller is built by the post-startup background step, while the

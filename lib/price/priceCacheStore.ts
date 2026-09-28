@@ -21,6 +21,7 @@ import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/leg
 import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import {
+  COMBINED_PRICES,
   ELECTRICITY_PRICES,
   ELECTRICITY_PRICES_AREA,
   FLOW_PRICES_TODAY,
@@ -51,6 +52,7 @@ export type PricePayloadKey =
 /** The caches this store holds, one row each. */
 export type PriceCacheKey =
   | 'grid_tariff' | 'spot_prices' | 'spot_price_area'
+  | typeof COMBINED_PRICES
   | PricePayloadKey
   | typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY | typeof POWERHOUR_PRICES_DEVICE;
 
@@ -185,6 +187,15 @@ const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
   markerCache(HOMEY_PRICES_CURRENCY),
   markerCache(POWERHOUR_PRICES_CURRENCY),
   markerCache(POWERHOUR_PRICES_DEVICE),
+  {
+    // Derived from the other caches and rebuilt at boot, so any value the store
+    // holds is newer than the key. A legacy V1 shape is adopted as it is: the
+    // combined-prices reader migrates it on read, as it always has.
+    settingsKey: COMBINED_PRICES,
+    cacheKey: COMBINED_PRICES,
+    storeWins: (held) => held !== null,
+    toStored: (raw) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null),
+  },
 ];
 
 /**

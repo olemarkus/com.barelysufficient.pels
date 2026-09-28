@@ -75,14 +75,6 @@ describe('Price level flow cards', () => {
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
     });
     app.registerFlowCards();
-    mockHomeyInstance.settings.set('combined_prices', {
-      version: 2,
-      days: { '2026-05-10': { hours: [
-        { startsAt: '2026-05-10T00:00:00.000Z', total: 10, isCheap: false, isExpensive: false },
-      ] } },
-      avgPrice: 10, lowThreshold: 5, highThreshold: 15,
-      priceScheme: 'norway', priceUnit: 'NOK/kWh',
-    });
 
     const planService = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),

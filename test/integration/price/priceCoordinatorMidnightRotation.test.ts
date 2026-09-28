@@ -168,7 +168,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
   const PRIOR_DAY_LAST_FETCHED = '2026-05-10T20:00:00.000Z'; // 2026-05-10 local (Oslo CEST)
   const SAME_DAY_LAST_FETCHED = '2026-05-11T03:00:00.000Z'; // 2026-05-11 local (05:00 CEST)
   const getStoredLastFetched = (): string | undefined =>
-    (mockHomeyInstance.settings.get(COMBINED_PRICES) as { lastFetched?: string } | undefined)?.lastFetched;
+    (priceCache.read(COMBINED_PRICES) as { lastFetched?: string } | undefined)?.lastFetched;
   const buildPayload = (lastFetched?: string) => ({
     version: 2,
     days: {},
@@ -195,7 +195,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       pricesByHour,
       updatedAt: '2026-05-11T05:00:00.000Z',
     });
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
+    priceCache.write(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
@@ -208,7 +208,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
 
   it('does not catch up on boot when combined_prices is from the same local day', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(SAME_DAY_LAST_FETCHED));
+    priceCache.write(COMBINED_PRICES, buildPayload(SAME_DAY_LAST_FETCHED));
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
@@ -226,14 +226,14 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
 
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain(COMBINED_PRICES);
+    expect(priceCache.read(COMBINED_PRICES)).toBeNull();
 
     coordinator.stop();
   });
 
   it('does not catch up on boot when the persisted payload lacks lastFetched', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload());
+    priceCache.write(COMBINED_PRICES, buildPayload());
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
@@ -250,7 +250,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'norway');
     // A prior-day V2 payload that WOULD rotate under the flow scheme.
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
+    priceCache.write(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
@@ -272,7 +272,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), 0.10 + hour * 0.01])),
       updatedAt: '2026-05-11T05:00:00.000Z',
     });
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
+    priceCache.write(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
@@ -286,7 +286,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     // Eligible prior-day flow payload; if updateCombinedPrices throws, startPriceRefresh
     // must swallow it (mirrors the midnight timer's guard) so app boot is not aborted.
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
+    priceCache.write(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
 
     const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
@@ -347,13 +347,13 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       priceUnit: 'øre/kWh',
       lastFetched: PRIOR_DAY_LAST_FETCHED,
     };
-    mockHomeyInstance.settings.set(COMBINED_PRICES, legacyV1);
+    priceCache.write(COMBINED_PRICES, legacyV1);
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
 
     // The V1 payload is left exactly as persisted (not rebuilt into V2, not dropped).
-    const stored = mockHomeyInstance.settings.get(COMBINED_PRICES) as Record<string, unknown>;
+    const stored = priceCache.read(COMBINED_PRICES) as Record<string, unknown>;
     expect(stored).toEqual(legacyV1);
     expect(stored.version).toBeUndefined();
     expect(stored.prices).toBeDefined();
@@ -390,13 +390,13 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       priceUnit: 'øre/kWh',
       lastFetched: PRIOR_DAY_LAST_FETCHED,
     };
-    mockHomeyInstance.settings.set(COMBINED_PRICES, cacheWithTodayPrices);
+    priceCache.write(COMBINED_PRICES, cacheWithTodayPrices);
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
 
     // Today's prices survive intact: not replaced by the empty rebuild.
-    expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toEqual(cacheWithTodayPrices);
+    expect(priceCache.read(COMBINED_PRICES)).toEqual(cacheWithTodayPrices);
 
     coordinator.stop();
   });
@@ -421,7 +421,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     // Trigger the initial publish so the assertion below has something to compare against.
     coordinator.updateCombinedPrices();
 
-    const beforeMidnight = mockHomeyInstance.settings.get(COMBINED_PRICES) as
+    const beforeMidnight = priceCache.read(COMBINED_PRICES) as
       | { days?: Record<string, unknown> }
       | undefined;
     expect(Object.keys(beforeMidnight?.days ?? {})).toContain('2026-05-10');
@@ -429,7 +429,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     // Cross local midnight (90m 30s from 20:30Z to 22:00:30Z).
     vi.advanceTimersByTime(91 * 60 * 1000);
 
-    const afterMidnight = mockHomeyInstance.settings.get(COMBINED_PRICES) as
+    const afterMidnight = priceCache.read(COMBINED_PRICES) as
       | { days?: Record<string, unknown> }
       | undefined;
     // Yesterday (2026-05-10) is now outside the today/tomorrow window for the flow scheme.

@@ -5,14 +5,9 @@ import type { DailyBudgetHostApi } from '../../../packages/contracts/src/widgetH
 import { buildPlanPriceWidgetPayload } from './planPriceWidgetPayload';
 import type { PlanPriceWidgetPayload } from './planPriceWidgetTypes';
 
-const COMBINED_PRICES_SETTING = 'combined_prices';
-
 type WidgetApiContext = {
   homey: {
     app?: DailyBudgetHostApi;
-    settings: {
-      get: (key: string) => unknown;
-    };
   };
   query?: {
     day?: string;
@@ -36,10 +31,10 @@ const resolvePriceScheme = (value: unknown): string | undefined => {
 const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | null => {
   if (!value || typeof value !== 'object') return null;
   const record = value as { days?: unknown; prices?: unknown; lastFetched?: unknown; priceUnit?: unknown };
-  // The widget runs in a separate JS context; if it loads before the app has
-  // had a chance to persist the V1 → V2 migration via `combinedPricesReader.readStore`, accept
-  // the legacy `{ prices: [...] }` shape directly so charts render instead of
-  // staying empty.
+  // The app hands over the combined prices as they are stored. A legacy
+  // `{ prices: [...] }` shape can still be there until the combined-prices
+  // reader's first read migrates it, so accept it directly and the charts render
+  // instead of staying empty.
   const isV2 = record.days && typeof record.days === 'object' && !Array.isArray(record.days);
   const isV1 = Array.isArray(record.prices);
   if (!isV2 && !isV1) return null;
@@ -65,7 +60,10 @@ export const getChart = async ({ homey, query }: WidgetApiContext): Promise<Plan
   const snapshot: DailyBudgetUiRead = typeof app?.getDailyBudgetUiPayload === 'function'
     ? app.getDailyBudgetUiPayload()
     : { kind: 'unavailable' };
-  const rawCombinedPrices = homey.settings.get(COMBINED_PRICES_SETTING);
+  // The combined prices live in the app's price cache, not a settings key.
+  const rawCombinedPrices = typeof app?.getCombinedPricesForUi === 'function'
+    ? app.getCombinedPricesForUi()
+    : null;
   const combinedPrices = flattenStoreToCombinedPriceData(rawCombinedPrices);
 
   return buildPlanPriceWidgetPayload({

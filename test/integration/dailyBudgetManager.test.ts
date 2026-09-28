@@ -1019,6 +1019,31 @@ describe('daily budget advanced weighting integration', () => {
     expect(lowSpreadDelta).toBeGreaterThan(0);
     expect(highSpreadDelta).toBeCloseTo(lowSpreadDelta, 6);
   });
+
+  it('reshapes the plan at the next update once the prices change, and only then', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 24, priceShapingEnabled: true, priceShapingFlexShare: 1 });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const currentBucketKey = new Date(dayStart).toISOString();
+    const rising = buildHourlyPrices(dayStart, Array.from({ length: 24 }, (_, hour) => 20 + hour * 10));
+    const falling = buildHourlyPrices(dayStart, Array.from({ length: 24 }, (_, hour) => 250 - hour * 10));
+    const updateAt = (minute: number, prices: ReturnType<typeof buildHourlyPrices>) => manager.update({
+      nowMs: dayStart + minute * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [currentBucketKey]: 0 } },
+      combinedPrices: { prices },
+      priceOptimizationEnabled: true,
+    }).snapshot.buckets.plannedKWh;
+
+    const first = updateAt(5, rising);
+    expect(first[1]).toBeGreaterThan(first[23]);
+    expect(updateAt(6, rising)).toEqual(first);
+
+    const reshaped = updateAt(7, falling);
+    expect(reshaped[1]).toBeLessThan(reshaped[23]);
+    expect(updateAt(8, falling)).toEqual(reshaped);
+  });
 });
 
 describe('daily budget migration and defaults', () => {

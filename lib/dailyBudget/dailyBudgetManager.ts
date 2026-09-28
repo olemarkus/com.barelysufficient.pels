@@ -8,6 +8,7 @@ import {
   resolvePlanLockState,
   shouldRebuildDailyBudgetPlan,
 } from './dailyBudgetManagerPlan';
+import { computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import { buildDayContext, computeBudgetState, computePlanDeviation } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
@@ -62,6 +63,14 @@ export class DailyBudgetManager {
   private snapshot: DailyBudgetDayPayload | null = null;
   private persistReasons = new Set<DailyBudgetStatePersistReason>();
   private lastPlanRebuildMs = 0;
+  /**
+   * The price fingerprint the plan was last built on. New prices reshape the
+   * remaining hours at the next update rather than waiting for the hour or the
+   * interval; a change of price is not a plan-rebuild trigger in its own right
+   * (`lib/plan/planRebuildTrigger.ts`), so this is where it takes effect.
+   * In memory only: a restart rebuilds the plan anyway.
+   */
+  private lastPlanPriceSignature: string | null = null;
   private confidenceCache: ConfidenceCache = createConfidenceCache();
 
   constructor(private deps: DailyBudgetManagerDeps) { }
@@ -271,6 +280,7 @@ export class DailyBudgetManager {
     capacityBudgetKWh?: number;
   }): PlanResult {
     const { context, enabled } = params;
+    const priceSignature = computeAdjacentDaysSeedSignature(context.dateKey, params.combinedPrices ?? null);
     const shouldRebuildPlan = shouldRebuildDailyBudgetPlan({
       context,
       enabled,
@@ -281,21 +291,14 @@ export class DailyBudgetManager {
       lastPlanBucketStartUtcMs: this.state.lastPlanBucketStartUtcMs,
       lastUsedNowKWh: this.state.lastUsedNowKWh,
       lastPlanRebuildMs: this.lastPlanRebuildMs,
+      pricesChanged: this.lastPlanPriceSignature !== null && priceSignature !== this.lastPlanPriceSignature,
     });
     const shouldLog = enabled && shouldRebuildPlan;
 
     if (enabled && shouldRebuildPlan) {
       const rebuilt = this.rebuildPlan(params);
-      return {
-        plannedKWh: rebuilt.plannedKWh,
-        plannedUncontrolledKWh: rebuilt.plannedUncontrolledKWh,
-        plannedGrossUncontrolledKWh: rebuilt.plannedGrossUncontrolledKWh,
-        plannedControlledKWh: rebuilt.plannedControlledKWh,
-        priceData: rebuilt.priceData,
-        shouldLog,
-        planDebug: rebuilt.planDebug,
-        uncontrolledReserveDiagnostics: rebuilt.uncontrolledReserveDiagnostics,
-      };
+      this.lastPlanPriceSignature = priceSignature;
+      return { ...rebuilt, shouldLog };
     }
 
     const priceData = this.resolvePriceData(params);

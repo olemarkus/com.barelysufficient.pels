@@ -10,7 +10,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
-  COMBINED_PRICES,
   HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
   BUDGET_EXEMPT_DEVICES,
@@ -131,7 +130,6 @@ const ADVANCED_SETTINGS_KEYS = new Set([
 ]);
 
 const PRICE_REFRESH_KEYS = new Set([
-  COMBINED_PRICES,
   // The runtime's source re-selection changes the provenance carried on the
   // prices payload, so a source write must invalidate the cached read model.
   PV_FORECAST_SOURCE,

@@ -393,7 +393,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
     await flushPromises();
 
-    const combined = mockHomeyInstance.settings.get('combined_prices') as CombinedPricesV2 | null;
+    const combined = getStoredPriceCacheForTests('combined_prices') as CombinedPricesV2 | null;
     const flatPrices = flattenAllHours(combined);
     expect(flatPrices.length).toBeGreaterThan(0);
     const firstPrice = flatPrices[0];
@@ -1682,7 +1682,7 @@ describe('Price optimization', () => {
 
       // Read back through the persisted-store reader path (the adapter every
       // combined-prices consumer uses), not the in-memory producer.
-      const reader = createCombinedPricesReader(mockHomeyInstance.settings, () => {});
+      const reader = createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {});
       const data = readCombinedPriceData(reader, new Date(), APP_TIME_ZONE);
       const persisted = data?.prices?.find((entry) => entry.startsAt === surplusHourIso);
       expect(persisted?.budgetPrice).toBe(1);
@@ -2013,7 +2013,7 @@ describe('Price optimization', () => {
     const result = app['storeFlowPriceData']('today', "{'0':0.2747,'1':0.2678,'2':0.261}");
     expect(result.storedCount).toBe(3);
 
-    const combined = mockHomeyInstance.settings.get('combined_prices') as CombinedPricesV2 | null;
+    const combined = getStoredPriceCacheForTests('combined_prices') as CombinedPricesV2 | null;
     expect(combined?.priceScheme).toBe('flow');
     expect(combined?.priceUnit).toBe('price units');
     const totals = flattenAllHours(combined).map((entry) => entry.total);

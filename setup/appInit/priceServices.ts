@@ -5,6 +5,7 @@ import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { createHomeyWebApiGet } from '../homeyWebApi';
 import type { AppContext } from '../../lib/app/appContext';
+import { requirePriceCoordinator } from './contextGuards';
 
 export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   const priceCache = createPriceCacheStore(ctx.getUserdataDatabase());
@@ -41,6 +42,9 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   // only the coordinator reaches.
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getPriceSourcePayloadsForUi = () => coordinator.getPriceSourcePayloadsForUi();
+  // And the combined prices, for the settings UI and the plan widget.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.getCombinedPricesForUi = () => coordinator.getCombinedPricesForUi();
   return coordinator;
 }
 
@@ -48,7 +52,7 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
   return new PriceFlowTagPublisher({
     homey: ctx.homey,
     getTimeZone: () => ctx.getTimeZone(),
-    combinedPricesReader: ctx.combinedPricesReader,
+    combinedPricesReader: requirePriceCoordinator(ctx).combinedPricesReader,
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
   });

@@ -416,7 +416,7 @@ describe('Homey price service', () => {
       () => ({}),
       noHomeyWebApi,
     );
-    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const setSpy = vi.spyOn(priceCache, 'write');
 
     service.updateCombinedPrices();
     vi.advanceTimersByTime(1000);
@@ -450,7 +450,7 @@ describe('Homey price service', () => {
       () => ({}),
       noHomeyWebApi,
     );
-    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const setSpy = vi.spyOn(priceCache, 'write');
 
     service.updateCombinedPrices();
 
@@ -733,14 +733,14 @@ describe('Homey price service', () => {
       // We cannot price now, but nothing here says the stored prices are wrong
       // — and blanking them would also blank a home the moment its owner picks
       // this price source, which rebuilds derived state without reading.
-      mockHomeyInstance.settings.set(COMBINED_PRICES, {
+      priceCache.write(COMBINED_PRICES, {
         version: 2,
         days: { [getDateKeyInTimeZone(fixedNow, timeZone)]: { hours: [{ startsAt: fixedNow.toISOString(), total: 1, isCheap: false, isExpensive: false }] } },
       });
 
       await createService(serveFormula('fails')).refreshSpotPrices(true);
 
-      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, { hours?: unknown[] }> };
+      const persisted = priceCache.read(COMBINED_PRICES) as { days?: Record<string, { hours?: unknown[] }> };
       expect(Object.values(persisted?.days ?? {}).flatMap((day) => day.hours ?? [])).not.toEqual([]);
     });
 
@@ -787,7 +787,7 @@ describe('Homey price service', () => {
       vi.useFakeTimers().setSystemTime(fixedNow);
       storeTodayPrices({ '13': 1, '14': 2 });
       await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
-      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toBeTruthy();
+      expect(priceCache.read(COMBINED_PRICES)).toBeTruthy();
 
       // The live service reports no prices; the persisted payload must not go
       // on serving prices built from a formula that no longer applies — the
@@ -795,7 +795,7 @@ describe('Homey price service', () => {
       const unevaluable = createService(serveFormula({ expression: '{{ sqrt([[price]]) }}' }));
       await unevaluable.refreshSpotPrices(true);
 
-      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, unknown> };
+      const persisted = priceCache.read(COMBINED_PRICES) as { days?: Record<string, unknown> };
       const persistedEntries = Object.values(persisted?.days ?? {})
         .flatMap((day) => (day as { hours?: unknown[] }).hours ?? []);
       expect(persistedEntries).toEqual([]);
@@ -805,7 +805,7 @@ describe('Homey price service', () => {
       vi.useFakeTimers().setSystemTime(fixedNow);
       storeTodayPrices({ '13': 1, '14': 2 });
       await createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' })).refreshSpotPrices(true);
-      const persistedBefore = mockHomeyInstance.settings.get(COMBINED_PRICES);
+      const persistedBefore = priceCache.read(COMBINED_PRICES);
 
       // The SDK hands back nothing for a key it still lists — a transient miss
       // this platform does produce. That settles nothing about the home, so it
@@ -817,7 +817,7 @@ describe('Homey price service', () => {
       createService(serveFormula('fails')).updateCombinedPrices();
       vi.mocked(mockHomeyInstance.settings.get).mockRestore();
 
-      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toEqual(persistedBefore);
+      expect(priceCache.read(COMBINED_PRICES)).toEqual(persistedBefore);
     });
 
     it('drops persisted prices when a compiled formula prices nothing', async () => {
@@ -833,7 +833,7 @@ describe('Homey price service', () => {
       await pricesNothing.refreshSpotPrices(true);
 
       expect(pricesNothing.getCombinedHourlyPrices()).toEqual([]);
-      const persisted = mockHomeyInstance.settings.get(COMBINED_PRICES) as { days?: Record<string, unknown> };
+      const persisted = priceCache.read(COMBINED_PRICES) as { days?: Record<string, unknown> };
       const persistedEntries = Object.values(persisted?.days ?? {})
         .flatMap((day) => (day as { hours?: unknown[] }).hours ?? []);
       expect(persistedEntries).toEqual([]);
@@ -999,7 +999,7 @@ describe('Homey price service', () => {
       storeHomeyPrices({ '13': 1 });
       await createService(serveExport('fixed', { value: { costs: { user_fixed_base: { value: 0.3 } } } }))
         .refreshSpotPrices(true);
-      const persistedBefore = mockHomeyInstance.settings.get(COMBINED_PRICES);
+      const persistedBefore = priceCache.read(COMBINED_PRICES);
 
       // A listed key the SDK does not hand back settles nothing; dropping the
       // feed-in price out of the stored series would make a hiccup durable.
@@ -1011,7 +1011,7 @@ describe('Homey price service', () => {
         .updateCombinedPrices();
       vi.mocked(mockHomeyInstance.settings.get).mockRestore();
 
-      expect(mockHomeyInstance.settings.get(COMBINED_PRICES)).toEqual(persistedBefore);
+      expect(priceCache.read(COMBINED_PRICES)).toEqual(persistedBefore);
     });
 
     it('keeps the last known terms when the export read fails', async () => {

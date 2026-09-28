@@ -44,7 +44,6 @@ import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatc
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
-import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
@@ -328,12 +327,13 @@ export type AppContext = {
   // before advancing the watermark past it. See `runPendingDeferredObjectiveBackfill`.
   deferredObjectiveBackfillPending?: boolean;
   deviceDiagnosticsService?: DeviceDiagnosticsService;
+  /**
+   * Owns the price caches and the single combined-prices read boundary every
+   * consumer reads through (`combinedPricesReader`: daily budget, flow tags,
+   * deferred recorders, the objective price horizon).
+   */
   priceCoordinator?: PriceCoordinator;
   priceFlowTagPublisher?: PriceFlowTagPublisher;
-  // Single combined-prices read boundary shared by every consumer (daily
-  // budget, flow tags, plan service, deferred recorders). The adapter owns the
-  // settings read + V1→V2 migration; consumers receive only typed results.
-  readonly combinedPricesReader: CombinedPricesReader;
   /**
    * The transport as everything OUTSIDE `lib/device` may hold it: writes, the
    * by-id read, the zone tree, the producer predicates — but not `getSnapshot`.
@@ -409,6 +409,8 @@ export type AppContext = {
   getPowerhourSourceUiStatus: () => PowerhourSourceUiStatus;
   /** The payload-fed price sources' stored days and currencies, for the settings UI. */
   getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads;
+  /** The stored combined prices as they are, for the settings UI and the plan widget. */
+  getCombinedPricesForUi: () => unknown;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

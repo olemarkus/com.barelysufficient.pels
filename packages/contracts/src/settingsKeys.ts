@@ -69,7 +69,6 @@ export const DAILY_BUDGET_CONTROLLED_WEIGHT = 'daily_budget_controlled_weight';
 export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
-export const COMBINED_PRICES = 'combined_prices';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
 export const PRICE_SCHEME = 'price_scheme';
 // Mirror of lib/utils/settingsKeys.ts PV_FORECAST_SOURCE (the settings UI

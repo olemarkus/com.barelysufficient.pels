@@ -59,6 +59,8 @@ export type StarvationRescueHostApi = {
 /** plan_budget widget host surface. */
 export type DailyBudgetHostApi = {
   getDailyBudgetUiPayload(): DailyBudgetUiRead;
+  /** The stored combined prices as they are (V1 or V2 shape); `null` before the first build. */
+  getCombinedPricesForUi(): unknown;
 };
 
 /** smart_tasks widget host surface. */

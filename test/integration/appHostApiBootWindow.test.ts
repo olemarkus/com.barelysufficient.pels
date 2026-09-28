@@ -29,6 +29,8 @@ const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService']) => 
 
     protected weatherCollector = undefined;
 
+    public getCombinedPricesForUi = (): unknown => null;
+
     protected registerAppFlowCards(): void {}
   }
   return new TestHostApi();

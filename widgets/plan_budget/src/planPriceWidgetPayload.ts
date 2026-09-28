@@ -76,7 +76,7 @@ export const resolveLabelEvery = (bucketCount: number): number => {
 // non-prosumer's overlay is a no-op (byte-identical).
 const buildBudgetPriceByStart = (combinedPrices: CombinedPriceData | null): Map<number, number> => {
   const byStart = new Map<number, number>();
-  // `combinedPrices` is the raw `combined_prices` settings read (untrusted): a
+  // `combinedPrices` is the stored combined prices as the app hands them over: a
   // malformed persisted value could carry a non-array `prices`, so array-guard
   // before iterating rather than letting `for...of` throw. `Array.isArray` /
   // the local `isFiniteNumber` — no `lib/**` import (widget can't reach it).

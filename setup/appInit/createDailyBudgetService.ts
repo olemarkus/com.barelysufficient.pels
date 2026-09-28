@@ -2,6 +2,7 @@ import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import { createDailyBudgetSettingsStore } from '../dailyBudgetSettingsAdapter';
 import { createDailyBudgetStateStore } from '../dailyBudgetStateAdapter';
 import type { AppContext } from '../../lib/app/appContext';
+import { requirePriceCoordinator } from './contextGuards';
 
 /**
  * Constructs the {@link DailyBudgetService} with its collaborators resolved
@@ -19,7 +20,7 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCapacitySettings: () => ctx.capacitySettings,
-    combinedPricesReader: ctx.combinedPricesReader,
+    combinedPricesReader: requirePriceCoordinator(ctx).combinedPricesReader,
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(ctx.homey),
     dailyBudgetStateStore: createDailyBudgetStateStore(ctx.homey),
     structuredLog: ctx.getStructuredLogger('daily_budget'),

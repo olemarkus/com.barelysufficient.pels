@@ -99,6 +99,18 @@ const readPowerhourRow = (
   return value === null ? { kind: classifyPendingLegacyKey(settings, key) } : { kind: 'stored', value };
 };
 
+/**
+ * The stored combined prices. A missing row first retries the old key's import:
+ * a boot whose read of `combined_prices` came back empty leaves the key pending,
+ * and until then the prices the owner had are still only there.
+ */
+const readCombinedRow = (settings: SettingsPort, cache: PriceCacheStore): unknown => {
+  const value = cache.read(COMBINED_PRICES);
+  if (value !== null) return value;
+  importPendingLegacyPriceCache(settings, cache, COMBINED_PRICES);
+  return cache.read(COMBINED_PRICES);
+};
+
 const readCachedDay = (
   settings: SettingsPort,
   cache: PriceCacheStore,
@@ -165,6 +177,8 @@ export type PriceDataStore = {
   writePowerhourCacheDevice(deviceId: string | null): void;
   readCombinedRaw(): unknown;
   writeCombined(payload: CombinedPricesV2): void;
+  /** Drop the stored combined prices, for a payload no reader can use. */
+  clearCombined(): void;
 };
 
 /**
@@ -172,8 +186,9 @@ export type PriceDataStore = {
  * lives beside the port it implements because the reads and the keys they use
  * are the price module's own: `setup/` hands over a {@link SettingsPort} and the
  * cache and knows nothing about which store backs which field. Every price
- * cache is in the userdata store (`priceCacheStore.ts`) except the combined
- * prices, which still ride settings until they move the same way.
+ * cache, the combined prices included, is in the userdata store
+ * (`priceCacheStore.ts`); settings are read only for a legacy key a Power by
+ * the Hour row or the combined prices may still be waiting to import.
  */
 export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => ({
   readSpotPrices: () => cache.read('spot_prices'),
@@ -202,6 +217,7 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
   writePowerhourCacheDevice: (deviceId) => (
     deviceId === null ? cache.remove(POWERHOUR_PRICES_DEVICE) : cache.write(POWERHOUR_PRICES_DEVICE, deviceId)
   ),
-  readCombinedRaw: () => settings.get(COMBINED_PRICES),
-  writeCombined: (payload) => settings.set(COMBINED_PRICES, payload),
+  readCombinedRaw: () => readCombinedRow(settings, cache),
+  writeCombined: (payload) => cache.write(COMBINED_PRICES, payload),
+  clearCombined: () => cache.remove(COMBINED_PRICES),
 });

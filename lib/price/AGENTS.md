@@ -51,19 +51,24 @@ no fallback, no log. A persisted field's meaning is fixed at the version that fi
 - `combinedPricesReader.ts` / `priceStore.ts` — typed read boundary for the persisted combined-prices store + its pure derivations.
 - `priceDataStore.ts` / `priceOptimizationSettingsStore.ts` — typed producer-side persistence boundaries.
 - `priceCacheStore.ts` — the price caches in the userdata database, one JSON row each, with the
-  one-shot import of each legacy settings key. Every price cache is here except the combined prices,
-  which `priceDataStore.ts` still writes to settings until they move too. Do not add a new cache to settings.
+  one-shot import of each legacy settings key. Every price cache is here, the combined prices
+  included. Do not add a new cache to settings.
 - `nettleieFallbackData.generated.ts` — **generated** (`npm run build:nettleie-fallback`); never edit by hand.
 
 ## Invariants
 
 - Leaf module (`no-price-to-peer` in `.dependency-cruiser.cjs`): consumed by plan and dailyBudget;
   must not import `lib/{device,power,plan,dailyBudget,objectives,observer,executor}`.
-- All cached price-data persistence goes through the typed stores (`priceDataStore.ts`, the
-  combined-prices store) — no ad-hoc `settings.set` of price payloads. The
+- All cached price-data persistence goes through the typed stores (`priceDataStore.ts` over the
+  userdata price cache) — no ad-hoc write of price payloads anywhere else. The
   `combinedPricesReader.ts` docblock is the house-style reference for these store boundaries:
-  the module declares the typed interface AND owns the SDK read and migrations, reading through a
-  `SettingsPort` that `setup/` hands it.
+  the module declares the typed interface AND owns the read and the migrations, reading through
+  the price data store the price wiring builds once and shares with the coordinator.
+- A price refresh is not a plan-rebuild trigger (`lib/plan/planRebuildTrigger.ts`): the prices in
+  force are read at the next reading's rebuild, and the daily budget reshapes its hourly split
+  there when their fingerprint has changed (`DailyBudgetManager`). An owner's change to the price
+  settings is different: that is a `settings` trigger (`settings:daily_budget_price`) and rebuilds
+  at once.
 - Consumers receive resolved flat values (prices, levels); they never branch on which source
   (spot/flow/Homey Energy/Power by the Hour) produced them.
 - **The Power by the Hour source is the one place a cache READ is load-bearing.** It merges into the

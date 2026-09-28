@@ -184,6 +184,9 @@ export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
 /** @public — intentionally retained (was in check-dead-code parked list). */
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
+// Legacy: the combined prices live in the userdata price cache
+// (lib/price/priceCacheStore.ts), in a row of this name. As a settings key it is
+// only read by the legacy import.
 export const COMBINED_PRICES = 'combined_prices';
 // Legacy: the spot prices and the area they are for live in the userdata store
 // (lib/price/priceCacheStore.ts). The keys are only read by the one-shot boot import.

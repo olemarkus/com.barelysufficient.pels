@@ -40,6 +40,7 @@ import {
   loadDevicesForOverview,
   refreshDevicesForUi,
   refreshPlanForUi,
+  refreshDailyBudgetIfVisible,
   refreshPowerDataIfVisible,
   refreshPricesIfVisible,
   refreshStaleDataStatus,
@@ -108,6 +109,10 @@ const handlePlanUpdated = (plan: unknown) => {
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   refreshPricesIfVisible('realtime prices_updated');
+  // The daily-budget chart draws the combined prices too. They live in the
+  // app's price cache now, not a settings key, so this push is their only
+  // change signal.
+  refreshDailyBudgetIfVisible('realtime prices_updated');
   // Fresh prices can clear (or raise) the hub's `Awaiting prices` chip.
   syncSettingsHubChips();
   // The overview hero anticipation subline ("Cheapest hour ahead …") depends on

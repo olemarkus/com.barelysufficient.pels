@@ -30,7 +30,7 @@ import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import { createPlanHistoryStoreForApp } from './planHistoryStore';
-import { requirePlanService } from './contextGuards';
+import { requirePlanService, requirePriceCoordinator } from './contextGuards';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
@@ -194,7 +194,7 @@ const resolveHourPriceFromContext = (
   tone: PostmortemTone;
   costDisplay: DeferredObjectivePlanHistoryCostDisplay;
 } | null => {
-  const store = ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone());
+  const store = requirePriceCoordinator(ctx).combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone());
   if (!store) return null;
   for (const entry of flattenAllHours(store)) {
     const entryStart = new Date(entry.startsAt).getTime();

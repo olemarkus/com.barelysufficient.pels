@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import {
+  COMBINED_PRICES,
   ELECTRICITY_PRICES,
   ELECTRICITY_PRICES_AREA,
   FLOW_PRICES_TODAY,
@@ -256,5 +258,51 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     get.mockRestore();
     expect(settings.getKeys()).toContain(FLOW_PRICES_TODAY);
     expect(store.read(FLOW_PRICES_TODAY)).toBeNull();
+  });
+});
+
+describe('importLegacyPriceCaches: combined prices', () => {
+  const V2 = {
+    version: 2,
+    days: { '2026-09-27': { hours: [{ startsAt: '2026-09-26T22:00:00.000Z', total: 1, isCheap: false, isExpensive: false }] } },
+    avgPrice: 1, lowThreshold: 0.5, highThreshold: 1.5, priceScheme: 'norway', priceUnit: 'NOK/kWh',
+  };
+  const V1 = { prices: [{ startsAt: '2026-09-26T22:00:00.000Z', total: 1 }], avgPrice: 1 };
+  const rig = () => {
+    const settings = new MockSettings();
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    return { settings, ...open() };
+  };
+
+  it('imports the combined prices as they are, a legacy V1 shape included, and retires the key', () => {
+    for (const legacy of [V2, V1]) {
+      const { settings, store } = rig();
+      settings.set(COMBINED_PRICES, legacy);
+      importLegacyPriceCaches(settings, store);
+      expect(store.read(COMBINED_PRICES)).toEqual(legacy);
+      expect(settings.getKeys()).not.toContain(COMBINED_PRICES);
+    }
+  });
+
+  it('retires the key unread once the store holds a build of its own', () => {
+    const { settings, store } = rig();
+    store.write(COMBINED_PRICES, V2);
+    settings.set(COMBINED_PRICES, V1);
+    importLegacyPriceCaches(settings, store);
+    expect(store.read(COMBINED_PRICES)).toEqual(V2);
+    expect(settings.getKeys()).not.toContain(COMBINED_PRICES);
+  });
+
+  it('imports a key the boot read missed on the first read that finds no row', () => {
+    const { settings, store } = rig();
+    settings.set(COMBINED_PRICES, V2);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === COMBINED_PRICES ? undefined : originalGet(key)));
+    importLegacyPriceCaches(settings, store);
+    get.mockRestore();
+    expect(settings.getKeys()).toContain(COMBINED_PRICES);
+
+    expect(createPriceDataStore(settings, store).readCombinedRaw()).toEqual(V2);
+    expect(settings.getKeys()).not.toContain(COMBINED_PRICES);
   });
 });

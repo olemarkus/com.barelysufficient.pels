@@ -2,11 +2,16 @@ import type Homey from 'homey';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../../lib/price/priceFlowTags';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
+
+// The combined prices the publisher reads live in the price cache; each test starts on an empty one.
+let priceCache = createInMemoryPriceCache();
 
 const buildStore = (overrides: Partial<CombinedPricesV2> = {}): CombinedPricesV2 => ({
   version: 2,
@@ -44,7 +49,7 @@ const tokenValue = (): string => (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_
 const newPublisher = () => new PriceFlowTagPublisher({
   homey: homeyLike,
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-  combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+  combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
   log: () => {},
   debugStructured: () => {},
 });
@@ -52,6 +57,7 @@ const newPublisher = () => new PriceFlowTagPublisher({
 describe('PriceFlowTagPublisher', () => {
   beforeEach(() => {
     resetMock();
+    priceCache = createInMemoryPriceCache();
     vi.useFakeTimers().setSystemTime(new Date('2026-05-17T10:00:00+02:00'));
   });
   afterEach(() => {
@@ -71,7 +77,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('publishes the export to both the token and the trigger when prices exist', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: {
         '2026-05-17': { hours: day('2026-05-17', 24) },
         '2026-05-18': { hours: day('2026-05-18', 24, 70) },
@@ -90,7 +96,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('suppresses duplicate publishes when content fingerprint is unchanged', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
@@ -104,13 +110,13 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('fires both surfaces again when content changes', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     const publisher = newPublisher();
     await publisher.init();
     await publisher.publish('first');
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 80) } },
     }));
     await publisher.publish('second');
@@ -121,13 +127,13 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('reflects tomorrow arrival as a non-empty tomorrow array', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
     await publisher.init();
     await publisher.publish('first');
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: {
         '2026-05-17': { hours: day('2026-05-17', 24) },
         '2026-05-18': { hours: day('2026-05-18', 24, 90) },
@@ -139,7 +145,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('emits standard double-quoted JSON parseable by JSON.parse without preprocessing', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
@@ -155,7 +161,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('retries failed publishes on the next update instead of latching the fingerprint', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     let throwNext = true;
@@ -174,7 +180,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+      combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -200,7 +206,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+      combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -212,7 +218,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('still fires the price_list_updated trigger when setToken throws', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     const capture = captureLogger();
@@ -227,7 +233,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+      combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -241,7 +247,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('still fires the trigger when createToken never succeeded', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     const publisher = new PriceFlowTagPublisher({
@@ -253,7 +259,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+      combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -266,7 +272,7 @@ describe('PriceFlowTagPublisher', () => {
   });
 
   it('retries the next publish when the trigger fires but the tag write failed', async () => {
-    mockHomeyInstance.settings.set('combined_prices', buildStore({
+    priceCache.write('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     let throwNext = true;
@@ -285,7 +291,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
+      combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
       log: () => {},
       debugStructured: () => {},
     });

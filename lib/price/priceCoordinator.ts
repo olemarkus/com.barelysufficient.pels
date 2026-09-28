@@ -31,6 +31,7 @@ import type {
 } from './priceOptimizationSettingsStore';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type { PriceDataStore } from './priceDataStore';
+import { createCombinedPricesReader, type CombinedPricesReader } from './combinedPricesReader';
 import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
@@ -104,7 +105,16 @@ export class PriceCoordinator {
   private priceOptimizationEnabled = true;
   private priceOptimizationSettings: PriceOptimizationDeviceSettings = {};
 
+  /**
+   * The read boundary every combined-prices consumer uses, over this
+   * coordinator's own price data store: the cache behind it holds its rows in
+   * memory, so a second store would read a stale copy. A malformed payload asks
+   * this coordinator to rebuild.
+   */
+  readonly combinedPricesReader: CombinedPricesReader;
+
   constructor(private deps: PriceCoordinatorDeps) {
+    this.combinedPricesReader = createCombinedPricesReader(deps.priceDataStore, () => this.updateCombinedPrices());
     this.priceService = new PriceService(
       deps.homey,
       {
@@ -251,10 +261,10 @@ export class PriceCoordinator {
    * the prior day's classification until the following midnight. Rotate once
    * when the persisted payload is from an earlier local day.
    *
-   * Conditional by design: an unconditional boot rotation perturbs settings
-   * handlers (it broke the set_temperature throttle plan test); a missing or
-   * same-day payload is left untouched (never clobber persisted state on a
-   * transient/empty read).
+   * Conditional by design: an unconditional boot rotation would rebuild and
+   * push the prices on every boot for nothing (it once broke the
+   * set_temperature throttle plan test); a missing or same-day payload is left
+   * untouched.
    *
    * Payload-fed schemes only (Flow, Homey Energy, Power by the Hour): their
    * day payloads rotate inside a price build, and a restart across midnight
@@ -325,6 +335,15 @@ export class PriceCoordinator {
   /** The payload-fed sources' stored days and currencies, for the settings UI. */
   getPriceSourcePayloadsForUi(): SettingsUiPriceSourcePayloads {
     return readPriceSourcePayloads(this.deps.priceDataStore);
+  }
+
+  /**
+   * The stored combined prices as they are, for the settings UI and the plan
+   * widget, whose own readers accept both the V1 and V2 shapes; `null` before
+   * the first build.
+   */
+  getCombinedPricesForUi(): unknown {
+    return this.deps.priceDataStore.readCombinedRaw();
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {

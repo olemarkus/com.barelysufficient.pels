@@ -76,6 +76,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
+  // The price wiring replaces PelsApp's default once the coordinator exists.
+  public abstract getCombinedPricesForUi: () => unknown;
 
   public readHardCapConfiguration = (): SettingsUiHardCapConfigurationRead => (
     this.context.capacitySettingsStore.readHardCapConfiguration()

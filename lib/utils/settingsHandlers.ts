@@ -8,7 +8,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
-  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
@@ -175,7 +174,6 @@ export type SettingsHandlerDeps = {
   rebuildAllHomeRuntimePlansForDeviceControlChange?: () => void;
 };
 
-const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
 const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
 const FORCE_DAILY_BUDGET_STATE_PERSIST: DailyBudgetUpdateStateOptions = {
   forcePlanRebuild: true,
@@ -185,20 +183,6 @@ const FORCE_DAILY_BUDGET_STATE_PERSIST: DailyBudgetUpdateStateOptions = {
 export type SettingsHandler = ((key: string) => Promise<void>) & {
   stop: () => void;
 };
-
-const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): DebouncedSyncScheduler => (
-  createDebouncedSyncScheduler({
-    debounceMs: DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS,
-    run: async () => {
-      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
-      await rebuildPlanFromSettings(deps, 'daily_budget_price');
-    },
-    onError: (error) => settingsLogger.error({
-      event: 'daily_budget_combined_price_sync_failed',
-      err: normalizeError(error),
-    }),
-  })
-);
 
 const createDailyBudgetSettingsSyncScheduler = (deps: SettingsHandlerDeps): DebouncedSyncScheduler => (
   createDebouncedSyncScheduler({
@@ -251,11 +235,9 @@ const logMalformedHomeSuffix = (key: string): void => {
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandler {
-  const dailyBudgetPriceSyncScheduler = createDailyBudgetPriceSyncScheduler(deps);
   const dailyBudgetSettingsSyncScheduler = createDailyBudgetSettingsSyncScheduler(deps);
   const handlers = buildSettingsHandlers(
     deps,
-    () => dailyBudgetPriceSyncScheduler.schedule(),
     () => dailyBudgetSettingsSyncScheduler.schedule(),
   );
 
@@ -319,7 +301,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
   // eslint-disable-next-line functional/immutable-data
   return Object.assign(handler, {
     stop: (): void => {
-      dailyBudgetPriceSyncScheduler.stop();
       dailyBudgetSettingsSyncScheduler.stop();
     },
   });
@@ -327,13 +308,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
 
 function buildSettingsHandlers(
   deps: SettingsHandlerDeps,
-  scheduleDailyBudgetPriceSync: () => Promise<void>,
   scheduleDailyBudgetSettingsSync: () => Promise<void>,
 ): SettingsHandlerMap {
   return {
     ...buildDailyBudgetSettingsHandlers(scheduleDailyBudgetSettingsSync),
     ...buildCapacitySettingsHandlers(deps),
-    ...buildPriceSettingsHandlers(deps, scheduleDailyBudgetPriceSync),
+    ...buildPriceSettingsHandlers(deps),
     ...buildMiscSettingsHandlers(deps),
   };
 }
@@ -477,10 +457,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
   };
 }
 
-function buildPriceSettingsHandlers(
-  deps: SettingsHandlerDeps,
-  scheduleDailyBudgetPriceSync: () => Promise<void>,
-): SettingsHandlerMap {
+function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
     refresh_nettleie: async () => {
       try {
@@ -543,9 +520,6 @@ function buildPriceSettingsHandlers(
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');
-    },
-    [COMBINED_PRICES]: async () => {
-      void scheduleDailyBudgetPriceSync();
     },
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [HOMEY_ENERGY_METER_DEVICE_ID]: async () => handleHomeyEnergyMeterChange(deps),

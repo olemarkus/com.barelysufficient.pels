@@ -25,6 +25,7 @@ import {
   hasPowerhourSourceSeam,
   hasPriceOptimizationSetupSeam,
   hasPriceSourcePayloadsSeam,
+  hasCombinedPricesSeam,
   NO_PRICE_SOURCE_PAYLOADS,
   hasPvForecastSourceSeam,
 } from '../lib/ports/settingsUiStatusSeams';
@@ -412,11 +413,11 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   const app = getApp(homey);
   // The settings-UI client (`normalizeCombinedPrices`, `ui/combinedPrices.ts`) accepts
   // both the legacy V1 `{ prices: [...] }` and V2 `{ days: {...} }` shapes,
-  // so the raw persisted value is forwarded as-is. A first read through the
+  // so the stored value is forwarded as-is. A first read through the
   // combined-prices reader (daily-budget service, plan service) migrates V1 to
   // V2 in place; later bootstrap calls then see V2 here.
   return {
-    combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
+    combinedPrices: hasCombinedPricesSeam(app) ? app.getCombinedPricesForUi() : null,
     priceArea: stringOrNull(homey.settings.get('price_area')),
     ...(hasPriceSourcePayloadsSeam(app) ? app.getPriceSourcePayloadsForUi() : NO_PRICE_SOURCE_PAYLOADS),
     pvForecastSource: hasPvForecastSourceSeam(app)

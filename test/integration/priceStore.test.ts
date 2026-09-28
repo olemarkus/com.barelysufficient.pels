@@ -6,15 +6,16 @@ import {
 } from '../../lib/price/priceStore';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
-import type { SettingsPort } from '../../lib/ports/homeyRuntime';
+import type { PriceDataStore } from '../../lib/price/priceDataStore';
+import { partialDouble } from '../helpers/partialDouble';
 
 const TZ = 'Europe/Oslo';
 
 // Each call builds a fresh reader (instance-scoped refetch guard) — equivalent
 // to the production singleton for non-re-entrant reads. The re-entrancy test
 // below deliberately reuses one reader instance.
-const readStore = (settings: SettingsPort, requestRefetch: () => void, now: Date, tz: string) =>
-  createCombinedPricesReader(settings, requestRefetch).readStore(now, tz);
+const readStore = (settings: CombinedStoreStub, requestRefetch: () => void, now: Date, tz: string) =>
+  createCombinedPricesReader(asPriceDataStore(settings), requestRefetch).readStore(now, tz);
 
 const buildStore = (): CombinedPricesV2 => ({
   version: 2,
@@ -31,22 +32,25 @@ const buildStore = (): CombinedPricesV2 => ({
   lastFetched: '2026-05-10T00:00:00.000Z',
 });
 
-/** Every member of the port, spied, each spy carrying that member's own signature. */
-type SettingsPortStub = { [K in keyof SettingsPort]: Mock<SettingsPort[K]> };
+/** The three price-data-store members the reader uses, spied, each with its own signature. */
+type CombinedStoreStub = {
+  readCombinedRaw: Mock<PriceDataStore['readCombinedRaw']>;
+  writeCombined: Mock<PriceDataStore['writeCombined']>;
+  clearCombined: Mock<PriceDataStore['clearCombined']>;
+};
+
+const asPriceDataStore = (stub: CombinedStoreStub): PriceDataStore => partialDouble<PriceDataStore>(stub);
 
 /**
- * A LIVE settings double: a write is visible to the next read, as the real
- * store is. The mapped return type rather than a trailing `satisfies` is what
- * holds each spy to the port's own signature — see the reasoning in
- * `test/mocks/deviceDiagnosticsRecorder.ts`.
+ * A LIVE store double: a write is visible to the next read, as the real price
+ * cache is.
  */
-const buildSettings = (initial: unknown): SettingsPortStub => {
+const buildSettings = (initial: unknown): CombinedStoreStub => {
   let value = initial;
   return {
-    get: vi.fn((_key: string) => value),
-    set: vi.fn((_key: string, next: unknown) => { value = next; }),
-    unset: vi.fn((_key: string) => { value = undefined; }),
-    getKeys: vi.fn(() => []),
+    readCombinedRaw: vi.fn(() => value),
+    writeCombined: vi.fn((next) => { value = next; }),
+    clearCombined: vi.fn(() => { value = null; }),
   };
 };
 
@@ -73,7 +77,7 @@ describe('readStore', () => {
     const requestRefetch = vi.fn();
     const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).toBeNull();
-    expect(settings.set).toHaveBeenCalledWith('combined_prices', null);
+    expect(settings.clearCombined).toHaveBeenCalledTimes(1);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
 
@@ -113,8 +117,8 @@ describe('readStore', () => {
     expect(result!.lastFetched).toBe('2026-05-10T00:00:00.000Z');
     // The migration must persist V2 to settings so subsequent direct reads
     // (settingsUiApi, widget) see V2 too.
-    expect(settings.set).toHaveBeenCalledTimes(1);
-    const written = settings.set.mock.calls[0][1] as { version: number };
+    expect(settings.writeCombined).toHaveBeenCalledTimes(1);
+    const written = settings.writeCombined.mock.calls[0][0] as { version: number };
     expect(written.version).toBe(2);
     // No refetch needed: V1 has all the entries already, the migration is
     // self-contained.
@@ -142,7 +146,7 @@ describe('readStore', () => {
     expect(result!.version).toBe(2);
     expect(result!.days).toEqual({});
     expect(result!.priceScheme).toBe('flow');
-    expect(settings.set).toHaveBeenCalledTimes(1);
+    expect(settings.writeCombined).toHaveBeenCalledTimes(1);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
 
@@ -151,7 +155,8 @@ describe('readStore', () => {
     const requestRefetch = vi.fn();
     const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).toBeNull();
-    expect(settings.set).not.toHaveBeenCalled();
+    expect(settings.writeCombined).not.toHaveBeenCalled();
+    expect(settings.clearCombined).not.toHaveBeenCalled();
     expect(requestRefetch).not.toHaveBeenCalled();
   });
 
@@ -165,18 +170,17 @@ describe('readStore', () => {
     // this test would pass whether or not the guard existed. Answering the
     // malformed payload every time is what drives the re-entrant read back
     // into the refetch, leaving the guard as the only thing ending it.
-    const settings: SettingsPortStub = {
-      get: vi.fn((_key: string) => ({ unrelated: 'shape' })),
-      set: vi.fn(),
-      unset: vi.fn(),
-      getKeys: vi.fn(() => []),
+    const settings: CombinedStoreStub = {
+      readCombinedRaw: vi.fn(() => ({ unrelated: 'shape' })),
+      writeCombined: vi.fn(),
+      clearCombined: vi.fn(),
     };
     // Re-entrancy must go through the SAME reader instance for the guard to
     // engage (it is instance-scoped); production shares one reader on AppContext.
     const requestRefetch = vi.fn(() => {
       reader.readStore(new Date('2026-05-10T12:00:00.000Z'), TZ);
     });
-    const reader = createCombinedPricesReader(settings, requestRefetch);
+    const reader = createCombinedPricesReader(asPriceDataStore(settings), requestRefetch);
     reader.readStore(new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });

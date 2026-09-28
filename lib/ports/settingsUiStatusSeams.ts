@@ -23,6 +23,8 @@ type PowerhourSourceSeam = { getPowerhourSourceUiStatus: () => PowerhourSourceUi
 
 type PriceSourcePayloadsSeam = { getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads };
 
+type CombinedPricesSeam = { getCombinedPricesForUi: () => unknown };
+
 type HardCapConfigurationSeam = { readHardCapConfiguration: () => SettingsUiHardCapConfigurationRead };
 
 type PriceOptimizationSetupSeam = { readPriceOptimizationSetup: () => PriceOptimizationSetupRead };
@@ -72,6 +74,13 @@ export const hasPriceSourcePayloadsSeam = (app: unknown): app is PriceSourcePayl
   && app !== null
   && 'getPriceSourcePayloadsForUi' in app
   && typeof app.getPriceSourcePayloadsForUi === 'function'
+);
+
+export const hasCombinedPricesSeam = (app: unknown): app is CombinedPricesSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getCombinedPricesForUi' in app
+  && typeof app.getCombinedPricesForUi === 'function'
 );
 
 export const hasHardCapConfigurationSeam = (app: unknown): app is HardCapConfigurationSeam => (

@@ -136,8 +136,7 @@ it is one short string, rewritten perhaps once a year, so the write cost the
 `/userdata` store exists to avoid does not arise. The prices themselves stay
 out: the raw slot payloads of every payload-fed source (Flow, Homey Energy and
 Power by the Hour, with their currencies and Power by the Hour's device marker)
-live in the price cache, and `combined_prices` is the one named below as the
-next to move.
+and the `combined_prices` built from them live in the price cache.
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership
@@ -163,8 +162,8 @@ next to move.
   saved at most once a minute) so a restart does not erase the last reading,
   and the price caches (`lib/price/priceCacheStore.ts`, one row per cache: the
   grid tariff one entry per hour, the spot prices with their area, and the
-  payload-fed sources' day payloads and markers); calibration and the combined
-  prices follow. A cache belongs here whatever its size (owner, 2026-09-27):
+  payload-fed sources' day payloads and markers, and the combined prices built
+  from them); calibration follows. A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`

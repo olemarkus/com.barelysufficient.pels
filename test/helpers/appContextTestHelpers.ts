@@ -29,6 +29,8 @@ import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createPriceCacheStore } from '../../lib/price/priceCacheStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -308,7 +310,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getPriceSourcePayloadsForUi: () => NO_PRICE_SOURCE_PAYLOADS,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,
-    combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),
+    getCombinedPricesForUi: () => null,
     log: vi.fn(),
     error: vi.fn(),
     logDebug: vi.fn(),
@@ -481,6 +483,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       getSnapshot: vi.fn(() => null),
     } as never,
     priceCoordinator: {
+      // The reader every combined-prices consumer takes from the coordinator,
+      // over an empty in-memory price cache.
+      combinedPricesReader: createCombinedPricesReader(
+        createPriceDataStore(homey.settings, createPriceCacheStore(userdataDatabase)),
+        () => undefined,
+      ),
       refreshSpotPrices: vi.fn(async () => undefined),
       refreshGridTariffData: vi.fn(async () => undefined),
       startPriceRefresh: vi.fn(),

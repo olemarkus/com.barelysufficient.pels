@@ -41,7 +41,6 @@ describe('settingsUiApi', () => {
     } = {},
   ) => {
     const store = new Map<string, unknown>([
-      ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
       ['price_area', 'NO1'],
       ...Object.entries(options.settings ?? {}),
@@ -210,8 +209,9 @@ describe('settingsUiApi', () => {
     });
     const app = {
       getModePrioritiesForUi: createFixturePriorityQuery(),
-      // The payload-fed sources' stored days live in the price cache, which the
-      // app serves; they are not settings keys.
+      // The price caches live in the userdata store, which the app serves;
+      // they are not settings keys.
+      getCombinedPricesForUi: () => ({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }),
       getPriceSourcePayloadsForUi: () => ({
         flowToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
         flowTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },

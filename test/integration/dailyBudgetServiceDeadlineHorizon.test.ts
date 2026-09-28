@@ -12,6 +12,8 @@ import {
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
 import {
@@ -73,7 +75,11 @@ const buildService = (initialSettings: SettingsStore): {
   service: DailyBudgetService;
   setCombinedPrices: (prices: SettingsStore[typeof COMBINED_PRICES]) => void;
 } => {
-  const settings: SettingsStore = { ...initialSettings };
+  // The combined prices live in the price cache, not settings.
+  const { [COMBINED_PRICES]: initialCombined, ...initialRest } = initialSettings;
+  const settings: SettingsStore = { ...initialRest };
+  const priceCache = createInMemoryPriceCache();
+  if (initialCombined !== undefined) priceCache.write(COMBINED_PRICES, initialCombined);
   const get = vi.fn((key: string) => settings[key] ?? null);
   const set = vi.fn((key: string, value: unknown) => {
     settings[key] = value;
@@ -93,7 +99,7 @@ const buildService = (initialSettings: SettingsStore): {
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
-    combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),
+    combinedPricesReader: createCombinedPricesReader(createPriceDataStore(homey.settings, priceCache), () => undefined),
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: createDailyBudgetStateStore(homey),
   });
@@ -101,7 +107,7 @@ const buildService = (initialSettings: SettingsStore): {
   return {
     service,
     setCombinedPrices: (value) => {
-      settings[COMBINED_PRICES] = value;
+      priceCache.write(COMBINED_PRICES, value);
     },
   };
 };

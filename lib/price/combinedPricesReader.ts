@@ -1,5 +1,4 @@
-import type { SettingsPort } from '../ports/homeyRuntime';
-import { COMBINED_PRICES } from '../utils/settingsKeys';
+import type { PriceDataStore } from './priceDataStore';
 import {
   type CombinedPricesV2,
   isCombinedPricesV1,
@@ -11,10 +10,9 @@ import { migrateLegacyCombinedPrices, pruneCombinedPricesV2 } from './priceServi
  * Domain-owned read boundary for the persisted combined-prices store.
  *
  * Consumers (daily budget, flow tags, plan service, deferred recorders) depend
- * on this type, never on `homey.settings` — the interface deliberately does not
- * expose the Homey SDK, so a consumer cannot read or migrate the persisted
- * payload directly. {@link createCombinedPricesReader} below owns the settings
- * read, the V1→V2 migration, and the malformed-payload recovery.
+ * on this type, never on the store behind it, so a consumer cannot read or
+ * migrate the persisted payload directly. {@link createCombinedPricesReader}
+ * below owns the read, the V1→V2 migration, and the malformed-payload recovery.
  *
  * `readStore` returns the migrated V2 store (or `null` before the first refresh
  * / for an unrecoverable payload). The pure derivations of that store live in
@@ -26,19 +24,21 @@ export type CombinedPricesReader = {
 };
 
 /**
- * The settings-backed {@link CombinedPricesReader}.
+ * The {@link CombinedPricesReader} over the price data store, which keeps the
+ * combined prices in the userdata price cache.
  *
- * `requestRefetch` is triggered when COMBINED_PRICES is missing or has an
+ * `requestRefetch` is triggered when the stored payload has an
  * unrecognised shape, so the coordinator can rebuild from raw scheme data (see
  * `PriceCoordinator.updateCombinedPrices`). It is NOT invoked for the V1 → V2
  * migration path: V1 already carries every entry, so we migrate in place
  * synchronously. Re-entrant calls within the same read are guarded by the
  * per-instance `refetchInFlight` flag; this relies on a single shared reader
- * (constructed once as the app's `combinedPricesReader` field), so the guard
+ * (built once by the price wiring on the coordinator's own store, and held as
+ * the app's `combinedPricesReader`), so the guard
  * covers all reads.
  */
 export const createCombinedPricesReader = (
-  settings: SettingsPort,
+  store: PriceDataStore,
   requestRefetch: () => void,
 ): CombinedPricesReader => {
   // Re-entrancy guard so a recovery `requestRefetch` call cannot recurse if the
@@ -51,7 +51,7 @@ export const createCombinedPricesReader = (
   };
 
   const readStore = (now: Date, timeZone: string): CombinedPricesV2 | null => {
-    const raw = settings.get(COMBINED_PRICES);
+    const raw = store.readCombinedRaw();
     if (isCombinedPricesV2(raw)) return pruneCombinedPricesV2(raw, now, timeZone);
     // Legacy V1 payload: migrate synchronously so callers see prices immediately
     // instead of a UNKNOWN-price-level gap until the next refetch lands. Persist
@@ -59,7 +59,7 @@ export const createCombinedPricesReader = (
     // run the migration on every read.
     if (isCombinedPricesV1(raw)) {
       const migrated = migrateLegacyCombinedPrices(raw, now, timeZone);
-      settings.set(COMBINED_PRICES, migrated);
+      store.writeCombined(migrated);
       // If the V1 payload had no entries inside the 3-day window (empty
       // legacy.prices, or all entries outside the window), the migrated store is
       // empty and price_level would otherwise stay UNKNOWN until an external
@@ -70,11 +70,10 @@ export const createCombinedPricesReader = (
       return migrated;
     }
     // Anything else (truly malformed, foreign shape): drop and ask the
-    // coordinator to rebuild. Plain null/undefined is the normal pre-refresh
-    // state and not actionable here — the periodic refresher will populate
-    // combined_prices on its own.
-    if (raw !== null && raw !== undefined) {
-      settings.set(COMBINED_PRICES, null);
+    // coordinator to rebuild. `null` is the normal pre-refresh state and not
+    // actionable here — the periodic refresher populates the store on its own.
+    if (raw !== null) {
+      store.clearCombined();
       guardedRequestRefetch();
     }
     return null;
