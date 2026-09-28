@@ -4,6 +4,8 @@
 runtime-configuration/observation surfaces to the `PlanInputDevice` contract.
 It resolves the producer facts once; `lib/plan/` consumes those facts and owns
 the plan decision.
+The shared external-off hold projection also lives here because its answer
+combines the Observer state with the hold store for both planner and executor.
 
 This is a deliberate integration layer above the peer domains, not another
 peer. It may read the device, observer, plan, and other domain owners needed to

@@ -17,13 +17,12 @@
 ## One deliberate exception to "timeless observed state"
 
 `externalOffHold.ts` is the layer's only *persisted* store, and a hold is a policy
-posture rather than an observation. It lives here anyway because it is the one
-thing `lib/device`, `lib/plan`, `lib/executor`, and `setup` all need to read, and
-observer is the only leaf all four may depend on (`no-observer-to-peer`). Keep the
-module a pure leaf — it must never import a peer, and it must not grow logic that
-decides *whether* a hold applies. That decision (the provenance question, "was this
-OFF ours?") belongs to `setup/externalOffHoldDetection.ts`, and the resolved
-`externalOffHoldActive` fact reaches the planner only through `toPlanDevice`.
+posture rather than an observation. It lives here as the persistence owner, but
+the module remains a pure leaf: it must never import a peer or decide whether a
+hold applies. The provenance question ("was this OFF ours?") belongs to
+`setup/externalOffHoldDetection.ts`; the shared observed-state resolution and
+planner projection live in `lib/planInput/externalOffHoldProjection.ts` and
+`lib/planInput/projectPlanInputDevice.ts`.
 
 The full device-state invariants digest lives in `lib/device/AGENTS.md`; read it before changing anything that feeds reconcile/merge.
 

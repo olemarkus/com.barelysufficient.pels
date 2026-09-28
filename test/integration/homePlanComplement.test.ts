@@ -345,6 +345,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       surplusPostureEnabled: false,
       projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
       clearRecentBinaryOffCommand: () => {},
+      pruneCommandability: () => {},
       getPrioritiesForDevices: createFixturePriorityQuery([
         { id: 'device-sub', priority: 4 }, { id: 'device-main', priority: 8 },
       ]),
@@ -354,6 +355,27 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       { id: 'device-main', priority: 2 },
       { id: 'device-sub', priority: 1 },
     ]);
+  });
+
+  it('prunes commandability against all configured devices before home filtering', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    const pruneCommandability = vi.fn();
+    const devices = buildHomePlanDevices(
+      makeCtx(makeMembershipService(membershipInputs)),
+      SUB_HOME.homeId,
+      {
+        surplusPostureEnabled: false,
+        projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
+        clearRecentBinaryOffCommand: () => {},
+        pruneCommandability,
+        getPrioritiesForDevices: createFixturePriorityQuery([
+          { id: 'device-sub', priority: 1 },
+        ]),
+      },
+    );
+
+    expect(devices.map((device) => device.id)).toEqual(['device-sub']);
+    expect(pruneCommandability).toHaveBeenCalledWith(new Set(['device-main', 'device-sub']));
   });
 
   it('keeps an unconfigured device behind an explicitly saved rank 100', () => {

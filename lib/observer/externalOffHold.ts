@@ -60,9 +60,6 @@ import {
   EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
 } from '../utils/settingsKeys';
-import { resolveCurrentOn } from './observedState';
-import type { ObservedCurrentStateInput } from './observedState';
-import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
 
 /**
  * The minimal settings surface this store needs. Structurally matches the
@@ -141,30 +138,6 @@ export type ExternalOffHoldPolicy = {
    */
   releaseDeOptedHolds: () => string[];
 };
-
-/**
- * The plan and executor share this one answer: a hold applies only while the
- * observed binary axis still says the device is off. If observation is absent,
- * preserve the hold conservatively; a step-only device has no binary authority
- * for this policy.
- */
-export function resolveExternalOffHoldActive(
-  isHeld: boolean,
-  device: ObservedCurrentStateInput,
-): boolean {
-  if (device.binaryControl === undefined) return false;
-  if (!isHeld) return false;
-  return !resolveCurrentOn(device);
-}
-
-export function isExternalOffHeldForObservedDevice(
-  isHeld: boolean,
-  observed: ProjectedObservedDeviceState | undefined,
-): boolean {
-  if (!observed) return isHeld;
-  if (observed.binaryControl === undefined) return false;
-  return isHeld && !resolveCurrentOn(observed);
-}
 
 /**
  * The value written under a hold key. Never read — the key's presence is the

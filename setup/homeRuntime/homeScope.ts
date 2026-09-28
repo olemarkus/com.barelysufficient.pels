@@ -264,6 +264,7 @@ export function buildMainHomeScope(
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: true,
         projectCommandability: binaryCommandReachability.project,
+        pruneCommandability: binaryCommandReachability.prune,
         clearRecentBinaryOffCommand: (deviceId, observedOnAtMs) => (
           ctx.planEngine?.clearRecentBinaryOffCommand(deviceId, observedOnAtMs)
         ),

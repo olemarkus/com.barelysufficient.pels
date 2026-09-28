@@ -31,6 +31,8 @@ import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** Owning-home cleanup for a pull-observed ON after an outside-off hold. */
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs: number) => void;
+  /** Remove stale retry state for devices no longer in the runtime configuration. */
+  pruneCommandability: (presentDeviceIds: ReadonlySet<string>) => void;
   /** This home's catalog owner returns a complete order for the planned set. */
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
 };
@@ -78,7 +80,9 @@ const runSnapshotPrePass = (
   });
   // Pruning uses all configured devices, even when this observer join or the
   // per-home projection omitted one temporarily.
-  pruneMissingLearnedPowerPeaks(ctx, new Set(ctx.deviceConfiguration.ids()));
+  const presentDeviceIds = new Set(ctx.deviceConfiguration.ids());
+  pruneMissingLearnedPowerPeaks(ctx, presentDeviceIds);
+  options.pruneCommandability(presentDeviceIds);
   return snapshot;
 };
 

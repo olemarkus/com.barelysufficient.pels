@@ -1596,10 +1596,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       shed-outcome state layer, 2026-09-08.
 
 - [x] **P2 — "held off by the owner" classification belonged with the hold policy.**
-      `lib/observer/externalOffHold.ts` now owns the shared resolution: a hold applies to a binary
-      device only while it is still observed off; when observation is absent, the executor keeps the
-      hold conservatively. `lib/planInput/` projects that answer into planner input. Source: layering
-      review of the overshoot-incident state layer, 2026-09-08; ownership move completed in PR #2561.
+      `lib/observer/externalOffHold.ts` owns persistence; `lib/planInput/externalOffHoldProjection.ts`
+      owns the shared resolution: a hold applies to a binary device only while it is still observed
+      off, and the executor preserves it conservatively when observation is absent. The planner
+      projects that answer into input. Source: layering review of the overshoot-incident state layer,
+      2026-09-08; ownership move completed in PR #2561.
 
 - [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
       stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that

@@ -1,6 +1,6 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
-import { holdExternalOffOnRelease, isExternalOffHeldForDevice } from './toPlanDevice';
+import { isExternalOffHeldForObservedDevice } from '../../lib/planInput/externalOffHoldProjection';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
@@ -185,8 +185,11 @@ export function createPlanEngineComposition(
     // executor's restore carve-out a no-op for that home's devices. Same
     // resolution the producer applies, so plan and executor share one definition
     // of "held".
-    isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
-    leaveOffOnRelease: (deviceId) => holdExternalOffOnRelease(ctx, deviceId),
+    isExternalOffHeld: (deviceId) => isExternalOffHeldForObservedDevice(
+      ctx.externalOffHold?.isHeld(deviceId) === true,
+      ctx.getObservedRecord(deviceId),
+    ),
+    leaveOffOnRelease: (deviceId) => ctx.externalOffHold?.holdOnRelease(deviceId) ?? 'unavailable',
     actuator,
     binaryCommandLifecycle: scope.binaryCommandLifecycle,
     capacityGuard: options.capacityGuard,

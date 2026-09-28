@@ -21,14 +21,16 @@ export type BinaryCommandabilityProjection = {
   reason: 'none' | 'binary_command_retry';
 };
 
+export type BinaryCommandabilityProjectionInput = {
+  deviceId: string;
+  base: boolean;
+  observedOn: boolean;
+  available: boolean;
+};
+
 export type BinaryCommandReachability = {
   lifecycle: BinaryCommandLifecycleListener;
-  project: (params: {
-    deviceId: string;
-    base: boolean;
-    observedOn: boolean;
-    available: boolean;
-  }) => BinaryCommandabilityProjection;
+  project: (params: BinaryCommandabilityProjectionInput) => BinaryCommandabilityProjection;
   prune: (presentDeviceIds: ReadonlySet<string>) => void;
   dispose: () => void;
 };

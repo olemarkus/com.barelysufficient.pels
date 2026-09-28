@@ -16,7 +16,7 @@ import {
 } from '../appDeviceSupport';
 import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '../homeRuntime/homeOperatingMode';
 import { createDefaultToPlanDeviceOptions } from '../../lib/planInput/projectPlanInputDevice';
-import { toPlanDevice } from './planInputDeviceProjection';
+import { toPlanDevice } from './toPlanDevice';
 
 export const createTemperatureShedFloorDefaults = (ctx: AppContext) => (
   snapshot: DecoratedDeviceSnapshot[],

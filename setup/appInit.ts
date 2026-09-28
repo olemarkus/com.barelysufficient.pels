@@ -31,9 +31,6 @@ export { createPlanEngine, createPlanEngineComposition } from './appInit/createP
 export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';
-export {
-  isExternalOffHeldForDevice,
-  toPlanDevice,
-} from './appInit/toPlanDevice';
+export { toPlanDevice } from './appInit/toPlanDevice';
 export { buildDeviceParseProviders } from './appInit/buildDeviceParseProviders';
 export { createPersistedEvCarLinkAccess } from './appInit/evCarLinkAccess';

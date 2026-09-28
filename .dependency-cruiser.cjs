@@ -44,6 +44,13 @@ module.exports = {
       to: { path: '^lib/planInput/' },
     },
     {
+      name: 'no-plan-input-to-app-layer',
+      comment: 'Planner-input production receives narrow owner reads from setup and must never import AppContext from the app layer.',
+      severity: 'error',
+      from: { path: '^lib/planInput/' },
+      to: { path: '^lib/app/' },
+    },
+    {
       name: 'no-plan-solar-coupling',
       comment: 'The curtailment-surplus term crosses from lib/solar into lib/plan only as a flat '
         + 'injected getter (setup/appInit/wireCurtailmentSurplus.ts): the planner must never import '
