@@ -259,6 +259,24 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     expect(settings.getKeys()).toContain(FLOW_PRICES_TODAY);
     expect(store.read(FLOW_PRICES_TODAY)).toBeNull();
   });
+
+  it('recovers a Flow day when its boot import read was transiently empty', () => {
+    const { settings, store } = rig();
+    settings.set(FLOW_PRICES_TODAY, PAYLOAD);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (
+      key === FLOW_PRICES_TODAY ? undefined : originalGet(key)
+    ));
+    importLegacyPriceCaches(settings, store);
+    get.mockRestore();
+
+    const priceData = createPriceDataStore(settings, store);
+    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValueOnce([]);
+    expect(priceData.readFlowPayload(FLOW_PRICES_TODAY)).toBeNull();
+    getKeys.mockRestore();
+    expect(priceData.readFlowPayload(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
+    expect(settings.getKeys()).not.toContain(FLOW_PRICES_TODAY);
+  });
 });
 
 describe('importLegacyPriceCaches: combined prices', () => {

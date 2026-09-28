@@ -1,6 +1,8 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   COMBINED_PRICES,
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
   POWERHOUR_PRICES_CURRENCY,
   POWERHOUR_PRICES_DEVICE,
@@ -187,37 +189,48 @@ export type PriceDataStore = {
  * are the price module's own: `setup/` hands over a {@link SettingsPort} and the
  * cache and knows nothing about which store backs which field. Every price
  * cache, the combined prices included, is in the userdata store
- * (`priceCacheStore.ts`); settings are read only for a legacy key a Power by
- * the Hour row or the combined prices may still be waiting to import.
+ * (`priceCacheStore.ts`); settings are read only for legacy keys whose import
+ * may still be pending.
  */
-export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => ({
-  readSpotPrices: () => cache.read('spot_prices'),
-  writeSpotPrices: (prices) => cache.write('spot_prices', prices),
-  readSpotPriceArea: () => cache.read('spot_price_area'),
-  writeSpotPriceArea: (area) => cache.write('spot_price_area', area),
-  readNettleie: () => cache.read('grid_tariff'),
-  writeNettleie: (data) => cache.write('grid_tariff', data),
-  readFlowPayload: (key) => cache.read(key),
-  // A cleared day or marker is no row at all, never a stored `null`.
-  writeFlowPayload: (key, payload) => (
-    payload === null ? cache.remove(key) : cache.write(key, toStoredFlowPayload(payload))
-  ),
-  readHomeyPricesCurrency: () => readCurrency(cache, HOMEY_PRICES_CURRENCY),
-  writeHomeyPricesCurrency: (unit) => cache.write(HOMEY_PRICES_CURRENCY, unit),
-  readPowerhourCurrency: () => readCurrency(cache, POWERHOUR_PRICES_CURRENCY),
-  writePowerhourCurrency: (unit) => (
-    unit === null ? cache.remove(POWERHOUR_PRICES_CURRENCY) : cache.write(POWERHOUR_PRICES_CURRENCY, unit)
-  ),
-  readPowerhourCache: () => readPowerhourCacheFrom(settings, cache),
-  writePowerhourDay: (day, payload) => {
-    const key = day === 'today' ? POWERHOUR_PRICES_TODAY : POWERHOUR_PRICES_TOMORROW;
-    if (payload === null) cache.remove(key);
-    else cache.write(key, toStoredFlowPayload(payload));
-  },
-  writePowerhourCacheDevice: (deviceId) => (
-    deviceId === null ? cache.remove(POWERHOUR_PRICES_DEVICE) : cache.write(POWERHOUR_PRICES_DEVICE, deviceId)
-  ),
-  readCombinedRaw: () => readCombinedRow(settings, cache),
-  writeCombined: (payload) => cache.write(COMBINED_PRICES, payload),
-  clearCombined: () => cache.remove(COMBINED_PRICES),
-});
+export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheStore): PriceDataStore => {
+  // A missing Flow day may still be in a legacy key whose boot read failed.
+  const readFlowPayload = (key: PricePayloadKey): unknown => {
+    const value = cache.read(key);
+    if (value !== null || (key !== FLOW_PRICES_TODAY && key !== FLOW_PRICES_TOMORROW)) return value;
+    // Even an empty key list can be a transient SDK miss; retry while no row exists.
+    importPendingLegacyPriceCache(settings, cache, key);
+    return cache.read(key);
+  };
+
+  return {
+    readSpotPrices: () => cache.read('spot_prices'),
+    writeSpotPrices: (prices) => cache.write('spot_prices', prices),
+    readSpotPriceArea: () => cache.read('spot_price_area'),
+    writeSpotPriceArea: (area) => cache.write('spot_price_area', area),
+    readNettleie: () => cache.read('grid_tariff'),
+    writeNettleie: (data) => cache.write('grid_tariff', data),
+    readFlowPayload,
+    // A cleared day or marker is no row at all, never a stored `null`.
+    writeFlowPayload: (key, payload) => (
+      payload === null ? cache.remove(key) : cache.write(key, toStoredFlowPayload(payload))
+    ),
+    readHomeyPricesCurrency: () => readCurrency(cache, HOMEY_PRICES_CURRENCY),
+    writeHomeyPricesCurrency: (unit) => cache.write(HOMEY_PRICES_CURRENCY, unit),
+    readPowerhourCurrency: () => readCurrency(cache, POWERHOUR_PRICES_CURRENCY),
+    writePowerhourCurrency: (unit) => (
+      unit === null ? cache.remove(POWERHOUR_PRICES_CURRENCY) : cache.write(POWERHOUR_PRICES_CURRENCY, unit)
+    ),
+    readPowerhourCache: () => readPowerhourCacheFrom(settings, cache),
+    writePowerhourDay: (day, payload) => {
+      const key = day === 'today' ? POWERHOUR_PRICES_TODAY : POWERHOUR_PRICES_TOMORROW;
+      if (payload === null) cache.remove(key);
+      else cache.write(key, toStoredFlowPayload(payload));
+    },
+    writePowerhourCacheDevice: (deviceId) => (
+      deviceId === null ? cache.remove(POWERHOUR_PRICES_DEVICE) : cache.write(POWERHOUR_PRICES_DEVICE, deviceId)
+    ),
+    readCombinedRaw: () => readCombinedRow(settings, cache),
+    writeCombined: (payload) => cache.write(COMBINED_PRICES, payload),
+    clearCombined: () => cache.remove(COMBINED_PRICES),
+  };
+};
