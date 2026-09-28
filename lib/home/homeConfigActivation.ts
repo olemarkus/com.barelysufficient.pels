@@ -35,9 +35,7 @@ const classifyLegacyMultiHomeEnabled = (
 /**
  * Insured boundary read of the old flag. Only literal `true` is positive
  * activation evidence; absence, false, malformed values, and read failures all
- * fail closed. Consumers whose fail-safe direction is "unknown", not "off"
- * (a failed read must not be treated as dormancy evidence) go through
- * `readHomeConfigRuntimeActivation` instead.
+ * fail closed.
  */
 export const readLegacyMultiHomeEnabled = (
   settings: SettingsPort,
@@ -62,37 +60,6 @@ export const isHomeConfigRuntimeActive = (
   || config.activationVersion === HOME_CONFIG_ACTIVATION_VERSION
   || config.subHomes.length === 0
 );
-
-export type HomeConfigRuntimeActivationRead =
-  | { state: 'resolved'; active: boolean }
-  | { state: 'suspect' };
-
-/**
- * Suspect-aware activation read for consumers whose fail-safe direction is
- * "unknown", not "off". `isHomeConfigRuntimeActive` over the fail-closed flag
- * read converts a transient legacy-flag read failure into `false`, which is
- * correct for control gating (never run area controllers on a failed read)
- * but wrong wherever a definite "dormant" answer triggers a destructive
- * transition — the weather meter-scope fingerprint would forget years of
- * learned history on one settings hiccup.
- *
- * The legacy flag is consulted only where it is DECISIVE: a populated config
- * without the atomic activation marker. Marker-activated and empty configs
- * resolve without touching it, so a flaky flag read cannot destabilize the
- * common (post-GA) shapes.
- */
-export const readHomeConfigRuntimeActivation = (
-  config: HomeConfig,
-  settings: SettingsPort,
-): HomeConfigRuntimeActivationRead => {
-  if (config.activationVersion === HOME_CONFIG_ACTIVATION_VERSION || config.subHomes.length === 0) {
-    return { state: 'resolved', active: true };
-  }
-  const legacy = classifyLegacyMultiHomeEnabled(settings);
-  return legacy.state === 'suspect'
-    ? { state: 'suspect' }
-    : { state: 'resolved', active: legacy.enabled };
-};
 
 export type LegacyMultiHomeActivationMigrationOutcome =
   | 'applied'
