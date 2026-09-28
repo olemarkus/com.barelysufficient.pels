@@ -23,7 +23,7 @@ they search, the communities they gather in. The *volatile* half — the
 competitive landscape they land in ("what they find"), which apps PELS is compared
 against, and how it wins the final click — lives **outside git** as *generated
 output* at
-[`tmp/persona-discovery-landscape.md`](../tmp/persona-discovery-landscape.md)
+`tmp/persona-discovery-landscape.md`
 (last generated 2026-06-15; regenerate via the recipe below).
 When that file is missing (e.g. a fresh checkout), regenerate it with the tracked
 recipe in [§ How to regenerate the snapshot](#how-to-regenerate-the-snapshot);

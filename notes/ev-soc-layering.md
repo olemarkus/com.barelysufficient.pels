@@ -32,11 +32,13 @@ readObservedStateOfCharge(state)
   → { kind: 'observed'; value: ObservedStateOfCharge } | { kind: 'absent' }
 ```
 
-and `withResolvedStateOfCharge` (`lib/observer/observedStateOfChargeProjection.ts`)
-projects every device the same way before `/ui_devices` serves it — BUILDING the
-value rather than forwarding a field, which is what a copy-list seam like
-`LIVE_OBSERVED_FIELDS` cannot do. `ObservedStateOfCharge` (`{ level }`) is what
-plan, the settings UI and the widgets see.
+`readObservedStateOfCharge` in `lib/observer/observedDeviceStateProjection.ts`
+resolves the observed level at the observer boundary. `buildSettingsUiDeviceList` in `setup/settingsUiApi.ts`
+uses that read for `/ui_devices`, falling back to the stored parse only when
+the observer has no entry (including unmanaged picker rows). It builds
+`ObservedStateOfCharge` (`{ level }`) rather than forwarding the transport's
+working state through `LIVE_OBSERVED_FIELDS`. Plan, the settings UI and the
+widgets see the resolved level.
 
 `absent` is a statement about the OBSERVER, not the device: no projection entry,
 or an entry carrying no charge. It is not the same as a present reading whose
@@ -117,8 +119,9 @@ adopted because the user ticked it for this charger
 (`notes/ev-car-link/README.md`). It has real consumers, and each of them would be
 wrong without it:
 
-- `lib/device/flowBackedDeviceState.ts` — a flow report must not wake the planner for, or
-  refresh the freshness of, a level the flow card no longer supplies.
+- `lib/device/flowBackedDeviceState.ts` — a charger-side flow report must not
+  refresh or replace a car-sourced level. Flow SoC dispatches an observation;
+  observations do not directly trigger a plan rebuild.
 - `retainedCarCandidate` (`lib/device/transport/stateOfCharge.ts`) — parse carries
   a car reading across refreshes and must not promote a charger-owned one.
 - `clearCarStateOfCharge` — an ended association drops only what the car supplied.

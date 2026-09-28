@@ -458,7 +458,7 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    across `setup/settingsUiApi.ts`. Nothing named the assembled thing, so the cost
    of a payload read was not answerable from any one place and a fifth pass was
    the natural way to add a field. `buildSettingsUiDeviceList`
-   (`lib/observer/settingsUiDeviceList.ts`) does it once, with the order stated:
+   (`setup/settingsUiApi.ts`) does it once, with the order stated:
    priorities resolve up front because ranking is relative, everything else is
    per-device. The projection is looked up ONCE per device rather than twice —
    the state-of-charge read now takes the record rather than the id.
@@ -466,9 +466,9 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    deliberately no-ops: a device with no projection entry keeps its stored parse
    (permanent for an unmanaged picker row, which the projection drops), and a
    field the projection omits keeps its stored value. Both pinned in
-   `test/unit/settingsUiDeviceList.test.ts`. `setup/settingsUiApi.ts` drops from
-   806 to 674 lines and no longer names `DecoratedDeviceSnapshot`,
-   `ProjectedObservedDeviceState` or `TargetDeviceSnapshot` at all.
+   `test/integration/settingsUiApi.test.ts`. The original stage reduced
+   `setup/settingsUiApi.ts` from 806 to 674 lines; its imports and size have
+   changed since then, while the one-pass builder remains there.
 
 6.5. **Descriptor read for the callers that never wanted an observation** — the
    stage this staging was missing. Stage 3 introduced `DeviceDescriptor` as a

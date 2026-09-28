@@ -2,8 +2,9 @@
 
 > **Status: shipped** (`967365c5` — light desktop theme, counter-filter dropped).
 > This is the design-of-record for the live behaviour, not a proposal. The
-> `(hover: hover) and (pointer: fine)` gate is in `settings/style.css`; the old
-> `prefers-color-scheme` counter-filter survives only as a comment.
+> `(hover: hover) and (pointer: fine)` gate is in the tracked source
+> `packages/settings-ui/public/style.css` (copied to generated `settings/style.css`);
+> the old `prefers-color-scheme` counter-filter survives only as a comment.
 
 ## Context
 

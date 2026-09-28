@@ -1,5 +1,10 @@
 # Overview Hero Spec
 
+The sketches below use the 60-minute capacity period. In 15-minute mode, the
+current UI uses quarter labels and the quarter's kWh ceiling; the behavior is
+defined by `notes/capacity-periods.md` and the period-aware formatters in
+`packages/settings-ui/src/ui/planHeroTooltips.ts`.
+
 ## Purpose
 
 The hero answers three questions at a glance:
@@ -95,15 +100,10 @@ option is the untranslated user-authored mode name; do not append `mode` to it.
 
 ### Info button
 
-Small Material icon button (`info`) at top-right. Tooltip / dialog:
-
-```
-Power now is measured in kW — how fast electricity is being used right now.
-Energy this hour is measured in kWh — how much has been used so far this hour.
-Safe pace is the highest power rate that keeps this hour on track for the energy budget.
-The hard cap is your grid tariff step — an hourly average, so short bursts above it are fine while the hour's energy stays under it.
-kW is speed. kWh is distance.
-```
+Small Material icon button (`info`) at top-right. Its current copy is supplied
+by `formatHeroInfoTooltip` in `packages/settings-ui/src/ui/planHeroTooltips.ts`:
+it explains power, period energy, safe pace, and the grid-tariff cap using the
+selected capacity period's terminology.
 
 ---
 
@@ -328,7 +328,7 @@ Standard Material linear progress bar with a projected-end marker.
 
 Required. One plain-language conclusion at the bottom of the card.
 
-Source of truth in code: `packages/shared-domain/src/planHeroSummary.ts`
+Source of truth in code: `packages/settings-ui/src/ui/planHeroSummary.ts`
 (`buildDecisionSentence`). The settings-UI hero (`PlanHero.tsx`) is a thin
 adapter that maps device arrays + projection tone to the helper's counts and
 booleans. Keep this ladder in sync — the code comment cross-links back to
@@ -338,11 +338,9 @@ Voice (v2.7.3): named-subject declarative copy. The *house* is the subject;
 PELS is never first-person. No em-dash diagnostic shape ("Doing X — because
 Y"). No exclamation marks (Nordic register). Action first, then the
 constraint that motivates it. Nothing in the runtime imports `planHeroSummary.ts`;
-the settings-UI hero is its only consumer. Its current shared-domain placement is
-debt under `AGENTS.md` § "Packages (shared)", and the helper belongs with the UI
-while that remains its only consumer. The earlier future-log justification does
-not establish a need to run in both environments. The runtime-facing projection
-math lives in its own module (`hourEnergyProjection.ts`).
+the settings-UI hero is its only consumer, so the helper lives with that browser
+consumer. The runtime-facing projection math lives in its own module
+(`hourEnergyProjection.ts`).
 
 Priority order (first matching condition wins):
 

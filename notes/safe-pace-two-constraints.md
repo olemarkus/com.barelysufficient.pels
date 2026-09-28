@@ -436,10 +436,11 @@ rebase.
 **1. The displayed number moves for a non-budget reason.** `plan.meta.softLimitKw`
 carries `bindingPaceKw` and is what every display surface reads (settings UI hero
 via `softLimitKw`, widget and insights device via `hourlyLimitKw`). When a 7 kW
-exempt load starts, "Safe pace now" jumps by 7 kW while the tooltip still reads
-"slowed to stay within today's budget; daily pacing is the tighter constraint
-right now" (`packages/shared-domain/src/planHeroTooltips.ts:24-28`). The budget did
-not get looser. The number and its explanation contradict each other.
+exempt load starts, "Safe pace now" jumps by 7 kW while the budget did not
+get looser. The tooltip now acknowledges that this marker may include power
+allowed beyond today's budget (`packages/settings-ui/src/ui/planHeroTooltips.ts`),
+but the changing number still needs that explanation to avoid looking like a
+looser budget.
 
 **2. Exempt draw is coupled to every other device's shed threshold.**
 `projectedExemptKw` tracks the live reading while the device is on, so as an exempt
@@ -592,7 +593,7 @@ Two further consequences:
 - `softLimitSource` could emit `'both'`. It cannot today, and reviving it is a
   separate decision: the member was deleted on 2026-08-15 for having no producer at
   any layer, and both the contract (`packages/contracts/src/settingsUiApi.ts`) and
-  the tooltip map (`packages/shared-domain/src/planHeroTooltips.ts`) are now
+  the tooltip map (`packages/settings-ui/src/ui/planHeroTooltips.ts`) are now
   two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.
 
   Do not build a second fold for it. `resolveLimitReason`
