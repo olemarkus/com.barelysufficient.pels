@@ -47,9 +47,9 @@ type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
  * reason line that reads like the feature working. O(active holds) — zero for
  * everyone who has not opted a device in.
  *
- * Eviction deliberately sees the FULL snapshot: a sub-home member is excluded
- * from the main home's plan input, but it is still present on Homey, so its
- * cached per-device state must survive for the per-home bundles.
+ * Eviction deliberately sees all configured device IDs: a sub-home member is
+ * excluded from the main home's plan input, but it is still present on Homey,
+ * so its cached per-device state must survive for the per-home bundles.
  */
 const runSnapshotPrePass = (
   ctx: AppContext,

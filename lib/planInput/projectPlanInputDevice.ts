@@ -69,9 +69,9 @@ import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powe
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
-// (EV-preset) config and NOT a non-binary control model. Resolved here (setup
-// may read the control-model setting + target-power config) so the planner
-// helper carries no such branch (control-model vocab rule).
+// (EV-preset) config and NOT a non-binary control model. The planner-input
+// producer resolves it from runtime configuration so the planner helper carries
+// no such branch (control-model vocab rule).
 const isPlainBinaryControlDevice = (
   targetPowerConfig: TargetPowerSteppedLoadConfig | undefined,
   controlModel: DeviceControlModel | undefined,
@@ -474,12 +474,9 @@ export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
  * PARAMETER's own type, not a restatement beside it: declared separately the two
  * drift, and the assertion goes on passing while a new field rides the spread.
  *
- * Both surfaces of the split plus the stepped decoration — and, since stage 6,
- * that is also what the object PHYSICALLY carries: `latestTargetSnapshot` and
- * the picker list are built from the two projections (`lib/device/deviceSurfaces.ts`),
- * so a transport-internal field is not on the object for the rest-spread to
- * sweep up. The binding ids the destructure below used to strip are gone with
- * it.
+ * The runtime configuration joined with accepted Observer state, plus the
+ * stepped and associated-car decorations. Inventory descriptors stay outside
+ * this planner-facing input.
  */
 export type ToPlanDeviceInput = RuntimeDeviceRead & SteppedLoadDecoration & AssociatedCarDecoration;
 
@@ -490,7 +487,7 @@ type PlanInputCalibrationFacts = {
 
 const resolvePlanInputCalibrationFacts = (
   source: PlanInputProjectionSource,
-  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
+  device: ToPlanDeviceInput,
   observedOff: boolean,
 ): PlanInputCalibrationFacts => ({
   calibration: isSteppedLoadSnapshot(device) || device.isEvCharger

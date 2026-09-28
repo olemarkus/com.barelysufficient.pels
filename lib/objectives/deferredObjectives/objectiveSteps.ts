@@ -122,7 +122,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // ignores a standby trickle, so an idle heater falls through to the producer's
   // resolved `expectedPowerKw`. EV chargers do not use the live draw here because
   // their `expectedPowerKw` is the calibrated 1-step view from
-  // `appInit/calibrationViews.buildEvChargerCalibrationView` and the existing
+  // `planInput/calibrationViews.buildEvChargerCalibrationView` and the existing
   // branch above is the documented invariant for EV planning speed.
   // Mill-/Adax-/Glamox-shaped Norwegian panel heaters report class
   // `thermostat`, `onoff` + `target_temperature` + `measure_power`, no

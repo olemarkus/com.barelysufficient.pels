@@ -1595,17 +1595,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
       shed-outcome state layer, 2026-09-08.
 
-- [x] **P2 — "held off by the owner" was defined in the wiring layer.** `resolveExternalOffHoldActive`
-      and `isExternalOffHeldForDevice` (`lib/observer/externalOffHold.ts`) classify: no binary handle
-      ⇒ not held, `isHeld` AND still observed off, and a device with no snapshot falls back to the raw
-      hold. That is the one definition the planner and the executor read (`PlanEngineState.
-      isExternalOffHeld`, bound in `setup/appInit/createPlanEngine.ts`), and it lives above the
-      boundary in a file budgeted on `scripts/setup-peer-allowlist.txt`, next to the concept's owner
-      `lib/observer/externalOffHold.ts`. Change: move the resolution beside the hold it reads (the
-      policy answers "held and still off" itself given the observed device), and have the wiring pass
-      only the `(deviceId) => …` binding. Done: the shared classification lives beside the hold in
-      `lib/observer/externalOffHold.ts`, and `lib/planInput/` owns plan-input projection. Source:
-      layering review of the overshoot-incident state layer, 2026-09-08; completed in this PR.
+- [x] **P2 — "held off by the owner" classification belonged with the hold policy.**
+      `lib/observer/externalOffHold.ts` now owns the shared resolution: a hold applies to a binary
+      device only while it is still observed off; when observation is absent, the executor keeps the
+      hold conservatively. `lib/planInput/` projects that answer into planner input. Source: layering
+      review of the overshoot-incident state layer, 2026-09-08; ownership move completed in PR #2561.
 
 - [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
       stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that

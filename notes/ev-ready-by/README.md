@@ -363,7 +363,7 @@ duration via `planningSpeedKw` / `estimatedDurationText` in
 alongside the existing Plan inputs card (`deadlinePlanInputs.ts`) that shows the
 per-unit rate and max power per hour. The planning kW falls back to the
 calibration view built from `lib/device/devicePowerCalibration.ts` via
-`buildStepPowerCalibrationView` (`lib/app/appInit/calibrationViews.ts`), reusing
+`buildStepPowerCalibrationView` (`lib/planInput/calibrationViews.ts`), reusing
 `resolveStepDeliveryUsefulKw`.
 
 ### Feature extensions

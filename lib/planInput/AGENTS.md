@@ -1,9 +1,9 @@
 # Planner input production
 
 `lib/planInput/` owns the cross-domain projection from a device's joined
-descriptor/observation surfaces to the `PlanInputDevice` contract. It resolves
-the producer facts once; `lib/plan/` consumes those facts and owns the plan
-decision.
+runtime-configuration/observation surfaces to the `PlanInputDevice` contract.
+It resolves the producer facts once; `lib/plan/` consumes those facts and owns
+the plan decision.
 
 This is a deliberate integration layer above the peer domains, not another
 peer. It may read the device, observer, plan, and other domain owners needed to

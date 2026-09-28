@@ -129,10 +129,10 @@ helpers. The observer was created but never handed the observation contract.
    entirely.** `planningPowerKw` is already off the snapshot (DEAD-SNAP); the
    observer surface carries **no** planning projection.
 
-`toPlanDevice` (`lib/planInput/projectPlanInputDevice.ts`) is the existing "snapshot → curated
-projection" seam (builds `PlanInputDevice`). Post-split it takes
-`(descriptor, observedState)` instead of one `TargetDeviceSnapshot`, and the
-`...device` spread becomes explicit field copies.
+`toPlanDevice` (`lib/planInput/projectPlanInputDevice.ts`) is the existing
+"runtime input → curated projection" seam (builds `PlanInputDevice`). It takes
+the `DeviceConfigurationRead` + accepted Observer join, with app-owned step
+decorations, and explicitly projects those fields into the plan contract.
 
 ## CORRECTION (Slice-1 implementation finding): there is a SECOND producer
 
@@ -145,8 +145,8 @@ returns a `TargetDeviceSnapshot` with `targetStepId`, `selectedStepId`,
 `desiredStepId`, `previousStepId`, `planningPowerKw`, `lastStepCommandIssuedAt`,
 `stepCommandRetryCount`, `nextStepCommandRetryAtMs`, `stepCommandPending`,
 `stepCommandStatus`, `lastDesiredStepChangeAt` written on it for stepped-load devices.
-`AppHostApi.latestTargetSnapshot` in `setup/appHostApi.ts` returns the **decorated** list (since stage 6,
-decorated over the descriptor ⋈ observed join rather than the raw snapshot); `getPlanDevices` →
+`AppHostApi.getPlanInputSnapshot` in `setup/appHostApi.ts` returns the **decorated** list over the
+runtime-configuration ⋈ Observer join (the legacy `latestTargetSnapshot` alias returns the same list); `getPlanDevices` →
 `toPlanDevice`'s explicit stepped-field projection (`lib/planInput/projectPlanInputDevice.ts`) carries those live values
 into `PlanInputDevice` (which independently declares the same fields). And they ARE
 read off the decorated snapshot by `lib/planInput/residualKwForPlanDevice.ts`

@@ -257,17 +257,10 @@ export function buildMainHomeScope(
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     getPlanDevices: () => {
-      // Boot/hot-plug seed of the observed-state projection from the RAW cached
-      // snapshot BEFORE the per-device `toPlanDevice` reads run. The projection
-      // is event-driven (empty until the first delta/refresh for a device), so
-      // on the first cold-start cycle — and for a device hot-plugged before its
-      // first observation — `getObservedState` would otherwise be empty here and
-      // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
-      // slots (never clobbers a recorded observation) and uses the raw cached
-      // array, so it adds no re-decoration and no device-manager re-entry.
-      // ...plus the external-off release sweep, cache eviction, the membership
-      // complement and the planned-set filter — all shared with every sub-home
-      // bundle, see `buildHomePlanDevices`.
+      // Runtime configuration and accepted Observer records are joined before
+      // projection. This also runs the shared external-off release sweep,
+      // learned-peak prune, membership complement and planned-set filter; see
+      // `buildHomePlanDevices`.
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: true,
         projectCommandability: binaryCommandReachability.project,

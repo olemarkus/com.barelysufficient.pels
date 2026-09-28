@@ -6,7 +6,7 @@
  *
  * Excludes zero-power "off" steps for stepped profiles. EV chargers ship a
  * synthetic 1-step "charge" calibration view via
- * `appInit/calibrationViews.buildEvChargerCalibrationView`; the same lookup applies here so
+ * `planInput/calibrationViews.buildEvChargerCalibrationView`; the same lookup applies here so
  * we don't duplicate the nameplate fallback.
  */
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
@@ -86,7 +86,7 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
   const planning = device.planningPowerKw;
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
     // EV chargers carry `planningPowerKw` directly via the synthetic 1-step
-    // calibration view from `appInit/calibrationViews.buildEvChargerCalibrationView`. Both
+    // calibration view from `planInput/calibrationViews.buildEvChargerCalibrationView`. Both
     // paths route through `resolveStepDeliveryUsefulKw` so the hero meta line
     // and the bucket allocator agree on the value.
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', planning));
