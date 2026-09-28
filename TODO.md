@@ -967,16 +967,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       exempt device; hypothesis: their suggested budget drifts up for energy the budget was never governing.
       Source: copilot on #1957, 2026-08-02. [P2]
 
-- [ ] **Two producers answer "what daily budget is applied".** `DailyBudgetService.getAppliedBudgetKwh()` (added
-      for the budget-pressure loop) and `resolveDailyBudgetKwh(ctx)` in
-      `setup/appInit/weatherAdvisorReadoutAssembler.ts` implement identical policy (enabled → finite → `> 0` →
-      value, else absent) from two different sources: the service's in-memory settings and raw `homey.settings`.
-      They can disagree in the window between a settings write and the service's `loadSettings()`, and the weather
-      card would then show one number while the pressure loop measured against another. The service is the
-      correctly-layered producer; delete the setup-local copy and widen the assembler's `Pick<AppContext, …>` to
-      include `dailyBudgetService`. Persona: an owner who just changed their budget and reloads the Budget page;
-      hypothesis: "Your daily budget" reads the old value for one refresh. [P2]
-
 - [ ] **P2 — an off `meter_power`-only device keeps its last interval average as its draw.**
       A cumulative meter resolves a draw only when it moves, and an app republishes it only on
       change, so a meter-only device switched off keeps the last interval average it resolved

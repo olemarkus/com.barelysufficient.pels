@@ -306,8 +306,16 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePlanService().getDeviceLogUiPayload();
   }
 
-  public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {
-    return assembleWeatherAdvisorReadout({ ctx: this.context, collector: this.weatherCollector });
+  public async getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {
+    const collector = this.weatherCollector;
+    if (!collector) return { kind: 'inactive' };
+    const dailyBudget = this.requireDailyBudgetService();
+    return assembleWeatherAdvisorReadout(
+      this.context,
+      collector,
+      dailyBudget.getAppliedBudgetKwh(),
+      dailyBudget.isEnabled(),
+    );
   }
 
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
