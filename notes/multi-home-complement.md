@@ -17,7 +17,7 @@ scheme, per-home bundles, upgrade activation containment) see
   configured, sub-home members are excluded from main's plan input
   (`setup/homeRuntime/homeScope.ts`) and from the sample-pipeline snapshot view
   (`setup/homeRuntime/createHomePowerPipeline.ts`) through one shared seam,
-  `filterDevicesForHome` (`setup/homeMembership.ts`). The same seam removes
+  `filterDevicesForHome` (`lib/home/homeMembershipService.ts`). The same seam removes
   every configured Main/sub-home meter because meter identity is source
   ownership, independent of zone or pin membership. Those persisted selections
   are dormant when Flow is the active whole-home power source. The filter

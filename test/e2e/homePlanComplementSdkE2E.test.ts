@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { createHomesStore } from '../../setup/homeRegistryAdapter';
+import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import { HOME_CONFIG_ACTIVATION_VERSION } from '../../lib/home/homeConfig';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
@@ -129,7 +129,7 @@ describe('Main plan is the membership complement (SDK-boundary e2e)', () => {
     configureCapacity(1);
 
     const putSpy = await bootAndOvershoot(() => {
-      createHomesStore(homeyLike).write({
+      createHomesStore(homeyLike.settings).write({
         activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
         subHomes: [{ homeId: 'h_sub', name: 'Annex', rootZoneId: 'z2', meterDeviceId: null }],
       });

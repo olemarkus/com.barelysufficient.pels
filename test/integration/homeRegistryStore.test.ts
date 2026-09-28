@@ -1,5 +1,5 @@
-// Integration tests for the multi-home settings adapter
-// (`setup/homeRegistryAdapter.ts`) over the shared mock Homey SDK: the
+// Integration tests for the multi-home settings store
+// (`lib/home/homeRegistryStore.ts`) over the shared mock Homey settings port: the
 // written-before-marker read classification (unwritten / present / suspect —
 // the wipe-hazard guard for read-modify-write flows), the marker lifecycle
 // (first write sets it, plausible pre-marker blobs backfill it), and
@@ -10,7 +10,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
-} from '../../setup/homeRegistryAdapter';
+} from '../../lib/home/homeRegistryStore';
 import {
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
@@ -50,16 +50,16 @@ describe('createHomesStore', () => {
   };
 
   it('classifies an empty settings-key snapshot as suspect', () => {
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies a proven absent blob as unwritten (fresh install)', () => {
     mockHomeyInstance.settings.set('unrelated_setting', true);
-    expect(createHomesStore(homey).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('round-trips a config and sets the written-before marker on first write', () => {
-    const store = createHomesStore(homey);
+    const store = createHomesStore(homey.settings);
     store.write(config);
     expect(mockHomeyInstance.settings.get(HOMES_CONFIG_INITIALIZED)).toBe(true);
     expect(mockHomeyInstance.settings.get(HOMES_CONFIG) as HomeConfig).toEqual(config);
@@ -67,7 +67,7 @@ describe('createHomesStore', () => {
   });
 
   it('round-trips the atomic runtime activation marker', () => {
-    const store = createHomesStore(homey);
+    const store = createHomesStore(homey.settings);
     const activeConfig: HomeConfig = {
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: config.subHomes,
@@ -80,19 +80,19 @@ describe('createHomesStore', () => {
   });
 
   it('a deliberately emptied config reads present, not suspect', () => {
-    const store = createHomesStore(homey);
+    const store = createHomesStore(homey.settings);
     store.write({ subHomes: [] });
     expect(store.read()).toEqual({ state: 'present', value: { subHomes: [] } });
   });
 
   it('classifies an absent blob with the marker set as suspect (transient SDK miss, not fresh)', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, true);
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies an absent value for a known key as suspect even when marker backfill failed', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG, undefined);
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it.each([
@@ -101,7 +101,7 @@ describe('createHomesStore', () => {
   ])('classifies a junk blob as suspect %s', (_label, markerSet) => {
     if (markerSet) mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, true);
     mockHomeyInstance.settings.set(HOMES_CONFIG, 'garbage');
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies entry-level corruption as suspect, never a quietly-shrunken config', () => {
@@ -109,7 +109,7 @@ describe('createHomesStore', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG, {
       subHomes: [config.subHomes[0], { homeId: 'bad:id', name: 'colon', rootZoneId: 'annex' }],
     });
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies an unknown activation marker as suspect instead of silently activating it', () => {
@@ -119,22 +119,22 @@ describe('createHomesStore', () => {
       subHomes: config.subHomes,
     });
 
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('backfills a missing marker on reading a plausible blob (pre-marker write / manual PUT)', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG, config);
-    expect(createHomesStore(homey).read()).toEqual({ state: 'present', value: config });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'present', value: config });
     expect(mockHomeyInstance.settings.get(HOMES_CONFIG_INITIALIZED)).toBe(true);
   });
 
   it('classifies a throwing settings read as suspect, never unwritten', () => {
-    expect(createHomesStore(throwingHomey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(throwingHomey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('a malformed marker value counts as marker-present (absent blob → suspect, not unwritten)', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, 'yes');
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('a blob with a throwing accessor classifies suspect (boundary insurance)', () => {
@@ -143,7 +143,7 @@ describe('createHomesStore', () => {
         throw new Error('hostile accessor');
       },
     });
-    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('write surfaces a marker-write failure before touching the value (marker-first ordering)', () => {
@@ -157,7 +157,7 @@ describe('createHomesStore', () => {
         },
       },
     } as unknown as Homey.App['homey'];
-    expect(() => createHomesStore(markerFailingHomey).write({ subHomes: [] }))
+    expect(() => createHomesStore(markerFailingHomey.settings).write({ subHomes: [] }))
       .toThrow('marker write failed');
     // Marker-first: the value key was never written, so no marker-less value
     // can later read 'unwritten' and re-open the wipe window.
@@ -175,7 +175,7 @@ describe('createHomesStore', () => {
         },
       },
     } as unknown as Homey.App['homey'];
-    const store = createHomesStore(valueFailingHomey);
+    const store = createHomesStore(valueFailingHomey.settings);
     expect(() => store.write({ subHomes: [] })).toThrow('value write failed');
     expect(values.get(HOMES_CONFIG_INITIALIZED)).toBe(true);
     // The failed write's aftermath fails conservative: marker present + absent
@@ -184,7 +184,7 @@ describe('createHomesStore', () => {
   });
 
   it('write refuses an implausible config (typed throw) and persists nothing', () => {
-    const store = createHomesStore(homey);
+    const store = createHomesStore(homey.settings);
     const invalid: HomeConfig = {
       subHomes: [{ homeId: 'main', name: 'Reserved', rootZoneId: 'annex', meterDeviceId: null }],
     };
@@ -198,16 +198,16 @@ describe('createDeviceHomeAssignmentsStore', () => {
   const assignments = { 'dev-1': 'main', 'dev-2': 'h_aaaa1111' };
 
   it('classifies an empty settings-key snapshot as suspect', () => {
-    expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies a proven absent blob as unwritten (fresh install)', () => {
     mockHomeyInstance.settings.set('unrelated_setting', true);
-    expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'unwritten' });
+    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('round-trips assignments and sets the written-before marker on first write', () => {
-    const store = createDeviceHomeAssignmentsStore(homey);
+    const store = createDeviceHomeAssignmentsStore(homey.settings);
     store.write(assignments);
     expect(mockHomeyInstance.settings.get(DEVICE_HOME_ASSIGNMENTS_INITIALIZED)).toBe(true);
     expect(mockHomeyInstance.settings.get(DEVICE_HOME_ASSIGNMENTS) as Record<string, string>)
@@ -216,14 +216,14 @@ describe('createDeviceHomeAssignmentsStore', () => {
   });
 
   it('a well-formed pin to a since-deleted home stays present (resolver surfaces the fallback)', () => {
-    const store = createDeviceHomeAssignmentsStore(homey);
+    const store = createDeviceHomeAssignmentsStore(homey.settings);
     store.write({ 'dev-1': 'h_ghost000' });
     expect(store.read()).toEqual({ state: 'present', value: { 'dev-1': 'h_ghost000' } });
   });
 
   it('classifies an absent blob with the marker set as suspect (transient SDK miss, not fresh)', () => {
     mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS_INITIALIZED, true);
-    expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it.each([
@@ -232,15 +232,15 @@ describe('createDeviceHomeAssignmentsStore', () => {
     ['a record with a malformed pin', { 'dev-1': 'main', 'dev-2': 42 }],
   ])('classifies %s as suspect (junk, regardless of marker)', (_label, blob) => {
     mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, blob);
-    expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'suspect' });
+    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('classifies a throwing settings read as suspect, never unwritten', () => {
-    expect(createDeviceHomeAssignmentsStore(throwingHomey).read()).toEqual({ state: 'suspect' });
+    expect(createDeviceHomeAssignmentsStore(throwingHomey.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('write refuses an implausible pin record (typed throw) and persists nothing', () => {
-    const store = createDeviceHomeAssignmentsStore(homey);
+    const store = createDeviceHomeAssignmentsStore(homey.settings);
     expect(() => store.write({ 'dev-1': 'bad:id' })).toThrow(HomeStoreWriteRefusedError);
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(DEVICE_HOME_ASSIGNMENTS);
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(DEVICE_HOME_ASSIGNMENTS_INITIALIZED);

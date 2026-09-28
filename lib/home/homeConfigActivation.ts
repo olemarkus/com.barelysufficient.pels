@@ -1,9 +1,9 @@
-import type Homey from 'homey';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   HOME_CONFIG_ACTIVATION_VERSION,
   type HomeConfig,
-} from '../lib/home/homeConfig';
-import { createHomesStore } from './homeRegistryAdapter';
+} from './homeConfig';
+import { createHomesStore } from './homeRegistryStore';
 
 /**
  * Retired pre-GA feature flag, retained only as upgrade evidence. It is not
@@ -23,7 +23,7 @@ type LegacyMultiHomeFlagRead =
  * unknown, which is NOT the same evidence as "off".
  */
 const classifyLegacyMultiHomeEnabled = (
-  settings: Homey.App['homey']['settings'],
+  settings: SettingsPort,
 ): LegacyMultiHomeFlagRead => {
   try {
     return { state: 'resolved', enabled: settings.get(LEGACY_MULTI_HOME_ENABLED) === true };
@@ -40,7 +40,7 @@ const classifyLegacyMultiHomeEnabled = (
  * `readHomeConfigRuntimeActivation` instead.
  */
 export const readLegacyMultiHomeEnabled = (
-  settings: Homey.App['homey']['settings'],
+  settings: SettingsPort,
 ): boolean => {
   const read = classifyLegacyMultiHomeEnabled(settings);
   return read.state === 'resolved' && read.enabled;
@@ -83,7 +83,7 @@ export type HomeConfigRuntimeActivationRead =
  */
 export const readHomeConfigRuntimeActivation = (
   config: HomeConfig,
-  settings: Homey.App['homey']['settings'],
+  settings: SettingsPort,
 ): HomeConfigRuntimeActivationRead => {
   if (config.activationVersion === HOME_CONFIG_ACTIVATION_VERSION || config.subHomes.length === 0) {
     return { state: 'resolved', active: true };
@@ -108,10 +108,10 @@ export type LegacyMultiHomeActivationMigrationOutcome =
  * next boot, while a successfully marked config is its own completion marker.
  */
 export const migrateLegacyMultiHomeActivation = (
-  homey: Homey.App['homey'],
+  settings: SettingsPort,
 ): LegacyMultiHomeActivationMigrationOutcome => {
-  if (!readLegacyMultiHomeEnabled(homey.settings)) return 'legacy_not_enabled';
-  const store = createHomesStore(homey);
+  if (!readLegacyMultiHomeEnabled(settings)) return 'legacy_not_enabled';
+  const store = createHomesStore(settings);
   const read = store.read();
   if (read.state === 'unwritten') return 'store_unwritten';
   if (read.state === 'suspect') return 'store_suspect';

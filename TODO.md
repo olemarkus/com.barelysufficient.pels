@@ -1661,10 +1661,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       read it** into the domain module that owns the concept, as a leaf that takes flat injected getters for anything outside
       its own module (the `no-weather-to-peer` pattern — "a leaf collector fed flat getters from
       setup wiring"); setup keeps only the construction that binds them. The peer DAG is the
-      constraint that decides each destination: `lib/home` is a declared pure leaf, yet
-      `setup/homeMembership.ts` imports `lib/device/transport/managerFetch` and
-      `lib/observer/observedStateEvents` today, so those inputs must arrive injected or move to
-      `packages/contracts`. Lanes, in the order they should land:
+      constraint that decides each destination: `lib/home` is a declared pure leaf. The home
+      membership service now takes a narrowed device snapshot and setup-owned event subscription;
+      it has no device or observer imports. Lanes, in the order they should land:
       (a) power — DONE except `powerSamplePipeline.ts`, whose file stays in `setup/` but whose
       state does not (see `` `schedulePlanRebuild` is still rebuilt per sample, because it closes
       over the request ``);
@@ -1678,14 +1677,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       tracked separately;
       (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
       the fact it holds is about the sample the TRACKER serves, and it imports nothing but the
-      freshness constant its expiry derives from. `homeMainMeterAuthority.ts` cannot follow it and
-      cannot go to `lib/home` either — see `` `setup/homeMainMeterAuthority.ts` straddles two leaf
-      modules, so neither will take it ``.
+      freshness constant its expiry derives from. Main-meter authority now lives in
+      `lib/home/homeMainMeterAuthority.ts`, with its power-owned sampled identity supplied through
+      `lib/ports/sampledMeterIdentity.ts`.
       `homeRuntime/homeModeOwnershipTransfer.ts` is DONE, as
-      `lib/home/modeOwnershipTransfer.ts`. `homeMembership.ts` (15 of the lane's declarations) and
-      `homeRuntime/homeRuntimeRegistry.ts` (8) still want `lib/home/`, which `no-home-to-peer`
-      makes a pure leaf, so their `lib/device`, `lib/observer` and `lib/app/appContext` inputs must
-      arrive as injected values first;
+      `lib/home/modeOwnershipTransfer.ts`. `HomeMembershipService`, its settings stores and
+      activation reads, and Main-meter authority now live in `lib/home/`; device membership arrives
+      as a narrowed snapshot and sampled-meter identity through a neutral port. The only remaining
+      home-state move is `homeRuntime/homeRuntimeRegistry.ts` (7 declarations), whose device and
+      planner inputs still need narrowing before it can move under `no-home-to-peer`;
       (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
       are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
       membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
@@ -1727,20 +1727,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       as callbacks, the conflict probe is injected or moved, the component lives in `lib/device`,
       and its setup-peer allowlist line is gone. Found 2026-09-01; state moved 2026-09-21. [P2]
 
-- [ ] **`setup/homeMainMeterAuthority.ts` straddles two leaf modules, so neither will take it.**
-      Seven declarations — an edge-trigger log latch per warning, the last-resolved meter and
-      source, and a fence-episode flag. It needs `findMainMeterCollision` and `SubHomeConfig` (a
-      VALUE import from `lib/home`) and `ConfiguredPowerSourceRead` (`lib/power`). `lib/home` is a
-      declared pure leaf, so it may not name the power type; `no-power-to-peer-except-objectives`
-      bars `lib/power` from naming the home ones. Type-only imports are invisible to the cruiser
-      (`tsPreCompilationDeps` is unset), so either direction would pass `arch:check` — do NOT take
-      that route: it exploits the blind spot the `arch:grep` guard exists to close for `lib/plan`.
-      The honest options are to reduce the power-source read at the seam, so the authority takes
-      `'homey_energy' | 'flow' | 'unavailable'` and the CALLER owns the suspect-read logging (its
-      `powerSourceUnavailableLogged` edge latch is what makes that non-trivial today); or to move
-      the meter-collision rule to wherever the authority lands. Done when the file has no line in
-      `scripts/setup-stateless-allowlist.txt` and `arch:check` passes without a type-only edge
-      standing in for a real one. Found 2026-09-01. [P2]
+- [x] **Main-meter authority belongs to the home owner.** Moved to
+      `lib/home/homeMainMeterAuthority.ts`; power sample provenance crosses the peer boundary via
+      `lib/ports/sampledMeterIdentity.ts`. Setup stateless and peer budgets shrink with the move.
+      Completed 2026-09-28. [P2]
 
 - [ ] **`restorePreparedStepId` is declared and never assigned.** The field is on
       `setup/appDeviceControlSteppedState.ts` and on the legacy field shapes in

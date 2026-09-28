@@ -8,7 +8,7 @@
 # Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
 # hand. When the last line goes, DELETE THIS FILE.
 #
-# Seeded at 30 files.
+# Seeded at 27 files.
 
 setup/appBootMigrations.ts
 setup/appDebugHelpers.ts
@@ -23,11 +23,8 @@ setup/appSettingsHelpers.ts
 setup/backgroundTasksController.ts
 setup/dailyBudgetSettingsAdapter.ts
 setup/flowBackedCardAccess.ts
-setup/homeMembership.ts
 setup/homeMeterOwnership.ts
-setup/homeRegistryAdapter.ts
 setup/homeRuntime/homeModeOwnershipStore.ts
-setup/multiHomeActivation.ts
 setup/settingsRepository.ts
 setup/settingsUiApi.ts
 setup/settingsUiAppRuntime.ts

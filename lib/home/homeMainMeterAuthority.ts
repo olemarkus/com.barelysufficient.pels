@@ -38,11 +38,11 @@
 import {
   findMainMeterCollision,
   type SubHomeConfig,
-} from '../lib/home/homeConfig';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
-import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-import { SampledMeterIdentity, type SampledMeterIdentityDeps } from '../lib/power/sampledMeterIdentity';
-import type { ConfiguredPowerSourceRead } from '../lib/power/powerSource';
+} from './homeConfig';
+import type { Logger as PinoLogger } from '../logging/logger';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
+import type { SampledMeterIdentityPort } from '../ports/sampledMeterIdentity';
+import type { ConfiguredPowerSourceRead } from '../ports/configuredPowerSource';
 
 export type MainMeterAuthorityState = 'ready' | 'retry' | 'blocked';
 
@@ -57,8 +57,7 @@ export type MainMeterAuthorityDeps = {
    * unwired dep must not be able to look like an answer.
    */
   getConfiguredPowerSource: () => ConfiguredPowerSourceRead;
-  /** See {@link SampledMeterIdentityDeps.getRestoredSampleAtMs}. */
-  getRestoredSampleAtMs?: () => number | undefined;
+  sampledMeterIdentity: SampledMeterIdentityPort;
   onMainAuthorityUnresolved?: () => void;
   /**
    * Fired on the sampled clause's blocked -> ready edge. While the fence was
@@ -124,14 +123,6 @@ export class MainMeterAuthority {
   private loggedSampledFenceReason: SampledFenceReason | null = null;
 
   /**
-   * Which meter the watts the tracker currently serves came from, plus the
-   * retention rule for reads that cannot re-prove it and the restart window in
-   * which no read can. Owned separately because nothing else in this module's
-   * state is involved in it.
-   */
-  private readonly sampledIdentity: SampledMeterIdentity;
-
-  /**
    * Last AUTHORITATIVE active power source. `undefined` until one resolves, and
    * never overwritten by a suspect read — the same last-good discipline
    * `lastResolvedMainMeterDeviceId` uses, so the pure predicate below can mirror
@@ -139,14 +130,7 @@ export class MainMeterAuthority {
    */
   private lastResolvedPowerSource: 'homey_energy' | 'flow' | undefined;
 
-  constructor(private readonly deps: MainMeterAuthorityDeps) {
-    // Assigned here, not as a field initializer: `deps` is a constructor
-    // parameter property and is not initialized when field initializers run.
-    const identityDeps: SampledMeterIdentityDeps = deps.getRestoredSampleAtMs === undefined
-      ? {}
-      : { getRestoredSampleAtMs: deps.getRestoredSampleAtMs };
-    this.sampledIdentity = new SampledMeterIdentity(identityDeps);
-  }
+  constructor(private readonly deps: MainMeterAuthorityDeps) {}
 
   /**
    * True while a sampled-clause fence episode has closed Main's write seam and
@@ -177,7 +161,7 @@ export class MainMeterAuthority {
     sampleAtMs: number,
     ctx: MainMeterAuthorityContext,
   ): void {
-    this.sampledIdentity.note(deviceId, sampleAtMs);
+    this.deps.sampledMeterIdentity.note(deviceId, sampleAtMs);
     if (this.hasSampledFence(ctx)) {
       this.sampledFenceEpisode = true;
       return;
@@ -195,7 +179,7 @@ export class MainMeterAuthority {
    */
   noteAdmittedFlowHomeSample(): void {
     this.lastResolvedPowerSource = 'flow';
-    this.sampledIdentity.noteFlowReplacement();
+    this.deps.sampledMeterIdentity.noteFlowReplacement();
     this.settleSampledFenceEpisode();
   }
 
@@ -258,7 +242,7 @@ export class MainMeterAuthority {
    * too: a sample already expired at boot never starts an episode.
    */
   private sampledFence(ctx: MainMeterAuthorityContext): SampledFence | null {
-    const provenance = this.sampledIdentity.resolveFor(Date.now());
+    const provenance = this.deps.sampledMeterIdentity.resolveFor(Date.now());
     if (provenance.state === 'unknown') return null;
     if (provenance.state === 'unattributable') {
       return { reason: 'unattributable_restored_sample' };
@@ -432,7 +416,7 @@ export class MainMeterAuthority {
   }
 
   private readActiveMeterPowerSource(): 'homey_energy' | 'flow' | 'unavailable' {
-    const read: ConfiguredPowerSourceRead = this.deps.getConfiguredPowerSource();
+    const read = this.deps.getConfiguredPowerSource();
     if (read.state === 'suspect') {
       if (!this.powerSourceUnavailableLogged) {
         this.deps.getLogger()?.warn({

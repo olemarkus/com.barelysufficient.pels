@@ -18,7 +18,7 @@ import {
   findHomeAreaNameRejection,
   HOME_AREA_MAX_COUNT,
 } from '../packages/shared-domain/src/homeAreaConfigRules';
-import { createHomesStore } from './homeRegistryAdapter';
+import { createHomesStore } from '../lib/home/homeRegistryStore';
 import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
 
@@ -29,7 +29,7 @@ type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, PowerSourceSaveRe
  * Multi-home activation as the membership service latched it, passed in rather
  * than re-resolved: `HomeMembershipDiagnostics.runtimeActive` is the producer's
  * answer and its contract says consumers must not re-read the retired legacy
- * flag (`setup/multiHomeActivation.ts`). `unavailable` is the boot window, when
+ * flag (`lib/home/homeConfigActivation.ts`). `unavailable` is the boot window, when
  * no service is wired and the answer is genuinely unknown.
  */
 export type MultiHomeActivationRead =
@@ -193,7 +193,7 @@ export const savePowerSourceSelection = (
   request: PowerSourceSaveRequest,
   activation: MultiHomeActivationRead,
 ): SettingsUiHomesSaveResponse => {
-  const read = createHomesStore(homey).read();
+  const read = createHomesStore(homey.settings).read();
   if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
   const config = read.state === 'present' ? read.value : { subHomes: [] };
   if (request.source === 'flow') {

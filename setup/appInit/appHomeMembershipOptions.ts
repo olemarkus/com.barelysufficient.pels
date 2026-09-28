@@ -1,7 +1,9 @@
-import type { HomeMembershipService } from '../homeMembership';
+import type { HomeMembershipWiring } from '../homeMembershipWiring';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import type { WireHomeMembershipOptions } from './wireHomeMembership';
 import type { StableSampleRevision } from '../powerSamplePipeline';
+
+type HomeMembershipService = HomeMembershipWiring['service'];
 
 export type StableSampleRevisionReader = () => StableSampleRevision;
 

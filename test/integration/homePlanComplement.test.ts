@@ -14,6 +14,7 @@ import { createTestPlanRebuildScheduler, unchangedRebuildOutcome } from '../help
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { createSampledMeterIdentityWithoutRestoredSample } from '../helpers/homeMembership';
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -29,11 +30,11 @@ import {
   filterDevicesForHome,
   HomeMembershipService,
   type HomeMembershipDeviceInput,
-} from '../../setup/homeMembership';
+} from '../../lib/home/homeMembershipService';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
-} from '../../setup/homeRegistryAdapter';
+} from '../../lib/home/homeRegistryStore';
 import { buildMainHomeScopeForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 
@@ -74,8 +75,9 @@ const makeMembershipService = (
   powerSource: 'homey_energy' | 'flow' = 'homey_energy',
 ): HomeMembershipService => {
   const service = new HomeMembershipService({
-    homesStore: createHomesStore(homeyLike),
-    assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+    sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+    homesStore: createHomesStore(homeyLike.settings),
+    assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
     getZoneTree: () => ZONES,
     getDevices: () => devices,
     getLogger: () => undefined,
@@ -137,8 +139,9 @@ describe('filterDevicesForHome identity guard', () => {
   it('does not read or fence on a malformed dormant meter selection in Flow mode', () => {
     const getMainMeterSelection = vi.fn((): MainMeterSelection => ({ state: 'unavailable' }));
     const service = new HomeMembershipService({
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
       getLogger: () => undefined,
@@ -161,8 +164,9 @@ describe('filterDevicesForHome identity guard', () => {
     }));
     const onMainAuthorityUnresolved = vi.fn();
     const service = new HomeMembershipService({
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
       getLogger: () => undefined,
@@ -190,15 +194,16 @@ describe('filterDevicesForHome identity guard', () => {
   });
 
   it('fails every home closed when Main meter authority becomes unavailable', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     let selection: MainMeterSelection = {
       state: 'resolved',
       meterDeviceId: 'device-sub',
     };
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
       getLogger: () => undefined,
@@ -236,6 +241,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
           state: 'unavailable',
           deviceIds: new Set<string>(),
         }),
+        filterDevicesForHome: () => [],
       } as unknown as NonNullable<ReturnType<typeof createAppContextMock>['homeMembership']>,
     });
 
@@ -287,15 +293,15 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   });
 
   it('excludes a sub-home zone member from the main plan devices', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
     const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main']);
   });
 
   it('includes a device pinned to main even inside a sub-home zone', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({ 'device-sub': 'main' });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ 'device-sub': 'main' });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
     const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
@@ -327,8 +333,8 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   });
 
   it('uses the owning home priority resolver before assigning relative ranks', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({
       'device-main': SUB_HOME.homeId,
       'device-sub': SUB_HOME.homeId,
     });
@@ -357,7 +363,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   });
 
   it('prunes commandability against all configured devices before home filtering', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     const pruneCommandability = vi.fn();
     const devices = buildHomePlanDevices(
       makeCtx(makeMembershipService(membershipInputs)),
@@ -451,15 +457,15 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
   });
 
   it('moves a sub-home member out of the controlled split — its draw becomes background usage', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     const saved = await runSample(makeMembershipService(membershipInputs));
     expect(saved.lastControlledPowerW).toBe(2000);
     expect(saved.lastUncontrolledPowerW).toBe(3000);
   });
 
   it('keeps a pin-to-main device in the controlled split', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({ 'device-sub': 'main' });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ 'device-sub': 'main' });
     const saved = await runSample(makeMembershipService(membershipInputs));
     expect(saved.lastControlledPowerW).toBe(3500);
     expect(saved.lastUncontrolledPowerW).toBe(1500);

@@ -1,5 +1,5 @@
 import { buildAppHomeMembershipOptions } from '../../setup/appInit/appHomeMembershipOptions';
-import type { HomeMembershipService } from '../../setup/homeMembership';
+import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import type { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 
 const membership = {} as HomeMembershipService;

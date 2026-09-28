@@ -62,7 +62,7 @@ export type ConfiguredMeterSources = Readonly<{
 
 /**
  * Control surface of the cached membership service (implemented by
- * `setup/homeMembership.ts`, published on `AppContext.homeMembership`).
+ * `lib/home/homeMembershipService.ts`, published on `AppContext.homeMembership`).
  * Deliberately EXCLUDES the diagnostics view: `source` is diagnostics/display
  * only, so every ctx consumer sees exactly the provenance-free surface a
  * control path may use. The settings-UI `ui_homes` endpoint reaches the
@@ -81,6 +81,8 @@ export type HomeMembershipPort = {
    */
   getConfiguredMeterSources(): ConfiguredMeterSources;
   hasSubHomes(): boolean;
+  /** Select controllable members and remove every configured meter source. */
+  filterDevicesForHome<T extends { id: string }>(devices: T[], homeId: HomeId): T[];
   /**
    * Positive producer-owned proof that persisted ownership has a trustworthy
    * baseline and, when active sub-homes exist, a committed zone tree.

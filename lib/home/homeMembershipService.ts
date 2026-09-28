@@ -1,7 +1,5 @@
-import type Homey from 'homey';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
-import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
-import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import {
   MAIN_HOME_ID,
   type DeviceHomeAssignments,
@@ -10,27 +8,22 @@ import {
   type HomesStore,
   type SubHomeConfig,
   type ZoneTree,
-} from '../lib/home/homeConfig';
-import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from '../lib/home/membership';
-import { normalizeError } from '../lib/utils/errorUtils';
+} from './homeConfig';
+import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from './membership';
+import { normalizeError } from '../utils/errorUtils';
 import {
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
-} from '../lib/utils/settingsKeys';
-import { createDeviceHomeAssignmentsStore, createHomesStore } from './homeRegistryAdapter';
-import {
-  isHomeConfigRuntimeActive,
-  readLegacyMultiHomeEnabled,
-} from './multiHomeActivation';
-import { createMainMeterSelectionReader } from '../lib/home/mainMeterSelection';
+} from '../utils/settingsKeys';
+import { isHomeConfigRuntimeActive } from './homeConfigActivation';
 import {
   MainMeterAuthority,
   type MainMeterAuthorityContext,
 } from './homeMainMeterAuthority';
-import {
-  readConfiguredPowerSource,
-  type ConfiguredPowerSourceRead,
-} from './powerSourceSettings';
+import type { SampledMeterIdentityPort } from '../ports/sampledMeterIdentity';
+import type { ConfiguredPowerSourceRead } from '../ports/configuredPowerSource';
+
+const debugMembership = getDebugEmitter('homes', 'devices');
 
 // Store-key labels for the suspect-warn logs — the canonical settings-key
 // constants, so log audits grep the same strings the stores persist under.
@@ -47,6 +40,7 @@ export type HomeMembershipDeviceInput = {
 export type HomeMembershipServiceDeps = {
   homesStore: HomesStore;
   assignmentsStore: DeviceHomeAssignmentsStore;
+  sampledMeterIdentity: SampledMeterIdentityPort;
   /** The transport's cached (last-good) zone tree; `null` before the first fetch. */
   getZoneTree: () => ZoneTree | null;
   /** Devices from the latest target snapshot with their zone ids. */
@@ -65,16 +59,6 @@ export type HomeMembershipServiceDeps = {
    * may stand in for it.
    */
   getConfiguredPowerSource: () => ConfiguredPowerSourceRead;
-  /**
-   * Ingest stamp of the whole-home sample the MAIN power tracker currently
-   * serves. Consulted only until this process admits its first sample, so it
-   * answers exactly "what did the restart hand us?": the tracker reloads
-   * durable watts across a restart, but nothing reloads the meter identity that
-   * governed them, and the sampled clause must fence rather than read that gap
-   * as proof of a clean sample. Omitted by direct service tests, which model a
-   * process that has never persisted a sample.
-   */
-  getRestoredSampleAtMs?: () => number | undefined;
   /**
    * Boot-latched positive evidence from the retired pre-GA flag. Never read
    * fresh per recompute: a transient settings miss must not deactivate a
@@ -251,9 +235,7 @@ export class HomeMembershipService implements HomeMembershipPort {
       getLogger: () => this.deps.getLogger(),
       getMainMeterSelection: () => this.deps.getMainMeterSelection(),
       getConfiguredPowerSource: () => this.deps.getConfiguredPowerSource(),
-      ...(this.deps.getRestoredSampleAtMs === undefined
-        ? {}
-        : { getRestoredSampleAtMs: this.deps.getRestoredSampleAtMs }),
+      sampledMeterIdentity: this.deps.sampledMeterIdentity,
       ...(this.deps.onMainAuthorityUnresolved === undefined
         ? {}
         : { onMainAuthorityUnresolved: this.deps.onMainAuthorityUnresolved }),
@@ -283,7 +265,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     // ALL fallible work (store reads, snapshot read, resolver walks) happens
     // above this line; the membership map is assigned last among it, so a
     // mid-read throw retains the previous membership (the containment
-    // invariant in `createHomeMembershipService`). The retention commits after
+    // invariant in `setup/homeMembershipWiring`). The retention commits after
     // it are pure assignments — they cannot throw and never commit alone.
     // `Object.fromEntries` defines own data properties, so an untrusted device
     // id can never reach Object.prototype machinery here.
@@ -348,7 +330,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     const zoneId = this.lastKnownZoneIdByDeviceId[deviceId];
     if (zoneId === undefined) return null;
     if (!this.retentionLoggedDeviceIds.has(deviceId)) {
-      this.deps.getLogger()?.debug({
+      debugMembership({
         event: 'home_membership_zone_retained',
         deviceId,
         zoneId,
@@ -398,6 +380,11 @@ export class HomeMembershipService implements HomeMembershipPort {
 
   hasSubHomes(): boolean {
     return this.runtimeActive && this.subHomes.length > 0;
+  }
+
+  /** Select this home's controllable devices through the membership owner. */
+  filterDevicesForHome<T extends { id: string }>(devices: T[], homeId: HomeId): T[] {
+    return filterDevicesForHome(this, devices, homeId);
   }
 
   /**
@@ -639,25 +626,6 @@ export class HomeMembershipService implements HomeMembershipPort {
   }
 }
 
-/** The wired membership service plus the handle that detaches its triggers. */
-export type HomeMembershipWiring = {
-  service: HomeMembershipService;
-  /**
-   * Re-probe Main authority after an ownership input changes. Explicit-meter
-   * reads use bounded scheduling; a completed semantic homes/pins recompute
-   * may request immediate application. Both rebuild and reconcile while fenced.
-   */
-  requestMainAuthorityRecovery?: (timing?: 'scheduled' | 'immediate') => void;
-  /**
-   * Detach every recompute trigger wired by `createHomeMembershipService`
-   * (refresh subscription + zone-tree-commit and realtime zone-move
-   * callbacks): late dispatches after teardown become no-ops. The
-   * settings-change trigger is not wired here — it reads `ctx.homeMembership`
-   * lazily and dies when the wiring clears it.
-   */
-  teardown: () => void;
-};
-
 /** The narrow control-path slice of {@link HomeMembershipPort} the home-device filter consumes. */
 type HomeMembershipControlView = Pick<
   HomeMembershipPort,
@@ -704,106 +672,3 @@ export function filterDevicesForHome<T extends { id: string }>(
     ? homeDevices
     : homeDevices.filter((device) => !meterDeviceIds.has(device.id));
 }
-
-/**
- * Build the membership service over the real stores and subscribe its
- * recompute to BOTH transport-owned notification seams: the observer emitter's
- * refresh event (dispatched only after a COMMITTED snapshot, so `getDevices`
- * reads the fresh list) and the zone-tree COMMIT callback (the tree rides a
- * DETACHED fetch that lands after the refresh dispatch — without this trigger
- * a successful late commit would wait a full extra refresh cycle to be
- * joined). Runs the initial boot-time recompute (typically: empty snapshot,
- * no tree yet — fail-safe). The `homes_config`/`device_home_assignments`
- * settings-change triggers are wired separately via
- * `SettingsHandlerDeps.recomputeHomeMembership`.
- *
- * CONTAINMENT: both callbacks ride synchronous post-commit chains inside the
- * transport (live-feed tracking, mutation hooks, observation recording share
- * the refresh emit; the tree callback runs on the detached fetch chain), so a
- * recompute throw is caught and logged here, never propagated. `recompute()`
- * assigns its membership map last, so a mid-read throw retains the previous
- * membership.
- */
-export const createHomeMembershipService = (params: {
-  homey: Homey.App['homey'];
-  emitter: ObservedStateEmitter;
-  /** The transport's zone-tree-commit seam; called with `undefined` to detach. */
-  setOnZoneTreeCommitted: (callback: (() => void) | undefined) => void;
-  /**
-   * The transport's realtime zone-move seam (a realtime device.update
-   * committed a snapshot entry with a changed `zoneId`); called with
-   * `undefined` to detach. Without this trigger a realtime zone move would
-   * stay unjoined — main-plannable — until the next full refresh.
-   */
-  setOnDeviceZoneChanged: (callback: (() => void) | undefined) => void;
-  getZoneTree: () => ZoneTree | null;
-  getDevices: () => readonly HomeMembershipDeviceInput[];
-  getLogger: () => PinoLogger | undefined;
-  /** See {@link HomeMembershipServiceDeps.getRestoredSampleAtMs}. */
-  getRestoredSampleAtMs?: () => number | undefined;
-  /** See {@link HomeMembershipServiceDeps.onMembershipChanged}. */
-  onMembershipChanged?: () => void;
-  /** See {@link HomeMembershipServiceDeps.onRuntimeActiveChanged}. */
-  onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
-  /** See {@link HomeMembershipServiceDeps.onMainOwnershipReady}. */
-  onMainOwnershipReady?: () => void;
-  /** See {@link HomeMembershipServiceDeps.onMainAuthorityUnresolved}. */
-  onMainAuthorityUnresolved?: () => void;
-  /** See {@link HomeMembershipServiceDeps.onMainAuthorityReopened}. */
-  onMainAuthorityReopened?: () => void;
-  /** See {@link HomeMembershipServiceDeps.onOwnershipReadyBeforePlanWork}. */
-  onOwnershipReadyBeforePlanWork?: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void;
-  /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
-  onZoneTreeCommitReady?: () => void;
-}): HomeMembershipWiring => {
-  // The graced reader, built once per membership wiring: settling a listed-empty
-  // key needs memory across reads, and that memory belongs to the lib component
-  // rather than to any caller asking whether a meter is configured.
-  const mainMeterSelection = createMainMeterSelectionReader(params.homey.settings, () => Date.now());
-  const service = new HomeMembershipService({
-    homesStore: createHomesStore(params.homey),
-    assignmentsStore: createDeviceHomeAssignmentsStore(params.homey),
-    getZoneTree: params.getZoneTree,
-    getDevices: params.getDevices,
-    getLogger: params.getLogger,
-    getConfiguredPowerSource: () => readConfiguredPowerSource(params.homey.settings),
-    getMainMeterSelection: () => mainMeterSelection.read(),
-    getRestoredSampleAtMs: params.getRestoredSampleAtMs,
-    legacyMultiHomeEnabled: readLegacyMultiHomeEnabled(params.homey.settings),
-    onMembershipChanged: params.onMembershipChanged,
-    onRuntimeActiveChanged: params.onRuntimeActiveChanged,
-    onMainOwnershipReady: params.onMainOwnershipReady,
-    onMainAuthorityUnresolved: params.onMainAuthorityUnresolved,
-    onMainAuthorityReopened: params.onMainAuthorityReopened,
-    onOwnershipReadyBeforePlanWork: params.onOwnershipReadyBeforePlanWork,
-    onZoneTreeCommitReady: params.onZoneTreeCommitReady,
-  });
-  const recomputeContained = (
-    trigger: 'startup' | 'snapshot_refresh' | 'zone_tree_commit' | 'realtime_zone_move',
-  ): void => {
-    try {
-      service.recompute();
-    } catch (error) {
-      params.getLogger()?.error({
-        event: 'home_membership_recompute_failed',
-        trigger,
-        err: normalizeError(error),
-      });
-    }
-  };
-  const unsubscribeRefresh = params.emitter.onObservedStateRefresh(() => recomputeContained('snapshot_refresh'));
-  params.setOnZoneTreeCommitted(() => recomputeContained('zone_tree_commit'));
-  params.setOnDeviceZoneChanged(() => recomputeContained('realtime_zone_move'));
-  recomputeContained('startup');
-  return {
-    service,
-    teardown: () => {
-      unsubscribeRefresh();
-      params.setOnZoneTreeCommitted(undefined);
-      params.setOnDeviceZoneChanged(undefined);
-    },
-  };
-};

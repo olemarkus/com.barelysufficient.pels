@@ -250,7 +250,7 @@ export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';
 // Multi-home support (dormant until the R4 wiring PR): the sub-home
 // configuration blob and the explicit device→home pin overrides. Read/written
-// only through setup/homeRegistryAdapter.ts (ports in lib/home/homeConfig.ts).
+// only through lib/home/homeRegistryStore.ts (ports in lib/home/homeConfig.ts).
 // Each blob has its own written-before marker (the power_calibration_initialized
 // precedent) so a transient SDK read miss is distinguishable from a fresh
 // install; per-store because the two blobs have independent write lifecycles.

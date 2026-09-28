@@ -47,7 +47,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   admitted sample is resolved with the reading and rides into the power ingest
   (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
   a proven collision with an area meter starts a Main-actuation fence episode
-  (`setup/homeMainMeterAuthority.ts`). Sample provenance itself is usable only for the sample's
+  (`lib/home/homeMainMeterAuthority.ts`). Sample provenance itself is usable only for the sample's
   freshness lifetime, but an observed fence episode stays latched beyond expiry until a later
   admitted sample proves safe provenance and hands control to fresh-plan recovery. This is a defensive
   transport state, not a second valid ownership model: it is reachable while invalid legacy state
@@ -70,7 +70,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   surrounding sub-home. Absence = follow the zone.
 - Degenerate input fails safe to `'main'`: an unknown/missing zone, a zone
   cycle, or a device with no zone all resolve to the main home. Resolution is
-  in the **producer** (`lib/home/membership.ts` → `setup/homeMembership.ts`);
+  in the **producer** (`lib/home/membership.ts` → `lib/home/homeMembershipService.ts`);
   the planner sees only a resolved `homeId` and never branches on the
   provenance (`source: 'zone' | 'pin' | 'fallback'` exists for the UI badge
   only — `'fallback'` marks a fail-safe resolution such as a dangling pin that
@@ -399,7 +399,7 @@ new meter area written by the current UI atomically carries the
 
 Upgrade containment is intentionally stricter than "any populated config is
 live." The retired `multi_home_enabled` key remains a read-only evidence seam
-in `setup/multiHomeActivation.ts`: a legacy `true` config is migrated to the
+in `lib/home/homeConfigActivation.ts`: a legacy `true` config is migrated to the
 atomic activation marker at boot, while an unmarked populated pre-GA config
 without that evidence stays runtime-dormant until a successful current UI
 upsert marks it. This prevents an old experimental configuration from silently
@@ -413,8 +413,8 @@ area exists).
 | Concern | File |
 |---|---|
 | Membership resolver (pure) | `lib/home/membership.ts` |
-| Membership service (cache, recompute triggers) | `setup/homeMembership.ts` |
-| Complement filter (one seam, provenance-free) | `filterDevicesForHome` in `setup/homeMembership.ts` |
+| Membership service (cache, recompute triggers) | `lib/home/homeMembershipService.ts` |
+| Complement filter (one seam, provenance-free) | `filterDevicesForHome` in `lib/home/homeMembershipService.ts` |
 | Per-home bundle registry + lifecycle | `setup/homeRuntime/homeRuntimeRegistry.ts` |
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |

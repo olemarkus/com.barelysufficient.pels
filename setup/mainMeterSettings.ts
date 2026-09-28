@@ -10,7 +10,7 @@
  * count `npm run setup:boundaries` holds down, for no gain: what those callers
  * want is one device id, not the home domain.
  *
- * The consumer that needs the GRACED reader — `homeMembership.ts`, which is the
- * home domain's own service — imports it from `lib/home` directly.
+ * The consumer that needs the GRACED reader — the home-membership factory —
+ * imports it from `lib/home` directly.
  */
 export { readMainMeterSelection } from '../lib/home/mainMeterSelection';

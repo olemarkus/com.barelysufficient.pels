@@ -43,7 +43,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { isCapacityScalarSettingKey } from '../../lib/power/capacitySettingsStore';
 import type { PowerSource } from '../../lib/power/powerSource';
-import { createHomesStore } from '../homeRegistryAdapter';
+import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import {
@@ -114,7 +114,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private subHomesUnderFlowWarned = false;
 
   constructor(private readonly deps: HomeRuntimeRegistryDeps) {
-    this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey);
+    this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey.settings);
     this.epoch = new PowerSourceEpochFence(() => this.tryReadConfiguredPowerSource());
     this.handledRuntimeActive = deps.isRuntimeActive();
   }

@@ -17,6 +17,8 @@ import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerSt
 import {
   createTestDeviceTransport,
 } from '../helpers/deviceTransportHarness';
+import { createSampledMeterIdentityWithoutRestoredSample } from '../helpers/homeMembership';
+import { captureLogger } from '../utils/loggerCapture';
 import { createDeviceReads, type DeviceReadStore, type DeviceReads } from '../../lib/device/deviceReads';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -46,18 +48,19 @@ import {
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
-} from '../../setup/homeRegistryAdapter';
+} from '../../lib/home/homeRegistryStore';
+import { wireHomeMembershipService } from '../../setup/homeMembershipWiring';
 import {
-  createHomeMembershipService,
   HomeMembershipService,
   type HomeMembershipDeviceInput,
-} from '../../setup/homeMembership';
+} from '../../lib/home/homeMembershipService';
 import { wireHomeMembership } from '../../setup/appInit/wireHomeMembership';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../packages/shared-domain/src/powerFreshness';
-import type { ConfiguredPowerSourceRead } from '../../setup/powerSourceSettings';
+import type { ConfiguredPowerSourceRead } from '../../lib/ports/configuredPowerSource';
+import { SampledMeterIdentity } from '../../lib/power/sampledMeterIdentity';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 import type { AppContext } from '../../lib/app/appContext';
 import { getSettingsUiHomesPayload, saveSettingsUiHomesConfig } from '../../setup/settingsUiHomesApi';
@@ -79,6 +82,10 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
+
+const subscribeToObservedStateRefresh = (emitter: ObservedStateEmitter) => (
+  listener: () => void,
+): (() => void) => emitter.onObservedStateRefresh(() => listener());
 // A homey with the real (mock) settings store but NO wired homeMembership
 // service: exercises the save endpoint's classified store path without the
 // forest-root diagnostics (`getApp(...)?.homeMembership` is undefined).
@@ -154,9 +161,10 @@ const makeStaticService = (params: {
   logger?: PinoLogger;
   legacyMultiHomeEnabled?: boolean;
 }): HomeMembershipService => new HomeMembershipService({
+  sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
   getConfiguredPowerSource: homeyEnergyPowerSource,
-  homesStore: createHomesStore(homeyLike),
-  assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+  homesStore: createHomesStore(homeyLike.settings),
+  assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
   getZoneTree: params.getZoneTree,
   getDevices: () => params.devices,
   getLogger: () => params.logger,
@@ -259,9 +267,12 @@ describe('post-refresh recompute through the transport seam', () => {
     }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
-    const wiring = createHomeMembershipService({
-      homey: homeyLike,
-      emitter,
+    const wiring = wireHomeMembershipService({
+      settings: homeyLike.settings,
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      subscribeToObservedStateRefresh: (listener) => (
+        emitter.onObservedStateRefresh(() => listener())
+      ),
       setOnZoneTreeCommitted: (callback) => transport.setOnZoneTreeCommitted(callback),
       setOnDeviceZoneChanged: (callback) => transport.setOnDeviceZoneChanged(callback),
       getZoneTree: () => transport.getZoneTree(),
@@ -284,7 +295,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
   it('the FIRST refresh resolves zone membership once the detached tree fetch commits', async () => {
     const device = await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -316,7 +327,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
   it('the production wiring joins the RAW transport snapshot, never the decorated ctx path', async () => {
     await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -350,7 +361,7 @@ describe('post-refresh recompute through the transport seam', () => {
     (ctxStub as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctxStub.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctxStub, emitter);
+    const wiring = wireHomeMembership(ctxStub, subscribeToObservedStateRefresh(emitter));
 
     await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
@@ -359,7 +370,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
   it('a membership change firing before the plan service is wired warns and skips the rebuild, without throwing', async () => {
     await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -388,7 +399,7 @@ describe('post-refresh recompute through the transport seam', () => {
     const onSubHomeMembershipChanged = vi.fn();
     const wiring = wireHomeMembership(
       ctxStub,
-      emitter,
+      subscribeToObservedStateRefresh(emitter),
       { onSubHomeMembershipChanged },
     );
 
@@ -408,7 +419,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
   it('a realtime device.update that moves the device across zones recomputes membership immediately', async () => {
     const device = await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -431,14 +442,14 @@ describe('post-refresh recompute through the transport seam', () => {
     // A realtime update with an UNCHANGED zone does not recompute (no delta,
     // no trigger): move the persisted pin so a recompute WOULD change the
     // map, then inject an update with the same zone — the map must not move.
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'h_a' });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'h_a' });
     transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
   });
 
   it('teardown detaches all three triggers: refresh dispatch, tree commit, and realtime zone move', async () => {
     const device = await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -466,7 +477,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
   it('a throwing recompute is contained + logged; the snapshot pipeline and detached chain are unharmed', async () => {
     const device = await addZonedHeater('z2');
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -538,7 +549,7 @@ describe('settings-change recompute triggers', () => {
     expect(service.hasSubHomes()).toBe(false);
 
     // Registry write lands through the handler map entry — no manual recompute.
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     await flushHandlerQueue();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(service.hasSubHomes()).toBe(true);
@@ -563,7 +574,7 @@ describe('settings-change recompute triggers', () => {
     expect(warn).toHaveBeenCalledTimes(1);
 
     // A recovered (plausible) read re-arms the edge...
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     await flushHandlerQueue();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(warn).toHaveBeenCalledTimes(1);
@@ -579,7 +590,7 @@ describe('settings-change recompute triggers', () => {
     }));
 
     // Pin write through the handler: 'main' pin opts the device out of h_a.
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'main' });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'main' });
     await flushHandlerQueue();
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('pin');
@@ -589,9 +600,10 @@ describe('settings-change recompute triggers', () => {
     const onMembershipChanged = vi.fn();
     let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => devices,
       getLogger: () => undefined,
@@ -618,14 +630,14 @@ describe('settings-change recompute triggers', () => {
 
     // Settings-driven membership change (dev1: main → h_a): the committed
     // plan now governs the wrong device set — exactly one rebuild request.
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     await flushHandlerQueue();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(onMembershipChanged).toHaveBeenCalledTimes(1);
 
     // Re-writing the SAME config recomputes but resolves identically — the
     // change gate keeps it free (no rebuild storm from redundant writes).
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     await flushHandlerQueue();
     expect(onMembershipChanged).toHaveBeenCalledTimes(1);
 
@@ -634,7 +646,7 @@ describe('settings-change recompute triggers', () => {
     expect(onMembershipChanged).toHaveBeenCalledTimes(1);
 
     // Leaving the sub-home (pin back to main) is a plan-relevant change too.
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'main' });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'main' });
     await flushHandlerQueue();
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(onMembershipChanged).toHaveBeenCalledTimes(2);
@@ -643,7 +655,7 @@ describe('settings-change recompute triggers', () => {
 
 describe('zone-tree fail-safe and pins', () => {
   it('null tree at boot resolves every device to main; a seen tree is never dropped for a later null', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     let tree: ZoneTree | null = null;
     const service = makeStaticService({
       getZoneTree: () => tree,
@@ -670,8 +682,8 @@ describe('zone-tree fail-safe and pins', () => {
   });
 
   it('honors pins over the zone rule and fail-safes a dangling pin to the zone rule', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({
       dev1: 'main', // opt-out of the surrounding h_a
       dev2: 'h_a', // pin INTO h_a from the garage
       dev3: 'h_ghost', // dangling: falls back to the zone rule, visibly
@@ -701,9 +713,10 @@ describe('last-known zone retention', () => {
     getDevices: () => readonly HomeMembershipDeviceInput[];
     logger?: PinoLogger;
   }): HomeMembershipService => new HomeMembershipService({
+    sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
     getConfiguredPowerSource: homeyEnergyPowerSource,
-    homesStore: createHomesStore(homeyLike),
-    assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+    homesStore: createHomesStore(homeyLike.settings),
+    assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
     getZoneTree: () => ZONES,
     getDevices: params.getDevices,
     getLogger: () => params.logger,
@@ -712,52 +725,56 @@ describe('last-known zone retention', () => {
   });
 
   it('keeps membership through a one-cycle zone omission, with a structured debug log on retention use', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    const { debug, logger } = makeLoggerSpy();
-    let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
-    const service = makeLiveService({ getDevices: () => devices, logger });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
+    const capture = captureLogger('debug', ['devices']);
+    try {
+      let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
+      const service = makeLiveService({ getDevices: () => devices });
 
-    service.recompute();
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-    expect(debug).not.toHaveBeenCalled();
+      service.recompute();
+      expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+      expect(capture.findEvents('home_membership_zone_retained')).toHaveLength(0);
 
-    // Fulfilled snapshot whose entry transiently omits zone: the previous
-    // resolution holds — no one-cycle flap to main/'fallback'.
-    devices = [{ deviceId: 'dev1', zoneId: null }];
-    service.recompute();
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-    expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
-    expect(debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'home_membership_zone_retained',
-      deviceId: 'dev1',
-      zoneId: 'z2',
-    }));
-    expect(debug).toHaveBeenCalledTimes(1);
+      // Fulfilled snapshot whose entry transiently omits zone: the previous
+      // resolution holds — no one-cycle flap to main/'fallback'.
+      devices = [{ deviceId: 'dev1', zoneId: null }];
+      service.recompute();
+      expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+      expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
+      expect(capture.findEvent('home_membership_zone_retained')).toMatchObject({
+        component: 'homes',
+        debugTopic: 'devices',
+        deviceId: 'dev1',
+        zoneId: 'z2',
+      });
+      expect(capture.findEvents('home_membership_zone_retained')).toHaveLength(1);
 
-    // Edge-triggered, not per-use: a persistently zone-omitting device must
-    // NOT re-log on the next recompute (which can fire twice per refresh
-    // cycle — snapshot refresh + zone-tree commit).
-    service.recompute();
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-    expect(debug).toHaveBeenCalledTimes(1);
+      // Edge-triggered, not per-use: a persistently zone-omitting device must
+      // NOT re-log on the next recompute (which can fire twice per refresh
+      // cycle — snapshot refresh + zone-tree commit).
+      service.recompute();
+      expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+      expect(capture.findEvents('home_membership_zone_retained')).toHaveLength(1);
 
-    // Zone back in the snapshot: no retention read, membership unchanged —
-    // and the log edge re-arms...
-    debug.mockClear();
-    devices = [{ deviceId: 'dev1', zoneId: 'z2' }];
-    service.recompute();
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-    expect(debug).not.toHaveBeenCalled();
+      // Zone back in the snapshot: no retention read, membership unchanged —
+      // and the log edge re-arms...
+      devices = [{ deviceId: 'dev1', zoneId: 'z2' }];
+      service.recompute();
+      expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+      expect(capture.findEvents('home_membership_zone_retained')).toHaveLength(1);
 
-    // ...so a NEW omission episode logs exactly once more.
-    devices = [{ deviceId: 'dev1', zoneId: null }];
-    service.recompute();
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-    expect(debug).toHaveBeenCalledTimes(1);
+      // ...so a NEW omission episode logs exactly once more.
+      devices = [{ deviceId: 'dev1', zoneId: null }];
+      service.recompute();
+      expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+      expect(capture.findEvents('home_membership_zone_retained')).toHaveLength(2);
+    } finally {
+      capture.restore();
+    }
   });
 
   it('prunes retention when a device genuinely leaves the snapshot', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     let devices: readonly HomeMembershipDeviceInput[] = [
       { deviceId: 'dev1', zoneId: 'z2' },
       { deviceId: 'dev2', zoneId: 'z3' },
@@ -784,7 +801,7 @@ describe('last-known zone retention', () => {
   });
 
   it('follows a zone move — a later omission retains the moved-to zone, not the original', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
     const service = makeLiveService({ getDevices: () => devices });
 
@@ -804,8 +821,8 @@ describe('last-known zone retention', () => {
 
 describe('ui_homes payload', () => {
   it('composes homes + membership-with-source + zone tree + hasSubHomes from the service', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev2: 'h_a' });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev2: 'h_a' });
     const service = makeStaticService({
       getZoneTree: () => ZONES,
       devices: [
@@ -856,7 +873,7 @@ describe('ui_homes payload', () => {
   // while it does, and no other surface reports that. 2.17 had no cross-store
   // guard, so an upgraded config can arrive in exactly this state.
   it('reports the area holding Main\u2019s meter so the silent Main-home fence is visible', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'shared_meter' }],
     });
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
@@ -903,7 +920,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'meter1' } },
     })).toEqual({ ok: true });
-    const afterCreate = createHomesStore(homeyLike).read();
+    const afterCreate = createHomesStore(homeyLike.settings).read();
     expect(afterCreate.state).toBe('present');
     if (afterCreate.state !== 'present') return;
     const created = afterCreate.value.subHomes[0];
@@ -915,14 +932,14 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { homeId: created.homeId, name: 'Renamed', rootZoneId: 'z2', meterDeviceId: 'meter1' } },
     })).toEqual({ ok: true });
-    const afterEdit = createHomesStore(homeyLike).read();
+    const afterEdit = createHomesStore(homeyLike.settings).read();
     expect(afterEdit.state === 'present' && afterEdit.value.subHomes).toEqual([
       { homeId: created.homeId, name: 'Renamed', rootZoneId: 'z2', meterDeviceId: 'meter1' },
     ]);
     await expect(api.ui_homes_save({
       homey: homeyWired, body: { op: 'delete', homeId: created.homeId },
     })).resolves.toEqual({ ok: true });
-    const afterDelete = createHomesStore(homeyLike).read();
+    const afterDelete = createHomesStore(homeyLike.settings).read();
     expect(afterDelete.state === 'present' && afterDelete.value.subHomes).toEqual([]);
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired, body: { op: 'delete', homeId: created.homeId },
@@ -940,7 +957,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: 'm2' } },
     })).toEqual({ ok: true });
-    const read = createHomesStore(homeyLike).read();
+    const read = createHomesStore(homeyLike.settings).read();
     expect(read.state === 'present' && read.value.subHomes.map((area) => area.name))
       .toEqual(['Upstairs', 'Garage flat']);
   });
@@ -957,7 +974,7 @@ describe('ui_homes payload', () => {
       body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: 'm1' } },
     })).toEqual({ ok: false, reason: 'invalid' });
 
-    const read = createHomesStore(homeyLike).read();
+    const read = createHomesStore(homeyLike.settings).read();
     expect(read.state === 'present' && read.value.subHomes).toHaveLength(1);
     expect(read.state === 'present' && read.value.subHomes[0]).toMatchObject({
       name: 'Upstairs',
@@ -979,7 +996,7 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: false, reason: 'invalid' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
     expect(setSpy).not.toHaveBeenCalled();
   });
 
@@ -1005,7 +1022,7 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: false, reason: 'main_meter_required' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
     expect(setSpy).not.toHaveBeenCalled();
   });
 
@@ -1028,7 +1045,7 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: false, reason: 'degraded' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'suspect' });
     expect(setSpy).not.toHaveBeenCalled();
   });
 
@@ -1042,7 +1059,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
     })).toEqual({ ok: false, reason: 'main_meter_required' });
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
     expect(setSpy).not.toHaveBeenCalled();
 
     // Naming Main's own meter unblocks exactly the same save.
@@ -1066,7 +1083,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
     })).toEqual({ ok: false, reason: 'homey_energy_required' });
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
     expect(setSpy).not.toHaveBeenCalled();
     setSpy.mockRestore();
 
@@ -1092,7 +1109,7 @@ describe('ui_homes payload', () => {
     // A config that predates the exclusion: areas saved, source now Flow. The
     // refusal copy says "remove your meter areas first", so removal must work
     // on any source; an edit would keep an unmeasurable area alive.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
@@ -1112,12 +1129,12 @@ describe('ui_homes payload', () => {
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
     })).toEqual({ ok: true });
-    const read = createHomesStore(homeyLike).read();
+    const read = createHomesStore(homeyLike.settings).read();
     expect(read.state === 'present' && read.value.subHomes).toEqual([]);
   });
 
   it('refuses switching the power source to Flow while meter areas are running', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
@@ -1144,7 +1161,7 @@ describe('ui_homes payload', () => {
     // Marker-less config with the legacy flag latched false: multi-home is
     // deliberately holding the saved pre-GA areas dormant, so they are not
     // running and must not block the switch.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
@@ -1157,7 +1174,7 @@ describe('ui_homes payload', () => {
     // Switching TO Homey Energy is the remedy direction: never gated on
     // activation, allowed even while areas are running (a legacy Flow-saved
     // config's only road back). It carries the meter it will read.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
@@ -1170,7 +1187,7 @@ describe('ui_homes payload', () => {
   });
 
   it('still refuses Flow when a marker-less config is running via the latched legacy flag', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
@@ -1184,7 +1201,7 @@ describe('ui_homes payload', () => {
   it('answers the Flow switch from the fresh read in the boot window, and refuses to guess without the marker', () => {
     // Marker-activated config: the proof travels in the same read as subHomes,
     // so even an unwired membership service refuses with the specific reason.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
@@ -1196,7 +1213,7 @@ describe('ui_homes payload', () => {
     // No marker: activation may still come from the retired legacy flag, and
     // that answer is the unwired membership service's — neither yes nor no
     // may be guessed.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     expect(saveSettingsUiHomesConfig({
@@ -1246,7 +1263,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
     })).toEqual({ ok: false, reason: 'degraded' });
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('refuses the retired set_main_meter op as malformed — Automatic is not expressible', () => {
@@ -1311,7 +1328,7 @@ describe('ui_homes payload', () => {
     // The meter direction is never gated on activation, so even the boot
     // window (no membership service wired) answers from the fresh store read
     // alone: an area's own meter loses to ownership, any other meter saves.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
@@ -1324,7 +1341,7 @@ describe('ui_homes payload', () => {
 
     // A markerless (legacy-activation-candidate) config blocks nothing here:
     // activation is a Flow-switch question, not a meter question.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     expect(saveSettingsUiHomesConfig({
@@ -1340,7 +1357,7 @@ describe('ui_homes payload', () => {
   it('judges the name of the area being written, not a legacy name elsewhere', () => {
     // Names that predate the rules (nothing enforced them before) must not
     // refuse an unrelated, compliant edit with copy about an unseen area.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [
         { homeId: 'h_legacy', name: 'Main home', rootZoneId: 'z2', meterDeviceId: 'm-legacy' },
@@ -1382,14 +1399,14 @@ describe('ui_homes payload', () => {
     expect(upsertNamed('main HOME', 'm1')).toEqual({
       ok: false, reason: 'name_reserved', reservedName: 'Main home',
     });
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
 
     // A saved area's name then blocks a case-variant duplicate in another zone.
     expect(upsertNamed('  Garage flat  ', 'm1')).toEqual({ ok: true });
     expect(upsertNamed('GARAGE FLAT', 'm2', 'z3')).toEqual({
       ok: false, reason: 'name_duplicate', otherName: 'Garage flat',
     });
-    const read = createHomesStore(homeyLike).read();
+    const read = createHomesStore(homeyLike.settings).read();
     // The persisted name is the trimmed one the rules judged.
     expect(read.state === 'present' && read.value.subHomes.map(({ name }) => name))
       .toEqual(['Garage flat']);
@@ -1409,7 +1426,7 @@ describe('ui_homes payload', () => {
       rootZoneId: `zc${index}`,
       meterDeviceId: `m-cap${index}`,
     }));
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: atCap,
     });
@@ -1454,7 +1471,7 @@ describe('ui_homes payload', () => {
       rootZoneId: `zo${index}`,
       meterDeviceId: `m-over${index}`,
     }));
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: overCap,
     });
@@ -1475,7 +1492,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { ...overCap[0], name: 'Repaired', meterDeviceId: 'm-fixed' } },
     })).toEqual({ ok: true });
-    const read = createHomesStore(homeyLike).read();
+    const read = createHomesStore(homeyLike.settings).read();
     expect(read.state === 'present' && read.value.subHomes).toHaveLength(9);
     expect(read.state === 'present' && read.value.subHomes[0])
       .toMatchObject({ name: 'Repaired', meterDeviceId: 'm-fixed' });
@@ -1488,7 +1505,7 @@ describe('ui_homes payload', () => {
   });
 
   it('refuses a later Main-meter selection owned by an area and normalizes accepted ids', async () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
@@ -1524,7 +1541,7 @@ describe('ui_homes payload', () => {
   });
 
   it('clears tracker freshness before committing a meter reassignment and keeps accounting', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -1562,7 +1579,7 @@ describe('ui_homes payload', () => {
   });
 
   it('restores tracker freshness after a config write mutates and then throws', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -1609,7 +1626,7 @@ describe('ui_homes payload', () => {
       [SUB_HOME_A.homeId, tracker],
     ]);
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(tracker);
-    const config = createHomesStore(homeyLike).read();
+    const config = createHomesStore(homeyLike.settings).read();
     expect(config.state === 'present' && config.value).toEqual({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
@@ -1646,7 +1663,7 @@ describe('ui_homes payload', () => {
       body: request,
     })).toEqual({ ok: false, reason: 'degraded' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({
       state: 'present',
       value: { subHomes: [] },
     });
@@ -1657,7 +1674,7 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: request,
     })).toEqual({ ok: true });
-    expect(createHomesStore(homeyLike).read()).toEqual({
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({
       state: 'present',
       value: {
         activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
@@ -1668,7 +1685,7 @@ describe('ui_homes payload', () => {
   });
 
   it('retains the safe tracker reset when config compensation is unavailable', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -1725,7 +1742,7 @@ describe('ui_homes payload', () => {
     // report failure, so the wiring compensated with a second write. In the
     // store the reset is one transaction: a throw rolls back every row it
     // touched, so the wiring writes nothing back and only reports the phase.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -1779,7 +1796,7 @@ describe('ui_homes payload', () => {
     const currentConfig: HomeConfig = {
       subHomes: [SUB_HOME_A, SUB_HOME_B],
     };
-    createHomesStore(homeyLike).write(currentConfig);
+    createHomesStore(homeyLike.settings).write(currentConfig);
     // B keeps accounting so its reset leaves rows behind; a state that is
     // freshness alone would come back from the store as no rows at all.
     const trackers: readonly PowerTrackerState[] = [
@@ -1822,7 +1839,7 @@ describe('ui_homes payload', () => {
     ]);
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(trackers[0]);
     expect(trackerStore.load(SUB_HOME_B.homeId)).toEqual(withoutFreshness(trackers[1]));
-    expect(createHomesStore(homeyLike).read()).toEqual({
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({
       state: 'present',
       value: currentConfig,
     });
@@ -1837,7 +1854,7 @@ describe('ui_homes payload', () => {
     const currentConfig: HomeConfig = {
       subHomes: [SUB_HOME_A, SUB_HOME_B],
     };
-    createHomesStore(homeyLike).write(currentConfig);
+    createHomesStore(homeyLike.settings).write(currentConfig);
     const trackers: readonly PowerTrackerState[] = [
       { lastTimestamp: 1_700_000_000_000, lastPowerW: 2_400 },
       { lastTimestamp: 1_700_000_100_000, lastPowerW: 1_200 },
@@ -1870,14 +1887,14 @@ describe('ui_homes payload', () => {
     expect(setSpy.mock.calls.filter(([key]) => key === HOMES_CONFIG)).toHaveLength(0);
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(trackers[0]);
     expect(trackerStore.load(SUB_HOME_B.homeId)).toEqual(trackers[1]);
-    expect(createHomesStore(homeyLike).read()).toEqual({
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({
       state: 'present',
       value: currentConfig,
     });
   });
 
   it('refuses a delete while the tracker store cannot be read, and writes nothing', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -1896,7 +1913,7 @@ describe('ui_homes payload', () => {
       body: { op: 'delete', homeId: SUB_HOME_A.homeId },
     })).toEqual({ ok: false, reason: 'degraded' });
 
-    const config = createHomesStore(homeyLike).read();
+    const config = createHomesStore(homeyLike.settings).read();
     expect(config.state === 'present' && config.value.subHomes).toEqual([SUB_HOME_A]);
     expect(saveSpy).not.toHaveBeenCalled();
     loadSpy.mockRestore();
@@ -1904,7 +1921,7 @@ describe('ui_homes payload', () => {
   });
 
   it('clears a deleted homeId tracker before an explicit re-add can commit', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_B],
     });
@@ -1926,7 +1943,7 @@ describe('ui_homes payload', () => {
 
     // Reset in the store: accounting kept, the latch cleared.
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(withoutFreshness(deletedTracker));
-    const config = createHomesStore(homeyLike).read();
+    const config = createHomesStore(homeyLike.settings).read();
     expect(config.state === 'present' && config.value.subHomes).toEqual([
       SUB_HOME_B,
       SUB_HOME_A,
@@ -1934,7 +1951,7 @@ describe('ui_homes payload', () => {
   });
 
   it('refuses on a suspect FRESH homes read without touching the persisted blob', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     // Wired healthy first (the recompute classifies the homes store 'present',
     // so the degraded predicate is clean): the FRESH-read TOCTOU gate is what
     // must catch the junk written afterwards.
@@ -1945,11 +1962,11 @@ describe('ui_homes payload', () => {
       homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
     })).toEqual({ ok: false, reason: 'degraded' });
     // Nothing was written: the store still classifies suspect over the junk.
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('refuses an upsert whose root nests or duplicates an existing area; a disjoint upsert persists', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] }); // area rooted at z2
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] }); // area rooted at z2
     const homeyWired = makeWiredHealthyHomey();
     // Identical root: a second area rooted at z2 would, by deepest-root
     // precedence, silently re-home z2's devices — refuse, persist nothing.
@@ -1957,14 +1974,14 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Also upstairs', rootZoneId: 'z2', meterDeviceId: 'm2' } },
     })).toEqual({ ok: false, reason: 'invalid' });
-    const afterRefusal = createHomesStore(homeyLike).read();
+    const afterRefusal = createHomesStore(homeyLike.settings).read();
     expect(afterRefusal.state === 'present' && afterRefusal.value.subHomes).toEqual([SUB_HOME_A]);
     // A disjoint root (z3, a sibling subtree) is accepted.
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: 'm3' } },
     })).toEqual({ ok: true });
-    const afterAccept = createHomesStore(homeyLike).read();
+    const afterAccept = createHomesStore(homeyLike.settings).read();
     expect(afterAccept.state === 'present' && afterAccept.value.subHomes.map((area) => area.rootZoneId))
       .toEqual(['z2', 'z3']);
   });
@@ -1975,14 +1992,14 @@ describe('ui_homes payload', () => {
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm1' } },
     })).toEqual({ ok: false, reason: 'degraded' });
     // Nothing persisted — the homes store is untouched.
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('refuses an upsert while the device_home_assignments store classifies suspect', () => {
     // The homes store is clean, but a written-before pins store reading back
     // junk classifies 'suspect' — only the FULL degraded condition (either
     // store suspect) catches this, not a homes-store read alone.
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'h_a' });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'h_a' });
     mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, 'not-a-pins-blob');
     const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
     service.recompute();
@@ -1995,7 +2012,7 @@ describe('ui_homes payload', () => {
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm1' } },
     })).toEqual({ ok: false, reason: 'degraded' });
     // The clean homes store stays untouched.
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('refuses malformed ops and a zone-forest root as an area root', () => {
@@ -2017,7 +2034,7 @@ describe('ui_homes payload', () => {
   });
 
   it('surfaces configDegraded while a store read classifies suspect, and clears it on recovery', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     const service = makeStaticService({
       getZoneTree: () => ZONES,
       devices: [{ deviceId: 'dev1', zoneId: 'z2' }],
@@ -2039,22 +2056,46 @@ describe('ui_homes payload', () => {
     expect(degraded.homes).toEqual([SUB_HOME_A]);
 
     // Recovery: a plausible read clears the flag on the next recompute.
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     service.recompute();
     expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).configDegraded).toBe(false);
   });
 });
 
 describe('legacy multi-home activation compatibility', () => {
+  it('migrates the legacy enabled flag while constructing the home owner', () => {
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
+    mockHomeyInstance.settings.set(LEGACY_MULTI_HOME_ENABLED, true);
+
+    const { service, teardown } = wireHomeMembershipService({
+      settings: homeyLike.settings,
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      subscribeToObservedStateRefresh: () => () => {},
+      setOnZoneTreeCommitted: noop,
+      setOnDeviceZoneChanged: noop,
+      getZoneTree: () => ZONES,
+      getDevices: () => [],
+      getLogger: () => undefined,
+    });
+
+    expect(createHomesStore(homeyLike.settings).read()).toEqual({
+      state: 'present',
+      value: { activationVersion: HOME_CONFIG_ACTIVATION_VERSION, subHomes: [SUB_HOME_A] },
+    });
+    expect(service.isRuntimeActive()).toBe(true);
+    teardown();
+  });
+
   it.each([
     ['the historical absent default', undefined],
     ['an explicit false flag', false],
   ])('holds a populated pre-GA config inert for %s while keeping diagnostics visible', (_label, flag) => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     if (flag !== undefined) mockHomeyInstance.settings.set(LEGACY_MULTI_HOME_ENABLED, flag);
-    const { service, teardown } = createHomeMembershipService({
-      homey: homeyLike,
-      emitter: new ObservedStateEmitter(),
+    const { service, teardown } = wireHomeMembershipService({
+      settings: homeyLike.settings,
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      subscribeToObservedStateRefresh: () => () => {},
       setOnZoneTreeCommitted: noop,
       setOnDeviceZoneChanged: noop,
       getZoneTree: () => ZONES,
@@ -2082,12 +2123,13 @@ describe('legacy multi-home activation compatibility', () => {
   });
 
   it('emits an explicit runtime-activation edge even with no sub-home device assignments', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     mockHomeyInstance.settings.set(LEGACY_MULTI_HOME_ENABLED, false);
     const onRuntimeActiveChanged = vi.fn();
-    const { service, teardown } = createHomeMembershipService({
-      homey: homeyLike,
-      emitter: new ObservedStateEmitter(),
+    const { service, teardown } = wireHomeMembershipService({
+      settings: homeyLike.settings,
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      subscribeToObservedStateRefresh: () => () => {},
       setOnZoneTreeCommitted: noop,
       setOnDeviceZoneChanged: noop,
       getZoneTree: () => ZONES,
@@ -2098,7 +2140,7 @@ describe('legacy multi-home activation compatibility', () => {
     expect(service.isRuntimeActive()).toBe(false);
     expect(onRuntimeActiveChanged).not.toHaveBeenCalled();
 
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
@@ -2112,7 +2154,7 @@ describe('legacy multi-home activation compatibility', () => {
   });
 
   it('an existing upsert atomically marks a held config active through homes_config', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A] });
     mockHomeyInstance.settings.set(LEGACY_MULTI_HOME_ENABLED, false);
     const dormantTracker: PowerTrackerState = {
       lastTimestamp: 1_700_000_000_000,
@@ -2154,7 +2196,7 @@ describe('legacy multi-home activation compatibility', () => {
       })).toEqual({ ok: true });
     };
 
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A, SUB_HOME_B] });
+    createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME_A, SUB_HOME_B] });
     mockHomeyInstance.settings.set(LEGACY_MULTI_HOME_ENABLED, false);
     deleteArea(makeWiredHealthyHomey(false));
     expect(mockHomeyInstance.settings.get(HOMES_CONFIG)).toEqual({
@@ -2177,7 +2219,7 @@ describe('legacy multi-home activation compatibility', () => {
 
 describe('HomeMembershipService — Main actuation ownership fence', () => {
   it('ignores dormant held-home collisions until activation but still fences unavailable authority', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
     let selection: MainMeterSelection = {
@@ -2185,9 +2227,10 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       meterDeviceId: 'm-shared',
     };
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
       getLogger: () => undefined,
@@ -2202,7 +2245,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     expect(service.isMainHomeActuationFenced()).toBe(true);
 
     selection = { state: 'resolved', meterDeviceId: 'm-shared' };
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
@@ -2218,16 +2261,17 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     // arms the authority recovery loop in `wireHomeMembership`, so an unchosen
     // meter answering 'blocked' is what stops that loop re-reading a setting
     // once a minute for the life of the app.
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
     const onMainAuthorityUnresolved = vi.fn();
     let selection: MainMeterSelection = { state: 'unavailable' };
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
       getLogger: () => undefined,
@@ -2256,14 +2300,15 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
   // authority is resolved from the identity the poll actually sampled.
   describe('Automatic sampled-meter ownership', () => {
     const buildAutomaticService = (warn: (payload: unknown) => void = vi.fn()) => {
-      createHomesStore(homeyLike).write({
+      createHomesStore(homeyLike.settings).write({
         activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
         subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
       });
       const service = new HomeMembershipService({
+        sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
         getConfiguredPowerSource: homeyEnergyPowerSource,
-        homesStore: createHomesStore(homeyLike),
-        assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+        homesStore: createHomesStore(homeyLike.settings),
+        assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
         getZoneTree: () => ZONES,
         getDevices: () => [],
         getLogger: () => ({
@@ -2387,13 +2432,14 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           () => ({ state: 'resolved', value: 'homey_energy' })
         ),
       ) => {
-        createHomesStore(homeyLike).write({
+        createHomesStore(homeyLike.settings).write({
           activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
           subHomes,
         });
         const service = new HomeMembershipService({
-          homesStore: createHomesStore(homeyLike),
-          assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+          sampledMeterIdentity: new SampledMeterIdentity({ getRestoredSampleAtMs }),
+          homesStore: createHomesStore(homeyLike.settings),
+          assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
           getZoneTree: () => ZONES,
           getDevices: () => [],
           getLogger: () => ({
@@ -2402,7 +2448,6 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           // Automatic.
           getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
           getConfiguredPowerSource,
-          getRestoredSampleAtMs,
           legacyMultiHomeEnabled: true,
         });
         service.recompute();
@@ -2513,19 +2558,19 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           vi.setSystemTime(new Date('2026-07-27T10:00:00Z'));
           const restoredAtMs = Date.now() - 5_000;
           const onMainAuthorityReopened = vi.fn();
-          createHomesStore(homeyLike).write({
+          createHomesStore(homeyLike.settings).write({
             activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
             subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
           });
           const service = new HomeMembershipService({
+            sampledMeterIdentity: new SampledMeterIdentity({ getRestoredSampleAtMs: () => restoredAtMs }),
             getConfiguredPowerSource: homeyEnergyPowerSource,
-            homesStore: createHomesStore(homeyLike),
-            assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+            homesStore: createHomesStore(homeyLike.settings),
+            assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
             getZoneTree: () => ZONES,
             getDevices: () => [],
             getLogger: () => undefined,
             getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
-            getRestoredSampleAtMs: () => restoredAtMs,
             legacyMultiHomeEnabled: true,
             onMainAuthorityReopened,
           });
@@ -2581,14 +2626,15 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     it('SINGLE-HOME IDENTITY: Automatic with no meter areas never consults the sampled id', () => {
       // The byte-identical single-home guarantee: an ordinary Automatic install
       // has no area meter set to collide with, so it must not gain a boot fence.
-      createHomesStore(homeyLike).write({
+      createHomesStore(homeyLike.settings).write({
         activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
         subHomes: [],
       });
       const service = new HomeMembershipService({
+        sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
         getConfiguredPowerSource: homeyEnergyPowerSource,
-        homesStore: createHomesStore(homeyLike),
-        assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+        homesStore: createHomesStore(homeyLike.settings),
+        assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
         getZoneTree: () => ZONES,
         getDevices: () => [],
         getLogger: () => undefined,
@@ -2617,13 +2663,14 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           warn?: (payload: unknown) => void;
         } = {},
       ) => {
-        createHomesStore(homeyLike).write({
+        createHomesStore(homeyLike.settings).write({
           activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
           subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
         });
         const service = new HomeMembershipService({
-          homesStore: createHomesStore(homeyLike),
-          assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+          sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+          homesStore: createHomesStore(homeyLike.settings),
+          assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
           getZoneTree: () => ZONES,
           getDevices: () => [],
           getLogger: () => (overrides.warn === undefined
@@ -2938,14 +2985,15 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         try {
           vi.setSystemTime(new Date('2026-07-27T10:00:00Z'));
           // Start with NO areas: the identity arrives collision-free.
-          createHomesStore(homeyLike).write({
+          createHomesStore(homeyLike.settings).write({
             activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
             subHomes: [],
           });
           const service = new HomeMembershipService({
+            sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
             getConfiguredPowerSource: homeyEnergyPowerSource,
-            homesStore: createHomesStore(homeyLike),
-            assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+            homesStore: createHomesStore(homeyLike.settings),
+            assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
             getZoneTree: () => ZONES,
             getDevices: () => [],
             getLogger: () => undefined,
@@ -2959,7 +3007,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           expect(service.isMainHomeActuationFenced()).toBe(false);
 
           // An area adopting that very meter closes the fence with no note.
-          createHomesStore(homeyLike).write({
+          createHomesStore(homeyLike.settings).write({
             activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
             subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
           });
@@ -3009,15 +3057,16 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
   });
 
   it('fences a persisted explicit-meter collision and adopts a repair without recompute', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
     let mainMeterDeviceId = 'm-shared';
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
       getLogger: () => undefined,
@@ -3042,9 +3091,10 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       meterDeviceId: 'm-main',
     };
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
       getLogger: () => undefined,
@@ -3067,15 +3117,16 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
   });
 
   it('fences Main and smart-task eligibility while boundary authority is unavailable', () => {
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     let selection: MainMeterSelection = { state: 'unavailable' };
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-main', zoneId: 'z1' }],
       getLogger: () => undefined,
@@ -3107,11 +3158,12 @@ describe('HomeMembershipService — positive ownership readiness', () => {
   };
 
   it('treats a cached sub-home as unavailable while its ownership generation is pending', () => {
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    const assignmentsStore = createDeviceHomeAssignmentsStore(homeyLike);
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    const assignmentsStore = createDeviceHomeAssignmentsStore(homeyLike.settings);
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
-      homesStore: createHomesStore(homeyLike),
+      homesStore: createHomesStore(homeyLike.settings),
       assignmentsStore,
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-moving', zoneId: 'z2' }],
@@ -3193,6 +3245,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     };
     const onOwnershipReady = vi.fn();
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore,
       assignmentsStore: unwrittenAssignments,
@@ -3230,6 +3283,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     };
     const onOwnershipReady = vi.fn();
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
@@ -3268,6 +3322,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     let zoneTree: ZoneTree | null = null;
     const onOwnershipReady = vi.fn();
     const activeService = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
@@ -3295,6 +3350,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     expect(onOwnershipReady).toHaveBeenCalledTimes(1);
 
     const singleHomeService = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: { read: () => ({ state: 'unwritten' }), write: vi.fn() },
       assignmentsStore: unwrittenAssignments,
@@ -3323,6 +3379,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     const onRecoveryNeeded = vi.fn();
     const onZoneTreeCommitReady = vi.fn();
     const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
       getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
@@ -3355,8 +3412,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('retries deferred seeds before preparing every later ownership generation', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3404,7 +3461,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()), {
       onOwnershipReadyBeforePlanWork: retryDeferredOvershootSeed,
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
@@ -3445,7 +3502,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('re-probes a first suspect store and recovers readiness without another event', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
     // Written-before + absent value classifies the first assignments read
     // suspect. Zone membership is already h_a, so the later `{}` repair does
     // not change the map and cannot rely on the membership fingerprint.
@@ -3474,7 +3531,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, emitter);
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(emitter));
     try {
       expect(wiring.service.getHomeIdForDevice('d-sub')).toBe('h_a');
       expect(wiring.service.isOwnershipReady()).toBe(false);
@@ -3483,7 +3540,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
       // Repair the boundary only. No settings handler, snapshot, tree commit,
       // or direct service recompute follows; the owned retry must re-read it.
-      createDeviceHomeAssignmentsStore(homeyLike).write({});
+      createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
       await vi.advanceTimersByTimeAsync(1000);
       await flushHandlerQueue();
 
@@ -3503,11 +3560,11 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     'rebuilds and reconciles after a collision is repaired through %s without a sample',
     async (repairLane) => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-shared');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
@@ -3532,13 +3589,13 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter());
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()));
     try {
       expect(wiring.service.isMainHomeActuationFenced()).toBe(true);
       if (repairLane === 'main_meter') {
         mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
       } else {
-        createHomesStore(homeyLike).write({
+        createHomesStore(homeyLike.settings).write({
           activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
           subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
         });
@@ -3560,11 +3617,11 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('keeps the sampled-meter takeover fenced until a fresh rebuild succeeds', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write({
+    createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
     });
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     // An authoritative EXPLICIT selection: an unavailable read never arms the
     // sampled fence (nothing proven to defend), and null is no longer a value.
@@ -3593,7 +3650,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter());
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()));
 
     try {
       wiring.service.noteResolvedHomeMeter('m-area', Date.now());
@@ -3625,8 +3682,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('re-probes a transient Main-meter read and retries a failed fresh rebuild without a sample', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3656,7 +3713,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, emitter);
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(emitter));
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     let failMainReadOnce = true;
     const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => {
@@ -3694,8 +3751,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('preserves a retry requested by the final actuator while reconcile is in flight', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3738,7 +3795,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    wiring = wireHomeMembership(ctx, emitter);
+    wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(emitter));
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => (
       key === HOMEY_ENERGY_METER_DEVICE_ID && mainReadUnavailable
@@ -3770,8 +3827,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('rolls back a generation when the post-reconcile shortfall flush rejects, then accepts later generations', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3806,7 +3863,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
         beginMainPreparedReconcile: () => () => undefined,
@@ -3854,8 +3911,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('never reopens an intermediate ownership generation while a newer one waits', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3890,7 +3947,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
         beginMainPreparedReconcile: () => () => undefined,
@@ -3942,8 +3999,8 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
   it('retries a generation when the Main sample is superseded during dispatch', async () => {
     vi.useFakeTimers();
-    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
-    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    createHomesStore(homeyLike.settings).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
@@ -3986,7 +4043,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     (ctx as { deviceReads: DeviceReads }).deviceReads = createDeviceReads(
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
-    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
+    const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()), {
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => mainSample,
         beginMainPreparedReconcile: () => () => undefined,
@@ -4037,6 +4094,7 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     getZoneTree: () => ZoneTree | null;
     onZoneTreeCommitReady: () => void;
   }): HomeMembershipService => new HomeMembershipService({
+    sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
     getConfiguredPowerSource: homeyEnergyPowerSource,
     homesStore: unwrittenStore,
     assignmentsStore: unwrittenStore,

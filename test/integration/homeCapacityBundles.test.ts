@@ -29,8 +29,8 @@ import {
 } from '../../lib/home/homeConfig';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
-import { filterDevicesForHome } from '../../setup/homeMembership';
-import { createHomesStore as createRawHomesStore } from '../../setup/homeRegistryAdapter';
+import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
+import { createHomesStore as createRawHomesStore } from '../../lib/home/homeRegistryStore';
 import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
 import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
 import {
@@ -70,7 +70,7 @@ const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 const HOME_A = { homeId: 'h_a', name: 'Annex', rootZoneId: 'z2', meterDeviceId: 'm-a' };
 const HOME_B = { homeId: 'h_b', name: 'Cabin', rootZoneId: 'z3', meterDeviceId: 'm-b' };
 const writeActiveHomesConfig = (config: HomeConfig): void => {
-  createRawHomesStore(homeyLike).write({
+  createRawHomesStore(homeyLike.settings).write({
     ...config,
     activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
   });
@@ -1456,6 +1456,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasSubHomes: () => true,
       getHomeIdForDevice: () => 'h_a',
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
+      filterDevicesForHome: (devices: TargetDeviceSnapshot[]) => devices,
     } as unknown as NonNullable<AppContext['homeMembership']>;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     writeActiveHomesConfig({ subHomes: [HOME_A] });

@@ -6,9 +6,9 @@ import {
 } from '../lib/power/powerSource';
 import { readPowerSourceEvidence, type PowerSourceSettingsPort } from './powerSourceEvidence';
 
-// The port type is declared with the domain (`lib/power/powerSource.ts`); this
-// adapter re-exports it so existing importers keep their import site. One
-// declaration, not two — a structurally identical local copy is free to drift.
+// The shared port is declared in `lib/ports/configuredPowerSource.ts` and
+// re-exported by `lib/power/powerSource.ts`, so existing importers keep their
+// import site. One declaration, not two — a structural copy is free to drift.
 export type { ConfiguredPowerSourceRead };
 
 const attachSuspectError = (

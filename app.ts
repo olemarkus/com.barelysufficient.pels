@@ -79,7 +79,7 @@ import {
   type MainShortfallSideEffectGate,
   type HomeRuntimeRegistry,
 } from './setup/appServiceWiring';
-import type { HomeMembershipService } from './setup/homeMembership';
+import type { HomeMembershipService } from './lib/home/homeMembershipService';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
 import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';

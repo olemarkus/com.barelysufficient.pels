@@ -1,7 +1,7 @@
 /**
  * Multi-home configuration domain: types, boundary normalization of the
  * persisted config blobs, v1 config validation, and the typed store ports the
- * settings adapter (`setup/homeRegistryAdapter.ts`) implements.
+ * settings adapter (`lib/home/homeRegistryStore.ts`) implements.
  *
  * Consumed at runtime by membership, settings, migration, and per-home wiring.
  *
@@ -134,7 +134,7 @@ export type HomeStoreReadResult<T> =
   | { state: 'suspect' };
 
 /**
- * Store port for {@link HomeConfig} (implemented in `setup/homeRegistryAdapter.ts`).
+ * Store port for {@link HomeConfig} (implemented in `lib/home/homeRegistryStore.ts`).
  * `write` replaces the WHOLE persisted value and marks the store
  * written-before; mutation flows MUST refuse to write when `read()` returned
  * `{state: 'suspect'}` — see {@link HomeStoreReadResult}.
@@ -146,7 +146,7 @@ export type HomesStore = {
 
 /**
  * Store port for {@link DeviceHomeAssignments} (implemented in
- * `setup/homeRegistryAdapter.ts`). `write` replaces the WHOLE persisted value
+ * `lib/home/homeRegistryStore.ts`). `write` replaces the WHOLE persisted value
  * and marks the store written-before; mutation flows MUST refuse to write
  * when `read()` returned `{state: 'suspect'}` — see {@link HomeStoreReadResult}.
  */

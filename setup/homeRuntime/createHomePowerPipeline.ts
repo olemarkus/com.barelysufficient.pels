@@ -26,8 +26,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
-import type { HomeId } from '../../lib/utils/settingsKeys';
-import { filterDevicesForHome } from '../homeMembership';
+import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
@@ -104,13 +103,12 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     // The membership complement removes sub-home loads from this home's
     // controlled/background split and every configured meter from each home's
     // attribution.
-    getDeviceSurfaces: () => (
-      filterDevicesForHome(
-        ctx.homeMembership,
-        ctx.getDeviceSurfaces(),
-        deps.homeId,
-      )
-    ),
+    getDeviceSurfaces: () => {
+      const devices = ctx.getDeviceSurfaces();
+      const membership = ctx.homeMembership;
+      if (membership) return membership.filterDevicesForHome(devices, deps.homeId);
+      return deps.homeId === MAIN_HOME_ID ? devices : [];
+    },
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,

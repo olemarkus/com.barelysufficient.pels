@@ -35,6 +35,7 @@ import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/m
 // the real homes store and settings handler; bundles run their real plan
 // engine/service.
 import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
+import { createSampledMeterIdentityWithoutRestoredSample } from '../helpers/homeMembership';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
@@ -45,11 +46,11 @@ import {
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
 import { seedTemperatureShedFloorDefaults } from '../../setup/appDeviceSupport';
-import { HomeMembershipService } from '../../setup/homeMembership';
+import { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore as createRawHomesStore,
-} from '../../setup/homeRegistryAdapter';
+} from '../../lib/home/homeRegistryStore';
 import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
 import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
 import { PlanService } from '../../lib/plan/planService';
@@ -80,7 +81,7 @@ const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 const HOME_A = { homeId: 'h_a', name: 'Annex', rootZoneId: 'z2', meterDeviceId: 'm-a' };
 const HOME_B = { homeId: 'h_b', name: 'Cabin', rootZoneId: 'z3', meterDeviceId: 'm-b' };
 const writeActiveHomesConfig = (config: HomeConfig): void => {
-  createRawHomesStore(homeyLike).write({
+  createRawHomesStore(homeyLike.settings).write({
     ...config,
     activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
   });
@@ -862,8 +863,9 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     onOwnershipReadyBeforePlanWork?: (service: HomeMembershipService) => void,
   ): HomeMembershipService => (
     new HomeMembershipService({
-      homesStore: createRawHomesStore(homeyLike),
-      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      homesStore: createRawHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree,
       getDevices: () => [{ deviceId: 'vt-1', zoneId: 'z2' }],
       getLogger: () => undefined,

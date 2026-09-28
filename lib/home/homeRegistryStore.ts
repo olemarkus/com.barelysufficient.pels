@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   HomeStoreWriteRefusedError,
   isPlausibleDeviceHomeAssignmentsBlob,
@@ -10,30 +10,30 @@ import {
   type HomeConfig,
   type HomeStoreReadResult,
   type HomesStore,
-} from '../lib/home/homeConfig';
+} from './homeConfig';
 import {
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
-} from '../lib/utils/settingsKeys';
+} from '../utils/settingsKeys';
 
 type SettingsReadResult = { value: unknown; threw: false } | { value: undefined; threw: true };
 type SettingsKeysReadResult = { value: string[]; threw: false } | { value: []; threw: true };
 
 // Homey SDK reads can transiently fail; a throw must classify the read
 // 'suspect' (persisted truth unknown), never 'unwritten' (write permission).
-const readKey = (homey: Homey.App['homey'], key: string): SettingsReadResult => {
+const readKey = (settings: SettingsPort, key: string): SettingsReadResult => {
   try {
-    return { value: homey.settings.get(key) as unknown, threw: false };
+    return { value: settings.get(key), threw: false };
   } catch {
     return { value: undefined, threw: true };
   }
 };
 
-const readKeys = (homey: Homey.App['homey']): SettingsKeysReadResult => {
+const readKeys = (settings: SettingsPort): SettingsKeysReadResult => {
   try {
-    return { value: homey.settings.getKeys(), threw: false };
+    return { value: settings.getKeys(), threw: false };
   } catch {
     return { value: [], threw: true };
   }
@@ -44,9 +44,9 @@ const readKeys = (homey: Homey.App['homey']): SettingsKeysReadResult => {
 // `true`) or a thrown read counts as marker-PRESENT — junk in the marker key
 // must never grant write permission via 'unwritten' (mirrors the calibration
 // precedent, lib/device/devicePowerCalibrationStore.ts).
-const readMarker = (homey: Homey.App['homey'], markerKey: string): boolean => {
+const readMarker = (settings: SettingsPort, markerKey: string): boolean => {
   try {
-    const value = homey.settings.get(markerKey) as unknown;
+    const value = settings.get(markerKey);
     return value !== undefined && value !== null;
   } catch {
     return true;
@@ -56,9 +56,9 @@ const readMarker = (homey: Homey.App['homey'], markerKey: string): boolean => {
 // Best-effort, READ-path only (the marker backfill below): a failed backfill
 // self-heals on the next plausible read. The WRITE path never uses this —
 // write() must establish the marker durably or surface the failure.
-const writeMarkerBestEffort = (homey: Homey.App['homey'], markerKey: string): void => {
+const writeMarkerBestEffort = (settings: SettingsPort, markerKey: string): void => {
   try {
-    homey.settings.set(markerKey, true);
+    settings.set(markerKey, true);
   } catch {
     // Swallowed — see above.
   }
@@ -76,27 +76,27 @@ const writeMarkerBestEffort = (homey: Homey.App['homey'], markerKey: string): vo
 // hostile getter/Proxy) or a future normalizer bug must never escape the
 // discriminated contract — any throw classifies 'suspect'.
 const classifyRead = <T>(params: {
-  homey: Homey.App['homey'];
+  settings: SettingsPort;
   key: string;
   markerKey: string;
   isPlausible: (raw: unknown) => boolean;
   normalize: (raw: unknown) => T;
 }): HomeStoreReadResult<T> => {
-  const { homey, key, markerKey, isPlausible, normalize } = params;
+  const { settings, key, markerKey, isPlausible, normalize } = params;
   try {
-    const raw = readKey(homey, key);
+    const raw = readKey(settings, key);
     if (raw.threw) return { state: 'suspect' };
     if (isPlausible(raw.value)) {
-      if (!readMarker(homey, markerKey)) writeMarkerBestEffort(homey, markerKey);
+      if (!readMarker(settings, markerKey)) writeMarkerBestEffort(settings, markerKey);
       return { state: 'present', value: normalize(raw.value) };
     }
     const absent = raw.value === undefined || raw.value === null;
-    if (absent && !readMarker(homey, markerKey)) {
+    if (absent && !readMarker(settings, markerKey)) {
       // A cleanly absent key is genuinely unwritten. If the live key list says
       // the key exists, `get()` returning undefined is a transient miss — this
       // also closes the narrow window where a pre-marker blob's best-effort
       // marker backfill failed. A failed key-list read is equally suspect.
-      const keys = readKeys(homey);
+      const keys = readKeys(settings);
       if (keys.threw || keys.value.length === 0 || keys.value.includes(key)) {
         return { state: 'suspect' };
       }
@@ -119,16 +119,16 @@ const classifyRead = <T>(params: {
 // failed value write leaves marker-present + old/absent value, which reads
 // 'suspect' (or present-with-the-old-value) — never 'unwritten'.
 const writeClassified = (params: {
-  homey: Homey.App['homey'];
+  settings: SettingsPort;
   key: string;
   markerKey: string;
   isPlausible: (raw: unknown) => boolean;
   value: unknown;
 }): void => {
-  const { homey, key, markerKey, isPlausible, value } = params;
+  const { settings, key, markerKey, isPlausible, value } = params;
   if (!isPlausible(value)) throw new HomeStoreWriteRefusedError(key);
-  homey.settings.set(markerKey, true);
-  homey.settings.set(key, value);
+  settings.set(markerKey, true);
+  settings.set(key, value);
 };
 
 /**
@@ -140,10 +140,10 @@ const writeClassified = (params: {
  * replace the whole value and establish the marker before reporting success.
  * Used by membership, settings, and the per-home runtime registry.
  */
-export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
+export const createHomesStore = (settings: SettingsPort): HomesStore => ({
   read(): HomeStoreReadResult<HomeConfig> {
     return classifyRead({
-      homey,
+      settings,
       key: HOMES_CONFIG,
       markerKey: HOMES_CONFIG_INITIALIZED,
       isPlausible: isPlausibleHomesConfigBlob,
@@ -152,7 +152,7 @@ export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
   },
   write(config: HomeConfig): void {
     writeClassified({
-      homey,
+      settings,
       key: HOMES_CONFIG,
       markerKey: HOMES_CONFIG_INITIALIZED,
       isPlausible: isPlausibleHomesConfigBlob,
@@ -172,11 +172,11 @@ export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
  * explicit device pins for runtime ownership.
  */
 export const createDeviceHomeAssignmentsStore = (
-  homey: Homey.App['homey'],
+  settings: SettingsPort,
 ): DeviceHomeAssignmentsStore => ({
   read(): HomeStoreReadResult<DeviceHomeAssignments> {
     return classifyRead({
-      homey,
+      settings,
       key: DEVICE_HOME_ASSIGNMENTS,
       markerKey: DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
       isPlausible: isPlausibleDeviceHomeAssignmentsBlob,
@@ -185,7 +185,7 @@ export const createDeviceHomeAssignmentsStore = (
   },
   write(assignments: DeviceHomeAssignments): void {
     writeClassified({
-      homey,
+      settings,
       key: DEVICE_HOME_ASSIGNMENTS,
       markerKey: DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
       isPlausible: isPlausibleDeviceHomeAssignmentsBlob,

@@ -240,7 +240,7 @@ export const createPvForecastStore = (
     if (raw === undefined || raw === null) return classifyCleanAbsence();
     // Insurance: `read()` runs in the controller CONSTRUCTOR at app boot, so a
     // future normaliser bug must degrade to `unreadable`, never escape the
-    // discriminated contract and fail boot (the `homeRegistryAdapter
+    // discriminated contract and fail boot (`lib/home/homeRegistryStore`
     // classifyRead` precedent).
     let parsed: PvForecastStateParse;
     try {
@@ -255,7 +255,7 @@ export const createPvForecastStore = (
 
   const write = (state: PvForecastServiceState): void => {
     // The marker and the blob are ONE persist, marker FIRST (the
-    // `homeRegistryAdapter.writeClassified` ordering): a throw on either set
+    // `lib/home/homeRegistryStore.writeClassified` ordering): a throw on either set
     // fails the whole write, so the caller keeps its state dirty and retries
     // both — rewriting either key is idempotent. Marker-first means a crash
     // between the sets can only leave marker-without-blob, which later boots

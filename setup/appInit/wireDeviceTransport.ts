@@ -23,7 +23,7 @@ import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
-import type { HomeMembershipService } from '../homeMembership';
+import type { HomeMembershipWiring } from '../homeMembershipWiring';
 import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createPersistedEvCarLinkAccess } from './evCarLinkAccess';
@@ -34,6 +34,8 @@ import type { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceRea
 // `appServiceWiring.ts` (30 s — well inside the shortest 90 s probe deadline).
 const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
 import { readMainMeterSelection } from '../mainMeterSettings';
+
+type HomeMembershipService = HomeMembershipWiring['service'];
 
 // Boundary-resolved whole-home meter authority for the homey_energy source.
 // `resolved/null` = Automatic; `unavailable` suppresses Main sampling instead

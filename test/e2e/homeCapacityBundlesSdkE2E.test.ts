@@ -36,7 +36,7 @@ import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/
 import {
   createHomesStore as createRawHomesStore,
   createDeviceHomeAssignmentsStore,
-} from '../../setup/homeRegistryAdapter';
+} from '../../lib/home/homeRegistryStore';
 import {
   HOME_CONFIG_ACTIVATION_VERSION,
   type HomeConfig,
@@ -388,7 +388,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // Sub-home + pin exist BEFORE boot; the zone-tree fetch fails, so
     // membership resolves the pin (no tree needed) but is NOT tree-committed.
     writeActiveHomesConfig({ subHomes: [SUB_HOME] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({ 'device-sub': 'h_sub' });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ 'device-sub': 'h_sub' });
     meterState.failZones = true;
     meterState.subW = 5000;
     installApiRoutes();

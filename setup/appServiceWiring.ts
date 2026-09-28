@@ -46,7 +46,7 @@ import {
 } from './appInit/wireHomeRuntimeRegistry';
 export { createHomeRuntimeRegistryForApp };
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
-import type { HomeMembershipService } from './homeMembership';
+import type { HomeMembershipWiring } from './homeMembershipWiring';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import type {
   HomeySolarForecastController,
@@ -70,6 +70,8 @@ import {
 import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
+
+type HomeMembershipService = HomeMembershipWiring['service'];
 
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
 // startup: if `refreshSnapshot()` does not resolve in this window the gate
@@ -364,13 +366,10 @@ export class AppServiceWiring {
   // Body in `setup/appInit/wireHomeMembership.ts`; the trigger-teardown handle
   // is invoked in `runUninit`.
   initHomeMembership(): void {
-    // The zone-tree-commit readiness edge fires each capacity bundle's
-    // membership-ready apply (decoupled from meter-sample arrival). Lazy over
-    // `this.deps.getHomeRuntimeRegistry()`, which is wired later by
-    // `initHomeRuntimeRegistry` — inert (registry undefined) until then.
-    const wiring = wireHomeMembership(
-      this.deps.ctx,
-      this.deps.getObservedStateEmitter(),
+    // The zone-tree-commit edge applies each bundle independently of samples.
+    // Registry lookup stays lazy because its setup step runs afterward.
+    const wiring = wireHomeMembership(this.deps.ctx,
+      (listener) => this.deps.getObservedStateEmitter().onObservedStateRefresh(listener),
       buildAppHomeMembershipOptions({
         getRegistry: () => this.deps.getHomeRuntimeRegistry(),
         getMembership: () => this.deps.getHomeMembershipService(),

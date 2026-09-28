@@ -16,8 +16,11 @@ import {
 import { normalizeHomeAreaName } from '../packages/shared-domain/src/homeAreaConfigRules';
 import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
-import { createHomesStore } from './homeRegistryAdapter';
-import type { HomeMembershipDiagnostics, HomeMembershipService } from './homeMembership';
+import { createHomesStore } from '../lib/home/homeRegistryStore';
+import type {
+  HomeMembershipDiagnostics,
+  HomeMembershipService,
+} from '../lib/home/homeMembershipService';
 import {
   commitHomesConfigWriteWithTrackerFreshnessReset,
   resolveApiLoggerProvider,
@@ -281,7 +284,7 @@ const saveAreaMutation = (
   if (isHomesConfigDegraded(getHomeMembership(homey)?.getDiagnostics())) {
     return { ok: false, reason: 'degraded' };
   }
-  const store = createHomesStore(homey);
+  const store = createHomesStore(homey.settings);
   const read = store.read();
   // TOCTOU close: a FRESH classified read (the homes store can go suspect
   // between the last recompute and now). The persisted truth is unknown, and

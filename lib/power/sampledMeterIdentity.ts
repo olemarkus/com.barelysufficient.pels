@@ -16,39 +16,26 @@
  * reads it shares.
  */
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../packages/shared-domain/src/powerFreshness';
+import type {
+  SampledMeterIdentityPort,
+  SampledMeterProvenance,
+} from '../ports/sampledMeterIdentity';
 
 /**
  * What this process can say about the provenance of the watts the power tracker
  * currently serves. Three states on purpose: a nullable device id would collapse
  * the last two, and the ownership fence must answer them in OPPOSITE directions.
  */
-export type SampledMeterProvenance =
-  /** An ingest admitted by THIS process proved the meter those watts came from. */
-  | { state: 'proven'; deviceId: string }
-  /**
-   * The tracker still serves watts restored from persistence across a restart,
-   * and nothing restored the identity that governed them. Not `unknown`: those
-   * watts are real, still inside their decision-reaching lifetime, and may well
-   * have come from a meter area's own meter.
-   */
-  | { state: 'unattributable' }
-  /**
-   * No provenance can reach a decision — nothing proven and no restored sample
-   * still in reach, or an admitted sample that carried no id at all (which an
-   * area meter never does; see `MainMeterAuthority.resolveSampled`).
-   */
-  | { state: 'unknown' };
-
 export type SampledMeterIdentityDeps = {
   /**
    * The ingest stamp of the sample the power tracker currently serves, read
    * from the tracker's own state. Consulted ONLY until this process admits its
    * first identity-bearing ingest, so it always answers "what did the restart
    * hand us?" and never re-reads live watts this owner already has an identity
-   * for. Omitted where no tracker exists (direct service tests): no restored
-   * watts, hence no restart fence.
+   * for. A service without a tracker supplies a getter that returns `undefined`:
+   * no restored watts, hence no restart fence.
    */
-  getRestoredSampleAtMs?: () => number | undefined;
+  getRestoredSampleAtMs: () => number | undefined;
 };
 
 /**
@@ -67,7 +54,7 @@ const isWithinSampleLifetime = (nowMs: number, sampleAtMs: number): boolean => (
   Math.max(0, nowMs - sampleAtMs) < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS
 );
 
-export class SampledMeterIdentity {
+export class SampledMeterIdentity implements SampledMeterIdentityPort {
   /** Last proven identity; `null` until one is proven. */
   private deviceId: string | null = null;
 
@@ -89,7 +76,7 @@ export class SampledMeterIdentity {
    */
   private awaitingFirstIngest = true;
 
-  constructor(private readonly deps: SampledMeterIdentityDeps = {}) {}
+  constructor(private readonly deps: SampledMeterIdentityDeps) {}
 
   /**
    * The provenance of the watts the tracker currently serves, valid for exactly
@@ -116,7 +103,7 @@ export class SampledMeterIdentity {
    */
   private restoredProvenanceFor(nowMs: number): SampledMeterProvenance {
     if (!this.awaitingFirstIngest) return { state: 'unknown' };
-    const restoredAtMs = this.deps.getRestoredSampleAtMs?.();
+    const restoredAtMs = this.deps.getRestoredSampleAtMs();
     // Outer-layer value (persisted settings, reloaded by the tracker): a
     // missing or non-finite stamp is no evidence of served watts at all.
     if (typeof restoredAtMs !== 'number' || !Number.isFinite(restoredAtMs)) {

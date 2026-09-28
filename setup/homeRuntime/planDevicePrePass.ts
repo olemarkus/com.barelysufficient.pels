@@ -19,10 +19,9 @@ import {
   releaseExternalOffHoldsForObservedOn,
   toExternalOffHoldObservedDevice,
 } from '../externalOffHoldDetection';
-import { filterDevicesForHome } from '../homeMembership';
 import { isRuntimePlannedPlanDevice } from '../appDeviceSupport';
 import type { AppContext } from '../../lib/app/appContext';
-import type { HomeId } from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
@@ -109,11 +108,10 @@ export const buildHomePlanDevices = (
   options: BuildHomePlanDevicesOptions,
 ): PlanInputDevice[] => {
   const source = createPlanInputProjectionSource(ctx);
-  const homeDevices = filterDevicesForHome(
-    ctx.homeMembership,
-    runSnapshotPrePass(ctx, options),
-    homeId,
-  );
+  const snapshot = runSnapshotPrePass(ctx, options);
+  const membership = ctx.homeMembership;
+  let homeDevices = homeId === MAIN_HOME_ID ? snapshot : [];
+  if (membership) homeDevices = membership.filterDevicesForHome(snapshot, homeId);
   const devices = homeDevices
     .map((device) => projectPlanInputDevice(source, device, options))
     .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));

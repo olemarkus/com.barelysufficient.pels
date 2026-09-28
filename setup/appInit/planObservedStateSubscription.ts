@@ -66,7 +66,7 @@ export type PlanObservedStateSubscriptionDeps = {
  * recording the failure is the whole point, and a timer that fires minutes later
  * is not this observation deciding anything. And `getPlanDevices()` re-reads home
  * membership, whose meter-authority read schedules a recovery pass when the SDK
- * hands back a suspect value (`setup/homeMainMeterAuthority.ts`). Neither lets a
+ * hands back a suspect value (`lib/home/homeMainMeterAuthority.ts`). Neither lets a
  * device event pick the moment the planner runs. Do not weaken this to a bare
  * "never rebuilds" — one grep falsifies that, and then the whole comment is
  * distrusted.

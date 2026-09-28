@@ -1,7 +1,11 @@
 import type { AppContext } from '../../lib/app/appContext';
-import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
+import { SampledMeterIdentity } from '../../lib/power/sampledMeterIdentity';
 import { normalizeError } from '../../lib/utils/errorUtils';
-import { createHomeMembershipService, type HomeMembershipWiring } from '../homeMembership';
+import {
+  wireHomeMembershipService,
+  type HomeMembershipWiring,
+  type HomeMembershipWiringParams,
+} from '../homeMembershipWiring';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 
 const MAIN_OWNERSHIP_RECOVERY_TIMER = 'mainOwnershipRecovery';
@@ -13,6 +17,8 @@ type MainOwnershipRecovery = {
   schedule: () => void;
   stop: () => void;
 };
+
+type HomeMembershipService = HomeMembershipWiring['service'];
 
 export type OwnershipGenerationRuntime = {
   /** Producer-resolved Main sample revision: stable, or pending incorporation. */
@@ -31,7 +37,7 @@ export type OwnershipGenerationRuntime = {
 
 export type WireHomeMembershipOptions = {
   onOwnershipReadyBeforePlanWork?: (
-    membership: HomeMembershipWiring['service'],
+    membership: HomeMembershipService,
     allowPendingOwnershipGeneration: boolean,
   ) => void;
   onZoneTreeCommitReady?: () => void;
@@ -41,7 +47,7 @@ export type WireHomeMembershipOptions = {
 };
 
 const retryFencedAuthority = (
-  membership: HomeMembershipWiring['service'],
+  membership: HomeMembershipService,
   revisionBeforeFence: number,
   revisionAfterFence: number,
 ): boolean => (
@@ -66,7 +72,7 @@ const isStableSampleRevision = (
 ): boolean => sample.state === 'stable' && sample.revision === revision;
 
 const prepareRecoveryAuthority = async (params: {
-  membership: HomeMembershipWiring['service'];
+  membership: HomeMembershipService;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
   retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'];
   retryRevisionBeforeFence: number;
@@ -169,7 +175,7 @@ type AuthorityPlanApplyResult =
   | { state: 'reconciled'; generationApplicationStarted: boolean };
 
 const abortOwnershipGenerationApplication = (
-  membership: HomeMembershipWiring['service'],
+  membership: HomeMembershipService,
   prepared: PreparedRecoveryAuthority,
   started: boolean,
 ): void => {
@@ -181,7 +187,7 @@ const abortOwnershipGenerationApplication = (
 const applyAuthorityPlansUnderFence = async (params: {
   ctx: AppContext;
   planService: NonNullable<AppContext['planService']>;
-  membership: HomeMembershipWiring['service'];
+  membership: HomeMembershipService;
   prepared: PreparedRecoveryAuthority;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
   mainSampleRevision: number;
@@ -240,7 +246,7 @@ const applyAuthorityPlansUnderFence = async (params: {
 };
 
 const finalizeAuthorityApplication = async (params: {
-  membership: HomeMembershipWiring['service'];
+  membership: HomeMembershipService;
   prepared: PreparedRecoveryAuthority;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
   mainSampleRevision: number;
@@ -289,7 +295,7 @@ const finalizeAuthorityApplication = async (params: {
 
 const rebuildAndReconcileAuthority = async (params: {
   ctx: AppContext;
-  membership: HomeMembershipWiring['service'];
+  membership: HomeMembershipService;
   prepared: PreparedRecoveryAuthority;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
   isStopped: () => boolean;
@@ -355,7 +361,7 @@ const rebuildAndReconcileAuthority = async (params: {
  */
 const createMainOwnershipRecovery = (
   ctx: AppContext,
-  getMembership: () => HomeMembershipWiring['service'] | undefined,
+  getMembership: () => HomeMembershipService | undefined,
   ownershipGenerationRuntime?: OwnershipGenerationRuntime,
   retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'],
 ): MainOwnershipRecovery => {
@@ -466,20 +472,23 @@ const createMainOwnershipRecovery = (
  * Boot-wire the multi-home membership cache over the ctx seams: real stores,
  * the transport's zone tree + zone-tree-commit callback, and the latest
  * target snapshot. Runs after `initDeviceManager` so the recompute triggers
- * ride the transport-owned notification seams; the reads are lazy closures,
- * so a not-yet-populated transport resolves fail-safe. Read-only over the
- * stores; the control path consumes it through `filterDevicesForHome` — main's
- * plan input (`setup/homeRuntime/homeScope.ts`) and the sample-pipeline
- * snapshot view (`setup/homeRuntime/createHomePowerPipeline.ts`).
+ * ride the transport-owned notification seams; zone-tree and device reads are
+ * lazy closures, so an unpopulated transport resolves fail-safe. `lib/home`
+ * owns the settings stores and legacy activation migration. The control path
+ * consumes membership through `filterDevicesForHome` — main's plan input
+ * (`setup/homeRuntime/homeScope.ts`) and the sample-pipeline snapshot view
+ * (`setup/homeRuntime/createHomePowerPipeline.ts`).
  *
  * The caller (`AppServiceWiring.initHomeMembership`) assigns the returned
  * `service` to `ctx.homeMembership` and invokes `teardown` in `runUninit`.
  */
 export const wireHomeMembership = (
   ctx: AppContext,
-  emitter: ObservedStateEmitter,
+  subscribeToObservedStateRefresh: HomeMembershipWiringParams['subscribeToObservedStateRefresh'],
   options: WireHomeMembershipOptions = {},
-): HomeMembershipWiring => {
+): HomeMembershipWiring & {
+  requestMainAuthorityRecovery: (timing?: 'scheduled' | 'immediate') => void;
+} => {
   const {
     onOwnershipReadyBeforePlanWork,
     onZoneTreeCommitReady,
@@ -487,16 +496,19 @@ export const wireHomeMembership = (
     onSubHomeMembershipChanged,
     ownershipGenerationRuntime,
   } = options;
-  let service: HomeMembershipWiring['service'] | undefined = undefined;
+  let service: HomeMembershipService | undefined = undefined;
   const recovery = createMainOwnershipRecovery(
     ctx,
     () => service,
     ownershipGenerationRuntime,
     onOwnershipReadyBeforePlanWork,
   );
-  const wiring = createHomeMembershipService({
-    homey: ctx.homey,
-    emitter,
+  const wiring = wireHomeMembershipService({
+    settings: ctx.homey.settings,
+    sampledMeterIdentity: new SampledMeterIdentity({
+      getRestoredSampleAtMs: () => ctx.powerTracker.lastTimestamp,
+    }),
+    subscribeToObservedStateRefresh,
     onZoneTreeCommitReady,
     onRuntimeActiveChanged,
     onMainOwnershipReady: recovery.applyNow,
@@ -523,14 +535,6 @@ export const wireHomeMembership = (
     // `lib/executor/syncSteppedCommands.ts`; the cost argument is what survives.)
     getDevices: () => ctx.deviceReads.zoneMemberships(),
     getLogger: () => ctx.getStructuredLogger('homes'),
-    // Restart fence anchor: the stamp of the sample Main's tracker currently
-    // serves. `hydratePowerTracker` restores the durable `lastPowerW`/
-    // `lastTimestamp`, so after a restart inside the freshness window the
-    // planner treats pre-restart watts as live while the sampled-identity owner
-    // starts empty — the authority reads this to fence Main until its own first
-    // ingest re-proves provenance. Lazy: the tracker may hydrate after this
-    // wiring, and a not-yet-hydrated tracker honestly reports no restored sample.
-    getRestoredSampleAtMs: () => ctx.powerTracker.lastTimestamp,
     // Change-gated plan invalidation, mirroring the settings-change rebuild
     // path (`rebuildPlanFromSettings` → `planService.rebuildPlanFromCache`): a
     // changed membership map means the committed plan governs the wrong device

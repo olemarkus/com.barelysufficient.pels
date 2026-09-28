@@ -52,7 +52,6 @@ setup/appRuntimeApi.ts 1
 setup/appServiceWiring.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/backgroundTasksController.ts 1
-setup/homeMembership.ts 1
 setup/homeRuntime/homeRuntimeRegistryLogs.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 1
 setup/powerSampleFreshnessEscalation.ts 2

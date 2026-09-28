@@ -3,8 +3,6 @@ import { runBootMigrations } from '../../setup/appBootMigrations';
 import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
-  HOMES_CONFIG,
-  HOMES_CONFIG_INITIALIZED,
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -18,14 +16,6 @@ const BOOT_MIGRATION_COUNT = 2;
 const USABLE_PROFILE = {
   steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 1200 }],
 };
-const LEGACY_MULTI_HOME_ENABLED = 'multi_home_enabled';
-const LEGACY_SUB_HOME = {
-  homeId: 'h_legacy',
-  name: 'Legacy annex',
-  rootZoneId: 'annex',
-  meterDeviceId: 'meter-legacy',
-};
-
 type MutableHomey = {
   store: Map<string, unknown>;
   homey: Homey.App['homey'];
@@ -125,27 +115,6 @@ describe('runBootMigrations', () => {
     expect(env.unsetCalls).not.toContain(MANAGED_DEVICES);
     expect(env.setCalls.find((call) => call.key === MANAGED_DEVICES)).toBeUndefined();
     expect(env.store.get(MANAGED_DEVICES)).toBe(managedBefore);
-  });
-
-  it('idempotently stamps a populated legacy-enabled homes config as GA-active', () => {
-    const env = createHomey({
-      [EV_SETTING_CLEANUP_MARKER]: true,
-      [LEGACY_MULTI_HOME_ENABLED]: true,
-      [HOMES_CONFIG_INITIALIZED]: true,
-      [HOMES_CONFIG]: { subHomes: [LEGACY_SUB_HOME] },
-    });
-
-    runBootMigrations({ homey: env.homey });
-
-    expect(env.store.get(HOMES_CONFIG)).toEqual({
-      activationVersion: 1,
-      subHomes: [LEGACY_SUB_HOME],
-    });
-    expect(env.setCalls.filter(({ key }) => key === HOMES_CONFIG)).toHaveLength(1);
-
-    env.setCalls.length = 0;
-    runBootMigrations({ homey: env.homey });
-    expect(env.setCalls.filter(({ key }) => key === HOMES_CONFIG)).toEqual([]);
   });
 
   it('drops stepped configurations with no usable ladder and keeps the rest', () => {
@@ -320,21 +289,4 @@ describe('runBootMigrations', () => {
     expect(env.setCalls.filter(({ key }) => key === DEVICE_CONTROL_PROFILES)).toEqual([]);
   });
 
-  it.each([
-    ['the historical absent default', undefined],
-    ['an explicit false flag', false],
-  ])('does not mutate a populated legacy-off config for %s', (_label, flag) => {
-    const initial = { subHomes: [LEGACY_SUB_HOME] };
-    const env = createHomey({
-      [EV_SETTING_CLEANUP_MARKER]: true,
-      ...(flag === undefined ? {} : { [LEGACY_MULTI_HOME_ENABLED]: flag }),
-      [HOMES_CONFIG_INITIALIZED]: true,
-      [HOMES_CONFIG]: initial,
-    });
-
-    runBootMigrations({ homey: env.homey });
-
-    expect(env.store.get(HOMES_CONFIG)).toBe(initial);
-    expect(env.setCalls.filter(({ key }) => key === HOMES_CONFIG)).toEqual([]);
-  });
 });

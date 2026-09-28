@@ -161,7 +161,7 @@ const installBoundary = (options: {
   };
   mockHomeyInstance.app = app;
   // The one mock→SDK-type conversion, at the same seam every other
-  // shared-mock consumer performs it (e.g. `homeRegistryAdapter.test.ts`).
+  // shared-mock consumer performs it (e.g. `homeRegistryStore.test.ts`).
   const homey = mockHomeyInstance as unknown as Homey.App['homey'];
   // Bound BEFORE the spy replaces the instance method, so a test overriding
   // the spy can still delegate untargeted keys to the real store.

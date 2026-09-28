@@ -10,7 +10,7 @@
  * convention for transient external failures (`notes/persisted-settings-state.md`).
  *
  * Consumed by multi-home membership, which joins device `zoneId`s against it
- * (`setup/homeMembership.ts`); until the first tree commits, a pinned sub-home
+ * (`lib/home/homeMembershipService.ts`); until the first tree commits, a pinned sub-home
  * member is held out of actuation. AFTER that first commit an unknown zone is
  * no longer held — it resolves to Main — so the tree rides every snapshot
  * refresh rather than a slower cadence of its own: Homey publishes no zone
