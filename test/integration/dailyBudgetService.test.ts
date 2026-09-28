@@ -2,7 +2,6 @@ import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetState, DailyBudgetStatePersistReason } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
-import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger } from '../../lib/logging/logger';
@@ -83,6 +82,12 @@ function buildDayPayload(params: {
 
 type TestHomeySettings = { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
 const testSettingsByService = new WeakMap<DailyBudgetService, TestHomeySettings>();
+const stateWritesByService = new WeakMap<DailyBudgetService, ReturnType<typeof vi.fn>>();
+const stateWritesFor = (service: DailyBudgetService): ReturnType<typeof vi.fn> => {
+  const writes = stateWritesByService.get(service);
+  if (!writes) throw new Error('service was not built by buildService');
+  return writes;
+};
 const testSettingsFor = (service: DailyBudgetService): TestHomeySettings => {
   const settings = testSettingsByService.get(service);
   if (!settings) throw new Error('service was not built by buildService');
@@ -94,6 +99,7 @@ function buildService(): DailyBudgetService {
     get: vi.fn(() => null),
     set: vi.fn(),
   };
+  const stateWrites = vi.fn();
   const homey = partialDouble<AppHomey>({
     settings: partialDouble<AppHomey['settings']>({ get: settings.get as AppHomey['settings']['get'], set: settings.set as AppHomey['settings']['set'] }),
     clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
@@ -105,15 +111,12 @@ function buildService(): DailyBudgetService {
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
-    dailyBudgetStateStore: createDailyBudgetStateStore(homey),
+    dailyBudgetStateStore: { read: () => null, write: stateWrites },
   });
   testSettingsByService.set(service, settings);
+  stateWritesByService.set(service, stateWrites);
   return service;
 }
-
-const dailyBudgetStateSetCount = (set: ReturnType<typeof vi.fn>): number => (
-  set.mock.calls.filter(([key]) => key === 'daily_budget_state').length
-);
 
 const perfCount = (key: string): number => getPerfSnapshot().counts[key] ?? 0;
 
@@ -389,6 +392,7 @@ describe('DailyBudgetService', () => {
     });
 
     expect(set).not.toHaveBeenCalled();
+    expect(stateWritesFor(service)).not.toHaveBeenCalled();
     expect(preview.settings.dailyBudgetKWh).toBe(24);
     expect(preview.candidate.todayKey).toBe('2025-03-15');
     expect(preview.candidate.tomorrowKey).toBe('2025-03-16');
@@ -469,15 +473,7 @@ describe('DailyBudgetService', () => {
   it('logs daily budget update failures as a structured event', () => {
     const error = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -500,15 +496,7 @@ describe('DailyBudgetService', () => {
   it('does not emit budget_recomputed when refreshing for periodic status only', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -545,15 +533,7 @@ describe('DailyBudgetService', () => {
   it('emits budget_recomputed during normal updates', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -584,15 +564,7 @@ describe('DailyBudgetService', () => {
   it('does not emit budget_recomputed repeatedly for unchanged steady-state updates', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -618,15 +590,7 @@ describe('DailyBudgetService', () => {
   it('emits budget_recomputed when exceeded state changes', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -673,15 +637,7 @@ describe('DailyBudgetService', () => {
 
   it('uses usable hourly capacity when updating daily budget plans', () => {
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
-        settings: partialDouble<AppHomey['settings']>({
-          get: vi.fn(() => null),
-          set: vi.fn(),
-        }),
-        clock: partialDouble<AppHomey['clock']>({
-          getTimezone: () => TZ,
-        }),
-      })),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -707,9 +663,9 @@ describe('DailyBudgetService', () => {
   });
 
   it('throttles low-priority daily budget state writes from frequent updates', () => {
-    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
+    const skippedBefore = perfCount('daily_budget_persist_skipped_throttle_total');
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     // `exportState` reads the current state, so the revision advances with each
     // update rather than with each export — the persisted value must not depend
     // on how many times the service chose to export.
@@ -733,10 +689,10 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS + 2 * 60_000 });
     service.updateState({ nowMs: NOW_MS + 10 * 60_000 });
 
-    expect(dailyBudgetStateSetCount(set)).toBe(2);
-    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { lastUsedNowKWh: 1 });
-    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 4 });
-    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(skippedBefore + 2);
+    expect(write.mock.calls.length).toBe(2);
+    expect(write).toHaveBeenNthCalledWith(1, { lastUsedNowKWh: 1 });
+    expect(write).toHaveBeenLastCalledWith({ lastUsedNowKWh: 4 });
+    expect(perfCount('daily_budget_persist_skipped_throttle_total')).toBe(skippedBefore + 2);
   });
 
   it('does not export or serialize a state the low-priority throttle will discard', () => {
@@ -771,10 +727,10 @@ describe('DailyBudgetService', () => {
     // Deliberate: asking the throttle first means a call that is both throttled and
     // unchanged is attributed to the throttle. Telling the two apart would need the
     // serialization this ordering exists to avoid. Neither case writes.
-    const throttledBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
-    const unchangedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+    const throttledBefore = perfCount('daily_budget_persist_skipped_throttle_total');
+    const unchangedBefore = perfCount('daily_budget_persist_skipped_unchanged_total');
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
@@ -788,15 +744,15 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 }); // inside the window, same state
 
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(throttledBefore + 1);
-    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(unchangedBefore);
+    expect(write.mock.calls.length).toBe(1);
+    expect(perfCount('daily_budget_persist_skipped_throttle_total')).toBe(throttledBefore + 1);
+    expect(perfCount('daily_budget_persist_skipped_unchanged_total')).toBe(unchangedBefore);
   });
 
   it('skips daily budget state writes when exported state is unchanged', () => {
-    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+    const skippedBefore = perfCount('daily_budget_persist_skipped_unchanged_total');
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
@@ -810,13 +766,13 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 1_000 });
 
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(skippedBefore + 1);
+    expect(write.mock.calls.length).toBe(1);
+    expect(perfCount('daily_budget_persist_skipped_unchanged_total')).toBe(skippedBefore + 1);
   });
 
   it('persists manual and rollover daily budget state changes despite low-priority throttling', () => {
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     const reasons: (DailyBudgetStatePersistReason | null)[] = ['runtime', 'manual', 'rollover'];
     let exportIndex = 0;
     service['manager'].update = vi.fn(() => ({
@@ -833,16 +789,16 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS + 1_000 });
     service.updateState({ nowMs: NOW_MS + 2_000 });
 
-    expect(dailyBudgetStateSetCount(set)).toBe(3);
-    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { revision: 0 });
-    expect(set).toHaveBeenNthCalledWith(2, 'daily_budget_state', { revision: 1 });
-    expect(set).toHaveBeenNthCalledWith(3, 'daily_budget_state', { revision: 2 });
+    expect(write.mock.calls.length).toBe(3);
+    expect(write).toHaveBeenNthCalledWith(1, { revision: 0 });
+    expect(write).toHaveBeenNthCalledWith(2, { revision: 1 });
+    expect(write).toHaveBeenNthCalledWith(3, { revision: 2 });
   });
 
   it('throttles low-priority writes after a recent high-priority persist', () => {
-    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
+    const skippedBefore = perfCount('daily_budget_persist_skipped_throttle_total');
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     const reasons: (DailyBudgetStatePersistReason | null)[] = ['manual', 'runtime'];
     let exportIndex = 0;
     service['manager'].update = vi.fn(() => ({
@@ -858,24 +814,24 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 1_000 });
 
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(skippedBefore + 1);
+    expect(write.mock.calls.length).toBe(1);
+    expect(perfCount('daily_budget_persist_skipped_throttle_total')).toBe(skippedBefore + 1);
   });
 
   it('persists reset learning immediately with a reset reason counter', () => {
-    const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
+    const reasonBefore = perfCount('daily_budget_persist_reason.reset_total');
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
 
     service.resetLearning();
 
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
+    expect(write.mock.calls.length).toBe(1);
+    expect(perfCount('daily_budget_persist_reason.reset_total')).toBe(reasonBefore + 1);
   });
 
   it('persistState flushes a throttled low-priority write on shutdown', () => {
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     let revision = 0;
     service['manager'].update = vi.fn(() => {
       revision += 1;
@@ -892,17 +848,17 @@ describe('DailyBudgetService', () => {
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 });
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(write.mock.calls.length).toBe(1);
 
     service.persistState('runtime', NOW_MS + 60_000);
 
-    expect(dailyBudgetStateSetCount(set)).toBe(2);
-    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 2 });
+    expect(write.mock.calls.length).toBe(2);
+    expect(write).toHaveBeenLastCalledWith({ lastUsedNowKWh: 2 });
   });
 
   it('persistState is a no-op when the exported state matches the last persisted write', () => {
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
@@ -914,23 +870,23 @@ describe('DailyBudgetService', () => {
     service['manager'].exportState = vi.fn(() => ({ plannedKWh: [10] }));
 
     service.updateState({ nowMs: NOW_MS });
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+    expect(write.mock.calls.length).toBe(1);
+    const skippedBefore = perfCount('daily_budget_persist_skipped_unchanged_total');
 
     service.persistState('runtime', NOW_MS + 1_000);
 
-    expect(dailyBudgetStateSetCount(set)).toBe(1);
-    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(skippedBefore + 1);
+    expect(write.mock.calls.length).toBe(1);
+    expect(perfCount('daily_budget_persist_skipped_unchanged_total')).toBe(skippedBefore + 1);
   });
 
   it('does not carry reset persistence reason into the next update', () => {
-    const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
+    const reasonBefore = perfCount('daily_budget_persist_reason.reset_total');
     const service = buildService();
 
     service.resetLearning();
     service.updateState({ nowMs: NOW_MS });
 
-    expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
+    expect(perfCount('daily_budget_persist_reason.reset_total')).toBe(reasonBefore + 1);
   });
 
   it('re-seeds adjacent days when only price tier flags flip on existing entries', () => {
@@ -996,7 +952,7 @@ describe('DailyBudgetService', () => {
     // forcing caps that loss at the most recent hour bucket of accumulation,
     // which matches how the daily budget reconstructs (in hour buckets).
     const service = buildService();
-    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const write = stateWritesFor(service);
     let revision = 0;
     service['manager'].update = vi.fn(() => {
       revision += 1;
@@ -1019,7 +975,7 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: firstPersistMs + 6 * 60_000 }); // 11:01, hour boundary -> persist
     service.updateState({ nowMs: firstPersistMs + 8 * 60_000 }); // 11:03, throttled (same new hour)
 
-    expect(dailyBudgetStateSetCount(set)).toBe(2);
-    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 3 });
+    expect(write.mock.calls.length).toBe(2);
+    expect(write).toHaveBeenLastCalledWith({ lastUsedNowKWh: 3 });
   });
 });

@@ -7,17 +7,22 @@
 // hours and collapsed the current hour to `used + a marginal share`.
 //
 // Nothing internal is mocked. The frozen state, plan, and power history enter as
-// persisted Homey settings; whole-home power enters through the real Homey
-// Energy poll; the clock is the faked SDK clock. The only observations are what
-// PELS persists back through the settings seam (`daily_budget_state`).
+// rows of the userdata store the app opens at boot; whole-home power enters
+// through the real Homey Energy poll; the clock is the faked SDK clock. The only
+// observations are what PELS persists back to that store (the daily-budget state).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
+import {
+  cleanupApps,
+  createApp,
+  getStoredDailyBudgetStateForTests,
+  seedStoredDailyBudgetStateForTests,
+  seedStoredPowerTrackerForTests,
+} from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  DAILY_BUDGET_STATE,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import { drainPending } from '../utils/asyncDrain';
@@ -72,7 +77,7 @@ const seedSettings = (): void => {
   mockHomeyInstance.settings.set('daily_budget_enabled', true);
   mockHomeyInstance.settings.set('daily_budget_kwh', DAILY_BUDGET_KWH);
   mockHomeyInstance.settings.set('daily_budget_price_shaping_enabled', false);
-  mockHomeyInstance.settings.set(DAILY_BUDGET_STATE, {
+  seedStoredDailyBudgetStateForTests({
     dateKey: DATE_KEY,
     dayStartUtcMs: DAY_START_UTC_MS,
     plannedKWh: seededPlan(),
@@ -97,7 +102,7 @@ const readPersistedState = (): {
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
   plannedKWh?: number[];
-} => mockHomeyInstance.settings.get(DAILY_BUDGET_STATE) ?? {};
+} => getStoredDailyBudgetStateForTests();
 
 const advancePolls = async (count: number): Promise<void> => {
   for (let index = 0; index < count; index += 1) {
@@ -133,7 +138,7 @@ describe('daily budget unfreeze across restart (SDK-boundary e2e)', () => {
     await app.onInit();
     await drainPending();
     // Ride out the low-priority persist throttle (10 min) so the post-unfreeze
-    // rebuild's plan write demonstrably lands in the settings seam.
+    // rebuild's plan write demonstrably lands in the store.
     await advancePolls(70);
     await drainPending();
 

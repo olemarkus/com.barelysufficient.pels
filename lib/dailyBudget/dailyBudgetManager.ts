@@ -22,7 +22,6 @@ import type {
 } from './dailyBudgetTypes';
 import {
   type DailyBudgetUpdateParams,
-  isDailyBudgetState,
   type DailyBudgetManagerDeps,
   type ExistingPlanState,
   type PlanResult,
@@ -80,7 +79,7 @@ export class DailyBudgetManager {
   private emitDebug(payload: Record<string, unknown>): void {
     (this.deps.debugStructured ?? debugFallbackEmit)(payload);
   }
-  loadState(raw: unknown): void { if (isDailyBudgetState(raw)) this.state = { ...raw }; }
+  loadState(state: DailyBudgetState | null): void { if (state !== null) this.state = { ...state }; }
   /**
    * Learned p50 GROSS uncontrolled (always-on background) reserve for a local
    * hour-of-day (kWh), or `undefined` until that hour has real samples. The p50

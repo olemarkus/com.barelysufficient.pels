@@ -9,8 +9,9 @@ import type { DailyBudgetSettings } from './dailyBudgetTypes';
  *
  * `read` returns a fully-normalised `DailyBudgetSettings` (the adapter snaps
  * out-of-range/garbage persisted values to canonical defaults); `write`
- * persists a typed settings object. The daily-budget *state* blob
- * (`DAILY_BUDGET_STATE`) is a separate seam and not owned here.
+ * persists a typed settings object. The daily-budget *state* (the day's plan
+ * and the learned profiles) lives in the userdata store behind
+ * `dailyBudgetStateStore.ts` and is not owned here.
  */
 export type DailyBudgetSettingsStore = {
   read(): DailyBudgetSettings;

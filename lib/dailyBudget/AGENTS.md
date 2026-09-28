@@ -11,7 +11,7 @@ planner (`lib/plan` consumes them via `planBudget.ts` / `planDailyBudgetWindow.t
 - `dailyBudgetManager.ts` — core state machine: builds/rebuilds the day plan, computes budget state and deviation.
 - `dailyBudgetMath.ts` / `dailyBudgetAllocation.ts` — pure plan math: weights, caps, redistribution.
 - `dailyBudgetLearning.ts` / `dailyBudgetObservedStats.ts` — learned hourly profile from the observed-usage window.
-- `dailyBudgetSettingsStore.ts` / `dailyBudgetStateStore.ts` — typed persistence boundaries (config vs state blob).
+- `dailyBudgetSettingsStore.ts` / `dailyBudgetStateStore.ts` — typed persistence boundaries: the config keys in `homey.settings`, and the day's plan and learned profiles in the userdata store (one row per field, the legacy `daily_budget_state` key imported once at boot).
 
 ## Invariants
 

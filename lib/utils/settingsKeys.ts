@@ -181,7 +181,9 @@ export const DAILY_BUDGET_KWH = 'daily_budget_kwh';
 export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_enabled';
 export const DAILY_BUDGET_CONTROLLED_WEIGHT = 'daily_budget_controlled_weight';
 export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
-/** @public — intentionally retained (was in check-dead-code parked list). */
+// Legacy: the daily budget's plan and learned profiles live in the userdata
+// store (lib/dailyBudget/dailyBudgetStateStore.ts). As a settings key it is only
+// read by the legacy import.
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 // Legacy: the combined prices live in the userdata price cache

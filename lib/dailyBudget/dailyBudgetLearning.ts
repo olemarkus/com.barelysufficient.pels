@@ -213,7 +213,8 @@ const buildDayWeights = (params: {
   };
 };
 
-const resolveProfileSampleCount = (state: DailyBudgetState): number => Math.max(
+/** How many days the profile has learned from, whichever field of the state carries the count. */
+export const resolveProfileSampleCount = (state: DailyBudgetState): number => Math.max(
   0,
   typeof state.profileSampleCount === 'number'
     ? state.profileSampleCount

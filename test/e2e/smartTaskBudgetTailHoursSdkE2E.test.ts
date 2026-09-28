@@ -19,13 +19,20 @@
 // schedule at midnight instead.
 //
 // THE RULE THIS TEST FOLLOWS (notes/testing-taxonomy.md): nothing internal is
-// mocked. The overspent day enters as persisted Homey settings (the daily-budget
-// state and the power history), prices and the clock enter at the SDK boundary,
+// mocked. The overspent day enters as rows of the userdata store the app opens
+// at boot (the daily-budget state and the power history), prices and the clock
+// enter at the SDK boundary,
 // and the behaviour is OBSERVED ONLY through structured logs at the Homey
 // logging seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
+import {
+  cleanupApps,
+  createApp,
+  getStoredDailyBudgetStateForTests,
+  seedStoredDailyBudgetStateForTests,
+  seedStoredPowerTrackerForTests,
+} from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN,
@@ -36,7 +43,6 @@ import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_STATE,
   DEBUG_LOGGING_TOPICS,
   DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES,
@@ -176,7 +182,7 @@ const readPersistedBudgetState = (): {
   frozen?: boolean;
   plannedKWh?: number[];
   plannedControlledKWh?: number[];
-} => mockHomeyInstance.settings.get(DAILY_BUDGET_STATE) ?? {};
+} => getStoredDailyBudgetStateForTests();
 
 const seedSettings = (): void => {
   mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives', 'daily_budget']);
@@ -192,7 +198,7 @@ const seedSettings = (): void => {
   mockHomeyInstance.settings.set(DAILY_BUDGET_KWH, DAILY_BUDGET_KWH_VALUE);
   // Price shaping off — one less thing shaping the per-hour allocations.
   mockHomeyInstance.settings.set(DAILY_BUDGET_PRICE_SHAPING_ENABLED, false);
-  mockHomeyInstance.settings.set(DAILY_BUDGET_STATE, {
+  seedStoredDailyBudgetStateForTests({
     dateKey: TODAY_KEY,
     dayStartUtcMs: DAY_START_UTC_MS,
     plannedKWh: seededPlannedKWh(),
@@ -306,7 +312,7 @@ describe('smart task on an overspent soft-budget day (SDK-boundary e2e)', () => 
     // (so the seeded shares are the ones in play) and today's two remaining hours
     // each hold a genuine controlled share. Without this the primary assertion
     // below could go red for the wrong reason — a background squeeze rather than
-    // the day-total clamp. Read back through the settings seam because
+    // the day-total clamp. Read back from the store because
     // `daily_budget_plan_debug` only fires on a plan REBUILD, which frozen
     // suppresses by design.
     const persisted = readPersistedBudgetState();

@@ -12,6 +12,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { createPriceCacheStore, type PriceCacheKey } from '../../lib/price/priceCacheStore';
+import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetStateStore';
+import type { DailyBudgetState } from '../../lib/dailyBudget/dailyBudgetTypes';
 
 let appInstances: MyApp[] = [];
 
@@ -144,6 +146,33 @@ export function getStoredPriceCacheForTests(key: PriceCacheKey): unknown {
   const database = openUserdataDatabase(testUserdataDatabase());
   try {
     return createPriceCacheStore(database).read(key);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Seed the daily-budget state the app under test will load at boot: the
+ * store's rows in the database `createApp` opens, written before `onInit`.
+ */
+export function seedStoredDailyBudgetStateForTests(state: DailyBudgetState): void {
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    createDailyBudgetStateStore(database).write(state);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * The daily-budget state as the app under test has persisted it, the store's
+ * rows rather than a settings key. Empty while nothing has been persisted.
+ */
+export function getStoredDailyBudgetStateForTests(): DailyBudgetState {
+  if (testUserdataDir === undefined) return {};
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    return createDailyBudgetStateStore(database).read() ?? {};
   } finally {
     database.close();
   }

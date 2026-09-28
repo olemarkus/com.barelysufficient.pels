@@ -109,7 +109,7 @@ type MaybePersistDailyBudgetStateParams =
  */
 export function maybePersistDailyBudgetState(params: MaybePersistDailyBudgetStateParams): void {
   if (params.policy.isThrottled(params.reason, params.nowMs)) {
-    incPerfCounter('settings_set.daily_budget_state_skipped_throttle_total');
+    incPerfCounter('daily_budget_persist_skipped_throttle_total');
     return;
   }
   persistDailyBudgetState({ ...params, state: params.state() });
@@ -118,14 +118,13 @@ export function maybePersistDailyBudgetState(params: MaybePersistDailyBudgetStat
 export function persistDailyBudgetState(params: PersistDailyBudgetStateParams): void {
   const stateJson = JSON.stringify(params.state);
   if (params.policy.hasPersistedJson(stateJson)) {
-    incPerfCounter('settings_set.daily_budget_state_skipped_unchanged_total');
+    incPerfCounter('daily_budget_persist_skipped_unchanged_total');
     return;
   }
   const persistStart = Date.now();
   params.stateStore.write(params.state);
   params.policy.recordPersisted({ reason: params.reason, stateJson, nowMs: params.nowMs });
-  incPerfCounter('settings_set.daily_budget_state');
-  incPerfCounter(`settings_set.daily_budget_state_reason.${params.reason}_total`);
+  incPerfCounter(`daily_budget_persist_reason.${params.reason}_total`);
   incPerfCounter('daily_budget_persist_total');
   addPerfDuration('daily_budget_persist_ms', Date.now() - persistStart);
 }

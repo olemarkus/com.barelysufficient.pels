@@ -954,23 +954,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       lands, so the wrong axis label is the remaining harm. Source: 2026-08-01 budget-hold copy
       investigation. [P2]
 
-- [ ] **Give the `daily_budget_state` boot read an abandon-grace window.**
-      `setup/dailyBudgetStateAdapter.ts` is a bare `settings.get`/`settings.set` pair — no
-      abandon-grace, no persist guard, unlike the calibration and EV car-link stores that
-      `notes/persisted-settings-state.md` documents. One transient junk or `undefined` boot read
-      fails the guard in `DailyBudgetManager.loadState`, leaving the manager at `{}`;
-      `DailyBudgetService.loadState` then records that empty-derived export as the policy's
-      `lastPersistedStateJson`, and the first `updateState` writes it over a day of learned
-      profile and plan state — unthrottled, because `lastPersistMs === 0` short-circuits the
-      throttle on the first call. The same shape was already fixed for `pv_forecast_state`, and the
-      same fix: treat an empty or malformed boot read as suspect for a grace window (or require a
-      confirming read) before the first destructive persist. *Done when* a boot whose
-      `daily_budget_state` read returns junk or `undefined` leaves the persisted key intact
-      until a confirming read, proven by an adapter-boundary test. *Persona:* any owner on a
-      Homey Pro that restarts under memory pressure. *Hypothesis:* the SDK read failures that
-      motivated the other stores' grace windows hit this key too; the loss is a day of budget
-      learning rather than 90 days of history, which is why it has gone unnoticed. [P2]
-
 - [ ] **The budget-pressure overshoot compares whole-home kWh against a budget that paces on non-exempt energy.**
       `measuredBudgetOvershootKwh` (`packages/shared-domain/src/energySignature/budgetPressure.ts`) computes
       `kwhTotal - appliedBudgetKwh`, but `kwhTotal` is metered whole-home consumption while the daily-budget
@@ -1648,27 +1631,26 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
       the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
       (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
-      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) and the price caches
-      (`lib/price/priceCacheStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~11 kB of the ~27 kB object: the
-      learned hourly profiles in `daily_budget_state` (7 of its 8 kB,
-      `setup/dailyBudgetStateAdapter.ts`), `power_calibration` (2 kB,
+      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`), the price caches
+      (`lib/price/priceCacheStore.ts`) and the daily budget's plan and learned profiles
+      (`lib/dailyBudget/dailyBudgetStateStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~3 kB of the ~19 kB object:
+      `power_calibration` (2 kB,
       `lib/device/devicePowerCalibrationStore.ts`), `device_power_peaks` (1 kB,
       `lib/device/learnedPowerPeakState.ts`) and `deferred_objective_active_plans`
       (`setup/appInit/deferredRecorders.ts`). The size is what matters, because the small live
       latches stay in settings by ruling and keep writing: measured on production on 2026-09-26,
       `device_last_controlled_ms` writes ~19 times an hour (every executor actuation batch,
       `setup/homeRuntime/homeSignalWriters.ts`), `deferred_objective_observation_watermark` 12
-      (`setup/appInit/deferredRecorders.ts`), `power_calibration` up to 10 while a charger runs,
-      `daily_budget_state` ~7. Change: one repository per family beside its domain, taking the
+      (`setup/appInit/deferredRecorders.ts`), `power_calibration` up to 10 while a charger runs.
+      Change: one repository per family beside its domain, taking the
       open database (the tracker and weather stores are the pattern: rows or one JSON row per
       event, diffed writes, the legacy key imported once at boot through
       `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
       Done when none of the keys listed above is left in
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
-      the `settings_set.*` perf counters, which cover only `daily_budget_state` and
-      `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
+      the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
       gone (the tracker key, `pels_status`, `app_heartbeat`, `target_devices_snapshot`, the price
       payload keys and `combined_prices`):
       `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload` and the device list) and the

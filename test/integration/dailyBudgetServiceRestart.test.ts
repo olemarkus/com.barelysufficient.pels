@@ -1,6 +1,7 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
-import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
+import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetStateStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -8,7 +9,7 @@ type AppHomey = Homey.App['homey'];
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
 // Plain-restart invariant for the daily budget: a service reload over the
-// persisted settings (the app-restart seam) must not reallocate the hour in
+// persisted settings and state (the app-restart seam) must not reallocate the hour in
 // progress. The unfreeze counterpart — a restart over a FROZEN blob — is the
 // SDK e2e in test/e2e/dailyBudgetUnfreezeRestartSdkE2E.test.ts.
 
@@ -18,9 +19,9 @@ const TZ = 'Europe/Oslo';
 const hourStartMs = (localHour: number): number => Date.UTC(2026, 7, 1, localHour - 2, 0, 0, 0);
 const isoForLocalHour = (localHour: number): string => new Date(hourStartMs(localHour)).toISOString();
 
-// Shared "Homey settings" DB with a faithful JSON roundtrip, so a second
-// service instance loads exactly what the first persisted.
-function buildSharedHomey(): { homey: AppHomey } {
+// Shared "Homey settings" DB with a faithful JSON roundtrip, and one userdata
+// database, so a second service instance loads exactly what the first persisted.
+function buildSharedHomey(): { homey: AppHomey; database: UserdataDatabase } {
   const db = new Map<string, string>();
   const homey = partialDouble<AppHomey>({
     settings: partialDouble<AppHomey['settings']>({
@@ -31,7 +32,7 @@ function buildSharedHomey(): { homey: AppHomey } {
     }),
     clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
   });
-  return { homey };
+  return { homey, database: openUserdataDatabase(IN_MEMORY_DATABASE) };
 }
 
 function buildTracker(usedThroughLocalHour19: number, hour20Usage: number): PowerTrackerState {
@@ -43,7 +44,11 @@ function buildTracker(usedThroughLocalHour19: number, hour20Usage: number): Powe
   return { buckets } as PowerTrackerState;
 }
 
-function buildService(homey: AppHomey, getTracker: () => PowerTrackerState): DailyBudgetService {
+function buildService(
+  homey: AppHomey,
+  database: UserdataDatabase,
+  getTracker: () => PowerTrackerState,
+): DailyBudgetService {
   return new DailyBudgetService({
     getTimeZone: () => TZ,
     log: () => undefined,
@@ -52,7 +57,7 @@ function buildService(homey: AppHomey, getTracker: () => PowerTrackerState): Dai
     getCapacitySettings: () => ({ limitKw: 15, marginKw: 1 }),
     combinedPricesReader: { readStore: () => null },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
-    dailyBudgetStateStore: createDailyBudgetStateStore(homey),
+    dailyBudgetStateStore: createDailyBudgetStateStore(database),
   });
 }
 
@@ -66,7 +71,7 @@ const todayPlanned = (service: DailyBudgetService): number[] => {
 
 describe('daily budget plan across a mid-hour restart', () => {
   it('preserves the current-hour allocation when the service reloads persisted state', () => {
-    const { homey } = buildSharedHomey();
+    const { homey, database } = buildSharedHomey();
     createDailyBudgetSettingsStore(homey).write({
       enabled: true,
       dailyBudgetKWh: 44.1,
@@ -76,7 +81,7 @@ describe('daily budget plan across a mid-hour restart', () => {
     });
 
     let tracker = buildTracker(34, 0);
-    const serviceA = buildService(homey, () => tracker);
+    const serviceA = buildService(homey, database, () => tracker);
     serviceA.loadSettings();
     serviceA.loadState();
 
@@ -97,7 +102,7 @@ describe('daily budget plan across a mid-hour restart', () => {
 
     // Restart at :40 — a new service instance over the same persisted settings.
     tracker = buildTracker(34, 0.45);
-    const serviceB = buildService(homey, () => tracker);
+    const serviceB = buildService(homey, database, () => tracker);
     serviceB.loadSettings();
     serviceB.loadState();
     serviceB.updateState({ nowMs: hourStartMs(20) + 40 * 60 * 1000 + 15 * 1000 });

@@ -15,7 +15,8 @@ import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
-import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
+import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetStateStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -101,7 +102,7 @@ const buildService = (initialSettings: SettingsStore): {
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
     combinedPricesReader: createCombinedPricesReader(createPriceDataStore(homey.settings, priceCache), () => undefined),
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
-    dailyBudgetStateStore: createDailyBudgetStateStore(homey),
+    dailyBudgetStateStore: createDailyBudgetStateStore(openUserdataDatabase(IN_MEMORY_DATABASE)),
   });
   service.loadSettings();
   return {
