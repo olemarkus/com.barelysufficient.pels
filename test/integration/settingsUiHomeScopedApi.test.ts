@@ -79,6 +79,9 @@ const createMembershipPort = (options: {
   getMembershipMap: () => ({ ...options.membership }),
   getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set<string>() }),
   hasSubHomes: () => true,
+  filterDevicesForHome: (devices, homeId) => devices.filter(
+    (device) => (options.membership[device.id] ?? MAIN_HOME_ID) === homeId,
+  ),
   isOwnershipReady: () => options.ownershipReady ?? true,
   hasPendingOwnershipGeneration: () => options.pendingGeneration ?? false,
   isMainHomeActuationFenced: () => false,

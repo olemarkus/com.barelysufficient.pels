@@ -53,7 +53,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 const writeActiveHomesConfig = (config: HomeConfig): void => {
-  createRawHomesStore(homeyLike).write({
+  createRawHomesStore(homeyLike.settings).write({
     ...config,
     activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
   });
