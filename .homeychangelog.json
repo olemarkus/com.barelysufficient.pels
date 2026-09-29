@@ -559,5 +559,8 @@
   },
   "3.8.3": {
     "en": "EV Smart tasks now respect the linked car’s charge limit and explain when it prevents the requested target from being reached. Temperature Smart tasks now support devices explicitly set to cooling, and task progress follows the latest device reading.\n\nPELS can now detect a power meter stuck on the same reading while device consumption changes and apply its existing meter-outage protection. This update also fixes devices resuming too early during power sharing and improves how devices are released when PELS control is disabled."
+  },
+  "3.9.0": {
+    "en": "Smart tasks can now deliver a chosen amount of energy to on/off devices, such as relay-controlled water heaters. Use the new 'Add energy task' Flow card to request an amount in kWh by a ready-by time. The device needs a live power reading, and progress appears in Smart tasks.\n\nPELS now supports Hyundai vehicles and allows more time for delayed car updates when matching a car to its charger. Matching can take 20–40 minutes while PELS checks for competing connections."
   }
 }
