@@ -201,7 +201,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     // post-update state rather than the previous one.
     flushDeferredObservedState(ingest, deviceId, deferredObservedStateEvents, previousSnapshot, currentSnapshot);
     for (const event of deferredControlEvents) ingest.observationBridge.emitControlStateChanged(event);
-    // Class `car` devices reach us only here and on the device fetch: the live
+    // Car-link devices reach us only here and on the device fetch: the live
     // feed pushes `device.update` for EVERY device, while parse drops unsupported
     // classes. Passed every update, not just cars — a charger's own update is what
     // timestamps its plug edge correctly. Inert while no car is tracked.

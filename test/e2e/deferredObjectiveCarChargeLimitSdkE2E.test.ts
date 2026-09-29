@@ -124,7 +124,8 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
     await charger.setCapabilityValue('evcharger_charging', true);
     await charger.setCapabilityValue('measure_power', 7_000);
-    await pumpMinutes(10);
+    // Allow the car poll and the extended competition window to settle.
+    await pumpMinutes(26);
 
     // The car's level reaches the charger with the car's ceiling on it.
     await car.setCapabilityValue('measure_battery', 65);

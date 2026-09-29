@@ -14,6 +14,7 @@
 import type { EvChargingState } from '../../packages/contracts/src/types';
 import type { SettingsUiRecommendationCar } from '../../packages/contracts/src/settingsUiApi';
 import type { HomeyDeviceLike } from '../utils/types';
+import { isEvCarDeviceClass } from './evCarDeviceClass';
 import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import { toCapabilityTimestampMs } from './managerControl';
 import { normalizeStateOfChargePercent } from './transport/stateOfCharge';
@@ -61,9 +62,9 @@ export type CarDeviceRead =
     | { kind: 'unavailable'; deviceId: string; name: string }
     | { kind: 'observed'; reading: CarReading };
 
-/** Identity gate: a usable id on a class `car` device, or nothing. */
+/** Identity gate: a usable id on a Homey `car` or `vehicle`, or nothing. */
 export const readCarIdentity = (device: HomeyDeviceLike): { deviceId: string; name: string } | null => {
-    if (typeof device.class !== 'string' || device.class.trim().toLowerCase() !== 'car') return null;
+    if (!isEvCarDeviceClass(device)) return null;
     const deviceId = device.id;
     if (typeof deviceId !== 'string' || deviceId.length === 0) return null;
     return { deviceId, name: typeof device.name === 'string' ? device.name : deviceId };

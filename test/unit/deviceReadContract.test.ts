@@ -109,13 +109,13 @@ describe('device-read contract', () => {
       .toEqual({ reason: 'unexpected_value', capabilityId: 'evcharger_charging_state' });
   });
 
-  it('checks a car only on what PELS reads from a car', () => {
+  it.each(['car', 'vehicle'])('checks a %s only on what PELS reads from a car', (deviceClass) => {
     // Shape observed on a production hub: the car integration declares an
     // interior temperature it has never reported.
     const car = (plugState: unknown): HomeyDeviceLike => asRead({
       id: 'car-1',
       name: 'Car',
-      class: 'car',
+      class: deviceClass,
       capabilities: ['measure_battery', 'ev_charging_state', 'target_temperature', 'measure_temperature'],
       capabilitiesObj: {
         measure_battery: entry(37),
@@ -127,6 +127,12 @@ describe('device-read contract', () => {
     expect(findDeviceReadContractViolation(car('plugged_in'))).toBeNull();
     expect(findDeviceReadContractViolation(car('parked')))
       .toEqual({ reason: 'unexpected_value', capabilityId: 'ev_charging_state' });
+    const missingStamp = {
+      ...car('plugged_in'),
+      capabilitiesObj: { ...car('plugged_in').capabilitiesObj, measure_battery: { value: 37 } },
+    };
+    expect(findDeviceReadContractViolation(missingStamp))
+      .toEqual({ reason: 'missing_stamp', capabilityId: 'measure_battery' });
   });
 
   it('reads temperature only from a device with both the measurement and the target', () => {

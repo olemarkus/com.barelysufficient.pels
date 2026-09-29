@@ -1,6 +1,6 @@
 // SDK-boundary e2e for the EV car-to-charger link probe.
 //
-// WHAT THIS PROBES: a class `car` device — which PELS otherwise drops entirely at
+// WHAT THIS PROBES: a `car` or `vehicle` — which PELS otherwise drops entirely at
 // `SUPPORTED_DEVICE_CLASSES` — is nonetheless observed, correlated against a real
 // EV charger's plug transitions, and reported through structured logs. The probe
 // still writes nothing to the CAR, and a charger the user has not opted in keeps
@@ -15,7 +15,7 @@
 // through its structured log output and through `api.put` capability writes.
 //
 // State changes are delivered ONLY by mutating the mock devices and letting the
-// app's own periodic snapshot refresh (:25 and :55) read them back through
+// app's own periodic device refresh read them back through
 // `manager/devices/device`. No internal hook is called: the probe has to pick a
 // class `car` device out of the raw fetch itself, which is the path that keeps
 // working when the live feed is down.
@@ -81,9 +81,10 @@ const flushDetached = async (rounds = 12): Promise<void> => {
   }
 };
 
-/** The Polestar-shaped car device: official capabilities only. */
-const buildCar = async (): Promise<MockDevice> => {
-  const car = new MockDevice(CAR_ID, 'Polestar', ['ev_charging_state', 'measure_battery'], 'car');
+/** Both supported Homey classes expose the same official EV capabilities. */
+const buildCar = async (deviceClass = 'car'): Promise<MockDevice> => {
+  const name = deviceClass === 'vehicle' ? 'Ioniq 5' : 'Polestar';
+  const car = new MockDevice(CAR_ID, name, ['ev_charging_state', 'measure_battery'], deviceClass);
   await car.setCapabilityValue('ev_charging_state', 'plugged_out');
   await car.setCapabilityValue('measure_battery', 40);
   return car;
@@ -356,7 +357,8 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
     // Car charges at work: the home charger never moves.
     await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
-    await pumpMinutes(40);
+    // Allow the five-minute car poll, then both coincidence windows to close.
+    await pumpMinutes(46);
     await drainUntil(() => of('ev_car_session_elsewhere').length > 0);
 
     expect(of('ev_car_session_elsewhere')[0]).toMatchObject({ carId: CAR_ID });
@@ -364,9 +366,14 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(of('ev_car_link_resolved')).toEqual([]);
   });
 
-  it('adopts the associated car battery level as the charger state-of-charge', async () => {
+  it.each([
+    { deviceClass: 'car', name: 'Polestar', reportDelayMinutes: 0 },
+    { deviceClass: 'vehicle', name: 'Ioniq 5', reportDelayMinutes: 15 },
+  ])('adopts $deviceClass battery updates with a $reportDelayMinutes-minute reporting delay', async ({
+    deviceClass, name, reportDelayMinutes,
+  }) => {
     vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
-    const car = await buildCar();
+    const car = await buildCar(deviceClass);
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
     seedSettings();
@@ -375,28 +382,30 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
     driveHomeEnergy(liveHomeW(3_000));
 
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
     spyLogs(app);
     await app.onInit();
     await pumpMinutes(2);
 
-    await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
+    expect(await api.ui_recommendation_cars({ homey: mockHomeyInstance as never })).toMatchObject({
+      cars: [{ id: CAR_ID, name }],
+    });
+
     await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
     await charger.setCapabilityValue('evcharger_charging', true);
     await charger.setCapabilityValue('measure_power', 7_000);
+    await pumpMinutes(reportDelayMinutes);
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
     await pumpMinutes(40);
     await drainUntil(() => of('ev_car_link_resolved').length > 0);
 
     // A level the car reports DURING the session lands on the charger.
     await car.setCapabilityValue('measure_battery', 63);
-    // The reading reaches the probe on the next DEVICE POLL: the correlation
-    // pass that ingests a car runs over the fetched device list
-    // (`observeEvCarLinkAndResubscribe`), and a class-`car` device never
-    // survives parse, so it is only visible on a fetch. The 30 s probe tick
-    // re-correlates what the probe already holds; it cannot discover a level the
-    // probe has not been handed. So this is bounded by the 5-minute poll, not by
-    // the tick — which is why the poll cadence is the EV car-link probe's
-    // tightest constraint.
+    // This test disables the live feed, so the next five-minute device poll
+    // delivers the battery reading. Production also accepts realtime updates;
+    // the correlation tick only reuses observations already received.
     await pumpMinutes(6);
     await drainUntil(() => socOf(getLatestTargetSnapshotForTests())?.report.percent === 63);
 
@@ -405,6 +414,11 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       source: { kind: 'car', carId: CAR_ID },
       level: { kind: 'known', percent: 63 },
     });
+    expect(getLatestTargetSnapshotForTests().find((device) => device.id === CAR_ID)).toBeUndefined();
+    expect((await chargerFromUi()).associatedCar).toMatchObject({ carId: CAR_ID, carName: name, socPct: 63 });
+    expect(putSpy.mock.calls.filter(([path]: unknown[]) => (
+      typeof path === 'string' && path.startsWith(`manager/devices/device/${CAR_ID}/capability/`)
+    ))).toEqual([]);
 
     // Unplug ends the association, and the car's level goes with it: there is no
     // car, so there is no battery to report.

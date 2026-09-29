@@ -187,7 +187,7 @@ export = {
           // lets the whole-home meter picker filter to power-reporting devices.
           hasPower: Array.isArray(device.capabilities)
             && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
-          // Whether this is a class `car` device publishing BOTH capabilities the
+          // Whether this is a `car` or `vehicle` publishing BOTH capabilities the
           // car-link probe reads — lets the charger page's car picker offer only
           // cars that can actually be associated. Gated on the class too, so the
           // flag can never be true for a non-car that happens to expose both.

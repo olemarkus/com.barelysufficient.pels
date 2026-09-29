@@ -41,10 +41,12 @@ export type EvLinkEdge = {
     deviceId: string;
     kind: EvLinkEdgeKind;
     atMs: number;
+    /** Charger-side rejection survives expired or evicted competing observations. */
+    ambiguous?: true;
 };
 
-/** Coincidence window for pairing a car edge with a charger edge. */
-export const EV_CAR_LINK_COINCIDENCE_WINDOW_MS = 90_000;
+/** Fifteen-minute cloud polling plus five minutes of delivery grace. */
+export const EV_CAR_LINK_COINCIDENCE_WINDOW_MS = 20 * 60_000;
 
 /** Charger draw at or below this reads as "not delivering" for self-stop detection. */
 export const EV_CAR_LINK_IDLE_POWER_W = 200;
@@ -89,15 +91,38 @@ export const resolveEvLinkEdge = (
     return null;
 };
 
-/**
- * Append an edge to a bounded ring, dropping the oldest when full. Returns a new
- * array — callers hold the ring immutably.
- */
-export const appendEvLinkEdge = (edges: readonly EvLinkEdge[], edge: EvLinkEdge): EvLinkEdge[] => {
-    const next = [...edges, edge];
-    return next.length > EV_CAR_LINK_MAX_EDGES_PER_SIDE
-        ? next.slice(next.length - EV_CAR_LINK_MAX_EDGES_PER_SIDE)
-        : next;
+/** Bounded observations and their retained charger-side ambiguity decisions. */
+export type EvLinkEdgeHistory = {
+    carEdges: readonly EvLinkEdge[];
+    chargerEdges: readonly EvLinkEdge[];
+};
+
+/** Carry semantic rejection with its edge, independently of log deduplication. */
+export const rememberEvLinkAmbiguities = (
+    chargerEdges: readonly EvLinkEdge[],
+    ambiguous: readonly EvLinkEdge[],
+): readonly EvLinkEdge[] => {
+    if (ambiguous.length === 0) return chargerEdges;
+    const rejected = new Set(ambiguous);
+    return chargerEdges.map((edge): EvLinkEdge => (
+        rejected.has(edge) && !edge.ambiguous ? { ...edge, ambiguous: true } : edge
+    ));
+};
+
+/** Record contention before bounded-ring eviction can erase a rival or burst member. */
+export const appendEvLinkHistory = (
+    history: EvLinkEdgeHistory,
+    side: keyof EvLinkEdgeHistory,
+    edge: EvLinkEdge,
+): EvLinkEdgeHistory => {
+    const next = { ...history, [side]: [...history[side], edge] };
+    if (next[side].length <= EV_CAR_LINK_MAX_EDGES_PER_SIDE) return next;
+    const match = matchCoincidentEdges({ ...next, nowMs: edge.atMs });
+    return {
+        carEdges: next.carEdges.slice(-EV_CAR_LINK_MAX_EDGES_PER_SIDE),
+        chargerEdges: rememberEvLinkAmbiguities(next.chargerEdges, match.ambiguousChargerEdges)
+            .slice(-EV_CAR_LINK_MAX_EDGES_PER_SIDE),
+    };
 };
 
 /** Drop edges older than the coincidence window; they can no longer pair. */
@@ -125,6 +150,8 @@ export type EvLinkAmbiguity = {
 };
 
 export type EvLinkMatchResult = {
+    /** Remember these rejections before pruning, even while edges are unsettled. */
+    ambiguousChargerEdges: EvLinkEdge[];
     /** Exactly-one-car-to-one-charger pairings; each is worth a vote. */
     coincidences: EvLinkCoincidence[];
     /** A charger edge that several cars could explain — deliberately no vote. */
@@ -205,17 +232,24 @@ export const matchCoincidentEdges = (params: {
 
     const coincidences: EvLinkCoincidence[] = [];
     const ambiguities: EvLinkAmbiguity[] = [];
+    const ambiguousChargerEdges = new Set(chargerEdges.filter((edge) => edge.ambiguous));
 
     for (const entry of withCandidates) {
         const { chargerEdge } = entry;
-        // Decide only once this edge has settled; contention below still counts
-        // edges that have not.
-        if (!isSettled(chargerEdge)) continue;
         const burst = resolveChargerEdgeBurst(entry, withCandidates);
-        // An earlier edge of a bouncing plug; the burst's resting edge decides.
-        if (burst.restingEdge !== chargerEdge) continue;
         const carIds = distinctDeviceIds(burst.candidates);
-        if (carIds.length > 1 || isContestedByAnotherCharger(burst, withCandidates)) {
+        const ambiguous = carIds.length > 1
+            || isContestedByAnotherCharger(burst, withCandidates)
+            || burst.chargerEdges.some((edge) => edge.ambiguous);
+        // Negative evidence is permanent for the whole burst. Waiting for its
+        // resting edge to settle can lose an earlier rival during sustained
+        // reconnects, pruning or bounded-ring eviction.
+        if (ambiguous) {
+            for (const edge of burst.chargerEdges) ambiguousChargerEdges.add(edge);
+        }
+        // Only settled resting edges publish a decision or earn a vote.
+        if (!isSettled(chargerEdge) || burst.restingEdge !== chargerEdge) continue;
+        if (ambiguous) {
             ambiguities.push({
                 chargerId: chargerEdge.deviceId,
                 carIds,
@@ -242,11 +276,16 @@ export const matchCoincidentEdges = (params: {
     // ambiguous and superseded edges are explained, just not attributable.
     const matchedCarKeys = new Set(withCandidates.flatMap((entry) => entry.candidates.map(buildEdgeKey)));
     return {
+        ambiguousChargerEdges: [...ambiguousChargerEdges],
         coincidences,
         ambiguities,
         unmatchedCarEdges: carEdges.filter((edge) => !matchedCarKeys.has(buildEdgeKey(edge))),
         unmatchedChargerEdges: scored
-            .filter((entry) => entry.candidates.length === 0 && isSettled(entry.chargerEdge))
+            .filter((entry) => (
+                entry.candidates.length === 0
+                && !entry.chargerEdge.ambiguous
+                && isSettled(entry.chargerEdge)
+            ))
             .map((entry) => entry.chargerEdge),
     };
 };
@@ -270,6 +309,7 @@ type ScoredChargerEdge = {
  * just a single edge. See "DEVICES, not edges" on `matchCoincidentEdges`.
  */
 type ChargerEdgeBurst = {
+    chargerEdges: EvLinkEdges;
     /** The burst's latest charger edge, where the plug came to rest. Only it decides. */
     restingEdge: EvLinkEdge;
     /** Every car edge any edge of the burst fits. */
@@ -302,7 +342,8 @@ const resolveChargerEdgeBurst = (
     for (const member of members) {
         if (member !== entry) addEdges(candidates, member.candidates);
     }
-    return { restingEdge: latestEdge(chargerEdgesOf(members, entry)), candidates };
+    const chargerEdges = chargerEdgesOf(members, entry);
+    return { restingEdge: latestEdge(chargerEdges), chargerEdges, candidates };
 };
 /* eslint-enable functional/immutable-data */
 

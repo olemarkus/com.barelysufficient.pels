@@ -24,7 +24,7 @@ and keeps resuming. A smart task whose target sits above the car's own limit pin
 
 Before adoption, the path from car to PELS was the `report_evcharger_battery_level` flow
 card, wired by hand to an `evcharger` device. That remains supported when the charger has
-no eligible cars selected. The car-link producer now observes class `car` devices separately
+no eligible cars selected. The car-link producer now observes class `car` and `vehicle` devices separately
 and supplies matched battery readings for opted-in chargers; cars still do not become
 managed loads. See "Adoption" for source exclusivity and session handling.
 
@@ -35,8 +35,26 @@ appears anywhere in this feature, and there is no `driverId` branching.
 
 | Side | Reads |
 |---|---|
-| Car (`class: 'car'`) | `ev_charging_state`, `measure_battery` |
+| Car (`class: 'car'` or `'vehicle'`) | `ev_charging_state`, `measure_battery` |
 | Charger | PELS's already-resolved `evChargingState` + measured power, off the parsed snapshot |
+
+The official Hyundai and Kia apps use Homey's `vehicle` class with these standard
+capabilities. Both classes share the same identity and device-read validation rules;
+neither becomes a managed load. The older combined community app's custom charging
+capabilities and `measure_battery.EV` do not satisfy this contract.
+
+Class admission does not guarantee a match: new sessions still require observed
+plug transitions within the 20-minute coincidence window. The official apps default
+to polling the server cache every 15 minutes (minimum configurable interval: 5),
+with a 10-minute active-car interval and periodic forced refresh disabled. Startup,
+commands and manual refresh can trigger earlier reads, but a cache read does not
+guarantee fresh vehicle telemetry. See the Hyundai build's
+[poll settings](https://github.com/gruijter/com.kia_hyundai/blob/com.hyundai/drivers/car/driver.settings.compose.json)
+and [polling implementation](https://github.com/gruijter/com.kia_hyundai/blob/com.hyundai/drivers/car/device.js).
+The 20-minute window accommodates one default cache-poll interval plus delivery
+slack; older cloud data can still exceed it. No plug time is synthesized and no car
+refresh is forced. Real-device validation remains necessary for Hyundai/Kia's
+cloud-update behavior.
 
 Two consequences follow, and both are deliberate:
 
@@ -44,8 +62,10 @@ Two consequences follow, and both are deliberate:
   SoC. It is inferred from where `measure_battery` repeatedly stops (`stopSocPct`), which
   is the only sanctioned route. Vendor capabilities that do expose it (e.g. the Polestar
   app's `target_polestarChargeLimit`) are off-limits.
-- **A car app that does not publish those two capabilities is invisible here.** No
-  per-vendor fallback is added.
+- **Battery adoption requires both capabilities.** A car with readable standard plug
+  state can contribute correlation evidence and affinity history without a battery
+  reading, but it is not offered in the battery picker unless it declares both
+  capabilities. No per-vendor fallback is added.
 
 The charger side reads PELS's *resolved* `evChargingState` rather than a raw capability.
 Some chargers only have their plug state derived at the device boundary (the Zaptec
@@ -152,11 +172,13 @@ the car. Connect/disconnect is a physical event both devices observe independent
 makes it the only self-correlation-free signal available. Charging transitions are
 deliberately not used as link evidence.
 
-**Decide only once the window has closed.** A charger edge is matched only after a full
-coincidence window (90 s) has elapsed. Deciding eagerly would vote for the first car to
-plug in and could not retract that vote when a second car connects moments later at the
-same charger. The cost is that a link resolves ~90 s after plug-in; nothing downstream is
-time-critical.
+**Decide only once both windows have closed.** A positive match waits one full
+20-minute coincidence window after both the charger edge and the matched car edge.
+This gives delayed competing cars and chargers time to report. An immediate car
+report therefore takes about 20 minutes to link; a report 15 minutes after the
+charger takes about 35 minutes. Reports exactly at the boundary take about 40 minutes,
+plus the correlation tick. Battery-dependent features wait for a match during this
+period; existing persisted-session recovery remains separate.
 
 **Three outcomes, and the distinction is the point:**
 
@@ -180,6 +202,14 @@ one physical event, so it earns one decision. The burst is every edge of one cha
 through shared car edges; only its latest edge, where the plug came to rest, decides, and it
 decides on the whole burst's candidates. A rival car that only an earlier edge of the burst could
 explain is still a rival, so the burst stays ambiguous rather than linking the other car.
+
+Ambiguity is retained on the charger's bounded edge record, including before settlement.
+It propagates across a reconnect burst and survives competing observations expiring or
+being evicted from the ring. Such an edge cannot later earn a vote or use the affinity
+prior merely because its rivals disappeared. Ring eviction evaluates contention first.
+An old connect may still earn a historical vote, but opening a session also requires
+that it is the charger's current connect; a delayed decision cannot identify a later
+session after an unplug and reconnect.
 
 **An away verdict waits two windows, not one.** A charger edge that could still explain a
 car edge at time T lies within [T−W, T+W], and the latest of those does not itself settle
@@ -300,18 +330,18 @@ showed to be unsound.
   `plugged_in_paused`. So `car_not_charging` genuinely cannot distinguish "finished at the
   car's limit" from "idle" from "charging fault". That is why the sub-reason is named
   vaguely and why `stopSocPct` carries the real signal.
-- **Resolution depends on the live feed.** Car updates arrive at realtime cadence only via
-  the `homey:manager:devices` subscription. The targeted snapshot refresh also re-reads
+- **Polling loses event timing.** Car capability values arrive at realtime cadence via
+  per-device `homey:device:<id>` subscriptions. The targeted snapshot refresh also re-reads
   known car ids, so a feed outage is not a blackout — the SDK-boundary e2e drives that path
-  exclusively — but it runs at :25 and :55. On that path both sides' edges get stamped in
+  exclusively — but car reads run every five minutes. On that path both sides' edges get stamped in
   the same refresh tick, so "coincidence" degrades to "same refresh", which is much weaker
   evidence. Treat links formed during a feed outage with suspicion.
 
   This is also why the probe observes **after** the snapshot commit rather than alongside
   the battery/solar producers: it resolves charger state from the committed snapshot, and
   observing pre-parse would pair a car transition read in one refresh against charger state
-  from the previous one — putting the two halves of a genuine session in different
-  refreshes and, at that cadence, outside the window entirely.
+  from the previous one, distorting the observed delay and potentially introducing
+  competing candidates that did not belong to that refresh.
 - **The first session after a restart contributes no connect edge.** A first observation is
   not a plug event; treating it as one would hand out a vote on every boot. Its disconnect
   edge still counts. The persisted-session resume above is what recovers the ASSOCIATION across
@@ -333,7 +363,7 @@ across restarts, so boot is exactly when stale ones appear and the cheapest mome
 them.
 
 The producer's in-memory observation map is deliberately **not** capped: it holds one small
-entry per class `car` device present in the home, which is a fixed, user-controlled number
+entry per `car` or `vehicle` device present in the home, which is a fixed, user-controlled number
 rather than something that grows over time. Capping it would silently make a legitimate car
 invisible, which is worse than the handful of bytes it costs.
 

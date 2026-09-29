@@ -31,6 +31,7 @@
  * routine `null` values are none of this contract's business.
  */
 import type { HomeyDeviceLike } from '../../utils/types';
+import { isEvCarDeviceClass } from '../evCarDeviceClass';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
 import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, isEaseeChargerDevice } from '../nativeSteppedLoadWiring';
@@ -60,7 +61,7 @@ const DEVICE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = 
 };
 
 /**
- * A class `car` never survives parse: PELS's whole model of a car is what the
+ * Classes `car` and `vehicle` never survive parse: PELS's whole model of a car is what the
  * EV car-link probe reads from it (`evCarLinkObservation.ts`). The rest of a
  * car's capabilities are none of PELS's business — a Polestar that has never
  * reported its interior `measure_temperature` must not cost the charger the
@@ -110,10 +111,6 @@ const EASEE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = {
     [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: 'number',
 };
 
-const isCar = (device: HomeyDeviceLike): boolean => (
-    typeof device.class === 'string' && device.class.trim().toLowerCase() === 'car'
-);
-
 const NO_MODEL_CAPABILITIES: Readonly<Record<string, ModelValueType>> = {};
 
 /**
@@ -125,7 +122,7 @@ function resolveModelCapabilityTypes(
     device: HomeyDeviceLike,
     capabilities: readonly string[],
 ): Readonly<Record<string, ModelValueType>> {
-    if (isCar(device)) return CAR_MODEL_CAPABILITY_TYPES;
+    if (isEvCarDeviceClass(device)) return CAR_MODEL_CAPABILITY_TYPES;
     const classKey = resolveDeviceClassKey(device);
     if (classKey === null) return NO_MODEL_CAPABILITIES;
     const withTemperatureFacet = readsTemperatureFacet(capabilities);

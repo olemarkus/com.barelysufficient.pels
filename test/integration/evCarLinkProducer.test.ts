@@ -129,6 +129,7 @@ const seedDisconnected = (harness: Harness, atMs: number): void => {
  * the snapshot refresh ticks every ~10 s.
  */
 const SETTLE_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 1_000;
+const SESSION_GAP_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 4;
 
 /** Plug the car in at `atMs` and advance past the settle window. */
 const plugIn = (harness: Harness, atMs: number, socPct = 40): void => {
@@ -138,6 +139,133 @@ const plugIn = (harness: Harness, atMs: number, socPct = 40): void => {
 };
 
 describe('linking a car to a charger', () => {
+  it('waits for a 15-minute car report and both competition windows before linking', () => {
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in_charging' });
+    h.tick(1_000);
+    const carAt = 1_000 + 15 * 60_000;
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', carAt);
+    h.tick(carAt + EV_CAR_LINK_COINCIDENCE_WINDOW_MS - 1);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    h.tick(carAt + EV_CAR_LINK_COINCIDENCE_WINDOW_MS);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(1);
+  });
+
+  it('does not swap two cars between chargers when their delayed reports arrive in reverse order', () => {
+    h.chargers = [charger(), charger({ id: 'charger-2' })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(1_000);
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(60_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 10 * 60_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 15 * 60_000);
+    h.tick(15 * 60_000 + SETTLE_MS);
+    expect(h.of('ev_car_link_ambiguous')).toHaveLength(2);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.of('ev_car_link_candidate')).toEqual([]);
+    expect(h.adopted).toEqual([]);
+  });
+
+  it('keeps both chargers ambiguous after earlier competing edges expire', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.chargers = [charger(), charger({ id: 'charger-2' })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', W);
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(W + 1_000);
+    h.tick(2 * W + 2_000);
+    expect(h.of('ev_car_link_ambiguous')).toHaveLength(2);
+    h.tick(3 * W + 2_000);
+    h.tick(3 * W + 3_000);
+    expect(h.of('ev_car_link_candidate')).toEqual([]);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.adopted).toEqual([]);
+  });
+
+  it('does not use affinity after all car candidates of an ambiguous charger expire', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
+      cars: {},
+    };
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 2_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(W);
+    h.tick(2 * W);
+    h.tick(3 * W + 3_000);
+    h.tick(3 * W + 4_000);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.of('ev_car_link_candidate')).toEqual([]);
+  });
+
+
+  it('retains ambiguity when car-edge churn evicts the competing car from the bounded ring', () => {
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 2_000);
+    for (let index = 0; index < 12; index += 1) {
+      h.cap('car-2', 'ev_charging_state', 'plugged_out', 3_000 + index * 2_000);
+      h.cap('car-2', 'ev_charging_state', 'plugged_in', 4_000 + index * 2_000);
+    }
+    h.tick(30_000 + SETTLE_MS);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.of('ev_car_link_candidate')).toEqual([]);
+    expect(h.of('ev_car_link_ambiguous')).toHaveLength(1);
+  });
+
+
+  it('keeps an unsettled bouncing session ambiguous after its first rival expires', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 1_001);
+    // Each resting edge is replaced before it settles. Rival car-2 eventually
+    // expires, but that is lost evidence, not proof that car-1 owned the burst.
+    for (let index = 1; index <= 7; index += 1) {
+      const atMs = 1_000 + index * W / 2;
+      h.cap('car-1', 'ev_charging_state', 'plugged_out', atMs);
+      h.cap('car-1', 'ev_charging_state', 'plugged_in', atMs + 1);
+      h.setCharger({ evChargingState: 'plugged_out' });
+      h.tick(atMs + 2);
+      h.setCharger({ evChargingState: 'plugged_in' });
+      h.tick(atMs + 3);
+    }
+    h.tick(1_003 + 7 * W / 2 + SETTLE_MS);
+    expect(h.of('ev_car_link_candidate').filter((event) => (
+      event.event === 'ev_car_link_candidate' && event.kind === 'connect'
+    ))).toEqual([]);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.adopted).toEqual([]);
+  });
+
+  it('does not open a replacement charger session from an older settled connect', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(2_000);
+    // The car misses its unplug report; the charger now serves another car.
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(W + 2_000);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.adopted).toEqual([]);
+  });
+
   it('links on a coincident plug-in and votes for the pair', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000);
@@ -246,14 +374,14 @@ describe('linking a car to a charger', () => {
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true }, 'charger-A');
     h.tick(1_000);
     // Car edge lands just inside A's window, so A alone looks coincident.
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 40 }), 90_000);
-    h.tick(91_500);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 40 }), EV_CAR_LINK_COINCIDENCE_WINDOW_MS);
+    h.tick(EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 1_500);
     expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-A')).toBe(0);
 
     // B connects while the car edge could still be contested.
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true }, 'charger-B');
-    h.tick(95_000);
-    h.tick(90_000 + EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 5_000);
+    h.tick(EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 5_000);
+    h.tick(2 * EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 5_000);
 
     expect(h.of('ev_car_link_ambiguous').length).toBeGreaterThan(0);
     expect(h.of('ev_car_link_resolved')).toHaveLength(0);
@@ -281,7 +409,7 @@ describe('linking a car to a charger', () => {
 
     // The first connect edge has settled and the car edge's window has closed,
     // but the burst's latest edge has not: nothing may be decided yet.
-    h.tick(120_000);
+    h.tick(EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 30_000);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
     expect(h.of('ev_car_link_ambiguous')).toEqual([]);
 
@@ -403,6 +531,28 @@ describe('linking a car to a charger', () => {
     const resolved = h.of('ev_car_link_resolved');
     expect(resolved).toHaveLength(1);
     expect(resolved[0]).toMatchObject({ carId: 'car-1', source: 'affinity_prior' });
+  });
+
+
+  it('recovers a cold-start charger from affinity when its initially unavailable car recovers', () => {
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
+      cars: {},
+    };
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }), 1_000);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.snapshot.sessions).toBeUndefined();
+
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42, available: true }), 60_000);
+
+    expect(h.of('ev_car_link_resolved')).toEqual([expect.objectContaining({
+      carId: 'car-1', chargerId: 'charger-1', source: 'affinity_prior',
+    })]);
+    expect(h.of('ev_car_link_candidate')).toEqual([]);
+    expect(h.snapshot.sessions?.['charger-1']).toEqual({ carId: 'car-1', sinceMs: 1_000 });
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', socPct: 42 });
   });
 
   it('does not resurrect a session whose charger has already unplugged', () => {
@@ -554,14 +704,14 @@ describe('self-stop detection', () => {
     plugIn(h, 10_000, 55);
     // Unplug, then start a fresh session whose car updates carry no charge at all.
     h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
-    h.car(carDevice({ state: 'plugged_out' }), 200_000);
-    h.tick(200_000);
+    h.car(carDevice({ state: 'plugged_out' }), SETTLE_MS + 200_000);
+    h.tick(SETTLE_MS + 200_000);
     // This session's car updates carry NO charge at all, so the only percentage
     // on hand is the one last seen in the previous session.
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
-    h.car(carDevice({ state: 'plugged_in_charging' }), 300_000);
-    h.tick(300_000 + SETTLE_MS);
-    const linkedAt = 300_000 + SETTLE_MS;
+    h.car(carDevice({ state: 'plugged_in_charging' }), SETTLE_MS + 300_000);
+    h.tick(SETTLE_MS + 300_000 + SETTLE_MS);
+    const linkedAt = SETTLE_MS + 300_000 + SETTLE_MS;
 
     h.setCharger({ measuredPowerW: 0 });
     h.car(carDevice({ state: 'plugged_in' }), linkedAt + 10_000);
@@ -583,7 +733,7 @@ describe('self-stop detection', () => {
       h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
     };
     runSession(0, 80);
-    runSession(1_000_000, 79.8);
+    runSession(SESSION_GAP_MS, 79.8);
 
     const stops = h.of('ev_car_self_stopped');
     expect(stops).toHaveLength(2);
@@ -714,24 +864,24 @@ describe('self-stop evidence is the car\'s own', () => {
     };
     runSession(0, 70);
     expect(h.selfStops()[0]?.chargeLimitPct).toBeUndefined();
-    runSession(1_000_000, 70);
+    runSession(SESSION_GAP_MS, 70);
     expect(h.selfStops()[1]).toMatchObject({ chargeLimitPct: 70 });
 
     // A car that arrives above its home limit (fast-charged on a trip) proves
     // nothing about where it stops here.
     h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
-    h.car(carDevice({ state: 'plugged_out', socPct: 85 }), 1_500_000);
-    h.tick(1_500_000);
-    plugIn(h, 1_510_000, 85);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 86 }), 1_510_000 + SETTLE_MS + 60_000);
+    h.car(carDevice({ state: 'plugged_out', socPct: 85 }), SESSION_GAP_MS * 2);
+    h.tick(SESSION_GAP_MS * 2);
+    plugIn(h, SESSION_GAP_MS * 2 + 10_000, 85);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 86 }), SESSION_GAP_MS * 2 + 10_000 + SETTLE_MS + 60_000);
     expect(h.of('ev_car_observed_limit_disproven')).toEqual([]);
 
     // The owner raises the limit: the car charges on past 70 % in a session.
     h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0 });
-    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 2_000_000);
-    h.tick(2_000_000);
-    plugIn(h, 2_010_000, 69);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 72 }), 2_010_000 + SETTLE_MS + 60_000);
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), SESSION_GAP_MS * 3);
+    h.tick(SESSION_GAP_MS * 3);
+    plugIn(h, SESSION_GAP_MS * 3 + 10_000, 69);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 72 }), SESSION_GAP_MS * 3 + 10_000 + SETTLE_MS + 60_000);
 
     expect(h.of('ev_car_observed_limit_disproven')).toEqual([expect.objectContaining({
       carId: 'car-1', chargeLimitPct: 70, socPct: 72,
@@ -954,9 +1104,9 @@ describe('observation ordering and membership', () => {
     const sessions = h.snapshot.sessions;
     expect(sessions).toHaveProperty('charger-1');
 
-    h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: true, nowMs: 200_000 });
+    h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: true, nowMs: SETTLE_MS + 200_000 });
     for (let read = 1; read <= 5; read += 1) {
-      h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: false, nowMs: 200_000 + read });
+      h.producer.observe({ devices: [], ignoredIds: new Set(['car-1']) }, { fullRefresh: false, nowMs: SETTLE_MS + 200_000 + read });
     }
 
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
@@ -988,7 +1138,7 @@ describe('charge-limit evidence', () => {
     // holds would clear the two-sample threshold and publish a confident
     // `observedLimitPct` that is not a limit at all.
     stopAt(43, 'plugged_in_paused', 0);
-    stopAt(67, 'plugged_in_paused', 1_000_000);
+    stopAt(67, 'plugged_in_paused', SESSION_GAP_MS);
 
     const stops = h.selfStops();
     expect(stops).toHaveLength(2);
@@ -999,7 +1149,7 @@ describe('charge-limit evidence', () => {
 
   it('still builds the limit from genuine not-charging stops', () => {
     stopAt(80, 'plugged_in', 0);
-    stopAt(79.8, 'plugged_in', 1_000_000);
+    stopAt(79.8, 'plugged_in', SESSION_GAP_MS);
     const stops = h.selfStops();
     expect(stops[1]).toMatchObject({ observedLimitPct: 79.9, observedLimitSamples: 2 });
   });
@@ -1055,13 +1205,13 @@ describe('session lifecycle', () => {
     plugIn(h, 10_000, 55);
     expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
 
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), SETTLE_MS + 200_000);
 
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
     expect(h.ended).toEqual(['charger-1']);
     expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
 
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), 210_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), SETTLE_MS + 210_000);
 
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({
       carId: 'car-1', socPct: 56,
@@ -1072,9 +1222,9 @@ describe('session lifecycle', () => {
   it('clears a suspended session when the recovered car reports disconnected', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), SETTLE_MS + 200_000);
 
-    h.car(carDevice({ state: 'plugged_out', socPct: 55, available: true }), 210_000);
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, available: true }), SETTLE_MS + 210_000);
 
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
@@ -1084,12 +1234,12 @@ describe('session lifecycle', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000, 55);
     h.setCharger({ measuredPowerW: 0 });
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), SETTLE_MS + 200_000);
 
     const shadows = h.of('ev_car_link_soc_shadow').length;
-    h.cap('car-1', 'measure_battery', 80, 210_000);
-    h.cap('car-1', 'ev_charging_state', 'plugged_in', 220_000);
-    h.tick(220_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+    h.cap('car-1', 'measure_battery', 80, SETTLE_MS + 210_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', SETTLE_MS + 220_000);
+    h.tick(SETTLE_MS + 220_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
 
     expect(h.of('ev_car_link_soc_shadow')).toHaveLength(shadows);
     expect(h.of('ev_car_self_stopped')).toHaveLength(0);
@@ -1099,13 +1249,13 @@ describe('session lifecycle', () => {
   it('does not resume across a charger disconnect observed while the car is unavailable', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000, 55);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), 200_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), SETTLE_MS + 200_000);
 
     h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
-    h.cap('charger-1', 'evcharger_charging_state', 'plugged_out', 210_000);
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_out', SETTLE_MS + 210_000);
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
-    h.cap('charger-1', 'evcharger_charging_state', 'plugged_in_charging', 220_000);
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), 230_000);
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_in_charging', SETTLE_MS + 220_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56, available: true }), SETTLE_MS + 230_000);
 
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
@@ -1217,13 +1367,13 @@ describe('round-seven findings', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000, 55);
     h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
-    h.car(carDevice({ state: 'plugged_out' }), 200_000);
-    h.tick(200_000);
+    h.car(carDevice({ state: 'plugged_out' }), SETTLE_MS + 200_000);
+    h.tick(SETTLE_MS + 200_000);
 
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
-    h.car(carDevice({ state: 'plugged_in_charging' }), 300_000);
-    h.tick(300_000 + SETTLE_MS);
-    const linkedAt = 300_000 + SETTLE_MS;
+    h.car(carDevice({ state: 'plugged_in_charging' }), SETTLE_MS + 300_000);
+    h.tick(SETTLE_MS + 300_000 + SETTLE_MS);
+    const linkedAt = SETTLE_MS + 300_000 + SETTLE_MS;
 
     h.setCharger({ measuredPowerW: 0 });
     h.car(carDevice({ state: 'plugged_in' }), linkedAt + 10_000);
@@ -1279,14 +1429,14 @@ describe('round-seven findings', () => {
     plugIn(h, 10_000);
     h.producer.observe(conformingRead([
       carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
-    ]), { fullRefresh: false, nowMs: 200_000 });
+    ]), { fullRefresh: false, nowMs: SETTLE_MS + 200_000 });
     expect(h.snapshot.sessions?.['charger-1']).toMatchObject({ carId: 'car-1' });
 
-    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 201_000 });
-    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 202_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: SETTLE_MS + 201_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: SETTLE_MS + 202_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 203_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: SETTLE_MS + 203_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
   });

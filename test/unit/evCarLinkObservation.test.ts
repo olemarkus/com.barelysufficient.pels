@@ -45,4 +45,19 @@ describe('resolveCarAssociationCandidates', () => {
       { id: 'heater', name: 'Tank', class: 'heater', capabilities: ['ev_charging_state', 'measure_battery'] },
     ])).toEqual([{ id: 'car-1', name: 'Polestar' }]);
   });
+
+  it('offers Hyundai-shaped vehicles only with both standard EV capabilities', () => {
+    const vehicle = { ...car(true), class: 'vehicle', name: 'Ioniq 5' };
+    expect(resolveCarAssociationCandidates([
+      { ...vehicle, capabilities: ['ev_charging_state', 'measure_battery'] },
+      { ...vehicle, id: 'no-plug-state', capabilities: ['measure_battery'] },
+      { ...vehicle, id: 'no-battery', capabilities: ['ev_charging_state'] },
+      { ...vehicle, id: '', capabilities: ['ev_charging_state', 'measure_battery'] },
+      { ...vehicle, id: 'legacy', class: 'sensor', capabilities: ['charger', 'charging', 'measure_battery.EV'] },
+    ])).toEqual([{ id: 'car-1', name: 'Ioniq 5' }]);
+    expect(readCarDevice(vehicle, 1_000)).toMatchObject({
+      kind: 'observed',
+      reading: { deviceId: 'car-1', state: 'plugged_in_charging', socPct: 64 },
+    });
+  });
 });

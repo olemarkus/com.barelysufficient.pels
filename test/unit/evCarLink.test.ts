@@ -3,7 +3,7 @@ import {
   EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
   EV_CAR_LINK_MAX_EDGES_PER_SIDE,
   EV_CAR_LINK_PELS_STOP_LOOKBACK_MS,
-  appendEvLinkEdge,
+  appendEvLinkHistory,
   classifyEvCarSelfStop,
   isChargingElsewhere,
   matchCoincidentEdges,
@@ -48,11 +48,45 @@ describe('resolveEvLinkEdge', () => {
 });
 
 describe('edge ring', () => {
+  it('propagates burst rejection to a new charger edge before evicting its rejected predecessor', () => {
+    const older: EvLinkEdge = { ...edge('charger', 'connect', 0), ambiguous: true };
+    const history = {
+      carEdges: [edge('car', 'connect', 0)],
+      chargerEdges: [older, ...Array.from({ length: EV_CAR_LINK_MAX_EDGES_PER_SIDE - 1 }, (_unused, index) => (
+        edge(`other-${index}`, 'disconnect', index + 1)
+      ))],
+    };
+    const next = appendEvLinkHistory(history, 'chargerEdges', edge('charger', 'connect', 100));
+    expect(next.chargerEdges).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
+    expect(next.chargerEdges).not.toContain(older);
+    expect(next.chargerEdges[next.chargerEdges.length - 1]).toEqual({ ...edge('charger', 'connect', 100), ambiguous: true });
+  });
+
+  it('remembers contention before the car ring evicts one of two candidates', () => {
+    const history = {
+      carEdges: [
+        edge('carA', 'connect', 0),
+        ...Array.from({ length: EV_CAR_LINK_MAX_EDGES_PER_SIDE - 2 }, (_unused, index) => (
+          edge(`other-${index}`, 'disconnect', index + 1)
+        )),
+        edge('carB', 'connect', 100),
+      ],
+      chargerEdges: [edge('charger', 'connect', 0)],
+    };
+    const next = appendEvLinkHistory(history, 'carEdges', edge('carB', 'disconnect', 200));
+    expect(next.carEdges).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
+    expect(next.carEdges.some((entry) => entry.deviceId === 'carA')).toBe(false);
+    expect(next.chargerEdges).toEqual([{ ...edge('charger', 'connect', 0), ambiguous: true }]);
+    expect(history.chargerEdges[0].ambiguous).toBeUndefined();
+  });
+
   it('drops the oldest edge past the cap', () => {
     const filled = Array.from({ length: EV_CAR_LINK_MAX_EDGES_PER_SIDE }, (_unused, index) => (
       edge('car', 'connect', index)
     ));
-    const next = appendEvLinkEdge(filled, edge('car', 'connect', 999));
+    const next = appendEvLinkHistory(
+      { carEdges: filled, chargerEdges: [] }, 'carEdges', edge('car', 'connect', 999),
+    ).carEdges;
     expect(next).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
     expect(next[0].atMs).toBe(1);
     expect(next[next.length - 1].atMs).toBe(999);
@@ -65,6 +99,45 @@ describe('edge ring', () => {
 });
 
 describe('matchCoincidentEdges', () => {
+  it('remembers ambiguous unsettled edges without publishing an early decision', () => {
+    const chargers = [edge('chargerA', 'connect', 0), edge('chargerB', 'connect', 1_000)];
+    const result = matchCoincidentEdges({
+      nowMs: 2_000,
+      carEdges: [edge('car', 'connect', 0)],
+      chargerEdges: chargers,
+    });
+    expect(result.coincidences).toEqual([]);
+    expect(result.ambiguities).toEqual([]);
+    expect(result.ambiguousChargerEdges).toEqual(chargers);
+  });
+
+  it('carries an earlier rejected burst member into an unsettled replacement edge', () => {
+    const chargers: EvLinkEdge[] = [
+      { ...edge('charger', 'connect', 0), ambiguous: true },
+      edge('charger', 'connect', 20_000),
+    ];
+    const result = matchCoincidentEdges({
+      nowMs: 20_000,
+      carEdges: [edge('car', 'connect', 10_000)],
+      chargerEdges: chargers,
+    });
+    expect(result.ambiguousChargerEdges).toEqual(chargers);
+    expect(result.coincidences).toEqual([]);
+  });
+
+  it('does not offer a rejected edge to coincidence or prior after rivals disappear', () => {
+    const rejected: EvLinkEdge = { ...edge('charger', 'connect', 0), ambiguous: true };
+    for (const carEdges of [[], [edge('car', 'connect', 0)]]) {
+      const result = matchCoincidentEdges({
+        nowMs: EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+        carEdges,
+        chargerEdges: [rejected],
+      });
+      expect(result.coincidences).toEqual([]);
+      expect(result.unmatchedChargerEdges).toEqual([]);
+    }
+  });
+
   it('pairs one car with one charger inside the window', () => {
     const result = matchCoincidentEdges({
       nowMs: 10_000_000,
@@ -253,20 +326,21 @@ describe('matchCoincidentEdges', () => {
   });
 
   it('chains a bounce that outlasts one window through shared car edges', () => {
-    // Edges at 0 and 150 s share no car edge directly; the one at 60 s links
+    // Edges 1.5 windows apart share no car edge directly; the middle edge links
     // them, so the whole run is one burst and only its latest edge decides.
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
     const result = matchCoincidentEdges({
       nowMs: 10_000_000,
-      carEdges: [edge('car', 'connect', 0), edge('car', 'connect', 150_000)],
+      carEdges: [edge('car', 'connect', 0), edge('car', 'connect', 1.5 * W)],
       chargerEdges: [
         edge('charger', 'connect', 0),
-        edge('charger', 'connect', 60_000),
-        edge('charger', 'connect', 150_000),
+        edge('charger', 'connect', 0.6 * W),
+        edge('charger', 'connect', 1.5 * W),
       ],
     });
     expect(result.ambiguities).toEqual([]);
     expect(result.coincidences).toEqual([
-      { carId: 'car', chargerId: 'charger', kind: 'connect', deltaMs: 0, atMs: 150_000 },
+      { carId: 'car', chargerId: 'charger', kind: 'connect', deltaMs: 0, atMs: 1.5 * W },
     ]);
   });
 

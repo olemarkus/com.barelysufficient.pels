@@ -102,6 +102,12 @@ Choose one of these battery-reporting paths for boost mode and Smart tasks:
 - **Charger reading:** leave the car selection empty. If the charger exposes a supported battery-percentage capability, PELS reads it directly.
 - **Flow reporting:** leave the car selection empty and report a battery-percentage tag from the car or charger app using the Flow below.
 
+You can select both cars if they share a charger. PELS compares their plug-in reports
+with the charger's report and uses the battery level only after it finds a match.
+A new match can take about **20–40 minutes**, allowing for delayed car updates. If
+several cars or chargers could match, PELS leaves the car unmatched. Selecting a car
+does not force a match, and updates delayed beyond 20 minutes may not match at all.
+
 While any car is selected, PELS ignores both the battery-reporting Flow and the charger's own reading, even before a match is available. They do not provide fallback readings. Clear the car selection to return to those sources.
 **Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed.
 
