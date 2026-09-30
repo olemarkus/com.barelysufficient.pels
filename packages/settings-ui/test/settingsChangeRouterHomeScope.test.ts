@@ -15,6 +15,7 @@ import {
   SETTINGS_UI_PRICES_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 import {
+  CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
@@ -113,6 +114,24 @@ describe('settings-change router sweeps home-scoped read models', () => {
     createHandler()(CAPACITY_LIMIT_KW);
     expect(await isCached(SETTINGS_UI_POWER_PATH, 'stale-power')).toBe(false);
     expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'stale-area-power')).toBe(false);
+  });
+
+  it.each([
+    ['set', createSettingsSetHandler],
+    ['unset', createSettingsUnsetHandler],
+  ] as const)('%s of Main simulation drops cached plan statuses', async (_event, createHandler) => {
+    createHandler()(CAPACITY_DRY_RUN);
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
+  });
+
+  it.each([
+    ['set', createSettingsSetHandler],
+    ['unset', createSettingsUnsetHandler],
+  ] as const)('%s of an unselected area simulation drops scoped plan statuses', async (_event, createHandler) => {
+    createHandler()(`${CAPACITY_DRY_RUN}:${AREA}`);
+    expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
   });
 
   it.each([

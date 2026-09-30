@@ -121,6 +121,10 @@ const CAPACITY_SETTINGS_KEYS = new Set([
 const refreshCapacitySettings = (key: string, context: 'settings.set' | 'settings.unset') => {
   if (!CAPACITY_SETTINGS_KEYS.has(key)) return;
   if (key === CAPACITY_LIMIT_KW) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+  if (key === CAPACITY_DRY_RUN) {
+    invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+    refreshOverviewPlanIfVisible(context);
+  }
   runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', context);
 };
 
@@ -256,14 +260,15 @@ const refreshHomeScopedReadModels = (key: string, context: string) => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
     return;
   }
+  if (!key.startsWith(`${CAPACITY_DRY_RUN}:`)) return;
+  // Card statuses belong to the producer. Drop cached area plans even when
+  // their area is hidden, then refetch the selected area's visible Overview.
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   const { selectedHomeId } = getHomeScope();
-  // The SELECTED area's own control-flag write (`capacity_dry_run:<id>`, the
-  // Limits toggle or a second WebView) repaints a visible Overview: its hero's
-  // simulation chip and hypothetical voice read that flag. The exact settings
-  // cache entry was already invalidated by the caller.
-  const isSelectedAreaSimulationKey = selectedHomeId !== MAIN_HOME_ID
-    && key === homeScopedSettingsKey(CAPACITY_DRY_RUN, selectedHomeId);
-  if (isSelectedAreaSimulationKey) refreshOverviewPlanIfVisible(context);
+  if (selectedHomeId !== MAIN_HOME_ID
+    && key === homeScopedSettingsKey(CAPACITY_DRY_RUN, selectedHomeId)) {
+    refreshOverviewPlanIfVisible(context);
+  }
 };
 
 // A home commits a plan by publishing its status, and the runtime announces

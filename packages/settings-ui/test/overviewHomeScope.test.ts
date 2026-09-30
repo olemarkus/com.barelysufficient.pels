@@ -913,23 +913,21 @@ describe('the selected area\'s tracker persist repaints a visible Overview', () 
   });
 });
 
-describe('the selected area\'s dry-run flag UNSET repaints a visible Overview', () => {
-  it('returns the hero to the simulating boot default, not the stale live-control voice', async () => {
+describe('the selected area\'s simulation setting refetches resolved status', () => {
+  it.each(['set', 'unset'] as const)('%s refreshes the hero and device reason from the producer', async (event) => {
     const areaPlanWithPendingShed = buildPlan({
       totalKw: 0.7, deviceId: 'dev_rental_heater', deviceName: 'Rental Heater', plannedState: 'shed',
     });
     const dryRunKey = `capacity_dry_run:${AREA}`;
     const settings: Record<string, unknown> = { [dryRunKey]: false };
-    await installClient({
-      api: {
-        '/ui_homes': ROSTER_PAYLOAD,
-        '/ui_prices': null,
-        '/settings_ui_log': { ok: true },
-        [SCOPED_PLAN_URI]: { plan: areaPlanWithPendingShed, homeScope: { state: 'resolved', homeId: AREA } },
-        [SCOPED_POWER_URI]: SERVED_AREA_POWER,
-      },
-      settings,
-    });
+    const api = {
+      '/ui_homes': ROSTER_PAYLOAD,
+      '/ui_prices': null,
+      '/settings_ui_log': { ok: true },
+      [SCOPED_PLAN_URI]: { plan: areaPlanWithPendingShed, homeScope: { state: 'resolved', homeId: AREA } },
+      [SCOPED_POWER_URI]: SERVED_AREA_POWER,
+    };
+    const { calledUris } = await installClient({ api, settings });
     const { state } = await import('../src/ui/state.ts');
     state.dryRun = false;
     await selectArea();
@@ -937,14 +935,29 @@ describe('the selected area\'s dry-run flag UNSET repaints a visible Overview', 
     await refreshPlan();
     expect(surfaceText()).not.toContain('Simulation mode');
 
-    // The flag is DELETED (area cleanup, a second WebView, the API): the
-    // runtime reads absence as its simulate-until-enabled boot default, and
-    // the `settings.unset` event is the only signal an open WebView gets.
-    delete settings[dryRunKey];
-    const { createSettingsUnsetHandler } = await import('../src/ui/settingsChangeRouter.ts');
-    createSettingsUnsetHandler()(dryRunKey);
+    // A second WebView enables simulation or clears the flag back to the
+    // runtime's simulate-until-enabled default. Only the settings event
+    // announces the change; there is no plan push in this test.
+    if (event === 'unset') delete settings[dryRunKey];
+    else settings[dryRunKey] = true;
+    const reasonText = 'Would limit for capacity (simulation)';
+    const freshDevice = areaPlanWithPendingShed.devices[0];
+    api[SCOPED_PLAN_URI] = {
+      plan: {
+        ...areaPlanWithPendingShed,
+        devices: [{ ...freshDevice, status: {
+          ...freshDevice.status, reason: { text: reasonText },
+        } }],
+      },
+      homeScope: { state: 'resolved', homeId: AREA },
+    };
+    const priorReads = calledUris.filter((uri) => uri === `GET ${SCOPED_PLAN_URI}`).length;
+    const { createSettingsSetHandler, createSettingsUnsetHandler } = await import('../src/ui/settingsChangeRouter.ts');
+    (event === 'unset' ? createSettingsUnsetHandler() : createSettingsSetHandler())(dryRunKey);
     await flushAsync();
 
     expect(surfaceText()).toContain('Simulation mode');
+    expect(surfaceText()).toContain(reasonText);
+    expect(calledUris.filter((uri) => uri === `GET ${SCOPED_PLAN_URI}`)).toHaveLength(priorReads + 1);
   });
 });

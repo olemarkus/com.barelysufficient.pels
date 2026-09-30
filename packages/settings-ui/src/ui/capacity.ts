@@ -564,11 +564,8 @@ export const loadCapacitySettings = async () => {
   // re-render it against the source and meter selection just painted. No-op
   // until the first power read has handed the banner a timestamp.
   refreshStaleDataBanner();
-  // An external simulation-mode change (e.g. a second open WebView, or a Flow)
-  // reaches here via the realtime settings.set handler. Re-render the overview
-  // so the hero decision sentence and device-card "(simulation)" framing flip
-  // with the banner, not on the next plan/power push. (Safe no-op before the
-  // plan surface renderer is registered — e.g. the first boot load.)
+  // Refresh house-level framing from the newly loaded posture. The settings
+  // event router separately refetches producer-owned device statuses.
   if (dryRunChanged) refreshPlanSurface();
 };
 
@@ -617,10 +614,8 @@ const saveCapacitySettingsCommand = async (
   }
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
-  // Toggling simulation flips the hero decision sentence and the device-card
-  // "(simulation)" hypothetical framing. Re-render the overview now so they flip
-  // together with the banner instead of staying stale until the next realtime
-  // push (~10s on homey_energy, longer on flow).
+  // Refresh house-level framing after the save. The settings event router
+  // invalidates and refetches producer-owned device statuses.
   if (dryRunChanged) refreshPlanSurface();
   await showToast(successMessage, 'ok');
 };
