@@ -85,6 +85,7 @@ const createMembershipPort = (options: {
   isOwnershipReady: () => options.ownershipReady ?? true,
   hasPendingOwnershipGeneration: () => options.pendingGeneration ?? false,
   isMainHomeActuationFenced: () => false,
+  readMainHomeActuationFence: () => false,
   noteResolvedHomeMeter: () => undefined,
   noteAdmittedFlowHomeSample: () => undefined,
   recompute: () => undefined,

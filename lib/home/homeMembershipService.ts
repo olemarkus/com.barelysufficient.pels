@@ -505,6 +505,12 @@ export class HomeMembershipService implements HomeMembershipPort {
    * same sample would then drive two controllers over disjoint device sets.
    * Both reasons close the same final write seam (plan + terminal smart task).
    */
+  /** Fail-closed Main posture for read surfaces; never schedules authority recovery. */
+  readMainHomeActuationFence(): boolean {
+    return this.hasPendingOwnershipGeneration() || !this.isOwnershipReady()
+      || this.meterAuthority.readActuationFence(this.authorityContext());
+  }
+
   isMainHomeActuationFenced(): boolean {
     if (this.hasPendingOwnershipGeneration()) return true;
     if (!this.isOwnershipReady()) return true;

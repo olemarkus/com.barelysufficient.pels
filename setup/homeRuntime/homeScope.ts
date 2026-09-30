@@ -201,7 +201,8 @@ export function buildMainHomeScope(
   isHomeWideFenced: () => boolean,
 ): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
-  const readCapacityDryRun = (): boolean => ctx.capacityDryRun || isHomeWideFenced();
+  const readCapacityDryRun = (): boolean => ctx.capacityDryRun || isTornDown()
+    || ctx.homeMembership?.readMainHomeActuationFence() === true;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
@@ -266,7 +267,7 @@ export function buildMainHomeScope(
     // actuate. Nothing new is blocked: every one of these already answered
     // `requested: false` at the write seam. The block just moves to where the
     // executor can see it, which is also where the status can report it.
-    getCapacityDryRun: readCapacityDryRun,
+    getCapacityDryRun: () => ctx.capacityDryRun || isHomeWideFenced(),
     readCapacityDryRun,
     getPowerTracker: () => ctx.powerTracker,
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,

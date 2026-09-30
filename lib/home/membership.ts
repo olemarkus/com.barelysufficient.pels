@@ -100,6 +100,8 @@ export type HomeMembershipPort = {
    * membership provenance or reconstruct zone-tree readiness themselves.
    */
   isMainHomeActuationFenced(): boolean;
+  /** Read-only posture: no authority recovery, logging, or control-state mutation. */
+  readMainHomeActuationFence(): boolean;
   /**
    * Which meter the whole-home sample the power tracker just ADMITTED came
    * from, stamped with that sample's own ingest timestamp. Called by the

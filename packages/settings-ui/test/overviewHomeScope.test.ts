@@ -9,6 +9,7 @@ import type { SettingsUiHomesPayload } from '../../contracts/src/settingsUiHomes
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 import type { SettingsUiDeviceView } from '../src/ui/state.ts';
 import { buildPlanMeta } from './helpers/planMetaFixture.ts';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Overview (multi-home 6b): the scope-following plan reader and the
@@ -54,7 +55,7 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
     usedKWh: 0.2,
     hourBudgetKWh: 3,
     minutesRemaining: 30}),
-  devices: [{
+  devices: [uiDeviceFixture({
     id: params.deviceId,
     name: params.deviceName,
     currentState: 'on',
@@ -66,14 +67,14 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
     reason: params.plannedState === 'shed'
       ? { code: 'capacity' }
       : { code: 'keep', detail: null },
-  }],
+  })],
 });
 
 const MAIN_PLAN = buildPlan({ totalKw: 5.2, deviceId: 'dev_main_heater', deviceName: 'Main Heater' });
 const AREA_PLAN = buildPlan({ totalKw: 0.7, deviceId: 'dev_rental_heater', deviceName: 'Rental Heater' });
 
 // A partial payload the plan shape guard rejects: the device entry carries no
-// name and no structured reason. A truncated/older producer answer looks like
+// name and no resolved status. A truncated/older producer answer looks like
 // this — the scope envelope is perfectly fine, the plan inside is not.
 const MALFORMED_PLAN = {
   meta: { ...AREA_PLAN.meta },
