@@ -17,8 +17,8 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * restore-from-off deadlock.
  *
  * This spec drives the REAL pipeline around that loop: the real
- * `AppDeviceControlHelpers` (pending desired-step runtime state + snapshot
- * decoration — where the bug lives), the real snapshot parser
+ * `SteppedDeviceControl` command lifecycle and owner-resolved snapshot
+ * composition, the real snapshot parser
  * (`parseDevice`), and the real executor pipeline (PlanExecutor →
  * executable-plan projection → steppedLoadExecutor → binary dispatch). The
  * ONLY mocks are the Homey SDK seams: the mock device/deviceManager and the
@@ -37,7 +37,6 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { snapshotById } from '../helpers/snapshotById';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
@@ -47,7 +46,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import { createDeviceControlHelpersForTest } from '../helpers/deviceControlHelpers';
 import {
   parseDevice,
   isDevicePowerCapable,
@@ -61,7 +60,6 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import type {
   DecoratedDeviceSnapshot,
-  DeviceControlProfiles,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -79,7 +77,6 @@ const EV_PROFILE: SteppedLoadProfile = {
     { id: '8a', planningPowerW: 1840 },
   ],
 };
-const PROFILES: DeviceControlProfiles = { [DEVICE_ID]: EV_PROFILE };
 
 const createLogger = (): Logger => ({
   log: vi.fn(),
@@ -89,11 +86,12 @@ const createLogger = (): Logger => ({
 }) as unknown as Logger;
 
 // ── REAL parseDevice deps (only the Homey device is a mock) ──────────────────
-const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
+const buildParseDeps = (logger: Logger, profile: SteppedLoadProfile): DeviceTransportParseDeps => ({
   logger,
   providers: {
     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     getNativeEvWiringEnabled: () => true,
+    getDeviceControlProfile: () => profile,
   },
   powerState: {
     expectedPowerKwOverrides: {},
@@ -144,11 +142,11 @@ const parseEaseeSnapshot = (params: {
   nowMs: number;
   logger: Logger;
   charging?: boolean;
-}): TransportDeviceSnapshot => {
+}, profile: SteppedLoadProfile): TransportDeviceSnapshot => {
   const parsed = parseDevice({
     device: buildEaseeDevice(params.freshIso, params.charging),
     now: params.nowMs,
-    deps: buildParseDeps(params.logger),
+    deps: buildParseDeps(params.logger, profile),
   });
   if (!parsed) throw new Error('parseDevice returned null for the Easee mock device');
   return parsed;
@@ -220,19 +218,14 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
 // ── Executor harness with the REAL control helper in the loop ────────────────
 const buildHarness = (
   initialSnapshot: TransportDeviceSnapshot,
-  profiles: DeviceControlProfiles = PROFILES,
 ) => {
   const snapshotHolder: { current: TransportDeviceSnapshot } = { current: initialSnapshot };
   const structuredLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const stores = steppedStoresForTest();
-  const helpers = new AppDeviceControlHelpers({
-    ...stores,
-    getProfiles: () => profiles,
-    getDeviceSnapshot: snapshotById(() => [snapshotHolder.current]),
-    getLatestPlanSnapshot: () => null,
-    getStructuredLogger: () => structuredLogger as never,
-    debugStructured: vi.fn(),
-  });
+  const helpers = createDeviceControlHelpersForTest(
+    () => [snapshotHolder.current], stores, () => undefined, () => false,
+    () => {}, () => null, { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+  );
 
   // Decoration only PROJECTS; the command lifecycle advances on the settle
   // pass, which production runs each plan-service cycle off a projection. This
@@ -241,7 +234,6 @@ const buildHarness = (
     const [projection] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
     syncSteppedCommands({
       store: stores.store,
-      reportedStore: stores.reportedStore,
       devices: buildSteppedSettleSnapshot([projection]),
     });
     const [decorated] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
@@ -350,7 +342,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       nowMs: cycle1Ms,
       logger,
       charging: true,
-    });
+    }, EV_PROFILE);
     expect(snapshot.binaryControl?.on).toBe(true);
     expect(snapshot.reportedStepId).toBeUndefined();
 
@@ -407,7 +399,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       nowMs: offMs,
       logger,
       charging: false,
-    }));
+    }, EV_PROFILE));
     vi.setSystemTime(offMs);
     expect(decorate()).toMatchObject({
       reportedStepId: undefined,
@@ -420,7 +412,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       nowMs: turnedOnAgainMs,
       logger,
       charging: true,
-    }));
+    }, EV_PROFILE));
     vi.setSystemTime(turnedOnAgainMs);
     await executor.applyPlanActions(buildRunningTo8aPlan(decorate()));
 
@@ -440,7 +432,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     vi.useFakeTimers();
     vi.setSystemTime(cycle1Ms);
 
-    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
+    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger }, EV_PROFILE);
 
     // Pin the prod-observed parsed state: trusted-off binary via
     // evcharger_charging, no native stepped wiring, flow-backed profile only.
@@ -516,7 +508,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     vi.useFakeTimers();
     vi.setSystemTime(cycle1Ms);
 
-    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
+    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger }, EV_PROFILE);
     const {
       executor, deviceManager, helpers, decorate, desiredSteppedTrigger,
     } = buildHarness(snapshot);
@@ -554,10 +546,10 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       ...EV_PROFILE,
       steps: [...EV_PROFILE.steps, { id: '32a', planningPowerW: 7360 }],
     };
-    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger });
+    const snapshot = parseEaseeSnapshot({ freshIso: cycle1Iso, nowMs: cycle1Ms, logger }, resetProfile);
     const {
       executor, deviceManager, helpers, decorate, desiredSteppedTrigger,
-    } = buildHarness(snapshot, { [DEVICE_ID]: resetProfile });
+    } = buildHarness(snapshot);
 
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
     await executor.applyPlanActions(buildRestoreTo6aPlan(decorate(), resetProfile));

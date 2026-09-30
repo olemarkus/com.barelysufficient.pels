@@ -1,3 +1,6 @@
+import { isNativeSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isEvTargetPowerConfig, resolveEvTargetPowerExactStep } from '../targetPowerReachability';
+import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 /** Keep an exact step cluster atomic when a bundled observation is older. */
@@ -7,6 +10,8 @@ export function preserveNewerReportedStepObservation(
     snapshot: TransportDeviceSnapshot,
 ): void {
     const next = snapshot;
+    if (isNativeSteppedLoadControlEnabled(previous) !== isNativeSteppedLoadControlEnabled(next)) return;
+    if (!next.steppedLoadProfile || !previous.reportedStepId) return;
     const previousObservedAtMs = previous.reportedStepObservedAtMs;
     const nextObservedAtMs = next.reportedStepObservedAtMs;
     if (
@@ -15,8 +20,15 @@ export function preserveNewerReportedStepObservation(
     ) {
         return;
     }
-    if (previous.reportedStepId === undefined) delete next.reportedStepId;
-    else next.reportedStepId = previous.reportedStepId;
+    if (isEvTargetPowerConfig(next.targetPowerConfig) && previous.reportedStepPowerW !== undefined) {
+        const exactStep = resolveEvTargetPowerExactStep(next.targetPowerConfig, previous.reportedStepPowerW);
+        if (!exactStep || exactStep.id !== previous.reportedStepId) return;
+        next.steppedLoadProfile = resolveTargetPowerObservationProfile(
+            next.targetPowerConfig, next.steppedLoadProfile, exactStep,
+        );
+    }
+    if (!next.steppedLoadProfile.steps.some((step) => step.id === previous.reportedStepId)) return;
+    next.reportedStepId = previous.reportedStepId;
     if (previous.reportedStepPowerW === undefined) delete next.reportedStepPowerW;
     else next.reportedStepPowerW = previous.reportedStepPowerW;
     next.reportedStepObservedAtMs = previousObservedAtMs;

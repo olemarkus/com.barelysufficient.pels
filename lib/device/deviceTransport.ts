@@ -22,6 +22,8 @@
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
+import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
 import type {
   AssociatedCarSnapshot,
   BinaryControlObservation,
@@ -41,10 +43,8 @@ import { ObservationBridge } from './transport/observationBridge';
 import { SnapshotCommit } from './transport/snapshotCommit';
 import {
   getDebugObservedSources,
-  reportFlowSteppedObservation,
   TemperatureRecoveryService,
   type DeviceDebugObservedSources,
-  type FlowSteppedLoadObservation,
 } from './transport/managerObservation';
 import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
 import {
@@ -294,13 +294,16 @@ export class DeviceTransport {
         return resolveAssociatedCar(eligibleCarIds, associatedCar);
     }
 
-    /** Admit trusted Flow step feedback into the transport-owned observation snapshot. */
-    reportFlowSteppedLoadObservation(params: FlowSteppedLoadObservation): boolean {
-        return reportFlowSteppedObservation(
+    /** Raw Flow feedback is resolved once against the owner-selected control configuration. */
+    reportSteppedLoadActualStep(deviceId: string, stepId: string, planningPowerW?: number): FlowSteppedLoadAdmission {
+        return admitFlowSteppedLoadReport(
             this.snapshotStore,
+            this.deviceConfigurationStore,
             (snapshot, nowMs) => this.notifications.snapshotChanged(snapshot, nowMs),
-            (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
-            params,
+            (observedDeviceId, capabilityId) => this.dispatchObservedStateForDevice(observedDeviceId, capabilityId),
+            deviceId,
+            stepId,
+            planningPowerW,
         );
     }
 

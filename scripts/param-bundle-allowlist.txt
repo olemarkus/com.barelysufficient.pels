@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-28: 351 files, 875 bundles.
+# Seeded 2026-09-30: 347 files, 852 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -115,8 +115,8 @@ lib/executor/planExecutor.ts 4
 lib/executor/planExecutorDispatch.ts 2
 lib/executor/shedReleaseActuation.ts 5
 lib/executor/steppedCommandAttempt.ts 1
-lib/executor/steppedCommandState.ts 6
-lib/executor/steppedCommandStore.ts 2
+lib/executor/steppedCommandState.ts 5
+lib/executor/steppedCommandStore.ts 1
 lib/executor/steppedLoadExecutor.ts 2
 lib/executor/steppedLoadExecutorCommand.ts 1
 lib/executor/steppedLoadExecutorContext.ts 2
@@ -189,7 +189,7 @@ lib/plan/planServiceRebuild.ts 1
 lib/plan/planStatusHelpers.ts 1
 lib/plan/planStatusWriter.ts 1
 lib/plan/planSteppedLoad.ts 6
-lib/plan/planSteppedLoadState.ts 2
+lib/plan/planSteppedLoadState.ts 1
 lib/plan/planSteppedRestoreHold.ts 1
 lib/plan/planSteppedRestorePending.ts 2
 lib/plan/planSteppedShedResolution.ts 3
@@ -325,9 +325,6 @@ packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2
-setup/appDeviceControlFeedback.ts 5
-setup/appDeviceControlHelpers.ts 5
-setup/appDeviceControlSteppedState.ts 2
 setup/appDeviceSupport.ts 2
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
@@ -340,7 +337,6 @@ setup/appPriceLowestTrigger.ts 1
 setup/appRuntimeApi.ts 2
 setup/appSettingsHelpers.ts 1
 setup/appSnapshotHelpers.ts 1
-setup/appTargetPowerReachability.ts 8
 setup/capacityShortfallAlertDispatch.ts 2
 setup/capacityShortfallSideEffectGate.ts 1
 setup/externalOffHoldDetection.ts 3

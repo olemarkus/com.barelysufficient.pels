@@ -159,7 +159,7 @@ describe('deviceControlProfiles', () => {
       // Reachable: Homey's app-setting endpoint lets an external writer PUT a
       // JSON-encoded `device_control_profiles` map. Accepting this would strip the
       // tag on the next repair rewrite and hand a blob that announced it was NOT a
-      // stepped load to `resolveEffectiveSteppedLoadProfile`, which would then
+      // stepped load to the device owner, which would then
       // issue stepped commands for that device.
       expect(normalizeSteppedLoadProfile({ model: 'binary_power', steps: ladder })).toBeNull();
       expect(normalizeSteppedLoadProfile({ model: 'temperature_target', steps: ladder })).toBeNull();

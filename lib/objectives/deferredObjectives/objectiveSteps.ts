@@ -89,7 +89,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
       admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', planning),
     }]);
   }
-  // Configured as a stepped load, but carrying no live ladder this cycle. Answer
+  // The producer refused an incomplete stepped projection cluster. Answer
   // "no steps" so the committed task serves its frozen plan (`liveStepsUnavailable`
   // → `resolveServedFrozenRead`) instead of replanning against one synthetic rung.
   //
@@ -100,10 +100,9 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // `controlModel` tag that survived the cluster rebuild. It is now the producer's
   // answer, read flat: `toPlanDevice` is where the configured intent and the
   // ladder the planner will run are both visible, and this layer trusts it rather
-  // than reconstructing it (resolution-in-producer). Prod 2026-08-01: a stepped
-  // water heater lost its profile across a restart and its committed task degraded
-  // to `unknown` for 9.5 h; regression-guarded at the SDK boundary by
-  // `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
+  // than reconstructing it (resolution-in-producer). Resolved owner profiles now
+  // survive restart without feedback. The defensive frozen-serving behavior is
+  // covered by `test/integration/deferredObjectiveProjectionGapCommitment.test.ts`.
   //
   // MOVES WITH `resolvePlanningSpeedKw` in `planningSpeed.ts` — the two are
   // mirrors, and a divergence means the diagnostic and the hero copy disagree

@@ -173,6 +173,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         ? syncRealtimeDeviceUpdateSnapshot(ingest.reader.snapshotStore, deviceId, result.currentSnapshot)
         : null;
     if (deviceId) {
+        ingest.publishDeviceConfiguration(deviceId);
         ingest.binaryEvidence.applyFromDeviceUpdate({
             deviceId,
             device: observedDevice,

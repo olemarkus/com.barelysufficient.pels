@@ -4,8 +4,6 @@ import {
   onObservedControlState,
   onObservedState,
 } from '../helpers/deviceTransportHarness';
-import { snapshotById } from '../helpers/snapshotById';
-import { steppedStoresForTest } from '../helpers/steppedStores';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -24,7 +22,6 @@ import {
   buildExecutableSteppedLoadDevice,
   buildExecutableSteppedLoadIntent,
 } from '../../lib/executor/executableSteppedLoadProjection';
-import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type {
   DevicePlanDevice,
   BinaryControlDiscriminantProbe,
@@ -41,7 +38,6 @@ import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type {
   MeasuredPowerObservedProbe,
-  ReportedStepObservedProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -496,7 +492,7 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
-  it('publishes changed exact target power even when its derived step id is unchanged', () => {
+  it('publishes exact target-power identity and freshness when a new rung is observed', () => {
     const baseConfig = {
       enabled: true,
       preset: 'ev_charger_1_phase' as const,
@@ -538,12 +534,24 @@ describe('native stepped-load wiring', () => {
     expect(parsed.targetPowerConfig).toEqual(baseConfig);
     deviceManager.setSnapshotForTests([parsed]);
 
+    const firstObservedAtMs = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(firstObservedAtMs);
     deviceManager.injectCapabilityUpdateForTest('target-power-1', 'target_power', 5_750);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
-      reportedStepId: '24a',
+      reportedStepId: '25a',
       reportedStepPowerW: 5_750,
     }), expect.any(Number));
+    now.mockReturnValue(firstObservedAtMs + 1_000);
+    onSnapshotMutated.mockClear();
+
+    deviceManager.injectCapabilityUpdateForTest('target-power-1', 'target_power', 5_750);
+
+    expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
+      reportedStepId: '25a', reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: firstObservedAtMs + 1_000,
+    }), firstObservedAtMs + 1_000);
+    now.mockRestore();
   });
 
   it('projects configured target_power details as stepped-load without a native command adapter', () => {
@@ -819,106 +827,6 @@ describe('native stepped-load wiring', () => {
     expect(enabledParsed.reportedStepId).toBe('low');
     expect(enabledParsed.lastFreshDataMs).toBe(new Date(nativeStepObservedAt).getTime());
     expect(enabledParsed.lastUpdated).toBe(new Date(nativeStepObservedAt).getTime());
-  });
-
-  it('uses native stepped-load feedback instead of flow reports when native wiring is enabled', () => {
-    const flowSnapshot = {
-      available: true,
-      id: 'hoiax-1',
-      expectedPowerKw: 1, expectedPowerSource: 'default',
-      name: 'Connected 300',
-      targets: [],
-      binaryControl: { on: true },
-      measuredPowerKw: 1.75,
-    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
-    const nativeSnapshot = {
-      ...flowSnapshot,
-      reportedStepId: 'low',
-      controlAdapter: {
-        kind: 'capability_adapter',
-        activationAvailable: true,
-        activationRequired: false,
-        activationEnabled: true,
-      },
-      suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
-    let snapshots = [flowSnapshot];
-    const helpers = new AppDeviceControlHelpers({
-    ...steppedStoresForTest(),
-      getProfiles: () => ({ 'hoiax-1': steppedProfile }),
-      getDeviceSnapshot: snapshotById(() => snapshots),
-      getStructuredLogger: () => undefined,
-      debugStructured: vi.fn(),
-    });
-
-    expect(helpers.reportSteppedLoadActualStep('hoiax-1', 'max')).toBe('changed');
-    const [flowDecorated] = helpers.decorateTargetSnapshotList([flowSnapshot]);
-    expect(flowDecorated).toEqual(expect.objectContaining({
-      reportedStepId: 'max',
-      selectedStepId: 'max',
-    }));
-
-    snapshots = [nativeSnapshot];
-    expect(helpers.reportSteppedLoadActualStep('hoiax-1', 'max')).toBe('unchanged');
-    const [decorated] = helpers.decorateTargetSnapshotList([nativeSnapshot]);
-
-    expect(decorated).toEqual(expect.objectContaining({
-      controlModel: 'stepped_load',
-      reportedStepId: 'low',
-      selectedStepId: 'low',
-      planningPowerKw: 1.25,
-    }));
-
-    const [afterNativeDisabled] = helpers.decorateTargetSnapshotList([flowSnapshot]);
-    expect(afterNativeDisabled).toEqual(expect.objectContaining({
-      reportedStepId: undefined,
-      selectedStepId: 'low',
-    }));
-  });
-
-  it('uses device-supported native steps instead of configured profile steps', () => {
-    const configuredProfile: SteppedLoadProfile = {
-      steps: [
-        { id: 'off', planningPowerW: 0 },
-        { id: 'eco', planningPowerW: 900 },
-        { id: 'boost', planningPowerW: 4000 },
-      ],
-    };
-    const nativeSnapshot = {
-      available: true,
-      id: 'hoiax-1',
-      expectedPowerKw: 1, expectedPowerSource: 'default',
-      name: 'Connected 300',
-      targets: [],
-      binaryControl: { on: true },
-      measuredPowerKw: 1.75,
-      reportedStepId: 'medium',
-      controlAdapter: {
-        kind: 'capability_adapter',
-        activationAvailable: true,
-        activationRequired: false,
-        activationEnabled: true,
-      },
-      suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
-    const helpers = new AppDeviceControlHelpers({
-    ...steppedStoresForTest(),
-      getProfiles: () => ({ 'hoiax-1': configuredProfile }),
-      getDeviceSnapshot: snapshotById(() => [nativeSnapshot]),
-      getStructuredLogger: () => undefined,
-      debugStructured: vi.fn(),
-    });
-
-    const [decorated] = helpers.decorateTargetSnapshotList([nativeSnapshot]);
-
-    expect(decorated).toEqual(expect.objectContaining({
-      controlModel: 'stepped_load',
-      steppedLoadProfile: steppedProfile,
-      reportedStepId: 'medium',
-      selectedStepId: 'medium',
-      planningPowerKw: 1.75,
-    }));
-    expect(helpers.getSteppedLoadProfile('hoiax-1')).toEqual(steppedProfile);
   });
 
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {

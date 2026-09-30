@@ -23,8 +23,10 @@ export class RealtimeIngestService {
 
   handleDeviceUpdate(device: HomeyDeviceLike): void {
     handleRealtimeDeviceUpdateEvent(this, device);
-    const deviceId = device.id;
-    if (typeof deviceId !== 'string' || deviceId.length === 0) return;
+  }
+
+  /** Publish the same accepted snapshot before its observation reaches consumers. */
+  publishDeviceConfiguration(deviceId: string): void {
     const snapshot = this.reader.snapshotStore.getSnapshotByDeviceId(deviceId);
     if (snapshot) this.deviceConfiguration.set(snapshot);
     else this.deviceConfiguration.remove(deviceId);
@@ -32,8 +34,6 @@ export class RealtimeIngestService {
 
   handleCapabilityUpdate(deviceId: string, capabilityId: string, value: unknown): void {
     handleRealtimeCapabilityUpdateWithProbe(this, deviceId, capabilityId, value);
-    if (!this.reader.snapshotStore.getSnapshotByDeviceId(deviceId)) {
-      this.deviceConfiguration.remove(deviceId);
-    }
+    if (!this.reader.snapshotStore.getSnapshotByDeviceId(deviceId)) this.deviceConfiguration.remove(deviceId);
   }
 }

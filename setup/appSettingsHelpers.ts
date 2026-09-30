@@ -56,7 +56,7 @@ import {
 import type { PriceCoordinator } from '../lib/price/priceCoordinator';
 import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
-import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
+import { resolveTemperatureControlDisabled } from '../lib/device/temperatureControlSettings';
 import { requirePlanService } from './appInit/contextGuards';
 import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 
@@ -100,12 +100,10 @@ export function isTemperatureControlDisabledForApp(ctx: AppContext, deviceId: st
   if (ctx.temperatureControlPolicyState === 'unavailable') {
     ctx.loadTemperatureControlPolicySettings();
   }
-  return resolveTemperatureControlDisabled({
-    policyState: ctx.temperatureControlPolicyState,
-    disabledDevices: ctx.temperatureControlDisabledDevices,
-    deviceId,
-    device: ctx.deviceManager?.getSnapshotByDeviceId(deviceId),
-  });
+  return resolveTemperatureControlDisabled(
+    ctx.temperatureControlPolicyState, ctx.temperatureControlDisabledDevices, deviceId,
+    ctx.deviceReads.descriptor(deviceId),
+  );
 }
 
 export function buildCapacitySettingsSnapshot(params: {

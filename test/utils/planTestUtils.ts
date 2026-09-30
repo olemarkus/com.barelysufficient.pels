@@ -26,6 +26,7 @@ import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMateriali
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type {
   DecoratedDeviceSnapshot,
+  DeviceDescriptorRead,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvChargingState,
@@ -458,13 +459,19 @@ export const withDeviceConfiguration = <T extends {
   binaryCapabilityId?: string;
   expectedPowerKw?: number;
   expectedPowerSource?: DeviceConfigurationRead['expectedPowerSource'];
-}>(device: T): T & DeviceConfigurationRead => ({
-  ...device,
-  observeOnly: isObserveOnlyRoleClassKey(device.deviceClass),
-  isEvCharger: device.deviceClass === 'evcharger',
-  expectedPowerKw: fixtureExpectedPowerKw(device),
-  expectedPowerSource: device.expectedPowerSource ?? 'default',
-});
+} & Pick<DeviceDescriptorRead, 'deviceType' | 'steppedLoadProfile'>>(device: T): T & DeviceConfigurationRead => {
+  const { steppedLoadProfile, ...descriptor } = device;
+  const fields = {
+    ...descriptor,
+    observeOnly: isObserveOnlyRoleClassKey(device.deviceClass),
+    isEvCharger: device.deviceClass === 'evcharger',
+    expectedPowerKw: fixtureExpectedPowerKw(device),
+    expectedPowerSource: device.expectedPowerSource ?? 'default',
+  };
+  return steppedLoadProfile
+    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile }
+    : { ...fields, controlModel: device.deviceType === 'temperature' ? 'temperature_target' : 'binary_power' };
+};
 
 
 // The stepped cluster is COMPLETE by producer invariant: any fixture supplying

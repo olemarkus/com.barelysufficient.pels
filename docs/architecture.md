@@ -129,6 +129,24 @@ The rule applies at every seam, not just the SDK edge: observer → planner, pla
 
 Existing comments cite the two faces under their former names, and both names refer to this section: "Validation belongs at the boundary" is the clean face at the external-input edge (root `AGENTS.md` keeps the operational checklist), and "Resolution belongs in the producer" — the resolution-in-producer rule — is the emitter-resolves-so-the-consumer-can-trust pairing.
 
+### Device control resolution
+
+`lib/device` chooses the usable control ladder when it accepts a device read.
+Enabled native control owns its native ladder; otherwise configured target-power
+control supplies its confirmed ladder, followed by a validated saved Flow ladder.
+Native suggestions belong to the picker and never determine runtime control.
+`DeviceConfigurationRead` has a required profile in its stepped branch.
+
+`lib/planInput` composes that configuration with Observer's accepted report and
+executor command state. It has no saved-profile lookup or native-hint resolver.
+Planner input, command confirmation, lifecycle release and UI runtime projections
+use the same chosen profile. EV planning may derive a probe candidate from the
+confirmed profile without replacing the confirmed device configuration.
+Flow feedback is admitted by the device owner before the executor records it;
+confirmation uses the admitted step observation's own timestamp. Settings changes
+reparse configuration and retire command sessions referencing removed rungs; the
+next decision admits any subsequent write.
+
 ## Peer DAG inside the domain layer
 
 The domain peers (`lib/device`, `lib/power`, `lib/objectives`, `lib/observer`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/executor`) are not flat. The cruiser enforces the directional edges below — any other peer-to-peer import fails the build.

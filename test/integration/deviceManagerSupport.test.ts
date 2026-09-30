@@ -1,3 +1,4 @@
+import { resolveEvTargetPowerConfirmedProfile } from '../../lib/device/targetPowerReachability';
 import type { Mock } from 'vitest';
 import {
   createTestDeviceTransport,
@@ -415,9 +416,15 @@ describe('device manager support helpers', () => {
   it('does not let an older bundled device update roll back exact step evidence', () => {
     const newerObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
     const olderObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
+    const config = { preset: 'ev_charger_1_phase' as const, max: 7360 };
     const latestSnapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev-1',
       name: 'Charger',
+      controlModel: 'stepped_load',
+      controlAdapter: { kind: 'capability_adapter', activationAvailable: false,
+        activationRequired: false, activationEnabled: true },
+      targetPowerConfig: config,
+      steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5750),
       targets: [{ id: 'target_power', value: 5_750, unit: 'W' }],
       reportedStepId: '25a',
       reportedStepPowerW: 5_750,
@@ -431,6 +438,11 @@ describe('device manager support helpers', () => {
       parseDevice: () => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
         id: 'ev-1',
         name: 'Charger',
+        controlModel: 'stepped_load',
+        controlAdapter: { kind: 'capability_adapter', activationAvailable: false,
+          activationRequired: false, activationEnabled: true },
+        targetPowerConfig: config,
+        steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5520),
         targets: [{ id: 'target_power', value: 5_520, unit: 'W' }],
         reportedStepId: '24a',
         reportedStepPowerW: 5_520,
@@ -442,6 +454,9 @@ describe('device manager support helpers', () => {
       reportedStepId: '25a',
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: newerObservedAtMs,
+      steppedLoadProfile: { steps: expect.arrayContaining([
+        { id: '25a', planningPowerW: 5750, planningCurrentA: 25 },
+      ]) },
       targets: [{ id: 'target_power', value: 5_750, unit: 'W' }],
     });
   });

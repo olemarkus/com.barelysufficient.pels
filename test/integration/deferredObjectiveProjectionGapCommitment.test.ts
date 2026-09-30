@@ -1,41 +1,17 @@
+/**
+ * Integration safeguards for a committed smart task when planner-input
+ * composition loses the effective selected step. The fixture keeps the chosen
+ * usable profile and complete owner configuration; it deliberately bypasses
+ * step composition so the real producer stamps its projection-contract gap.
+ *
+ * The diagnostics bridge, admission, and recorder run normally through a new
+ * recorder loading the persisted commitment, settle cycles, and hour rollover.
+ * This checks frozen-serving safeguards for a projection defect. Restart with
+ * a saved Flow ladder and no feedback is covered separately by the real owner
+ * parse/runtime join in appInitToPlanDeviceSteppedLadderGap.test.ts.
+ */
 import { withDeviceConfiguration } from '../utils/planTestUtils';
-// SDK-boundary regression for the 2026-08-01 prod incident: an app restart lost
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
-// the water heater's flow-registered step ladder, `resolveObjectiveSteps` came up
-// empty, and the COMMITTED smart task degraded to `unknown`
-// (`objective_missing_charge_rate`) for 9.5 h — stripping its budget exemption
-// (hero safe pace collapsed 2.2 → 1.3 kW in one cycle) while the committed plan
-// sat untouched in persisted settings the whole time.
-//
-// THE RULE (lib/objectives/deferredObjectives/AGENTS.md): simulate ONLY the Homey
-// SDK boundary — device readings, prices, the clock, and the persisted settings
-// store (whose payload survives the restart) — and drive the REAL bridge +
-// recorder + admission. No PELS internals are mocked.
-//
-// The restart shape is therefore expressed as a transport-shaped DEVICE READING
-// (`DecoratedDeviceSnapshot`: configured `controlModel: 'stepped_load'`, no live
-// `steppedLoadProfile`) and converted by the REAL producer, `toPlanDevice`. The
-// gap bit the smart-task stack keys on (`steppedLadderMissing`) is DERIVED by
-// that producer here, never hand-stamped: hand-stamping it would supply the
-// derivation's conclusion instead of its inputs, and the test would keep passing
-// even if the producer stopped materialising the bit — which is exactly the
-// producer↔consumer JOIN that broke in production on 2026-08-01.
-//
-// Coverage split: `test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts`
-// pins the producer's rule in isolation AND joins its output straight into both
-// consumers (fast, and it names the producer when it fails). THIS tier drives the
-// join across the full restart — commit, restart, frozen serve, settle, rollover
-// — which is the only place the 9.5 h behaviour itself is observable.
-//
-// `createAppContextMock` supplies only the settings-derived wiring `toPlanDevice`
-// reads (capacity-control flag, shed behaviour, boost configs) — the outer
-// boundary, not a PELS decision internal. Nothing between the device reading and
-// the diagnostic is stubbed.
-//
-// Expected behaviour under test: a committed task is served its frozen committed
-// plan through a live step-ladder gap (protections hold, `expectedStepId`
-// degrades to null, the cycle is marked `liveStepsUnavailable`), while a task
-// with no commitment to serve still resolves `unknown`.
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { describe, expect, it } from 'vitest';
@@ -91,25 +67,13 @@ const todayPriceFor = (h: number): number => {
 const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 
-// The DEVICE READING, transport-shaped — the outer boundary this harness is
-// allowed to simulate. The step ladder is a live transport input (flow-registered
-// overlay): pre-restart the device carries it; post-restart it is gone and no
-// calibrated/measured power stands in. `controlModel: 'stepped_load'` is the
-// configured intent, which lives in settings and therefore DOES survive the
-// restart — that surviving-intent-without-a-ladder pair is the prod shape.
-//
-// Note what is NOT here: `steppedLadderMissing`. The reading supplies only the
-// gap's inputs; the producer below derives the conclusion.
-//
-// Widened with `TemperatureObservedProbe` rather than reading temperature data
-// off the base: the facet lives on `TemperatureObservedFields`, narrowed through
-// `hasObservedTemperature`, and producer-side surfaces that physically carry it
-// before consumers narrow take the probe intersection — which is exactly what a
-// transport-shaped reading feeding `toPlanDevice` is.
+// Complete owner-resolved profile, with a deliberate downstream projection
+// defect in the gap cases. The producer derives steppedLadderMissing; no test
+// hand-stamps that fact or creates a stepped configuration with no profile.
 const buildDeviceReading = (
   tempC: number,
   nowMs: number,
-  opts: { withSteps: boolean },
+  projection: 'complete' | 'missing_step',
 ): DecoratedDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
   available: true,
   id: DEVICE_ID,
@@ -129,20 +93,14 @@ const buildDeviceReading = (
     target: { id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 },
   },
   lastFreshDataMs: nowMs,
-  ...(opts.withSteps
-    ? {
-      steppedLoadProfile: {
-        steps: [
-          { id: 'off', planningPowerW: 0 },
-          { id: 'low', planningPowerW: FLOOR_KW * 1000 },
-          { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
-        ],
-      },
-      // The decorator resolves the effective step for every usable ladder; a
-      // carrier without one has its stepped cluster refused by the producer.
-      selectedStepId: 'off',
-    }
-    : {}),
+  steppedLoadProfile: {
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: FLOOR_KW * 1000 },
+      { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
+    ],
+  },
+  ...(projection === 'complete' ? { selectedStepId: 'off' } : {}),
 });
 
 // Run the reading through the REAL producer, so every producer-resolved field the
@@ -156,11 +114,11 @@ const buildDeviceReading = (
 // `priority` is stamped here because `toPlanDevice` is only the per-device half
 // of the producer: `buildHomePlanDevices` ranks the whole planned set right
 // after it, and this spec drives the projection on its own.
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): MeteredPlanInputDevice & { thermalDirection: 'heating' } => {
+const buildDevice = (tempC: number, nowMs: number, projection: 'complete' | 'missing_step'): MeteredPlanInputDevice & { thermalDirection: 'heating' } => {
   const device: PlanInputDevice = {
     ...toPlanDevice(
       createAppContextMock({ getNow: () => new Date(nowMs) }),
-      withDeviceConfiguration(buildDeviceReading(tempC, nowMs, opts)),
+      withDeviceConfiguration(buildDeviceReading(tempC, nowMs, projection)),
     ),
     priority: 1,
   };
@@ -294,7 +252,7 @@ const commitPlanAndPersist = (): DeferredObjectiveActivePlansV1 => {
     load: () => null,
     save: (payload) => { persisted = payload; return true; },
   });
-  const device = buildDevice(START_C, START_MS, { withSteps: true });
+  const device = buildDevice(START_C, START_MS, 'complete');
   // Negative control on the join: with the ladder present the producer derives NO
   // gap, so the commitment below is built from real steps.
   expect(device.steppedLadderMissing).toBeUndefined();
@@ -306,21 +264,21 @@ const commitPlanAndPersist = (): DeferredObjectiveActivePlansV1 => {
   return persisted;
 };
 
-describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)', () => {
+describe('committed smart task through a planner-input projection gap', () => {
   const persisted = commitPlanAndPersist();
 
   // Restart: a NEW recorder loads the persisted payload (the settings store is
-  // the only state that survives), and the device comes back without its
-  // flow-registered step ladder.
+  // the only state that survives), while the plan-input projection loses its
+  // selected step. The device owner's chosen ladder remains complete.
   const restartedRecorder = () => new DeferredObjectiveActivePlanRecorder({
     load: () => persisted,
     save: () => true,
   });
 
   it('serves the frozen committed plan through the gap — protections hold', () => {
-    const device = buildDevice(START_C, RESTART_MS, { withSteps: false });
+    const device = buildDevice(START_C, RESTART_MS, 'missing_step');
     // THE JOIN, asserted where it broke: the producer DERIVED the gap from the
-    // restart-shaped reading (configured stepped, ladder gone). Everything below
+    // incomplete projection (chosen ladder, selected step omitted). Everything below
     // rides on this bit reaching the smart-task stack.
     expect(device.steppedLadderMissing).toBe(true);
     const diag = buildDiagnostic(RESTART_MS, device, restartedRecorder().getActivePlansSnapshot());
@@ -331,8 +289,8 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
     expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
     expect(diag?.liveStepsUnavailable).toBe(true);
     expect(diag?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBeGreaterThan(0);
-    // No ladder ⇒ no step to expect; the executor drives the device via its
-    // remaining controls (binary + temperature setpoint).
+    // The producer refused the incomplete stepped cluster, so this diagnostic
+    // has no executable step to expect.
     expect(diag?.expectedStepId).toBeNull();
 
     const decision = applyDeferredObjectiveAdmission(diag ? [diag] : [], [device]).get(DEVICE_ID);
@@ -343,18 +301,18 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
   });
 
   it('keeps serving frozen on a replan-due settle cycle (replan deferred, not the commitment dropped)', () => {
-    const device = buildDevice(START_C, SETTLE_MS, { withSteps: false });
+    const device = buildDevice(START_C, SETTLE_MS, 'missing_step');
     const diag = buildDiagnostic(SETTLE_MS, device, restartedRecorder().getActivePlansSnapshot());
 
     // Past the `:58` settle mark the fresh allocator would normally run; without
-    // steps it cannot, and the committed plan must still be served rather than
+    // a complete projected cluster it cannot, and the commitment stays served rather than
     // flapping to `unknown` for the settle window.
     expect(diag && resolvedTrajectoryStatus(diag)).toBe('on_track');
     expect(diag?.liveStepsUnavailable).toBe(true);
   });
 
   it('still resolves unknown when there is no commitment to serve', () => {
-    const device = buildDevice(START_C, RESTART_MS, { withSteps: false });
+    const device = buildDevice(START_C, RESTART_MS, 'missing_step');
     const freshRecorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => true });
     const diag = buildDiagnostic(RESTART_MS, device, freshRecorder.getActivePlansSnapshot());
 
@@ -415,7 +373,7 @@ describe('committed smart task vs a restart step-ladder gap (SDK-boundary e2e)',
     expect(cycleTimes).toContain(settleMarks[0]);
 
     for (const nowMs of cycleTimes) {
-      const device = buildDevice(START_C, nowMs, { withSteps: false });
+      const device = buildDevice(START_C, nowMs, 'missing_step');
       const diag = buildDiagnostic(nowMs, device, recorder.getActivePlansSnapshot());
       // Never `unknown` while the commitment covers the hour — including the
       // settle cycles, where the replan is deferred.

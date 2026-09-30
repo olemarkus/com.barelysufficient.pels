@@ -3166,11 +3166,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // device plans against 1 kW instead of stalling. That is the outcome the open
   // water-heater P1 asked for.
   //
-  // What DOES still reach the gap is the case the protection was built for: a
-  // device CONFIGURED as a stepped load whose live `steppedLoadProfile` is
-  // missing this cycle (`controlModel === 'stepped_load'` with no profile). Both
-  // halves are asserted below; the SDK-boundary regression for the 2026-08-01
-  // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
+  // An incomplete stepped projection still reaches the defensive gap path.
+  // Frozen-serving coverage lives in
+  // `test/integration/deferredObjectiveProjectionGapCommitment.test.ts`; restart
+  // profile retention is covered by the real owner join in
+  // `test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts`.
   it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
       control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,

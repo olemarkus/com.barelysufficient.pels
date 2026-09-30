@@ -1,3 +1,4 @@
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { TEMPERATURE_CONTROL_DISABLED_DEVICES, TEMPERATURE_CONTROL_MODES } from '../utils/settingsKeys';
 import { isBooleanMap } from '../utils/appTypeGuards';
 import {
@@ -74,3 +75,13 @@ function isAbsent(settings: TemperatureControlSettingsPort, key: string, raw: un
   return Array.isArray(keys) && keys.length > 0
     && keys.every((entry) => typeof entry === 'string') && !keys.includes(key);
 }
+
+/** Apply the owner-resolved temperature policy to the device's command authority. */
+export const resolveTemperatureControlDisabled = (
+  policyState: 'unavailable' | 'resolved',
+  disabledDevices: Readonly<Record<string, boolean>>,
+  deviceId: string,
+  device: Pick<TargetDeviceSnapshot, 'deviceType'> | undefined,
+): boolean => policyState === 'resolved'
+  ? disabledDevices[deviceId] === true
+  : device?.deviceType === 'temperature';

@@ -1,3 +1,4 @@
+import { resolveEvTargetPowerConfirmedProfile } from '../../lib/device/targetPowerReachability';
 import type { Mock } from 'vitest';
 import {
   createTestDeviceTransport,
@@ -8046,6 +8047,7 @@ describe('DeviceTransport', () => {
                 const observationState = createObservationState();
                 const realtimeObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
                 const refreshObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
+                const config = { preset: 'ev_charger_1_phase' as const, max: 7360 };
                 const previousSnapshot: TransportDeviceSnapshot[] = [{
                     available: true,
                     id: 'ev1',
@@ -8055,12 +8057,18 @@ describe('DeviceTransport', () => {
                     capabilities: ['target_power'],
                     targets: [],
                     powerCapable: false,
+                    controlModel: 'stepped_load',
+                    controlAdapter: { kind: 'capability_adapter', activationAvailable: false,
+                        activationRequired: false, activationEnabled: true },
+                    targetPowerConfig: config,
+                    steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5750),
                     reportedStepId: '25a',
                     reportedStepPowerW: 5750,
                     reportedStepObservedAtMs: realtimeObservedAtMs,
                 }];
                 const nextSnapshot: TransportDeviceSnapshot[] = [{
                     ...previousSnapshot[0],
+                    steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5520),
                     reportedStepId: '24a',
                     reportedStepPowerW: 5520,
                     reportedStepObservedAtMs: refreshObservedAtMs,
@@ -8090,6 +8098,9 @@ describe('DeviceTransport', () => {
                     reportedStepId: '25a',
                     reportedStepPowerW: 5750,
                     reportedStepObservedAtMs: realtimeObservedAtMs,
+                    steppedLoadProfile: { steps: expect.arrayContaining([
+                        { id: '25a', planningPowerW: 5750, planningCurrentA: 25 },
+                    ]) },
                 });
             });
         });

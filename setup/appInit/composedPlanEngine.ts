@@ -165,7 +165,6 @@ export class ComposedPlanEngine implements PlanEngine {
     }
     return syncSteppedCommands({
       store: this.steppedCommandStore,
-      reportedStore: this.steppedReportedStore,
       devices: getDevices(),
     });
   }

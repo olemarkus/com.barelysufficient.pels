@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
+import { withDeviceConfiguration } from '../utils/planTestUtils';
 
 /**
  * The store's own contract: it is the single path to the commanded axis. The
@@ -65,6 +66,34 @@ describe('SteppedCommandStore', () => {
     // Settling the probe ends it: nothing is in flight to settle any more.
     store.deleteDesired('dev-2');
     expect(store.hasPendingTargetPowerProbe()).toBe(false);
+  });
+
+  it.each(['high', 'middle'])('retires commands when their %s rung is removed by a profile edit', (removedStepId) => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({
+      deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1000, confirmationPolicy: 'assume_applied',
+    });
+    store.markDesiredStepIssued({
+      deviceId: 'dev-1', desiredStepId: 'high', previousStepId: 'middle', issuedAtMs: 2000,
+    });
+    const configuration = withDeviceConfiguration({
+      id: 'dev-1', name: 'Flow heater', steppedLoadProfile: {
+        steps: [
+          { id: 'low', planningPowerW: 1000 },
+          { id: 'middle', planningPowerW: 2000 },
+          { id: 'high', planningPowerW: 3000 },
+        ].filter((step) => step.id !== removedStepId),
+      },
+    });
+
+    store.reconcileConfiguration(configuration);
+
+    expect(store.getDesired('dev-1')).toBeUndefined();
+    expect(store.peekInitializationLatch('dev-1', 'low')).toBeUndefined();
+    expect(store.hasPriorStepCommand('dev-1')).toBe(false);
+    expect(store.isStepCommandPending('dev-1')).toBe(false);
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 3000 });
+    expect(store.getDesired('dev-1')).toMatchObject({ stepId: 'low', retryCount: 0, pending: true });
   });
 
   it('drops a stale initialization latch when the ladder changed under it', () => {

@@ -14,7 +14,7 @@ import type {
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { RuntimeDeviceRead } from '../device/deviceRuntimeRead';
+import type { RuntimeDeviceRead } from './runtimeDeviceRead';
 import type { ShedBehavior, SteppedClusterFields } from '../plan/planTypes';
 import type { PlanInputDevice } from '../plan/planTypes';
 

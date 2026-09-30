@@ -35,7 +35,7 @@ import {
   createDeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
 import { createPlanStatusRegistry, type PlanStatusRegistry } from './lib/plan/planStatusRegistry';
-import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
+import { createDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PlanRebuildThrottle } from './lib/plan/rebuildScheduler/throttle';
@@ -471,20 +471,10 @@ class PelsApp extends PelsAppBase implements AppContext {
   public readonly steppedCommandStore = this.steppedStores.commandStore;
 
   public readonly steppedReportedStore = this.steppedStores.reportedStore;
-  public readonly deviceControlHelpers: AppDeviceControlHelpers = new AppDeviceControlHelpers({
-    store: this.steppedCommandStore,
-    reportedStore: this.steppedReportedStore,
-    getProfiles: () => this.deviceControlProfiles,
-    ...this.targetPowerReachabilityWiring.deviceControlDeps,
-    isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
-    allowsTemperatureAdjustments: (deviceId) => (
-      this.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId)
-    ),
-    getDeviceSnapshot: (deviceId) => this.deviceManager?.getSnapshotByDeviceId(deviceId),
-    getLatestPlanSnapshot: () => this.planService.getLatestPlanSnapshot(),
-    getStructuredLogger: (component) => this.getStructuredLogger(component),
-    debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
-  });
+  public readonly deviceControlHelpers = createDeviceControlHelpers(
+    this, this.targetPowerReachabilityWiring.updateTargetPowerReachability,
+    (dueAtMs) => this.snapshotHelpers.scheduleTargetPowerProbeSettlement(dueAtMs),
+  );
   protected readonly flowBacked = createFlowBackedDeviceState(this.homey, {
     persistence: this.settingsRepository,
     getStructuredLogger: (component) => this.getStructuredLogger(component),

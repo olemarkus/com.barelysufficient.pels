@@ -119,7 +119,7 @@ export const resolveSteppedLoadPlanningPowerKw = (
  * `parseSettingRecord` in `setup/steppedProfileRepair.ts`), and a foreign-tagged
  * entry that parsed here would be rewritten WITHOUT its tag by the repair pass,
  * pass the boot guard, and then be selected as a device's effective stepped
- * profile by `resolveEffectiveSteppedLoadProfile` — i.e. a blob that announced it
+ * profile by the device owner — i.e. a blob that announced it
  * was not a stepped load would end up issuing stepped commands. Refusing it costs
  * one comparison and keeps every downstream consumer tag-free.
  *

@@ -1,30 +1,23 @@
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
- * Producer coverage for the STEP-LADDER GAP bit (`steppedLadderMissing`).
+ * A persisted Flow ladder survives a transport restart even before actual-step
+ * feedback arrives. Owner parsing, runtime composition, and planner projection
+ * retain that chosen ladder; absent feedback is an unknown observed rung.
  *
- * The gap is "configured as a stepped load, but no live ladder resolved this
- * cycle". It is a real, recurring runtime state — a flow-registered stepped
- * profile does not survive an app restart until the Flow re-fires, and SDK reads
- * fail transiently — and the smart-task stack must tell it apart from "this
- * device was never stepped": prod 2026-08-01, a stepped water heater lost its
- * profile across a restart and its COMMITTED task degraded to `unknown` for 9.5 h,
- * losing its budget exemption.
- *
- * `toPlanDevice` is the only place both halves of the question are visible at
- * once (the configured intent, and the ladder the planner will actually run), so
- * it resolves the gap (`resolveSteppedLadderMissing`) and the consumers read it
- * flat (`resolveObjectiveSteps` in
- * `lib/objectives/deferredObjectives/objectiveSteps.ts`, `resolvePlanningSpeedKw`
- * in `lib/objectives/deferredObjectives/planningSpeed.ts`).
- *
- * Two describes, deliberately: the first pins the producer's rule in isolation,
- * the second feeds real producer output straight into both consumers so a
- * producer-side regression fails a consumer-side assertion — the JOIN, which is
- * what actually broke in production and what neither half covers alone. The same
- * join across a full restart (commit → frozen serve → settle → rollover) is
- * `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
+ * Separate contract tests exercise the producer's whole-cluster refusal when a
+ * caller bypasses effective-step projection. Those fixtures keep complete
+ * owner configuration and deliberately omit the downstream selected step.
  */
+import Homey from 'homey';
 import { describe, expect, it } from 'vitest';
+import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { mockHomeyInstance } from '../mocks/homey';
+import { getLogger } from '../../lib/logging/logger';
+import { projectObservedState } from '../../lib/device/observedStateProjection';
+import { readRuntimeDevice } from '../../lib/planInput/runtimeDeviceRead';
+import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
+import { steppedStoresForTest } from '../helpers/steppedStores';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
@@ -68,32 +61,62 @@ const buildSnapshot = (
   available: overrides.available ?? true,
 });
 
-describe('toPlanDevice step-ladder gap', () => {
-  it('flags a stepped-configured device whose live ladder is absent', () => {
-    // The restart shape: the configured intent survives in settings, the
-    // flow-registered ladder does not.
-    const planDevice = ranked(toPlanDevice(createAppContextMock(), withDeviceConfiguration(buildSnapshot({
-      controlModel: 'stepped_load',
-    }))));
+const resolveSavedFlowPlanDevice = (profile: SteppedLoadProfile, observedAtMs: number) => {
+  const logger: Logger = { log: () => {}, debug: () => {}, error: () => {}, structuredLog: getLogger('devices') };
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
+    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+    getDeviceControlProfile: () => profile,
+  });
+  const lastUpdated = new Date(observedAtMs).toISOString();
+  const device: HomeyDeviceLike = {
+    id: 'tank', name: 'Water heater', class: 'heater', available: true, ready: true,
+    capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'],
+    capabilitiesObj: {
+      onoff: { value: false, setable: true, lastUpdated },
+      measure_power: { value: 0, lastUpdated },
+      measure_temperature: { value: 55, lastUpdated },
+      target_temperature: { value: 70, setable: true, min: 0, max: 95, step: 0.5, lastUpdated },
+    },
+  };
+  const [snapshot] = transport.parseDeviceListForTests([device]);
+  if (!snapshot) throw new Error('The valid SDK fixture must resolve a device.');
+  transport.setSnapshotForTests([snapshot]);
+  const runtime = readRuntimeDevice(transport.deviceConfigurationStore.get('tank'), projectObservedState(snapshot));
+  if (!runtime) throw new Error('The accepted fixture must publish runtime configuration and observation.');
+  const { store } = steppedStoresForTest();
+  const projected = decorateSnapshotWithDeviceControl(runtime, store, false, false);
+  return ranked(toPlanDevice(createAppContextMock(), projected));
+};
 
-    expect(isSteppedLoadDevice(planDevice)).toBe(false);
-    expect(planDevice.steppedLadderMissing).toBe(true);
+describe('toPlanDevice resolved ladder and projection contract', () => {
+  it('retains the saved Flow ladder across restart before any actual-step feedback', () => {
+    const beforeRestart = resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8));
+    const afterRestart = resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8, 5));
+
+    expect(isSteppedLoadDevice(beforeRestart)).toBe(true);
+    expect(isSteppedLoadDevice(afterRestart)).toBe(true);
+    if (!isSteppedLoadDevice(beforeRestart) || !isSteppedLoadDevice(afterRestart)) {
+      throw new Error('Both accepted restart reads must retain the stepped axis.');
+    }
+    expect(afterRestart.steppedLoadProfile).toEqual(beforeRestart.steppedLoadProfile);
+    expect(afterRestart.selectedStepId).toBe('low');
+    expect(afterRestart.reportedStepId).toBeUndefined();
+    expect('steppedLadderMissing' in afterRestart).toBe(false);
+    const objectiveDevice = asObjectiveDevice(afterRestart);
+    expect(resolveObjectiveSteps(objectiveDevice).map((step) => step.id)).toEqual(['off', 'low', 'max']);
+    expect(resolvePlanningSpeedKw(objectiveDevice)).toBe(1.25);
   });
 
-  it('flags a stepped-configured device whose ladder prices no rung', () => {
-    // The other way the cluster comes up empty: a ladder IS in hand, but no rung
-    // of it yields a finite planning power, so `resolveSteppedClusterFields`
-    // refuses the pair. Same gap — the planner has no stepped answer either way.
-    const planDevice = ranked(toPlanDevice(createAppContextMock(), withDeviceConfiguration(buildSnapshot({
-      controlModel: 'stepped_load',
-      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] },
-    }))));
+  it('rejects an unusable saved ladder at its owner before planner projection', () => {
+    const planDevice = resolveSavedFlowPlanDevice({ steps: [{ id: 'off', planningPowerW: 0 }] },
+      Date.UTC(2026, 8, 30, 8));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(false);
-    expect(planDevice.steppedLadderMissing).toBe(true);
+    expect(planDevice.controlModel).toBe('temperature_target');
+    expect('steppedLadderMissing' in planDevice).toBe(false);
   });
 
-  it('refuses the whole cluster (and stamps the gap) when a usable ladder arrives without its effective step', () => {
+  it('flags the projection-contract gap when a caller bypasses effective-step composition', () => {
     // The producer contract behind `SteppedLoadKind.selectedStepId: string`:
     // the decorator resolves an effective step for every usable ladder, so a
     // carrier with a ladder but no step is a contract violator — the producer
@@ -152,22 +175,9 @@ describe('toPlanDevice step-ladder gap', () => {
   });
 });
 
-/**
- * The JOIN: the producer's real output, fed straight to the consumers.
- *
- * The two blocks above cover the producer in isolation and the e2e
- * (`test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`) covers the consumers
- * from a `PlanInputDevice` fixture — the same shape its canonical sibling
- * `deferredObjectiveColdStartSdkE2E.test.ts` uses. Neither tier crosses the seam,
- * and the seam is what failed in prod on 2026-08-01: a bit that the producer stops
- * stamping, or stamps under a renamed key, would leave both of those tiers green
- * while the incident reopened.
- *
- * So these cases build NO device fixture. `toPlanDevice` output goes directly into
- * `resolveObjectiveSteps` / `resolvePlanningSpeedKw`, which means a producer-side
- * regression fails a consumer-side assertion — the only arrangement that actually
- * guards the gap end to end.
- */
+// Consumer safeguards read the producer's projection-contract gap. This input
+// retains the owner-resolved profile but deliberately bypasses its selected-step
+// composition; it represents a projection defect, not missing Homey telemetry.
 // The smart-task consumers only ever see a device with a power reading:
 // production narrows the plan's devices through `selectObjectiveDevices` before
 // either consumer is asked, so the join does the same, and its snapshots carry
@@ -178,11 +188,12 @@ const asObjectiveDevice = (device: ObjectiveDeviceSource): ObjectiveDeviceInput 
   return selected;
 };
 
-describe('step-ladder gap: producer output through the consumers', () => {
-  it('makes both consumers withhold for the restart shape', () => {
+describe('projection-contract gap: producer output through the consumers', () => {
+  it('makes both consumers withhold for a missing effective-step projection', () => {
     const planDevice = asObjectiveDevice(ranked(toPlanDevice(createAppContextMock(), withDeviceConfiguration(buildSnapshot({
       measuredPowerKw: 0,
       controlModel: 'stepped_load',
+      steppedLoadProfile: USABLE_LADDER,
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
     })))));

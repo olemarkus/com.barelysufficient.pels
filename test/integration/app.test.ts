@@ -502,18 +502,20 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = vi.fn();
-    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
-
-    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_feedback_reported',
-      deviceId: 'dev-1',
-      deviceName: 'Water heater',
-      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-      reportedStepId: 'low',
-    }));
-    expect(infoSpy).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'stepped_feedback_external_change' }));
+    const capture = captureLogger();
+    try {
+      expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+      expect(capture.findEvent('stepped_feedback_reported')).toMatchObject({
+        event: 'stepped_feedback_reported',
+        deviceId: 'dev-1',
+        deviceName: 'Water heater',
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        reportedStepId: 'low',
+      });
+      expect(capture.findEvent('stepped_feedback_external_change')).toBeUndefined();
+    } finally {
+      capture.restore();
+    }
   });
 
   it('emits stepped_feedback_confirmed event when reported step matches pending desired step', async () => {
@@ -530,26 +532,28 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = vi.fn();
-    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
+    const capture = captureLogger();
+    try {
+      app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+        deviceId: 'dev-1',
+        desiredStepId: 'low',
+        previousStepId: 'max',
+      });
 
-    app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
-      deviceId: 'dev-1',
-      desiredStepId: 'low',
-      previousStepId: 'max',
-    });
-
-    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_feedback_confirmed',
-      deviceId: 'dev-1',
-      deviceName: 'Water heater',
-      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      reportedStepId: 'low',
-      desiredStepId: 'low',
-      pending: true,
-    }));
+      expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+      expect(capture.findEvent('stepped_feedback_confirmed')).toMatchObject({
+        event: 'stepped_feedback_confirmed',
+        deviceId: 'dev-1',
+        deviceName: 'Water heater',
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+        reportedStepId: 'low',
+        desiredStepId: 'low',
+        pending: true,
+      });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('emits stepped_feedback_confirmed with stale=true for delayed feedback matching desired step', async () => {
@@ -566,39 +570,41 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = vi.fn();
-    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
+    const capture = captureLogger();
+    try {
+      app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+        deviceId: 'dev-1',
+        desiredStepId: 'max',
+        previousStepId: 'low',
+      });
+      const runtimeState = app.deviceControlHelpers.getRuntimeStateForTests();
+      runtimeState.steppedLoadDesiredByDeviceId.set('dev-1', {
+        ...runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')!,
+        pending: false,
+        status: 'stale',
+      });
+      // The prior report is the observer's to record — it builds the capability
+      // and source itself, so the test states only what the device said and when.
+      app.steppedReportedStore.record({
+        deviceId: 'dev-1',
+        stepId: 'low',
+        reportedAtMs: Date.now() - 1000,
+      });
 
-    app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
-      deviceId: 'dev-1',
-      desiredStepId: 'max',
-      previousStepId: 'low',
-    });
-    const runtimeState = app.deviceControlHelpers.getRuntimeStateForTests();
-    runtimeState.steppedLoadDesiredByDeviceId.set('dev-1', {
-      ...runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')!,
-      pending: false,
-      status: 'stale',
-    });
-    // The prior report is the observer's to record — it builds the capability
-    // and source itself, so the test states only what the device said and when.
-    app.steppedReportedStore.record({
-      deviceId: 'dev-1',
-      stepId: 'low',
-      reportedAtMs: Date.now() - 1000,
-    });
-
-    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_feedback_confirmed',
-      deviceId: 'dev-1',
-      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      reportedStepId: 'max',
-      desiredStepId: 'max',
-      stale: true,
-    }));
-    expect(infoSpy).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'stepped_feedback_external_change' }));
+      expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+      expect(capture.findEvent('stepped_feedback_confirmed')).toMatchObject({
+        event: 'stepped_feedback_confirmed',
+        deviceId: 'dev-1',
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+        reportedStepId: 'max',
+        desiredStepId: 'max',
+        stale: true,
+      });
+      expect(capture.findEvent('stepped_feedback_external_change')).toBeUndefined();
+    } finally {
+      capture.restore();
+    }
   });
 
   it('emits stepped_feedback_external_change when reported step changes outside PELS', async () => {
@@ -617,19 +623,21 @@ describe('MyApp initialization', () => {
 
     expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
-    const infoSpy = vi.fn();
-    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
-
-    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_feedback_external_change',
-      deviceId: 'dev-1',
-      deviceName: 'Water heater',
-      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      previousStepId: 'low',
-      newStepId: 'max',
-    }));
+    const capture = captureLogger();
+    try {
+      expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+      expect(capture.findEvent('stepped_feedback_external_change')).toMatchObject({
+        event: 'stepped_feedback_external_change',
+        deviceId: 'dev-1',
+        deviceName: 'Water heater',
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+        previousStepId: 'low',
+        newStepId: 'max',
+      });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('set_capacity_mode flow card changes mode and persists to settings', async () => {

@@ -7,9 +7,11 @@ export type RuntimeDeviceRead = DeviceConfigurationRead & ProjectedObservedDevic
 export const readRuntimeDevice = (
   configuration: DeviceConfigurationRead | undefined,
   observed: ProjectedObservedDeviceState | undefined,
-): RuntimeDeviceRead | undefined => (
-  configuration && observed ? { ...observed, ...configuration } : undefined
-);
+): RuntimeDeviceRead | undefined => {
+  if (!configuration || !observed) return undefined;
+  const { steppedLoadProfile: _observedProfile, ...state } = observed;
+  return { ...state, ...configuration };
+};
 
 export const readRuntimeDevices = (
   configurations: readonly DeviceConfigurationRead[],

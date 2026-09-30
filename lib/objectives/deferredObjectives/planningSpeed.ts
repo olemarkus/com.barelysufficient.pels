@@ -91,7 +91,7 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', planning));
   }
   // Same producer-resolved step-ladder gap `resolveObjectiveSteps` answers `[]`
-  // for: a stepped device with no live ladder has no speed to report, and
+  // for: an incomplete stepped projection has no speed to report, and
   // reporting one here while the planner serves a frozen plan is exactly the
   // producer/consumer disagreement the comment below warns about. Read flat off
   // the producer, never re-derived — MOVES WITH the mirror in `objectiveSteps.ts`.

@@ -22,7 +22,7 @@ import {
   requireDeferredObjectiveEnergyDelivery,
 } from './deferredRecorders';
 import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
-import { projectLifecycleFallbackCommandState } from '../lifecycleFallbackDeviceProjection';
+import { projectLifecycleFallbackCommandState } from '../../lib/planInput/lifecycleFallbackDeviceProjection';
 import { requirePlanService } from './contextGuards';
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
@@ -81,10 +81,9 @@ const convergeLifecycleFallback = (
   ctx: AppContext,
   deviceId: string,
 ): 'settled' | 'pending' | 'unavailable' | 'undriveable' => {
-  const commandState = projectLifecycleFallbackCommandState({
-    device: ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId),
-    observedState: ctx.getObservedState(deviceId),
-  });
+  const commandState = projectLifecycleFallbackCommandState(
+    ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId), ctx.getObservedState(deviceId),
+  );
   if (commandState.state === 'unavailable') return 'unavailable';
   // Resolved BEFORE the executor port is required: answering "there is nothing
   // on this device to command" needs no dispatcher, and must not depend on one.

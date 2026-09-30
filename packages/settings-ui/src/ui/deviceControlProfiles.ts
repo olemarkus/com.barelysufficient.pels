@@ -75,19 +75,14 @@ const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean =>
 /**
  * Is a stepped-load profile ACTUALLY governing this device right now?
  *
- * This is the UI's mirror of the runtime's own answer. `getSteppedLoadProfile`
- * (`setup/appDeviceControlHelpers.ts`) resolves the effective profile, and
- * `decorateTargetSnapshotList` runs that same resolution — target-power configs
- * first, then `resolveEffectiveSteppedLoadProfile` — before publishing the
- * snapshot this UI reads. So the decorated `steppedLoadProfile` IS the runtime's
- * verdict, and the other rungs only cover an edit this page is holding that the
- * runtime has not re-parsed yet: a locally saved control profile, a locally
- * enabled EV target-power preset, an observed native activation.
+ * The device owner chooses the runtime ladder: enabled native control, then
+ * configured target-power control, then a saved Flow profile. The published
+ * `steppedLoadProfile` is that verdict. This UI also covers edits awaiting a
+ * runtime reparse: a locally saved profile, an enabled EV target-power preset,
+ * or an observed native activation.
  *
  * What is deliberately NOT a rung: a bare `suggestedSteppedLoadProfile`. The
- * runtime honours a suggestion only once native activation is enabled or the
- * control model has actually been switched to stepped
- * (`resolveSuggestedSteppedLoadProfile` gates on `controlModel`), so a device
+ * device owner keeps suggestions separate from active control, so a device
  * merely carrying one is still binary-controlled.
  */
 export const isSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => {

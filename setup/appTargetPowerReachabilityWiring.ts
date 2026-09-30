@@ -97,15 +97,6 @@ export const createTargetPowerReachabilityAppWiring = (
         ctx.deviceControlHelpers.hasPendingTargetPowerProbe()
       ),
     },
-    deviceControlDeps: {
-      getTargetPowerConfig: (deviceId: string) => ctx.deviceTargetPowerConfigs[deviceId],
-      updateTargetPowerReachability,
-      reportFlowSteppedLoadObservation: (params: Parameters<
-        NonNullable<AppContext['deviceManager']>['reportFlowSteppedLoadObservation']
-      >[0]) => ctx.deviceManager?.reportFlowSteppedLoadObservation(params) ?? false,
-      scheduleTargetPowerProbeSettlement: (dueAtMs: number): void => {
-        ctx.snapshotHelpers.scheduleTargetPowerProbeSettlement(dueAtMs);
-      },
-    },
+    updateTargetPowerReachability,
   };
 };

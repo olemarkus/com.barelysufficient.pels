@@ -1,15 +1,15 @@
+import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+import {
+  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 /**
  * Executor-owned stepped-command store.
  *
  * The commanded axis for a stepped load — what rung PELS asked for, whether the
  * ask is still in flight, and what the device last reported back — is executor
- * state, exactly as pending binary commands are observer state
- * (`lib/observer/pendingBinaryCommands.ts`, the model for this class). It used
- * to be held in `setup/appDeviceControlHelpers.ts`, which made the wiring layer
- * the owner of a domain concept and put the state above the layer boundaries
- * `arch:check` enforces: the executor wrote it, the plan-input producer read it
- * and advanced it, and neither module imported the other, so no rule could see
- * the coupling. `setup/AGENTS.md` § "No state" is the rule that closes that.
+ * state. Device-owner configuration and Observer evidence drive the executor's
+ * settle sweep; the plan-input producer only reads the command state.
  *
  * The store is the canonical owner in BOTH directions. Writes go through the
  * lifecycle methods; reads go through the accessors, which hand out the record
@@ -23,12 +23,6 @@
  * questions and neither is derived from the other — see the module docblock in
  * `steppedCommandState.ts`.
  *
- * **Still to move:** the confirm/expire/prune lifecycle is
- * currently driven by the plan-input producer, so a command settles when the
- * planner asks for its devices rather than when the executor observes
- * materialization. This class makes that visible — those methods have exactly
- * one caller each — but does not yet move it. The destination is a settle sweep
- * beside `syncPendingBinaryCommands`.
  */
 import {
   confirmSteppedLoadDesiredStep,
@@ -44,7 +38,7 @@ import {
   type SteppedLoadDesiredRuntimeState,
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
-import type { DeviceControlProfiles, SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
+import type { SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -93,6 +87,22 @@ export class SteppedCommandStore {
     const latched = this.state.steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
     if (latched === undefined || latched === lowestActiveStepId) return;
     this.clearCommandSession(deviceId);
+  }
+
+  /** Retire command state that refers to a control axis or rung removed by its owner. */
+  reconcileConfiguration(configuration: DeviceConfigurationRead): void {
+    if (!('steppedLoadProfile' in configuration)) {
+      this.clearCommandSession(configuration.id);
+      return;
+    }
+    const profile = configuration.steppedLoadProfile;
+    const desired = this.getDesired(configuration.id);
+    if (desired && desired.targetPowerProbeConfirmedMaxPowerW === undefined
+      && (!getSteppedLoadStep(profile, desired.stepId)
+        || (desired.previousStepId !== undefined && !getSteppedLoadStep(profile, desired.previousStepId)))) {
+      this.clearCommandSession(configuration.id);
+    }
+    this.reconcileInitializationLatch(configuration.id, getSteppedLoadLowestActiveStep(profile)?.id);
   }
 
   /** Whether a step command was actually issued during this on-session. */
@@ -147,18 +157,8 @@ export class SteppedCommandStore {
     preserveSteppedLoadDesiredStep({ runtimeState: this.state, ...params });
   }
 
-  reportActualStep(params: {
-    profiles: DeviceControlProfiles;
-    deviceId: string;
-    stepId: string;
-    reportedAtMs?: number;
-    planningPowerW?: number;
-  }): ReportSteppedLoadActualStepResult {
-    return reportSteppedLoadActualStep({
-      runtimeState: this.state,
-      reportedStore: this.reportedStore,
-      ...params,
-    });
+  reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
+    return reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
   }
 
   /**
@@ -173,7 +173,7 @@ export class SteppedCommandStore {
     this.state.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
   }
 
-  // --- Lifecycle (see the docblock: destination is the executor settle sweep) -
+  // --- Lifecycle ------------------------------------------------------------
 
   confirmDesired(deviceId: string, desired: SteppedLoadDesiredRuntimeState): void {
     confirmSteppedLoadDesiredStep({ runtimeState: this.state, deviceId, desired });

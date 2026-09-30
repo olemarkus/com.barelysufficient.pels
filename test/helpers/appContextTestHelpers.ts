@@ -6,7 +6,6 @@ import { joinObservedDeviceDescriptors } from '../../lib/device/deviceReadSource
 import { DeviceConfigurationStore, createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
-import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -21,7 +20,7 @@ import {
   type FlowBackedCapabilityReportOutcome,
   type InitializedAppContext,
 } from '../../lib/app/appContext';
-import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import { createDeviceControlHelpersForTest } from './deviceControlHelpers';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
@@ -240,13 +239,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     error: vi.fn(),
   });
   const steppedStores = steppedStoresForTest();
-  const deviceControlHelpers = deviceControlHelpersOverride ?? new AppDeviceControlHelpers({
-    ...steppedStores,
-    getProfiles: () => deviceControlProfiles,
-    getDeviceSnapshot: snapshotById(() => latestTargetSnapshot),
-    getStructuredLogger: () => undefined,
-    debugStructured: vi.fn(),
-  });
+  const deviceControlHelpers = deviceControlHelpersOverride ?? createDeviceControlHelpersForTest(
+    () => latestTargetSnapshot, steppedStores, (deviceId) => deviceTargetPowerConfigs[deviceId],
+    () => false, () => {}, () => null, { debugStructured: vi.fn() },
+  );
 
   // The real inventory reads over the fixture go through production projections.
   // The mock's device fixture is `latestTargetSnapshot`, so the reads are backed

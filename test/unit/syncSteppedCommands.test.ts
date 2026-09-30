@@ -6,7 +6,6 @@ import { steppedStoresForTest } from '../helpers/steppedStores';
 
 const device = (overrides: Partial<SteppedSettleDevice> = {}): SteppedSettleDevice => ({
   id: 'dev-1',
-  nativeSteppedControlEnabled: false,
   lowestActiveStepId: 'low',
   observedOn: true,
   steppedCommandConfirmation: { state: 'unavailable' },
@@ -20,12 +19,11 @@ const device = (overrides: Partial<SteppedSettleDevice> = {}): SteppedSettleDevi
  */
 describe('syncSteppedCommands', () => {
   it('confirms a command when the device reports the rung that was asked for', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     const changed = syncSteppedCommands({
       store,
-      reportedStore,
       devices: [device({
         steppedCommandConfirmation: { state: 'observed', observedStepId: 'high', observedAtMs: 1_500 },
       })],
@@ -37,21 +35,20 @@ describe('syncSteppedCommands', () => {
   });
 
   it('concludes nothing when the device has said nothing about a rung', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
-    syncSteppedCommands({ store, reportedStore, devices: [device()], nowMs: 1_500 });
+    syncSteppedCommands({ store, devices: [device()], nowMs: 1_500 });
 
     expect(store.getDesired('dev-1')).toMatchObject({ status: 'pending', pending: true });
   });
 
   it('does not confirm a command against a different rung than the one asked for', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     syncSteppedCommands({
       store,
-      reportedStore,
       devices: [device({
         steppedCommandConfirmation: { state: 'observed', observedStepId: 'low', observedAtMs: 1_500 },
       })],
@@ -62,12 +59,11 @@ describe('syncSteppedCommands', () => {
   });
 
   it('lapses an unanswered command once its pending window has passed', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     syncSteppedCommands({
       store,
-      reportedStore,
       devices: [device()],
       nowMs: 1_000 + STEPPED_LOAD_COMMAND_STALE_MS,
     });
@@ -76,14 +72,14 @@ describe('syncSteppedCommands', () => {
   });
 
   it('ends the command session when the on-session ends', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     // The edge needs both samples: the pass that sees ON, then the one that
     // sees OFF. A single OFF sample concludes nothing about a session it never
     // saw running.
-    syncSteppedCommands({ store, reportedStore, devices: [device({ observedOn: true })], nowMs: 1_100 });
-    syncSteppedCommands({ store, reportedStore, devices: [device({ observedOn: false })], nowMs: 1_200 });
+    syncSteppedCommands({ store, devices: [device({ observedOn: true })], nowMs: 1_100 });
+    syncSteppedCommands({ store, devices: [device({ observedOn: false })], nowMs: 1_200 });
 
     expect(store.getDesired('dev-1')).toBeUndefined();
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);
@@ -95,13 +91,12 @@ describe('syncSteppedCommands', () => {
     // after that guard left a native rung or an on→off observation unsettled
     // until some later meter-driven rebuild — on an irregular Flow feed, long
     // enough to suppress retries for a device that had already reported.
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
     expect(store.hasTrackedState()).toBe(true);
 
     const changed = syncSteppedCommands({
       store,
-      reportedStore,
       devices: [device({
         steppedCommandConfirmation: { state: 'observed', observedStepId: 'high', observedAtMs: 1_500 },
       })],
@@ -113,22 +108,8 @@ describe('syncSteppedCommands', () => {
   });
 
   it('reports nothing tracked on a fresh store, so the sweep can be skipped', () => {
-    const { store, reportedStore } = steppedStoresForTest();
+    const { store } = steppedStoresForTest();
     expect(store.hasTrackedState()).toBe(false);
-    expect(reportedStore.hasAny()).toBe(false);
   });
 
-  it('drops a Flow report once the device reports its own rung natively', () => {
-    const { store, reportedStore } = steppedStoresForTest();
-    reportedStore.record({ deviceId: 'dev-1', stepId: 'low', reportedAtMs: 1_000 });
-
-    syncSteppedCommands({
-      store,
-      reportedStore,
-      devices: [device({ nativeSteppedControlEnabled: true })],
-      nowMs: 1_100,
-    });
-
-    expect(reportedStore.get('dev-1')).toBeUndefined();
-  });
 });

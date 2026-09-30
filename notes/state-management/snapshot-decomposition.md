@@ -1,14 +1,18 @@
 # Snapshot Decomposition — finishing the observer/transport split
 
-> **Current runtime boundary (2026-09-27).** Planner and executor inputs do not
-> use `DeviceReads`: `lib/device/deviceRuntimeRead.ts` joins narrow
+> **Current runtime boundary (2026-09-30).** Planner and executor inputs do not
+> use `DeviceReads`: `lib/planInput/runtimeDeviceRead.ts` joins narrow
 > `DeviceConfiguration` values with Observer records. `DeviceReads` serves inventory metadata such as class,
 > zone, native-write and Flow-conflict details. The settings UI's unmanaged
 > picker uses `SettingsUiDeviceReads`, since those devices have no Observer
 > record. Consumers that need both inventory metadata and accepted runtime
 > state use the named `DeviceSurfaces` join: settings UI managed-device rows,
-> power attribution, and mode ownership. The observer projection carries the
-> resolved stepped-load profile with the reported rung. The old
+> power attribution, and mode ownership. Device parsing resolves the active
+> profile once: enabled native control, configured target-power control, or a
+> validated saved Flow ladder. `DeviceConfiguration` requires that profile on
+> its stepped branch; Observer carries the matching accepted report. Runtime
+> composition cannot read saved alternatives or picker suggestions and takes
+> the active profile from configuration, replacing an older Observer profile. The old
 > stage-5/6 joins below record how the earlier decomposition was built; where
 > they say runtime consumers join `DeviceDescriptorRead`, this current boundary
 > supersedes them. The pull refresh populates Observer before the startup warmup
@@ -28,7 +32,7 @@ god-struct, and seal the raw snapshot inside transport.**
 > serves inventory and UI metadata; `DeviceConfiguration` owns resolved
 > configuration needed by runtime consumers; Observer owns accepted pull/push
 > state. Planner and executor combine only `DeviceConfiguration` and Observer
-> through `lib/device/deviceRuntimeRead.ts`. Transport owns the Homey SDK read,
+> through `lib/planInput/runtimeDeviceRead.ts`. Transport owns the Homey SDK read,
 > parse, refresh and realtime-ingest path, while managed-device writes pass
 > through the actuator seam. `TransportContext` and the all-purpose decorated
 > snapshot API have been removed from those runtime inputs. The stages below
@@ -369,7 +373,7 @@ store, because:
    with explicit copies; `getPlanDevices` zips the two.
    **DONE, in the form that turned out to matter.** Planner and executor runtime
    input is built by `DeviceConfiguration` joined with an accepted Observer record
-   (`readRuntimeDevices` in `lib/device/deviceRuntimeRead.ts`). `DeviceReads` remains
+   (`readRuntimeDevices` in `lib/planInput/runtimeDeviceRead.ts`). `DeviceReads` remains
    the inventory surface; it is not used to assemble planner or executor inputs.
    Flow cards that need both inventory metadata and observed state use the explicit
    Flow projection (`readFlowDevices` in `lib/device/deviceFlowRead.ts`). The picker

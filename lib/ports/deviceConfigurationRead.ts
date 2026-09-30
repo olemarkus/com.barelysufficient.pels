@@ -1,10 +1,9 @@
-import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
+import type { DeviceDescriptorRead, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 /** Resolved configuration needed by planner and executor runtime inputs. */
-export type DeviceConfigurationRead = {
+type DeviceConfigurationFields = {
   id: string;
   name: string;
-  controlModel?: DeviceDescriptorRead['controlModel'];
   controlAdapter?: DeviceDescriptorRead['controlAdapter'];
   binaryControllable?: DeviceDescriptorRead['binaryControllable'];
   observeOnly: boolean;
@@ -20,3 +19,9 @@ export type DeviceConfigurationRead = {
   expectedPowerSource: DeviceDescriptorRead['expectedPowerSource'];
   targetPowerConfig?: DeviceDescriptorRead['targetPowerConfig'];
 };
+
+/** The device owner resolves the control identity and usable ladder together. */
+export type DeviceConfigurationRead = DeviceConfigurationFields & (
+  | { controlModel: 'stepped_load'; steppedLoadProfile: SteppedLoadProfile }
+  | { controlModel: 'temperature_target' | 'binary_power' }
+);

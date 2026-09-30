@@ -4,12 +4,9 @@
  * (`lib/device/transport/binaryCommandConfirmationSnapshot.ts`), and read the
  * same way.
  *
- * The device carries its own ladder by the time it reaches here: setup resolves
- * it from whatever source it has — stored config, or the device's native
- * stepped descriptor — and writes it onto the device. So validating a reported
- * rung is a question this projection can answer from the device alone, exactly
- * as the binary projection answers from the device's capability list, and no
- * consumer downstream needs a profile lookup to interpret the result.
+ * The device owner has already resolved the active ladder and admitted the
+ * reported rung. This projection trusts that observation and preserves its
+ * source timestamp; unrelated capability updates cannot refresh step evidence.
  *
  * A pure read. It is the input to a settle pass, not a settle pass.
  *
@@ -32,12 +29,6 @@ export type SteppedCommandConfirmation =
 
 export type SteppedSettleDevice = {
   id: string;
-  /**
-   * The device's own wiring reports its rung, so a Flow report is superseded.
-   * Carried rather than acted on during decoration: dropping the stale report
-   * is a state change, and the projection makes none.
-   */
-  nativeSteppedControlEnabled: boolean;
   /** The ladder's lowest active rung, for reconciling the initialization latch. */
   lowestActiveStepId: string | undefined;
   /** Whether the device is drawing at all — the on/off fold, producer-resolved. */
@@ -46,10 +37,9 @@ export type SteppedSettleDevice = {
 };
 import {
   getSteppedLoadLowestActiveStep,
-  getSteppedLoadStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveCurrentOn } from './observedState';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, ReportedStepObservedProbe } from '../../packages/contracts/src/types';
 
 /**
  * The device shape this reads. Deliberately structural and narrow: the fields a
@@ -61,22 +51,16 @@ export type SteppedSettleSourceDevice = {
   binaryControl?: { on: boolean };
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-  reportedStepId?: string;
-  nativeSteppedControlEnabled?: boolean;
-  lastUpdated?: number;
-};
+} & Pick<ReportedStepObservedProbe, 'reportedStepId' | 'reportedStepObservedAtMs'>;
 
 const resolveConfirmation = (
   device: SteppedSettleSourceDevice,
-  profile: SteppedLoadProfile,
 ): SteppedSettleDevice['steppedCommandConfirmation'] => {
-  // The rung must name a step on THIS ladder. A report that does not is not a
-  // weaker observation, it is not an observation of this device's rung at all.
-  const observedStepId = getSteppedLoadStep(profile, device.reportedStepId)?.id;
-  if (observedStepId === undefined || device.lastUpdated === undefined) {
+  const observedStepId = device.reportedStepId;
+  if (observedStepId === undefined || device.reportedStepObservedAtMs === undefined) {
     return { state: 'unavailable' };
   }
-  return { state: 'observed', observedStepId, observedAtMs: device.lastUpdated };
+  return { state: 'observed', observedStepId, observedAtMs: device.reportedStepObservedAtMs };
 };
 
 export const buildSteppedSettleSnapshot = (
@@ -89,13 +73,12 @@ export const buildSteppedSettleSnapshot = (
   if (!profile) return [];
   return [{
     id: device.id,
-    nativeSteppedControlEnabled: device.nativeSteppedControlEnabled === true,
     lowestActiveStepId: getSteppedLoadLowestActiveStep(profile)?.id,
     observedOn: resolveCurrentOn({
       binaryControl: device.binaryControl,
       steppedLoadProfile: profile,
       selectedStepId: device.selectedStepId,
     }),
-    steppedCommandConfirmation: resolveConfirmation(device, profile),
+    steppedCommandConfirmation: resolveConfirmation(device),
   }];
 });

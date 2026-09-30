@@ -162,7 +162,7 @@ describe('targetPowerReachabilitySettings', () => {
       nextProbeAtMs: 901_000,
     });
 
-    expect(wiring.deviceControlDeps.updateTargetPowerReachability('charger', reachability!))
+    expect(wiring.updateTargetPowerReachability('charger', reachability!))
       .toBe(true);
     expect(ctx.deviceTargetPowerConfigs.charger.reachability).toEqual(reachability);
     expect(scheduleTargetPowerProbe).toHaveBeenCalledTimes(1);

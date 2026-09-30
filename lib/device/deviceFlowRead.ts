@@ -11,5 +11,7 @@ export const readFlowDevices = (
   getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined,
 ): FlowDeviceRead[] => descriptors.flatMap((descriptor) => {
   const observed = getObservedRecord(descriptor.id);
-  return observed ? [{ ...descriptor, ...observed }] : [];
+  if (!observed) return [];
+  const { steppedLoadProfile: _observedProfile, ...state } = observed;
+  return [{ ...descriptor, ...state }];
 });

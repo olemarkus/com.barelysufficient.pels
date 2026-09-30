@@ -418,7 +418,7 @@ describe('buildCapacitySettingsSnapshot', () => {
       set temperatureControlDisabledDevices(value) { devices = value; },
       get temperatureControlPolicyState() { return policyState; },
       set temperatureControlPolicyState(value) { policyState = value; },
-      deviceManager: { getSnapshotByDeviceId: () => ({ deviceType: 'temperature' }) },
+      deviceReads: { descriptor: () => ({ deviceType: 'temperature' }) },
     } as unknown as AppContext;
     ctx.loadTemperatureControlPolicySettings = () => loadTemperatureControlPolicySettingsForApp(ctx);
 

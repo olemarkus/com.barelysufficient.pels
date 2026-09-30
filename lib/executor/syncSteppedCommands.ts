@@ -13,21 +13,16 @@
  * route around it in so many words. And it carried the commanded axis to the
  * planner with no import edge for `no-plan-to-executor` to object to.
  *
- * The device arrives here carrying its own ladder. Setup resolves that ladder
- * from whatever source it has — stored config, or the device's native stepped
- * descriptor — and writes it onto the device; past that point setup is out of
- * the picture and this layer reads the device exactly as it reads the binary
- * axis. That is why the confirmation evidence needs no profile lookup here: the
- * rung has already been validated against the ladder it belongs to.
+ * The device owner resolves the ladder and admits the reported rung before
+ * Observer projects confirmation evidence. This sweep consumes that evidence
+ * without selecting a profile or validating the report again.
  */
 import type { SteppedCommandStore } from './steppedCommandStore';
-import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 
 
 export type SyncSteppedCommandsParams = {
   store: SteppedCommandStore;
-  reportedStore: SteppedReportedStepStore;
   devices: readonly SteppedSettleDevice[];
   nowMs?: number;
 };
@@ -47,12 +42,11 @@ export type SyncSteppedCommandsParams = {
  */
 export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean => {
   const {
-    store, reportedStore, devices, nowMs = Date.now(),
+    store, devices, nowMs = Date.now(),
   } = params;
   let changed = store.pruneStale(nowMs);
 
   for (const device of devices) {
-    if (device.nativeSteppedControlEnabled) reportedStore.clear(device.id);
     const before = store.getDesired(device.id);
     store.expireConfirmedDesiredOnBinaryOff(device.id, device.observedOn);
 

@@ -901,6 +901,11 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     } as Partial<TargetDeviceSnapshot>))).surplusOnly).toBeUndefined();
     expect(toPlanDevice(willingCtx(), withDeviceConfiguration(buildSocketSnapshot({
       controlModel: 'stepped_load',
+      steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'on', planningPowerW: 1_000 },
+      ] },
+      selectedStepId: 'on',
     } as Partial<TargetDeviceSnapshot>))).surplusOnly).toBeUndefined();
     // A disabled target-power config + explicit binary_power model IS still a candidate.
     expect(toPlanDevice(willingCtx(), withDeviceConfiguration(buildSocketSnapshot({

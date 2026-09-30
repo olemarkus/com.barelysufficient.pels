@@ -78,8 +78,7 @@ export type DriftObservationDeps = {
  * The device's effective rung.
  *
  * `reportedStepId ?? lowest active step` — the same rule the snapshot producer
- * applies (`serializeLegacyStepFieldsFromEvidence`, whose docblock states the
- * effective step is "reportedStepId ?? planning fallback"). It reads the
+ * applies (`lib/planInput/deviceControlProjection.ts`). It reads the
  * device's report and the configured ladder, and deliberately NOT the commanded
  * target step: what PELS asked for is not evidence of where the device is, and
  * treating it as such is how a command gets mistaken for its own confirmation.

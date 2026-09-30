@@ -1,13 +1,10 @@
+import { resolveTemperatureControlDisabled } from '../../lib/device/temperatureControlSettings';
 import { describe, expect, it, vi } from 'vitest';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
-import {
-  decorateSnapshotWithDeviceControl,
-  markSteppedLoadDesiredStepIssued,
-  reportSteppedLoadActualStep,
-  resolveTemperatureControlDisabled,
-} from '../../setup/appDeviceControlHelpers';
+import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
+import { markSteppedLoadDesiredStepIssued, reportSteppedLoadActualStep } from '../../lib/executor/steppedCommandState';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
 
@@ -44,6 +41,7 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Thermostat',
   deviceType: 'temperature',
+  controlModel: 'temperature_target',
   temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
@@ -109,28 +107,9 @@ describe('temperature-control policy read', () => {
 
 describe('disabled temperature control', () => {
   it('fails closed only for temperature devices while the policy is unavailable', () => {
-    expect(resolveTemperatureControlDisabled({
-      policyState: 'unavailable',
-      disabledDevices: {},
-      deviceId: 'thermostat-1',
-      device: thermostat(),
-    })).toBe(true);
-    expect(resolveTemperatureControlDisabled({
-      policyState: 'unavailable',
-      disabledDevices: {},
-      deviceId: 'charger',
-      device: {
-        available: true,
-        id: 'charger', name: 'EV charger', deviceType: 'onoff', deviceClass: 'evcharger', targets: [],
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-      },
-    })).toBe(false);
-    expect(resolveTemperatureControlDisabled({
-      policyState: 'resolved',
-      disabledDevices: { 'thermostat-1': true },
-      deviceId: 'thermostat-1',
-      device: undefined,
-    })).toBe(true);
+    expect(resolveTemperatureControlDisabled('unavailable', {}, 'thermostat-1', thermostat())).toBe(true);
+    expect(resolveTemperatureControlDisabled('unavailable', {}, 'charger', { deviceType: 'onoff' })).toBe(false);
+    expect(resolveTemperatureControlDisabled('resolved', { 'thermostat-1': true }, 'thermostat-1', undefined)).toBe(true);
   });
 
   // The flag denies ONE axis. It used to demote the device wholesale — a
@@ -145,7 +124,6 @@ describe('disabled temperature control', () => {
         { id: 'high', planningPowerW: 2_000 },
       ],
     };
-    const profiles = { [raw.id]: profile };
     const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     markSteppedLoadDesiredStepIssued({
@@ -157,22 +135,11 @@ describe('disabled temperature control', () => {
     // The ladder's lowest ACTIVE rung, so the decorator's ordinary
     // re-initialization check leaves the latch alone.
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(raw.id, 'high');
-    expect(reportSteppedLoadActualStep({
-      runtimeState,
-      reportedStore,
-      profiles,
-      deviceId: raw.id,
-      stepId: 'high',
-      reportedAtMs: 90,
+    expect(reportSteppedLoadActualStep(runtimeState, reportedStore, {
+      deviceId: raw.id, stepId: 'high', planningPowerW: 2000, observedAtMs: 90,
     })).toBe('changed');
-    const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: raw,
-      profiles,
-      store,
-      reportedStore,
-      temperatureControlDisabled: true,
-      nowMs: 110,
-    });
+    const decorated = decorateSnapshotWithDeviceControl({ ...raw, steppedLoadProfile: profile,
+      controlModel: 'stepped_load', reportedStepId: 'high', reportedStepObservedAtMs: 90 }, store, true, false);
 
     expect(decorated.deviceType).toBe('temperature');
     expect(decorated.targets).toEqual(raw.targets);
@@ -181,7 +148,7 @@ describe('disabled temperature control', () => {
     expect(decorated.steppedLoadProfile).toEqual(profile);
     expect(decorated.reportedStepId).toBe('high');
     // Live command state survives the decoration. It has to:
-    // `decorateTargetSnapshotList` is a MUTATING read run once per power
+    // `decorateTargetSnapshotList` is a pure read run once per power
     // sample, so tearing the command axis down here would wipe it every few
     // seconds — no command would ever confirm, retry back-off would die, and
     // the lowest-step initialization latch would never latch.
@@ -191,13 +158,7 @@ describe('disabled temperature control', () => {
   });
 
   it('falls the temperature model back to binary when there is no ladder to keep', () => {
-    const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: thermostat(),
-      profiles: {},
-      ...steppedStoresForTest(),
-      temperatureControlDisabled: true,
-      nowMs: 110,
-    });
+    const decorated = decorateSnapshotWithDeviceControl(thermostat(), steppedStoresForTest().store, true, false);
 
     expect(decorated.controlModel).toBe('binary_power');
     expect(decorated.temperatureControlDisabled).toBe(true);

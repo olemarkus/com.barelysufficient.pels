@@ -1747,19 +1747,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `lib/ports/sampledMeterIdentity.ts`. Setup stateless and peer budgets shrink with the move.
       Completed 2026-09-28. [P2]
 
-- [ ] **`restorePreparedStepId` is declared and never assigned.** The field is on
-      `setup/appDeviceControlSteppedState.ts` and on the legacy field shapes in
-      `lib/plan/planSteppedLoadState.ts`, but nothing in `lib/**` or `setup/**` ever writes it, so
-      `normalizeSteppedLoadStepStateFromLegacyFields` never takes its override branch and
-      `restorePreparation` is always derived from the observation. Either wire a producer or drop
-      the field and the branch, and check whether `restorePreparation` still earns its place on
-      `NormalizedSteppedLoadStepState` afterwards — its only remaining reader is
-      `serializeLegacyStepFields`, which round-trips it straight back out. Done when no declared
-      step field lacks a writer. (The `suppressed_flow` arm, `SuppressedFlowStepInput`,
-      `SuppressedFlowRestorePreparationPolicy` and the age-gated suppressed branch this item used
-      to cover are gone — they were a freshness call inside `lib/plan`.) Source: adversarial
-      review, 2026-07-25. [P2]
-
 - [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
       `homey app validate && npm run package:check`, and `homey app validate` calls
       `preprocess({ copyAppProductionDependencies: app instanceof AppPython })` — false for a Node

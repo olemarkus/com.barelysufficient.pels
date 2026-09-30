@@ -2,7 +2,7 @@ import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureC
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
-import { readRuntimeDevice, readRuntimeDevices } from '../lib/device/deviceRuntimeRead';
+import { readRuntimeDevice, readRuntimeDevices } from '../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';

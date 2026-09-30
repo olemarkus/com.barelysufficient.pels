@@ -32,7 +32,7 @@ import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim'
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
-import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDeviceProjection';
+import { projectLifecycleFallbackDevice } from '../../lib/planInput/lifecycleFallbackDeviceProjection';
 
 /**
  * Unwraps the seam's per-device result for the cases under test that expect a

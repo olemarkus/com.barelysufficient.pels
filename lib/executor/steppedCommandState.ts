@@ -1,22 +1,19 @@
-import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type {
-  DeviceControlProfiles,
   SteppedLoadCommandStatus,
 } from '../../packages/contracts/src/types';
 
 /**
  * Stepped-load command runtime state: the tracked desired-step command per
- * device (pending / stale / success lifecycle) plus the raw last flow-reported
- * step it is reconciled against. The commanded axis is OWNED here; the
- * flow-reported map is raw input that becomes observed evidence when snapshot
- * decoration resolves it (`appDeviceControlSteppedState.ts`). Since 2026-07-25
- * that resolution admits non-off flow reports unconditionally — the two axes stay
- * separate because they answer different questions (what PELS commanded vs what
- * the device attests), not because admission is withheld (`lib/device/AGENTS.md`).
+ * device (pending / stale / success lifecycle). The device owner admits Flow
+ * evidence before it reaches these transitions; Observer stores that report.
+ * Non-off reports remain valid while the binary axis reads off. Commanded and
+ * reported state answer separate questions: what PELS requested and what the
+ * device attests (`lib/device/AGENTS.md`).
  */
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = CONTROL_COMMAND_CONFIRMATION_MS;
@@ -71,26 +68,8 @@ export type DeviceControlRuntimeState = {
 
 export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
 
-export type MarkSteppedLoadDesiredStepIssuedParams = {
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  issuedAtMs?: number;
-  confirmationPolicy?: 'required' | 'assume_applied';
-  planningPowerW?: number;
-  previousPlanningPowerW?: number;
-  targetPowerProbeConfirmedMaxPowerW?: number;
-  /**
-   * The command left our socket but nothing acknowledged it. The pending record
-   * is still written — that is the point, it is what keeps the device unsettled
-   * — but nothing downstream may turn the write into a conclusion ABOUT the
-   * device. Specifically it must not arm the target-power reachability probe: a
-   * probe that settles unobserved counts a failure and backs off for 15-60
-   * minutes, which would let an abandoned socket answer "this charger cannot
-   * reach that rung" on evidence that never existed.
-   */
-  unacknowledged?: boolean;
-};
+export type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
+
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
   steppedLoadDesiredByDeviceId: new Map(),
@@ -273,32 +252,13 @@ export const preserveSteppedLoadDesiredStep = (params: {
   });
 };
 
-export const reportSteppedLoadActualStep = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  reportedStore: SteppedReportedStepStore;
-  profiles: DeviceControlProfiles;
-  deviceId: string;
-  stepId: string;
-  reportedAtMs?: number;
-  planningPowerW?: number;
-}): ReportSteppedLoadActualStepResult => {
-  const {
-    runtimeState,
-    reportedStore,
-    profiles,
-    deviceId,
-    stepId,
-    reportedAtMs = Date.now(),
-    planningPowerW,
-  } = params;
-  const profile = profiles[deviceId];
-  if (!profile || !getSteppedLoadStep(profile, stepId)) {
-    return 'invalid';
-  }
-
-  // The ladder check above is this layer's to make (it holds the profile). The
-  // record, and the verdict on whether it is news, belong to the observer.
-  const changed = reportedStore.record({ deviceId, stepId, reportedAtMs, planningPowerW });
+export const reportSteppedLoadActualStep = (
+  runtimeState: DeviceControlRuntimeState,
+  reportedStore: SteppedReportedStepStore,
+  observation: FlowSteppedLoadObservation,
+): ReportSteppedLoadActualStepResult => {
+  const { deviceId, stepId, observedAtMs, planningPowerW } = observation;
+  const changed = reportedStore.record({ deviceId, stepId, reportedAtMs: observedAtMs, planningPowerW });
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   if (desired?.stepId === stepId) {

@@ -12,6 +12,7 @@ import type { ObserverDeviceRead } from '../../lib/executor/driftObservedDevice'
 const configuration = (id: string): DeviceConfigurationRead => ({
   id,
   name: `${id} (configuration)`,
+  controlModel: 'binary_power',
   capabilities: ['onoff'],
   canSetControl: true,
   observeOnly: false,

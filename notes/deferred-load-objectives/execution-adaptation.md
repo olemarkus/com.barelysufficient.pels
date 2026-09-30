@@ -384,8 +384,9 @@ SDK-boundary harness, unmocked.
 
 ### Live step-ladder gap — the frozen read also bridges missing steps
 
-The step ladder is a **live transport input**: a flow-registered stepped profile does not survive an
-app restart until the Flow re-fires, and SDK reads transiently fail. The 2026-08-01 prod incident
+The device owner resolves and publishes the chosen step ladder. A persisted Flow profile survives
+restart before feedback arrives; unavailable SDK reads retain the last accepted device. Historically,
+the 2026-08-01 prod incident
 (water heater "Connected 300") showed what happens when the fresh-path requirement leaks onto the
 committed path: after an 18:40 restart, `resolveObjectiveSteps` came up empty and the diagnostic
 short-circuited to `unknown (objective_missing_charge_rate)` for 9.5 h — stripping the task's budget
@@ -402,12 +403,11 @@ read the bit, `resolveObjectiveSteps` (→ `liveStepsUnavailable`) and `resolveP
 hero's planning-speed copy). **They are mirrors and must move together**: a divergence means the
 diagnostic and the hero disagree about the same device in the same cycle.
 
-Coverage is deliberately split across two tiers, because the 2026-08-01 failure was in the *join*,
-not in either half: `test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts` pins the
-producer's rule in isolation, and the SDK-boundary e2e drives a restart-shaped device READING
-through the real `toPlanDevice` so the bit is **derived**, never hand-stamped. Do not "simplify" the
-e2e by asserting `steppedLadderMissing` on a fabricated plan device — that supplies the derivation's
-conclusion instead of its inputs, and the test would then keep passing through a producer regression.
+`test/integration/appInitToPlanDeviceSteppedLadderGap.test.ts` drives saved-profile restart inputs
+through real owner parsing, configuration publication, observation projection, runtime composition,
+and planner projection. It verifies that absent feedback keeps the ladder and planning speed.
+Separate projection-contract fixtures deliberately bypass effective-step composition while retaining
+complete owner configuration. The real producer derives the gap bit; tests never hand-stamp it.
 
 The rule (same as the missing-price-horizon case): **re-plan only when due AND possible; a committed
 task is never dropped to `unknown` for want of a live input the commitment already embodies.** With
@@ -419,10 +419,10 @@ binary/temperature controls; note the executor's step-drift check passes trivial
 expected steps, so an external step change is invisible for the gap's duration — degradation, not
 a hole). Bootstrap — no commitment to serve — still resolves `unknown`. The frozen serve is
 bounded by the commitment: once the last committed hour elapses with the ladder still missing,
-the diagnostic legitimately reverts to `unknown` — re-establishing the ladder after a restart is
-still open.
-Regression harness: `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts` (SDK-boundary, restart
-simulated as a new recorder loading the persisted payload). The rate-lane analogue
+the diagnostic legitimately reverts to `unknown`. Normal restart now retains the saved ladder.
+Regression harness: `test/integration/deferredObjectiveProjectionGapCommitment.test.ts` drives the
+real diagnostics, admission, and recorder across an incomplete projection, recorder restart, settles,
+and rollover. The rate-lane analogue
 (`profileEnergy.reasonCode` short-circuits one step earlier) is still open.
 
 Recorder interaction: a frozen-served diagnostic can now coincide with a `:58` settle for the whole

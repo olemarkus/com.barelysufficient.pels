@@ -18,12 +18,14 @@ import {
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
   EASEE_CHARGER_CURRENT_CAPABILITY_ID,
+  EASEE_MIN_CHARGING_CURRENT_A,
   isNativeSteppedLoadControlCapabilityId,
   isNativeSteppedLoadControlEnabled,
   resolveNativeSteppedLoadReportedStepId,
   resolveTargetPowerReportedStepId,
 } from '../nativeSteppedLoadWiring';
-import { isEvTargetPowerConfig } from '../targetPowerReachability';
+import { isEvTargetPowerConfig, resolveEvTargetPowerExactStep } from '../targetPowerReachability';
+import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-domain/src/targetPowerStepping';
 import {
@@ -142,6 +144,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, par
         currentSnapshot.lastFreshDataMs = Date.now();
         currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
     }
+    ingest.publishDeviceConfiguration(deviceId);
     const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
     if (reportedStepChanged) {
         emitNativeSteppedLoadReportedStepChanged(ingest, {
@@ -199,6 +202,7 @@ function resolveNativeReportedStepPowerW(
     if (capabilityId !== 'target_power' && capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID) return undefined;
     if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+    if (capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID && value < EASEE_MIN_CHARGING_CURRENT_A) return 0;
     return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
@@ -217,7 +221,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
         snapshot,
     } = params;
     if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
-    const profile = snapshot.suggestedSteppedLoadProfile;
+    const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
 
     const updateKind = resolveNativeSteppedCapabilityUpdateKind({
@@ -230,8 +234,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
 
     // A malformed current is not an observation. Consume it before it can
     // replace the adapter's last-good step or advance device freshness.
-    if (capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
-        && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return true;
+    if (isInvalidEaseeCurrent(capabilityId, value)) return true;
 
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
     // An Easee current echo is also the only source for its reported rung and
@@ -240,6 +243,10 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
     if (shouldSuppressOwnNativeStepEcho(ingest, deviceId, capabilityId, normalizedValue)) {
         return isNativePowerStepUpdate;
     }
+
+    const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
+    if (reportedStepPowerW !== undefined
+        && !acceptExactTargetPowerObservation(snapshot, reportedStepPowerW)) return true;
 
     if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
         recordCapabilityObservation({
@@ -261,7 +268,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
         logger: ingest.reader.logger,
     });
 
-    const fallbackReportedStepId = profile && value === false
+    const fallbackReportedStepId = value === false
         ? resolveNativeSteppedLoadReportedStepId({
             profile,
             capabilities: [],
@@ -273,9 +280,8 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
     const nextReportedStepId = resolveObservedNativeSteppedLoadReportedStepId({
         owner: ingest.reader.snapshotStore,
         deviceId,
-        profile,
+        profile: snapshot.steppedLoadProfile ?? profile,
     }) ?? fallbackReportedStepId;
-    const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
 
     applyNativeSteppedLoadSnapshotUpdate(ingest, {
         snapshotIndex,
@@ -284,9 +290,14 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
         nextReportedStepId,
         isNativePowerStepUpdate,
         reportedStepPowerW,
-        ...(reportedStepPowerW !== undefined ? { reportedStepObservedAtMs: Date.now() } : {}),
+        ...(isNativePowerStepUpdate ? { reportedStepObservedAtMs: Date.now() } : {}),
     });
     return isNativePowerStepUpdate;
+}
+
+function isInvalidEaseeCurrent(capabilityId: string, value: unknown): boolean {
+    return capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
+        && (typeof value !== 'number' || !Number.isFinite(value) || value < 0);
 }
 
 function shouldSuppressOwnNativeStepEcho(
@@ -317,13 +328,16 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
         snapshot,
     } = params;
     if (capabilityId !== AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID) return false;
+    if (isNativeSteppedLoadControlEnabled(snapshot)
+        && snapshot.capabilities?.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) return true;
     const phaseCount = resolveTargetPowerPresetPhaseCount(snapshot.targetPowerConfig?.preset);
     if (!phaseCount || typeof value !== 'number' || !Number.isFinite(value)) return false;
-    const profile = snapshot.suggestedSteppedLoadProfile ?? snapshot.steppedLoadProfile;
+    const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
     const targetPowerW = Math.round(value * 230 * phaseCount);
+    if (!acceptExactTargetPowerObservation(snapshot, targetPowerW)) return true;
     const nextReportedStepId = resolveTargetPowerReportedStepId({
-        profile,
+        profile: snapshot.steppedLoadProfile ?? profile,
         capabilityObj: {
             target_power: { value: targetPowerW },
         },
@@ -348,3 +362,17 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
     });
     return true;
 }
+
+/** Admit the native source before updating the confirmed EV ladder. */
+/* eslint-disable functional/immutable-data -- This source owns the transport snapshot. */
+function acceptExactTargetPowerObservation(snapshot: TransportDeviceSnapshot, planningPowerW: number): boolean {
+    if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return true;
+    const exactStep = resolveEvTargetPowerExactStep(snapshot.targetPowerConfig, planningPowerW);
+    if (!exactStep || !snapshot.steppedLoadProfile) return false;
+    const admittedSnapshot = snapshot;
+    admittedSnapshot.steppedLoadProfile = resolveTargetPowerObservationProfile(
+        snapshot.targetPowerConfig, snapshot.steppedLoadProfile, exactStep,
+    );
+    return true;
+}
+/* eslint-enable functional/immutable-data */

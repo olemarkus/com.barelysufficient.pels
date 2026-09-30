@@ -73,5 +73,6 @@ const joinExecutorDevice = (
     ...observed,
     id: configuration.id,
     name: configuration.name,
+    steppedLoadProfile: 'steppedLoadProfile' in configuration ? configuration.steppedLoadProfile : undefined,
   };
 };

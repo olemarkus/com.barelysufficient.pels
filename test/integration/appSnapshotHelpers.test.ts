@@ -240,6 +240,7 @@ describe('appSnapshotHelpers', () => {
     // cleanup of departed devices and the `snapshot_refresh` reconciliation stamp.
     expect(syncHeadroomCardState).toHaveBeenCalledWith([{
       ...snapshot[0],
+      controlModel: 'binary_power',
       isEvCharger: false,
       managed: true,
       observeOnly: false,
@@ -383,6 +384,7 @@ describe('appSnapshotHelpers', () => {
     expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': true }]);
     expect(syncHeadroomCardState).toHaveBeenCalledWith([{
       ...snapshot[0],
+      controlModel: 'binary_power',
       isEvCharger: false,
       managed: true,
       observeOnly: false,

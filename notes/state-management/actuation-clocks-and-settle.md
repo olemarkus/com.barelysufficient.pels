@@ -43,7 +43,7 @@ Before this arc, each layer implemented the other's question.
   executor-facing type. Closed in PR 2 by `lib/executor/steppedCommandAttempt.ts`.
 
   Note what this was **not**: `stepCommandStatus` arriving on `DevicePlanDevice` is producer-
-  stamped by `setup/appDeviceControlHelpers.ts` from the runtime command store — the clean/
+  stamped by `lib/planInput/deviceControlProjection.ts` from the runtime command store — the clean/
   trusted pattern working as intended, not a layering breach. An earlier draft of this note
   called the planner's whole restore-attempt composition a crossing; that was too broad. The
   planner composing ITS reservation with command state it was handed is its own business.

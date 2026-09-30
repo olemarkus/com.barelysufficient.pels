@@ -43,6 +43,7 @@ import {
 } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
+import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 
 export type FlowEffectiveRequiredCapabilityId =
@@ -142,7 +143,10 @@ export function resolveFlowCapabilityOverlay(params: {
     nativeSteppedControlAdapter: nativeSteppedOverlay.controlAdapter,
   });
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
-  const steppedLoadProfile = targetPowerOverlay.steppedLoadProfile ?? activeNativeSteppedProfile;
+  const savedFlowProfile = providers.getDeviceControlProfile?.(deviceId);
+  const steppedLoadProfile = activeNativeSteppedProfile
+    ?? targetPowerOverlay.steppedLoadProfile
+    ?? (hasUsableSteppedLoadLadder(savedFlowProfile) ? savedFlowProfile : undefined);
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
     : undefined;

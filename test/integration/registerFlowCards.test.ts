@@ -14,7 +14,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard } from '../../lib/utils/types';
-import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
+import type { ReportSteppedLoadActualStepResult } from '../../lib/executor/steppedCommandState';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 

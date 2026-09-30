@@ -43,7 +43,9 @@ import {
   readFlowReportedCapabilitiesForDevice,
 } from '../lib/device/transport/flowReportedCapabilities';
 import { buildDebugLoggingTopics } from '../lib/utils/debugLoggingSettings';
-import { normalizeStoredDeviceControlProfiles } from './appDeviceControlHelpers';
+import {
+  normalizeDeviceControlProfiles as normalizeStoredDeviceControlProfiles,
+} from '../packages/shared-domain/src/deviceControlProfiles';
 import { logHomeyDeviceComparisonForDebugFromApp } from './appDebugHelpers';
 import { normalizeError } from '../lib/utils/errorUtils';
 import {

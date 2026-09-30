@@ -1,14 +1,14 @@
 import type {
   LifecycleFallbackDevice,
   LifecycleFallbackObservedState,
-} from '../lib/executor/lifecycleFallbackDispatcher';
+} from '../executor/lifecycleFallbackDispatcher';
 import type {
   DecoratedDeviceSnapshot,
   ProjectedObservedDeviceState,
-} from '../packages/contracts/src/types';
-import { isCanSetControl } from '../lib/device/deviceActionProjection';
-import { getPrimaryTargetCapability } from '../packages/shared-domain/src/targetCapabilities';
-import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
+} from '../../packages/contracts/src/types';
+import { isCanSetControl } from '../device/deviceActionProjection';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 /** Narrow the app-owned decorated carrier before it crosses into the executor. */
 export const projectLifecycleFallbackDevice = (
@@ -51,21 +51,21 @@ export type LifecycleFallbackCommandState =
  * state, and the last trusted power reading come from the observer projection;
  * no planner snapshot is consulted.
  */
-export const projectLifecycleFallbackCommandState = (params: {
-  device: LifecycleFallbackDevice | undefined;
-  observedState: ProjectedObservedDeviceState | undefined;
-}): LifecycleFallbackCommandState => {
+export const projectLifecycleFallbackCommandState = (
+  device: LifecycleFallbackDevice | undefined,
+  observedState: ProjectedObservedDeviceState | undefined,
+): LifecycleFallbackCommandState => {
   if (
-    !params.device
-    || !params.observedState
-    || params.observedState.available === false
-    || !hasObservedMeasuredPower(params.observedState)
+    !device
+    || !observedState
+    || observedState.available === false
+    || !hasObservedMeasuredPower(observedState)
   ) {
     return { state: 'unavailable' };
   }
   return {
     state: 'available',
-    device: params.device,
-    observedState: params.observedState,
+    device: device,
+    observedState: observedState,
   };
 };

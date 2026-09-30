@@ -18,11 +18,6 @@ export {
 export { mergeFresherCapabilityObservations } from './observationMerge';
 
 export {
-    reportFlowSteppedObservation,
-    type FlowSteppedLoadObservation,
-} from './observationFlowStepped';
-
-export {
     recordLocalWriteObservation,
     recordSnapshotCapabilityObservations,
     recordCapabilityObservation,

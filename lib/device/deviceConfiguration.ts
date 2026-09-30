@@ -16,10 +16,10 @@ export type DeviceConfiguration = {
   ids(): string[];
 };
 
-const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigurationRead => ({
+const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigurationRead => {
+  const fields = {
     id: snapshot.id,
     name: snapshot.name,
-    controlModel: snapshot.controlModel,
     controlAdapter: snapshot.controlAdapter,
     binaryControllable: snapshot.binaryControllable,
     observeOnly: isObserveOnlyRoleClassKey(snapshot.deviceClass),
@@ -34,7 +34,11 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     expectedPowerKw: snapshot.expectedPowerKw,
     expectedPowerSource: snapshot.expectedPowerSource,
     targetPowerConfig: snapshot.targetPowerConfig,
-  });
+  };
+  return snapshot.steppedLoadProfile
+    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile: snapshot.steppedLoadProfile }
+    : { ...fields, controlModel: snapshot.deviceType === 'temperature' ? 'temperature_target' : 'binary_power' };
+};
 
 export class DeviceConfigurationStore implements DeviceConfiguration {
   private readonly byId = new Map<string, DeviceConfigurationRead>();

@@ -74,42 +74,6 @@ export type LegacySteppedLoadStepFieldsInput = {
   restorePreparedStepId?: string | null;
 };
 
-export function serializeLegacyStepFieldsFromEvidence(params: {
-  nowMs: number;
-  reportedStepId?: string;
-  reportedStepSource: 'native' | 'flow';
-  reportedObservedAtMs?: number;
-  targetStepId?: string;
-  targetChangedAtMs?: number;
-  targetStatus?: SteppedLoadCommandStatus;
-  fallbackStepId?: string;
-}): SteppedLoadStepFields {
-  const state = normalizeSteppedLoadStepState({
-    nowMs: params.nowMs,
-    reportedStep: params.reportedStepId
-      ? {
-        stepId: params.reportedStepId,
-        source: params.reportedStepSource,
-        observedAtMs: params.reportedObservedAtMs,
-      }
-      : undefined,
-    targetStep: params.targetStepId
-      ? {
-        stepId: params.targetStepId,
-        changedAtMs: params.targetChangedAtMs,
-        status: params.targetStatus,
-      }
-      : undefined,
-    planningFallback: !params.reportedStepId && params.fallbackStepId
-      ? {
-        stepId: params.fallbackStepId,
-        reason: 'lowest_active_step',
-      }
-      : undefined,
-  });
-  return serializeLegacyStepFields(state);
-}
-
 export function normalizeSteppedLoadStepState(
   params: NormalizeSteppedLoadStepStateParams,
 ): NormalizedSteppedLoadStepState {

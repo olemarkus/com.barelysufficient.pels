@@ -2,7 +2,7 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import type { ResidualKwShedBehavior } from './deviceResidualKw';
 import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type {
-  DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot, ThermalDirection,
+  DecoratedDeviceSnapshot, TemperatureObservedProbe, ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -209,17 +209,4 @@ function resolveShedBehaviorWithoutTemperature(
   return lowestActiveStep
     ? { action: 'set_step', stepId: lowestActiveStep.id }
     : { action: 'turn_off' };
-}
-
-
-/** Stamp temperature permissions without changing the observed temperature facet. */
-export function withTemperatureControlPolicy<T extends TargetDeviceSnapshot>(
-  device: T,
-  disabled: boolean,
-  adjustmentsDisabled: boolean,
-): T {
-  return { ...device,
-    temperatureControlDisabled: disabled ? true : undefined,
-    temperatureAdjustmentsDisabled: adjustmentsDisabled ? true : undefined,
-  };
 }

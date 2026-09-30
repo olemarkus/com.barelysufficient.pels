@@ -236,15 +236,14 @@ export function resolveSteppedClusterFields(
  * ladder has no rate to plan against and must be served its frozen committed
  * plan, while a device that was never stepped may have a rate synthesised for it.
  *
- * Every way the cluster comes up empty is the same gap and answers alike: no live
- * profile reached the snapshot (a restart before the Flow re-fires, a transient
- * SDK read), the ladder in hand priced no rung, or the ladder resolved but named
- * no selected step (the third arm — a half cluster is refused whole rather than
- * shipped with a hole).
+ * A resolved stepped configuration always carries its chosen profile. Restart
+ * without a Flow report retains that profile, and unavailable SDK reads retain
+ * the last accepted device. This guard records an incomplete projection cluster
+ * so objective consumers cannot invent a rate if a producer violates that
+ * contract.
  *
- * Reads the EFFECTIVE device: a temperature-disabled device has already been
- * re-projected to `binary_power`, so it is honestly not in a gap — it is not
- * stepped at all this cycle.
+ * Reads the effective control axis. Denying temperature commands preserves an
+ * independently resolved stepped axis.
  */
 export function resolveSteppedLadderMissing(
   device: { controlModel?: DeviceControlModel },
