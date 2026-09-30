@@ -13,8 +13,9 @@ import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOve
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 
 // The log seam receives the same resolved presentation as the UI.
+// Keep the decision anchor and display clock fixed; these tests do not advance time.
 const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => buildSettingsOverviewDeviceReadModel(device, {
-  getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: Date.now(),
+  getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
   getObservedTemperature: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getObservedEvChargingState: () => ({ kind: 'absent' }),
