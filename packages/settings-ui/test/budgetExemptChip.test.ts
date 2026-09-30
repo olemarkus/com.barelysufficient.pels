@@ -318,7 +318,7 @@ describe('held-card reason line states what the device needs', () => {
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanGenericCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanGenericCard, { dev, dryRun: false, nowMs: 1_000 }),
         mount,
       );
     });
@@ -385,7 +385,7 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanTemperatureCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanTemperatureCard, { dev, dryRun: false, nowMs: 1_000 }),
         mount,
       );
     });
@@ -461,7 +461,7 @@ describe('PlanSteppedCard status line states what the device needs', () => {
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanSteppedCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanSteppedCard, { dev, dryRun: false, nowMs: 1_000 }),
         mount,
       );
     });

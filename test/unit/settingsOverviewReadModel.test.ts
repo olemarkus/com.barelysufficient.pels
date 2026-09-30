@@ -12,9 +12,9 @@ import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverv
 const buildSettingsOverviewDeviceReadModel = (
   device: Parameters<typeof buildDevice>[0],
   deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
-  profile?: Parameters<typeof buildDevice>[2],
+  profile?: Parameters<typeof buildDevice>[3],
 ) => buildDevice(device, { ...deps, getDeviceExecutionState: () => executionStateFixture(device),
-  dryRun: false, nowMs: 0 }, profile);
+  dryRun: false, nowMs: 0 }, 0, profile);
 const buildSettingsOverviewReadModel = (
   plan: Parameters<typeof buildPlan>[0],
   deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
@@ -177,6 +177,29 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.rail?.activeIndex).toBeNull();
   });
 
+  it('uses executor-owned step-only restoration and pending movement in presentation', () => {
+    const device = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
+      reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'low', plannedState: 'keep' });
+    const wire = buildDevice(device, {
+      ...absentTemperature, dryRun: false, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: null,
+        resumeExpected: true, steppedTransitionPending: true }),
+    }, 0);
+    expect(wire.status).toMatchObject({ kind: 'resuming', label: 'Resuming',
+      reason: { text: 'Turning on to Low' } });
+  });
+
+  it('shows binary restore movement even when a stepped device already reports its desired step', () => {
+    const device = steppedPlanDevice({ currentState: 'off', reportedStepId: 'low',
+      selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const wire = buildDevice(device, {
+      ...absentTemperature, dryRun: false, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), binaryProgress: 'pending',
+        stepProgress: 'settled', resumeExpected: true, steppedTransitionPending: true }),
+    }, 0);
+    expect(wire.status).toMatchObject({ kind: 'resuming', reason: { text: 'Turning on to Low' } });
+  });
+
   it.each(['unavailable', 'manual'] as const)('suppresses stale idle guidance when %s', (kind) => {
     const device = buildPlanDevice({ available: kind !== 'unavailable', controllable: kind !== 'manual' });
     const wire = buildSettingsOverviewDeviceReadModel(device, {
@@ -240,6 +263,20 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
+  it('includes the observer battery percentage in the complete stepped charger fact', () => {
+    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger',
+      binaryCapabilityId: 'evcharger_charging', currentState: 'on', reportedStepId: 'low' });
+    const getObservedStateOfCharge = vi.fn(() => ({ kind: 'observed' as const,
+      value: { level: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000 }).level } }));
+    const wire = buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature, getObservedStateOfCharge,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+    });
+    expect(wire.status.factText).toBe('Charging · 64 % · level Low');
+    expect(getObservedStateOfCharge).toHaveBeenCalledTimes(1);
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.factText).toBe('Level Low');
+  });
+
   it('resolves card kind in the backend', () => {
     // The UI selects the supplied card kind without receiving raw device facets.
     const binary = buildPlanDevice({ id: 'bin-1' });
@@ -297,6 +334,16 @@ describe('settingsOverviewReadModel', () => {
     const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
     expect(wire.status.reason?.countdown?.endsAtMs).toBe(42_010);
     expect(wire).not.toHaveProperty('reason');
+  });
+
+  it('anchors a countdown to the decision when refreshing presentation later', () => {
+    const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 42 } });
+    const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device] }, {
+      ...absentTemperature, dryRun: false, nowMs: 11_000,
+      getDeviceExecutionState: () => executionStateFixture(device),
+    });
+    expect(wire?.devices?.[0].status.reason?.countdown?.endsAtMs).toBe(43_000);
+    expect(wire?.devices?.[0].status.reason?.text).toContain('32s');
   });
   it('does not label a drawing target-only device as idle', () => {
     // `isSatisfiedTargetOnlyDevice` (shared-domain) decides "idle" partly on

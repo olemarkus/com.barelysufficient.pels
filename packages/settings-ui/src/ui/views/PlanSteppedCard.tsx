@@ -4,7 +4,7 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
 import { DeadlineChip, PlanCardStatusChipView } from './PlanDeviceCards.tsx';
-import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
 // ─── Step rail ────────────────────────────────────────────────────────────────
 
@@ -52,18 +52,14 @@ const StepRail = ({ dev }: { dev: PlanDeviceSnapshot }) => {
 
 export const PlanSteppedCard = ({
   dev,
-  plan,
   dryRun,
-  renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
-  plan: PlanSnapshot | null;
   dryRun: boolean;
-  renderedAtMs: number;
   nowMs: number;
 }) => {
-  const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
+  const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const status = displayDev.status;
   const stateKind = status.kind;
   const powerText = status.powerText;

@@ -27,7 +27,7 @@ import {
 } from '../starvationRescue.ts';
 import { hasActiveDeadlineObjective } from '../state.ts';
 import { buildDeadlineHref } from '../deadlineUrls.ts';
-import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -291,18 +291,14 @@ const CooldownProgress = ({
 
 export const PlanGenericCard = ({
   dev,
-  plan,
   dryRun,
-  renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
-  plan: PlanSnapshot | null;
   dryRun: boolean;
-  renderedAtMs: number;
   nowMs: number;
 }) => {
-  const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
+  const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
 
   const cardClasses = [
@@ -382,18 +378,14 @@ export const PlanGenericCard = ({
 
 export const PlanTemperatureCard = ({
   dev,
-  plan,
   dryRun,
-  renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
-  plan: PlanSnapshot | null;
   dryRun: boolean;
-  renderedAtMs: number;
   nowMs: number;
 }) => {
-  const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
+  const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
   const { kind } = presentation;
 

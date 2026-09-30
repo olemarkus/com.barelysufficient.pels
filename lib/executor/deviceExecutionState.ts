@@ -4,6 +4,7 @@ import type { DeviceExecutionState, AxisProgress } from '../../packages/contract
 import type { ExecutableDeviceIntent, ExecutableObservedDeviceState } from './executablePlan';
 import { hasSteppedCommand, hasTargetCommand, hasReleaseCommand } from './executablePlan';
 import type { DriftCommandRead } from './driftObservedDevice';
+import { getSteppedLoadStep, isSteppedLoadStepOff } from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   resolveExpectedBinaryStateForIntent,
   resolveExpectedBinaryStateForSteppedIntent,
@@ -68,6 +69,26 @@ function resolveBinaryProgress(
   return progress(desired, actual, desired !== null && isPendingBinaryCommandMatchingExpected(command, desired));
 }
 
+function resolveResumeExpected(
+  intent: ExecutableDeviceIntent,
+  desiredBinary: DeviceExecutionState['desiredBinary'],
+  desiredStepId: string | null,
+): boolean {
+  if (desiredBinary === 'off') return false;
+  if (desiredBinary === 'on') return true;
+  if (!hasSteppedCommand(intent)) return false;
+  const step = getSteppedLoadStep(intent.steppedLoad.steppedLoadProfile, desiredStepId);
+  return step !== null && !isSteppedLoadStepOff(step);
+}
+
+function resolveTargetProgress(
+  desired: number | null,
+  observed: ExecutableObservedDeviceState | undefined,
+  command: ExecutionCommandState['target'],
+): AxisProgress {
+  return progress(desired, observed?.target?.observedValue ?? null, command?.desired === desired);
+}
+
 export function resolveDeviceExecutionState(
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState | undefined,
@@ -78,15 +99,17 @@ export function resolveDeviceExecutionState(
   const desiredStepId = externalOffHeld ? null : resolveDesiredStep(intent);
   const desiredTarget = externalOffHeld ? null : resolveDesiredTarget(intent);
   const observedStepId = observed?.steppedLoad?.reportedStepId ?? null;
+  const physicalState = resolvePhysicalState(observed);
+  const binaryProgress = resolveBinaryProgress(intent, desiredBinary, observed, command.binary);
+  const stepProgress = progress(desiredStepId, observedStepId, command.step.kind === 'pending');
   return {
     available: observed?.available === true && intent.projectionError === undefined,
-    physicalState: resolvePhysicalState(observed),
+    physicalState,
     observedStepId,
-    desiredBinary, desiredStepId, desiredTarget,
-    binaryProgress: resolveBinaryProgress(intent, desiredBinary, observed, command.binary),
-    stepProgress: progress(desiredStepId, observedStepId, command.step.kind === 'pending'),
-    targetProgress: progress(desiredTarget, observed?.target?.observedValue ?? null,
-      desiredTarget !== null && command.target?.desired === desiredTarget),
+    desiredBinary, desiredStepId, binaryProgress, stepProgress,
+    targetProgress: resolveTargetProgress(desiredTarget, observed, command.target),
+    resumeExpected: physicalState === 'off' && resolveResumeExpected(intent, desiredBinary, desiredStepId),
+    steppedTransitionPending: hasSteppedCommand(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
     externalOffHeld,
   };
 }

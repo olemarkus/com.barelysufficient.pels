@@ -23,7 +23,34 @@ describe('resolveDeviceExecutionState', () => {
   it('settles a binary-off decision despite a retained active step and target', () => {
     const state = resolveDeviceExecutionState(buildExecutableDeviceIntent(offPlan), observe(false, 'low'), noCommands, false);
     expect(state).toMatchObject({ physicalState: 'off', observedStepId: 'low', desiredBinary: 'off',
-      desiredStepId: null, binaryProgress: 'settled', stepProgress: 'undriven' });
+      desiredStepId: null, binaryProgress: 'settled', stepProgress: 'undriven', resumeExpected: false });
+  });
+
+  it('expects a step-only device to resume through its active step without a binary command', () => {
+    const plan = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
+      selectedStepId: 'off', reportedStepId: 'off', plannedState: 'keep',
+      desiredStepId: 'low', targetStepId: 'low' });
+    const observed = buildExecutableObservedDeviceStateFromSnapshot(buildDriftObservedSnapshot({
+      id: plan.id, name: plan.name, available: true, targets: [], reportedStepId: 'off',
+      steppedLoadProfile: plan.steppedLoadProfile,
+    }, plan.steppedLoadProfile));
+    const intent = buildExecutableDeviceIntent(plan);
+    expect(resolveDeviceExecutionState(intent, observed, noCommands, false)).toMatchObject({
+      physicalState: 'off', desiredBinary: null, desiredStepId: 'low', resumeExpected: true,
+      stepProgress: 'unmet', steppedTransitionPending: false,
+    });
+    expect(resolveDeviceExecutionState(intent, observed, {
+      ...noCommands, step: { kind: 'pending' },
+    }, false)).toMatchObject({ stepProgress: 'pending', steppedTransitionPending: true });
+  });
+
+  it('reports a pending stepped transition while binary restoration waits at a matching active step', () => {
+    const plan = steppedPlanDevice({ currentState: 'off', selectedStepId: 'low',
+      reportedStepId: 'low', desiredStepId: 'low', targetStepId: 'low', plannedState: 'keep' });
+    expect(resolveDeviceExecutionState(buildExecutableDeviceIntent(plan), observe(false, 'low'), {
+      ...noCommands, binary: { kind: 'pending', desired: true },
+    }, false)).toMatchObject({ physicalState: 'off', desiredBinary: 'on', resumeExpected: true,
+      binaryProgress: 'pending', stepProgress: 'settled', steppedTransitionPending: true });
   });
 
   it('does not mistake a matching pending command for settled state', () => {
@@ -55,7 +82,7 @@ describe('resolveDeviceExecutionState', () => {
     const keep = steppedPlanDevice({ plannedState: 'keep', desiredStepId: 'max' });
     expect(resolveDeviceExecutionState(buildExecutableDeviceIntent(keep), observe(false, 'low'), noCommands, true))
       .toMatchObject({ physicalState: 'off', desiredBinary: null, desiredStepId: null,
-        binaryProgress: 'undriven', stepProgress: 'undriven' });
+        binaryProgress: 'undriven', stepProgress: 'undriven', resumeExpected: false });
   });
 
   it('compares a binary lifecycle release against the raw handle even at an off rung', () => {
@@ -75,7 +102,7 @@ describe('resolveDeviceExecutionState', () => {
       available: true, targets: [{ id: 'target_temperature', value: 18, unit: '°C' }] });
     const intent = buildExecutableDeviceIntent(plan);
     expect(resolveDeviceExecutionState(intent, observed, { ...noCommands, target: { desired: 21 } }, false))
-      .toMatchObject({ desiredTarget: 21, targetProgress: 'pending', physicalState: 'not_applicable' });
+      .toMatchObject({ targetProgress: 'pending', physicalState: 'not_applicable' });
     expect(resolveDeviceExecutionState(intent, observed, noCommands, false).targetProgress).toBe('unmet');
   });
 

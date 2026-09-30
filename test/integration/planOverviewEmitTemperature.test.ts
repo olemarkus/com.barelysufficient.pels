@@ -89,7 +89,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       } as never,
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps).status.kind).toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps, 0).status.kind).toBe('idle');
     expect(captured[0]?.stateKind).toBe('idle');
   });
 });

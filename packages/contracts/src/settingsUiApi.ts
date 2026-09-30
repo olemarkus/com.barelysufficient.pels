@@ -14,7 +14,6 @@ import type {
 } from './types.js';
 import type {
   DeviceOverviewSnapshot,
-  DeviceOverviewSteppedLoad,
   DeviceOverviewStrings,
 } from '../../shared-domain/src/deviceOverview.js';
 import type { DeviceStatus } from './deviceStatus.js';
@@ -218,15 +217,6 @@ export type PriceSchemeSetting = 'norway' | 'flow' | 'homey' | 'powerhour';
 
 export type SettingsUiLogRequest = SettingsUiLogEntry;
 
-export type SettingsUiPlanPendingTargetCommand = {
-  desired: number;
-  retryCount: number;
-  nextRetryAtMs: number;
-  status: 'waiting_confirmation' | 'temporary_unavailable';
-  lastObservedValue?: unknown;
-  lastObservedSource?: string;
-};
-
 // One starved state, no cause bucket. The flat `capacity | budget` split was
 // removed 2026-08-04: it was a momentary snapshot of whichever constraint bound
 // on the last accumulation tick, so it flipped mid-hold, and every surface that
@@ -242,13 +232,6 @@ export type SettingsUiPlanDeviceStarvation = {
   isStarved: boolean;
   accumulatedMs: number;
 };
-
-// The stepped cluster is declared in shared-domain, on `DeviceOverviewSnapshot`
-// itself, because it is that shape's stepped DISCRIMINANT (presence = stepped).
-// Aliased here so the settings-UI keeps its familiar name. It cannot be defined
-// in this file: `settingsUiApi` imports `DeviceOverviewSnapshot` from
-// shared-domain, so the dependency only runs one way.
-export type SettingsUiPlanSteppedLoadState = DeviceOverviewSteppedLoad;
 
 /**
  * NO `[key: string]: unknown` index signature — same reasoning as

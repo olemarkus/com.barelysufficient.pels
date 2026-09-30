@@ -50,7 +50,6 @@ type OverviewProps = {
   // Resolved in the orchestrator so this view stays props-in.
   setupPath: SetupPathRead;
   context: HeroContext;
-  renderedAtMs: number;
   nowMs: number;
 };
 
@@ -95,28 +94,21 @@ const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
 
 const PlanCard = ({
   dev,
-  plan,
   dryRun,
-  renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
-  plan: PlanSnapshot | null;
   dryRun: boolean;
-  renderedAtMs: number;
   nowMs: number;
 }) => {
-  // Card selection keys on the producer's own stepped cluster. It used to read
-  // a reconstructed `controlModel`, and the reconstruction consulted a
-  // raw-snapshot map that cannot see a STORED step ladder — so a device the
-  // owner had configured as a stepped load rendered as a generic card.
+  // The backend resolves card kind, including devices with a stored step ladder.
   if (dev.status.cardKind === 'stepped') {
-    return <PlanSteppedCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanSteppedCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
   }
   if (isTemperatureCard(dev)) {
-    return <PlanTemperatureCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanTemperatureCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
   }
-  return <PlanGenericCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+  return <PlanGenericCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
 };
 
 /**
@@ -155,7 +147,7 @@ const ScopeUnavailableNotice = () => (
 
 const PlanOverviewRoot = ({
   devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, setupPath,
-  context, renderedAtMs, nowMs,
+  context, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -206,7 +198,6 @@ const PlanOverviewRoot = ({
           prices={prices}
           solarNowInput={solarNowInput}
           context={context}
-          renderedAtMs={renderedAtMs}
           nowMs={nowMs}
         />
       )}
@@ -240,9 +231,7 @@ const PlanOverviewRoot = ({
             <PlanCard
               key={row.device.id}
               dev={row.plan}
-              plan={plan}
               dryRun={context.dryRun}
-              renderedAtMs={renderedAtMs}
               nowMs={nowMs}
             />
           ) : (

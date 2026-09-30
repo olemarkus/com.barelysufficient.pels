@@ -6,7 +6,7 @@ type StatusDevice = { status: DeviceStatus };
 type StatusPlan = { devices?: StatusDevice[] };
 
 export const resolveDisplayPlanDeviceSnapshot = <Device extends StatusDevice>(
-  _plan: StatusPlan | null, device: Device, _renderedAtMs: number, nowMs: number,
+  device: Device, nowMs: number,
 ): Device => {
   const reason = device.status.reason;
   if (!reason?.countdown) return device;
@@ -14,10 +14,6 @@ export const resolveDisplayPlanDeviceSnapshot = <Device extends StatusDevice>(
     reason: { ...reason, text: formatDeviceStatusReason(device.status, nowMs) ?? '' } } };
 };
 
-export const resolveDisplayPlanDevices = <Device extends StatusDevice>(
-  plan: StatusPlan | null, devices: Device[], renderedAtMs: number, nowMs: number,
-): Device[] => devices.map((device) => resolveDisplayPlanDeviceSnapshot(plan, device, renderedAtMs, nowMs));
-
-export const planNeedsLiveUpdates = (plan: StatusPlan | null, _renderedAtMs: number, nowMs: number): boolean => (
+export const planNeedsLiveUpdates = (plan: StatusPlan | null, nowMs: number): boolean => (
   plan?.devices?.some((device) => (device.status.reason?.countdown?.endsAtMs ?? 0) > nowMs) === true
 );

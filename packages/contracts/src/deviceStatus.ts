@@ -7,10 +7,13 @@ export type DeviceExecutionState = {
   currentDrawKw?: number;
   desiredBinary: 'on' | 'off' | null;
   desiredStepId: string | null;
-  desiredTarget: number | null;
   binaryProgress: AxisProgress;
   stepProgress: AxisProgress;
   targetProgress: AxisProgress;
+  /** Observed off, with a decision to resume through the binary or step axis. */
+  resumeExpected: boolean;
+  /** A pending binary or step command contributes to the stepped transition. */
+  steppedTransitionPending: boolean;
   externalOffHeld: boolean;
 };
 

@@ -18,7 +18,7 @@ const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => bui
   getObservedTemperature: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getObservedEvChargingState: () => ({ kind: 'absent' }),
-});
+}, 0);
 
 const overviewLogDevice = (
   overrides: Parameters<typeof buildPlanDevice>[0] = {},

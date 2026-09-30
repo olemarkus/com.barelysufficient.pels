@@ -34,7 +34,7 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (device.plannedState === 'shed') return 'held';
   if (device.execution.externalOffHeld || device.plannedState === 'inactive') return 'idle';
   if (device.execution.physicalState === 'off') {
-    return device.execution.desiredBinary === 'on' ? 'resuming' : 'idle';
+    return device.execution.resumeExpected ? 'resuming' : 'idle';
   }
   if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
   if (device.currentState === 'not_applicable' && resolveSteppedEvExceptionLabel(device) !== null) return 'idle';

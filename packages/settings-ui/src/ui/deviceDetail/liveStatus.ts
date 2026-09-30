@@ -54,12 +54,11 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   renderSequence += 1;
   const sequence = renderSequence;
   let dev: PlanDeviceSnapshot | undefined;
-  let plan: { devices?: PlanDeviceSnapshot[]; generatedAtMs?: number } | null | undefined;
   try {
     const payload = await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH);
     // Cold API reads pass through the same required-status boundary as realtime
     // pushes before any presentation reaches the renderer.
-    plan = parsePlanSnapshot(payload?.plan);
+    const plan = parsePlanSnapshot(payload?.plan);
     dev = plan?.devices?.find((candidate) => candidate.id === deviceId);
   } catch {
     dev = undefined;
@@ -72,12 +71,7 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   // Interpolate the same server-owned countdown as the Overview. Expiry changes
   // only its text; the next backend status supplies any state transition.
   const nowMs = Date.now();
-  dev = resolveDisplayPlanDeviceSnapshot(
-    plan ?? null,
-    dev,
-    nowMs,
-    nowMs,
-  );
+  dev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   renderHeroRows({ mounts, dev, deviceId, nowMs });
 };
 

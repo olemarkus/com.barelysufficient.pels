@@ -22,6 +22,6 @@ export function buildOverviewSteppedLoad(
     targetStepId: execution.desiredStepId,
     selectedStepId: device.selectedStepId,
     planningPowerKw: device.planningPowerKw,
-    commandPending: execution.stepProgress === 'pending',
+    commandPending: execution.steppedTransitionPending,
   };
 }

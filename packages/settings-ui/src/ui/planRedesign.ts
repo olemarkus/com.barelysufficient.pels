@@ -48,7 +48,6 @@ let cachedPrices: SettingsUiPricesPayload | null = null;
 // re-flattening/sorting the whole archive per tick is avoidable work.
 let cachedMissStreaks: ReturnType<typeof resolveMissStreakBadges> = [];
 let currentPlan: PlanSnapshot | null = null;
-let currentRenderedAtMs = 0;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
 let planSurface: HTMLElement | null = null;
 
@@ -200,10 +199,9 @@ const doRender = () => {
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
     },
-    renderedAtMs: currentRenderedAtMs,
     nowMs: now,
   });
-  const needsLive = planNeedsLiveUpdates(currentPlan, currentRenderedAtMs, now);
+  const needsLive = planNeedsLiveUpdates(currentPlan, now);
   if (needsLive && liveTickInterval === null) {
     liveTickInterval = setInterval(doRender, 1000);
   } else if (!needsLive && liveTickInterval !== null) {
@@ -215,7 +213,6 @@ const doRender = () => {
 const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {
   overviewScope = scope;
   currentPlan = plan;
-  currentRenderedAtMs = Date.now();
   planPayloadReceived = true;
   doRender();
 };

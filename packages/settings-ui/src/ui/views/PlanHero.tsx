@@ -24,7 +24,6 @@ import {
   formatSafePaceTooltip,
   resolveSafePaceSourceText,
 } from '../planHeroTooltips.ts';
-import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type {
   SettingsUiPricesPayload,
@@ -709,20 +708,16 @@ export const PlanHero = ({
   prices,
   solarNowInput,
   context,
-  renderedAtMs,
   nowMs,
 }: {
   plan: PlanSnapshot | null;
   prices?: SettingsUiPricesPayload | null;
   solarNowInput?: SolarNowInput | null;
   context: HeroContext;
-  renderedAtMs: number;
   nowMs: number;
 }) => {
   const meta = plan?.meta;
-  const devices: PlanDeviceSnapshot[] = plan
-    ? resolveDisplayPlanDevices(plan, plan.devices ?? [], renderedAtMs, nowMs) as PlanDeviceSnapshot[]
-    : [];
+  const devices = plan?.devices ?? [];
 
   if (meta === undefined) {
     return (

@@ -15,10 +15,12 @@ export function executionStateFixture(device: DevicePlanDevice): DeviceExecution
     ...(isMeteredPlanDevice(device) ? { currentDrawKw: device.currentDrawKw } : {}),
     desiredBinary: device.plannedState === 'keep' && device.currentState !== 'not_applicable' ? 'on' : null,
     desiredStepId: device.desiredStepId ?? null,
-    desiredTarget: null,
     binaryProgress: device.binaryCommandPending ? 'pending' : 'settled',
     stepProgress: device.stepCommandPending ? 'pending' : 'settled',
     targetProgress: device.pendingTargetCommand ? 'pending' : 'settled',
+    resumeExpected: physicalState === 'off' && device.plannedState === 'keep',
+    steppedTransitionPending: isSteppedLoadDevice(device)
+      && (device.binaryCommandPending === true || device.stepCommandPending === true),
     externalOffHeld: false,
   };
 }

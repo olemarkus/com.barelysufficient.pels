@@ -29,7 +29,7 @@ const buildDumpLoad = (overrides: CardFixture = {}, dryRun = false): PlanDeviceS
 const renderCard = (dev: PlanDeviceSnapshot, dryRun = false): HTMLDivElement => {
   const mount = document.createElement('div');
   act(() => {
-    render(h(PlanGenericCard, { dev, plan: null, dryRun, renderedAtMs: 1_000, nowMs: 1_000 }), mount);
+    render(h(PlanGenericCard, { dev, dryRun, nowMs: 1_000 }), mount);
   });
   return mount;
 };

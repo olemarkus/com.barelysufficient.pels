@@ -33,7 +33,6 @@ export type SettingsOverviewReadModelDeps = {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
   nowMs: number;
-  reasonAnchorMs?: number;
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
   getIdleClassification?: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
   // EV charging state is observed state — the observer is its canonical source
@@ -177,6 +176,7 @@ function resolveOverviewEvChargingState(
 export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
+  reasonAnchorMs: number,
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // The battery level comes from the seam that owns it
@@ -201,6 +201,7 @@ export function buildSettingsOverviewDeviceReadModel(
   const steppedLoad = buildOverviewSteppedLoad(device, execution, confirmedSteppedLoadProfile);
   const starvation = deps.getOverviewStarvation?.(device.id) ?? undefined;
   const idleClassification = deps.getIdleClassification?.(device.id);
+  const stateOfCharge = resolveOverviewStateOfCharge(device.id, deps);
   const overviewShape = {
     ...device,
     controllable: device.control.commandAuthority,
@@ -211,12 +212,12 @@ export function buildSettingsOverviewDeviceReadModel(
     currentDrawKw: execution.currentDrawKw,
     binaryCommandPending: execution.binaryProgress === 'pending',
     pendingTargetCommand: execution.targetProgress === 'pending' ? true : undefined,
-    execution, starvation, idleClassification,
+    execution, starvation, idleClassification, stateOfCharge,
     binaryControllable: isBinaryPlanDevice(device),
     evChargingState: resolveOverviewEvChargingState(device.id, deps),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
   };
-  const presentation = buildDeviceStatus(overviewShape, deps.dryRun, deps.reasonAnchorMs ?? deps.nowMs);
+  const presentation = buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs);
   const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,
     text: formatDeviceStatusReason(presentation, deps.nowMs)!,
   } } : presentation;
@@ -231,7 +232,7 @@ export function buildSettingsOverviewDeviceReadModel(
     ...(execution.currentDrawKw !== undefined ? { currentDrawKw: execution.currentDrawKw } : {}),
     budgetExempt: device.budgetExempt,
     boostActive: device.boostActive,
-    stateOfCharge: resolveOverviewStateOfCharge(device.id, deps),
+    stateOfCharge,
     starvation,
   };
 }
@@ -257,7 +258,8 @@ export function buildSettingsOverviewReadModel(
       .filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass))
       .map((device) => buildSettingsOverviewDeviceReadModel(
         device,
-        { ...deps, reasonAnchorMs: plan.generatedAtMs ?? deps.nowMs },
+        deps,
+        plan.generatedAtMs ?? deps.nowMs,
         steppedLoadProfileById.get(device.id),
       )),
   };
