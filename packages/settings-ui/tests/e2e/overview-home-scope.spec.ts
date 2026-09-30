@@ -1,4 +1,3 @@
-import { uiDeviceFixture } from '../../test/helpers/deviceStatusFixture';
 import { expect, test, type Page } from './fixtures/test';
 import { pickHomeScope, seedStubSetting } from './fixtures/homes';
 
@@ -47,17 +46,19 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     hourBudgetKWh: 3,
     minutesRemaining: 30,
   },
-  devices: [uiDeviceFixture({
+  devices: [{
     id: device.id,
     name: device.name,
-    currentState: 'on',
-    plannedState: 'keep',
-    priority: 1,
     controllable: true,
     available: true,
     currentDrawKw: 0.5,
-    reason: { code: 'keep', detail: null },
-  })],
+    boostActive: false,
+    status: {
+      cardKind: 'binary', kind: 'active', tone: 'active', label: 'Running',
+      powerText: '0.5 kW', powerVariant: 'live', factText: null, reason: null, rail: null,
+      limited: false, wouldLimit: false, canEaseOff: true, controlOffDrawing: false, holdCause: null,
+    },
+  }],
 });
 
 const installStubSettings = async (page: Page, settings: Record<string, unknown>) => {
