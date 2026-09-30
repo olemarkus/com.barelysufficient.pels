@@ -1742,11 +1742,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       as callbacks, the conflict probe is injected or moved, the component lives in `lib/device`,
       and its setup-peer allowlist line is gone. Found 2026-09-01; state moved 2026-09-21. [P2]
 
-- [x] **Main-meter authority belongs to the home owner.** Moved to
-      `lib/home/homeMainMeterAuthority.ts`; power sample provenance crosses the peer boundary via
-      `lib/ports/sampledMeterIdentity.ts`. Setup stateless and peer budgets shrink with the move.
-      Completed 2026-09-28. [P2]
-
 - [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
       `homey app validate && npm run package:check`, and `homey app validate` calls
       `preprocess({ copyAppProductionDependencies: app instanceof AppPython })` — false for a Node

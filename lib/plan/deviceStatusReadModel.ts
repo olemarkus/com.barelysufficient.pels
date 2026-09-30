@@ -50,17 +50,9 @@ function resolveReportedLoadReason(device: DeviceStatusInput, held: boolean, dry
     detail: readDeviceReasonDetail(device.reason), dryRun });
 }
 
-function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | null {
-  const kind = resolveBaseKind(device);
-  const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
-    starved: device.starvation?.isStarved === true }) === 'held';
-  const stepped = device.steppedLoad;
-  if (stepped) {
-    return resolveBinarySurplusReasonLine(device, kind)
-      ?? resolveSteppedStatusLine(device, stepped.profile, 0, dryRun)
-      ?? resolveSteppedEvExceptionLabel(device);
-  }
-  if (device.temperature) return resolveTemperatureReasonLine(device, dryRun);
+function resolveBinaryReason(
+  device: DeviceStatusInput, kind: PlanStateKind, held: boolean, dryRun: boolean,
+): string | null {
   const reported = resolveReportedLoadReason(device, held, dryRun);
   if (reported) return reported;
   const surplus = resolveBinarySurplusReasonLine(device, kind);
@@ -72,6 +64,25 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
   });
   return device.reason.code === PLAN_REASON_CODES.keep
     ? null : formatDeviceReasonUserFacing(device.reason);
+}
+
+function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | null {
+  const kind = resolveBaseKind(device);
+  const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
+    starved: device.starvation?.isStarved === true }) === 'held';
+  const stepped = device.steppedLoad;
+  if (stepped) {
+    return resolveBinarySurplusReasonLine(device, kind)
+      ?? resolveSteppedStatusLine(device, stepped.profile, 0, dryRun)
+      // Settling at a reduced rung does not end the hold or change its cause.
+      ?? (held ? resolveHeldCardReasonLine({
+        reason: device.reason, starvation: device.starvation,
+        verb: resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
+      }) : null)
+      ?? resolveSteppedEvExceptionLabel(device);
+  }
+  if (device.temperature) return resolveTemperatureReasonLine(device, dryRun);
+  return resolveBinaryReason(device, kind, held, dryRun);
 }
 
 function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: number) {

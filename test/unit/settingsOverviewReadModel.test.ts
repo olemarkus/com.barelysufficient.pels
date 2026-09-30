@@ -177,6 +177,42 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.rail?.activeIndex).toBeNull();
   });
 
+  it.each([
+    { code: PLAN_REASON_CODES.capacity, dryRun: false },
+    { code: PLAN_REASON_CODES.dailyBudget, dryRun: false },
+    { code: PLAN_REASON_CODES.capacity, dryRun: true },
+    { code: PLAN_REASON_CODES.dailyBudget, dryRun: true },
+  ])('explains a settled $code step hold in simulation=$dryRun', ({ code, dryRun }) => {
+    const device = steppedPlanDevice({
+      plannedState: 'shed', currentState: 'on', currentDrawKw: 1.25,
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
+      reason: { code, shortfallKw: 0.9 },
+    });
+    const wire = buildDevice(device, {
+      ...absentTemperature, dryRun, nowMs: 0,
+      getDeviceExecutionState: () => executionStateFixture(device),
+    }, 0);
+
+    expect(wire.status.kind).toBe(dryRun ? 'active' : 'held');
+    expect(wire.status.reason?.text).toBe(dryRun
+      ? 'Would be waiting to increase — 0.9 kW more needed (simulation)'
+      : 'Waiting to increase — 0.9 kW more needed');
+  });
+
+  it('keeps a settled stepped hold ahead of the car waiting explanation', () => {
+    const device = steppedPlanDevice({
+      deviceRole: 'ev_charger', plannedState: 'shed', currentState: 'on',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.capacity },
+    });
+    const wire = buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' }),
+    });
+
+    expect(wire.status.reason?.text).toBe('Waiting to resume');
+  });
+
   it('uses executor-owned step-only restoration and pending movement in presentation', () => {
     const device = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
       reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'low', plannedState: 'keep' });

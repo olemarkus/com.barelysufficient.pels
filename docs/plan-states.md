@@ -21,8 +21,7 @@ The redesigned Overview uses a compact state word on each device card:
 | **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. |
 | **Resuming** | PELS is trying to bring the device back when there is available power. |
 | **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
-| **Unavailable** | Homey reports the device as unavailable, so PELS cannot act on it. |
-| **Unknown** | PELS does not have enough current state to choose a more specific label. |
+| **Unavailable** | PELS has no usable device observation, or Homey reports the device as unavailable. |
 
 The state row pairs that word with the current power fact. Cards add one
 modality fact where useful—such as temperature and target or charging level—and
@@ -84,7 +83,7 @@ For EV chargers, PELS keeps capacity suppression separate from charger availabil
 | --- | --- |
 | Charger is unplugged | **Off** or **Idle**, with an unplugged or not-charging explanation where available. |
 | Charger is discharging | **Off** or **Idle**, with a discharging explanation where available. |
-| Charger state is unknown | **Idle**, **Unknown**, or **Unavailable** until the state becomes usable. |
+| Charger state is unknown | **Idle** or **Unavailable** until the state becomes usable. |
 | Charger power estimate is missing | **Idle** or **Manual** until PELS observes or is configured with a usable estimate. |
 | Charger is paused and can resume | PELS may resume it when the plan allows and there is available power. |
 

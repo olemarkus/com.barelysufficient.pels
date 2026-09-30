@@ -26,7 +26,7 @@ The Overview page shows the current plan: what PELS wants each managed device to
 | **Power now** | Current whole-home power draw. |
 | **Safe pace now** | The current pace PELS reacts around. It can come from the selected-period hard cap, the daily budget, or both. |
 | **Hard cap** | The average power you don't want the configured capacity period to exceed. |
-| **Device cards** | Running, Idle, Off, Limited, Resuming, Manual, Unavailable, or Unknown. |
+| **Device cards** | Running, Idle, Off, Limited, Resuming, Manual, or Unavailable. |
 | **Status line** | Short explanation of why PELS is waiting, limiting, or resuming. |
 
 Use **Overview** when you want to understand live behavior. Use **Settings** when you want to change setup.

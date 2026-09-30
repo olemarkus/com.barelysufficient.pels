@@ -9,7 +9,8 @@ This note is for contributors changing runtime logging.
 ## Policy
 
 - Runtime and operational logs are structured.
-- Human-readable strings belong in UI/status text, not runtime logs.
+- Runtime events use stable fields rather than prose-only messages. Overview events also record
+  the resolved UI/status wording in those fields so logs match the presentation.
 - Debug-topic flags gate whether debug-level logging is emitted, not whether logs are structured.
 
 ## Legacy logging is banned
@@ -195,9 +196,14 @@ rather than budgeted, so the list can reach zero and be deleted.
 - Prefer stable field names over embedding meaning in a formatted message string.
 - `deviceId` is the identity field in structured logs and diagnostics. `deviceName` is only a
   display label when actually known; do not rewrite a missing name to the id.
-- Any future Settings UI device-log or diagnostics surface that shows the per-device overview
-  wording should reuse `packages/shared-domain/src/deviceOverview.ts` rather than rebuilding
-  `powerMsg`/`stateMsg`/`usageMsg`/`statusMsg` separately in the UI.
+- Per-device overview wording is resolved once by `lib/plan/deviceStatusReadModel.ts` into
+  `DeviceStatus`. Settings UI renders that status, and `lib/plan/deviceOverviewLog.ts` copies its
+  label, power, fact, and reason text into activity history and structured transition events.
+  Device-log and diagnostics surfaces should render those recorded fields without reconstructing
+  status from raw runtime state or calling a separate overview formatter.
+- Shared-domain wording helpers remain appropriate where both browser and runtime consumers need
+  them. Sharing a resolved `DeviceStatus` already keeps overview UI and logs in lockstep; it does
+  not require moving backend-only status decisions into shared-domain.
 - Overview transition logging keeps `device_overview_changed` for single-device transitions and
   emits `device_overview_changes` when one rebuild produces multiple changed device rows. The
   batched `devices` entries should keep the same per-device fields as the single-device event.

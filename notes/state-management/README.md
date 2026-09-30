@@ -32,7 +32,8 @@ Planner/device snapshot contributor rule:
 
 - `reason` on a finalized plan device is a structured planner contract, not display prose
 - planner/runtime logic may branch on `reason.code`
-- UI/log wording must be rendered from that structured reason, not stored as planner state
+- `lib/plan` resolves UI/log wording into the required `DeviceStatus` read model;
+  wording is presentation, not planner state
 - finalized plan devices should always carry a `reason.code`; missing reason is a contract bug,
   and legacy snapshot reads should normalize older payloads at the boundary
 
@@ -78,43 +79,48 @@ does not become another source of truth.
 
 Layer ownership:
 
-- app/snapshot code may classify raw evidence and serialize compatibility fields
-- the plan rebuild is the evidence-refresh boundary: live stepped-load evidence replaces the
-  previous plan's stepped evidence, and missing live evidence clears previous reported/prepared
-  evidence. (There is no separate reconcile phase — see `AGENTS.md` § Control Flow.)
-- `planSteppedLoadState.ts` is the planner/app normalization boundary for typed stepped evidence;
-  stepped-load planner code should consume that normalized state or derived helper values instead
-  of reinterpreting optional legacy step fields inline
-- `lib/executor/executableSteppedLoadProjection.ts` is the stepped-load executor boundary adapter:
-  it may read legacy planner fields and project them into executor concepts
-- executor code owns requested-step actuation and materialization checks; it consumes the projected
-  executable stepped-load action and should ask whether the step it is about to actualize has
-  materialized, not branch on reported/prepared legacy fields
-- shared-domain and settings UI must not import the planner state model
-- UI overview needs only the observed reported step and the target step
+- `lib/device` chooses the usable control ladder with runtime configuration and admits native or
+  Flow step feedback against that chosen ladder. Picker suggestions are not runtime control.
+- `lib/observer` retains accepted observation truth. A missing or malformed external read does
+  not clear the last accepted report; silence means unchanged, not unknown.
+- `lib/planInput` purely composes that configuration, accepted observation, and executor command
+  state into planner input. Its `decorateSnapshotWithDeviceControl` reads command stores; it does
+  not confirm commands, expire latches, or prune sessions.
+- `lib/plan` decides desired state and consumes the producer-resolved planning step. Its private
+  `planSteppedLoadState.ts` helpers do not own device admission or configuration resolution.
+- `lib/executor` owns requested-step execution, pending/retry state, and explicit command
+  settlement. Materialization comes from admitted reported evidence, never a planning fallback.
+- `PlanExecutor.getDeviceExecutionStates(plan)` is a read-only comparison of executable intent,
+  accepted observations, and command stores. It does not settle stores or issue commands.
+- `lib/plan` combines those execution conclusions with the committed decision and display
+  measurements into `DeviceStatus`. Settings UI and overview logs use this same resolved status;
+  the UI wire excludes raw binary/step state, target intent, pending commands, and planner reasons.
+  Consumers render status instead of reconstructing it from runtime facts.
+- An observation may refresh presentation without rebuilding or reapplying the plan. Preserve the
+  committed decision and its generation timestamp; meter readings trigger the next decision.
 
-Post-release executor boundary rollout:
+Executor boundary:
 
-- Target shape: planner construction should become a narrow `input snapshots -> ExecutablePlan`
-  pipeline. Only the core planning/admission step should need both observed current state and
-  desired future state at the same time. After that point, current state belongs to
-  `ExecutableObservedState`, not to planner output carried into execution.
+- Planner decisions are projected into `ExecutablePlan` intent. Only the planning/admission step
+  needs observed current state and desired future state together. Execution reads current state from
+  `ExecutableObservedState`, not from planner output carried into execution.
 - `lib/plan` owns desired state, planner reasons, and admission decisions. A finalized plan should
   say what state PELS wants for each device; it should not encode whether the command is native,
   flow-backed, or otherwise transported.
-- `DeviceTransport` owns observed current state and device-specific actuation transport. Native
-  binary/stepped capabilities, Flow requests, synthetic capability reporting, and Homey write
-  details belong behind that boundary. Plan/executor carry semantic commands only.
+- `DeviceTransport` translates device observations and owns device-specific actuation transport;
+  Observer retains accepted current truth. Native binary/stepped capabilities, Flow requests,
+  synthetic capability reporting, and Homey write details belong behind the transport boundary.
+  Plan/executor carry semantic commands only.
 - `lib/executor` owns desired-state execution: compare observed current state with desired state,
-  issue the needed request through `DeviceTransport`, and handle pending, retry, wait, skip, and
-  materialization behavior.
+  issue semantic requests through `lib/actuator/`, and handle pending, retry, wait, skip, and
+  materialization behavior. The actuator is the sole managed-device write seam into transport.
 - `ExecutablePlan` is the executor-facing intent set. It contains `ExecutableDeviceIntent`
   entries, not broad `DevicePlanDevice` wrappers and not current observed state.
 - Executable intents should be commandable, not partially inferred planner snapshots. For example,
   a stepped `set_step` intent should carry a concrete requested step or be represented as
   non-executable / blocked before it reaches drift or dispatch code.
-- `ExecutableObservedState` is the executor-facing observed-state set. It is built from
-  `DeviceTransport` snapshots, not planner-carried current fields.
+- `ExecutableObservedState` is the executor-facing observed-state set. It is built from accepted
+  Observer records joined with device configuration, not planner-carried current fields.
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.
@@ -132,8 +138,8 @@ Post-release executor boundary rollout:
   even when that step was already reported while off, because activation may reset a device-side
   limit. A short executor-owned activation cursor suppresses duplicate binary ON writes from a
   delayed OFF echo while still allowing a contradictory step report to be reconciled.
-- Realtime drift detection runs in the executor (`lib/executor/planExecutionDrift.ts` and
-  `lib/executor/executorConvergence.ts`) using the executor-facing intent/observed split. Pending
+- Drift detection runs in the rebuild's executor apply phase (`lib/executor/planExecutionDrift.ts`
+  and `lib/executor/executorConvergence.ts`) using the executor-facing intent/observed split. Pending
   binary commands suppress drift only when their requested value matches the expected binary
   state. The transport-side `observedControlStateChanged` boolean is a snapshot-vs-snapshot change
   filter ("did this realtime event mutate a control-relevant capability?") — a FACT about the
@@ -184,37 +190,31 @@ dispatch records intent but does not alter observed truth. Normalized snapshot/r
 confirms the command within the fixed 90 s window (`CONTROL_COMMAND_CONFIRMATION_MS`). The injected
 `observedStateDispatcher` handles post-translation event fan-out without a static transport-to-observer import.
 
-Legacy compatibility fields may still exist in older snapshots and plans while migration is in
-progress:
+Internal compatibility fields keep distinct meanings; they are not settings-UI wire fields:
 
 - `selectedStepId`: planner-effective current step. This may be reported or inferred.
 - `desiredStepId`: legacy alias for the current target step.
-- `actualStepId`: legacy best-effort concrete step. Historically this could mean reported or
-  heuristic, so do not treat it as confirmed by name alone.
-- `assumedStepId`: legacy inferred/fallback step.
+
+The retired `actualStepId` / `assumedStepId` / `actualStepSource` trio is not a source of runtime
+truth. Normalize older persisted payloads at their boundary rather than restoring these fields.
 
 Contributor rules:
 
-- planner/runtime restore decisions must not branch on `selectedStepId`, `assumedStepId`, or
-  `actualStepId` alone as proof of preparation; during migration, executor compatibility code may
-  adapt `actualStepId` to materialized-step evidence only when `actualStepSource === 'reported'`,
-  and that adaptation belongs in the executable stepped-load boundary, not in executor command or
-  restore logic
+- planner/runtime restore decisions must not treat `selectedStepId` as proof of preparation;
+  materialization and restore readiness use admitted reported evidence at the executor boundary
 - fallback lowest-active-step assumptions are planning inputs only, never restore proof
 - the planner consumes the producer's best available effective/planning step and does not weigh
   its provenance; trust/provenance belongs at the observer boundary and the executor restore gate
 - a just-issued pre-restore step command is pending intent, not preparation proof for the same
   executor pass
-- restore preparation must come from explicit reported evidence or narrowly admitted suppressed
-  flow feedback tied to current intent or an explicit freshness policy
-- stale, mismatched, or old-plan flow feedback must not prepare restore
-- overview/UI wording must use observed reported evidence for confirmed observed step
-- if there is no `reportedStepId`, do not infer a step from `measure_power` for human-facing state
-- UI may show target intent, but it must not display fallback or restore-preparation evidence as
-  reported truth
+- restore preparation must come from explicit admitted reported evidence; do not add a second
+  suppressed-flow source or an observation-age policy
+- the backend status producer uses observed reported evidence for a confirmed step; without a
+  report, it must not infer a human-facing step from measured power or a planning fallback
+- `DeviceStatus` may explain pending intent, but must not display fallback or preparation as
+  reported truth; the UI receives the resolved wording and rail, not raw step evidence
 - planner logic should reason from actual measured power directly when it needs live load
-- do not use `selectedStepId` or `actualStepId` as human-facing observed truth without first
-  resolving whether they are actually reported
+- do not use the planning-effective `selectedStepId` as human-facing observed truth
 
 ### One-shot initialization of an unknown running step
 
