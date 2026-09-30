@@ -70,6 +70,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // Simulating. One read for both — the status used to take a second,
     // sub-home-only dep for it.
     getCapacityDryRun: scope.getCapacityDryRun,
+    readCapacityDryRun: scope.readCapacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),

@@ -243,6 +243,7 @@ function buildSubHomeScope(params: {
   getHome: () => SubHomeConfig;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
+  isMeterSourceAuthorizedForExecution: () => boolean;
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
   isTornDown: () => boolean;
   getScalars: () => CapacityScalarSettings;
@@ -257,7 +258,7 @@ function buildSubHomeScope(params: {
   const {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars,
     getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
-    meterSilenceMonitor,
+    meterSilenceMonitor, isMeterSourceAuthorizedForExecution,
   } = params;
   // Same lane the main home wires, with this area's own way of reaching its
   // plan service: a torn-down bundle drops the rebuild rather than driving a
@@ -279,6 +280,9 @@ function buildSubHomeScope(params: {
     // the CONTROL path, so it passes the execution source predicate — the one
     // that also arms source recovery.
     getCapacityDryRun: () => resolveEffectiveDryRun({
+      isTornDown, isMembershipReady, isMeterSourceAuthorized: isMeterSourceAuthorizedForExecution, getScalars,
+    }),
+    readCapacityDryRun: () => resolveEffectiveDryRun({
       isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
     }),
     getPowerTracker: getTracker,
@@ -423,7 +427,8 @@ function createBundlePlanningRuntime(params: {
     homeId: params.homeId,
     getHome: params.getHome,
     isMembershipReady: params.isMembershipReady,
-    isMeterSourceAuthorized: params.isMeterSourceAuthorizedForExecution,
+    isMeterSourceAuthorized: params.isMeterSourceAuthorized,
+    isMeterSourceAuthorizedForExecution: params.isMeterSourceAuthorizedForExecution,
     isTornDown: params.isTornDown,
     getScalars: params.getCapacityScalars,
     getTracker: params.tracker.getState,

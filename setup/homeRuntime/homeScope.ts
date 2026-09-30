@@ -79,6 +79,8 @@ export type HomeScope = {
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
   getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
+  /** Read-only effective posture; never arms execution recovery. */
+  readCapacityDryRun: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   /**
    * This home's 10-minute meter-silence monitor (`lib/power/meterSilence.ts`):
@@ -199,6 +201,7 @@ export function buildMainHomeScope(
   isHomeWideFenced: () => boolean,
 ): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
+  const readCapacityDryRun = (): boolean => ctx.capacityDryRun || isHomeWideFenced();
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
@@ -263,7 +266,8 @@ export function buildMainHomeScope(
     // actuate. Nothing new is blocked: every one of these already answered
     // `requested: false` at the write seam. The block just moves to where the
     // executor can see it, which is also where the status can report it.
-    getCapacityDryRun: () => ctx.capacityDryRun || isHomeWideFenced(),
+    getCapacityDryRun: readCapacityDryRun,
+    readCapacityDryRun,
     getPowerTracker: () => ctx.powerTracker,
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,

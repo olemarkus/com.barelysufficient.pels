@@ -97,7 +97,7 @@ const serializePlanForUi = (
       if (!value) throw new Error(`Missing execution state for ${id}`);
       return value;
     },
-    dryRun: deps.getCapacityDryRun(),
+    dryRun: deps.readCapacityDryRun(),
     nowMs: Date.now(),
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),

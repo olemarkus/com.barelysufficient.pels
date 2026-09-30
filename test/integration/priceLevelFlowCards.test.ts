@@ -89,6 +89,7 @@ describe('Price level flow cards', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
+      readCapacityDryRun: () => true,
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
       getLastPowerUpdate: () => 1_745_000_000_000,
     });

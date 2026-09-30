@@ -106,6 +106,8 @@ export type PlanServiceDeps = {
    * a field's presence.
    */
   getCapacityDryRun: () => boolean;
+  /** Same effective posture, without scheduling source recovery or other control work. */
+  readCapacityDryRun: () => boolean;
   // The current hour's RESOLVED price level from ONE combined-series build;
   // see `PriceService.getCurrentHourPriceLevel`.
   getCurrentHourPriceLevel: () => PriceLevel;
