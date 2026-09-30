@@ -1,4 +1,6 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
+import { SETTINGS_UI_RECOMMENDATION_CARS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import { parseCarAssociationCandidatesRead } from '../carAssociationCandidates.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
@@ -20,8 +22,8 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
  * The charger page's car picker: which cars this charger may match, and which
  * one it matched.
  *
- * The list is a plain Homey device enumeration — PELS stores nothing about cars
- * it has seen. What the user ticks is an ELIGIBILITY set; the association itself
+ * The backend supplies the eligible cars, just as it does for recommendations.
+ * What the user ticks is an ELIGIBILITY set; the association itself
  * is decided by the car-link probe from a coincident plug-in and arrives on the
  * device payload as `associatedCar`.
  */
@@ -35,10 +37,7 @@ let associationLoadGeneration = 0;
 // Cars are fetched lazily on the first charger page. `null` means never loaded.
 let carOptions: CarOption[] | null = null;
 let carOptionsLoading = false;
-// An empty result is rendered (so the user sees WHY there are no cars) but not
-// treated as settled, so the next panel open re-fetches. Caching it would leave
-// the picker empty for the whole WebView session after one transient blip.
-let carOptionsRetryable = false;
+let carOptionsUnavailable = false;
 
 export const supportsCarAssociation = (
   device: SettingsUiDeviceDetailItem | null | undefined,
@@ -93,43 +92,22 @@ export const clearEvCarAssociations = (): void => {
   state.evCarAssociationsLoaded = true;
 };
 
-type HomeyDeviceEntry = {
-  id: string;
-  name: string;
-  class?: string;
-  hasCarAssociationSupport?: boolean;
-};
-
-/**
- * Only cars that publish BOTH capabilities the probe reads are offered. A car
- * missing them can never be matched or contribute a battery level, and offering
- * one would be offering a tick that does nothing.
- */
-const toCarOptions = (devices: readonly unknown[]): CarOption[] => devices
-  .filter((entry): entry is HomeyDeviceEntry => (
-    // The response crosses an API boundary, so shape-guard before reading it:
-    // one malformed entry must not throw and take the whole picker with it.
-    typeof entry === 'object' && entry !== null
-    && typeof (entry as HomeyDeviceEntry).id === 'string'
-    && typeof (entry as HomeyDeviceEntry).name === 'string'
-    && (entry as HomeyDeviceEntry).class === 'car'
-    && (entry as HomeyDeviceEntry).hasCarAssociationSupport === true
-  ))
-  .map((device) => ({ id: device.id, name: device.name }));
-
 const ensureCarsLoaded = async (render: () => void): Promise<void> => {
-  if ((carOptions !== null && !carOptionsRetryable) || carOptionsLoading) return;
+  // An empty result remains retryable on the next panel open instead of leaving
+  // the picker empty for the whole WebView session after a transient blip.
+  if (carOptionsLoading || (carOptions !== null && carOptions.length > 0)) return;
   carOptionsLoading = true;
   try {
-    const devices = await callApi<HomeyDeviceEntry[] | null>('GET', '/homey_devices');
-    const payload = Array.isArray(devices) ? devices : [];
-    carOptions = toCarOptions(payload);
-    // Retry on the next open when the result was empty — that is what a backend
-    // still wiring up looks like — but render it meanwhile so the user gets the
-    // explicit "no cars found" hint rather than a permanent spinner.
-    carOptionsRetryable = carOptions.length === 0;
+    const read = parseCarAssociationCandidatesRead(
+      await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH),
+    );
+    if (read.state === 'unavailable') throw new Error('Car candidates are unavailable.');
+    carOptions = read.cars;
+    carOptionsUnavailable = false;
     render();
   } catch (error) {
+    carOptionsUnavailable = true;
+    render();
     await logSettingsError('Failed to load cars for the charger car picker', error, 'carAssociation');
   } finally {
     carOptionsLoading = false;
@@ -216,8 +194,10 @@ const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
   if (!deviceDetailCarList) return;
   deviceDetailCarList.replaceChildren();
 
-  if (carOptions === null) {
-    deviceDetailCarList.append(hint('Looking for cars…'));
+  if (carOptions === null || carOptionsUnavailable) {
+    deviceDetailCarList.append(hint(carOptionsUnavailable
+      ? 'Could not load cars. Open this device again to retry.'
+      : 'Looking for cars…'));
     return;
   }
   const rows = [...carOptions, ...orphanedCarIds(ticked, carOptions)];

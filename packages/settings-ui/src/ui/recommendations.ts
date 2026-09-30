@@ -6,12 +6,12 @@ import { logSettingsError } from './logging.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
-  parseRecommendationCarsRead,
   resolveSetupRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUiApi.ts';
+import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
@@ -149,7 +149,7 @@ const loadDismissalSetting = async (): Promise<unknown> => {
 const loadRecommendationCars = async (): Promise<unknown> => {
   let value = await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH);
   for (const delayMs of RECOMMENDATION_READ_RETRY_DELAYS_MS) {
-    if (parseRecommendationCarsRead(value).state !== 'unavailable') break;
+    if (parseCarAssociationCandidatesRead(value).state !== 'unavailable') break;
     await sleep(delayMs);
     value = await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH);
   }
@@ -198,7 +198,7 @@ const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Pro
     await logSettingsError('Failed to load cars for recommendations', result.reason, 'setup recommendations');
     return;
   }
-  const parsed = parseRecommendationCarsRead(result.value);
+  const parsed = parseCarAssociationCandidatesRead(result.value);
   if (parsed.state === 'resolved') {
     carInventory = { state: 'resolved', cars: parsed.cars };
     return;

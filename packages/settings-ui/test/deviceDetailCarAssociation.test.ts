@@ -1,8 +1,8 @@
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
 /**
- * The charger page's car picker. The list comes from a plain Homey device
- * enumeration, so the API seam is mocked; everything else — the eligibility
+ * The charger page's car picker. The list comes from backend-resolved car
+ * candidates, so the API seam is mocked; everything else — the eligibility
  * write, the orphan handling, the status line — is the real controller.
  */
 
@@ -45,11 +45,7 @@ const charger = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsU
 } as SettingsUiDeviceDetailItem);
 
 const CARS = [
-  { id: 'car-1', name: 'Polestar 3', class: 'car', hasCarAssociationSupport: true },
-  // Publishes only one of the two capabilities the probe needs, so it can never
-  // be matched — offering it would be offering a tick that does nothing.
-  { id: 'car-2', name: 'Old EV', class: 'car', hasCarAssociationSupport: false },
-  { id: 'heater-1', name: 'Heater', class: 'heater', hasCarAssociationSupport: false },
+  { id: 'car-1', name: 'Polestar 3' },
 ];
 
 const rows = () => [...document.querySelectorAll<HTMLInputElement>('#device-detail-car-list input')];
@@ -62,19 +58,51 @@ beforeEach(() => {
   // reset before each fixture — otherwise later tests write into detached nodes.
   vi.resetModules();
   buildDom();
-  callApi.mockResolvedValue(CARS);
+  callApi.mockResolvedValue({ state: 'resolved', cars: CARS });
   getSetting.mockResolvedValue({});
   getSettingFresh.mockResolvedValue(undefined);
   setSetting.mockResolvedValue(undefined);
 });
 
 describe('charger car picker', () => {
-  it('offers only cars that can actually be matched', async () => {
+  it('offers the backend-resolved eligible cars without repeating eligibility checks', async () => {
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());
     await flush();
 
     expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
+    expect(callApi).toHaveBeenCalledWith('GET', '/ui_recommendation_cars');
+  });
+
+  it('offers and saves eligible Kia and Hyundai vehicles', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      // The resolved endpoint returns only id/name, including for `vehicle`
+      // devices. Requiring class or capability metadata here drops these cars.
+      cars: [
+        { id: 'hyundai-vehicle', name: 'Hyundai Ioniq 5' },
+        { id: 'kia-vehicle', name: 'Kia EV6' },
+      ],
+    });
+    const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(rows().map((input) => input.dataset.carId)).toEqual(['hyundai-vehicle', 'kia-vehicle']);
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Hyundai Ioniq 5');
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Kia EV6');
+
+    for (const carId of ['hyundai-vehicle', 'kia-vehicle']) {
+      const input = rows().find((row) => row.dataset.carId === carId)!;
+      input.checked = true;
+      input.dispatchEvent(new Event('change'));
+      await flush();
+    }
+    expect(setSetting).toHaveBeenLastCalledWith('ev_car_associations', {
+      'charger-1': { carIds: ['hyundai-vehicle', 'kia-vehicle'] },
+    });
   });
 
   it('stays hidden for a device that is not a charger', async () => {
@@ -136,11 +164,11 @@ describe('charger car picker', () => {
     expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1', 'deleted-car']);
   });
 
-  it('shows the empty-state hint when Homey returns no devices', async () => {
+  it('shows the empty-state hint when the backend resolves no eligible cars', async () => {
     // The bug this guards: not caching an empty payload (so a transient blip
     // re-fetches) left `carOptions` null, which the renderer reads as "still
     // loading" — a permanent spinner where the explanation should be.
-    callApi.mockResolvedValue([]);
+    callApi.mockResolvedValue({ state: 'resolved', cars: [] });
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());
     await flush();
@@ -149,11 +177,22 @@ describe('charger car picker', () => {
       .toContain('No cars found');
   });
 
-  it('survives a malformed device payload', async () => {
-    // The response crosses an API boundary; one bad entry must not take the
-    // whole picker down.
-    callApi.mockResolvedValue([null, 'nonsense', { id: 42 }, ...CARS]);
+  it.each([
+    { state: 'unavailable' },
+    { state: 'resolved', cars: [null, 'nonsense', { id: 42 }, ...CARS] },
+  ])('shows an unavailable hint and retries an unresolved car read: %j', async (read) => {
+    callApi.mockResolvedValue(read);
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(rows()).toHaveLength(0);
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Could not load cars');
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .not.toContain('No cars found');
+
+    callApi.mockResolvedValue({ state: 'resolved', cars: CARS });
     renderCarAssociation(charger());
     await flush();
 

@@ -1,6 +1,5 @@
 import type {
   SettingsUiRecommendationCar,
-  SettingsUiRecommendationCarsRead,
   SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
@@ -58,20 +57,6 @@ export const normalizeRecommendationDismissals = (value: unknown): Recommendatio
   return Object.fromEntries(Object.entries(value).flatMap(([id, version]) => (
     Number.isInteger(version) && (version as number) > 0 ? [[id, version as number]] : []
   )));
-};
-
-export const parseRecommendationCarsRead = (value: unknown): SettingsUiRecommendationCarsRead => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { state: 'unavailable' };
-  const read = value as { state?: unknown; cars?: unknown };
-  if (read.state === 'unavailable') return { state: 'unavailable' };
-  if (read.state !== 'resolved' || !Array.isArray(read.cars)) return { state: 'unavailable' };
-  if (!read.cars.every((car) => (
-    typeof car === 'object'
-    && car !== null
-    && typeof (car as { id?: unknown }).id === 'string'
-    && typeof (car as { name?: unknown }).name === 'string'
-  ))) return { state: 'unavailable' };
-  return { state: 'resolved', cars: read.cars as SettingsUiRecommendationCar[] };
 };
 
 export const resolveNativeControlRecommendations = (

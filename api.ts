@@ -4,7 +4,6 @@ import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
-import { supportsCarAssociation } from './lib/device/evCarLinkObservation';
 import { readCarAssociationCandidatesFromHomey } from './lib/device/settingsUiDeviceReads';
 import { readHubMarket } from './lib/home/hubMarket';
 import { createHomeyWebApiGet } from './setup/homeyWebApi';
@@ -163,7 +162,6 @@ export = {
     class?: string;
     hasTemperature: boolean;
     hasPower: boolean;
-    hasCarAssociationSupport: boolean;
   }>> => {
     const app = getApp(homey);
     if (!app) return [];
@@ -187,11 +185,6 @@ export = {
           // lets the whole-home meter picker filter to power-reporting devices.
           hasPower: Array.isArray(device.capabilities)
             && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
-          // Whether this is a `car` or `vehicle` publishing BOTH capabilities the
-          // car-link probe reads — lets the charger page's car picker offer only
-          // cars that can actually be associated. Gated on the class too, so the
-          // flag can never be true for a non-car that happens to expose both.
-          hasCarAssociationSupport: supportsCarAssociation(device),
         };
       });
   }),

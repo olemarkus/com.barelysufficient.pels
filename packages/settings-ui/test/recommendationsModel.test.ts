@@ -1,8 +1,8 @@
+import { parseCarAssociationCandidatesRead } from '../src/ui/carAssociationCandidates.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
-  parseRecommendationCarsRead,
   resolveSetupRecommendations,
 } from '../src/ui/recommendationsModel.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
@@ -223,14 +223,14 @@ describe('setup recommendations', () => {
   it('validates acknowledgements and Homey car entries at their input boundaries', () => {
     expect(normalizeRecommendationDismissals({ good: 2, zero: 0, float: 1.5, text: '1' }))
       .toEqual({ good: 2 });
-    expect(parseRecommendationCarsRead({
+    expect(parseCarAssociationCandidatesRead({
       state: 'resolved',
       cars: [{ id: 'car-1', name: 'Polestar 3' }],
     })).toEqual({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3' }] });
-    expect(parseRecommendationCarsRead({ state: 'unavailable' })).toEqual({ state: 'unavailable' });
-    expect(parseRecommendationCarsRead({ state: 'resolved', cars: [{ id: 'car-1' }] }))
+    expect(parseCarAssociationCandidatesRead({ state: 'unavailable' })).toEqual({ state: 'unavailable' });
+    expect(parseCarAssociationCandidatesRead({ state: 'resolved', cars: [{ id: 'car-1' }] }))
       .toEqual({ state: 'unavailable' });
-    expect(parseRecommendationCarsRead({})).toEqual({ state: 'unavailable' });
+    expect(parseCarAssociationCandidatesRead({})).toEqual({ state: 'unavailable' });
   });
 
   it('ignores associations belonging to chargers that are no longer present', () => {
