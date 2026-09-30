@@ -24,8 +24,24 @@ import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
+import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewReadModel';
+import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
+import { executionStateFixture } from '../utils/deviceStatusFixture';
 
 describe('settingsUiApi', () => {
+  const overviewFixture = (
+    device: Parameters<typeof executionStateFixture>[0],
+    meta = buildPlanMeta(),
+  ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device] }, {
+    nowMs: 123456789,
+    dryRun: false,
+    getDeviceExecutionState: () => executionStateFixture(device),
+    getObservedStateOfCharge: () => ({ kind: 'absent' }),
+    getObservedEvChargingState: () => ({ kind: 'absent' }),
+    getObservedTemperature: () => ({ kind: 'absent' }),
+  });
+  const defaultPlanSnapshot = overviewFixture(buildPlanDevice({ id: 'dev-1', name: 'Heater' }));
+
   const createHomey = (
     options: {
       capacityDryRun?: boolean;
@@ -48,9 +64,6 @@ describe('settingsUiApi', () => {
 
     const log = vi.fn();
     const error = vi.fn();
-    const defaultPlanSnapshot = {
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
-    };
     // These entries pin the ui_devices wire carriage of the cluster fields the
     // base snapshot type omits: `evChargingState` (EV-observed move),
     // `currentTemperature` (temperature-observed move), `stateOfCharge`
@@ -311,9 +324,7 @@ describe('settingsUiApi', () => {
     expect((result.settings as Record<string, unknown>).combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' } });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
-    expect(result.plan).toEqual({
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
-    });
+    expect(result.plan).toEqual(defaultPlanSnapshot);
     expect(result.power).toEqual({
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
@@ -621,9 +632,7 @@ describe('settingsUiApi', () => {
       surplusPoolReachable: false,
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
-      },
+      plan: defaultPlanSnapshot,
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
@@ -1088,73 +1097,34 @@ describe('settingsUiApi', () => {
     expect(() => getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toThrow('diagnostics not ready');
   });
 
-  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', async () => {
-    const homey = createHomey({
-      latestPlanSnapshot: {
-        generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
-      },
-    });
+  it('serves the live production overview snapshot through pull and bootstrap reads', async () => {
+    const device = buildPlanDevice({ id: 'dev-2', name: 'Pump' });
+    const plan = overviewFixture(device);
+    const homey = createHomey({ latestPlanSnapshot: plan });
 
-    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
-      plan: {
-        generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
-      },
-    });
-    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: {
-        generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: fixtureDeviceReason('keep')! }],
-      },
-    });
+    expect(plan?.devices?.[0]).toHaveProperty('status');
+    expect(plan?.devices?.[0]).not.toHaveProperty('reason');
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({ plan });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan });
   });
 
   it('returns enriched live plan payloads for redesign consumers', () => {
-    const enrichedPlan = {
-      generatedAtMs: 123456789,
-      meta: {
-        totalKw: 6.2,
-        softLimitKw: 5,
-        headroomKw: -1.2,
-        hardCapLimitKw: 7,
-        hardCapHeadroomKw: 0.8,
-        dailyBudgetHourKWh: 1.9,
-      },
-      devices: [{
-        id: 'dev-2',
-        name: 'Pump',
-        currentState: 'on',
-        plannedState: 'shed',
-        stateKind: 'held',
-        stateTone: 'held',
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 1_800_000,
-        },
-        reason: fixtureDeviceReason('shed due to capacity')!,
-      }],
-    };
+    const enrichedPlan = overviewFixture(buildPlanDevice({
+      id: 'dev-2', name: 'Pump', currentState: 'on', plannedState: 'shed',
+      reason: fixtureDeviceReason('shed due to capacity')!,
+    }), buildPlanMeta({ totalKw: 6.2, softLimitKw: 5, headroomKw: -1.2,
+      hardCapLimitKw: 7, hardCapHeadroomKw: 0.8, dailyBudgetHourKWh: 1.9 }));
     const homey = createHomey({ latestPlanSnapshot: enrichedPlan });
 
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: enrichedPlan });
   });
 
-  it('drops invalid in-memory app snapshots instead of falling back to settings', async () => {
-    const homey = createHomey({
-      latestPlanSnapshot: {
-        generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
-      },
-    });
+  it.each([null, undefined])('returns no plan while the app plan port is unavailable (%s)', async (app) => {
+    const homey = createHomey();
+    homey.app = app as never;
 
-    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
-      plan: null,
-    });
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({ plan: null });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
-    expect(homey.error).toHaveBeenCalledWith(
-      'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
-    );
   });
 
   it('ignores stale legacy persisted plan snapshots when no in-memory plan is available', async () => {

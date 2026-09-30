@@ -15,7 +15,6 @@ import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefre
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from '../lib/power/lastTotalPower';
 import { resolvePowerReadingsForUi } from '../lib/power/trackerUiProjection';
 import type {
-  SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
@@ -212,37 +211,10 @@ export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDevi
   return Array.isArray(picker) ? picker : [];
 };
 
-export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => {
-  const app = getRuntimeApp(homey);
-  const appPlan = app?.getLatestPlanSnapshotForUi?.();
-  if (isValidPlanSnapshot(appPlan)) return appPlan;
-  if (appPlan !== null && appPlan !== undefined) {
-    app?.error?.(
-      'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
-    );
-  }
-  return null;
-};
-
-const hasStructuredReason = (value: unknown): boolean => (
-  Boolean(value)
-  && typeof value === 'object'
-  && typeof (value as { code?: unknown }).code === 'string'
+// The plan owner returns a resolved snapshot; consumers trust its current wire contract.
+export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => (
+  getRuntimeApp(homey)?.getLatestPlanSnapshotForUi?.() ?? null
 );
-
-const isValidPlanDevice = (value: unknown): value is SettingsUiPlanDevice => (
-  Boolean(value)
-  && typeof value === 'object'
-  && typeof (value as { id?: unknown }).id === 'string'
-  && typeof (value as { name?: unknown }).name === 'string'
-  && hasStructuredReason((value as { reason?: unknown }).reason)
-);
-
-const isValidPlanSnapshot = (value: unknown): value is SettingsUiPlanSnapshot => {
-  if (!value || typeof value !== 'object') return false;
-  const devices = (value as { devices?: unknown }).devices;
-  return devices === undefined || (Array.isArray(devices) && devices.every(isValidPlanDevice));
-};
 
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {
   // The app handle crosses the WebView bridge untrusted: the tracker is a
