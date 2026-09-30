@@ -1,7 +1,7 @@
 import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
-import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
+import type { ObservedControlStateChangedEvent, ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
@@ -46,7 +46,6 @@ import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
 } from './appInit/wireHomeRuntimeRegistry';
-export { createHomeRuntimeRegistryForApp };
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipWiring } from './homeMembershipWiring';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -65,13 +64,14 @@ import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
-import {
-  invalidateOwningHomeRebuildSuppression,
-  syncExternalOffHoldForObservation,
-} from './appObservedControlStateRuntime';
-import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
+import {
+  invalidateOwningHomeRebuildSuppression,
+  syncOwningHomeLivePlanState,
+  syncExternalOffHoldForObservation,
+} from './appObservedControlStateRuntime';
+export { createHomeRuntimeRegistryForApp };
 
 type HomeMembershipService = HomeMembershipWiring['service'];
 
@@ -580,6 +580,8 @@ export class AppServiceWiring {
     subscribePlanObservedState({
       ...this.deps,
       syncExternalOffHold: (event) => this.syncExternalOffHold(event),
+      syncLivePlanState: (event) => syncOwningHomeLivePlanState(
+        this.deps.ctx, event, this.deps.getHomeRuntimeRegistry()),
       invalidateRebuildSuppression: (deviceId) => this.invalidateRebuildSuppression(deviceId),
     });
   }

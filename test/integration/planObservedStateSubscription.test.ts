@@ -1,3 +1,11 @@
+/**
+ * Ordering pin. The plan-dependent observed-state listeners are registered by
+ * their own startup step, AFTER `initPlanRuntime` builds the engine and the
+ * service, precisely so a device event can never reach an unwired plan service.
+ * Folding them back into `initDeviceManager` reopens a window in which
+ * `syncLivePlanState` was dropped and an EV-SoC rebuild intent would
+ * dereference `undefined`.
+ */
 import {
   describe, expect, it, vi,
 } from 'vitest';
@@ -7,18 +15,14 @@ import { subscribePlanObservedState } from '../../setup/appInit/planObservedStat
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 
-/**
- * Ordering pin. The plan-dependent observed-state listeners are registered by
- * their own startup step, AFTER `initPlanRuntime` builds the engine and the
- * service, precisely so a device event can never reach an unwired plan service.
- * Folding them back into `initDeviceManager` reopens a window in which
- * `syncLivePlanState` was dropped and an EV-SoC rebuild intent would
- * dereference `undefined`.
- */
 const buildDeps = (planService: PlanService | undefined) => {
   const ctx = createAppContextMock({ planService });
   return {
     ctx,
+    syncLivePlanState: (event: { source: Parameters<PlanService['syncLivePlanState']>[0] }) => {
+      if (!ctx.planService) throw new Error('PlanService must be initialized before use.');
+      return ctx.planService.syncLivePlanState(event.source);
+    },
     emitter: new ObservedStateEmitter(),
     syncExternalOffHold: vi.fn(),
     invalidateRebuildSuppression: vi.fn(),

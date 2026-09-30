@@ -7,19 +7,19 @@ import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
 import type {
   DecoratedDeviceSnapshot,
-  ObservedStateOfChargeProbe,
-  EvChargingState,
   DeviceStartPolicy,
+  ObservedStateOfChargeProbe,
   SettingsUiLogEntry,
   TargetPowerSteppedLoadPreset,
 } from './types.js';
-
-export type { DeviceStartPolicy };
 import type {
   DeviceOverviewSnapshot,
   DeviceOverviewSteppedLoad,
   DeviceOverviewStrings,
 } from '../../shared-domain/src/deviceOverview.js';
+import type { DeviceStatus } from './deviceStatus.js';
+
+export type { DeviceStartPolicy };
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -328,49 +328,19 @@ export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
  * the reverse — `carChargingState` travelled on the wire and was READ by the
  * EV card text while this contract never declared it. Every field the producer
  * emits is declared here; a new one is a deliberate edit, not an accident.
+ * Resolved presentation plus measurements and identity cross this seam;
+ * control axes stay with their runtime owners.
  */
-export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
+export type SettingsUiPlanDeviceSnapshot = Pick<DeviceOverviewSnapshot,
+  'controllable' | 'available' | 'deviceRole' | 'stateOfCharge'
+  | 'currentDrawKw'> & {
+  status: DeviceStatus;
   id: string;
   name: string;
   deviceClass?: string;
   budgetExempt?: boolean;
-  /**
-   * The device's one boost decision, as the planner made it
-   * (`resolveBoostActive`, `lib/plan/planBoost.ts`). There is no kind behind it
-   * and no per-axis pair on this wire: a tank's temperature and a car's battery
-   * percentage are the same quantity in different units, so "which axis" is not
-   * a question the plan can answer or the snapshot should carry. The card's
-   * hover wording is the view's to choose, from the device facets beside this
-   * field.
-   *
-   * REQUIRED, like `controllable` and `available` beside it and for the same
-   * reason: the producer writes it for every device, so an absent value would be
-   * a third state on the wire for a two-state fact, and every consumer would pay
-   * for it with the same `=== true` collapse.
-   *
-   * Deliberately NOT added to `isPlanDeviceSnapshot`, unlike those two. That
-   * guard rejects the WHOLE snapshot when any single device fails it
-   * (`parsePlanSnapshot` returns `null`), which is the right severity for facts
-   * the UI cannot describe PELS's behaviour without — and far too blunt for a
-   * status chip. A payload missing this should cost one absent chip, not every
-   * device card on the Overview.
-   */
   boostActive: boolean;
-  // True when a surplus-absorb lift is the binding cause of this device's planned target
-  // (raised to self-consume solar). Drives the "Raised to use your solar power" reason line.
-  surplusAbsorbActive?: boolean;
-  /**
-   * The charging state of the CAR associated with this charger (distinct from
-   * the charger's own `evChargingState` on `DeviceOverviewSnapshot`). Read by
-   * the stepped/EV card text to say what the car is doing rather than only what
-   * PELS commanded.
-   */
-  carChargingState?: EvChargingState;
-  stateKind?: string;
-  stateTone?: string;
   starvation?: SettingsUiPlanDeviceStarvation;
-  pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
-  idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle';
 };
 
 export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;

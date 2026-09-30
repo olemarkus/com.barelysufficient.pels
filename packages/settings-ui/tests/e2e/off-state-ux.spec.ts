@@ -15,7 +15,7 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
   await page.waitForTimeout(600);
 
   await page.evaluate(() => {
-    type PlanDevice = Record<string, unknown> & { id: string };
+    type PlanDevice = Record<string, unknown> & { id: string; status: Record<string, unknown> };
     type PlanSnapshot = { devices: PlanDevice[] };
     type StubWindow = Window & {
       Homey: {
@@ -46,6 +46,13 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
       temperature: { currentTarget: 5, currentTemperature: 18.7, plannedTarget: 5 },
       currentDrawKw: 0,
       reason,
+      status: { ...device(baseId).status, kind: currentState === 'off' ? 'off' : 'idle',
+        tone: currentState === 'off' ? 'neutral' : 'idle', label: currentState === 'off' ? 'Off' : 'Idle',
+        cardKind: 'temperature', powerText: '0.0 kW', factText: '18.7 °C · target 5 °C',
+        reason: reason.code === 'external_off_hold'
+          ? { text: 'Turned off elsewhere — turn it on to resume' } : null,
+        limited: false, wouldLimit: false, canEaseOff: false, holdCause: null, rail: null,
+      },
     });
     const externalReason = { code: 'external_off_hold' };
 
@@ -57,6 +64,11 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
         temperature('dev_heatpump', 'off', externalReason),
         {
           ...device('dev_waterheater'),
+          status: { ...device('dev_waterheater').status, kind: 'off', tone: 'neutral', label: 'Off',
+            powerText: '0.0 kW', reason: { text: 'Turned off elsewhere — turn it on to resume' },
+            rail: { labels: ['Off', 'Low', 'Max'], activeIndex: 0 },
+            limited: false, wouldLimit: false, canEaseOff: false, holdCause: null,
+          },
           currentState: 'off',
           plannedState: 'inactive',
           stateKind: 'idle',
@@ -66,6 +78,11 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
         },
         {
           ...device('dev_connected300'),
+          status: { ...device('dev_connected300').status, kind: 'off', tone: 'neutral', label: 'Off',
+            powerText: '0.0 kW', reason: { text: 'Turned off elsewhere — turn it on to resume' },
+            rail: { labels: ['Off', 'Low', 'Max'], activeIndex: 0 },
+            limited: false, wouldLimit: false, canEaseOff: false, holdCause: null,
+          },
           currentState: 'off',
           plannedState: 'inactive',
           stateKind: 'idle',
@@ -75,6 +92,8 @@ test('distinguishes an observed Off device from an on-but-idle device', async ({
         },
         {
           ...device('dev_poolpump'),
+          status: { ...device('dev_poolpump').status, kind: 'unavailable', tone: 'warning',
+            label: 'Unavailable', reason: null, limited: false, wouldLimit: false, canEaseOff: false },
           currentState: 'off',
           plannedState: 'inactive',
           stateKind: 'unavailable',

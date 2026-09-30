@@ -20,8 +20,10 @@ import type {
   PendingTargetObservationSource,
   PlanInputDevice,
 } from './planTypes';
+import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
 
 export type PlanEngine = {
+  getDeviceExecutionStates: (plan: DevicePlan) => ReadonlyMap<string, DeviceExecutionState>;
   readonly state: PlanEngineState;
   readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
   buildDevicePlanSnapshot: (devices: PlanInputDevice[]) => Promise<DevicePlan>;

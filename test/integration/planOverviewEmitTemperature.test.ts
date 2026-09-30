@@ -1,7 +1,9 @@
 import { emitDeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
-import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOverviewReadModel';
+import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
+import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOverviewReadModel';
 
 // The overview log and live-card seams share one atomic temperature resolver.
 // Pin that integration here: the shared-domain classifier reads the trio as one
@@ -32,24 +34,20 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
 
   it('classifies a satisfied target-only device as idle (the facet reaches the classifier)', () => {
     const captured: { deviceId: string; entry: Record<string, unknown> }[] = [];
-    const changed = emitDeviceOverviewTransitions(
-      satisfiedTargetOnlyPlan(),
-      new Map(),
-      {
-        deviceOverviewLogRecorder: {
-          record: (deviceId: string, entry: Record<string, unknown>) => {
-            captured.push({ deviceId, entry });
-          },
-        } as never,
-        getObservationStale: () => false,
-        getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-        getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-        getObservedTemperature: () => ({
-          kind: 'observed',
-          value: { currentTarget: 16, currentTemperature: 20.8 },
-        }),
-      } as never,
-    );
+    const plan = satisfiedTargetOnlyPlan();
+    const deps = {
+      getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
+      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getObservedTemperature: () => ({ kind: 'observed' as const,
+        value: { currentTarget: 16, currentTemperature: 20.8 } }),
+    };
+    const snapshot = buildSettingsOverviewReadModel(plan, deps)!;
+    const changed = emitDeviceOverviewTransitions(snapshot, new Map(), {
+      deviceOverviewLogRecorder: { record: (deviceId: string, entry: Record<string, unknown>) => {
+        captured.push({ deviceId, entry });
+      } } as never,
+    });
 
     expect(changed).toBe(true);
     expect(captured).toHaveLength(1);
@@ -73,6 +71,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       devices: [updatedDevice],
     } as DevicePlan;
     const deps = {
+      getDeviceExecutionState: () => executionStateFixture(updatedDevice), dryRun: false, nowMs: 0,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
@@ -83,14 +82,14 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     };
     const captured: Record<string, unknown>[] = [];
 
-    emitDeviceOverviewTransitions(stalePlan, new Map(), {
+    emitDeviceOverviewTransitions(buildSettingsOverviewReadModel(stalePlan, deps)!, new Map(), {
       ...deps,
       deviceOverviewLogRecorder: {
         record: (_deviceId: string, entry: Record<string, unknown>) => captured.push(entry),
       } as never,
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps).stateKind).toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps).status.kind).toBe('idle');
     expect(captured[0]?.stateKind).toBe('idle');
   });
 });

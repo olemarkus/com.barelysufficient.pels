@@ -46,6 +46,7 @@ export type PlanEngineComposition = {
   steppedReportedStore: SteppedReportedStepStore;
   builder: PlanBuilder;
   executor: Pick<PlanExecutor,
+    | 'getDeviceExecutionStates'
     | 'handleShortfall'
     | 'handleShortfallCleared'
     | 'applyPlanActions'
@@ -107,6 +108,10 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
     return this.executor.applyPlanActions(plan);
+  }
+
+  public getDeviceExecutionStates(plan: DevicePlan) {
+    return this.executor.getDeviceExecutionStates(plan);
   }
 
   public shouldApplyStablePlanActions(plan: DevicePlan): boolean {

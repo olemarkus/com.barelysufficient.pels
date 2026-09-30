@@ -1,3 +1,15 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { syncOwningHomeLivePlanState } from '../../setup/appObservedControlStateRuntime';
+import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacityBundle';
+import type { AppContext } from '../../lib/app/appContext';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
+import type { PlanService } from '../../lib/plan/planService';
+import {
+  invalidateOwningHomeRebuildSuppression,
+  syncExternalOffHoldForObservation,
+} from '../../setup/appObservedControlStateRuntime';
 // Integration coverage for R7b owning-home routing of everything a realtime
 // device observation now touches (`HomeRuntimeRegistry.getOwningHomeRouteForDevice`).
 // Main's answer to any of these is wrong for a sub-home device in a way that looks
@@ -13,16 +25,6 @@
 // This lane used to request a plan rebuild too, and most of this file tested
 // where that rebuild was routed. It does not any more: a device event is not what
 // a whole-home capacity decision is about (root `AGENTS.md` § Control Flow).
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  invalidateOwningHomeRebuildSuppression,
-  syncExternalOffHoldForObservation,
-} from '../../setup/appObservedControlStateRuntime';
-import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacityBundle';
-import type { AppContext } from '../../lib/app/appContext';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
-import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
 
 const OUTSIDE_OFF = [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }];
 
@@ -77,6 +79,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
     } as unknown as AppContext['planEngine'];
     const hooks: OwningHomeHooks = {
+      syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: subPending,
       clearRecentBinaryOffCommand: vi.fn(),
       rebuildPlan: () => Promise.resolve(),
@@ -157,7 +160,8 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
-            hasPendingBinaryCommand: () => false,
+            syncLivePlanState: vi.fn().mockResolvedValue(false),
+      hasPendingBinaryCommand: () => false,
             clearRecentBinaryOffCommand: vi.fn(),
             rebuildPlan,
             invalidateRebuildSuppression: vi.fn(),
@@ -193,7 +197,8 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
-            hasPendingBinaryCommand: () => false,
+            syncLivePlanState: vi.fn().mockResolvedValue(false),
+      hasPendingBinaryCommand: () => false,
             clearRecentBinaryOffCommand: vi.fn(),
             rebuildPlan: () => Promise.resolve(),
             invalidateRebuildSuppression: invalidateSubHome,
@@ -219,5 +224,28 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
     });
 
     expect(mainObservation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('owning-home live-status refresh', () => {
+  it('refreshes the sub-home owner and falls back to main for its own device', async () => {
+    const mainRefresh = vi.fn().mockResolvedValue(true);
+    const subRefresh = vi.fn().mockResolvedValue(true);
+    const ctx = createAppContextMock({ planService: { syncLivePlanState: mainRefresh } as unknown as PlanService });
+    const hooks: OwningHomeHooks = {
+      syncLivePlanState: subRefresh,
+      hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
+      rebuildPlan: async () => undefined, invalidateRebuildSuppression: () => undefined,
+      isDeviceLimited: () => false,
+    };
+    const router = { getOwningHomeRouteForDevice: (id: string) => (
+      id === 'sub-device' ? { homeId: 'sub-home', hooks } : undefined
+    ) };
+    await syncOwningHomeLivePlanState(ctx, { deviceId: 'sub-device', source: 'realtime_capability' }, router);
+    expect(subRefresh).toHaveBeenCalledWith('realtime_capability');
+    expect(mainRefresh).not.toHaveBeenCalled();
+    await syncOwningHomeLivePlanState(ctx, { deviceId: 'main-device', source: 'device_update' }, router);
+    expect(mainRefresh).toHaveBeenCalledWith('device_update');
+    expect(subRefresh).toHaveBeenCalledTimes(1);
   });
 });

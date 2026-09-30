@@ -1,7 +1,7 @@
-import type { SettingsUiPlanDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
+import type { DeviceReason } from './planReasonSemanticsCore';
 
-type CooldownDevice = Pick<SettingsUiPlanDeviceSnapshot, 'reason'>;
+type CooldownDevice = { reason: DeviceReason };
 type CooldownDisplayDevice = CooldownDevice & {
   displayCountdownTotalSec?: number;
 };

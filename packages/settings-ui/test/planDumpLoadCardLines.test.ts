@@ -1,8 +1,3 @@
-// Overview card copy for the "Run on solar surplus" dump-load posture:
-// a HELD dump load reads "Waiting for solar surplus" (via the normal reason
-// pipeline from the `awaiting_solar_surplus` reason code), and an ACTIVE one
-// running on export reads "On to use your solar power" (the surplus-active
-// line). Vocabulary source: notes/ui-terminology.md § Solar surplus vocabulary.
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import type { PlanDeviceSnapshot } from '../src/ui/planTypes.ts';
@@ -11,6 +6,12 @@ import {
   BINARY_SURPLUS_ACTIVE_REASON,
 } from '../../shared-domain/src/planTemperatureCardText.ts';
 import { PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS } from '../../shared-domain/src/planStateLabels.ts';
+import { uiDeviceFixture, type CardFixture } from './helpers/deviceStatusFixture.ts';
+// Overview card copy for the "Run on solar surplus" dump-load posture:
+// a HELD dump load reads "Waiting for solar surplus" (via the normal reason
+// pipeline from the `awaiting_solar_surplus` reason code), and an ACTIVE one
+// running on export reads "On to use your solar power" (the surplus-active
+// line). Vocabulary source: notes/ui-terminology.md § Solar surplus vocabulary.
 
 const callApi = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({
@@ -23,14 +24,7 @@ vi.mock('../src/ui/planRedesign.ts', () => ({ bumpPlanSurface: vi.fn() }));
 
 const { PlanGenericCard } = await import('../src/ui/views/PlanDeviceCards.tsx');
 
-const buildDumpLoad = (overrides: Partial<PlanDeviceSnapshot> = {}): PlanDeviceSnapshot => ({
-  id: 'pump-1',
-  name: 'Pool Pump',
-  controlModel: 'binary_power',
-  controllable: true,
-  reason: { code: PLAN_REASON_CODES.keep, detail: null },
-  ...overrides,
-} as PlanDeviceSnapshot);
+const buildDumpLoad = (overrides: CardFixture = {}, dryRun = false): PlanDeviceSnapshot => uiDeviceFixture({ id: 'pump-1', name: 'Pool Pump', controllable: true, ...overrides }, dryRun);
 
 const renderCard = (dev: PlanDeviceSnapshot, dryRun = false): HTMLDivElement => {
   const mount = document.createElement('div');
@@ -110,7 +104,7 @@ describe('dump-load Overview card lines', () => {
       plannedState: 'shed',
       currentDrawKw: 1.0,
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
-    }), true);
+    }, true), true);
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';
     expect(reason).toBe('Still reporting 1.0 kW — would switch off to wait for solar surplus (simulation)');
   });

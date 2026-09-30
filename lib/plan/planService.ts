@@ -1,3 +1,43 @@
+import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { normalizeError } from '../utils/errorUtils';
+import { buildPlanDetailSignature } from './planLogging';
+import { createPlanRebuildOutcome } from './planRebuildMetrics';
+import { getLogger } from '../logging/logger';
+import { runWithContext } from '../logging/alsContext';
+import type {
+  SettingsUiDeviceLogPayload,
+  SettingsUiPlanSnapshot,
+} from '../../packages/contracts/src/settingsUiApi';
+import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
+import {
+  createIdleClassifier,
+  type IdleClassifier,
+  type IdleClassifierDeviceInput,
+} from '../observer/idleClassifier';
+import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
+import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
+import { PlanStatusWriter } from './planStatusWriter';
+import { buildLiveStatePlan } from './planLiveStateMerge';
+import type {
+  DevicePlan,
+  PendingTargetObservationSource,
+  PlanChangeSet,
+  PlanInputDevice,
+  PlanRebuildOutcome,
+  StatusPlanChanges,
+} from './planTypes';
+import type {
+  HeadroomCardDeviceLike,
+  HeadroomCardQuery,
+  HeadroomForDeviceDecision,
+} from './planHeadroomDevice';
+import { PlanChangeTracker } from './planChangeTracker';
+import { emitDeviceOverviewTransitions } from './planOverviewEmit';
+import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
+import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
+import type { PlanServiceDeps } from './planServiceDeps';
+import type { PublishedPlan } from './publishedPlan';
+import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
 /**
  * Rebuild orchestration for the planning layer: PlanService owns WHEN a plan
  * is rebuilt and everything around the build, never WHAT the plan decides —
@@ -39,48 +79,6 @@
  *
  * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
  */
-import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { isMeteredPlanDevice } from './planMeteredDevice';
-import { normalizeError } from '../utils/errorUtils';
-import { buildPlanDetailSignature } from './planLogging';
-import { createPlanRebuildOutcome } from './planRebuildMetrics';
-import { getLogger } from '../logging/logger';
-import { runWithContext } from '../logging/alsContext';
-import type {
-  SettingsUiDeviceLogPayload,
-  SettingsUiPlanSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
-import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
-import {
-  createIdleClassifier,
-  type IdleClassifier,
-  type IdleClassifierDeviceInput,
-} from '../observer/idleClassifier';
-import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
-import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
-import { PlanStatusWriter } from './planStatusWriter';
-import { buildLiveStatePlan } from './planLiveStateMerge';
-import type {
-  DevicePlan,
-  MeteredDevicePlanDevice,
-  PendingTargetObservationSource,
-  PlanChangeSet,
-  PlanRebuildOutcome,
-  PlanInputDevice,
-  StatusPlanChanges,
-} from './planTypes';
-import type {
-  HeadroomCardDeviceLike,
-  HeadroomCardQuery,
-  HeadroomForDeviceDecision,
-} from './planHeadroomDevice';
-import { PlanChangeTracker } from './planChangeTracker';
-import { emitDeviceOverviewTransitions } from './planOverviewEmit';
-import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
-import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
-import type { PlanServiceDeps } from './planServiceDeps';
-import type { PublishedPlan } from './publishedPlan';
 
 const logger = getLogger('plan/service');
 
@@ -91,7 +89,15 @@ const serializePlanForUi = (
   deps: PlanServiceDeps,
   idleClassifier: IdleClassifier,
 ): SettingsUiPlanSnapshot | null => {
+  const execution = plan ? deps.planEngine.getDeviceExecutionStates(plan) : new Map<string, DeviceExecutionState>();
   return buildSettingsOverviewReadModel(plan, {
+    getDeviceExecutionState: (id) => {
+      const value = execution.get(id);
+      if (!value) throw new Error(`Missing execution state for ${id}`);
+      return value;
+    },
+    dryRun: deps.getCapacityDryRun(),
+    nowMs: Date.now(),
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: deps.getObservedEvChargingState,
@@ -283,7 +289,7 @@ export class PlanService {
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
     const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands();
     if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
-      return steppedChanged;
+      return this.refreshDeviceStatus() || steppedChanged;
     }
 
     const liveDevices = this.deps.getPlanDevices();
@@ -314,12 +320,12 @@ export class PlanService {
     }
 
     if (!pendingChanged) {
-      return false;
+      return this.refreshDeviceStatus();
     }
 
     const nextPlan = this.decoratePlanWithPendingTargetCommands(current);
     if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) {
-      return false;
+      return this.refreshDeviceStatus();
     }
     const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, current);
     this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
@@ -459,47 +465,44 @@ export class PlanService {
     // activity-log view (which listens for that event) refreshes — otherwise
     // overview-only transitions would record backend-side but never reach the
     // open view.
-    const captured = this.emitOverviewTransitions(plan);
-    if (captured) {
-      this.emitPlanUpdatedRealtime(plan);
-    }
+    this.refreshDeviceStatus(plan);
   }
 
-  private tickIdleClassifier(plan: DevicePlan): void {
-    if (this.lastTickedPlanRef === plan) return;
+  private tickIdleClassifier(plan: DevicePlan, refresh = false): void {
+    if (!refresh && this.lastTickedPlanRef === plan) return;
     this.lastTickedPlanRef = plan;
     // The temperature cluster rides as ONE optional object on the classifier
     // input (mirroring the observer's atomic facet): stamped together for a
     // temperature device, omitted otherwise — no nullable fields synthesized.
     // Idle and unresponsive are judged from measured draw, so only a device with
     // a power reading is classified; one without is never called idle.
-    const idleInputs = plan.devices
-      .filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device))
-      .map((device): IdleClassifierDeviceInput => ({
-      id: device.id,
-      name: device.name,
-      currentState: device.currentState,
-      currentDrawKw: device.currentDrawKw,
-      plannedState: device.plannedState,
-      ...(isTemperaturePlanDevice(device)
-        ? {
-          temperature: {
-            currentTemperature: device.currentTemperature,
-            currentTarget: device.currentTarget,
-          },
-        }
-        : {}),
-    }));
+    const execution = this.deps.planEngine.getDeviceExecutionStates(plan);
+    const idleInputs = plan.devices.flatMap((device): IdleClassifierDeviceInput[] => {
+      const state = execution.get(device.id);
+      if (!state || state.currentDrawKw === undefined) return [];
+      const temperature = this.deps.getObservedTemperature(device.id);
+      return [{
+        id: device.id,
+        name: device.name,
+        currentState: state.physicalState,
+        currentDrawKw: state.currentDrawKw,
+        plannedState: device.plannedState,
+        ...(temperature.kind === 'observed' ? { temperature: temperature.value } : {}),
+      }];
+    });
     this.idleClassifier.classifyAll(idleInputs, Date.now());
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {
     this.tickIdleClassifier(plan);
-    this.emitOverviewTransitions(plan);
-    this.emitPlanUpdatedRealtime(plan);
+    const snapshot = serializePlanForUi(plan, this.deps, this.idleClassifier);
+    if (snapshot) {
+      this.emitOverviewTransitions(snapshot);
+      this.emitPlanUpdatedRealtime(snapshot);
+    }
   }
 
-  private emitPlanUpdatedRealtime(plan: DevicePlan): void {
+  private emitPlanUpdatedRealtime(snapshot: SettingsUiPlanSnapshot): void {
     // A sub-home capacity bundle (R7b) shares the single settings-UI
     // `plan_updated` channel with the main home; only the main plan drives it.
     // Undefined (the pre-R7b default) emits — single-home behavior is unchanged.
@@ -507,7 +510,7 @@ export class PlanService {
     const api = this.deps.homey.api;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
-      realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps, this.idleClassifier))
+      realtime.call(api, 'plan_updated', snapshot)
         .catch((err: unknown) => (this.deps.loggers?.structuredLog ?? logger).error({
           event: 'plan_updated_emit_failed',
           error: normalizeError(err),
@@ -515,12 +518,19 @@ export class PlanService {
     }
   }
 
-  // Returns true when at least one device's overview signature changed (and was
-  // captured into the recorder / batched for debug), so the caller can refresh
-  // the open settings-UI activity-log view. State (`lastOverviewSignatureByDeviceId`)
-  // stays on this class; the emission logic lives in `planOverviewEmit.ts`.
-  private emitOverviewTransitions(plan: DevicePlan): boolean {
-    return emitDeviceOverviewTransitions(plan, this.lastOverviewSignatureByDeviceId, this.deps);
+  /** Refresh display from live owners while leaving the decision untouched. */
+  private refreshDeviceStatus(plan = this.getLatestPlanSnapshot()): boolean {
+    if (!plan) return false;
+    this.tickIdleClassifier(plan, true);
+    const snapshot = serializePlanForUi(plan, this.deps, this.idleClassifier);
+    if (!snapshot || !this.emitOverviewTransitions(snapshot)) return false;
+    this.emitPlanUpdatedRealtime(snapshot);
+    return true;
+  }
+
+  // Returns whether presentation changed, independently of logging being enabled.
+  private emitOverviewTransitions(snapshot: SettingsUiPlanSnapshot): boolean {
+    return emitDeviceOverviewTransitions(snapshot, this.lastOverviewSignatureByDeviceId, this.deps);
   }
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {

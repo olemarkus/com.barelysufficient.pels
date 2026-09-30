@@ -184,8 +184,9 @@ ladder) for the per-device surfaces below.
 ## Device state words (Overview cards)
 
 Every Overview device card leads with one bold canonical state word in its
-state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
-`planCardGrammar.ts` and `notes/overview-hero-spec.md` § Device cards):
+state row. The backend resolves its complete `DeviceStatus` in
+`lib/plan/deviceStatusReadModel.ts`, using executor-owned live execution state.
+Cards, device detail, and activity logs consume the same presentation:
 
 | State word | Used when |
 |---|---|
@@ -193,28 +194,28 @@ state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
 | **Idle** | The device is available and on (or has no binary on/off axis), but currently has nothing to do — including a satisfied target-only thermostat at/above its target drawing nothing. |
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
+| **Resuming** | PELS is bringing the device back as power becomes available. |
+| **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
+| **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 
 **Leave off until turned on again** renders `Off` + `Turned off elsewhere —
 turn it on to resume`. A waiting-for-power hold still renders `Limited`; `Off`
 is the factual binary state only when PELS is not currently limiting or
 resuming the device. This is why the `externalOffHold` reason code remains
 absent from `HOLD_REASON_CODES` in `planCardGrammar.ts`.
-| **Resuming** | PELS is bringing the device back as power becomes available. |
-| **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
-| **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
-| **Unknown** | PELS does not have enough current state to choose a more specific word. |
 
-**`Limited to <step>` names where a limited device actually landed** (2026-08-17).
-The bold state word stays `Limited`; this longer line is the *state line* carried
-by the device **activity log** and the runtime device log (`formatDeviceOverview`
-→ `deviceOverviewStrings.ts`). A device's configured limiting behaviour is only
-the worst case, not the action: PELS may leave a device set to turn off running
-at a lower level instead. So the line names that level — `Limited to 16 A`,
-`Limited to Low` — whenever the plan parks the device somewhere it still draws,
-whatever behaviour is configured and including EV chargers. A device the plan
-actually leaves off reads `Turned off` (or `Charging paused` for a charger), and
-the bare `Limited` survives only when there is no level to name at all. Never
-`Limited to Off`: a device at its off level is off, and says so.
+**A limit and its observed physical state are separate facts.** The shared state
+line reads `Limited · Off` when a limited device is observed off, even if it
+retains a Low step report or target. A limited device observed running at Low
+reads `Limited · Low`. Without a reported level it reads `Limited`; an assumed
+or planned step is not an observed level. The rail also shows the observed
+position, never the retained target.
+
+The canonical status has no `Unknown` variant. Unavailable observation is
+`Unavailable`; missing step feedback leaves the rail without a position and
+cannot confirm a step command. Quiet devices retain their last accepted
+observation. Countdown text reaches `0s` without changing the authoritative
+state or promise of execution; the next backend status supplies any transition.
 
 **Boost names no kind.** The `Boost` chip's hover text is
 `Given priority over other devices`, and it is the only wording there is.

@@ -1,201 +1,50 @@
-import { isMeteredPlanDevice } from './planMeteredDevice';
-import {
-  resolvePlanStateKind,
-  resolvePlanStateTone,
-} from '../../packages/shared-domain/src/planStateLabels';
-import {
-  buildDeviceOverviewTransitionSignature,
-  formatDeviceOverview,
-  getDeviceOverviewExpectedPowerKw,
-  getDeviceOverviewReportedStepId,
-} from '../../packages/shared-domain/src/deviceOverview';
-import type { DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
-import {
-  formatDeviceReasonUserFacingForDevice,
-  isActionSpecificRestoreWaitReasonCode,
-  resolveHeldCardReasonLine,
-  resolveHeldCardReasonVerb,
-  resolveHeldCardStepView,
-} from '../../packages/shared-domain/src/planCardReasonLine';
-import { resolveIntentStateKind, resolveRawPlanStateKind } from '../../packages/shared-domain/src/planCardGrammar';
+/** Exclude countdown decay: identical states must not create a log every second. */
 import type {
   SettingsUiDeviceLogEntry,
   SettingsUiDeviceLogPayload,
+  SettingsUiPlanDeviceSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
-import type { DevicePlanDevice } from './planTypes';
 
-// Per-device cap on retained transition entries. The recorder is purely
-// in-memory (no persistence): a device-log view is a debugging aid for the
-// current session, not an audit trail, so a small ring buffer keeps the RSS
-// cost negligible against the 160 MB Homey ceiling while still covering a
-// meaningful run of shed/restore activity.
 export const DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE = 50;
-
-// Cap on the number of distinct devices retained. An LRU eviction
-// (`enforceDeviceCap`) bounds memory: when a brand-new device pushes the count
-// past the cap, the least-recently-active device is dropped. We deliberately
-// do NOT prune devices that transiently leave the plan — a device that briefly
-// drops out (e.g. an SDK read blip) must keep its history rather than have it
-// wiped; the LRU cap alone is sufficient to bound the Map.
 export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
-
 export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
+export type OverviewLogDevice = SettingsUiPlanDeviceSnapshot;
 
-/**
- * A plan device carrying the display fields the plan itself does not own.
- * Built once per device by `planOverviewEmit.recordOverviewChange` and threaded
- * through every helper here.
- *
- * These helpers used to take a bare `DevicePlanDevice`, so nothing stopped a
- * caller handing them a device with no stepped cluster at all — which
- * `formatDeviceOverview` and the signature builder read as "not stepped".
- * Naming the shape makes that mistake visible at the call site.
- */
-export type OverviewLogDevice = DevicePlanDevice & {
-  steppedLoad?: DeviceOverviewSteppedLoad;
-  /**
-   * The overview contract is a WIRE shape and stays flat, so the posture is
-   * flattened once at the boundary (`planOverviewEmit`) rather than travelling
-   * as an object into the settings UI and the widgets.
-   *
-   * This intersection deliberately does NOT `Omit<…, 'control'>`. Two reasons.
-   * `DevicePlanDevice` is a UNION, and `Omit` over a union keys off the common
-   * members, so it silently erased the whole stepped cluster and collapsed the
-   * discriminant the docblock above exists to protect. And the omission was
-   * fiction anyway: the emit seam spreads the plan device, so `control` is on
-   * the object at runtime either way. Every consumer here builds an explicit
-   * field list, so nothing nested reaches the wire — read `controllable`, which
-   * carries `control.commandAuthority`, and leave `control` alone.
-   */
-  controllable: boolean;
-};
-
-// The overview-transition signature: a change in this value is the boundary
-// that drives both the device-log capture and the structured overview debug
-// log, so the two surfaces report identical wording.
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
-  return buildDeviceOverviewTransitionSignature(device);
+  const reason = device.status.reason;
+  return JSON.stringify({ ...device.status,
+    reason: reason?.countdown ? { ...reason, text: null, countdown: {
+      endsAtMs: reason.countdown.endsAtMs, prefix: reason.countdown.prefix, suffix: reason.countdown.suffix,
+    } } : reason });
 }
 
-// The structured per-device debug event emitted on an overview change.
-export function buildOverviewEventForDevice(
-  device: OverviewLogDevice,
-  overview: ReturnType<typeof formatDeviceOverview>,
-): Record<string, unknown> {
+export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()): SettingsUiDeviceLogEntry {
   return {
-    component: 'overview',
-    event: 'device_overview_changed',
-    deviceId: device.id,
-    deviceName: device.name,
-    powerMsg: overview.powerMsg,
-    stateMsg: overview.stateMsg,
-    usageMsg: overview.usageMsg,
-    statusMsg: overview.statusMsg,
-    stateKind: resolvePlanStateKind(device),
-    stateTone: resolvePlanStateTone(device),
-    currentState: device.currentState,
-    plannedState: device.plannedState,
-    reasonCode: device.reason.code,
-    reasonText: formatDeviceReasonUserFacingForDevice(device),
-    // The line the CARD actually rendered. Since 2026-08-02 the card and this
-    // helper deliberately differ — the card states what the device needs, the
-    // helper keeps the fuller cause — so logging only `reasonText` would leave a
-    // support session unable to reconstruct what the owner was looking at
-    // (feedback_ui_text_shared_with_logs). Both, not either.
-    //
-    // Gated on the same held/intent state the card gates on. The resolver is a
-    // HELD ladder: called for a running or idle device it returns its terminal
-    // "Waiting to resume" fallback, which would log a line no card ever showed —
-    // the opposite of what this field is for. `null` when the card renders no
-    // reason line.
-    cardReasonText: resolveCardReasonTextForLog(device),
-    // Omitted for a device without a power reading, as on the card.
-    ...(isMeteredPlanDevice(device) ? { currentDrawKw: device.currentDrawKw } : {}),
-    expectedPowerKw: getDeviceOverviewExpectedPowerKw(device),
-    reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
-    // The step id the CARD shows — off the cluster, so it carries
-    // `buildOverviewSteppedLoad`'s correction for a planner target the confirmed
-    // ladder lacks. It used to read the raw plan-device ids, which meant this
-    // log could name a rung the owner was never shown; the surrounding docblock
-    // is explicit that the log and the card must report the same thing.
-    targetStepId: device.steppedLoad?.targetStepId ?? null,
-    // The planner's RAW intent, deliberately uncorrected and kept beside the
-    // shown value: when the two differ, the device is aiming at a rung its
-    // confirmed ladder does not have, and seeing both is how you diagnose that.
-    desiredStepId: device.desiredStepId ?? null,
+    atMs,
+    stateMsg: device.status.label,
+    stateKind: device.status.kind,
+    stateTone: device.status.tone,
+    powerMsg: device.status.powerText,
+    usageMsg: device.status.factText ?? '',
+    statusMsg: device.status.reason?.text ?? '',
   };
 }
 
-// The batch event wrapping multiple per-device overview changes from one pass.
-export function buildOverviewBatchEvent(
-  changedDevices: Record<string, unknown>[],
-): Record<string, unknown> {
+export function buildOverviewEventForDevice(device: OverviewLogDevice): Record<string, unknown> {
   return {
-    component: 'overview',
-    event: 'device_overview_changes',
-    changedDeviceCount: changedDevices.length,
-    devices: changedDevices,
+    component: 'overview', event: 'device_overview_changed',
+    deviceId: device.id, deviceName: device.name,
+    ...buildDeviceLogEntry(device),
+    cardReasonText: device.status.reason?.text ?? null,
+    ...(device.currentDrawKw !== undefined ? { currentDrawKw: device.currentDrawKw } : {}),
   };
 }
 
-// Mirrors the card's own gate (`PlanDeviceCards` / `planTemperatureCardText`):
-// the reason line renders only for a held card, so the logged copy of it must
-// exist only there too. A device the planner left inactive but a hold reason is
-// keeping back counts as held, which is why this uses the INTENT kind rather
-// than the raw one.
-function resolveCardReasonTextForLog(device: OverviewLogDevice): string | null {
-  const kind = resolveIntentStateKind({
-    kind: resolveRawPlanStateKind(device),
-    reasonCode: device.reason.code,
-    starved: false,
-  });
-  if (kind !== 'held' && !isActionSpecificRestoreWaitReasonCode(device.reason.code)) return null;
-  return resolveHeldCardReasonLine({
-    reason: device.reason,
-    // Resolved here, with the plan layer's own guard, instead of being
-    // re-derived inside the verb from a tag this carrier never had.
-    verb: resolveHeldCardReasonVerb({
-      ...resolveHeldCardStepView(device),
-      currentState: device.currentState,
-    }),
-  });
+export function buildOverviewBatchEvent(devices: Record<string, unknown>[]): Record<string, unknown> {
+  return { component: 'overview', event: 'device_overview_changes', changedDeviceCount: devices.length, devices };
 }
 
-/**
- * Build a device-log entry from a plan device and its formatted overview.
- *
- * The four message fields are the verbatim shared-formatter output, so the
- * device-log view and the structured overview log report identical wording
- * (both consume `formatDeviceOverview`).
- */
-export function buildDeviceLogEntry(
-  device: OverviewLogDevice,
-  overview: ReturnType<typeof formatDeviceOverview>,
-): SettingsUiDeviceLogEntry {
-  // Explicit fields (no object spread) so the caller's per-device loop stays
-  // free of spread allocations (`no-restricted-syntax`).
-  return {
-    atMs: Date.now(),
-    powerMsg: overview.powerMsg,
-    stateMsg: overview.stateMsg,
-    usageMsg: overview.usageMsg,
-    statusMsg: overview.statusMsg,
-    stateKind: resolvePlanStateKind(device),
-    stateTone: resolvePlanStateTone(device),
-  };
-}
-
-/**
- * In-memory ring buffer of device-overview transitions, keyed by device id and
- * stored most-recent-first. The plan service appends a record on each detected
- * overview-signature change — the SAME change boundary that drives the
- * structured overview transition log — so the device-log view and the backend
- * logs report identical wording (both consume `formatDeviceOverview`).
- *
- * This recorder runs regardless of whether the `overview` debug-log topic is
- * enabled: the verbose log line is gated, but capturing for the UI is not, so
- * the view has data without the user first turning on debug logging.
- */
+/** Bounded session history of the same presentation delivered to the UI. */
 export class DeviceOverviewLogRecorder {
   private entriesByDeviceId = new Map<string, DeviceOverviewLogRecord[]>();
 

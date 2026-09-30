@@ -2,40 +2,12 @@ import { h } from 'preact';
 import { useRef, useLayoutEffect, useState } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { chipModifierForTone } from './chipModifier.ts';
-import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import {
-  readDeviceReasonDetail,
-  resolveReportedLoadAfterPauseText,
-  resolveSurplusHoldReportedLoadText,
-} from '../../../../shared-domain/src/planReasonFormatting.ts';
-import {
-  isSatisfiedTargetOnlyDevice,
-  PLAN_STATE_TONE,
-  type PlanStateKind,
-} from '../../../../shared-domain/src/planStateLabels.ts';
-import { resolveHeldCardReasonLine } from '../../../../shared-domain/src/planCardReasonLine.ts';
-import {
-  displayStateLabel,
-  displayStateTone,
   isDimmedDisplayStateKind,
-  resolveDisplayStateKind,
-  resolveIntentStateKind,
   resolvePlanCardStatusChip,
-  resolveRawPlanStateKind,
-  shouldDisplayExternalOffReason,
-  type PlanDisplayStateKind,
   type PlanCardStatusChip,
+  type PlanDisplayStateKind,
 } from '../../../../shared-domain/src/planCardGrammar.ts';
-import {
-  resolveBinarySurplusReasonLine,
-  resolveTemperatureLine,
-  resolveTemperatureReasonLine,
-} from '../../../../shared-domain/src/planTemperatureCardText.ts';
-import {
-  resolveCooldownBaseSec,
-  resolveCooldownRemainingSec,
-} from '../../../../shared-domain/src/planCooldown.ts';
-import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
   budgetExemptCardActionAriaLabel,
@@ -44,45 +16,18 @@ import {
   STARVATION_RESCUE_WIDGET_COPY,
 } from '../../../../shared-domain/src/planStarvation.ts';
 import { BoltIcon } from './icons.tsx';
-import {
-  formatGrantedRescuePermissionsLine,
-  resolveEvCardStateLine,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
-import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
+import { formatGrantedRescuePermissionsLine } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
-import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
 import {
   createStarvationRescue,
   isStarvationRescuable,
   previewStarvationRescue,
 } from '../starvationRescue.ts';
-import { hasActiveDeadlineObjective, state } from '../state.ts';
+import { hasActiveDeadlineObjective } from '../state.ts';
 import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
-import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
-
-const formatEvCardTime = (ms: number): string => (
-  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-);
-
-// Returns null when the device has no active ev_soc deadline or when no state
-// line applies (e.g. hours have already elapsed and the car is not unplugged).
-const resolveEvStateLineText = (deviceId: string, nowMs: number): string | null => {
-  const objective = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!objective || !objective.enabled || objective.kind !== 'ev_soc') return null;
-  if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) return null;
-
-  const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
-  const hours = activePlan?.latest?.hours ?? [];
-  const isPlugOutPaused = activePlan?.diagnosticReasonCode === 'objective_invalid_session';
-
-  const stateLine = resolveEvCardStateLine({
-    hours, nowMs, isPlugOutPaused, formatTime: formatEvCardTime,
-  });
-  return stateLine.kind === 'none' ? null : stateLine.text;
-};
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -273,65 +218,13 @@ export const BudgetExemptChip = ({
   );
 };
 
-const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
-  // A benign thermostat hold is routine, not an exception worth repeating in
-  // the card's one reason slot. The temperature fact line already shows the
-  // measured value and target, and remains honest when the device overshoots
-  // far enough that "near setpoint" would be false. Keep the classification
-  // available to diagnostics and smart-task completion; only exceptional idle
-  // states need card copy.
-  if (dev.idleClassification === 'near_target_idle') return null;
-  if (
-    dev.idleClassification !== 'unresponsive'
-    && dev.idleClassification !== 'capped_idle'
-  ) {
-    return null;
-  }
-  return formatIdleClassificationCopy({
-    classification: dev.idleClassification,
-    currentTemperatureC: dev.temperature?.currentTemperature,
-    targetTemperatureC: dev.temperature?.currentTarget,
-  });
-};
 
-const formatKw = (value: number | undefined): string => (
-  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'
-);
 
 // Display presentation for the card's state word + `data-state-kind` styling
 // hook. `resolveDisplayStateKind` applies the two card-grammar rules on top of
 // the raw plan state: a hold/wait reason upgrades `idle` to `held`, and
 // simulation collapses PELS-acted kinds to the factual device state (the
 // hypothetical action lives in the reason line, never the bold state word).
-const resolveStatePresentation = (dev: PlanDeviceSnapshot, dryRun: boolean) => {
-  const rawKind = resolveRawPlanStateKind(dev);
-  const grammarParams = {
-    kind: rawKind,
-    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
-    starved: dev.starvation?.isStarved === true,
-  };
-  const kind = resolveDisplayStateKind({
-    ...grammarParams,
-    dryRun,
-    currentState: dev.currentState,
-    satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(dev),
-  });
-  const tone = kind === rawKind
-    ? (dev.stateTone ?? PLAN_STATE_TONE[rawKind])
-    : displayStateTone(kind);
-  return {
-    kind,
-    // The plan-INTENT kind (raw + upgrades, no simulation collapse). Reason
-    // plumbing (e.g. the reported-load conflict, which is "plan says held,
-    // meter says drawing") keys off this — the conflict is a fact about the
-    // PLAN even when simulation renders the factual state word.
-    intentKind: resolveIntentStateKind(grammarParams),
-    label: displayStateLabel(kind),
-    tone,
-    chipModifier: chipModifierForTone(tone),
-  };
-};
-
 // Single status chip per card (ladder in `planCardGrammar.ts`) — `rescue`
 // renders the interactive two-step `BudgetExemptChip`; `status` renders a
 // plain toned chip. The Smart-task badge is an identity/route badge and may
@@ -362,79 +255,6 @@ export const PlanCardStatusChipView = ({
     </span>
   );
 };
-
-const isTrivialReason = (reason: unknown): boolean => {
-  if (!reason || typeof reason !== 'object') return false;
-  const code = (reason as { code?: unknown }).code;
-  if (code === PLAN_REASON_CODES.none) return true;
-  if (code === PLAN_REASON_CODES.keep) {
-    const detail = (reason as { detail?: unknown }).detail;
-    return detail === null || detail === undefined || detail === '';
-  }
-  return false;
-};
-
-const isDeviceReason = (reason: unknown): reason is DeviceReason => (
-  Boolean(reason)
-  && typeof reason === 'object'
-  && typeof (reason as { code?: unknown }).code === 'string'
-);
-
-// In simulation mode the held/limited reason line must read hypothetically to
-// agree with the card's "Would be … (simulation)" state — the factual result is
-// routed through `toSimulationReasonLine` (a no-op outside simulation and for
-// non-acted reasons).
-const resolveReasonText = (dev: PlanDeviceSnapshot, dryRun: boolean): string =>
-  toSimulationReasonLine(resolveReasonTextFactual(dev), dryRun);
-
-const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
-  // Plan-INTENT kind (raw + the idle→held upgrade) — the held line must fire for
-  // a hold-reason card the planner marked inactive, and must keep firing under
-  // simulation (only the state word goes factual there).
-  const starved = dev.starvation?.isStarved === true;
-  const kind = resolveIntentStateKind({
-    kind: resolveRawPlanStateKind(dev),
-    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
-    starved,
-  });
-  // One shared ladder across all three card variants: the card states what THIS
-  // device needs, the hero names the ceiling limiting the house. Starvation
-  // DECORATES that ladder with the elapsed hold; it never preempts it — see
-  // `planCardReasonLine.ts`.
-  const heldLine = (): string => resolveHeldCardReasonLine({
-    reason: dev.reason,
-    starvation: dev.starvation,
-  });
-  if (isTrivialReason(dev.reason)) {
-    return kind === 'held' || starved ? heldLine() : '';
-  }
-  if (isDeviceReason(dev.reason)) {
-    return kind === 'held' || starved ? heldLine() : formatReasonSummary(dev.reason);
-  }
-  if (kind === 'held' || starved) return heldLine();
-  // Final fallback for malformed snapshots — keep it user-facing so internal
-  // planner terms never leak when the upstream reason payload is missing.
-  return '';
-};
-
-const isDrawing = (dev: PlanDeviceSnapshot): boolean => (
-  dev.currentState === 'on'
-  && typeof dev.currentDrawKw === 'number'
-  && dev.currentDrawKw > 0.05
-);
-
-const resolveExpectedKw = (dev: PlanDeviceSnapshot): number | null => {
-  // Off the stepped cluster: a non-stepped device has no selected step and
-  // therefore no planning power, which `undefined` says exactly.
-  for (const value of [dev.steppedLoad?.planningPowerKw, dev.expectedPowerKw]) {
-    if (typeof value === 'number' && value > 0.05) return value;
-  }
-  return null;
-};
-
-
-
-// ─── Cooldown progress ────────────────────────────────────────────────────────
 
 type ProgressEl = HTMLElement & { value?: number };
 type PowerReadout = { text: string; variant: 'live' | 'expected' | 'reported' };
@@ -467,30 +287,6 @@ const CooldownProgress = ({
   } as Record<string, unknown>);
 };
 
-const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): boolean => (
-  kind === 'held'
-  && typeof dev.currentDrawKw === 'number'
-  && dev.currentDrawKw > 0.05
-);
-
-const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): string => {
-  // A surplus-held dump load the user manually switched on: name the surplus
-  // reconcile ("switching off to wait for solar surplus") instead of the
-  // generic "after pause" copy, which is wrong (a baseline-off device was never
-  // paused) and would hide the surplus explanation. Keyed on the reason code
-  // (already on the snapshot) — the awaitingSolarSurplus hold is exactly this
-  // state — so no new plan-device field is needed. `dryRun` keeps the copy
-  // hypothetical in simulation mode (PELS never actually switches it off).
-  if ((dev.reason as { code?: string } | undefined)?.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
-    return resolveSurplusHoldReportedLoadText({ currentDrawKw: dev.currentDrawKw, dryRun });
-  }
-  return resolveReportedLoadAfterPauseText({
-    currentDrawKw: dev.currentDrawKw,
-    detail: readDeviceReasonDetail(dev.reason),
-    dryRun,
-  });
-};
-
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
 export const PlanGenericCard = ({
@@ -507,51 +303,21 @@ export const PlanGenericCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const presentation = resolveStatePresentation(displayDev, dryRun);
+  const presentation = displayDev.status;
 
   const cardClasses = [
     'pels-surface-card device-row plan-card clickable',
     isDimmedDisplayStateKind(presentation.kind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
-  const remainingSec = resolveCooldownRemainingSec(displayDev);
-  const baseSec = resolveCooldownBaseSec(displayDev);
+  const countdown = presentation.reason?.countdown;
+  const remainingSec = countdown ? Math.max(0, Math.ceil((countdown.endsAtMs - nowMs) / 1000)) : null;
+  const baseSec = countdown?.totalSec ?? null;
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
-  const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.intentKind);
-  // "Run on solar surplus" dump load, actively running on export: the card's
-  // reason line explains WHY it is on ("On to use your solar power"). A held
-  // dump load needs no special-casing here — its `awaitingSolarSurplus` reason
-  // renders "Waiting for solar surplus" through the normal reason pipeline.
-  const surplusActiveLine = reportedLoadConflict
-    ? null
-    : resolveBinarySurplusReasonLine(displayDev, presentation.kind);
-  const reasonCode = (displayDev.reason as { code?: string } | undefined)?.code;
-  const externalOffReasonHidden = reasonCode === PLAN_REASON_CODES.externalOffHold
-    && !shouldDisplayExternalOffReason(presentation.kind, reasonCode);
-  const reasonText = externalOffReasonHidden
-    ? ''
-    : (
-      reportedLoadConflict
-        ? resolveReportedLoadReason(displayDev, dryRun)
-        : surplusActiveLine ?? resolveReasonText(displayDev, dryRun)
-    );
-
-  let powerReadout: PowerReadout | null = null;
-  if (reportedLoadConflict) {
-    powerReadout = { text: `Reported ${formatKw(displayDev.currentDrawKw)} kW`, variant: 'reported' };
-  } else if (isDrawing(displayDev)) {
-    powerReadout = { text: `${formatKw(displayDev.currentDrawKw)} kW`, variant: 'live' };
-  } else {
-    const expected = resolveExpectedKw(displayDev);
-    if (expected !== null) powerReadout = { text: `≈ ${expected.toFixed(1)} kW when active`, variant: 'expected' };
-  }
-
+  const powerReadout: PowerReadout | null = presentation.powerText === null ? null
+    : { text: presentation.powerText, variant: presentation.powerVariant };
   const displayName = formatDisplayDeviceName(dev.name);
-  // One reason line per card: the plan reason wins; an EV smart-task state
-  // line ("Charging · planned finish 06:30") fills the slot only when no
-  // reason renders. The dropped line is one tap away on the smart-task page.
-  const evStateText = resolveEvStateLineText(dev.id, nowMs);
-  const singleReason = reasonText !== '' ? reasonText : evStateText ?? '';
+  const singleReason = presentation.reason?.text ?? '';
 
   return (
     <article
@@ -577,7 +343,7 @@ export const PlanGenericCard = ({
           {hasTimer && (
             <span class="plan-state-chip-wrap">
               <span
-                class={`plan-chip plan-chip--${presentation.chipModifier}`}
+                class={`plan-chip plan-chip--${chipModifierForTone(presentation.tone)}`}
                 data-state-kind={presentation.kind}
                 data-state-tone={presentation.tone}
                 role="img"
@@ -628,7 +394,7 @@ export const PlanTemperatureCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const presentation = resolveStatePresentation(displayDev, dryRun);
+  const presentation = displayDev.status;
   const { kind } = presentation;
 
   const cardClasses = [
@@ -636,28 +402,10 @@ export const PlanTemperatureCard = ({
     isDimmedDisplayStateKind(kind) ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
-  const temperatureLine = resolveTemperatureLine(displayDev);
-  // One reason line per card: the plan reason wins; the idle-classification
-  // status line ("Not drawing power (20.3 °C / 22 °C)") fills the slot only
-  // when no plan reason renders. The chip duplicate is gone — the same copy
-  // never renders twice on one card. Benign near-target holds stay quiet: the
-  // temperature fact line already carries the current/target pair.
-  const idleCopy = resolveIdleCopy(displayDev);
-  // The plan reason takes the simulation mood exactly as the generic and stepped
-  // cards do (`resolveReasonText`, `PlanSteppedCard`); the temperature card used
-  // to apply it internally and lost it when the shared ladder landed, leaving one
-  // of three variants asserting a hold PELS never performed. The idle-classification
-  // fallback stays factual — it describes the device, not a PELS action.
-  const planReasonLine = resolveTemperatureReasonLine(displayDev, dryRun);
-  const reasonLine = (planReasonLine === null
-    ? idleCopy?.statusLine ?? null
-    : toSimulationReasonLine(planReasonLine, dryRun));
-  const reasonIsIdleCopy = reasonLine !== null && reasonLine === idleCopy?.statusLine;
-  const reasonTooltip = reasonIsIdleCopy ? idleCopy?.detail : undefined;
-  // The idle-classification copy carries its own tone (warning for
-  // unresponsive) — preserve it now that the copy rides the shared reason
-  // slot instead of the retired `__idle-line--warning` element.
-  const reasonTone = reasonIsIdleCopy ? idleCopy?.tone : undefined;
+  const temperatureLine = presentation.factText;
+  const reasonLine = presentation.reason?.text ?? null;
+  const reasonTooltip = presentation.reason?.detail;
+  const reasonTone = presentation.reason?.tone;
   const displayName = formatDisplayDeviceName(dev.name);
 
   return (
@@ -691,8 +439,8 @@ export const PlanTemperatureCard = ({
         <span class="plan-card__state-label">{presentation.label}</span>
         {/* No power reading, no figure: a thermostat PELS plans for its
             setpoints alone shows nothing rather than a placeholder. */}
-        {displayDev.currentDrawKw !== undefined && (
-          <span class="plan-card__state-power">{formatKw(displayDev.currentDrawKw)} kW</span>
+        {presentation.powerText !== null && (
+          <span class="plan-card__state-power">{presentation.powerText}</span>
         )}
       </div>
 

@@ -1,5 +1,10 @@
+/**
+ * Specs that exercise drift supply the fixtures the observer would have served.
+ * Absent, the engine sees no observations at all — which the predicate skips,
+ * matching a device the observer has not yet seen.
+ */
 import { vi } from 'vitest';
-import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from './planEngineStateFixture';
 import {
   canRefreshPlanSnapshotFromLiveState,
@@ -9,12 +14,8 @@ import { buildPlanMeta } from './planTestUtils';
 import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
 import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
+import { executionStateFixture } from './deviceStatusFixture';
 
-/**
- * Specs that exercise drift supply the fixtures the observer would have served.
- * Absent, the engine sees no observations at all — which the predicate skips,
- * matching a device the observer has not yet seen.
- */
 export type MockPlanEngineOptions = {
   getDriftDevices?: () => PlanInputDevice[];
   /**
@@ -94,6 +95,14 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       );
     },
   ),
+  getDeviceExecutionStates: vi.fn((plan: DevicePlan) => new Map(plan.devices.map((device) => {
+    const live = options?.getDriftDevices?.().find((candidate) => candidate.id === device.id);
+    const binary = live as (PlanInputDevice & BinaryControlDiscriminantProbe & { currentOn?: boolean }) | undefined;
+    const fixture = live ? { ...device, ...live,
+      currentState: binary?.currentOn === false || binary?.binaryControl?.on === false ? 'off' : device.currentState,
+    } as typeof device : device;
+    return [device.id, executionStateFixture(fixture)];
+  }))),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
   evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
   syncHeadroomCardState: vi.fn(() => false),

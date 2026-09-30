@@ -1,7 +1,3 @@
-import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
-import { isEvChargingState } from '../../../shared-domain/src/evPlugState.ts';
-import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
-
 /**
  * The plan payload's shape guard, in a leaf module of its own so BOTH the
  * surface that renders a plan (`planRedesign.ts`) and the adapters that read
@@ -13,38 +9,54 @@ import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/cap
  * own that distinction: the realtime handler drops a malformed push, and the
  * scoped reader classifies a malformed payload as `unavailable`.
  */
+import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
+import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 
-// Reason codes whose formatter interpolates `targetName` into a sentence. The
-// runtime type makes it a required `string` on `swapped_out` /
-// `reserved_for_start`; discriminating here is what lets the formatter
-// interpolate without a fallback, per the boundary rule: the adapter classifies,
-// the consumer trusts.
-//
-// Note what this is NOT defending against. The settings UI is compiled into the
-// app package and ships with the runtime that feeds it, so there is no
-// independent deployment and no "payload from an older build" — an earlier
-// version of this comment claimed otherwise and it was wrong. What remains is
-// worth guarding: this payload crosses a real JSON transport, and a producer bug
-// or a corrupted cache entry can still put a wrong shape on the other side.
-//
-// `swap_pending` is deliberately absent — its `null` is a real domain state (the
-// target is not yet resolved) that the formatter renders.
-const TARGET_NAME_REQUIRED_CODES = new Set(['swapped_out', 'reserved_for_start']);
 
-// Blank counts as missing: the formatter interpolates this straight into a
-// sentence, so `''` renders "Limited so  can run" — a usable name is the whole
-// point of requiring the field.
-const hasValidTargetName = (value: { code: string; targetName?: unknown }): boolean => (
-  !TARGET_NAME_REQUIRED_CODES.has(value.code)
-  || (typeof value.targetName === 'string' && value.targetName.trim().length > 0)
-);
+const STATUS_KINDS: ReadonlySet<unknown> = new Set([
+  'active', 'idle', 'held', 'resuming', 'off', 'manual', 'unavailable',
+]);
+const STATUS_TONES: ReadonlySet<unknown> = new Set(['active', 'idle', 'held', 'resuming', 'neutral', 'warning']);
+const isNullableText = (value: unknown): boolean => value === null || typeof value === 'string';
+const isFinite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const isCountdown = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const timer = value as Record<string, unknown>;
+  return isFinite(timer.endsAtMs) && isFinite(timer.totalSec) && timer.totalSec >= 0
+    && typeof timer.prefix === 'string' && typeof timer.suffix === 'string';
+};
 
-const hasStructuredReason = (value: unknown): boolean => (
-  Boolean(value)
-  && typeof value === 'object'
-  && typeof (value as { code?: unknown }).code === 'string'
-  && hasValidTargetName(value as { code: string; targetName?: unknown })
-);
+const isStatusReason = (value: unknown): boolean => {
+  if (value === null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const reason = value as Record<string, unknown>;
+  return typeof reason.text === 'string'
+    && (reason.tone === undefined || reason.tone === 'neutral' || reason.tone === 'warning')
+    && (reason.detail === undefined || typeof reason.detail === 'string')
+    && isCountdown(reason.countdown);
+};
+
+const isStatusRail = (value: unknown): boolean => {
+  if (value === null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const rail = value as Record<string, unknown>;
+  if (!Array.isArray(rail.labels) || !rail.labels.every((label: unknown) => typeof label === 'string')) return false;
+  return rail.activeIndex === null || (isFinite(rail.activeIndex) && Number.isInteger(rail.activeIndex)
+    && rail.activeIndex >= 0 && rail.activeIndex < rail.labels.length);
+};
+
+const isStatus = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const status = value as Record<string, unknown>;
+  return ['binary', 'temperature', 'stepped'].includes(status.cardKind as string)
+    && STATUS_KINDS.has(status.kind) && STATUS_TONES.has(status.tone)
+    && typeof status.label === 'string' && isNullableText(status.powerText) && isNullableText(status.factText)
+    && ['live', 'expected', 'reported'].includes(status.powerVariant as string)
+    && ['limited', 'wouldLimit', 'canEaseOff', 'controlOffDrawing'].every((key) => typeof status[key] === 'boolean')
+    && (status.holdCause === null || status.holdCause === 'smart_task' || status.holdCause === 'daily_budget')
+    && isStatusReason(status.reason) && isStatusRail(status.rail);
+};
 
 const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   Boolean(value)
@@ -53,110 +65,30 @@ const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   && typeof (value as { name?: unknown }).name === 'string'
   && typeof (value as { controllable?: unknown }).controllable === 'boolean'
   && typeof (value as { available?: unknown }).available === 'boolean'
-  && hasStructuredReason((value as { reason?: unknown }).reason)
+  && isStatus((value as { status?: unknown }).status)
 );
 
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+const isFiniteNumber = isFinite;
 
-// The temperature facet is atomic: a complete finite trio, or no facet at all.
-// The adapter validates ONCE here; inward of this seam (`shared-domain`, the
-// views) the facet is trusted as-is — there are no nullable temperature fields
-// left for a consumer to hedge on.
-const hasValidTemperatureFacet = (value: unknown): boolean => (
-  Boolean(value)
-  && typeof value === 'object'
-  && isFiniteNumber((value as { currentTarget?: unknown }).currentTarget)
-  && isFiniteNumber((value as { currentTemperature?: unknown }).currentTemperature)
-  && isFiniteNumber((value as { plannedTarget?: unknown }).plannedTarget)
-);
-
-// The stepped cluster is atomic for the same reason the temperature facet is,
-// and for a sharper one: its PRESENCE is the stepped discriminant. Consumers
-// read `dev.steppedLoad !== undefined` as proof the device is stepped and then
-// reach straight into it — `resolveSteppedLevelFact` hands `reportedStepId` to
-// `formatStepDisplayLabel`, which calls `.trim()` on it. So an unvalidated
-// cluster is not a cosmetic problem: a truthy non-object routes a device into
-// the stepped card, and a truthy non-string step id throws inside the render.
-//
-// `profile` is checked for shape only (an object with a `steps` array) — the
-// rungs themselves are the producer's business, and the card tolerates a step
-// id that names no rung. The two ids are nullable BY CONTRACT: `null` is "no
-// step reported yet" / "no target", which is a real state, so `null` passes and
-// only a wrong TYPE fails.
-const isStepIdOrNull = (value: unknown): boolean => value === null || typeof value === 'string';
-
-const hasValidSteppedLoad = (value: unknown): boolean => (
-  Boolean(value)
-  && typeof value === 'object'
-  && Boolean((value as { profile?: unknown }).profile)
-  && typeof (value as { profile?: unknown }).profile === 'object'
-  && Array.isArray((value as { profile: { steps?: unknown } }).profile.steps)
-  && isStepIdOrNull((value as { reportedStepId?: unknown }).reportedStepId)
-  && isStepIdOrNull((value as { targetStepId?: unknown }).targetStepId)
-  // REQUIRED on the cluster, so required here — the two move together. A
-  // missing `selectedStepId` is not a harmless gap: `hasSteppedRestorePending`
-  // compares it against the target, so `undefined !== targetStepId` makes an
-  // off device read "Resuming". And `getDeviceOverviewExpectedPowerKw` returns
-  // `planningPowerKw` directly now, with no fallback, so a non-finite one would
-  // reach the power text.
-  && typeof (value as { selectedStepId?: unknown }).selectedStepId === 'string'
-  && isFiniteNumber((value as { planningPowerKw?: unknown }).planningPowerKw)
-  && typeof (value as { commandPending?: unknown }).commandPending === 'boolean'
-);
-
-// The EV plug-state pair is a CLOSED union on the wire type, and until now
-// nothing checked it. Three shared-domain helpers call `.trim()` on these
-// values, so a non-string threw inside the card text; a junk string degraded
-// silently to missing EV copy. `isEvChargingState` is the same exhaustive guard
-// the capability-read seam uses — it moved to shared-domain so both ends of the
-// app can reach it (the settings UI may not import `lib/**`).
-//
-// Each field is dropped independently: the charger's own state and the
-// associated car's are separate facts, and one being junk says nothing about
-// the other.
-const EV_STATE_KEYS = ['evChargingState', 'carChargingState'] as const;
-
-const hasInvalidEvState = (device: PlanDeviceSnapshot, key: typeof EV_STATE_KEYS[number]): boolean => {
-  const value = (device as Record<string, unknown>)[key];
-  return value !== undefined && !isEvChargingState(value);
-};
-
-// Junk in ⇒ the whole facet is dropped (never a partial or nullable field):
-// a malformed push renders as a non-temperature / non-stepped card rather than
-// a card with invented numbers. Dropping the facet is the entire demotion —
-// presence of the facet IS the discriminant on this shape, so there is no
-// second field to keep in step.
-// ONE function decides what a device loses, so the "does anything need fixing"
-// pass and the "fix it" pass cannot disagree. They were separate predicates for
-// the temperature facet alone and stayed in step by luck; with four fields to
-// check, a second copy is a drift waiting to happen.
-const resolveDropKeys = (device: PlanDeviceSnapshot): readonly string[] => {
-  const dropKeys: string[] = [];
-  if (device.temperature !== undefined && !hasValidTemperatureFacet(device.temperature)) {
-    dropKeys.push('temperature');
-  }
-  if (device.steppedLoad !== undefined && !hasValidSteppedLoad(device.steppedLoad)) {
-    dropKeys.push('steppedLoad');
-  }
-  for (const key of EV_STATE_KEYS) {
-    if (hasInvalidEvState(device, key)) dropKeys.push(key);
-  }
-  return dropKeys;
-};
-
-const withValidatedFacets = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => {
-  const dropKeys = resolveDropKeys(device);
-  if (dropKeys.length === 0) return device;
-  const sanitized: Record<string, unknown> = { ...(device as Record<string, unknown>) };
-  for (const key of dropKeys) delete sanitized[key];
-  return sanitized as PlanDeviceSnapshot;
-};
+// Never forward retired state inputs, even if a producer accidentally spreads them.
+const RETIRED_STATE_KEYS = [
+  'currentState', 'plannedState', 'reason', 'stateKind', 'stateTone', 'temperature', 'steppedLoad',
+  'binaryCommandPending', 'pendingTargetCommand', 'shedAction', 'shedTemperature',
+  'evChargingState', 'carChargingState', 'idleClassification', 'surplusAbsorbActive',
+  'binaryControllable', 'reportedStepId', 'selectedStepId', 'desiredStepId', 'targetStepId',
+  'steppedLoadProfile', 'execution', 'expectedPowerKw',
+] as const;
 
 const needsFacetSanitizing = (device: PlanDeviceSnapshot): boolean => (
-  resolveDropKeys(device).length > 0
+  RETIRED_STATE_KEYS.some((key) => key in device)
 );
+
+const withValidatedFacets = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => {
+  if (!needsFacetSanitizing(device)) return device;
+  const sanitized: Record<string, unknown> = { ...device };
+  for (const key of RETIRED_STATE_KEYS) delete sanitized[key];
+  return sanitized as PlanDeviceSnapshot;
+};
 
 // The meta is now REQUIRED almost throughout, and the hero reads it without
 // hedging — `formatKw(meta.hardCapLimitKw)` calls `.toFixed()` straight on it.

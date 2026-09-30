@@ -1,5 +1,4 @@
-import type { DevicePlan, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
-import type { PendingTargetObservationSource } from '../plan/planTypes';
+import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
 import {
   type ExecutorDeviceReadDeps,
   readExecutorDevice,
@@ -16,8 +15,6 @@ import {
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
-
-const logger = getLogger('executor/plan');
 import type { PlanExecutorTargetContext } from './targetExecutor';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutor';
 import type { PlanExecutorBinaryContext } from './binaryExecutor';
@@ -42,10 +39,17 @@ import {
 import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
-import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
+import { buildExecutablePlan } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
-
 import type { PlanActuationResult } from '../planContract/planActuationResult';
+import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { resolveDeviceExecutionState } from './deviceExecutionState';
+import { buildDriftObservedSnapshot } from './driftObservedDevice';
+import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
+
+const logger = getLogger('executor/plan');
+
 
 /**
  * The executor holds NO view of the device transport. Its device reads are the
@@ -478,6 +482,26 @@ export class PlanExecutor {
       },
       isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
     };
+  }
+
+  /** Live read only: never settles stores, schedules work, or issues commands. */
+  public getDeviceExecutionStates(plan: DevicePlan): ReadonlyMap<string, DeviceExecutionState> {
+    const reads = this.driftObservationDeps();
+    const intents = buildExecutablePlan(plan).devices;
+    return new Map(plan.devices.map((device, index) => {
+      const live = readExecutorDevice(this.deps, device.id);
+      const observed = live ? buildExecutableObservedDeviceStateFromSnapshot(
+        buildDriftObservedSnapshot(live, live.steppedLoadProfile),
+      ) : undefined;
+      const execution = resolveDeviceExecutionState(intents[index]!, observed, {
+        ...reads.getCommandState(device.id),
+        target: this.state.pendingTargetCommands[device.id] ?? null,
+      }, reads.isExternalOffHeld(device.id));
+      return [device.id, {
+        ...execution,
+        ...(live && hasObservedMeasuredPower(live) ? { currentDrawKw: live.measuredPowerKw } : {}),
+      }];
+    }));
   }
 
   public hasStablePlanActuation(plan: DevicePlan): boolean {

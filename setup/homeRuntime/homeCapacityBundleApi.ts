@@ -7,12 +7,6 @@
  * stays owned by the factory. Type imports are erased at compile time.
  */
 import { normalizeError } from '../../lib/utils/errorUtils';
-// Re-exported, not re-implemented: the blank-name rule belongs in shared-domain
-// next to the home names so the settings UI answers it identically (it cannot
-// import `setup/**`). It travels through this module only because
-// `createHomeCapacityBundle.ts` sits at its 20/20 `import-x/max-dependencies`
-// ceiling and already depends on this one.
-export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeId } from '../../lib/utils/settingsKeys';
@@ -35,6 +29,12 @@ import type {
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+// Re-exported, not re-implemented: the blank-name rule belongs in shared-domain
+// next to the home names so the settings UI answers it identically (it cannot
+// import `setup/**`). It travels through this module only because
+// `createHomeCapacityBundle.ts` sits at its 20/20 `import-x/max-dependencies`
+// ceiling and already depends on this one.
+export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
 
 export type PreparedBundleSampleFence = {
   bindReader: (reader: () => StableSampleRevision) => void;
@@ -407,6 +407,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     // outside action), main's plan does not contain the device, and main's
     // rebuild state describes a different house.
     getOwningHomeHooks: () => ({
+      syncLivePlanState: planService.syncLivePlanState.bind(planService),
       hasPendingBinaryCommand: (deviceId) => (
         planEngine.hasAttributablePendingBinaryCommand(deviceId)
       ),

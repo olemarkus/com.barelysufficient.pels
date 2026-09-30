@@ -1,3 +1,9 @@
+/**
+ * The slice of the transport wiring the PLAN-side subscription needs. Narrower
+ * than `DeviceTransportWiringDeps` on purpose: this subscription is registered
+ * by its own startup step, after the plan service exists, and must not grow a
+ * reason to run any earlier.
+ */
 import type {
   ObservedStateChangedEvent,
   ObservedStateEmitter,
@@ -5,16 +11,10 @@ import type {
 } from '../../lib/observer/observedStateEvents';
 import { incPerfCounter } from '../../lib/utils/perfCounters';
 import type { AppContext } from '../../lib/app/appContext';
-import { requirePlanService } from './contextGuards';
 
-/**
- * The slice of the transport wiring the PLAN-side subscription needs. Narrower
- * than `DeviceTransportWiringDeps` on purpose: this subscription is registered
- * by its own startup step, after the plan service exists, and must not grow a
- * reason to run any earlier.
- */
 export type PlanObservedStateSubscriptionDeps = {
   ctx: AppContext;
+  syncLivePlanState: (event: ObservedStateChangedEvent) => Promise<boolean>;
   getObservedStateEmitter: () => ObservedStateEmitter;
   /**
    * Update "leave it off until turned on again" for a device whose observed
@@ -88,6 +88,6 @@ export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDe
       incPerfCounter('plan_rebuild_suppression_invalidate_requested.measure_power_total');
       deps.invalidateRebuildSuppression(event.deviceId);
     }
-    void requirePlanService(ctx).syncLivePlanState(event.source);
+    void deps.syncLivePlanState(event);
   });
 }

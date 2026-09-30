@@ -3,14 +3,6 @@ import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger } from '../../lib/logging/logger';
-
-type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
-
-const stubDepsHomey = (parts: { set?: Mock; realtime?: Mock } = {}): PlanServiceDeps['homey'] => partialDouble<PlanServiceDeps['homey']>({
-  settings: partialDouble<PlanServiceDeps['homey']['settings']>({ set: parts.set ?? vi.fn() }),
-  api: partialDouble<PlanServiceDeps['homey']['api']>({ realtime: parts.realtime ?? vi.fn().mockResolvedValue(undefined) }),
-  flow: partialDouble<PlanServiceDeps['homey']['flow']>({}),
-});
 import type {
   DevicePlan,
   PlanInputDevice,
@@ -27,20 +19,16 @@ import {
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import {
-  buildPlanMeta, fixtureControlPosture, openPlanBuildGate, steppedInputDevice, withFixtureResidualKw,
-  type PlanMetaOverrides,
-} from '../utils/planTestUtils';
+import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { createMockPlanEngine } from '../utils/planEngineMock';
-import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import { buildDeviceLogEntry } from '../../lib/plan/deviceOverviewLog';
 import {
   createRootLogger,
   getLogger,
@@ -48,8 +36,26 @@ import {
 } from '../../lib/logging/logger';
 import type { PendingBinaryLiveDevice } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
-
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
+import { executionStateFixture } from '../utils/deviceStatusFixture';
+import {
+  buildPlanMeta,
+  fixtureControlPosture,
+  openPlanBuildGate,
+  steppedInputDevice,
+  withFixtureResidualKw,
+  type PlanMetaOverrides,
+} from '../utils/planTestUtils';
+import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+
+type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
+
+const stubDepsHomey = (parts: { set?: Mock; realtime?: Mock } = {}): PlanServiceDeps['homey'] => partialDouble<PlanServiceDeps['homey']>({
+  settings: partialDouble<PlanServiceDeps['homey']['settings']>({ set: parts.set ?? vi.fn() }),
+  api: partialDouble<PlanServiceDeps['homey']['api']>({ realtime: parts.realtime ?? vi.fn().mockResolvedValue(undefined) }),
+  flow: partialDouble<PlanServiceDeps['homey']['flow']>({}),
+});
+
 
 // What the executor returns for one plan application; a case overrides the counts it cares about.
 const actuation = (counts: Partial<PlanActuationResult> = {}): PlanActuationResult => ({
@@ -165,6 +171,39 @@ describe('PlanService', () => {
     vi.useRealTimers();
   });
 
+  it('refreshes canonical off status with no pending command, rebuild or decision timestamp change', async () => {
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
+      selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
+      plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    let live = { ...executionStateFixture(device), desiredBinary: 'off' as const, desiredStepId: null };
+    const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
+    const recorder = new DeviceOverviewLogRecorder();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const { service } = createPlanService({ planEngine: engine,
+      deviceOverviewLogRecorder: recorder, homey: stubDepsHomey({ realtime }) });
+    service['rebuildHost'].publishPlan(plan, 456);
+    await service.syncLivePlanState('device_update');
+    realtime.mockClear();
+    live = { ...live, physicalState: 'off', currentDrawKw: 0, binaryProgress: 'settled' };
+
+    expect(await service.syncLivePlanState('device_update')).toBe(true);
+    const wire = service.getLatestPlanSnapshotForUi()!;
+    const status = wire.devices![0].status;
+    expect(status).toMatchObject({ kind: 'held', label: 'Limited · Off', reason: { text: 'Waiting for cheaper hours' },
+      rail: { activeIndex: 0 } });
+    expect(realtime).toHaveBeenCalledWith('plan_updated', wire);
+    expect(recorder.getUiPayload().entriesByDeviceId[device.id][0]).toMatchObject({
+      stateMsg: status.label, statusMsg: status.reason!.text, stateKind: status.kind });
+    expect(service.getLatestPlanSnapshot()).toBe(plan);
+    expect(service.getLatestPlanSnapshotUpdatedAtMs()).toBe(456);
+    expect(wire.generatedAtMs).toBe(123);
+    expect(engine.buildDevicePlanSnapshot).not.toHaveBeenCalled();
+    expect(engine.applyPlanActions).not.toHaveBeenCalled();
+    expect(await service.syncLivePlanState('device_update')).toBe(false);
+    expect(realtime).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps detail-only plan changes in memory and emits realtime updates', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
@@ -217,8 +256,8 @@ describe('PlanService', () => {
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
-    expect(planUpdatedCalls[0][1].devices[0].temperature.currentTarget).toBe(19);
-    expect(planUpdatedCalls[1][1].devices[0].temperature.currentTarget).toBe(21);
+    expect(planUpdatedCalls[0][1].devices[0].status.factText).toContain('target 19 °C');
+    expect(planUpdatedCalls[1][1].devices[0].status.factText).toContain('target 21 °C');
   });
 
   it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
@@ -417,33 +456,14 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    const overview = formatDeviceOverview({
-      currentState: 'on',
-      plannedState: 'keep',
-      reason: fixtureDeviceReason('keep')!,
-      currentDrawKw: 0,
-      expectedPowerKw: 3,
-      // The plan device carries no stepped ladder, so the emit seam builds no
-      // `steppedLoad` cluster for it — a plain binary device, which is what the
-      // real overview is built from. The mirror must match that absence.
-      controllable: true,
-      available: true,
-    });
+    const overview = buildDeviceLogEntry(service.getLatestPlanSnapshotForUi()!.devices![0]);
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       component: 'overview',
       event: 'device_overview_changed',
       deviceId: 'dev-1',
       deviceName: 'Heater',
       ...overview,
-      currentState: 'on',
-      plannedState: 'keep',
-      reasonCode: 'keep',
-      reasonText: '',
       currentDrawKw: 0,
-      expectedPowerKw: 3,
-      reportedStepId: null,
-      targetStepId: null,
-      desiredStepId: null,
     }));
   });
 
@@ -475,18 +495,7 @@ describe('PlanService', () => {
 
     // Debug log is gated off, but the recorder still captured the entry.
     expect(overviewDebugStructured).not.toHaveBeenCalled();
-    const overview = formatDeviceOverview({
-      currentState: 'on',
-      plannedState: 'keep',
-      reason: fixtureDeviceReason('keep')!,
-      currentDrawKw: 0,
-      expectedPowerKw: 3,
-      // The plan device carries no stepped ladder, so the emit seam builds no
-      // `steppedLoad` cluster for it — a plain binary device, which is what the
-      // real overview is built from. The mirror must match that absence.
-      controllable: true,
-      available: true,
-    });
+    const overview = buildDeviceLogEntry(service.getLatestPlanSnapshotForUi()!.devices![0]);
     const payload = service.getDeviceLogUiPayload();
     expect(payload.entriesByDeviceId['dev-1']).toEqual([
       expect.objectContaining({
@@ -543,14 +552,14 @@ describe('PlanService', () => {
         expect.objectContaining({
           event: 'device_overview_changed',
           deviceId: 'dev-1',
-          stateMsg: 'Active',
-          usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW',
+          stateMsg: 'Running',
+          powerMsg: '≈ 3.0 kW when active',
         }),
         expect.objectContaining({
           event: 'device_overview_changed',
           deviceId: 'dev-2',
-          stateMsg: 'Turned off',
-          usageMsg: 'Measured: 0.00 kW / Expected: 1.20 kW',
+          stateMsg: 'Limited · Off',
+          powerMsg: '≈ 1.2 kW when active',
         }),
       ],
     }));
@@ -586,9 +595,7 @@ describe('PlanService', () => {
 
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
-      reportedStepId: 'max',
-      targetStepId: 'max',
-      usageMsg: 'Measured: 0.00 kW / Planned: 3.00 kW (reported: Max)',
+      usageMsg: 'Level Max',
     }));
   });
 
@@ -661,9 +668,8 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
-      usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
+      powerMsg: '0.3 kW',
       currentDrawKw: 0.25,
-      expectedPowerKw: 3,
     }));
     // A usage-only overview change must NOT persist the plan snapshot (no
     // action/detail/meta change), but it DOES emit `plan_updated` so the open
@@ -708,6 +714,7 @@ describe('PlanService', () => {
     settingsSet.mockClear();
     realtime.mockClear();
 
+    vi.advanceTimersByTime(6_000);
     await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).not.toHaveBeenCalled();
@@ -715,7 +722,7 @@ describe('PlanService', () => {
     expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(0);
   });
 
-  it('does not cache overview signatures when the overview emitter is missing', async () => {
+  it('retains publication signatures even when debug logging is unavailable', async () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
@@ -739,7 +746,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(service['lastOverviewSignatureByDeviceId'].size).toBe(0);
+    expect(service['lastOverviewSignatureByDeviceId'].size).toBe(1);
   });
 
   it('logs overview changes during live sync when a visible field changes', async () => {
@@ -813,9 +820,8 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
-      powerMsg: 'on',
-      stateMsg: 'Active',
-      usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
+      stateMsg: 'Running',
+      powerMsg: '0.3 kW',
       statusMsg: '',
     }));
   });
@@ -897,17 +903,7 @@ describe('PlanService', () => {
           id: 'dev-1',
           name: 'Heater',
           deviceClass: 'thermostat',
-          plannedState: 'shed',
-          stateKind: 'held',
-          stateTone: 'held',
-          temperature: expect.objectContaining({ currentTemperature: 16 }),
-          pendingTargetCommand: expect.objectContaining({
-            desired: 20,
-            retryCount: 1,
-            status: 'temporary_unavailable',
-            lastObservedValue: 18,
-            lastObservedSource: 'snapshot_refresh',
-          }),
+          status: expect.objectContaining({ kind: 'held', tone: 'held', cardKind: 'temperature' }),
           starvation: {
             isStarved: true,
             accumulatedMs: 30 * 60 * 1000,
@@ -981,13 +977,11 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).toHaveBeenCalledTimes(2);
     expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
-      powerMsg: 'off',
       stateMsg: 'Resuming',
     }));
     expect(overviewDebugStructured.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
-      powerMsg: 'on',
-      stateMsg: 'Active',
+      stateMsg: 'Running',
     }));
   });
 
@@ -1151,7 +1145,7 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1177,11 +1171,11 @@ describe('PlanService', () => {
 
     // `syncLivePlanState` must not publish drifted live state as the committed
     // snapshot: the device reads off while the plan wants it on, which is NOT a
-    // settled actuation, so the stored snapshot keeps saying `on` and no
-    // `plan_updated` goes out. (Convergence itself is the rebuild's job — see
+    // settled actuation, so the stored snapshot keeps saying `on` and the
+    // live presentation can refresh independently. (Convergence itself is the rebuild's job — see
     // 'actuates on a detail-only rebuild when the device drifted from plan
     // intent', and the per-shape drift coverage in executorConvergence.test.ts.)
-    await expect(service.syncLivePlanState('device_update')).resolves.toBe(false);
+    await expect(service.syncLivePlanState('device_update')).resolves.toBe(true);
     expect(applyPlanActions).not.toHaveBeenCalled();
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -1195,7 +1189,9 @@ describe('PlanService', () => {
         }),
       ],
     }));
-    expect(realtime).not.toHaveBeenCalled();
+    expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
+      devices: [expect.objectContaining({ status: expect.objectContaining({ kind: 'resuming' }) })],
+    }));
   });
 
   it('aborts the rebuild (no actuation) when the abort predicate reports a stale revision', async () => {
@@ -1362,10 +1358,7 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          temperature: expect.objectContaining({ currentTarget: 18 }),
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('target '+18+' °C') }) }),
       ],
     }));
   });
@@ -1455,10 +1448,7 @@ describe('PlanService', () => {
     expect(service.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          temperature: expect.objectContaining({ currentTarget: 20 }),
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('target '+20+' °C') }) }),
       ],
     }));
   });
@@ -1613,10 +1603,7 @@ describe('PlanService', () => {
     });
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'held', label: 'Limited · Off' }) }),
       ],
     }));
   });
@@ -1759,14 +1746,8 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-        }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'resuming', label: 'Resuming' }) }),
+        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'resuming', label: 'Resuming' }) }),
       ],
     }));
   });
@@ -1845,10 +1826,7 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
       ],
     }));
   });
@@ -1982,14 +1960,8 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-        }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
+        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'manual', label: 'Manual' }) }),
       ],
     }));
   });
@@ -2130,15 +2102,8 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-        }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-          available: false,
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
+        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'unavailable' }) }),
       ],
     }));
   });
@@ -2221,11 +2186,7 @@ describe('PlanService', () => {
     }));
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          temperature: expect.objectContaining({ currentTarget: 21 }),
-        }),
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('target '+21+' °C') }) }),
       ],
     }));
   });

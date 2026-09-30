@@ -1,9 +1,4 @@
-import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
-import {
-  resolvePlanStateKind,
-  resolvePlanStateTone,
-} from '../../packages/shared-domain/src/planStateLabels';
 import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type {
   SettingsUiPlanDeviceSnapshot,
@@ -30,14 +25,20 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   resolveOverviewTemperatureFacet,
 } from './planOverviewTemperatureState';
+import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
+import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import { buildDeviceStatus } from './deviceStatusReadModel';
 
 export type SettingsOverviewReadModelDeps = {
+  getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
+  dryRun: boolean;
+  nowMs: number;
+  reasonAnchorMs?: number;
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
   getIdleClassification?: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
   // EV charging state is observed state — the observer is its canonical source
-  // (`ObservedDeviceState.evChargingState`), not the planner. The settings-UI
-  // read model surfaces the raw string for display, so it reads it from the
-  // observer here rather than off the plan device (which no longer carries it).
+  // (`ObservedDeviceState.evChargingState`), not the planner. The read model
+  // uses it to resolve presentation; the raw string never reaches the UI.
   getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
   // The device's battery level, for the charger card. Observer-owned like the
@@ -146,17 +147,6 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
 }
 
 /**
- * The overview's temperature facet, atomic like everything upstream of it:
- * the complete trio or nothing. The OBSERVED pair wins when the observer
- * answers (it is fresher than the plan snapshot, and it still answers when
- * temperature CONTROL is disabled — the card keeps showing what the device
- * reports); `plannedTarget` is the planner's decision, defaulting to the
- * observed target ("no commanded change") when the device is not
- * temperature-planned this cycle. Explicit `absent` evidence (the device is no
- * longer temperature-observed) drops the facet wholly — there are no partial
- * or nullable temperature fields on this DTO.
- */
-/**
  * The card's battery level. The observer already projected away its own
  * session/invalidation bookkeeping, so this reads the semantic result and
  * re-shapes nothing: `absent` is "this device reports no state of charge",
@@ -207,71 +197,42 @@ export function buildSettingsOverviewDeviceReadModel(
   // stepped rung unreachable — the map is built from the RAW snapshot and cannot
   // see a STORED ladder, so a device the owner had configured as a stepped load
   // was demoted to a generic card.
-  const steppedLoad = buildOverviewSteppedLoad(device, confirmedSteppedLoadProfile);
-  // The shared-domain label resolvers below take a `DeviceOverviewSnapshot`, which
-  // names the draw `currentDrawKw` — the same producer-resolved field the plan
-  // device carries — so the device passes through with only the control-model
-  // and temperature overlays applied.
+  const execution = deps.getDeviceExecutionState(device.id);
+  const steppedLoad = buildOverviewSteppedLoad(device, execution, confirmedSteppedLoadProfile);
+  const starvation = deps.getOverviewStarvation?.(device.id) ?? undefined;
+  const idleClassification = deps.getIdleClassification?.(device.id);
   const overviewShape = {
     ...device,
-    // Wire shape: flat, flattened once here. See `DeviceControlPosture`.
     controllable: device.control.commandAuthority,
     ...temperatureFields,
     steppedLoad,
+    currentState: execution.physicalState,
+    available: execution.available,
+    currentDrawKw: execution.currentDrawKw,
+    binaryCommandPending: execution.binaryProgress === 'pending',
+    pendingTargetCommand: execution.targetProgress === 'pending' ? true : undefined,
+    execution, starvation, idleClassification,
+    binaryControllable: isBinaryPlanDevice(device),
+    evChargingState: resolveOverviewEvChargingState(device.id, deps),
+    carChargingState: deps.getAssociatedCarChargingState?.(device.id),
   };
+  const presentation = buildDeviceStatus(overviewShape, deps.dryRun, deps.reasonAnchorMs ?? deps.nowMs);
+  const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,
+    text: formatDeviceStatusReason(presentation, deps.nowMs)!,
+  } } : presentation;
   return {
     id: device.id,
     name: device.name,
     deviceClass: device.deviceClass,
     controllable: device.control.commandAuthority,
-    available: device.available,
-    currentState: device.currentState,
-    plannedState: device.plannedState,
-    binaryControllable: isBinaryPlanDevice(device),
-    // Forwarded from the producer, which resolves it from the device's own
-    // identity (`deviceClass === 'evcharger'` or an `evcharger_charging` binary
-    // capability, `managerParseDeviceFields`). It used to be re-derived HERE from
-    // whether a plug-state reading existed — inferring what a device IS from
-    // whether it has said anything yet — so a charger that had not reported since
-    // boot was not a charger, and the card lost its battery line and its EV copy
-    // with it. Two producers for one fact, and the one downstream was guessing.
+    available: execution.available,
+    status,
     deviceRole: device.deviceRole,
-    evChargingState: resolveOverviewEvChargingState(device.id, deps),
-    carChargingState: deps.getAssociatedCarChargingState?.(device.id),
-    ...temperatureFields,
-    // Present only for a device with a power reading: see `DeviceOverviewSnapshot.currentDrawKw`.
-    ...(isMeteredPlanDevice(device) ? { currentDrawKw: device.currentDrawKw } : {}),
-    expectedPowerKw: device.expectedPowerKw,
-
+    ...(execution.currentDrawKw !== undefined ? { currentDrawKw: execution.currentDrawKw } : {}),
     budgetExempt: device.budgetExempt,
-    surplusAbsorbActive: device.surplusAbsorbActive,
-    // One boost bit, carried through as the planner decided it. The read model
-    // used to re-derive WHICH axis was boosting by presence-sniffing two
-    // unrelated seams; the card's wording is the view's job, and the axis was
-    // never the plan's to know.
     boostActive: device.boostActive,
-    // Projected to the one property the wire type declares rather than passed
-    // whole: the observation layer's session/invalidation bookkeeping is its own
-    // business, and `level` is the producer's complete answer to whether this
-    // charger has a battery level (`notes/ev-soc-layering.md`).
     stateOfCharge: resolveOverviewStateOfCharge(device.id, deps),
-    shedAction: device.shedAction,
-    shedTemperature: device.shedTemperature,
-    // No flat step ids or planning power: every stepped fact rides the
-    // `steppedLoad` cluster, built once by `buildOverviewSteppedLoad`. Emitting
-    // both was how the corrected target id ended up with an uncorrected twin.
-    binaryCommandPending: device.binaryCommandPending,
-    pendingTargetCommand: device.pendingTargetCommand,
-    // These read the draw off a `DeviceOverviewSnapshot`, where `currentDrawKw`
-    // is present exactly when the plan device has a power axis. Both sides name
-    // the producer-resolved field, so the plan device satisfies the shape
-    // directly and there is no adapter left to forget.
-    stateKind: resolvePlanStateKind(overviewShape),
-    stateTone: resolvePlanStateTone(overviewShape),
-    reason: device.reason,
-    starvation: deps.getOverviewStarvation?.(device.id) ?? undefined,
-    steppedLoad,
-    idleClassification: deps.getIdleClassification?.(device.id),
+    starvation,
   };
 }
 
@@ -296,7 +257,7 @@ export function buildSettingsOverviewReadModel(
       .filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass))
       .map((device) => buildSettingsOverviewDeviceReadModel(
         device,
-        deps,
+        { ...deps, reasonAnchorMs: plan.generatedAtMs ?? deps.nowMs },
         steppedLoadProfileById.get(device.id),
       )),
   };

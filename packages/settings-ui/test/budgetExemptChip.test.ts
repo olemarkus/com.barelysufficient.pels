@@ -7,6 +7,7 @@ import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCo
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../../shared-domain/src/planStarvation.ts';
 import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../shared-domain/src/deadlineLabels.ts';
+import { uiDeviceFixture, type CardFixture } from './helpers/deviceStatusFixture.ts';
 
 // The chip calls the rescue controller, which talks to the API over `callApi`
 // and surfaces toasts. Mock the network/toast seam so the REAL chip → REAL
@@ -34,13 +35,7 @@ const heldBackStarvation = (
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<PlanDeviceSnapshot> = {}): PlanDeviceSnapshot => ({
-  id: 'heater-1',
-  name: 'Termostat Synne',
-  reason: { code: PLAN_REASON_CODES.keep, detail: null },
-  starvation: heldBackStarvation(),
-  ...overrides,
-} as PlanDeviceSnapshot);
+const buildDevice = (overrides: CardFixture = {}): PlanDeviceSnapshot => uiDeviceFixture({ id: 'heater-1', name: 'Termostat Synne', starvation: heldBackStarvation(), ...overrides });
 
 const renderChip = (dev: PlanDeviceSnapshot): HTMLDivElement => {
   const mount = document.createElement('div');
@@ -366,8 +361,8 @@ describe('held-card reason line states what the device needs', () => {
 
 describe('PlanTemperatureCard reason line states what the device needs', () => {
   const buildTemperatureDevice = (
-    overrides: Partial<PlanDeviceSnapshot> = {},
-  ): PlanDeviceSnapshot => ({
+    overrides: CardFixture = {},
+  ): PlanDeviceSnapshot => uiDeviceFixture({
     id: 'heater-1',
     name: 'Termostat Synne',
     controlModel: 'temperature_target',
@@ -384,7 +379,7 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
     },
     starvation: heldBackStarvation(),
     ...overrides,
-  } as PlanDeviceSnapshot);
+  });
 
   const renderTemperatureCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
     const mount = document.createElement('div');
@@ -437,8 +432,8 @@ describe('PlanSteppedCard status line states what the device needs', () => {
   });
 
   const buildSteppedDevice = (
-    overrides: Partial<PlanDeviceSnapshot> = {},
-  ): PlanDeviceSnapshot => ({
+    overrides: CardFixture = {},
+  ): PlanDeviceSnapshot => uiDeviceFixture({
     id: 'heater-2',
     name: 'Varmtvannsbereder',
     controlModel: 'stepped_load',
@@ -460,7 +455,7 @@ describe('PlanSteppedCard status line states what the device needs', () => {
       commandPending: false,
     },
     ...overrides,
-  } as PlanDeviceSnapshot);
+  });
 
   const renderSteppedCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
     const mount = document.createElement('div');

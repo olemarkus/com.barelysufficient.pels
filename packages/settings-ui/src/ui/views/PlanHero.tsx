@@ -25,7 +25,6 @@ import {
   resolveSafePaceSourceText,
 } from '../planHeroTooltips.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
-import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemantics.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type {
   SettingsUiPricesPayload,
@@ -89,57 +88,11 @@ const resolveHeroStatus = (
   return 'on-track';
 };
 
-const isLimitedDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.stateKind === 'held' || device.plannedState === 'shed'
-);
-
-const isResumingDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.stateKind === 'resuming' || Boolean(device.binaryCommandPending && device.currentState === 'off')
-);
-
-// A managed device PELS has NOT finished easing off: it has Power-limit control
-// (`controllable`) and is either still running (`stateKind ===
-// 'active'`) OR has been selected for shedding but has not yet settled.
-// `resolvePlanStateKind` marks a device `held` the instant the plan says shed,
-// so an `active`-only check would miss a managed load that is still drawing and
-// wrongly claim the cascade is done mid-shed. For a pending shed we judge
-// "settled" by draw (a temperature device stays `currentState: 'on'` after PELS
-// only lowers its setpoint, so on-like state alone would never let the cascade
-// read exhausted for heaters). When none remain while over the hard cap, the
-// managed shed cascade is genuinely exhausted — the decision sentence then stops
-// promising further mitigation. Devices with Power-limit control turned off
-// (`controllable === false`) are excluded by construction.
-//
-// There is no longer an "unmeasured" fallback to on-like state: the plan read
-// model always carries a resolved draw, and every managed device is metered
-// (verified across a 124-device fleet), so a still-running managed load keeps the
-// cascade open on its own reading rather than on a separate state check.
-const isPendingShedStillRunning = (device: PlanDeviceSnapshot): boolean => (
-  (device.currentDrawKw ?? 0) > 0
-);
-const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.controllable && (
-    device.stateKind === 'active'
-    || (device.plannedState === 'shed' && isPendingShedStillRunning(device))
-  )
-);
-
-// A device that is breaching the cap with Power-limit control turned off: it
-// has control off (`controllable === false` → reason `capacityControlOff`) AND
-// is actually drawing power (`currentDrawKw > 0`). The measured-draw gate
-// matters — a parked opt-out device sitting at 0 W is not the source of the
-// breach, so the "remaining draw is from it" copy must not fire on it.
-const isBreachingControlOffDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.reason?.code === PLAN_REASON_CODES.capacityControlOff
-  && (device.currentDrawKw ?? 0) > 0
-);
-
-// In simulation mode the planner outputs `plannedState === 'shed'` but never
-// actually flips device state. Identify devices the planner *would* limit — i.e.
-// planner says shed and the device is not already in the held state.
-const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => (
-  device.plannedState === 'shed' && device.stateKind !== 'held'
-);
+const isLimitedDevice = (device: PlanDeviceSnapshot): boolean => device.status.limited;
+const isResumingDevice = (device: PlanDeviceSnapshot): boolean => device.status.kind === 'resuming';
+const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => device.status.canEaseOff;
+const isBreachingControlOffDevice = (device: PlanDeviceSnapshot): boolean => device.status.controlOffDrawing;
+const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => device.status.wouldLimit;
 
 // Decision sentence priority order. Voice + wording live in shared-domain
 // (`planHeroSummary.buildDecisionSentence`) so that a runtime log breadcrumb,
@@ -176,8 +129,8 @@ const buildDecisionSentence = ({
       || projectionTone === 'warning' || projectionTone === 'critical',
     safePaceKw,
     capacityPeriodMinutes,
-    deferredObjectiveAvoidCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.deferredObjectiveAvoid).length,
-    dailyBudgetLimitedCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.dailyBudget).length,
+    deferredObjectiveAvoidCount: limited.filter((d) => d.status.holdCause === 'smart_task').length,
+    dailyBudgetLimitedCount: limited.filter((d) => d.status.holdCause === 'daily_budget').length,
     // Counted over ALL devices, not just `limited`: the breaching device has
     // Power-limit control off (`controllable === false` → not held), and a
     // still-sheddable managed device is one PELS could yet ease off (running).

@@ -55,8 +55,6 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
-// Direct file imports (not the `setup/appInit.ts` barrel) to mirror
-// `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import type { createPlanEngine } from '../appInit/createPlanEngine';
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline, createUnobservedHomeProduction } from './createHomePowerPipeline';
@@ -146,6 +144,7 @@ export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
  * than for any one of them.
  */
 export type OwningHomeHooks = {
+  syncLivePlanState: PlanService['syncLivePlanState'];
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
   /**

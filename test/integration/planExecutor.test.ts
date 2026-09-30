@@ -1,4 +1,4 @@
-import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
@@ -55,6 +55,10 @@ import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorCon
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
+import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
+import { isSteppedLoadDevice as isSteppedLoadDeviceFixture } from '../../lib/plan/planSteppedLoad';
 import {
   buildPlanMeta,
   fixtureControlPosture,
@@ -63,8 +67,6 @@ import {
   withFixtureResidualKw,
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
-import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
-import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -1716,6 +1718,25 @@ describe('PlanExecutor pending target commands', () => {
 });
 
 describe('PlanExecutor stepped loads', () => {
+  it('queries live off state without touching command stores or issuing a write', () => {
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
+      selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
+      plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
+    if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [{ id: device.id, name: device.name,
+      available: true, binaryControl: { on: false }, binaryCapabilityId: 'onoff',
+      steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
+    const before = JSON.stringify(state);
+    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device] };
+    expect(executor.getDeviceExecutionStates(plan).get(device.id)).toMatchObject({
+      physicalState: 'off', observedStepId: 'low', desiredBinary: 'off', desiredStepId: null,
+      binaryProgress: 'settled', stepProgress: 'undriven', currentDrawKw: 0 });
+    expect(JSON.stringify(state)).toBe(before);
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(deviceManager.requestSteppedLoadStep).not.toHaveBeenCalled();
+  });
+
   const steppedProfile = {
     steps: [
       { id: 'off', planningPowerW: 0 },

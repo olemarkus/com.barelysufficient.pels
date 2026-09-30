@@ -1,8 +1,9 @@
-// @vitest-environment jsdom
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsUiPlanPayload } from '../../contracts/src/settingsUiApi.ts';
 import { state } from '../src/ui/state.ts';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
+// @vitest-environment jsdom
+
 
 const getApiReadModelMock = vi.fn<() => Promise<SettingsUiPlanPayload>>();
 
@@ -29,7 +30,7 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
   | { code: 'waiting_for_other_devices' }): SettingsUiPlanPayload => ({
   plan: {
     generatedAtMs: Date.now(),
-    devices: [{
+    devices: [uiDeviceFixture({
       id: 'charger',
       name: 'Charger',
       // Required on `SettingsUiPlanDeviceSnapshot` and always written by the
@@ -54,7 +55,7 @@ const planWithReason = (reason: { code: 'cooldown_restore'; remainingSec: number
         commandPending: false,
       },
       reason,
-    }],
+    })],
   },
 } as SettingsUiPlanPayload);
 
@@ -95,7 +96,8 @@ describe('device-detail live status restore waits', () => {
   it('hides a retained action-wait reason when the device is unavailable', async () => {
     const payload = planWithReason({ code: 'cooldown_restore', remainingSec: 18 });
     const device = payload.plan?.devices?.[0];
-    if (device) device.stateKind = 'unavailable';
+    if (device) device.status = { ...device.status, kind: 'unavailable', tone: 'warning',
+      label: 'Unavailable', reason: null };
     getApiReadModelMock.mockResolvedValue(payload);
 
     await renderDeviceDetailLiveStatus('charger');

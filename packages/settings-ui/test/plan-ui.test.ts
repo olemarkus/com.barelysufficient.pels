@@ -1,7 +1,7 @@
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
 import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
-import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 
 afterEach(() => {
   vi.clearAllTimers();
@@ -23,8 +23,6 @@ describe('Redesign plan UI', () => {
     `;
   };
   
-  const DEFAULT_REASON = { code: 'status_ok', message: '' };
-
   const admitMainHomeMembership = async () => {
     const homey = installHomeyMock();
     const { setHomeyClient } = await import('../src/ui/homey.ts');
@@ -35,25 +33,12 @@ describe('Redesign plan UI', () => {
   
   const normalizePlanSnapshot = (plan: unknown): unknown => {
     if (!plan || typeof plan !== 'object') return plan;
-    const snapshot = plan as { devices?: Array<Record<string, unknown>> };
+    const snapshot = plan as { devices?: Array<Record<string, unknown>>; generatedAtMs?: number };
     if (!Array.isArray(snapshot.devices)) return plan;
-    return {
-      ...snapshot,
-      devices: snapshot.devices.map((device) => {
-        const normalized = {
-          ...device,
-          controllable: device.controllable ?? true,
-          available: device.available ?? true,
-        };
-        if (typeof device.reason === 'string') {
-          return { ...normalized, reason: fixtureDeviceReason(device.reason) };
-        }
-        if (device.reason && typeof device.reason === 'object') return normalized;
-        return { ...normalized, reason: DEFAULT_REASON };
-      }),
-    };
+    return { ...snapshot, devices: snapshot.devices.map((device) => ({ ...uiDeviceFixture(device, false,
+      snapshot.generatedAtMs ?? Date.now()), priority: device.priority })) };
   };
-  
+
   const renderPlanSnapshot = async (plan: unknown) => {
     vi.resetModules();
     setupPlanDom();
@@ -999,7 +984,7 @@ describe('Redesign plan UI', () => {
       expect(timer?.value).toBeCloseTo(0.6, 2);
     });
 
-    it('stops presenting expired cooldown reasons as active', async () => {
+    it('keeps the authoritative status when the cooldown countdown expires', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-04-20T12:00:00Z'));
       await renderPlanSnapshot({
@@ -1036,7 +1021,8 @@ describe('Redesign plan UI', () => {
       vi.advanceTimersByTime(1_000);
       await Promise.resolve();
 
-      expect(getReasonText('dev-restore-cooldown')).toBeFalsy();
+      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting to resume — 0s');
+      expect(cooldownCard?.dataset.stateKind).toBe('resuming');
       const expiredTimer = document.querySelector(
         '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
       ) as HTMLElement | null;
@@ -1065,7 +1051,7 @@ describe('Redesign plan UI', () => {
       const timer = document.querySelector(
         '[data-device-id="dev-expired-cooldown"] .plan-state-chip__timer',
       ) as HTMLElement | null;
-      expect(getReasonText('dev-expired-cooldown')).toBeFalsy();
+      expect(getReasonText('dev-expired-cooldown')).toBe('Waiting to resume — 0s');
       expect(timer === null || timer.hidden).toBe(true);
       // Cooldown summary lives on device card, not as a hero chip
     });

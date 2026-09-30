@@ -9,17 +9,15 @@ import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildOverviewSteppedLoad } from '../../lib/plan/planOverviewSteppedState';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOverviewReadModel';
+import { executionStateFixture } from '../utils/deviceStatusFixture';
 
-// The log seam takes an `OverviewLogDevice` — a plan device plus the display
-// fields the plan does not own. `planOverviewEmit` builds `steppedLoad` per
-// device before calling in; these tests are about the reason line, so a
-// non-stepped device (no cluster) stands in.
-// The overview log takes the WIRE shape, so it carries the flat `controllable`
-// alongside the plan device — flattened here from the posture exactly as
-// `planOverviewEmit` does at the production seam.
-const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => ({
-  ...device,
-  controllable: device.control.commandAuthority,
+// The log seam receives the same resolved presentation as the UI.
+const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => buildSettingsOverviewDeviceReadModel(device, {
+  getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: Date.now(),
+  getObservedTemperature: () => ({ kind: 'absent' }),
+  getObservedStateOfCharge: () => ({ kind: 'absent' }),
+  getObservedEvChargingState: () => ({ kind: 'absent' }),
 });
 
 const overviewLogDevice = (
@@ -109,33 +107,27 @@ describe('buildOverviewSteppedLoad', () => {
   // raw-snapshot map that cannot see a stored ladder — so the same device came
   // out stepped on the log seam and binary on the card.
   it('marks a stored-profile stepped device as stepped', () => {
-    const steppedLoad = buildOverviewSteppedLoad(steppedPlanDevice({ id: 'heater' }));
+    const device = steppedPlanDevice({ id: 'heater' });
+    const steppedLoad = buildOverviewSteppedLoad(device, executionStateFixture(device));
     expect(steppedLoad).toBeDefined();
     expect(steppedLoad?.profile.steps.length).toBeGreaterThan(0);
   });
 
   it('leaves a non-stepped device with no cluster at all', () => {
-    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'thermo', deviceType: 'temperature', currentTarget: 21, currentTemperature: 20 })))
-      .toBeUndefined();
-    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'x' }))).toBeUndefined();
+    const thermostat = buildPlanDevice({ id: 'thermo', deviceType: 'temperature', currentTarget: 21, currentTemperature: 20 });
+    const binary = buildPlanDevice({ id: 'x' });
+    expect(buildOverviewSteppedLoad(thermostat, executionStateFixture(thermostat))).toBeUndefined();
+    expect(buildOverviewSteppedLoad(binary, executionStateFixture(binary))).toBeUndefined();
   });
 });
 
-// `cardReasonText` logs the line the CARD rendered, so support can reconstruct
-// what the owner saw now that the card and `reasonText` differ by design. The
-// resolver behind it is a HELD ladder: called unconditionally it returns its
-// terminal "Waiting to resume" fallback for a running device, which would log a
-// line no card ever showed — the exact opposite of the field's purpose.
+// `cardReasonText` is the resolved reason line delivered to the card.
 describe('buildOverviewEventForDevice — cardReasonText', () => {
-  const overview = {
-    powerMsg: 'off', stateMsg: 'Limited', usageMsg: 'Measured: 0.00 kW', statusMsg: 'x',
-  };
-
   it('logs the card line for a held device', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'daily_budget', shortfallKw: 0.9 },
-    }), overview);
+    }));
     expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
   });
 
@@ -148,7 +140,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'capacity', reserveHolderName: 'Water heater' },
-    }), overview);
+    }));
     expect(event['cardReasonText']).toBe('Waiting so Water heater can start');
   });
 
@@ -171,9 +163,9 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
       reportedStepId: 'low',
       selectedStepId: 'medium',
       reason,
-    })), overview);
+    })));
 
-    expect(event['reasonText']).toBe(copy);
+    expect(event['statusMsg']).toBe(copy);
     expect(event['cardReasonText']).toBe(copy);
   });
 
@@ -189,7 +181,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   ])('logs null for %s, which renders no reason line', (_label, state) => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', ...state, reason: { code: 'keep', detail: null },
-    }), overview);
+    }));
     expect(event['cardReasonText']).toBeNull();
   });
 });

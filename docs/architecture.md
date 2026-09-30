@@ -147,6 +147,31 @@ confirmation uses the admitted step observation's own timestamp. Settings change
 reparse configuration and retire command sessions referencing removed rungs; the
 next decision admits any subsequent write.
 
+### Device status for UI and logs
+
+`PlanExecutor.getDeviceExecutionStates(plan)` is a read-only query over the
+committed executable intent, current accepted Observer records, and command
+stores. It distinguishes physical on/off from the binary handle, reported steps
+from planning fallbacks, and pending work from settled axes. A binary-off
+intent does not require a retained active step to change. This query never
+settles stores, rebuilds a plan, or issues a write.
+
+The settings overview read model combines these executor conclusions with the
+committed decision's reason and observed display measurements once. It emits a
+required `DeviceStatus`: card type, state label/tone, power/fact/reason text,
+countdown deadline, resolved rail labels/position, and aggregate display flags.
+The same snapshot feeds realtime UI publication and activity/runtime logs.
+The UI wire contract explicitly excludes binary state, step evidence/targets,
+pending commands, planner reasons, and temperature targets. UI consumers render
+status; they do not reconstruct it from runtime inputs. The receiving JSON
+boundary rejects malformed or missing status and strips retired state fields.
+
+Device observations refresh this presentation through the owning home's
+PlanService even when no command is pending. This preserves the decision and
+its generation timestamp and does not rebuild or reapply it. A countdown may
+decay in the browser, but expiry cannot invent a state transition. No second
+mutable device-state store is introduced.
+
 ## Peer DAG inside the domain layer
 
 The domain peers (`lib/device`, `lib/power`, `lib/objectives`, `lib/observer`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/executor`) are not flat. The cruiser enforces the directional edges below — any other peer-to-peer import fails the build.
@@ -169,7 +194,7 @@ Realtime device events (capability updates, full device updates from Homey) cros
 
 1. **Translation** — `lib/device/` (`DeviceTransport` + `lib/device/transport/managerRealtimeHandlers.ts`) parses the raw Homey payload, runs the admit-or-suppress flow-vs-binary rule and pending-binary-command echo suppression, and produces normalized `observed-state-changed` / `observed-control-state-changed` events.
 2. **Observer fan-out** — `lib/observer/observedStateEvents.ts` owns the typed-event emitter (`ObservedStateEmitter`). Transport routes each event through a dispatcher callback bag (`observedStateDispatcher`) injected at construction time by wiring, so `lib/device/` → `lib/observer/` stays free of static imports (the `no-device-to-peer-except-power` cruiser rule holds).
-3. **Wiring** — `setup/appInit/planObservedStateSubscription.ts` subscribes to the observer-owned emitter and updates the observed view, the external-off hold, and the rebuild-suppression latches (both routed to the device's owning home, `setup/appObservedControlStateRuntime.ts`). It requests **no** plan rebuild. Two things had to go here in turn: first the wiring-layer drift gate, which asked a planner question `setup/` had no business answering and used the answer only to decide whether to RE-APPLY the committed plan — the lane that breached the hard cap in production (inc_26449fb9); then the device-event rebuild trigger itself, because a capacity decision taken on a device event runs against a whole-home reading taken before the change. The trigger is a meter reading (`lib/plan/planRebuildTrigger.ts`), and the observation reaches the planner as state, in the reading that carries it.
+3. **Wiring** — `setup/appInit/planObservedStateSubscription.ts` subscribes to the observer-owned emitter and updates the observed view, the external-off hold, the live status, and the rebuild-suppression latches (all routed to the device's owning home, `setup/appObservedControlStateRuntime.ts`). It requests **no** plan rebuild. Two things had to go here in turn: first the wiring-layer drift gate, which asked a planner question `setup/` had no business answering and used the answer only to decide whether to RE-APPLY the committed plan — the lane that breached the hard cap in production (inc_26449fb9); then the device-event rebuild trigger itself, because a capacity decision taken on a device event runs against a whole-home reading taken before the change. The trigger is a meter reading (`lib/plan/planRebuildTrigger.ts`), and the observation reaches the planner as state, in the reading that carries it.
 
 The executor's drift verdict (`lib/executor/planExecutionDrift.ts`, `ExecutableDeviceIntent` vs `ExecutableObservedDeviceState`) is deliberately **not** a step in this flow: it runs inside a rebuild's apply phase, not on the realtime path. Observer and transport never see plan intent.
 

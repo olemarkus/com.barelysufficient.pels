@@ -1,4 +1,6 @@
 (() => {
+  // Complete backend presentations for the declared fixture cases.
+  const FIXTURE_STATUS_BASE = {"cardKind":"binary","kind":"active","tone":"active","label":"Running","powerText":null,"powerVariant":"expected","factText":null,"reason":null,"rail":null,"limited":false,"wouldLimit":false,"canEaseOff":true,"controlOffDrawing":false,"holdCause":null};
   const listeners = Object.create(null);
   const initialOverrides = (
     window.__PELS_HOMEY_STUB__ && typeof window.__PELS_HOMEY_STUB__ === 'object'
@@ -214,6 +216,7 @@
       },
       devices: [
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · target 22 °C → 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"1.2 kW","powerVariant":"live","factText":"20.3 °C · target 22 °C → 21 °C" } },
           id: 'dev_heatpump',
           name: 'Living Room Heat Pump',
           currentState: 'on',
@@ -241,6 +244,7 @@
           shedTemperature: 16,
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited","powerText":"Reported 2.1 kW","powerVariant":"reported","reason":{"text":"Still drawing 2.1 kW — high household load"},"limited":true }, simulation: { ...FIXTURE_STATUS_BASE, "powerText":"Reported 2.1 kW","powerVariant":"reported","reason":{"text":"Would still draw 2.1 kW — high household load (simulation)"},"limited":true,"wouldLimit":true } },
           id: 'dev_waterheater',
           // Required on the plan snapshot: a binary load the owner sheds by turning off.
           name: 'Water Heater',
@@ -259,6 +263,7 @@
           shedAction: 'turn_off',
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited · Off","powerText":"≈ 1.0 kW when active","reason":{"text":"Waiting for solar surplus"},"limited":true,"canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "kind":"off","tone":"idle","label":"Off","powerText":"≈ 1.0 kW when active","reason":{"text":"Waiting for solar surplus"},"limited":true,"wouldLimit":true,"canEaseOff":false } },
           id: 'dev_poolpump',
           // Required on the plan snapshot: a binary load the owner sheds by turning off.
           name: 'Pool Pump',
@@ -276,6 +281,7 @@
           shedAction: 'turn_off',
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · target 16 °C → 20 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.0 kW","powerVariant":"live","factText":"22.8 °C · target 16 °C → 20 °C" } },
           id: 'dev_bedroom',
           name: 'Bedroom Thermostat',
           currentState: 'on',
@@ -297,6 +303,7 @@
           shedTemperature: 15,
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"19.1 °C · target 20 °C","reason":{"text":"Waiting to resume — 0.6 kW more needed"},"canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"19.1 °C · target 20 °C","reason":{"text":"Would be waiting to resume — 0.6 kW more needed (simulation)"},"canEaseOff":false } },
           id: 'dev_hallway',
           name: 'Hallway Thermostat',
           currentState: 'off',
@@ -325,6 +332,7 @@
           shedTemperature: 15,
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"stepped","powerText":"1.4 kW","powerVariant":"live","factText":"Charging · level 6 A","rail":{"labels":["Off","6 A","8 A","10 A","12 A","14 A","16 A","20 A","24 A","28 A","32 A"],"activeIndex":1} }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"stepped","powerText":"1.4 kW","powerVariant":"live","factText":"Charging · level 6 A","rail":{"labels":["Off","6 A","8 A","10 A","12 A","14 A","16 A","20 A","24 A","28 A","32 A"],"activeIndex":1} } },
           id: 'dev_zaptec',
           name: 'Zaptec Go',
           currentState: 'not_applicable',
@@ -370,6 +378,7 @@
           },
         },
         {
+          fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "cardKind":"stepped","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"51.1 °C · target 65 °C","reason":{"text":"Waiting to resume — 0.2 kW more needed"},"rail":{"labels":["Low","Medium","High"],"activeIndex":null},"canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"stepped","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"51.1 °C · target 65 °C","reason":{"text":"Would be waiting to resume — 0.2 kW more needed (simulation)"},"rail":{"labels":["Low","Medium","High"],"activeIndex":null},"canEaseOff":false } },
           id: 'dev_connected300',
           name: 'Connected 300',
           currentState: 'off',
@@ -564,6 +573,7 @@
   // reason (the runtime boundary rejects prose reasons) and the priority the
   // capacity_priorities map actually assigns this device.
   const evPlanDevice = {
+                         fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited · Off","powerText":"≈ 7.2 kW when active","reason":{"text":"Waiting to resume — 5.8 kW more needed"},"limited":true,"canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "kind":"off","tone":"idle","label":"Off","powerText":"≈ 7.2 kW when active","reason":{"text":"Would be waiting to resume — 5.8 kW more needed (simulation)"},"limited":true,"wouldLimit":true,"canEaseOff":false } },
     id: 'dev_evcharger',
     // Required on the plan snapshot: a binary load the owner sheds by turning off.
     name: 'Generic EV Charger',
@@ -1058,12 +1068,23 @@
     };
   };
 
+  const resolveFixturePlan = (plan) => {
+    if (!plan?.devices) return plan;
+    return { ...plan, devices: plan.devices.map((device) => ({
+      id: device.id, name: device.name, controllable: device.controllable ?? true,
+      available: device.available ?? true, boostActive: device.boostActive ?? false,
+      deviceClass: device.deviceClass, deviceRole: device.deviceRole, stateOfCharge: device.stateOfCharge,
+      currentDrawKw: device.currentDrawKw, budgetExempt: device.budgetExempt, starvation: device.starvation,
+      status: device.status ?? device.fixtureStatus?.[settings.capacity_dry_run ? 'simulation' : 'live'],
+    })) };
+  };
+
   const buildPlanPayload = () => {
     // Branch on `hasOwnProperty` so a scenario can force a null plan (used to
     // exercise the "no plan yet" UI state); `?? baseline` would mask that.
     const scenarioPatch = runtimeOverrides.scenarioPatch;
     if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'plan')) {
-      return scenarioPatch.plan;
+      return resolveFixturePlan(scenarioPatch.plan);
     }
     // Test knob: `settings.plan_snapshot_meta_patch` merges into the sample
     // plan's meta so a spec can make the hero numerically consistent with an
@@ -1071,9 +1092,9 @@
     // `totalKw`) without replicating the whole plan fixture.
     const metaPatch = settings.plan_snapshot_meta_patch;
     if (metaPatch && typeof metaPatch === 'object' && settings.plan_snapshot?.meta) {
-      return { ...settings.plan_snapshot, meta: { ...settings.plan_snapshot.meta, ...metaPatch } };
+      return resolveFixturePlan({ ...settings.plan_snapshot, meta: { ...settings.plan_snapshot.meta, ...metaPatch } });
     }
-    return settings.plan_snapshot;
+    return resolveFixturePlan(settings.plan_snapshot);
   };
 
   const resolveDailyBudgetPayload = () => {
@@ -1713,7 +1734,7 @@
     // setting). Absence is the honest pre-first-commit `null` — never Main's
     // plan under an area badge.
     return {
-      plan: settings[`plan_snapshot:${scope.homeId}`] ?? null,
+      plan: resolveFixturePlan(settings[`plan_snapshot:${scope.homeId}`] ?? null),
       homeScope: { state: 'resolved', homeId: scope.homeId },
     };
   };
@@ -2084,6 +2105,7 @@
     },
     devices: [
       {
+        fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited","powerText":"Reported 2.1 kW","powerVariant":"reported","reason":{"text":"Still drawing 2.1 kW — capacity shortfall"},"limited":true }, simulation: { ...FIXTURE_STATUS_BASE, "powerText":"Reported 2.1 kW","powerVariant":"reported","reason":{"text":"Would still draw 2.1 kW — capacity shortfall (simulation)"},"limited":true,"wouldLimit":true } },
         id: 'dev_waterheater',
         // Required on the plan snapshot: a binary load the owner sheds by turning off.
         name: 'Water Heater',
@@ -2098,6 +2120,7 @@
         shedAction: 'turn_off',
       },
       {
+        fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited","powerText":"Reported 6.8 kW","powerVariant":"reported","reason":{"text":"Still drawing 6.8 kW — capacity shortfall"},"limited":true }, simulation: { ...FIXTURE_STATUS_BASE, "powerText":"Reported 6.8 kW","powerVariant":"reported","reason":{"text":"Would still draw 6.8 kW — capacity shortfall (simulation)"},"limited":true,"wouldLimit":true } },
         id: 'dev_evcharger',
         // Required on the plan snapshot: a binary load the owner sheds by turning off.
         name: 'Generic EV Charger',
@@ -2139,6 +2162,20 @@
     const devices = [];
     for (let i = 0; i < 12; i += 1) {
       devices.push({
+                     fixtureStatus: [
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C","canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C","canEaseOff":false } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"21.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"21.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"22.0 °C · target 21 °C","canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"22.0 °C · target 21 °C","canEaseOff":false } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"23.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"23.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C","canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C","canEaseOff":false } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"21.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"21.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"22.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"22.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"resuming","tone":"resuming","label":"Resuming","powerText":"0.0 kW","powerVariant":"live","factText":"23.0 °C · target 21 °C","canEaseOff":false }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","kind":"off","tone":"idle","label":"Off","powerText":"0.0 kW","powerVariant":"live","factText":"23.0 °C · target 21 °C","canEaseOff":false } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"19.0 °C · target 21 °C" } },
+                     { live: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C" }, simulation: { ...FIXTURE_STATUS_BASE, "cardKind":"temperature","powerText":"0.3 kW","powerVariant":"live","factText":"20.0 °C · target 21 °C" } },
+                     ][i],
         id: `dev_room_${i + 1}`,
         name: `Room ${i + 1} Thermostat`,
         currentState: i % 3 === 0 ? 'off' : 'on',
@@ -2212,6 +2249,7 @@
         },
         devices: [
           {
+            fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "powerText":"7.0 kW","powerVariant":"live" }, simulation: { ...FIXTURE_STATUS_BASE, "powerText":"7.0 kW","powerVariant":"live" } },
             id: 'dev_budget_allowed_charger',
             // Required on the plan snapshot: a binary load the owner sheds by turning off.
             name: 'Garage Charger',
@@ -2227,6 +2265,7 @@
             shedAction: 'turn_off',
           },
           {
+            fixtureStatus: { live: { ...FIXTURE_STATUS_BASE, "kind":"held","tone":"held","label":"Limited","powerText":"Reported 0.5 kW","powerVariant":"reported","reason":{"text":"Still drawing 0.5 kW — this still counts toward your usage"},"limited":true,"holdCause":"daily_budget" }, simulation: { ...FIXTURE_STATUS_BASE, "powerText":"Reported 0.5 kW","powerVariant":"reported","reason":{"text":"Would still draw 0.5 kW — this still counts toward your usage (simulation)"},"limited":true,"wouldLimit":true,"holdCause":"daily_budget" } },
             id: 'dev_budget_limited_heater',
             // Required on the plan snapshot: a binary load the owner sheds by turning off.
             name: 'Hallway Heater',
@@ -2423,7 +2462,7 @@
       setSetting: (key, value) => {
         settings[key] = value;
       },
-      getSetting: (key) => settings[key],
+      getSetting: (key) => key.startsWith('plan_snapshot') ? resolveFixturePlan(settings[key]) : settings[key],
       // Audit scenario API. Names mirror `AUDIT_SCENARIO_NAMES` in
       // `packages/settings-ui/test/helpers/auditScenarios.ts`. See
       // `notes/browser-stub.md`.

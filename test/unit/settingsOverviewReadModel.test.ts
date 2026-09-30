@@ -1,11 +1,28 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
-import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import {
-  buildSettingsOverviewDeviceReadModel,
-  buildSettingsOverviewReadModel,
+  buildSettingsOverviewDeviceReadModel as buildDevice,
+  buildSettingsOverviewReadModel as buildPlan,
 } from '../../lib/plan/settingsOverviewReadModel';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
+import { executionStateFixture } from '../utils/deviceStatusFixture';
+import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
+
+
+const buildSettingsOverviewDeviceReadModel = (
+  device: Parameters<typeof buildDevice>[0],
+  deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
+  profile?: Parameters<typeof buildDevice>[2],
+) => buildDevice(device, { ...deps, getDeviceExecutionState: () => executionStateFixture(device),
+  dryRun: false, nowMs: 0 }, profile);
+const buildSettingsOverviewReadModel = (
+  plan: Parameters<typeof buildPlan>[0],
+  deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
+) => buildPlan(plan, { ...deps, getDeviceExecutionState: (id) => {
+  const device = plan?.devices.find((candidate) => candidate.id === id);
+  if (!device) throw new Error('missing fixture device');
+  return executionStateFixture(device);
+}, dryRun: false, nowMs: plan?.generatedAtMs ?? 0 });
 
 // Both observer reads are REQUIRED deps, so every double states both. A test that
 // cares about only one still has to say the other is absent — which is the point:
@@ -142,148 +159,34 @@ describe('settingsOverviewReadModel', () => {
     expect(readModel?.meta?.hourBudgetKWh).toBe(4.25);
   });
 
-  it('projects stepped-load overview state from reported evidence and target intent', () => {
-    const device = steppedPlanDevice({
-      id: 'step-1',
-      reportedStepId: 'low',
-      targetStepId: 'max',
-      desiredStepId: 'max',
-      selectedStepId: 'low',
-      pendingTargetCommand: {
-        desired: 1,
-        retryCount: 0,
-        nextRetryAtMs: 123,
-        status: 'waiting_confirmation',
-      },
-    });
-
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toEqual({
-      profile: isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined,
-      reportedStepId: 'low',
-      targetStepId: 'max',
-      // Both now ride the cluster rather than travelling as flat copies beside
-      // it. The fixture's ladder prices `low` at 1 kW.
-      selectedStepId: 'low',
-      planningPowerKw: isSteppedLoadDevice(device) ? device.planningPowerKw : undefined,
-      commandPending: true,
-    });
+  it('exposes resolved presentation without control axes, targets or plan reasons', () => {
+    const device = steppedPlanDevice({ reportedStepId: 'low', desiredStepId: 'max', stepCommandPending: true });
+    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    expect(wire.status.cardKind).toBe('stepped');
+    expect(wire.status.rail?.activeIndex).toBe(1);
+    for (const key of ['currentState', 'plannedState', 'reason', 'stateKind', 'stateTone',
+      'binaryCommandPending', 'pendingTargetCommand', 'steppedLoad', 'temperature',
+      'reportedStepId', 'selectedStepId', 'desiredStepId', 'targetStepId', 'steppedLoadProfile',
+      'shedAction', 'shedTemperature', 'evChargingState', 'carChargingState', 'idleClassification', 'execution']) {
+      expect(wire).not.toHaveProperty(key);
+    }
   });
 
-  it('uses the producer-confirmed profile instead of a planner-only probe rung', () => {
-    const device = steppedPlanDevice({
-      reportedStepId: 'medium',
-      targetStepId: 'max',
-      stepCommandPending: true,
-    });
-    expect(isSteppedLoadDevice(device)).toBe(true);
-    if (!isSteppedLoadDevice(device)) throw new Error('expected stepped test device');
-    const confirmedProfile = {
-      steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max'),
-    };
-
-    expect(buildSettingsOverviewDeviceReadModel(
-      device,
-      absentTemperature,
-      confirmedProfile,
-    ).steppedLoad).toEqual(expect.objectContaining({
-      profile: confirmedProfile,
-      targetStepId: confirmedProfile.steps.at(-1)?.id,
-      commandPending: false,
-    }));
+  it('does not expose a selected fallback as observed rail position', () => {
+    const device = steppedPlanDevice({ reportedStepId: undefined, selectedStepId: 'medium', desiredStepId: 'max' });
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.rail?.activeIndex).toBeNull();
   });
 
-  it('carries ONE target step id, so the card and the label cannot disagree', () => {
-    // Regression pin for a live divergence. `buildOverviewSteppedLoad` corrects
-    // the target when the planner aims at a rung the CONFIRMED ladder lacks
-    // (`plannerOnlyTarget`) — it shows where the device actually is, because a
-    // pending move to a rung the owner cannot see would never appear to land.
-    //
-    // The read model used to emit that corrected id on the `steppedLoad`
-    // cluster AND the raw planner id as a flat `targetStepId` beside it. The
-    // stepped card reads the cluster; `getSteppedModeTransitionText` reads the
-    // flat pair. On a trimmed ladder the two answered differently, so the card
-    // showed no transition while the overview label rendered "medium → max"
-    // for a step that is not on the ladder.
-    //
-    // One field now, on the cluster. This test fails if a flat copy comes back.
-    const device = steppedPlanDevice({
-      reportedStepId: 'medium',
-      targetStepId: 'max',
-      stepCommandPending: true,
-    });
-    if (!isSteppedLoadDevice(device)) throw new Error('expected stepped test device');
-    const confirmedProfile = {
-      steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max'),
-    };
-    const corrected = confirmedProfile.steps.at(-1)?.id;
-
-    const readModel = buildSettingsOverviewDeviceReadModel(device, absentTemperature, confirmedProfile);
-
-    expect(readModel.steppedLoad?.targetStepId).toBe(corrected);
-    expect(readModel.steppedLoad?.targetStepId).not.toBe('max');
-    // No second, uncorrected source for the same fact.
-    expect(readModel).not.toHaveProperty('targetStepId');
-    expect(readModel).not.toHaveProperty('desiredStepId');
-    expect(readModel).not.toHaveProperty('reportedStepId');
-  });
-
-  it('treats stepped-load step commands as pending overview commands', () => {
-    const device = steppedPlanDevice({
-      reportedStepId: 'low',
-      targetStepId: 'max',
-      stepCommandPending: true,
-      binaryCommandPending: false,
-      pendingTargetCommand: undefined,
-    });
-
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toMatchObject({
-      commandPending: true,
-    });
-  });
-
-  it('does not expose assumed or selected steps as observed stepped-load UI truth', () => {
-    const device = steppedPlanDevice({
-      reportedStepId: undefined,
-      // Fallback-only effective step must not surface as observed UI truth.
-      selectedStepId: 'medium',
-      targetStepId: 'max',
-      desiredStepId: 'max',
-    });
-
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toMatchObject({
-      reportedStepId: null,
-      targetStepId: 'max',
-    });
-  });
-
-  it('sources evChargingState from the observer dep, not the plan device', () => {
-    // The plan device carries the producer-resolved flat EV plug-state sub-fields, not
-    // the raw plug-state (materialized + stripped by the test builder, mirroring toPlanDevice).
-    const device = buildPlanDevice({
-      id: 'ev-1',
-      binaryCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_out',
-    });
-
-    // The observer is the canonical owner; the read model must surface ITS value.
-    expect(buildSettingsOverviewDeviceReadModel(device, {
+  it.each(['unavailable', 'manual'] as const)('suppresses stale idle guidance when %s', (kind) => {
+    const device = buildPlanDevice({ available: kind !== 'unavailable', controllable: kind !== 'manual' });
+    const wire = buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
-      getObservedEvChargingState: (id: string) => (id === 'ev-1'
-        ? ({ kind: 'observed', value: 'plugged_in_charging' } as const)
-        : ({ kind: 'absent' } as const)),
-    }).evChargingState).toBe('plugged_in_charging');
-
-    // An ABSENT read shows no plug-state — and, unlike before, says nothing about
-    // whether the device is a charger. That is `deviceRole`, forwarded from the
-    // producer rather than inferred from this read's presence.
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).evChargingState).toBeUndefined();
+      getIdleClassification: () => 'unresponsive',
+    });
+    expect(wire.status.kind).toBe(kind);
+    expect(wire.status.reason).toBeNull();
   });
 
-  // The defect this replaced: `deviceRole` was `getObservedEvChargingState(id)
-  // !== undefined ? 'ev_charger' : undefined`, so a charger that had not reported
-  // a plug-state yet was not a charger — and the card lost its battery line and
-  // its EV copy with it, until the boot seed happened to fill the projection.
-  // Identity comes from the producer; a reading's absence says nothing about it.
   it('calls a charger a charger before it has reported any plug-state', () => {
     const device = buildPlanDevice({
       id: 'ev-1',
@@ -294,7 +197,7 @@ describe('settingsOverviewReadModel', () => {
     const read = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
     expect(read.deviceRole).toBe('ev_charger');
     // …and still reports no plug-state, which is the honest half of the answer.
-    expect(read.evChargingState).toBeUndefined();
+    expect(read).not.toHaveProperty('evChargingState');
   });
 
   it('does not call a non-charger a charger just because it reported something', () => {
@@ -337,20 +240,16 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
-  it('emits the two clusters the card selects on, and nothing else to select on', () => {
-    // The card used to be picked from a reconstructed `controlModel`, then from
-    // a producer `deviceType` label. Both are gone: the discriminants are now
-    // the two clusters that actually carry what the card renders — `steppedLoad`
-    // presence for the stepped card, `temperature` presence for the temperature
-    // card. A device carrying neither gets the generic card.
+  it('resolves card kind in the backend', () => {
+    // The UI selects the supplied card kind without receiving raw device facets.
     const binary = buildPlanDevice({ id: 'bin-1' });
     const binaryRead = buildSettingsOverviewDeviceReadModel(binary, absentTemperature);
-    expect(binaryRead.steppedLoad).toBeUndefined();
-    expect(binaryRead.temperature).toBeUndefined();
+    expect(binaryRead.status.cardKind).toBe('binary');
+    expect(binaryRead.status.factText).toBeNull();
 
     // Stepped-ness comes from the device's own ladder, not from any label.
     const stepped = steppedPlanDevice({ id: 'step-1' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
   it('keeps a stored-profile stepped device stepped', () => {
@@ -367,7 +266,7 @@ describe('settingsOverviewReadModel', () => {
     // same device as stepped. The device's own ladder is now the discriminant,
     // so there is no producer setting left to disagree with it.
     const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {
@@ -388,25 +287,16 @@ describe('settingsOverviewReadModel', () => {
       // a partial facet. Its presence is also what gives this device the
       // temperature card — the observed pair is the whole reason the owner
       // still sees a temperature for a thermostat PELS only switches on and off.
-      temperature: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 22 },
-      shedAction: 'turn_off',
+      status: { cardKind: 'temperature', factText: '20.3 °C · target 22 °C' },
     });
   });
 
-  it('keeps planner cooldown reasons available as structured read-model data', () => {
-    const device = buildPlanDevice({
-      reason: {
-        code: PLAN_REASON_CODES.cooldownRestore,
-        remainingSec: 42,
-        countdownStartedAtMs: 10,
-      },
-    });
-
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).reason).toEqual({
-      code: PLAN_REASON_CODES.cooldownRestore,
-      remainingSec: 42,
-      countdownStartedAtMs: 10,
-    });
+  it('publishes a stable countdown without the planner reason', () => {
+    const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore,
+      remainingSec: 42, countdownStartedAtMs: 10 } });
+    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    expect(wire.status.reason?.countdown?.endsAtMs).toBe(42_010);
+    expect(wire).not.toHaveProperty('reason');
   });
   it('does not label a drawing target-only device as idle', () => {
     // `isSatisfiedTargetOnlyDevice` (shared-domain) decides "idle" partly on
@@ -427,7 +317,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 1.4,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(drawing, observedTemperature(21, 22)).stateKind).not.toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(drawing, observedTemperature(21, 22)).status.kind).not.toBe('idle');
 
     const settled = buildPlanDevice({
       id: 'thermo',
@@ -439,7 +329,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(settled, observedTemperature(21, 22)).stateKind).toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(settled, observedTemperature(21, 22)).status.kind).toBe('idle');
   });
   describe('boost on the wire', () => {
     // One bit, carried through as the planner decided it. The read model used to

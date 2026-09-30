@@ -34,7 +34,6 @@
  * 4. The parity test enforces step 3 — it will fail if you skip it.
  * 5. Document the scenario intent in `notes/browser-stub.md`.
  */
-
 import type {
   DailyBudgetDayPayload,
   DailyBudgetUiPayload,
@@ -56,6 +55,8 @@ import type {
   SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { buildPlanMeta } from '../helpers/planMetaFixture.ts';
+import { uiDeviceFixture } from './deviceStatusFixture.ts';
+
 
 /**
  * Stable list of scenarios. The order is the order they appear in
@@ -250,7 +251,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
     hourUncontrolledKWh: 0.6,
     lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   };
-  const devices: SettingsUiPlanDeviceSnapshot[] = [
+  const devices = [
     {
       id: 'dev_waterheater',
       name: 'Water Heater',
@@ -279,7 +280,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       shedAction: 'turn_off',
     },
   ];
-  return { meta, devices };
+  return { meta, devices: devices.map((device) => uiDeviceFixture(device)) };
 };
 
 const buildOverBudgetDailyBudget = (): DailyBudgetUiPayload => {
@@ -327,7 +328,7 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
   };
   const devices: SettingsUiPlanDeviceSnapshot[] = [];
   for (let i = 0; i < 12; i += 1) {
-    devices.push({
+    devices.push(uiDeviceFixture({
       id: `dev_room_${i + 1}`,
       name: `Room ${i + 1} Thermostat`,
       currentState: i % 3 === 0 ? 'off' : 'on',
@@ -342,7 +343,7 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
       reason: { code: 'keep', detail: null },
       shedAction: 'set_temperature',
       shedTemperature: 15,
-    });
+    }));
   }
   return { meta, devices };
 };
@@ -421,7 +422,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
         controlledKw: 7.5,
         uncontrolledKw: 5}),
       devices: [
-        {
+        uiDeviceFixture({
           id: 'dev_budget_allowed_charger',
           name: 'Garage Charger',
           currentState: 'on',
@@ -435,8 +436,8 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
           currentDrawKw: 7,
           reason: { code: 'keep', detail: null },
           shedAction: 'turn_off',
-        },
-        {
+        }),
+        uiDeviceFixture({
           id: 'dev_budget_limited_heater',
           name: 'Hallway Heater',
           currentState: 'on',
@@ -451,7 +452,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
           currentDrawKw: 0.5,
           reason: { code: 'daily_budget' },
           shedAction: 'turn_off',
-        },
+        }),
       ],
     },
   }),

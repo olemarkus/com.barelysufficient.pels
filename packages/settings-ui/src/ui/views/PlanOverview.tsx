@@ -90,7 +90,7 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
 // (`resolveDefaultControlModel`), so for a non-stepped device the two arms were
 // the same question asked twice.
 const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
-  dev.temperature !== undefined
+  dev.status.cardKind === 'temperature'
 );
 
 const PlanCard = ({
@@ -110,7 +110,7 @@ const PlanCard = ({
   // a reconstructed `controlModel`, and the reconstruction consulted a
   // raw-snapshot map that cannot see a STORED step ladder — so a device the
   // owner had configured as a stepped load rendered as a generic card.
-  if (dev.steppedLoad !== undefined) {
+  if (dev.status.cardKind === 'stepped') {
     return <PlanSteppedCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
   if (isTemperatureCard(dev)) {

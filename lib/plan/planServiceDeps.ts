@@ -22,6 +22,7 @@ import type { HomeId } from '../../packages/contracts/src/settingsKeys';
 
 type PlanServicePlanEngine = Pick<
   PlanEngine,
+  | 'getDeviceExecutionStates'
   | 'state'
   | 'buildDevicePlanSnapshot'
   | 'computeDynamicSoftLimit'

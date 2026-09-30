@@ -54,6 +54,7 @@ import {
   POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
+import { uiDeviceFixture } from './deviceStatusFixture.ts';
 
 const appManifest = require('../../../../app.json');
 
@@ -247,22 +248,10 @@ export const normalizeUiTestPlanSnapshot = (plan: unknown): unknown => {
   return {
     ...snapshot,
     devices: snapshot.devices.map((device) => {
-      if (!device || typeof device !== 'object') return device;
-      const reason = device.reason;
-      if (
-        reason
-        && typeof reason === 'object'
-        && typeof (reason as { code?: unknown }).code === 'string'
-      ) {
-        return device;
-      }
-      const reasonText = typeof reason === 'string'
-        ? reason
-        : resolveFixtureReasonText(device.plannedState);
-      return {
-        ...device,
-        reason: fixtureDeviceReason(reasonText),
-      };
+      if (!device || typeof device !== 'object' || device.status) return device;
+      return uiDeviceFixture({ ...device, reason: typeof device.reason === 'object' ? device.reason
+        : fixtureDeviceReason(typeof device.reason === 'string' ? device.reason
+          : resolveFixtureReasonText(device.plannedState)) });
     }),
   };
 };

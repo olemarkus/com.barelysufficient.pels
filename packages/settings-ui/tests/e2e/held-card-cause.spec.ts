@@ -30,7 +30,7 @@ test.beforeEach(async ({ page }) => {
 
 const applyProdHeldState = async (page: Page) => {
   await page.evaluate(() => {
-    type PlanDevice = Record<string, unknown> & { id: string };
+    type PlanDevice = Record<string, unknown> & { id: string; status: Record<string, unknown> };
     type PlanSnapshot = { devices: PlanDevice[]; meta: Record<string, unknown> };
     type StubWindow = Window & {
       Homey: {
@@ -73,6 +73,11 @@ const applyProdHeldState = async (page: Page) => {
           currentDrawKw: 0,
           expectedPowerKw: 1.14,
           reason: { code: 'daily_budget', shortfallKw: 0.9 },
+          status: { ...base.status, kind: 'held', tone: 'held', label: 'Limited · Off',
+            cardKind: 'temperature', powerText: '0.0 kW', factText: '20.3 °C · target 22 °C',
+            reason: { text: 'Waiting to resume — 0.9 kW more needed' }, rail: null,
+            limited: true, wouldLimit: false, canEaseOff: false, holdCause: 'daily_budget',
+          },
         },
       ],
     });
@@ -122,7 +127,7 @@ test('the card never repeats the ceiling or claims PELS turned the device off', 
     expect(text).not.toContain(retired);
   }
   // The state word still carries that PELS is acting.
-  await expect(card.locator('.plan-card__state-label')).toHaveText('Limited');
+  await expect(card.locator('.plan-card__state-label')).toHaveText('Limited · Off');
 });
 
 // Review harness — writes the rendered hero + card so the copy can be judged on

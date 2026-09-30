@@ -1,20 +1,22 @@
-import {
-  syncExternalOffHoldForDevice,
-  toExternalOffHoldObservedDevice,
-  type ExternalOffHoldSyncDeps,
-} from './externalOffHoldDetection';
-import type { AppContext } from '../lib/app/appContext';
-import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
-import type { HomeId } from '../lib/utils/settingsKeys';
-import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
-import type { StructuredDebugEmitter } from '../lib/logging/logger';
-
 /**
  * Structural slice of the home-runtime registry this consumes (multi-home R7b
  * P1#1). Kept structural so this module needs no value import of
  * `HomeRuntimeRegistry` — the wiring passes the registry (or `undefined` before
  * `initHomeRuntimeRegistry`, and for the no-sub-homes case).
  */
+import {
+  syncExternalOffHoldForDevice,
+  toExternalOffHoldObservedDevice,
+  type ExternalOffHoldSyncDeps,
+} from './externalOffHoldDetection';
+import type { AppContext } from '../lib/app/appContext';
+import type { ObservedStateChangedEvent } from '../lib/observer/observedStateEvents';
+import type { HomeId } from '../lib/utils/settingsKeys';
+import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
+import type { StructuredDebugEmitter } from '../lib/logging/logger';
+import { requirePlanService } from './appInit/contextGuards';
+import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
+
 type OwningHomeRouter = {
   getOwningHomeRouteForDevice: (deviceId: string) => {
     homeId: HomeId;
@@ -112,4 +114,14 @@ export function invalidateOwningHomeRebuildSuppression(params: {
     return;
   }
   ctx.planRebuildThrottle.onObservation();
+}
+
+/** Route observation-driven settlement and display refresh to the same device owner. */
+export function syncOwningHomeLivePlanState(
+  ctx: AppContext,
+  event: ObservedStateChangedEvent,
+  router: OwningHomeRouter | undefined,
+): Promise<boolean> {
+  const owner = router?.getOwningHomeRouteForDevice(event.deviceId)?.hooks ?? requirePlanService(ctx);
+  return owner.syncLivePlanState(event.source);
 }

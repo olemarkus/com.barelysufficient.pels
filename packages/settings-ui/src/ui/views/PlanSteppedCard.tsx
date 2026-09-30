@@ -1,68 +1,17 @@
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
-import {
-  formatStepDisplayLabel,
-  resolveSteppedActiveStepId,
-  resolveSteppedEvExceptionLabel,
-  resolveSteppedLevelFact,
-  resolveSteppedPowerText,
-  resolveSteppedRailSteps,
-  resolveSteppedStatusLine,
-  resolveSteppedTemperatureText,
-} from '../../../../shared-domain/src/planSteppedCardText.ts';
-import {
-  PLAN_STATE_HELD_FALLBACK_STATUS,
-} from '../../../../shared-domain/src/planStateLabels.ts';
-import {
-  displayStateLabel,
-  isDimmedDisplayStateKind,
-  resolveDisplayStateKind,
-  resolveIntentStateKind,
-  resolveRawPlanStateKind,
-  type PlanDisplayStateKind,
-} from '../../../../shared-domain/src/planCardGrammar.ts';
+import { isDimmedDisplayStateKind } from '../../../../shared-domain/src/planCardGrammar.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
-import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
 import { DeadlineChip, PlanCardStatusChipView } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
-import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
-
-// Display state kind under the shared card grammar: hold/wait reasons upgrade
-// `idle` to `held`; simulation collapses PELS-acted kinds to the factual
-// device state (see `planCardGrammar.ts`).
-//
-// Target-only EV nuance: a `not_applicable` currentState resolves `active`
-// under a keep plan, but an EV in any exceptional charging state (paused /
-// not charging / discharging / unplugged) is not delivering the planned
-// charge — asserting `Running` beside a "Paused" reason would contradict on
-// one card. When an exceptional EV state exists, the active word demotes to
-// `Idle` (the reason slot names the specific state).
-const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanDisplayStateKind => {
-  const kind = resolveDisplayStateKind({
-    kind: resolveRawPlanStateKind(dev),
-    dryRun,
-    currentState: dev.currentState,
-    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
-    starved: dev.starvation?.isStarved === true,
-  });
-  if (
-    kind === 'active'
-    && dev.currentState === 'not_applicable'
-    && resolveSteppedEvExceptionLabel(dev) !== null
-  ) {
-    return 'idle';
-  }
-  return kind;
-};
 
 // ─── Step rail ────────────────────────────────────────────────────────────────
 
-const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedLoadProfile }) => {
-  const activeStepId = resolveSteppedActiveStepId(dev, profile);
-  const steps = resolveSteppedRailSteps(dev, profile);
+const StepRail = ({ dev }: { dev: PlanDeviceSnapshot }) => {
+  const steps = dev.status.rail?.labels ?? [];
   const n = steps.length;
-  const activeIdx = activeStepId === null ? -1 : steps.findIndex((s) => s.id === activeStepId);
+  const activeIdx = dev.status.rail?.activeIndex ?? -1;
   const hasPosition = n > 1 && activeIdx >= 0;
   const filledPct = hasPosition ? (activeIdx / (n - 1)) * 100 : 0;
 
@@ -75,18 +24,18 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
     <div class="plan-card__step-rail">
       <div class="plan-card__step-labels">
         <span class="plan-card__step-label metric-label plan-card__step-label--start">
-          {formatStepDisplayLabel(steps[0]?.id ?? '')}
+          {steps[0] ?? ''}
         </span>
         {n > 1 && (
           <span class="plan-card__step-label metric-label plan-card__step-label--end">
-            {formatStepDisplayLabel(steps[n - 1]?.id ?? '')}
+            {steps[n - 1] ?? ''}
           </span>
         )}
       </div>
       <div
         class="plan-card__step-track"
         role="img"
-        aria-label={`Level ${activeIdx < 0 ? 'unknown' : activeIdx + 1} of ${n}`}
+        aria-label={`Level ${activeIdx < 0 ? 'unavailable' : activeIdx + 1} of ${n}`}
         style={{ '--step-count': n }}
       >
         <div
@@ -115,34 +64,11 @@ export const PlanSteppedCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const stateKind = resolveStateKind(displayDev, dryRun);
-  // Plan-INTENT kind for the held-fallback reason: it must keep firing under
-  // simulation, where only the state word goes factual.
-  const intentKind = resolveIntentStateKind({
-    kind: resolveRawPlanStateKind(displayDev),
-    reasonCode: (displayDev.reason as { code?: string } | undefined)?.code,
-    starved: displayDev.starvation?.isStarved === true,
-  });
-  const profile = displayDev.steppedLoad?.profile;
-
-  const powerText = resolveSteppedPowerText(displayDev);
-  // One modality fact line: temperature (for a temp-reporting stepped device
-  // like a water heater) wins over the level text — the rail below still
-  // carries the level position either way.
-  const factText = resolveSteppedTemperatureText(displayDev)
-    ?? resolveSteppedLevelFact(displayDev);
-  const resolvedStatusText = profile
-    ? resolveSteppedStatusLine(displayDev, profile, nowMs, dryRun)
-    : null;
-  const factualStatusText = resolvedStatusText ?? (intentKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
-  // One reason line: the status pipeline wins; an exceptional EV state
-  // (Paused / Not charging / Waiting for car / Discharging / Unplugged)
-  // fills the slot only
-  // when no status renders. In simulation the held/limited status reads
-  // hypothetically (no-op outside simulation / for non-acted lines); the EV
-  // state is a device observation and stays factual either way.
-  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev);
-  const statusText = singleReason === null ? null : toSimulationReasonLine(singleReason, dryRun);
+  const status = displayDev.status;
+  const stateKind = status.kind;
+  const powerText = status.powerText;
+  const factText = status.factText;
+  const statusText = status.reason?.text ?? null;
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--stepped clickable',
@@ -179,7 +105,7 @@ export const PlanSteppedCard = ({
             bold slot moved to the fact line / state word respectively; the
             former "Applying" chip is carried by the transit status line. */}
         <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{displayStateLabel(stateKind)}</span>
+          <span class="plan-card__state-label">{status.label}</span>
           {powerText && <span class="plan-card__state-power">{powerText}</span>}
         </div>
 
@@ -190,7 +116,7 @@ export const PlanSteppedCard = ({
           <p class="plan-card__status-line pels-text-status-line">{statusText}</p>
         )}
 
-        {profile && <StepRail dev={displayDev} profile={profile} />}
+        {status.rail && <StepRail dev={displayDev} />}
       </div>
     </article>
   );
