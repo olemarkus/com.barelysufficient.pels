@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TEMPERATURE_SURPLUS_REASON,
   resolveTemperatureReasonLine,
-} from '../../packages/shared-domain/src/planTemperatureCardText';
+} from '../../lib/plan/planTemperatureCardText';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 
 type ReasonDevice = Parameters<typeof resolveTemperatureReasonLine>[0];

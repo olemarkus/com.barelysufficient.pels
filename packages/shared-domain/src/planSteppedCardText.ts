@@ -320,14 +320,6 @@ export const resolveSteppedTemperatureText = (device: {
   return `${currentTemperature.toFixed(1)} °C · target ${plannedTarget.toFixed(0)} °C`;
 };
 
-export const resolveSteppedPowerText = (device: {
-  currentDrawKw?: number;
-}): string | null => {
-  const { currentDrawKw } = device;
-  if (typeof currentDrawKw !== 'number') return null;
-  return `${currentDrawKw.toFixed(1)} kW`;
-};
-
 const EV_CHARGING_STATE_LABELS: Record<string, string> = {
   plugged_in_charging: 'Charging',
   plugged_in_paused: 'Paused',

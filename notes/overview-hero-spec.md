@@ -429,16 +429,17 @@ Cooldown details and per-device status belong in the per-device cards below the 
 
 ### Device card grammar (2026-07 legibility pass)
 
-One anatomy for all three card variants (`PlanTemperatureCard`, `PlanSteppedCard`, `PlanGenericCard`); the shared resolvers live in `packages/shared-domain/src/planCardGrammar.ts`:
+One anatomy for all three card variants (`PlanTemperatureCard`, `PlanSteppedCard`, `PlanGenericCard`). The backend resolves `DeviceStatus` in `lib/plan/deviceStatusReadModel.ts`, using executor-owned execution facts and the shared card grammar. Cards, device detail, and activity logs consume that presentation:
 
 1. **Title row + at most ONE status chip** (ladder: "Let it run now" rescue action → held-back badge `Held back` (warn), only while the card reads held → `Boost` → `Budget exempt`). The **Smart task** badge is an identity/route badge, not a status — it may coexist with the one status chip. The generic card's cooldown countdown ring still anchors on a transient state chip while a countdown runs.
-2. **State row**: the bold canonical state word (`Running` / `Idle` / `Off` / `Limited` / `Resuming` / `Manual` / `Unavailable` / `Unknown` — the `notes/ui-terminology.md` device vocabulary) + the right-aligned power fact (`1.2 kW`, `≈ 1.0 kW when active`, `Reported 2.1 kW`). `Off` is shared across card types when the observer-resolved output state is off (binary off or a reported stepped-load off step); the temperature card's old modality-specific `On`/`Off` slot and the stepped card's `Level: 6 A`/`Off now` bold slot are retired.
+2. **State row**: the bold canonical state label (`Running` / `Idle` / `Off` / `Limited` / `Resuming` / `Manual` / `Unavailable` — the `notes/ui-terminology.md` device vocabulary) + the right-aligned power fact (`1.2 kW`, `≈ 1.0 kW when active`, `Reported 2.1 kW`). A limited device's label also names its observed physical fact when available: `Limited · Off` or `Limited · Low`; retained targets do not supply that fact. `Off` is shared across card types when the observer-resolved output state is off (binary off or a reported stepped-load off step). A running device without step feedback has no rail position; unavailable observation renders `Unavailable`, with no `Unknown` status variant.
    - A hold/wait reason **upgrades `idle` to `held` for display** — `Idle` beside a "waiting to resume" reason would contradict the canon (Idle = PELS is not holding it back).
    - **Simulation renders the factual device state**: `held`/`resuming` are PELS-acted claims, so under simulation the bold word shows what the device is actually doing and the hypothetical action lives only in the reason line ("Would be limited …"). The rescue action chip is suppressed under simulation (nothing to release).
-3. **One modality fact line**: temperature `20.3 °C · target 22 °C` (arrow `→` reserved for a target *change*, e.g. a solar/boost lift); stepped `Charging · level 6 A` or `Level 6 A` plus the step rail; generic none.
-4. **At most ONE reason line**, exception-only: plan reason → EV smart-task state line (generic) / exceptional EV state (stepped) / idle-classification status (temperature). Quiet states (Running normally, Idle) render no reason — the old "Maintaining level" filler and the duplicated unresponsive chip+line are gone.
+3. **One modality fact line**: temperature `20.3 °C · target 22 °C` (arrow `→` reserved for a target *change*, e.g. a solar/boost lift); stepped `Charging · 64 % · level 6 A` when the EV battery reading is known, `Charging · level 6 A` otherwise, or `Level 6 A`, plus the observed step rail; generic none.
+4. **At most ONE reason line**, exception-only: the backend selects one explanation from the decision, observed EV state, or idle classification. The UI renders `status.reason`; it does not reconstruct the reason from runtime inputs. Quiet states (Running normally, Idle) render no reason — the old "Maintaining level" filler and the duplicated unresponsive chip+line are gone.
    - **The line says what THIS device needs, never which ceiling limits the house** (2026-08-02). The binding ceiling is one house-level fact; the hero states it once on the Power-now subline, and repeating it per card printed the same sentence N times while answering nobody. Held-on-power cards read `Waiting to resume — 0.8 kW more needed` (the admission-accurate gap, reserves folded in); holds that power cannot lift — smart task, solar surplus, external off, stepped fairness, countdowns — keep their own cause. One resolver for all three variants: `resolveHeldCardReasonLine` in `planCardReasonLine.ts`. Retired-string list in `notes/ui-terminology.md`.
-   - Simulation still applies to it, via `toSimulationReasonLine`. A hold is a PELS action even when the line describes what the device is waiting for — the device only waits because PELS put it there — so `Waiting to resume — 0.8 kW more needed` reads `Would be waiting to resume — 0.8 kW more needed (simulation)`, and `Holding at 6 A — …` reads `Would be holding at 6 A — … (simulation)`. All three card variants pass the ladder's output through the mood transform; a variant that skips it renders one of three cards asserting a hold that never happened.
+   - The backend applies simulation mood via `toSimulationReasonLine`. A hold is a PELS action even when the line describes what the device is waiting for — the device only waits because PELS put it there — so `Waiting to resume — 0.8 kW more needed` reads `Would be waiting to resume — 0.8 kW more needed (simulation)`, and `Holding at 6 A — …` reads `Would be holding at 6 A — … (simulation)`. All three card variants render the resulting text without applying another mood transform.
+   - A supplied countdown may decay in the browser to `0s`. Expiry hides its progress ring but leaves the authoritative state and reason in place until a new backend status arrives.
 
 ### Device card state styling (plain neutral surface)
 
@@ -446,7 +447,7 @@ Device cards are plain neutral surfaces — **no tonal-container background, no 
 
 - the bold state word (text carries the meaning),
 - role-toned status text — the state word and the reason line take `--color-state-warning-text` (held) / `--color-state-positive-text` (resuming) / `--color-state-negative-text` (unavailable),
-- opacity fades: `unavailable` 0.78, `unknown` 0.6, `idle`/`manual` `.plan-card--dim` 0.74.
+- opacity fades: `unavailable` 0.78; `idle`/`off`/`manual` `.plan-card--dim` 0.74.
 
 Colour never carries meaning alone: the toned text IS the meaning-bearing word.
 
@@ -471,9 +472,13 @@ hourBudgetKWh           meta.hourBudgetKWh
 minutesRemaining        meta.minutesRemaining
 projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
 dryRunEnabled           bootstrap setting `capacity_dry_run`; show as `Simulation mode` in UI copy
-limitedDeviceCount      count plan devices where currentState=shed
-restoringDeviceCount    count plan devices where plannedState=restore
-wouldLimitCount         simulation mode only: count where plannedState=shed and currentState≠shed
+limitedDeviceCount      count devices where status.limited
+resumingDeviceCount     count devices where status.kind=resuming
+wouldLimitCount         count devices where status.wouldLimit (resolved by the backend for simulation)
+canEaseOffCount         count devices where status.canEaseOff
+controlOffDrawingCount  count devices where status.controlOffDrawing
+smartTaskHoldCount      count limited devices where status.holdCause=smart_task
+dailyBudgetHoldCount    count limited devices where status.holdCause=daily_budget
 ```
 
 ---

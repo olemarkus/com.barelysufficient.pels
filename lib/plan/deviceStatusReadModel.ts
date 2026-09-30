@@ -15,7 +15,7 @@ import { resolveSteppedStatusLine, resolveSteppedEvExceptionLabel, resolveSteppe
   resolveSteppedTemperatureText } from '../../packages/shared-domain/src/planSteppedCardText';
 import {
   resolveTemperatureLine, resolveTemperatureReasonLine, resolveBinarySurplusReasonLine,
-} from '../../packages/shared-domain/src/planTemperatureCardText';
+} from './planTemperatureCardText';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 import { toSimulationReasonLine } from '../../packages/shared-domain/src/simulationReasonMood';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';

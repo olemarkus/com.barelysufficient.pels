@@ -16,9 +16,10 @@ export const POWER_TRACKER_STATE = 'power_tracker_state';
  */
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 /**
- * Realtime push emitted after every status publish, for every home
+ * Realtime invalidation after a status publish or device presentation refresh, for every home
  * (`{ homeId }`): the settings UI's freshness signal for a status that lives
- * in memory (`lib/plan/planStatusRegistry.ts`), under no settings key.
+ * in memory (`lib/plan/planStatusRegistry.ts`), under no settings key. Areas
+ * also refetch their live `ui_plan` presentation without a capacity-status write.
  * Mirrored in `packages/contracts/src/settingsKeys.ts`.
  */
 export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';

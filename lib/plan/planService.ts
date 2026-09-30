@@ -1,5 +1,6 @@
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { normalizeError } from '../utils/errorUtils';
+import { PLAN_STATUS_PUBLISHED_EVENT } from '../utils/settingsKeys';
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
 import { getLogger } from '../logging/logger';
@@ -505,14 +506,16 @@ export class PlanService {
   private emitPlanUpdatedRealtime(snapshot: SettingsUiPlanSnapshot): void {
     // A sub-home capacity bundle (R7b) shares the single settings-UI
     // `plan_updated` channel with the main home; only the main plan drives it.
-    // Undefined (the pre-R7b default) emits — single-home behavior is unchanged.
-    if (this.deps.emitsUiRealtime === false) return;
+    // Areas invalidate their scoped read instead of replacing Main's payload.
+    const event = this.deps.emitsUiRealtime === false ? PLAN_STATUS_PUBLISHED_EVENT : 'plan_updated';
+    const payload = this.deps.emitsUiRealtime === false ? { homeId: this.deps.homeId } : snapshot;
     const api = this.deps.homey.api;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
-      realtime.call(api, 'plan_updated', snapshot)
+      realtime.call(api, event, payload)
         .catch((err: unknown) => (this.deps.loggers?.structuredLog ?? logger).error({
           event: 'plan_updated_emit_failed',
+          realtimeEvent: event,
           error: normalizeError(err),
         }));
     }

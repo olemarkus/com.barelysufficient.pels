@@ -99,10 +99,11 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 // lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import lib).
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 export type PowerTrackerPersistedPayload = { homeId: string };
-// Realtime push the runtime emits after every status publish, for every home
+// Realtime invalidation after a status publish or device presentation refresh, for every home
 // (`{ homeId }`; `MAIN_HOME_ID` for the whole home). The status lives in the
 // app's memory, under no settings key; the UI reads it through `ui_power`
-// (`?homeId=` for a meter area) and this push says when to read again.
+// (`?homeId=` for a meter area). Areas also refetch `ui_plan` on this signal;
+// refreshing device presentation does not write or change capacity status.
 // Mirror of PLAN_STATUS_PUBLISHED_EVENT in lib/utils/settingsKeys.ts — keep
 // both in sync (the settings UI can't import lib).
 export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';

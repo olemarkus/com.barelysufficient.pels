@@ -1,12 +1,12 @@
 import {
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
-} from '../../shared-domain/src/planTemperatureCardText.ts';
+} from '../../lib/plan/planTemperatureCardText';
 import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
-} from '../../shared-domain/src/planStateLabels.ts';
+} from '../../packages/shared-domain/src/planStateLabels';
 
 // The producer-resolved fields every `DeviceOverviewSnapshot` carries. These
 // cards are temperature cards, so the control model is `temperature_target`;

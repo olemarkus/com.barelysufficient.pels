@@ -127,7 +127,8 @@ export type PlanServiceDeps = {
   // Whether this service drives the shared settings-UI realtime `plan_updated`
   // channel. The settings UI reads ONE `plan_updated` stream (the main home's
   // plan); a sub-home capacity bundle (R7b) must NOT clobber it with its own
-  // partitioned plan payload, so it binds `false`. Omitted/undefined = the
+  // partitioned plan payload, so it binds `false` and emits a scoped home-id
+  // invalidation instead. Omitted/undefined = the
   // pre-R7b behavior (main always emits), preserving single-home byte-identity.
   emitsUiRealtime?: boolean;
   // Hold the first plan rebuild until the first device snapshot resolves (or

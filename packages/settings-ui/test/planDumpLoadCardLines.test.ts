@@ -2,9 +2,6 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import type { PlanDeviceSnapshot } from '../src/ui/planTypes.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
-import {
-  BINARY_SURPLUS_ACTIVE_REASON,
-} from '../../shared-domain/src/planTemperatureCardText.ts';
 import { PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 import { uiDeviceFixture, type CardFixture } from './helpers/deviceStatusFixture.ts';
 // Overview card copy for the "Run on solar surplus" dump-load posture:
@@ -54,7 +51,7 @@ describe('dump-load Overview card lines', () => {
       surplusAbsorbActive: true,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     }));
-    expect(card.querySelector('.plan-card__reason')?.textContent).toBe(BINARY_SURPLUS_ACTIVE_REASON);
+    expect(card.querySelector('.plan-card__reason')?.textContent).toBe('On to use your solar power');
   });
 
   it('never claims the surplus line on a held card even if a stale active flag rides in', () => {
@@ -77,7 +74,7 @@ describe('dump-load Overview card lines', () => {
       currentDrawKw: 1.0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     }));
-    expect(card.textContent).not.toContain(BINARY_SURPLUS_ACTIVE_REASON);
+    expect(card.textContent).not.toContain('On to use your solar power');
   });
 
   it('a held dump load STILL reporting load (manual-on) reads the surplus reconcile, not "after pause"', () => {

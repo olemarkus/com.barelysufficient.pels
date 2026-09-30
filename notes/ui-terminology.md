@@ -212,8 +212,8 @@ or planned step is not an observed level. The rail also shows the observed
 position, never the retained target.
 
 The canonical status has no `Unknown` variant. Unavailable observation is
-`Unavailable`; missing step feedback leaves the rail without a position and
-cannot confirm a step command. Quiet devices retain their last accepted
+`Unavailable`; a running device without step feedback has no rail position,
+and missing feedback cannot confirm a step command. Quiet devices retain their last accepted
 observation. Countdown text reaches `0s` without changing the authoritative
 state or promise of execution; the next backend status supplies any transition.
 
@@ -406,30 +406,33 @@ tick, so it flipped mid-hold and took the copy — and the rescue button — wit
 One badge (`Held back`, warn) and one chip word (`Held back`) now serve every
 held-back device.
 
-Where they survive, precisely: the ceiling/swap strings stay in
-`formatDeviceReasonUserFacing`, which feeds the runtime logs and the device
-**activity log** (`lib/plan/deviceOverviewLog.ts` → the `ui_device_log` list
-inside device detail) — except `Limited — this hour is near the hard cap`,
-which is retired EVERYWHERE: it misdescribed the trigger (the hour's kWh being
-spent, not cap proximity), and the `hourlyBudget` reason now renders
+The backend resolves one `DeviceStatus.reason` for the Overview card,
+device-detail hero, runtime overview event, and device **activity log**
+(`lib/plan/deviceOverviewLog.ts` → the `ui_device_log` list inside device detail).
+Logs do not select a separate ceiling/swap sentence from the planner reason.
+`Limited — this hour is near the hard cap` is retired EVERYWHERE: it
+misdescribed the trigger (the period's kWh being spent, not cap proximity).
+The `hourlyBudget` reason renders
 `Waiting to resume — this capacity period's budget is spent` on the card and in the log alike.
 
 Since the 2026-08-08 device-page redesign the device-detail live-status row is
-a HERO: it renders the full card grammar — state word, power fact, one modality
-fact line, and the same held-reason ladder the Overview card shows (fired on
-plan intent, through the simulation mood transform). The earlier rule that the
-row carried no plan reason except external-off guidance is deliberately
+a HERO: it renders the backend's `DeviceStatus` — state label, power fact, one
+modality fact line, and the same reason as the Overview card. The backend
+resolves the reason from decision and observation, including the simulation
+mood transform; the UI only interpolates a supplied countdown. The earlier rule
+that the row carried no plan reason except external-off guidance is deliberately
 revised: the answer to "why is this Limited?" must not sit three disclosures
 down in the activity log. `Turned off by PELS` / `Lowered by PELS` are not in
 that formatter at all — they lived in `resolveHeldStateActionLabel`, which was
 deleted outright along with them (see the deletion record in
 `packages/shared-domain/src/deviceOverviewStrings.ts`).
 
-**Charging paused** survives as an EV *state* word (state row), not as a reason
-line — and only for a charger the plan actually **stops**. Since 2026-08-17 a
-charger the plan merely trims to a lower charging level reads `Limited to <step>`
-instead (§ "Device state words"): it is still charging, just slower, and
-`Charging paused` said otherwise while the charger drew 3.7 kW.
+**EV limits use the same state label as other devices.** A limited charger
+observed off reads `Limited · Off`; one observed running at a reported charging
+level reads `Limited · <step>`. These replace the activity-log state labels
+`Charging paused` and `Limited to <step>`. The observed plug state may still
+explain an exception in the reason line (§ "EV charger card states"). Never
+infer a pause from the plan's configured limiting behaviour or retained target.
 
 The kW figure on blocked-resume lines (and the sibling status
 `Not enough available power to resume — N kW more needed`) is the
@@ -485,8 +488,8 @@ with nothing but its binary axis, where the sentence is still exactly true.
 
 The two charger rows split on 2026-08-17. A preset charger's amp ladder is
 exactly what the planner now parks at an intermediate charging level, so the
-bare pause sentence contradicted the Overview card reading `Limited to 16 A` for
-the same charger; a charger with no ladder has no level to lower, and pausing
+bare pause sentence contradicted a charger still running at a lower level
+(now labelled `Limited · 16 A`). A charger with no ladder has no level to lower, and pausing
 really is the whole of it. The preset row must keep both halves — that PELS
 lowers the level, and that it pauses only when lowering is not enough — or the
 sentence trades one half-truth for the other.
@@ -562,7 +565,7 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 | Dump-load or tracking card reason while running on surplus | `On to use your solar power` |
 | Dump-load or tracking card reason while held off | `Waiting for solar surplus` |
 
-Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
+Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
 
 ### Who may start a device
 

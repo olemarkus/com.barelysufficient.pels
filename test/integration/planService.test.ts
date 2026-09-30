@@ -171,7 +171,9 @@ describe('PlanService', () => {
     vi.useRealTimers();
   });
 
-  it('refreshes canonical off status with no pending command, rebuild or decision timestamp change', async () => {
+  it.each(['main', 'h_11111111'] as const)(
+    'refreshes canonical off status for %s without pending commands, rebuilds or decision timestamp changes',
+    async (homeId) => {
     const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
       plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
@@ -180,7 +182,7 @@ describe('PlanService', () => {
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
     const recorder = new DeviceOverviewLogRecorder();
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const { service } = createPlanService({ planEngine: engine,
+    const { service, deps } = createPlanService({ homeId, emitsUiRealtime: homeId === 'main', planEngine: engine,
       deviceOverviewLogRecorder: recorder, homey: stubDepsHomey({ realtime }) });
     service['rebuildHost'].publishPlan(plan, 456);
     await service.syncLivePlanState('device_update');
@@ -192,7 +194,11 @@ describe('PlanService', () => {
     const status = wire.devices![0].status;
     expect(status).toMatchObject({ kind: 'held', label: 'Limited · Off', reason: { text: 'Waiting for cheaper hours' },
       rail: { activeIndex: 0 } });
-    expect(realtime).toHaveBeenCalledWith('plan_updated', wire);
+    expect(realtime).toHaveBeenCalledWith(
+      homeId === 'main' ? 'plan_updated' : 'plan_status_published',
+      homeId === 'main' ? wire : { homeId },
+    );
+    expect(deps.publishPelsStatus).not.toHaveBeenCalled();
     expect(recorder.getUiPayload().entriesByDeviceId[device.id][0]).toMatchObject({
       stateMsg: status.label, statusMsg: status.reason!.text, stateKind: status.kind });
     expect(service.getLatestPlanSnapshot()).toBe(plan);
