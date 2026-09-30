@@ -45,6 +45,8 @@ export type PlanEngineWiring = {
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
   getCurrentHourPriceLevel: () => PriceLevel;
+  shouldApplyPriceShift: (deviceId: string, level: PriceLevel) => boolean;
+  hasPendingPriceShiftCancellations: (deviceIds: readonly string[]) => boolean;
   getInferredSurplusKw: () => number;
   /**
    * "Leave off until turned on again", resolved once for every home in

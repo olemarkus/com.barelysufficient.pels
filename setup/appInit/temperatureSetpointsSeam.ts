@@ -18,6 +18,8 @@ export const bindTemperatureSetpoints = (wiring: PlanEngineWiring): ResolveTempe
     getPriceOptimizationEnabled: wiring.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: wiring.getPriceOptimizationSettings,
     getCurrentHourPriceLevel: wiring.getCurrentHourPriceLevel,
+    shouldApplyPriceShift: wiring.shouldApplyPriceShift,
+    hasPendingPriceShiftCancellations: wiring.hasPendingPriceShiftCancellations,
     getThermalDirection: wiring.getThermalDirection,
     getShedBehavior: wiring.getShedBehavior,
   })

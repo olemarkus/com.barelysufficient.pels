@@ -34,6 +34,7 @@ import {
   createDeviceDiagnosticsService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
+  createTemperaturePriceShiftPolicy,
   persistDeferredObjectiveObservationWatermark,
   requirePlanService,
   resolvePlanService,
@@ -225,6 +226,10 @@ export class AppServiceWiring {
       () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
       (deviceId) => this.isDeviceLimitedInOwningHome(deviceId),
     );
+  }
+
+  createTemperaturePriceShiftPolicy() {
+    return createTemperaturePriceShiftPolicy(this.deps.ctx);
   }
 
   async runInit(): Promise<void> {

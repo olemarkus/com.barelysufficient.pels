@@ -43,6 +43,7 @@ import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/se
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
+import type { TemperaturePriceShiftPolicy } from '../thermostat/priceShiftPolicy';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
@@ -255,6 +256,7 @@ export type AppContext = {
   get deviceStartPolicies(): Record<string, DeviceStartPolicy>;
   set deviceStartPolicies(value: Record<string, DeviceStartPolicy>);
   readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
+  readonly priceShiftPolicy: TemperaturePriceShiftPolicy;
   get temperatureControlDisabledDevices(): Record<string, boolean>;
   set temperatureControlDisabledDevices(value: Record<string, boolean>);
   get temperatureControlPolicyState(): 'unavailable' | 'resolved';

@@ -48,6 +48,8 @@ export const MODE_ALIASES = 'mode_aliases';
 export const CAPACITY_PRIORITIES = 'capacity_priorities';
 export const MODE_DEVICE_TARGETS = 'mode_device_targets';
 export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
+/** Per-device runtime holds for manual thermostat changes through a price level. */
+export const PER_DEVICE_THERMOSTAT_PRICE_SHIFT_CANCELLATION_KEY_PREFIX = 'thermostat_price_shift_cancellation.';
 // Base keys whose values may be scoped per home via `homeScopedSettingsKey`
 // (multi-home train). Kept private: the parse helper below is the boundary,
 // and consumers route on its output (or the predicate) rather than probing

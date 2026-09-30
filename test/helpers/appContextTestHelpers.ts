@@ -8,6 +8,7 @@ import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
+import { TemperaturePriceShiftPolicy } from '../../lib/thermostat/priceShiftPolicy';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { NO_PRICE_SOURCE_PAYLOADS } from '../../lib/ports/settingsUiStatusSeams';
@@ -301,8 +302,16 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     },
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
-      homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
+      homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), (_id, value) => value,
+      () => false, { cancelCurrentPriceShift: vi.fn(), allowsCurrentPriceShiftTarget: vi.fn(() => false) },
+    ),
+    priceShiftPolicy: new TemperaturePriceShiftPolicy(
+      homey.settings,
+      () => PriceLevel.UNKNOWN,
       () => false,
+      () => ({}),
+      () => 'heating',
+      (_deviceId, value) => value,
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),

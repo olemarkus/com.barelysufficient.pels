@@ -9,15 +9,16 @@ import { readShedBehaviorsSetting } from './shedBehaviorsRead';
 import {
   readTemperatureControlModes, type TemperatureControlModes,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
-import { isWritableModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
+import {
+  isWritableModeDeviceTargets, type ModeDeviceTargets,
+} from '../../packages/shared-domain/src/settings/modeDeviceTargets';
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { ManualTemperaturePriceShiftPolicy } from '../ports/temperaturePriceShiftPolicy';
 import { getLogger } from '../logging/logger';
 
 export type DeviceModeForTemperatureUpdate =
   | { state: 'resolved'; mode: string | null; homeId: string; catalogHomeId: string }
   | { state: 'unavailable' };
-
-type ModeCatalogReader = { reloadModeCatalog: () => void };
 
 /**
  * The temperature policy map as this service last read it. `unavailable` until
@@ -40,25 +41,36 @@ export class ObservedTemperatureModeUpdates {
     private readonly settings: SettingsPort,
     private readonly resolveDeviceMode: (deviceId: string) => DeviceModeForTemperatureUpdate,
     private readonly isManaged: (deviceId: string) => boolean,
-    private readonly reloadMain: () => void,
-    private readonly getAreaCatalogs: () => readonly ModeCatalogReader[],
+    private readonly reloadModeCatalogs: () => void,
     private readonly normalizeTarget: (deviceId: string, value: number) => number,
     /** Whether the latest plan has this device limited. Limiting outranks adoption. */
     private readonly isLimited: (deviceId: string) => boolean,
+    private readonly priceShiftPolicy: ManualTemperaturePriceShiftPolicy,
   ) {}
 
-  /** Policy reads retain the last good value across transient SDK gaps. */
-  allowsAutomaticAdjustments(deviceId: string): boolean {
+  /** Solar temperature adjustments remain available under the default policy only. */
+  allowsSolarAdjustments(deviceId: string): boolean {
     const read = this.readControlModes();
     return read.state === 'resolved' && read.modes[deviceId] !== 'update_mode' && read.modes[deviceId] !== 'external';
   }
 
+  /** Temperature Smart Tasks still require the default mode-target policy. */
+  allowsTemperatureSmartTasks(deviceId: string): boolean {
+    return this.allowsSolarAdjustments(deviceId);
+  }
+
+  /** Price deltas remain available when manual changes update the mode target. */
+  allowsPriceBasedDeltas(deviceId: string): boolean {
+    const read = this.readControlModes();
+    return read.state === 'resolved' && read.modes[deviceId] !== 'external';
+  }
+
   /**
-   * Whether PELS may write a LIMIT setpoint to this device. Narrower than the
-   * adjustments question above: "Save as current mode target" turns off the
-   * price and solar offsets, not power limiting — the owner's limit still
-   * applies, and a temperature they choose while the device is limited is drift
-   * the executor reconciles rather than a new target (`update` below). Only
+   * Whether PELS may write a LIMIT setpoint to this device. "Save as current
+   * mode target" turns off solar adjustments and temperature Smart Tasks, not
+   * price deltas or power limiting. The owner's limit still applies, and a
+   * temperature they choose while the device is limited is drift the executor
+   * reconciles rather than a new target (`update` below). Only
    * "Keep the new temperature" means PELS writes no setpoint at all.
    */
   allowsLimiting(deviceId: string): boolean {
@@ -70,9 +82,10 @@ export class ObservedTemperatureModeUpdates {
    * A queued adjustment cannot outlive a switch to manual target ownership.
    *
    * Under "Save as current mode target" two writes are legitimate: the saved
-   * mode target itself, and the owner's configured limit — either direction's,
-   * because the fence does not know which way the device is moving demand and
-   * both numbers are the owner's. A queued price or solar offset is neither.
+   * mode target itself, the current calculated price target, and the owner's
+   * configured limit — either direction's, because the fence does not know
+   * which way the device is moving demand and both numbers are the owner's.
+   * Solar and stale price writes remain outside the fence.
    */
   allowsTarget(deviceId: string, value: number): boolean {
     const read = this.readControlModes();
@@ -87,7 +100,10 @@ export class ObservedTemperatureModeUpdates {
       const targets = this.settings.get(homeScopedSettingsKey(MODE_DEVICE_TARGETS, active.catalogHomeId));
       if (!isWritableModeDeviceTargets(targets)) return false;
       const target = targets[active.mode]?.[deviceId];
-      return target !== undefined && this.normalizeTarget(deviceId, target) === value;
+      return target !== undefined && (
+        this.normalizeTarget(deviceId, target) === value
+        || this.priceShiftPolicy.allowsCurrentPriceShiftTarget(deviceId, target, value)
+      );
     } catch {
       return false;
     }
@@ -184,7 +200,13 @@ export class ObservedTemperatureModeUpdates {
     // A failed/partial read cannot be a basis for replacing a whole catalog.
     if (!isWritableModeDeviceTargets(targets) || !Object.hasOwn(targets, active.mode)) return;
     const modeTargets = targets[active.mode];
-    if (!modeTargets || modeTargets[adjustment.deviceId] === adjustment.temperature) return;
+    if (!modeTargets) return;
+    if (modeTargets[adjustment.deviceId] === adjustment.temperature) {
+      if (!this.priceShiftPolicy.cancelCurrentPriceShift(adjustment.deviceId)) {
+        throw new Error('Could not persist cancellation of the current thermostat price shift');
+      }
+      return;
+    }
     const next = {
       ...targets,
       [active.mode]: { ...modeTargets, [adjustment.deviceId]: adjustment.temperature },
@@ -198,11 +220,35 @@ export class ObservedTemperatureModeUpdates {
       else this.pendingSettings.delete(key);
       throw error;
     }
-    this.reloadMain();
-    for (const catalog of this.getAreaCatalogs()) catalog.reloadModeCatalog();
+    if (!this.priceShiftPolicy.cancelCurrentPriceShift(adjustment.deviceId)) {
+      this.rollbackModeTargets(key, targets, adjustment.deviceId);
+      throw new Error('Could not persist cancellation of the current thermostat price shift');
+    }
+    this.reloadModeCatalogs();
     getLogger('home/temperature-mode').info({
       event: 'observed_temperature_mode_updated', ...adjustment,
       homeId: active.homeId, mode: active.mode,
+    });
+  }
+
+  private rollbackModeTargets(key: string, targets: ModeDeviceTargets, deviceId: string): void {
+    // Include the rollback in our notification count so delayed SDK events are
+    // still consumed without triggering a second update.
+    const pending = this.pendingSettings.get(key);
+    this.pendingSettings.set(key, {
+      serialized: JSON.stringify(targets),
+      count: (pending?.count ?? 0) + 1,
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        this.settings.set(key, targets);
+        return;
+      } catch {
+        // Retry briefly when settings writes fail transiently.
+      }
+    }
+    getLogger('home/temperature-mode').error({
+      event: 'observed_temperature_mode_rollback_failed', deviceId, key,
     });
   }
 }

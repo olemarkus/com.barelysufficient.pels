@@ -24,6 +24,8 @@ export const fixtureTemperatureSetpoints = (
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+  shouldApplyPriceShift: () => true,
+  hasPendingPriceShiftCancellations: () => false,
   getThermalDirection: () => 'heating',
   getShedBehavior: () => ({ action: 'turn_off' }),
   ...reads,

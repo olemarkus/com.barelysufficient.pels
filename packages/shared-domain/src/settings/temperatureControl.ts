@@ -28,12 +28,17 @@ export function temperatureControlDisabledDevices(
   ]));
 }
 
-/** Effective offsets preserve the owner's saved preferences while manual targets are followed. */
+/** Apply the independent runtime gates for price deltas and solar adjustments. */
 export function temperaturePolicyPriceSettings<T extends { enabled: boolean; surplusWilling: boolean }>(
   settings: Record<string, T>,
-  allowsAdjustments: (deviceId: string) => boolean,
+  allowsPriceDeltas: (deviceId: string) => boolean,
+  allowsSolarAdjustments: (deviceId: string) => boolean,
 ): Record<string, T> {
   return Object.fromEntries(Object.entries(settings).map(([id, config]) => [
-    id, allowsAdjustments(id) ? config : { ...config, enabled: false, surplusWilling: false },
+    id, {
+      ...config,
+      enabled: allowsPriceDeltas(id) && config.enabled,
+      surplusWilling: allowsSolarAdjustments(id) && config.surplusWilling,
+    },
   ]));
 }

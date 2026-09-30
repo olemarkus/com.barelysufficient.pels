@@ -30,7 +30,8 @@ const HINTS: Record<TemperatureControlMode, string> = {
     + 'If PELS has changed the target, it stays there until you adjust it.',
   update_mode: 'Temperature changes on the device, in Homey, or from another app or Flow '
     + 'are saved as this device’s target in the current mode. PELS uses saved targets when modes change. '
-    + 'Price and solar temperature adjustments are not applied.',
+    + 'If price adjustments are active, PELS holds the temperature through this price level and resumes '
+    + 'price deltas when the level changes. Solar temperature adjustments are not applied.',
 };
 
 const syncPowerHint = (device: SettingsUiDeviceDetailItem, selected: TemperatureControlMode): void => {

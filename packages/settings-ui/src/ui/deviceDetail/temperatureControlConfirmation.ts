@@ -42,8 +42,20 @@ function policyChangeWarnings(
     );
   }
   const price = state.priceOptimizationSettings[device.id];
-  if (price?.enabled) warnings.push('Price-based temperature adjustments will stop.');
-  if (price?.surplusWilling) warnings.push('Solar-surplus temperature adjustments will stop.');
+  if (next === 'update_mode') {
+    if (price?.enabled) {
+      warnings.push(
+        'A temperature change outside PELS becomes the mode target. If price adjustments are active, '
+        + 'PELS keeps that temperature through this price level and resumes adjustments when the level changes.',
+      );
+    }
+  } else {
+    if (price?.enabled) warnings.push('Price-based temperature adjustments will stop.');
+    if (price?.surplusWilling) warnings.push('Solar-surplus temperature adjustments will stop.');
+  }
+  if (next === 'update_mode' && price?.surplusWilling) {
+    warnings.push('Solar-surplus temperature adjustments will stop.');
+  }
   return warnings;
 }
 
