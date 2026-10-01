@@ -1,10 +1,12 @@
 import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { DeviceExecutionState, DeviceStatus } from '../../packages/contracts/src/deviceStatus';
+import type {
+  DeviceExecutionState, DeviceStatus, DeviceStatusCountdown,
+} from '../../packages/contracts/src/deviceStatus';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
 import {
-  displayStateLabel, displayStateTone, resolveDisplayStateKind, resolveIntentStateKind,
+  displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
 import { isSatisfiedTargetOnlyDevice, type PlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
 import {
@@ -34,7 +36,12 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (device.plannedState === 'shed') return 'held';
   if (device.execution.externalOffHeld || device.plannedState === 'inactive') return 'idle';
   if (device.execution.physicalState === 'off') {
-    return device.execution.resumeExpected ? 'resuming' : 'idle';
+    if (!device.execution.resumeExpected) return 'idle';
+    // A hold (throttled restore, capacity, budget) keeps a device the plan would
+    // resume off until it clears: the intent grammar reads it as held. Only a
+    // command already in flight is resuming.
+    const inFlight = device.execution.binaryProgress === 'pending' || device.execution.steppedTransitionPending;
+    return !inFlight && isHoldReasonCode(device.reason.code) ? 'idle' : 'resuming';
   }
   if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
   if (device.currentState === 'not_applicable' && resolveSteppedEvExceptionLabel(device) !== null) return 'idle';
@@ -70,28 +77,35 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
   const kind = resolveBaseKind(device);
   const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
     starved: device.starvation?.isStarved === true }) === 'held';
+  // The shared line helpers resolve their own state kind unless handed one; give
+  // them this status's kind so a reason line can never contradict the label.
+  const resolved = { ...device, stateKind: kind };
   const stepped = device.steppedLoad;
   if (stepped) {
     return resolveBinarySurplusReasonLine(device, kind)
-      ?? resolveSteppedStatusLine(device, stepped.profile, 0, dryRun)
+      ?? resolveSteppedStatusLine(resolved, stepped.profile, 0, dryRun)
       // Settling at a reduced rung does not end the hold or change its cause.
       ?? (held ? resolveHeldCardReasonLine({
         reason: device.reason, starvation: device.starvation,
         verb: resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
       }) : null);
   }
-  if (device.temperature) return resolveTemperatureReasonLine(device, dryRun);
+  if (device.temperature) return resolveTemperatureReasonLine(resolved, dryRun);
   return resolveBinaryReason(device, kind, held, dryRun);
 }
 
-function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: number) {
+// A timed reason keeps its countdown even when its line says something else
+// (what a paused device still reports): the card then shows it as its ring.
+function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: number): DeviceStatusCountdown | undefined {
   const timed = device.reason as { remainingSec?: number; countdownStartedAtMs?: number; countdownTotalSec?: number };
-  if (timed.remainingSec === undefined || !text.includes(`${timed.remainingSec}s`)) return undefined;
-  const [prefix, suffix] = text.split(`${timed.remainingSec}s`);
+  if (timed.remainingSec === undefined) return undefined;
   const totalSec = timed.countdownTotalSec ?? timed.remainingSec;
   const endsAtMs = timed.countdownStartedAtMs === undefined
     ? anchorMs + timed.remainingSec * 1000 : timed.countdownStartedAtMs + totalSec * 1000;
-  return { endsAtMs, totalSec, prefix: prefix ?? '', suffix: suffix ?? '' };
+  const remaining = `${timed.remainingSec}s`;
+  if (!text.includes(remaining)) return { kind: 'beside_text', endsAtMs, totalSec };
+  const [prefix, suffix] = text.split(remaining);
+  return { kind: 'in_text', endsAtMs, totalSec, prefix: prefix ?? '', suffix: suffix ?? '' };
 }
 
 function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
@@ -111,13 +125,17 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
   return { text, ...(idle ? { tone: idle.tone, detail: idle.detail } : {}), ...(countdown ? { countdown } : {}) };
 }
 
+// The observed rung a held stepped device's state word names, if any.
+function resolvePhysicalStepId(device: DeviceStatusInput): string | null {
+  if (!device.execution.available || device.execution.physicalState === 'off' || !device.steppedLoad) return null;
+  return device.execution.observedStepId;
+}
+
 function resolvePhysicalFact(device: DeviceStatusInput): string | null {
   if (!device.execution.available) return null;
   if (device.execution.physicalState === 'off') return 'Off';
-  if (device.steppedLoad && device.execution.observedStepId !== null) {
-    return formatStepDisplayLabel(device.execution.observedStepId);
-  }
-  return null;
+  const stepId = resolvePhysicalStepId(device);
+  return stepId === null ? null : formatStepDisplayLabel(stepId);
 }
 
 function resolvePower(device: DeviceStatusInput, limited: boolean): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
@@ -154,11 +172,11 @@ function resolveRail(device: DeviceStatusInput): DeviceStatus['rail'] {
 
 // A charger's plug or car exception ("Unplugged", "Paused by the car") is a fact
 // about the device, shown beside its level whatever PELS decided or holds.
-function resolveFactText(device: DeviceStatusInput): string | null {
+function resolveFactText(device: DeviceStatusInput, stateWordNamesLevel: boolean): string | null {
   if (!device.steppedLoad) return resolveTemperatureLine(device);
   const temperature = resolveSteppedTemperatureText(device);
   if (temperature !== null) return temperature;
-  const parts = [resolveSteppedEvExceptionLabel(device), resolveSteppedLevelFact(device)]
+  const parts = [resolveSteppedEvExceptionLabel(device), resolveSteppedLevelFact(device, stateWordNamesLevel)]
     .filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -187,7 +205,8 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const draw = device.currentDrawKw;
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
-    ...resolvePower(device, limited), factText: resolveFactText(device),
+    ...resolvePower(device, limited),
+    factText: resolveFactText(device, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

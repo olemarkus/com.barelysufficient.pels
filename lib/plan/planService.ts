@@ -34,6 +34,7 @@ import type {
 } from './planHeadroomDevice';
 import { PlanChangeTracker } from './planChangeTracker';
 import { DeviceOverviewTransitions } from './planOverviewEmit';
+import type { OverviewDecisionFacts } from './deviceOverviewLog';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanServiceDeps } from './planServiceDeps';
@@ -85,19 +86,26 @@ const logger = getLogger('plan/service');
 
 export type { PlanServiceDeps } from './planServiceDeps';
 
-const serializePlanForUi = (
-  plan: DevicePlan | null,
+/** A published overview together with the decision and executor state it was built from. */
+type OverviewPublication = {
+  snapshot: SettingsUiPlanSnapshot;
+  plan: DevicePlan;
+  execution: ReadonlyMap<string, DeviceExecutionState>;
+};
+
+const buildOverviewPublication = (
+  plan: DevicePlan,
   deps: PlanServiceDeps,
   idleClassifier: IdleClassifier,
-): SettingsUiPlanSnapshot | null => {
-  const execution = plan ? deps.planEngine.getDeviceExecutionStates(plan) : new Map<string, DeviceExecutionState>();
-  return buildSettingsOverviewReadModel(plan, {
+): OverviewPublication | null => {
+  const execution = deps.planEngine.getDeviceExecutionStates(plan);
+  const snapshot = buildSettingsOverviewReadModel(plan, {
     getDeviceExecutionState: (id) => {
       const value = execution.get(id);
       if (!value) throw new Error(`Missing execution state for ${id}`);
       return value;
     },
-    dryRun: deps.readCapacityDryRun(),
+    dryRun: deps.readSimulationSetting(),
     nowMs: Date.now(),
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
@@ -107,6 +115,28 @@ const serializePlanForUi = (
     getObservedTemperature: deps.getObservedTemperature,
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
+  return snapshot ? { snapshot, plan, execution } : null;
+};
+
+// The decision and executor facts behind a presentation change, for the debug
+// event only; the UI wire carries none of them. Every published device has both
+// (the publication is built from this plan and its execution map), and the
+// lookup is only built when a debug event asks for it.
+const describeOverviewDecision = (
+  publication: OverviewPublication,
+): ((deviceId: string) => OverviewDecisionFacts) => {
+  let devicesById: ReadonlyMap<string, DevicePlan['devices'][number]> | null = null;
+  return (deviceId) => {
+    devicesById ??= new Map(publication.plan.devices.map((device) => [device.id, device]));
+    const device = devicesById.get(deviceId);
+    const state = publication.execution.get(deviceId);
+    if (!device || !state) throw new Error(`Missing decision for published device ${deviceId}`);
+    return {
+      reasonCode: device.reason.code, plannedState: device.plannedState,
+      desiredStepId: state.desiredStepId, observedStepId: state.observedStepId,
+      binaryProgress: state.binaryProgress, stepProgress: state.stepProgress, targetProgress: state.targetProgress,
+    };
+  };
 };
 
 export class PlanService {
@@ -119,6 +149,7 @@ export class PlanService {
   private changeTracker: PlanChangeTracker;
   private readonly rebuildHost: PlanRebuildHost;
   private lastTickedPlanRef: DevicePlan | null = null;
+  private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
 
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier({
@@ -241,7 +272,8 @@ export class PlanService {
   }
 
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
-    return serializePlanForUi(this.getLatestPlanSnapshot(), this.deps, this.idleClassifier);
+    const plan = this.getLatestPlanSnapshot();
+    return plan ? buildOverviewPublication(plan, this.deps, this.idleClassifier)?.snapshot ?? null : null;
   }
 
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
@@ -262,12 +294,25 @@ export class PlanService {
     };
   }
 
-  async syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
-    return this.enqueuePlanOperation(
-      () => Promise.resolve(this.syncLivePlanStateInline(source)),
+  /**
+   * Observations arrive in bursts (every device's power, temperature and state
+   * reports). A sync still waiting in the plan queue reads the latest state when
+   * it runs, so later observations of the same source join it instead of
+   * queueing another full status build. A sync that has started absorbs nothing.
+   */
+  syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
+    const queued = this.queuedLiveSyncs.get(source);
+    if (queued) return queued;
+    const sync = this.enqueuePlanOperation(
+      () => {
+        this.queuedLiveSyncs.delete(source);
+        return Promise.resolve(this.syncLivePlanStateInline(source));
+      },
       'Failed to sync live plan state',
       false,
     );
+    this.queuedLiveSyncs.set(source, sync);
+    return sync;
   }
 
   syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
@@ -499,10 +544,10 @@ export class PlanService {
 
   private emitPlanUpdated(plan: DevicePlan): void {
     this.tickIdleClassifier(plan);
-    const snapshot = serializePlanForUi(plan, this.deps, this.idleClassifier);
-    if (snapshot) {
-      this.emitOverviewTransitions(snapshot);
-      this.emitPlanUpdatedRealtime(snapshot);
+    const publication = buildOverviewPublication(plan, this.deps, this.idleClassifier);
+    if (publication) {
+      this.emitOverviewTransitions(publication);
+      this.emitPlanUpdatedRealtime(publication.snapshot);
     }
   }
 
@@ -527,15 +572,15 @@ export class PlanService {
   /** Refresh display from live owners while leaving the decision untouched. */
   private refreshDeviceStatus(plan = this.getLatestPlanSnapshot()): boolean {
     if (!plan) return false;
-    const snapshot = serializePlanForUi(plan, this.deps, this.idleClassifier);
-    if (!snapshot || !this.emitOverviewTransitions(snapshot)) return false;
-    this.emitPlanUpdatedRealtime(snapshot);
+    const publication = buildOverviewPublication(plan, this.deps, this.idleClassifier);
+    if (!publication || !this.emitOverviewTransitions(publication)) return false;
+    this.emitPlanUpdatedRealtime(publication.snapshot);
     return true;
   }
 
   // Returns whether presentation changed, independently of logging being enabled.
-  private emitOverviewTransitions(snapshot: SettingsUiPlanSnapshot): boolean {
-    return this.overviewTransitions.capture(snapshot, this.deps);
+  private emitOverviewTransitions(publication: OverviewPublication): boolean {
+    return this.overviewTransitions.capture(publication.snapshot, this.deps, describeOverviewDecision(publication));
   }
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {

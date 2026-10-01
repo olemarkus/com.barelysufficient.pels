@@ -304,7 +304,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Limited — will try to resume in 15s if power is available');
+      expect(result).toBe('Waiting after limiting a device (15s)');
     });
 
     it('returns meter wait text for meterSettling reason', () => {
@@ -318,7 +318,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting for power meter to stabilise — 8s');
+      expect(result).toBe('Waiting for power meter to stabilise (8s)');
     });
 
     it('returns null (quiet) when reported step equals target step (boost-driven settling)', () => {
@@ -348,7 +348,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Limited — will try to resume in 22s if power is available');
+      expect(result).toBe('Waiting after limiting a device (22s)');
     });
 
     it('still returns the increase countdown for cooldownRestore when reported step equals target step', () => {
@@ -424,7 +424,7 @@ describe('resolveSteppedStatusLine', () => {
       )).toBe('Waiting to resume — other devices are ahead');
     });
 
-    it('returns "Briefly holding — Ns" for activationBackoff reason', () => {
+    it('returns the shared restart-delay countdown for activationBackoff reason', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -435,10 +435,10 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Briefly holding — 12s');
+      expect(result).toBe('Delaying restart after recent failed attempt (12s)');
     });
 
-    it('returns "Queued to resume — Ns" for restorePending reason', () => {
+    it('returns the shared resume-pending countdown for restorePending reason', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -449,10 +449,10 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Queued to resume — 9s');
+      expect(result).toBe('Resume pending (9s)');
     });
 
-    it('returns "Holding at startup" for neutralStartupHold reason', () => {
+    it('returns the shared startup hold line for neutralStartupHold reason', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -463,10 +463,10 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Holding at startup');
+      expect(result).toBe('Left off after startup');
     });
 
-    it('returns "Stabilising after startup" for startupStabilization reason', () => {
+    it('returns the shared startup wait line for startupStabilization reason', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -477,7 +477,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Stabilising after startup');
+      expect(result).toBe('Waiting after startup');
     });
   });
 

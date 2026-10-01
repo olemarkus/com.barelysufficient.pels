@@ -4,6 +4,8 @@ import type {
   SettingsUiDeviceLogPayload,
   SettingsUiPlanDeviceSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
+import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DevicePlanDevice } from './planTypes';
 
 export const DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE = 50;
 export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
@@ -17,10 +19,13 @@ export type OverviewLogDevice = SettingsUiPlanDeviceSnapshot;
  */
 export function buildPresentationSignatureForDevice(device: OverviewLogDevice): string {
   const reason = device.status.reason;
-  return JSON.stringify({ ...device.status,
-    reason: reason?.countdown ? { ...reason, text: null, countdown: {
-      endsAtMs: reason.countdown.endsAtMs, prefix: reason.countdown.prefix, suffix: reason.countdown.suffix,
-    } } : reason });
+  const countdown = reason?.countdown;
+  if (!reason || !countdown) return JSON.stringify(device.status);
+  return JSON.stringify({ ...device.status, reason: countdown.kind === 'in_text'
+    ? { ...reason, text: null, countdown: {
+      kind: countdown.kind, endsAtMs: countdown.endsAtMs, prefix: countdown.prefix, suffix: countdown.suffix,
+    } }
+    : { ...reason, countdown: { kind: countdown.kind, endsAtMs: countdown.endsAtMs } } });
 }
 
 // A figure moving inside the same sentence is not a state change: a shortfall
@@ -44,10 +49,11 @@ export function buildOverviewSignatureForDevice(device: OverviewLogDevice): stri
   const { countdown, detail } = reason;
   return JSON.stringify({ ...status, reason: {
     ...reason,
-    text: countdown ? null : toSentenceShape(reason.text),
+    text: countdown?.kind === 'in_text' ? null : toSentenceShape(reason.text),
     ...(detail === undefined ? {} : { detail: toSentenceShape(detail) }),
-    ...(countdown ? { countdown: { prefix: toSentenceShape(countdown.prefix),
-      suffix: toSentenceShape(countdown.suffix) } } : {}),
+    ...(countdown ? { countdown: countdown.kind === 'in_text'
+      ? { kind: countdown.kind, prefix: toSentenceShape(countdown.prefix), suffix: toSentenceShape(countdown.suffix) }
+      : { kind: countdown.kind } } : {}),
   } });
 }
 
@@ -63,13 +69,27 @@ export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()
   };
 }
 
-export function buildOverviewEventForDevice(device: OverviewLogDevice): Record<string, unknown> {
+/**
+ * What the planner decided and the executor holds for a device, beside what it
+ * presented: observed, planned, commanded and pending stay distinct in the log
+ * (`lib/device/AGENTS.md`). Debug-only; never on the UI wire.
+ */
+export type OverviewDecisionFacts = Pick<DevicePlanDevice, 'plannedState'> & {
+  reasonCode: DevicePlanDevice['reason']['code'];
+} & Pick<DeviceExecutionState,
+  'desiredStepId' | 'observedStepId' | 'binaryProgress' | 'stepProgress' | 'targetProgress'>;
+
+export function buildOverviewEventForDevice(
+  device: OverviewLogDevice,
+  decision: OverviewDecisionFacts,
+): Record<string, unknown> {
   return {
     component: 'overview', event: 'device_overview_changed',
     deviceId: device.id, deviceName: device.name,
     ...buildDeviceLogEntry(device),
     cardReasonText: device.status.reason?.text ?? null,
     ...(device.currentDrawKw !== undefined ? { currentDrawKw: device.currentDrawKw } : {}),
+    ...decision,
   };
 }
 

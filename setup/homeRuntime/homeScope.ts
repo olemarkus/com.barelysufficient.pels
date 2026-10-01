@@ -79,8 +79,12 @@ export type HomeScope = {
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
   getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
-  /** Read-only effective posture; never arms execution recovery. */
-  readCapacityDryRun: () => boolean;
+  /**
+   * The owner's Simulation setting for this home, for presentation: what the
+   * cards call simulated is what the owner switched to simulation, the same flag
+   * the Overview hero reads. A transient write fence is not a simulation.
+   */
+  readSimulationSetting: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   /**
    * This home's 10-minute meter-silence monitor (`lib/power/meterSilence.ts`):
@@ -201,8 +205,6 @@ export function buildMainHomeScope(
   isHomeWideFenced: () => boolean,
 ): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
-  const readCapacityDryRun = (): boolean => ctx.capacityDryRun || isTornDown()
-    || ctx.homeMembership?.readMainHomeActuationFence() === true;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
@@ -268,7 +270,7 @@ export function buildMainHomeScope(
     // `requested: false` at the write seam. The block just moves to where the
     // executor can see it, which is also where the status can report it.
     getCapacityDryRun: () => ctx.capacityDryRun || isHomeWideFenced(),
-    readCapacityDryRun,
+    readSimulationSetting: () => ctx.capacityDryRun,
     getPowerTracker: () => ctx.powerTracker,
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,

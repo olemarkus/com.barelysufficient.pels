@@ -17,6 +17,16 @@ export type DeviceExecutionState = {
   externalOffHeld: boolean;
 };
 
+/**
+ * A countdown on the reason line. `in_text`: the text names the remaining time
+ * ("… in 45s"), which the UI interpolates between `prefix` and `suffix`.
+ * `beside_text`: the text says something else (what the device still reports)
+ * and the countdown shows only as the card's ring.
+ */
+export type DeviceStatusCountdown =
+  | { kind: 'in_text'; endsAtMs: number; totalSec: number; prefix: string; suffix: string }
+  | { kind: 'beside_text'; endsAtMs: number; totalSec: number };
+
 /** Complete presentation, resolved by the backend. No actuation inputs. */
 export type DeviceStatus = {
   cardKind: 'binary' | 'temperature' | 'stepped';
@@ -30,7 +40,7 @@ export type DeviceStatus = {
     text: string;
     tone?: 'neutral' | 'warning';
     detail?: string;
-    countdown?: { endsAtMs: number; totalSec: number; prefix: string; suffix: string };
+    countdown?: DeviceStatusCountdown;
   } | null;
   rail: { labels: string[]; activeIndex: number | null } | null;
   limited: boolean;

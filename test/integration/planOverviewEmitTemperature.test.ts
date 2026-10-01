@@ -9,6 +9,11 @@ import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOve
 // Pin that integration here: the shared-domain classifier reads the trio as one
 // object, so a carrier that misses the observer overlay can disagree with the
 // state the owner sees on the card.
+// Debug events are off in these tests, so the decision lookup is never asked.
+const describeNoDecision = (): never => {
+  throw new Error('overview debug is off; no decision facts are read');
+};
+
 describe('planOverviewEmit — temperature facet at the log seam', () => {
   const satisfiedTargetOnlyPlan = (): DevicePlan => ({
     meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -47,7 +52,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       deviceOverviewLogRecorder: { record: (deviceId: string, entry: Record<string, unknown>) => {
         captured.push({ deviceId, entry });
       } } as never,
-    });
+    }, describeNoDecision);
 
     expect(changed).toBe(true);
     expect(captured).toHaveLength(1);
@@ -87,7 +92,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       deviceOverviewLogRecorder: {
         record: (_deviceId: string, entry: Record<string, unknown>) => captured.push(entry),
       } as never,
-    });
+    }, describeNoDecision);
 
     expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps, 0).status.kind).toBe('idle');
     expect(captured[0]?.stateKind).toBe('idle');

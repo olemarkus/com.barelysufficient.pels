@@ -23,8 +23,9 @@ const isCountdown = (value: unknown): boolean => {
   if (value === undefined) return true;
   if (!value || typeof value !== 'object') return false;
   const timer = value as Record<string, unknown>;
-  return isFinite(timer.endsAtMs) && isFinite(timer.totalSec) && timer.totalSec >= 0
-    && typeof timer.prefix === 'string' && typeof timer.suffix === 'string';
+  if (!isFinite(timer.endsAtMs) || !isFinite(timer.totalSec) || timer.totalSec < 0) return false;
+  if (timer.kind === 'beside_text') return true;
+  return timer.kind === 'in_text' && typeof timer.prefix === 'string' && typeof timer.suffix === 'string';
 };
 
 const isStatusReason = (value: unknown): boolean => {

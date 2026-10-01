@@ -242,7 +242,6 @@ function buildSubHomeScope(params: {
   /** Live read: a rename lands via `updateHomeConfig` without a teardown. */
   getHome: () => SubHomeConfig;
   isMembershipReady: () => boolean;
-  isMeterSourceAuthorized: () => boolean;
   isMeterSourceAuthorizedForExecution: () => boolean;
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
   isTornDown: () => boolean;
@@ -256,9 +255,9 @@ function buildSubHomeScope(params: {
   meterSilenceMonitor: MeterSilenceMonitor;
 }): HomeScope {
   const {
-    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars,
+    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorizedForExecution, isTornDown, getScalars,
     getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
-    meterSilenceMonitor, isMeterSourceAuthorizedForExecution,
+    meterSilenceMonitor,
   } = params;
   // Same lane the main home wires, with this area's own way of reaching its
   // plan service: a torn-down bundle drops the rebuild rather than driving a
@@ -282,9 +281,7 @@ function buildSubHomeScope(params: {
     getCapacityDryRun: () => resolveEffectiveDryRun({
       isTornDown, isMembershipReady, isMeterSourceAuthorized: isMeterSourceAuthorizedForExecution, getScalars,
     }),
-    readCapacityDryRun: () => resolveEffectiveDryRun({
-      isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
-    }),
+    readSimulationSetting: () => getScalars().dryRun,
     getPowerTracker: getTracker,
     getMeterSilenceMonitor: () => meterSilenceMonitor,
     getDailyBudgetSnapshot: () => null,
@@ -427,7 +424,6 @@ function createBundlePlanningRuntime(params: {
     homeId: params.homeId,
     getHome: params.getHome,
     isMembershipReady: params.isMembershipReady,
-    isMeterSourceAuthorized: params.isMeterSourceAuthorized,
     isMeterSourceAuthorizedForExecution: params.isMeterSourceAuthorizedForExecution,
     isTornDown: params.isTornDown,
     getScalars: params.getCapacityScalars,

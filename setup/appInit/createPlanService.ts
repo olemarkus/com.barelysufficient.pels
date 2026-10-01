@@ -64,13 +64,15 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
       }
       return map;
     },
-    // Gates the rebuild outcome AND publishes this home's posture in its
-    // status (under its own home id) so its Limits card reads
-    // honestly: persisted-live but no committed zone tree still shows
-    // Simulating. One read for both — the status used to take a second,
-    // sub-home-only dep for it.
+    // The effective no-actuation posture: gates the rebuild outcome AND
+    // publishes this home's posture in its status (under its own home id) so
+    // its Limits card reads honestly: persisted-live but no committed zone tree
+    // still shows Simulating.
     getCapacityDryRun: scope.getCapacityDryRun,
-    readCapacityDryRun: scope.readCapacityDryRun,
+    // The owner's Simulation setting alone, which device-card wording follows
+    // (the Overview hero reads the same flag). A transient write fence is not a
+    // simulation, so cards never read the posture above.
+    readSimulationSetting: scope.readSimulationSetting,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),

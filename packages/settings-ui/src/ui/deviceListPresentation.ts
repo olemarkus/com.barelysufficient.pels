@@ -32,13 +32,15 @@ const buildStateChip = (label: string, title: string): HTMLElement => {
   return chip;
 };
 
+// The status vocabulary has no "Unknown" (notes/ui-terminology.md): a device
+// whose state PELS cannot read is unavailable to it, the word the Overview uses.
 const buildDeviceAvailabilityChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {
   if (!isGrayStateDevice(device)) return null;
   return buildStateChip(
-    device.available === false ? 'Unavailable' : 'Unknown',
+    'Unavailable',
     device.available === false
       ? 'Device is currently unavailable in Homey.'
-      : 'Device state is unknown.',
+      : 'PELS cannot read this device’s state right now.',
   );
 };
 

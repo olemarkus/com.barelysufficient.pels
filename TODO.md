@@ -1183,8 +1183,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       mysteriously never resuming. Note the sibling trust cost: a flow that *confirms but lies* (reports the
       step without applying it) is bounded only by whole-home overshoot detection + the terminal direct
       `evcharger_charging=false` write, and that window stretches under `power_source = flow`'s irregular
-      sampling. Files: `lib/plan/deviceOverviewLog.ts` / overview status writer,
-      `packages/shared-domain/src/deviceOverviewStrings.ts`, `notes/ui-terminology.md` (new status copy). [P2]
+      sampling. Files: `lib/plan/deviceStatusReadModel.ts` (the reason line),
+      `lib/executor/deviceExecutionState.ts` (stepped command facts), `notes/ui-terminology.md`
+      (new status copy). [P2]
 
 - [ ] **`loadFlowReportedCapabilities` is the one unclean read on `DevicePersistencePort`.**
       `lib/device/devicePersistencePort.ts` declares six calls; `loadLearnedPeaks` and

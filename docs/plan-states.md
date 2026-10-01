@@ -18,8 +18,8 @@ The redesigned Overview uses a compact state word on each device card:
 | **Running** | The device is on, charging, heating, or otherwise active. |
 | **Idle** | The device is available and on (or has no binary switch), but currently has nothing to do. |
 | **Off** | Homey explicitly reports the device off, and PELS is not currently limiting or resuming it. |
-| **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. |
-| **Resuming** | PELS is trying to bring the device back when there is available power. |
+| **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. A limited device also names what Homey reports: **Limited · Off** when it is off, or **Limited · Low** (its reported level) when a stepped device still runs lower. |
+| **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
 | **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
 | **Unavailable** | PELS has no usable device observation, or Homey reports the device as unavailable. |
 
@@ -92,7 +92,7 @@ For EV chargers, PELS keeps capacity suppression separate from charger availabil
 PELS resumes carefully:
 
 1. Higher-priority devices resume first.
-2. Only one device is resumed or increased per planning cycle.
+2. Previously limited devices, binary or stepped, may resume in a small batch (up to three) when fresh readings show ample available power. A running stepped device steps up one level at a time.
 3. Extra available power is required beyond the device's expected draw.
 4. Recent limiting and recent failed restart attempts delay another resume.
 5. A lower-priority device may stay limited until a higher-priority device has successfully resumed.

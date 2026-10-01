@@ -55,7 +55,10 @@ const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
 //   awaitingSolarSurplus    opted-in dump load waiting for export
 //   externalOffHold         turned off outside PELS; the recourse is a switch
 //   shedInvariant           stepped fairness rule; restoring OTHER devices lifts it
-//   shortfall               PELS is out of levers — a recourse warning, not a ceiling
+//   shortfall               PELS is out of levers. Not a ceiling either: the house-level
+//                           recourse ("Manual action needed") belongs to the hero and
+//                           the shortfall alarm, so the card states this device's gap
+//                           in its own branch below
 //   reservedForStart        the power IS there, promised to a named device about to
 //                           start; a gap through the reservation would be dominated
 //                           by that device's block, so the card names the holder
@@ -266,6 +269,28 @@ export const formatHourlyExhaustedLine = (
 );
 
 
+// A named reservation is the MORE SPECIFIC cause, so it is read before the gap —
+// same shape as the hourly branch. The two never co-occur: the reserve carve-out
+// is exactly the branch where no gap figure is honest, so
+// `finalizeCeilingReason` attaches one or the other.
+//
+// It also beats the starvation fallback. A device held long enough to be
+// flagged, whose actual blocker is a named reservation, is better served by
+// "Waiting so Water heater can start" than the vaguer "Waiting for available
+// power" — and this line takes NO starved decoration: it is a cause line like
+// the smart-task and solar holds, not a `<stem> — <need>` line, so "Held 2 h —
+// waiting so X can start" never forms. Null when no gap is known.
+const resolveCeilingHoldLine = (
+  reason: unknown,
+  verb: HeldCardReasonVerb,
+  starvation: SettingsUiPlanDeviceStarvation | null | undefined,
+): string | null => {
+  const reserveHolderName = readReserveHolderName(reason);
+  if (reserveHolderName !== undefined) return formatReservedForStartStatus(reserveHolderName);
+  const shortfallKw = resolveRestoreShortfallKw(reason);
+  return shortfallKw === null ? null : formatShortfallLine(shortfallKw, verb, starvation);
+};
+
 export const resolveHeldCardReasonLine = (params: {
   reason: unknown;
   starvation?: SettingsUiPlanDeviceStarvation | null;
@@ -309,22 +334,11 @@ export const resolveHeldCardReasonLine = (params: {
     return formatHourlyExhaustedLine(verb, starvation);
   }
 
-  if (isCeilingHoldReasonCode(code)) {
-    // A named reservation is the MORE SPECIFIC cause, so it is read before the
-    // gap — same shape as the hourly branch above. The two never co-occur: the
-    // reserve carve-out is exactly the branch where no gap figure is honest, so
-    // `finalizeCeilingReason` attaches one or the other.
-    //
-    // It also beats the starvation fallback. A device held long enough to be
-    // flagged, whose actual blocker is a named reservation, is better served by
-    // "Waiting so Water heater can start" than the vaguer "Waiting for available
-    // power" — and this line takes NO starved decoration: it is a cause line
-    // like the smart-task and solar holds, not a `<stem> — <need>` line, so
-    // "Held 2 h — waiting so X can start" never forms.
-    const reserveHolderName = readReserveHolderName(reason);
-    if (reserveHolderName !== undefined) return formatReservedForStartStatus(reserveHolderName);
-    const shortfallKw = resolveRestoreShortfallKw(reason);
-    return shortfallKw === null ? fallback : formatShortfallLine(shortfallKw, verb, starvation);
+  // A device held while PELS is out of levers still needs a known amount to
+  // resume, which is the card's line (notes/ui-terminology.md, "Held on power"),
+  // the same as every power-liftable hold.
+  if (isCeilingHoldReasonCode(code) || code === PLAN_REASON_CODES.shortfall) {
+    return resolveCeilingHoldLine(reason, verb, starvation) ?? fallback;
   }
 
   // Everything else keeps the canonical user-facing sentence the runtime already

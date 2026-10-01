@@ -296,6 +296,16 @@ export class PendingBinaryCommandStore {
     return isPendingBinaryCommandActive({ pending: this.backing[deviceId] });
   }
 
+  /**
+   * The active entry, read without expiring it. For presentation reads: they may
+   * ask what is in flight, but expiring a command (and firing
+   * {@link lifecycleTimedOut}) is the settle sweep's decision, as with
+   * {@link hasActiveCommand}.
+   */
+  peekActive(deviceId: string): PendingBinaryCommand | undefined {
+    return this.hasActiveCommand(deviceId) ? this.backing[deviceId] : undefined;
+  }
+
   /** A pending turn-ON, specifically. See {@link hasActiveCommand}. */
   hasActiveTurnOn(deviceId: string): boolean {
     return this.hasActiveCommand(deviceId) && this.backing[deviceId]?.desired === true;

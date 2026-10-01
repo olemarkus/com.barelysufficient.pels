@@ -465,9 +465,10 @@ export type SettingsUiDeferredObjectivePlanHistoryPayload = {
   entriesByDeviceId: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]>;
 };
 
-// One recorded device-overview transition. The four message fields ARE the
-// shared `DeviceOverviewStrings` the runtime overview logging emits — captured
-// verbatim from `formatDeviceOverview`, never re-typed — so the visible
+// One recorded device-overview transition. The message fields are built from
+// the same backend-resolved `DeviceStatus` the cards render
+// (`buildDeviceLogEntry`, `lib/plan/deviceOverviewLog.ts`), and the runtime
+// `device_overview_changed` event carries the same strings, so the visible
 // device-log wording matches the backend transition logs exactly. `stateTone`
 // is the same tone token the live device cards use, so the log can colour the
 // state line consistently without re-deriving it.

@@ -40,6 +40,7 @@ import type { PlanActuationResult } from '../../lib/planContract/planActuationRe
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
+  buildPlanDevice,
   buildPlanMeta,
   fixtureControlPosture,
   openPlanBuildGate,
@@ -48,6 +49,7 @@ import {
   type PlanMetaOverrides,
 } from '../utils/planTestUtils';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
 
@@ -150,7 +152,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     getSettleDevices: () => [],
     getSteppedSettleDevices: () => [],
     getCapacityDryRun: () => false,
-    readCapacityDryRun: () => false,
+    readSimulationSetting: () => false,
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getLastPowerUpdate: () => 1_745_000_000_000,
     loggers: {
@@ -210,6 +212,60 @@ describe('PlanService', () => {
     expect(engine.applyPlanActions).not.toHaveBeenCalled();
     expect(await service.syncLivePlanState('device_update')).toBe(false);
     expect(realtime).toHaveBeenCalledTimes(1);
+  });
+
+  it('joins observations queued behind one live sync into a single status build', async () => {
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const engine = { ...createMockPlanEngine(),
+      getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
+    const { service } = createPlanService({ planEngine: engine });
+    service['rebuildHost'].publishPlan(plan, 456);
+
+    const burst = await Promise.all([1, 2, 3].map(() => service.syncLivePlanState('realtime_capability')));
+
+    expect(engine.getDeviceExecutionStates).toHaveBeenCalledTimes(1);
+    expect(new Set(burst).size).toBe(1);
+    // A sync that has run absorbs nothing: the next observation builds again.
+    await service.syncLivePlanState('realtime_capability');
+    expect(engine.getDeviceExecutionStates).toHaveBeenCalledTimes(2);
+  });
+
+  it('words cards from the Simulation setting, not the transient write fence', async () => {
+    const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.capacity } });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const engine = { ...createMockPlanEngine(),
+      getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
+    const { service } = createPlanService({ planEngine: engine, getCapacityDryRun: () => true,
+      readSimulationSetting: () => false });
+    service['rebuildHost'].publishPlan(plan, 456);
+
+    const status = service.getLatestPlanSnapshotForUi()!.devices![0].status;
+    expect(status).toMatchObject({ kind: 'held', wouldLimit: false });
+    expect(status.reason?.text ?? '').not.toMatch(/simulation/);
+  });
+
+  it('logs the decision and executor facts behind a presentation change for debugging only', async () => {
+    const device = steppedPlanDevice({ id: 'ev-1', currentState: 'on', plannedState: 'keep',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'max' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const engine = { ...createMockPlanEngine(),
+      getDeviceExecutionStates: vi.fn(() => new Map([[device.id, { ...executionStateFixture(device),
+        stepProgress: 'pending' as const }]])) };
+    const overviewDebugStructured = vi.fn();
+    const { service } = createPlanService({ planEngine: engine, overviewDebugStructured,
+      isOverviewDebugEnabled: () => true });
+    service['rebuildHost'].publishPlan(plan, 456);
+
+    await service.syncLivePlanState('realtime_capability');
+
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed', deviceId: 'ev-1', reasonCode: device.reason.code, plannedState: 'keep',
+      observedStepId: 'low', desiredStepId: 'max', stepProgress: 'pending',
+    }));
+    expect(service.getLatestPlanSnapshotForUi()!.devices![0]).not.toHaveProperty('reasonCode');
   });
 
   it('pushes a fact-only change to the open card without writing an activity-log entry', async () => {
@@ -299,7 +355,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -357,7 +413,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
@@ -856,7 +912,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
@@ -1025,7 +1081,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
@@ -1074,7 +1130,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1119,7 +1175,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
       loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
@@ -1163,7 +1219,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1219,7 +1275,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1309,7 +1365,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
     });
@@ -1399,7 +1455,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1499,7 +1555,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1565,7 +1621,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1649,7 +1705,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1787,7 +1843,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -1876,7 +1932,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2011,7 +2067,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2153,7 +2209,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2239,7 +2295,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2316,7 +2372,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2387,7 +2443,7 @@ describe('PlanService', () => {
       // the `getPlanDevices` spy.
       getSettleDevices: () => unavailableBinaryConfirmations(firstLiveDevices),
       getCapacityDryRun: () => true,
-      readCapacityDryRun: () => true,
+      readSimulationSetting: () => true,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2476,7 +2532,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => settleDevices,
       getCapacityDryRun: () => true,
-      readCapacityDryRun: () => true,
+      readSimulationSetting: () => true,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2542,7 +2598,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2648,7 +2704,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
     });
@@ -2732,7 +2788,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2779,7 +2835,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
-      readCapacityDryRun: () => true,
+      readSimulationSetting: () => true,
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
       getLastPowerUpdate: () => 123456,
           });
@@ -2838,7 +2894,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -2890,7 +2946,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
       loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
@@ -2970,7 +3026,7 @@ describe('PlanService', () => {
         const scopedOverrides = {
           homeId,
           getCapacityDryRun: () => false,
-          readCapacityDryRun: () => false,
+          readSimulationSetting: () => false,
           planEngine: {
             ...createMockPlanEngine(),
             buildDevicePlanSnapshot: vi.fn(async () => {
@@ -2998,7 +3054,7 @@ describe('PlanService', () => {
       const failingOverrides = {
         homeId: failingHomeId,
         getCapacityDryRun: () => false,
-        readCapacityDryRun: () => false,
+        readSimulationSetting: () => false,
         planEngine: {
           ...createMockPlanEngine(),
           buildDevicePlanSnapshot: vi.fn().mockRejectedValue(new Error('expected test failure')),
@@ -3065,7 +3121,7 @@ describe('PlanService', () => {
     const { service, deps } = createPlanService({
       loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
       getCapacityDryRun: () => true,
-      readCapacityDryRun: () => true,
+      readSimulationSetting: () => true,
     });
 
     // Seed
@@ -3241,7 +3297,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,
@@ -3300,7 +3356,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,
@@ -3376,7 +3432,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
@@ -3442,7 +3498,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      readCapacityDryRun: () => false,
+      readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,

@@ -144,18 +144,20 @@ does).
   vanished devices, emits structured-log transitions, exposes the plain
   classification for the read model, and exposes objective evidence carrying
   the exact temperature target against which the verdict was reached.
-- `lib/plan/planService.ts` — ticks the classifier once per plan emission
-  via `tickIdleClassifier`. Idempotent on plan reference.
+- `lib/plan/planService.ts` — ticks the classifier once per published plan
+  via `tickIdleClassifier`. Idempotent on plan reference. Observation-driven
+  status refreshes reuse the last classification: the capped-idle window keeps a
+  bounded sample history sized for the plan cadence, and sampling per
+  observation would push its first half out.
 - `lib/plan/settingsOverviewReadModel.ts` — reads classification through a
-  deps callback and writes the result onto `SettingsUiPlanDeviceSnapshot`.
-- `packages/contracts/src/settingsUiApi.ts` — adds
-  `idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle'`.
+  deps callback and passes it into `buildDeviceStatus`
+  (`lib/plan/deviceStatusReadModel.ts`), which emits it as `status.reason`
+  (text, tone and detail). The classification itself never crosses the wire.
 - `packages/shared-domain/src/idleClassificationCopy.ts` — the source of
   exceptional UI status-line strings and matching diagnostic detail, plus the
   diagnostic detail for the quiet `near_target_idle` state.
-- `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` — renders the
-  exceptional status line below the temperature card body; benign
-  `near_target_idle` stays quiet.
+- The settings UI renders `status.reason` like any other reason line; benign
+  `near_target_idle` produces none.
 
 The deferred-objective bridge compares the observer-supplied target basis with
 the objective target before translating `near_target_idle` or `capped_idle`
