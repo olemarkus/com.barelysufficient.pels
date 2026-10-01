@@ -10,11 +10,31 @@ export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
 export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
 export type OverviewLogDevice = SettingsUiPlanDeviceSnapshot;
 
-export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
+/**
+ * Whether the UI must be told: anything it renders, except a countdown's own
+ * decay. The UI interpolates the text from the countdown's end, and a countdown
+ * with no recorded start re-derives its length from what remains on each build.
+ */
+export function buildPresentationSignatureForDevice(device: OverviewLogDevice): string {
   const reason = device.status.reason;
   return JSON.stringify({ ...device.status,
     reason: reason?.countdown ? { ...reason, text: null, countdown: {
       endsAtMs: reason.countdown.endsAtMs, prefix: reason.countdown.prefix, suffix: reason.countdown.suffix,
+    } } : reason });
+}
+
+/**
+ * What makes a log entry: a change of state, reason, rail or power. The fact line
+ * carries measured readings (temperature, battery level) whose drift is not a
+ * state change, and a countdown's end and length are re-anchored on rebuilds that
+ * have no recorded start, so neither may move the signature on its own.
+ */
+export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
+  const { factText: _measuredReadings, ...status } = device.status;
+  const reason = status.reason;
+  return JSON.stringify({ ...status,
+    reason: reason?.countdown ? { ...reason, text: null, countdown: {
+      prefix: reason.countdown.prefix, suffix: reason.countdown.suffix,
     } } : reason });
 }
 

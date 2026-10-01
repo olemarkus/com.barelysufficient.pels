@@ -11,9 +11,11 @@ import type { LogDedupeEntry } from '../lib/logging/logDedupe';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { FlowCardDeps } from './registerFlowCards';
 import { resolveEvTargetPowerExactStep } from '../lib/device/targetPowerReachability';
+import {
+  getSteppedLoadPowerCeilingMarginW,
+  isWithinSteppedLoadPowerCeiling,
+} from '../lib/device/steppedLoadPowerCeiling';
 
-const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
-const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
 const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 // Per-device dedupe for the clamp-deviation warn: a stuck clamp emits once + a
 // slow heartbeat instead of one line per inbound report. Bounded by device
@@ -119,10 +121,7 @@ function resolveSteppedLoadStepFromPower(
   if (soleExactMatch) return soleExactMatch.step;
 
   const ceilingMatches = roundedSteps
-    .filter(({ roundedPowerW }) => {
-      const deficitW = roundedPowerW - powerW;
-      return deficitW >= 0 && deficitW <= getSteppedLoadPowerCeilingMarginW(roundedPowerW);
-    })
+    .filter(({ roundedPowerW }) => isWithinSteppedLoadPowerCeiling(roundedPowerW, powerW))
     .sort((left, right) => (
       left.roundedPowerW - right.roundedPowerW || left.step.id.localeCompare(right.step.id)
     ));
@@ -134,13 +133,6 @@ function resolveSteppedLoadStepFromPower(
   if (nearestMatches.length > 1) return 'ambiguous';
 
   return nearestCeiling.step;
-}
-
-function getSteppedLoadPowerCeilingMarginW(stepPowerW: number): number {
-  return Math.min(
-    STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W,
-    Math.max(0, stepPowerW * STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO),
-  );
 }
 
 function buildNoMatchingSteppedLoadPowerMessage(

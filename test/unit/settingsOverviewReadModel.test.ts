@@ -7,6 +7,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
+import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 
 const buildSettingsOverviewDeviceReadModel = (
@@ -225,6 +226,26 @@ describe('settingsOverviewReadModel', () => {
       reason: { text: 'Turning on to Low' } });
   });
 
+  it('does not present a pending EV probe rung outside the confirmed ladder as turning off', () => {
+    // A probe asks for the rung above the confirmed ladder; the card is given the
+    // confirmed ladder, so the probe target is not one of its steps. Show where
+    // the charger is, not a turn-off it never received.
+    const device = steppedPlanDevice({ deviceRole: 'ev_charger', currentState: 'on', plannedState: 'keep',
+      reportedStepId: 'medium', selectedStepId: 'max', desiredStepId: 'max', stepCommandPending: true });
+    const confirmed = { steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max') };
+    const wire = buildDevice(device, {
+      ...absentTemperature, dryRun: false, nowMs: 0,
+      getDeviceExecutionState: () => executionStateFixture(device),
+    }, 0, confirmed);
+
+    expect(wire.status.kind).toBe('active');
+    expect(wire.status.reason).toBeNull();
+    expect(wire.status.rail).toEqual({
+      labels: confirmed.steps.map((step) => formatStepDisplayLabel(step.id)),
+      activeIndex: confirmed.steps.findIndex((step) => step.id === 'medium'),
+    });
+  });
+
   it('shows binary restore movement even when a stepped device already reports its desired step', () => {
     const device = steppedPlanDevice({ currentState: 'off', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
@@ -311,6 +332,21 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.factText).toBe('Charging · 64 % · level Low');
     expect(getObservedStateOfCharge).toHaveBeenCalledTimes(1);
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.factText).toBe('Level Low');
+  });
+
+  it.each([
+    ['a charger with power-limit control off', { controllable: false }, null],
+    ['a charger PELS holds at a lower level', { plannedState: 'shed' as const,
+      reason: { code: PLAN_REASON_CODES.capacity } }, 'Waiting to resume'],
+  ])('keeps the charger exception beside its level for %s', (_case, overrides, reasonText) => {
+    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', ...overrides });
+    const wire = buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
+    });
+    expect(wire.status.factText).toBe('Unplugged · Level Low');
+    expect(wire.status.reason?.text ?? null).toBe(reasonText);
   });
 
   it('resolves card kind in the backend', () => {

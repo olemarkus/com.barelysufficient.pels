@@ -564,6 +564,6 @@
     "en": "Smart tasks can now deliver a chosen amount of energy to on/off devices, such as relay-controlled water heaters. Use the new 'Add energy task' Flow card to request an amount in kWh by a ready-by time. The device needs a live power reading, and progress appears in Smart tasks.\n\nPELS now supports Hyundai vehicles and allows more time for delayed car updates when matching a car to its charger. Matching can take 20–40 minutes while PELS checks for competing connections."
   },
   "3.9.1": {
-    "en": "Device status and activity logs now follow reported device changes between whole-home power readings. The Overview keeps device explanations when reopened or while holding a lower power level. Supported cars now appear correctly in the charger's car picker."
+    "en": "Device cards and the activity log now update as soon as a device reports a change, instead of waiting for the next whole-home power reading. A limited device now shows whether it is off or running at a lower level, for example Limited · Off. Stepped devices with built-in level control, such as the Høiax Connected 300, no longer keep re-sending a level the device already reports. Hyundai and Kia cars now appear in the charger's car picker."
   }
 }

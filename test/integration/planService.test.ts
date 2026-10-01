@@ -211,6 +211,52 @@ describe('PlanService', () => {
     expect(realtime).toHaveBeenCalledTimes(1);
   });
 
+  it('pushes a fact-only change to the open card without writing an activity-log entry', async () => {
+    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const engine = { ...createMockPlanEngine(),
+      getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
+    let plug: 'plugged_in_charging' | 'plugged_out' = 'plugged_in_charging';
+    const recorder = new DeviceOverviewLogRecorder();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
+      homey: stubDepsHomey({ realtime }),
+      getObservedEvChargingState: () => ({ kind: 'observed', value: plug } as const) });
+    service['rebuildHost'].publishPlan(plan, 456);
+    await service.syncLivePlanState('realtime_capability');
+    realtime.mockClear();
+    const loggedBefore = recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0;
+
+    plug = 'plugged_out';
+    expect(await service.syncLivePlanState('realtime_capability')).toBe(true);
+
+    expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.factText).toBe('Unplugged · Level Low');
+    expect(realtime).toHaveBeenCalledTimes(1);
+    expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
+  });
+
+  it('leaves the idle classifier on the plan cadence when observations refresh status', async () => {
+    // The capped-idle window keeps a bounded sample history sized for the plan
+    // cadence. Observations arrive far more often; sampling on each would push
+    // the first half of the window out and make capped idle unreachable.
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    let live = executionStateFixture(device);
+    const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
+    const { service } = createPlanService({ planEngine: engine });
+    service['rebuildHost'].publishPlan(plan, 456);
+    const classifyAll = vi.spyOn(service['idleClassifier'], 'classifyAll');
+
+    for (const drawKw of [1.1, 0, 0.9, 0, 1.3]) {
+      live = { ...live, currentDrawKw: drawKw };
+      await service.syncLivePlanState('realtime_capability');
+    }
+
+    expect(classifyAll).not.toHaveBeenCalled();
+  });
+
   it('keeps detail-only plan changes in memory and emits realtime updates', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
@@ -755,7 +801,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(service['lastOverviewSignatureByDeviceId'].size).toBe(1);
+    expect(service['overviewTransitions']['presentationById'].size).toBe(1);
   });
 
   it('logs overview changes during live sync when a visible field changes', async () => {

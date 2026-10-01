@@ -318,7 +318,7 @@ describe('held-card reason line states what the device needs', () => {
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanGenericCard, { dev, dryRun: false, nowMs: 1_000 }),
+        h(PlanGenericCard, { dev, dryRun: false, nowMs: 1_000, evStateLine: null }),
         mount,
       );
     });

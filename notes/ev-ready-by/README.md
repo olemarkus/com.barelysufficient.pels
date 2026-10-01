@@ -346,10 +346,13 @@ charging have shipped.
 
 #### Device-card visible state — shipped
 
-`PlanDeviceCards.tsx` now renders an EV plan-state line via
-`resolveEvCardStateLine` (`packages/shared-domain/src/deadlineLabels.ts`): a
-next-planned-start line, an active-charging finish line, and a plug-out paused
-line. Start/finish come from the active-plan recorder's `latest.hours`; the
+The on/off charger card (`PlanGenericCard` in `PlanDeviceCards.tsx`) renders an
+EV plan-state line via `resolveEvCardStateLine`
+(`packages/shared-domain/src/deadlineLabels.ts`): a next-planned-start line, an
+active-charging finish line, and a plug-out paused line. It fills the reason slot
+only when the backend-resolved `DeviceStatus` carries no reason, from the smart
+task the UI already holds for the Smart task chip. Stepped chargers state their
+plug or car exception in the status fact line instead. Start/finish come from the active-plan recorder's `latest.hours`; the
 paused state comes from `isPlugOutPaused` (the `objective_invalid_session`
 reason emitted by `resolveEvObjectiveProgress` in
 `lib/objectives/deferredObjectives/diagnosticsBridge.ts`, which fires when the

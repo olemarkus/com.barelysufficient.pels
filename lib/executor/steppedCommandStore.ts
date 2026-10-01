@@ -97,7 +97,10 @@ export class SteppedCommandStore {
     }
     const profile = configuration.steppedLoadProfile;
     const desired = this.getDesired(configuration.id);
-    if (desired && desired.targetPowerProbeConfirmedMaxPowerW === undefined
+    // An EV target-power command carries its planning watts and may name the rung
+    // above the confirmed ladder. `TargetPowerCommandLifecycle` retires it against
+    // the planner's ladder instead, so an unacknowledged probe keeps its pacing.
+    if (desired && desired.planningPowerW === undefined
       && (!getSteppedLoadStep(profile, desired.stepId)
         || (desired.previousStepId !== undefined && !getSteppedLoadStep(profile, desired.previousStepId)))) {
       this.clearCommandSession(configuration.id);

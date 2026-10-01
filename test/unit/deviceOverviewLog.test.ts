@@ -3,6 +3,7 @@ import {
   DEVICE_OVERVIEW_LOG_MAX_DEVICES,
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
   buildOverviewEventForDevice,
+  buildOverviewSignatureForDevice,
   type OverviewLogDevice,
 } from '../../lib/plan/deviceOverviewLog';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
@@ -97,6 +98,38 @@ describe('DeviceOverviewLogRecorder', () => {
     const first = recorder.getUiPayload().entriesByDeviceId['dev-1'];
     first.push(entry(200));
     expect(recorder.getUiPayload().entriesByDeviceId['dev-1']).toHaveLength(1);
+  });
+});
+
+describe('buildOverviewSignatureForDevice', () => {
+  const withStatus = (
+    device: OverviewLogDevice, status: Partial<OverviewLogDevice['status']>,
+  ): OverviewLogDevice => ({ ...device, status: { ...device.status, ...status } });
+
+  it('ignores measured readings in the fact line so a drifting temperature is not a state change', () => {
+    const base = withStatus(overviewLogDevice(), { factText: '47.4 °C · target 22 °C' });
+    const drifted = withStatus(base, { factText: '47.3 °C · target 22 °C' });
+    expect(buildOverviewSignatureForDevice(drifted)).toBe(buildOverviewSignatureForDevice(base));
+  });
+
+  it('still records a change of state, reason or power', () => {
+    const base = overviewLogDevice();
+    const signature = buildOverviewSignatureForDevice(base);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { kind: 'held', label: 'Limited' }))).not.toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { reason: { text: 'Waiting to resume' } })))
+      .not.toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.4 kW' }))).not.toBe(signature);
+  });
+
+  it('treats a countdown re-anchored on a later rebuild as the same countdown', () => {
+    const countdown = { endsAtMs: 60_000, totalSec: 60, prefix: 'Waiting after limiting a device (', suffix: ')' };
+    const base = withStatus(overviewLogDevice(), { reason: { text: 'Waiting after limiting a device (60s)', countdown } });
+    const reanchored = withStatus(base, { reason: { text: 'Waiting after limiting a device (59s)',
+      countdown: { ...countdown, endsAtMs: 60_400 } } });
+    expect(buildOverviewSignatureForDevice(reanchored)).toBe(buildOverviewSignatureForDevice(base));
+    const otherCause = withStatus(base, { reason: { text: 'Waiting for power to settle (60s)',
+      countdown: { ...countdown, prefix: 'Waiting for power to settle (' } } });
+    expect(buildOverviewSignatureForDevice(otherCause)).not.toBe(buildOverviewSignatureForDevice(base));
   });
 });
 

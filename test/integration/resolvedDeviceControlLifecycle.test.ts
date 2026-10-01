@@ -495,6 +495,34 @@ describe('resolved device control composition and command lifecycle', () => {
     // about this charger from a socket it abandoned.
     helpers.reconcileTargetPowerReachability([snapshot], 1_100);
     expect(config.reachability).toMatchObject({ probeFailureCount: 0 });
+    // The rung sits above the confirmed ladder by design, so reconciling the
+    // configuration must not retire it as a removed rung and drop its pacing.
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      stepId: '28a', pending: true, lastIssuedAtMs: 1_000,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadStepCommandIssuedByDeviceId.has('dev-1')).toBe(true);
+  });
+
+  it('retires an unacknowledged EV command whose rung a phase change removed', () => {
+    let config: TargetPowerConfigWithReachability = {
+      enabled: true, preset: 'ev_charger_1_phase', max: 7_360,
+    };
+    const snapshot = baseSnapshot({ binaryControl: { on: true }, targetPowerConfig: config,
+      steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 1_380) });
+    const stores = steppedStoresForTest();
+    const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
+      () => true, () => {}, () => null, {});
+    helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
+      previousStepId: '6a', issuedAtMs: 1_000, unacknowledged: true });
+    helpers.reconcileTargetPowerReachability([snapshot], 1_100);
+    expect(stores.store.getDesired(snapshot.id)).toMatchObject({ stepId: '8a', planningPowerW: 1_840 });
+
+    config = { enabled: true, preset: 'ev_charger_3_phase', max: 22_080 };
+    snapshot.targetPowerConfig = config;
+    snapshot.steppedLoadProfile = resolveEvTargetPowerConfirmedProfile(config, 4_140);
+    helpers.reconcileTargetPowerReachability([snapshot], 1_500);
+
+    expect(stores.store.getDesired(snapshot.id)).toBeUndefined();
   });
 
   it('keeps a probe settlement anchored to its first issue across command retries', () => {
@@ -590,6 +618,63 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(config.reachability?.maxReachedPowerW).toBe(5_750);
     dateNow.mockRestore();
+  });
+
+  it.each([
+    ['inside the ladder', '16a', 3_600],
+    ['just below the lowest rung', '6a', 1_320],
+  ])('admits a Flow power report %s as the rung the card matched', (_case, stepId, reportedW) => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    const config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 5_520 }),
+    };
+    const snapshot = baseSnapshot({
+      name: 'Flow EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, config.reachability?.maxReachedPowerW ?? config.max),
+      targetPowerConfig: baseConfig,
+    });
+    const stores = steppedStoresForTest();
+    const helpers = createDeviceControlHelpersForTest(
+      () => [snapshot], stores, () => config, () => true, () => {}, () => null,
+      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+    );
+    helpers.markSteppedLoadDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: stepId, issuedAtMs: 1_000 });
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_000);
+
+    // Cars draw a little under nominal; the card resolves such a reading to the
+    // rung just above it, and the owner must accept the rung it was handed.
+    expect(helpers.reportSteppedLoadActualStep('dev-1', stepId, reportedW)).toBe('changed');
+
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({ stepId, planningPowerW: reportedW });
+    expect(stores.store.getDesired('dev-1')).toMatchObject({ stepId, pending: false, status: 'success' });
+    // The rung is reported as-is: the ladder gains no off-grid exact step.
+    expect(helpers.getSteppedLoadProfile('dev-1')?.steps.map((step) => step.id)).not.toContain(
+      `${String(Math.round((reportedW / 230) * 1000) / 1000)}a`,
+    );
+    dateNow.mockRestore();
+  });
+
+  it('still rejects a Flow power report too far below the rung it names', () => {
+    const config: TargetPowerSteppedLoadConfig = { enabled: true, preset: 'ev_charger_1_phase', max: 7_360 };
+    const snapshot = baseSnapshot({
+      binaryControl: { on: true },
+      steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5_520),
+      targetPowerConfig: config,
+    });
+    const stores = steppedStoresForTest();
+    const helpers = createDeviceControlHelpersForTest(
+      () => [snapshot], stores, () => config, () => true, () => {}, () => null, { debugStructured: vi.fn() },
+    );
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', '16a', 3_000)).toBe('invalid');
+    expect(stores.reportedStore.get('dev-1')).toBeUndefined();
   });
 
   it('preserves the latest plan target when flow feedback reports stepped-load drift', () => {

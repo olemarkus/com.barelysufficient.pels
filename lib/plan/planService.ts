@@ -33,7 +33,7 @@ import type {
   HeadroomForDeviceDecision,
 } from './planHeadroomDevice';
 import { PlanChangeTracker } from './planChangeTracker';
-import { emitDeviceOverviewTransitions } from './planOverviewEmit';
+import { DeviceOverviewTransitions } from './planOverviewEmit';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanServiceDeps } from './planServiceDeps';
@@ -111,7 +111,7 @@ const serializePlanForUi = (
 
 export class PlanService {
   private latestPublishedPlan: PublishedPlan | null = null;
-  private lastOverviewSignatureByDeviceId = new Map<string, string>();
+  private readonly overviewTransitions = new DeviceOverviewTransitions();
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
   private planStatusWriter: PlanStatusWriter;
@@ -469,8 +469,11 @@ export class PlanService {
     this.refreshDeviceStatus(plan);
   }
 
-  private tickIdleClassifier(plan: DevicePlan, refresh = false): void {
-    if (!refresh && this.lastTickedPlanRef === plan) return;
+  // Once per published plan. The capped-idle window's bounded sample history is
+  // sized for the plan cadence; observation-driven status refreshes reuse the
+  // last classification instead of sampling again.
+  private tickIdleClassifier(plan: DevicePlan): void {
+    if (this.lastTickedPlanRef === plan) return;
     this.lastTickedPlanRef = plan;
     // The temperature cluster rides as ONE optional object on the classifier
     // input (mirroring the observer's atomic facet): stamped together for a
@@ -524,7 +527,6 @@ export class PlanService {
   /** Refresh display from live owners while leaving the decision untouched. */
   private refreshDeviceStatus(plan = this.getLatestPlanSnapshot()): boolean {
     if (!plan) return false;
-    this.tickIdleClassifier(plan, true);
     const snapshot = serializePlanForUi(plan, this.deps, this.idleClassifier);
     if (!snapshot || !this.emitOverviewTransitions(snapshot)) return false;
     this.emitPlanUpdatedRealtime(snapshot);
@@ -533,7 +535,7 @@ export class PlanService {
 
   // Returns whether presentation changed, independently of logging being enabled.
   private emitOverviewTransitions(snapshot: SettingsUiPlanSnapshot): boolean {
-    return emitDeviceOverviewTransitions(snapshot, this.lastOverviewSignatureByDeviceId, this.deps);
+    return this.overviewTransitions.capture(snapshot, this.deps);
   }
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {

@@ -245,8 +245,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
     }
 
     const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
-    if (reportedStepPowerW !== undefined
-        && !acceptExactTargetPowerObservation(snapshot, reportedStepPowerW)) return true;
+    if (reportedStepPowerW !== undefined) extendLadderWithExactTargetPower(snapshot, reportedStepPowerW);
 
     if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
         recordCapabilityObservation({
@@ -335,7 +334,7 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
     const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
     const targetPowerW = Math.round(value * 230 * phaseCount);
-    if (!acceptExactTargetPowerObservation(snapshot, targetPowerW)) return true;
+    extendLadderWithExactTargetPower(snapshot, targetPowerW);
     const nextReportedStepId = resolveTargetPowerReportedStepId({
         profile: snapshot.steppedLoadProfile ?? profile,
         capabilityObj: {
@@ -363,16 +362,20 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
     return true;
 }
 
-/** Admit the native source before updating the confirmed EV ladder. */
+/**
+ * An exact EV reading inside the preset range extends the confirmed ladder with
+ * its step. A reading outside it (a vendor-app change, a reboot back to 32 A) is
+ * still the device's state: the caller applies its nearest rung, but it never
+ * widens the ladder. Reachability ignores watts outside the preset on its own.
+ */
 /* eslint-disable functional/immutable-data -- This source owns the transport snapshot. */
-function acceptExactTargetPowerObservation(snapshot: TransportDeviceSnapshot, planningPowerW: number): boolean {
-    if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return true;
+function extendLadderWithExactTargetPower(snapshot: TransportDeviceSnapshot, planningPowerW: number): void {
+    if (!isEvTargetPowerConfig(snapshot.targetPowerConfig) || !snapshot.steppedLoadProfile) return;
     const exactStep = resolveEvTargetPowerExactStep(snapshot.targetPowerConfig, planningPowerW);
-    if (!exactStep || !snapshot.steppedLoadProfile) return false;
+    if (!exactStep) return;
     const admittedSnapshot = snapshot;
     admittedSnapshot.steppedLoadProfile = resolveTargetPowerObservationProfile(
         snapshot.targetPowerConfig, snapshot.steppedLoadProfile, exactStep,
     );
-    return true;
 }
 /* eslint-enable functional/immutable-data */

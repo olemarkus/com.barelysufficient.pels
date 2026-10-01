@@ -78,8 +78,7 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
       ?? (held ? resolveHeldCardReasonLine({
         reason: device.reason, starvation: device.starvation,
         verb: resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
-      }) : null)
-      ?? resolveSteppedEvExceptionLabel(device);
+      }) : null);
   }
   if (device.temperature) return resolveTemperatureReasonLine(device, dryRun);
   return resolveBinaryReason(device, kind, held, dryRun);
@@ -153,6 +152,17 @@ function resolveRail(device: DeviceStatusInput): DeviceStatus['rail'] {
   return { labels: railLabels, activeIndex };
 }
 
+// A charger's plug or car exception ("Unplugged", "Paused by the car") is a fact
+// about the device, shown beside its level whatever PELS decided or holds.
+function resolveFactText(device: DeviceStatusInput): string | null {
+  if (!device.steppedLoad) return resolveTemperatureLine(device);
+  const temperature = resolveSteppedTemperatureText(device);
+  if (temperature !== null) return temperature;
+  const parts = [resolveSteppedEvExceptionLabel(device), resolveSteppedLevelFact(device)]
+    .filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 function resolveCardKind(device: DeviceStatusInput): DeviceStatus['cardKind'] {
   if (device.steppedLoad) return 'stepped';
   return device.temperature ? 'temperature' : 'binary';
@@ -175,12 +185,9 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
   const draw = device.currentDrawKw;
-  const factText = device.steppedLoad
-    ? resolveSteppedTemperatureText(device) ?? resolveSteppedLevelFact(device)
-    : resolveTemperatureLine(device);
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
-    ...resolvePower(device, limited), factText,
+    ...resolvePower(device, limited), factText: resolveFactText(device),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

@@ -32,6 +32,7 @@ import {
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
+import { resolveEvCardStateLines } from './evCardStateLine.ts';
 import type { SetupPathRead } from './setupPathFacts.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
@@ -195,6 +196,8 @@ const doRender = () => {
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
     smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
+    // Same Main-only rule as the smart-task row above.
+    evStateLines: overviewScope.kind === 'main' ? resolveEvCardStateLines(now) : new Map(),
     setupPath: setup,
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
