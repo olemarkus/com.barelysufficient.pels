@@ -29,21 +29,25 @@ export function buildPresentationSignatureForDevice(device: OverviewLogDevice): 
 }
 
 // A figure moving inside the same sentence is not a state change: a shortfall
-// tracks the pace every cycle ("0.8" → "0.9 kW more needed"), and an idle
-// detail quotes the drifting temperature. The UI still receives the new text.
+// tracks the pace every cycle ("0.8" → "0.9 kW more needed"), an idle detail
+// quotes the drifting temperature, and a running device's draw wobbles across a
+// 0.1 kW display boundary on most reports. The UI still receives the new text.
 const toSentenceShape = (text: string): string => text.replace(/\d+(?:[.,]\d+)?/gu, '#');
+const toNullableSentenceShape = (text: string | null): string | null => (text === null ? null : toSentenceShape(text));
 
 /**
- * What makes a log entry: a change of state, reason, rail, power or a categorical
- * fact (a charger's plug turning `Unplugged`). The fact line's measured readings
- * (temperature, battery level) drift without being a state change, the reason's
- * figures move with the pace, and a countdown's end and length are re-anchored on
- * rebuilds that have no recorded start, so none of them may move the signature on
- * their own.
+ * What makes a log entry: a change of state, reason, rail, kind of power line
+ * (live, reported, expected or none) or a categorical fact (a charger's plug
+ * turning `Unplugged`). The live power reading and the fact line's measured
+ * readings (temperature, battery level) drift without being a state change, the
+ * reason's figures move with the pace, and a countdown's end and length are
+ * re-anchored on rebuilds that have no recorded start, so none of them may move
+ * the signature on their own.
  */
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
   const status = { ...device.status,
-    factText: device.status.factText === null ? null : toSentenceShape(device.status.factText) };
+    powerText: toNullableSentenceShape(device.status.powerText),
+    factText: toNullableSentenceShape(device.status.factText) };
   const reason = status.reason;
   if (!reason) return JSON.stringify(status);
   const { countdown, detail } = reason;

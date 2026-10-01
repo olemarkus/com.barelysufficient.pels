@@ -297,6 +297,33 @@ describe('PlanService', () => {
     expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
   });
 
+  it('pushes live power to the open card without logging each reading', async () => {
+    // A running device's draw wobbles across a 0.1 kW display boundary on most
+    // reports; logging each one evicts the control events the log exists for.
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.44,
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    let live = executionStateFixture(device);
+    const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
+    const recorder = new DeviceOverviewLogRecorder();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
+      homey: stubDepsHomey({ realtime }) });
+    service['rebuildHost'].publishPlan(plan, 456);
+    await service.syncLivePlanState('realtime_capability');
+    realtime.mockClear();
+    const loggedBefore = recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0;
+
+    for (const drawKw of [1.46, 1.44, 1.46]) {
+      live = { ...live, currentDrawKw: drawKw };
+      expect(await service.syncLivePlanState('realtime_capability')).toBe(true);
+    }
+
+    expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.powerText).toBe('1.5 kW');
+    expect(realtime).toHaveBeenCalledTimes(3);
+    expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
+  });
+
   it('classifies idleness from the plan device, not from executor convergence state', () => {
     // Stall evidence feeds smart tasks, a decision input: the classifier reads
     // the observation the plan was built from, never the executor's view.

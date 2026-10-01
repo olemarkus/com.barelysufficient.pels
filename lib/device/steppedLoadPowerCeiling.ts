@@ -1,3 +1,5 @@
+import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
+
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
 
@@ -18,4 +20,19 @@ export function isWithinSteppedLoadPowerCeiling(stepPowerW: number, reportedPowe
   const roundedStepPowerW = Math.round(stepPowerW);
   const deficitW = roundedStepPowerW - reportedPowerW;
   return deficitW >= 0 && deficitW <= getSteppedLoadPowerCeilingMarginW(roundedStepPowerW);
+}
+
+/**
+ * The ladder rung a report names when its watts sit just under that rung. Such
+ * a report is the rung, with the raw watts as its evidence, and adds no
+ * off-grid step. Admission and every later refresh that carries the report
+ * forward must recognize the same pairing.
+ */
+export function resolveSteppedLoadCeilingStep(
+  profile: SteppedLoadProfile,
+  stepId: string,
+  reportedPowerW: number,
+): SteppedLoadStep | undefined {
+  const step = profile.steps.find((candidate) => candidate.id === stepId);
+  return step && isWithinSteppedLoadPowerCeiling(step.planningPowerW, reportedPowerW) ? step : undefined;
 }
