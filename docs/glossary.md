@@ -92,8 +92,9 @@ of priorities and target temperatures. Switch modes from Homey Flows. See
 ### Device states (Limited, Resuming, Idle, Off, Manual)
 The state words on the Overview that say what each device is doing right now.
 **Limited** = PELS is lowering, pausing, or turning it off to stay under the hard
-cap or daily budget pace; **Resuming** = bringing
-it back as power frees up; **Idle** = on or available with nothing to do;
+cap or daily budget pace, or keeping it waiting for power; **Resuming** = PELS has
+decided to bring it back and is turning it on or raising its level; **Idle** = on
+or available with nothing to do;
 **Off** = Homey reports the device off and PELS is not limiting it;
 **Manual** = managed
 but PELS has no power-limit control of it right now. Full list:

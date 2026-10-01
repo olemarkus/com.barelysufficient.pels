@@ -9,7 +9,11 @@ export const resolveDisplayPlanDeviceSnapshot = <Device extends StatusDevice>(
   device: Device, nowMs: number,
 ): Device => {
   const reason = device.status.reason;
-  if (!reason?.countdown) return device;
+  // A countdown beside the text animates only the card's ring; the text stands.
+  if (reason?.countdown?.kind !== 'in_text') return device;
+  // An expired countdown's reason is stale until the next status arrives; show
+  // none rather than a line stuck at 0s.
+  if (reason.countdown.endsAtMs <= nowMs) return { ...device, status: { ...device.status, reason: null } };
   return { ...device, status: { ...device.status,
     reason: { ...reason, text: formatDeviceStatusReason(device.status, nowMs) ?? '' } } };
 };

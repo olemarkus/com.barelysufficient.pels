@@ -68,8 +68,9 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
     mounts.row.hidden = true;
     return;
   }
-  // Interpolate the same server-owned countdown as the Overview. Expiry changes
-  // only its text; the next backend status supplies any state transition.
+  // Interpolate the same server-owned countdown as the Overview. An expired
+  // in-text countdown hides its line; the state word stays, and the next
+  // backend status supplies any transition.
   const nowMs = Date.now();
   dev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   renderHeroRows({ mounts, dev, deviceId, nowMs });

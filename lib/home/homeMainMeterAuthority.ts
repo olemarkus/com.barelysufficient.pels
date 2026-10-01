@@ -265,19 +265,6 @@ export class MainMeterAuthority {
     return this.resolve(ctx, true);
   }
 
-  /** Current write posture for presentation, without latches, logging, or recovery. */
-  readActuationFence(ctx: MainMeterAuthorityContext): boolean {
-    const source = this.deps.getConfiguredPowerSource();
-    if (source.state === 'suspect') return true;
-    if (source.value !== 'flow') {
-      const selection = this.deps.getMainMeterSelection();
-      if (selection.state !== 'resolved') return true;
-      if (ctx.runtimeActive && findMainMeterCollision(selection.meterDeviceId, ctx.subHomes) !== null) return true;
-    }
-    return ctx.runtimeActive && ctx.subHomes.length > 0
-      && (this.sampledFenceEpisode || this.sampledFence(ctx) !== null);
-  }
-
   private resolve(
     ctx: MainMeterAuthorityContext,
     includeSampled: boolean,

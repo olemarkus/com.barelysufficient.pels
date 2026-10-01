@@ -4,6 +4,7 @@ import {
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
   buildOverviewEventForDevice,
   buildOverviewSignatureForDevice,
+  type OverviewDecisionFacts,
   type OverviewLogDevice,
 } from '../../lib/plan/deviceOverviewLog';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
@@ -36,6 +37,12 @@ const entry = (atMs: number, overrides: Partial<SettingsUiDeviceLogEntry> = {}):
   stateTone: 'held',
   ...overrides,
 });
+
+// The debug event's decision facts; these tests assert the presented fields.
+const decision: OverviewDecisionFacts = {
+  reasonCode: 'keep', plannedState: 'keep', desiredStepId: null, observedStepId: null,
+  binaryProgress: 'settled', stepProgress: 'undriven', targetProgress: 'undriven',
+};
 
 describe('DeviceOverviewLogRecorder', () => {
   it('stores entries most-recent-first per device', () => {
@@ -141,7 +148,8 @@ describe('buildOverviewSignatureForDevice', () => {
   });
 
   it('treats a countdown re-anchored on a later rebuild as the same countdown', () => {
-    const countdown = { endsAtMs: 60_000, totalSec: 60, prefix: 'Waiting after limiting a device (', suffix: ')' };
+    const countdown = { kind: 'in_text' as const, endsAtMs: 60_000, totalSec: 60,
+      prefix: 'Waiting after limiting a device (', suffix: ')' };
     const base = withStatus(overviewLogDevice(), { reason: { text: 'Waiting after limiting a device (60s)', countdown } });
     const reanchored = withStatus(base, { reason: { text: 'Waiting after limiting a device (59s)',
       countdown: { ...countdown, endsAtMs: 60_400 } } });
@@ -180,7 +188,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'daily_budget', shortfallKw: 0.9 },
-    }));
+    }), decision);
     expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
   });
 
@@ -193,7 +201,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', plannedState: 'shed', currentState: 'off',
       reason: { code: 'capacity', reserveHolderName: 'Water heater' },
-    }));
+    }), decision);
     expect(event['cardReasonText']).toBe('Waiting so Water heater can start');
   });
 
@@ -216,7 +224,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
       reportedStepId: 'low',
       selectedStepId: 'medium',
       reason,
-    })));
+    })), decision);
 
     expect(event['statusMsg']).toBe(copy);
     expect(event['cardReasonText']).toBe(copy);
@@ -234,7 +242,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   ])('logs null for %s, which renders no reason line', (_label, state) => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', ...state, reason: { code: 'keep', detail: null },
-    }));
+    }), decision);
     expect(event['cardReasonText']).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import {
   buildOverviewSignatureForDevice,
   buildPresentationSignatureForDevice,
   type DeviceOverviewLogRecorder,
+  type OverviewDecisionFacts,
 } from './deviceOverviewLog';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDevice, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
@@ -26,7 +27,11 @@ export class DeviceOverviewTransitions {
   private readonly loggedById = new Map<string, string>();
 
   /** Records log transitions; returns whether any presentation changed for the UI. */
-  capture(snapshot: SettingsUiPlanSnapshot, deps: OverviewEmitDeps): boolean {
+  capture(
+    snapshot: SettingsUiPlanSnapshot,
+    deps: OverviewEmitDeps,
+    describeDecision: (deviceId: string) => OverviewDecisionFacts,
+  ): boolean {
     const debugEnabled = deps.isOverviewDebugEnabled?.() === true && deps.overviewDebugStructured !== undefined;
     const events: Record<string, unknown>[] = [];
     const retained = new Set<string>();
@@ -38,7 +43,7 @@ export class DeviceOverviewTransitions {
       presentationChanged = true;
       if (change !== 'state_changed') continue;
       deps.deviceOverviewLogRecorder?.record(device.id, buildDeviceLogEntry(device));
-      if (debugEnabled) events.push(buildOverviewEventForDevice(device));
+      if (debugEnabled) events.push(buildOverviewEventForDevice(device, describeDecision(device.id)));
     }
     this.forgetDevicesNotIn(retained);
     if (events.length === 1 && events[0]) deps.overviewDebugStructured?.(events[0]);

@@ -116,7 +116,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - After resuming a device, wait at least 60 seconds for power measurements to stabilize
 - If a resume is followed by overshoot or new limiting, this cooldown delays the next restart by increasing amounts up to 5 minutes
-- Binary devices may resume in a bounded batch (up to three) when fresh measurements show ample available power; stepped increases remain one at a time
+- Previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; a running stepped device's step-ups remain one at a time
 - Every held device waits out the cooldown; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Prevents an unbounded set of devices turning on simultaneously before measurements settle
 
@@ -207,7 +207,7 @@ For devices configured with the built-in **stepped load** control model, resume 
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation. An Easee charger under built-in device control is the exception: PELS pauses it by setting the current to 0 A and resumes it at 6 A, so the charging session stays open (see [Easee EV Charger](/easee-ev-charger)).
 
 PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
-- Resumes stepped loads one at a time; binary loads may use the bounded batch above when the available-power margin is large
+- Steps running stepped loads up one at a time; previously limited devices may use the bounded batch above when the available-power margin is large
 - Waits for the next measurement before considering another resume
 - Adds a hysteresis buffer so a restart never relies on a single estimate alone
 

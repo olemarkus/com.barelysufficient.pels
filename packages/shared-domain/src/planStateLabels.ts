@@ -52,7 +52,7 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 // NOT a device-card string since 2026-08-02 — the binding ceiling is a
 // house-level fact the hero states once (`notes/ui-terminology.md` § "Device
 // cards say what a device needs"). This now serves `formatDeviceReasonUserFacing`
-// only: the device-detail page and the runtime logs.
+// only, for the runtime logs; device detail shows the card's own reason.
 export const PLAN_STATE_CAPACITY_STATUS = 'Limited by the hard cap';
 
 // Held card with no known constraint to name. It must NOT claim the hard cap:

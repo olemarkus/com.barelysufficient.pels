@@ -167,6 +167,19 @@ const isHeadroomCheckSettlingReason = (code: string): boolean => (
 
 const formatSec = (sec: number): string => `${Math.round(Math.max(0, sec))}s`;
 
+// Timing and startup holds read the same on every card, from the shared
+// formatter the binary and temperature cards, device detail and logs use. Only
+// the restore countdown is verb-aware here: a running stepped device waits to
+// increase, not to resume.
+const SHARED_SETTLING_REASON_CODES: ReadonlySet<string> = new Set([
+  PLAN_REASON_CODES.cooldownShedding,
+  PLAN_REASON_CODES.meterSettling,
+  PLAN_REASON_CODES.activationBackoff,
+  PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.neutralStartupHold,
+  PLAN_REASON_CODES.startupStabilization,
+]);
+
 const resolveSettlingStatusLine = (
   reason: DeviceReason,
   verb: 'resume' | 'increase',
@@ -174,25 +187,7 @@ const resolveSettlingStatusLine = (
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     return `Waiting to ${verb} — ${formatSec(reason.remainingSec)}`;
   }
-  if (reason.code === PLAN_REASON_CODES.cooldownShedding) {
-    return `Limited — will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
-  }
-  if (reason.code === PLAN_REASON_CODES.meterSettling) {
-    return `Waiting for power meter to stabilise — ${formatSec(reason.remainingSec)}`;
-  }
-  if (reason.code === PLAN_REASON_CODES.activationBackoff) {
-    return `Briefly holding — ${formatSec(reason.remainingSec)}`;
-  }
-  if (reason.code === PLAN_REASON_CODES.restorePending) {
-    return `Queued to resume — ${formatSec(reason.remainingSec)}`;
-  }
-  if (reason.code === PLAN_REASON_CODES.neutralStartupHold) {
-    return 'Holding at startup';
-  }
-  if (reason.code === PLAN_REASON_CODES.startupStabilization) {
-    return 'Stabilising after startup';
-  }
-  return null;
+  return SHARED_SETTLING_REASON_CODES.has(reason.code) ? formatDeviceReasonUserFacing(reason) : null;
 };
 
 const resolveTransitStatusLine = (device: SteppedDevice, profile: SteppedLoadProfile): string | null => {
@@ -368,7 +363,7 @@ export const resolveSteppedLevelFact = (device: {
   evChargingState?: EvChargingState;
   deviceRole?: 'ev_charger';
   stateOfCharge?: ObservedStateOfCharge;
-}): string | null => {
+}, stateWordNamesLevel = false): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
   const { steppedLoad } = device;
   const stepId = steppedLoad?.reportedStepId ?? null;
@@ -376,15 +371,18 @@ export const resolveSteppedLevelFact = (device: {
   // Resting on the ladder's off rung by the planner's rule is off, which the
   // bold state word already says.
   if (isSteppedLoadOffStep(steppedLoad.profile, stepId)) return null;
-  const levelText = `level ${formatStepDisplayLabel(stepId)}`;
+  // A held device's state word already names its level ("Limited · 6 A"), and
+  // the rail marks it; the fact line keeps only what they do not say.
+  const levelText = stateWordNamesLevel ? null : `level ${formatStepDisplayLabel(stepId)}`;
   const isEvCharger = device.deviceRole === 'ev_charger';
   const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
   const isRoutineEvCharge = isEvCharger
     && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
   const segments = isRoutineEvCharge
     ? [EV_CHARGING_STATE_LABELS[EV_ROUTINE_STATE], batteryText, levelText]
-    : [batteryText, capitalize(levelText)];
-  return segments.filter((segment): segment is string => segment !== null).join(' · ');
+    : [batteryText, levelText === null ? null : capitalize(levelText)];
+  const fact = segments.filter((segment): segment is string => segment !== null).join(' · ');
+  return fact === '' ? null : fact;
 };
 
 /**

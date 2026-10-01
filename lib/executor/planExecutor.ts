@@ -14,6 +14,7 @@ import {
 } from './executorSupport';
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { PlanExecutorTargetContext } from './targetExecutor';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutor';
@@ -469,22 +470,32 @@ export class PlanExecutor {
   public driftObservationDeps(): DriftObservationDeps {
     return {
       getObservedState: (deviceId) => this.deps.getObservedState(deviceId),
-      getCommandState: (deviceId) => {
-        const pendingBinary = this.deps.pendingBinaryCommandStore.get(deviceId);
-        return {
-          binary: pendingBinary
-            ? { kind: 'pending', desired: pendingBinary.desired }
-            : { kind: 'none' },
-          step: this.deps.getSteppedLoadCommandSession(deviceId).stepCommandPending
-            ? { kind: 'pending' }
-            : { kind: 'none' },
-        };
-      },
+      getCommandState: (deviceId) => this.resolveCommandState(
+        deviceId, this.deps.pendingBinaryCommandStore.get(deviceId),
+      ),
       isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
     };
   }
 
-  /** Live read only: never settles stores, schedules work, or issues commands. */
+  private resolveCommandState(
+    deviceId: string,
+    pendingBinary: PendingBinaryCommand | undefined,
+  ): ReturnType<DriftObservationDeps['getCommandState']> {
+    return {
+      binary: pendingBinary
+        ? { kind: 'pending', desired: pendingBinary.desired }
+        : { kind: 'none' },
+      step: this.deps.getSteppedLoadCommandSession(deviceId).stepCommandPending
+        ? { kind: 'pending' }
+        : { kind: 'none' },
+    };
+  }
+
+  /**
+   * Live read only: never settles stores, schedules work, or issues commands. An
+   * expired pending command reads as none here and is left for the settle sweep
+   * to expire, so a settings-UI read cannot run the command lifecycle.
+   */
   public getDeviceExecutionStates(plan: DevicePlan): ReadonlyMap<string, DeviceExecutionState> {
     const reads = this.driftObservationDeps();
     const intents = buildExecutablePlan(plan).devices;
@@ -494,7 +505,7 @@ export class PlanExecutor {
         buildDriftObservedSnapshot(live, live.steppedLoadProfile),
       ) : undefined;
       const execution = resolveDeviceExecutionState(intents[index]!, observed, {
-        ...reads.getCommandState(device.id),
+        ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
         target: this.state.pendingTargetCommands[device.id] ?? null,
       }, reads.isExternalOffHeld(device.id));
       return [device.id, {

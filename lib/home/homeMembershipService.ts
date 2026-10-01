@@ -515,12 +515,6 @@ export class HomeMembershipService implements HomeMembershipPort {
     return this.runtimeActive && this.subHomes.length > 0 && this.zoneTree === null;
   }
 
-  /** Fail-closed Main posture for read surfaces; never schedules authority recovery. */
-  readMainHomeActuationFence(): boolean {
-    return this.hasPendingOwnershipGeneration() || !this.isOwnershipReady()
-      || this.meterAuthority.readActuationFence(this.authorityContext());
-  }
-
   /**
    * Whether a recompute has adopted a COMMITTED zone tree. `zoneTree` is only
    * ever assigned from a non-null `getZoneTree()` read inside `recompute()`,

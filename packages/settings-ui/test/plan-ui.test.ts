@@ -1021,7 +1021,9 @@ describe('Redesign plan UI', () => {
       vi.advanceTimersByTime(1_000);
       await Promise.resolve();
 
-      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting to resume — 0s');
+      // The expired countdown's line is stale until the next status: it goes,
+      // rather than sticking at 0s, while the state word stays authoritative.
+      expect(getReasonText('dev-restore-cooldown') ?? '').toBe('');
       expect(cooldownCard?.dataset.stateKind).toBe('resuming');
       const expiredTimer = document.querySelector(
         '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
@@ -1051,7 +1053,7 @@ describe('Redesign plan UI', () => {
       const timer = document.querySelector(
         '[data-device-id="dev-expired-cooldown"] .plan-state-chip__timer',
       ) as HTMLElement | null;
-      expect(getReasonText('dev-expired-cooldown')).toBe('Waiting to resume — 0s');
+      expect(getReasonText('dev-expired-cooldown') ?? '').toBe('');
       expect(timer === null || timer.hidden).toBe(true);
       // Cooldown summary lives on device card, not as a hero chip
     });

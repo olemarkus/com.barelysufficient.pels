@@ -2218,31 +2218,6 @@ describe('legacy multi-home activation compatibility', () => {
 });
 
 describe('HomeMembershipService — Main actuation ownership fence', () => {
-  it.each(['source_suspect', 'meter_unavailable'] as const)(
-    'reads a closed Main posture without scheduling recovery for %s', (failure) => {
-      const onMainAuthorityUnresolved = vi.fn();
-      let source: ConfiguredPowerSourceRead = { state: 'resolved', value: 'homey_energy' };
-      let selection: MainMeterSelection = { state: 'resolved', meterDeviceId: MAIN_METER_ID };
-      const service = new HomeMembershipService({
-        sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
-        getConfiguredPowerSource: () => source,
-        homesStore: createHomesStore(homeyLike.settings),
-        assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
-        getZoneTree: () => ZONES, getDevices: () => [], getLogger: () => undefined,
-        getMainMeterSelection: () => selection, onMainAuthorityUnresolved, legacyMultiHomeEnabled: false,
-      });
-      service.recompute();
-      expect(service.readMainHomeActuationFence()).toBe(false);
-      onMainAuthorityUnresolved.mockClear();
-      if (failure === 'source_suspect') source = { state: 'suspect', reason: 'read_failed', error: new Error('settings unavailable') };
-      else selection = { state: 'unavailable' };
-      expect(service.readMainHomeActuationFence()).toBe(true);
-      expect(onMainAuthorityUnresolved).not.toHaveBeenCalled();
-      expect(service.isMainHomeActuationFenced()).toBe(true);
-      expect(onMainAuthorityUnresolved).toHaveBeenCalled();
-    },
-  );
-
   it('ignores dormant held-home collisions until activation but still fences unavailable authority', () => {
     createHomesStore(homeyLike.settings).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],

@@ -194,7 +194,7 @@ Cards, device detail, and activity logs consume the same presentation:
 | **Idle** | The device is available and on (or has no binary on/off axis), but currently has nothing to do — including a satisfied target-only thermostat at/above its target drawing nothing. |
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
-| **Resuming** | PELS is bringing the device back as power becomes available. |
+| **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
 | **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 
@@ -209,13 +209,22 @@ line reads `Limited · Off` when a limited device is observed off, even if it
 retains a Low step report or target. A limited device observed running at Low
 reads `Limited · Low`. Without a reported level it reads `Limited`; an assumed
 or planned step is not an observed level. The rail also shows the observed
-position, never the retained target.
+position, never the retained target. Because the state word names the level,
+the fact line beside it drops `level Low` and keeps only what neither says (a
+charger's plug state or battery level).
+
+An off device the plan would resume reads `Resuming` only while PELS is turning
+it on or raising its level, or counting down a short restart wait. While a hold
+reason (throttled restore, capacity, budget) keeps it off with no command in
+flight it reads `Limited · Off`, with the hold's reason line.
 
 The canonical status has no `Unknown` variant. Unavailable observation is
 `Unavailable`; a running device without step feedback has no rail position,
 and missing feedback cannot confirm a step command. Quiet devices retain their last accepted
-observation. Countdown text reaches `0s` without changing the authoritative
-state or promise of execution; the next backend status supplies any transition.
+observation. When a countdown in the reason line runs out, the line goes rather
+than sticking at `0s`; the authoritative state word stays, and the next backend
+status supplies any transition. A countdown the reason text does not name (the
+line says what a paused device still reports) shows only as the card's ring.
 
 **Boost names no kind.** The `Boost` chip's hover text is
 `Given priority over other devices`, and it is the only wording there is.
@@ -360,7 +369,16 @@ hours` (smart task), `Waiting for solar surplus`, `Turned off elsewhere — turn
 it on to resume`, `Waiting so {device} can start` (startup reservation),
 `Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
 and the countdown lines (`Waiting to resume — 50s`, or `Waiting to increase — 50s`
-for an active stepped device).
+for an active stepped device). The other timed holds read the same on every
+card, from the shared formatter: `Waiting after limiting a device (30s)`,
+`Waiting for power meter to stabilise (8s)`, `Resume pending (9s)`,
+`Delaying restart after recent failed attempt (12s)`, `Left off after startup`,
+`Waiting after startup`.
+
+A device held while PELS is out of levers (`shortfall`) also reads
+`Waiting to resume — 1.5 kW more needed` on its card. `Manual action needed`
+is the house-level recourse, carried by the Overview hero and the shortfall
+alarm, not by one device's reason line.
 
 `Waiting so {device} can start` reaches a card by TWO routes, and they render
 identically on purpose — one situation, one sentence
@@ -455,13 +473,15 @@ that freeing the difference resumes anything.
 In **simulation mode** the state word stays FACTUAL — `held`/`resuming` are
 PELS-acted claims and PELS acts on nothing in simulation, so the bold word
 shows what the device is actually doing (Running/Idle/Off) and only the reason
-line is hypothetical: **Would be turned off (simulation)**, **Would be
-lowered (simulation)**, **Charging would pause (simulation)**, `Would be
-limited …`. The `(simulation)` tag keeps a card scrolled away from the banner
-honest on its own. The `Let it run now` action chip never renders under
-simulation (there is nothing to release). Source: `DEVICE_OVERVIEW_WOULD_*`
-in `packages/shared-domain/src/deviceOverviewStrings.ts` +
-`toSimulationReasonLine` in `simulationReasonMood.ts`.
+line is hypothetical: `Would be limited …`, `Would be waiting to resume — 0.8 kW
+more needed (simulation)`, `Would wait for cheaper hours (simulation)`. The
+`(simulation)` tag keeps a card scrolled away from the banner honest on its own.
+The `Let it run now` action chip never renders under simulation (there is
+nothing to release). "Simulation" is the owner's Simulation setting for the home,
+the flag the Overview hero reads; a transient write fence (boot, meter
+authority) is not a simulation and does not reword cards. Source:
+`toSimulationReasonLine` in `simulationReasonMood.ts`, applied in
+`lib/plan/deviceStatusReadModel.ts`.
 
 ### Device-page limiting statements (no one-button radiogroups)
 

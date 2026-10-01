@@ -335,18 +335,58 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it.each([
-    ['a charger with power-limit control off', { controllable: false }, null],
+    ['a charger with power-limit control off', { controllable: false }, 'Unplugged · Level Low', null],
+    // The held charger's state word names its level ("Limited · Low"), so its
+    // fact line keeps only the exception.
     ['a charger PELS holds at a lower level', { plannedState: 'shed' as const,
-      reason: { code: PLAN_REASON_CODES.capacity } }, 'Waiting to resume'],
-  ])('keeps the charger exception beside its level for %s', (_case, overrides, reasonText) => {
+      reason: { code: PLAN_REASON_CODES.capacity } }, 'Unplugged', 'Waiting to resume'],
+  ])('keeps the charger exception in the fact line for %s', (_case, overrides, factText, reasonText) => {
     const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', ...overrides });
     const wire = buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
     });
-    expect(wire.status.factText).toBe('Unplugged · Level Low');
+    expect(wire.status.factText).toBe(factText);
     expect(wire.status.reason?.text ?? null).toBe(reasonText);
+  });
+
+  it('keeps the cooldown ring when the reported-load line replaces the timed reason', () => {
+    const device = buildPlanDevice({ id: 'heater', currentState: 'on', plannedState: 'shed', currentDrawKw: 1.2,
+      reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,
+        countdownTotalSec: 60 } });
+    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    expect(wire.status.reason?.text).not.toMatch(/\d+s/);
+    expect(wire.status.reason?.countdown).toEqual({ kind: 'beside_text', endsAtMs: 60_000, totalSec: 60 });
+  });
+
+  it('reads an off device the plan would resume, held by a hold reason, as limited', () => {
+    const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'keep',
+      reason: { code: PLAN_REASON_CODES.restoreThrottled } });
+    const wire = buildDevice(device, {
+      ...absentTemperature, dryRun: false, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true }),
+    }, 0);
+    expect(wire.status).toMatchObject({ kind: 'held', label: 'Limited · Off' });
+    // With the command in flight it is resuming, whatever the reason.
+    const inFlight = buildDevice(device, {
+      ...absentTemperature, dryRun: false, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true,
+        binaryProgress: 'pending' }),
+    }, 0);
+    expect(inFlight.status).toMatchObject({ kind: 'resuming', label: 'Resuming' });
+  });
+
+  it('names a held stepped charger\'s level once, in its state word', () => {
+    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
+      plannedState: 'shed', reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.capacity } });
+    const wire = buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
+    });
+    expect(wire.status.label).toBe('Limited · Low');
+    expect(wire.status.factText).toBe('Unplugged');
   });
 
   it('resolves card kind in the backend', () => {

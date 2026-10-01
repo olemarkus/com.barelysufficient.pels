@@ -73,6 +73,16 @@ describe('resolveHeldCardReasonLine', () => {
       })).toBe('Waiting to resume — 0.8 kW more needed');
     });
 
+    it('states what a device held while PELS is out of levers needs, not the house-level recourse', () => {
+      // "Manual action needed" is the hero's and the alarm's line; the card says
+      // what this device needs, and simulation can reword it.
+      const line = resolveHeldCardReasonLine({
+        reason: { code: PLAN_REASON_CODES.shortfall, needKw: 1.5, headroomKw: 0 },
+      });
+      expect(line).toBe('Waiting to resume — 1.5 kW more needed');
+      expect(toSimulationReasonLine(line, true)).toBe('Would be waiting to resume — 1.5 kW more needed (simulation)');
+    });
+
     it('states the shortfall for a headroom-blocked restore, computed from its margins', () => {
       expect(resolveHeldCardReasonLine({
         reason: {

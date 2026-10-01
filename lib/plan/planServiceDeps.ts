@@ -106,8 +106,12 @@ export type PlanServiceDeps = {
    * a field's presence.
    */
   getCapacityDryRun: () => boolean;
-  /** Same effective posture, without scheduling source recovery or other control work. */
-  readCapacityDryRun: () => boolean;
+  /**
+   * The owner's Simulation setting, for presentation only. Card wording follows
+   * the flag the owner switched and the Overview hero reads, not the effective
+   * no-actuation posture above, which also folds in transient write fences.
+   */
+  readSimulationSetting: () => boolean;
   // The current hour's RESOLVED price level from ONE combined-series build;
   // see `PriceService.getCurrentHourPriceLevel`.
   getCurrentHourPriceLevel: () => PriceLevel;

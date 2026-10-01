@@ -1737,6 +1737,25 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.requestSteppedLoadStep).not.toHaveBeenCalled();
   });
 
+  it('leaves an expired pending binary command for the settle sweep when status is read', () => {
+    // A settings-UI read asks what is in flight; expiring the command (and firing
+    // its timeout lifecycle, which records a reachability failure) is the
+    // sweep's decision.
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'off', reportedStepId: 'low',
+      selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
+    const state = createPlanEngineState();
+    const expired = { dispatchState: 'accepted' as const, desired: true, startedMs: Date.now() - 10 * 60 * 1000 };
+    state.pendingBinaryCommands[device.id] = expired;
+    const { executor } = buildExecutor(state, [{ id: device.id, name: device.name,
+      available: true, binaryControl: { on: false }, binaryCapabilityId: 'onoff',
+      steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
+    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device] };
+
+    expect(executor.getDeviceExecutionStates(plan).get(device.id)?.binaryProgress).not.toBe('pending');
+    expect(state.pendingBinaryCommands[device.id]).toBe(expired);
+  });
+
   const steppedProfile = {
     steps: [
       { id: 'off', planningPowerW: 0 },
