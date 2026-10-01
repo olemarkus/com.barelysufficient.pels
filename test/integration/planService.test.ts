@@ -38,6 +38,7 @@ import type { PendingBinaryLiveDevice } from '../../lib/observer/pendingBinaryCo
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildPlanMeta,
   fixtureControlPosture,
@@ -217,21 +218,23 @@ describe('PlanService', () => {
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
-    let plug: 'plugged_in_charging' | 'plugged_out' = 'plugged_in_charging';
+    let percent = 64;
     const recorder = new DeviceOverviewLogRecorder();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
       homey: stubDepsHomey({ realtime }),
-      getObservedEvChargingState: () => ({ kind: 'observed', value: plug } as const) });
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+      getObservedStateOfCharge: () => ({ kind: 'observed' as const,
+        value: { level: stateOfChargeFixture({ percent, observedAtMs: 1_000 }).level } }) });
     service['rebuildHost'].publishPlan(plan, 456);
     await service.syncLivePlanState('realtime_capability');
     realtime.mockClear();
     const loggedBefore = recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0;
 
-    plug = 'plugged_out';
+    percent = 65;
     expect(await service.syncLivePlanState('realtime_capability')).toBe(true);
 
-    expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.factText).toBe('Unplugged · Level Low');
+    expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.factText).toBe('Charging · 65 % · level Low');
     expect(realtime).toHaveBeenCalledTimes(1);
     expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
   });

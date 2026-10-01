@@ -245,6 +245,9 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
     }
 
     const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
+    // A negative watt reading is malformed, not an off-range setting: consume it
+    // before it can be recorded as probe evidence or replace the last-good step.
+    if (reportedStepPowerW !== undefined && reportedStepPowerW < 0) return true;
     if (reportedStepPowerW !== undefined) extendLadderWithExactTargetPower(snapshot, reportedStepPowerW);
 
     if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
@@ -334,6 +337,7 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
     const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
     const targetPowerW = Math.round(value * 230 * phaseCount);
+    if (targetPowerW < 0) return true;
     extendLadderWithExactTargetPower(snapshot, targetPowerW);
     const nextReportedStepId = resolveTargetPowerReportedStepId({
         profile: snapshot.steppedLoadProfile ?? profile,

@@ -242,6 +242,37 @@ describe('native EV wiring shim', () => {
     }));
   });
 
+  it('consumes a negative realtime current as malformed instead of applying it', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'zaptec-go-1': buildZaptecDevice() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
+    const deviceManager = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+        getNativeEvWiringEnabled: () => true,
+        getDeviceTargetPowerConfig: (deviceId) => (
+          deviceId === 'zaptec-go-1'
+            ? { enabled: true, preset: 'ev_charger_3_phase', max: 11_040 }
+            : undefined
+        ),
+      },
+    );
+
+    await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 10);
+
+    // A negative watt reading would otherwise reach probe settlement as evidence.
+    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', -4);
+    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+      reportedStepId: '10a',
+      reportedStepPowerW: 6_900,
+    }));
+  });
+
   it('accepts the real Zaptec app when Homey reports the full driver URI', () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,

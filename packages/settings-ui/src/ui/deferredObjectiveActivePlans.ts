@@ -13,12 +13,26 @@ import { state } from './state.ts';
 // Narrow per-device predicate for the Overview view. The settings UI has no
 // access to the runtime's deep `isActivePlan` validator (the `settings-ui ↛ lib`
 // architecture boundary forbids importing it), so here a plan is "valid enough"
-// when it is a non-null object — the Overview EV-state line reads only
-// `latest.hours` and `diagnosticReasonCode` via optional-chaining. This still
-// drops a non-object entry (e.g. a tampered `plansByDeviceId['ev-1'] = 7`) that
-// the previous pass-through copy would have kept.
+// when it is a non-null object whose `latest.hours` — what the Overview EV-state
+// line walks — is an array of hours with a finite start. Optional chaining does
+// not guard a non-array `hours`, so the shape is checked here, at the persisted
+// boundary, rather than by the resolver. This drops a non-object entry (e.g. a
+// tampered `plansByDeviceId['ev-1'] = 7`) and a plan with malformed hours.
+const isOverviewHour = (hour: unknown): boolean => (
+  typeof hour === 'object' && hour !== null
+  && Number.isFinite((hour as { startsAtMs?: unknown }).startsAtMs)
+);
+
+const hasOverviewLatestHours = (latest: unknown): boolean => {
+  if (latest === null || latest === undefined) return true;
+  if (typeof latest !== 'object' || Array.isArray(latest)) return false;
+  const { hours } = latest as { hours?: unknown };
+  return Array.isArray(hours) && hours.every(isOverviewHour);
+};
+
 const isOverviewPlanShaped = (plan: unknown): plan is OverviewDeferredObjectiveActivePlan => (
   Boolean(plan) && typeof plan === 'object' && !Array.isArray(plan)
+  && hasOverviewLatestHours((plan as { latest?: unknown }).latest)
 );
 
 // Browser-safe coercion of the raw `deferred_objective_active_plans` setting.
