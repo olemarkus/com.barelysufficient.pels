@@ -121,6 +121,17 @@ describe('buildOverviewSignatureForDevice', () => {
     expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.4 kW' }))).not.toBe(signature);
   });
 
+  it('ignores a shortfall that tracks the pace inside the same reason sentence', () => {
+    // The shortfall is recomputed against the pace every cycle; logging each
+    // 0.1 kW step would flood the ring the way 3.9.0's comparable reason never did.
+    const base = withStatus(overviewLogDevice(), { kind: 'held', label: 'Limited · Off',
+      reason: { text: 'Waiting to resume — 0.8 kW more needed' } });
+    const moved = withStatus(base, { reason: { text: 'Waiting to resume — 0.9 kW more needed' } });
+    expect(buildOverviewSignatureForDevice(moved)).toBe(buildOverviewSignatureForDevice(base));
+    const otherCause = withStatus(base, { reason: { text: 'Waiting for cheaper hours' } });
+    expect(buildOverviewSignatureForDevice(otherCause)).not.toBe(buildOverviewSignatureForDevice(base));
+  });
+
   it('treats a countdown re-anchored on a later rebuild as the same countdown', () => {
     const countdown = { endsAtMs: 60_000, totalSec: 60, prefix: 'Waiting after limiting a device (', suffix: ')' };
     const base = withStatus(overviewLogDevice(), { reason: { text: 'Waiting after limiting a device (60s)', countdown } });

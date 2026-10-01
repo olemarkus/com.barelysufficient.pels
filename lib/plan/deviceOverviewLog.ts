@@ -23,19 +23,30 @@ export function buildPresentationSignatureForDevice(device: OverviewLogDevice): 
     } } : reason });
 }
 
+// A figure moving inside the same sentence is not a state change: a shortfall
+// tracks the pace every cycle ("0.8" → "0.9 kW more needed"), and an idle
+// detail quotes the drifting temperature. The UI still receives the new text.
+const toSentenceShape = (text: string): string => text.replace(/\d+(?:[.,]\d+)?/gu, '#');
+
 /**
  * What makes a log entry: a change of state, reason, rail or power. The fact line
  * carries measured readings (temperature, battery level) whose drift is not a
- * state change, and a countdown's end and length are re-anchored on rebuilds that
- * have no recorded start, so neither may move the signature on its own.
+ * state change, the reason's figures move with the pace, and a countdown's end
+ * and length are re-anchored on rebuilds that have no recorded start, so none of
+ * them may move the signature on its own.
  */
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
   const { factText: _measuredReadings, ...status } = device.status;
   const reason = status.reason;
-  return JSON.stringify({ ...status,
-    reason: reason?.countdown ? { ...reason, text: null, countdown: {
-      prefix: reason.countdown.prefix, suffix: reason.countdown.suffix,
-    } } : reason });
+  if (!reason) return JSON.stringify(status);
+  const { countdown, detail } = reason;
+  return JSON.stringify({ ...status, reason: {
+    ...reason,
+    text: countdown ? null : toSentenceShape(reason.text),
+    ...(detail === undefined ? {} : { detail: toSentenceShape(detail) }),
+    ...(countdown ? { countdown: { prefix: toSentenceShape(countdown.prefix),
+      suffix: toSentenceShape(countdown.suffix) } } : {}),
+  } });
 }
 
 export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()): SettingsUiDeviceLogEntry {
