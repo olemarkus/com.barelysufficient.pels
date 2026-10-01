@@ -274,6 +274,81 @@ describe('device owner control resolution', () => {
     expect(next.steppedLoadProfile?.steps.map((step) => step.id)).toEqual(['off', 'low', 'medium', 'max']);
   });
 
+  it.each([
+    ['inside the ladder', '16a', 3_600],
+    ['just below the lowest rung', '6a', 1_320],
+  ])('keeps a Flow EV report %s as its rung across a refresh', (_case, stepId, reportedW) => {
+    // Cars draw a little under nominal, so the report card resolves such a
+    // reading to the rung above it. A refresh re-parses the charger without
+    // that report and must carry the admitted rung forward, not drop it.
+    const baseConfig = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
+    const config: TargetPowerConfigWithReachability = { ...baseConfig, reachability: buildTargetPowerReachabilityState({
+      config: baseConfig, maxReachedPowerW: 5_520,
+    }) };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getDeviceTargetPowerConfig: () => config,
+    });
+    const charger: HomeyDeviceLike = {
+      id: 'charger', name: 'Flow charger', class: 'evcharger',
+      capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
+      capabilitiesObj: {
+        measure_power: { value: reportedW, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging: { value: true, setable: true, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-09-30T08:00:00.000Z' },
+      },
+      available: true, ready: true,
+    };
+    const [previous] = transport.parseDeviceListForTests([charger]);
+    transport.setSnapshotForTests([previous]);
+    const ladder = previous.steppedLoadProfile;
+    expect(transport.reportSteppedLoadActualStep('charger', stepId, reportedW)).toMatchObject({ kind: 'accepted' });
+    const [next] = transport.parseDeviceListForTests([charger]);
+
+    preserveNewerReportedStepObservation(previous, next);
+
+    expect(next).toMatchObject({ reportedStepId: stepId, reportedStepPowerW: reportedW });
+    expect(next.steppedLoadProfile).toEqual(ladder);
+  });
+
+  it('keeps a Flow EV report admitted just under an earlier off-grid step across a refresh', () => {
+    // An exact off-grid reading puts its own step on the ladder; the next
+    // reading a little under it is admitted as that step, and a refresh, whose
+    // fresh ladder lacks the off-grid step, must still carry it forward.
+    const baseConfig = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
+    const config: TargetPowerConfigWithReachability = { ...baseConfig, reachability: buildTargetPowerReachabilityState({
+      config: baseConfig, maxReachedPowerW: 5_520,
+    }) };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getDeviceTargetPowerConfig: () => config,
+    });
+    const charger: HomeyDeviceLike = {
+      id: 'charger', name: 'Flow charger', class: 'evcharger',
+      capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
+      capabilitiesObj: {
+        measure_power: { value: 3_520, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging: { value: true, setable: true, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-09-30T08:00:00.000Z' },
+      },
+      available: true, ready: true,
+    };
+    const [first] = transport.parseDeviceListForTests([charger]);
+    transport.setSnapshotForTests([first]);
+    expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_520)).toMatchObject({ kind: 'accepted' });
+    const [second] = transport.parseDeviceListForTests([charger]);
+    preserveNewerReportedStepObservation(first, second);
+    expect(second.reportedStepId).toBe('15.304a');
+    transport.setSnapshotForTests([second]);
+    expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_515)).toMatchObject({ kind: 'accepted' });
+    const [third] = transport.parseDeviceListForTests([charger]);
+
+    preserveNewerReportedStepObservation(second, third);
+
+    expect(third).toMatchObject({ reportedStepId: '15.304a', reportedStepPowerW: 3_515 });
+    expect(third.steppedLoadProfile?.steps.map((step) => step.id)).toContain('15.304a');
+  });
+
   it('does not retain a step removed by a Flow profile edit', () => {
     const transport = transportForHeater(false);
     const [previous] = transport.parseDeviceListForTests([heater()]);

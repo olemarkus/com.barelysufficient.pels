@@ -8,7 +8,7 @@ import type { DeviceConfigurationStore } from '../deviceConfiguration';
 import type { FlowSteppedLoadAdmission, FlowSteppedLoadObservation } from '../../ports/flowSteppedLoadAdmission';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
-import { isWithinSteppedLoadPowerCeiling } from '../steppedLoadPowerCeiling';
+import { resolveSteppedLoadCeilingStep } from '../steppedLoadPowerCeiling';
 
 /** Resolve source authority, identity, and exact power at the device boundary. */
 /* eslint-disable functional/immutable-data -- Transport owns the accepted snapshot and configuration. */
@@ -36,8 +36,9 @@ export function admitFlowSteppedLoadReport(
     const namedStep = snapshot.steppedLoadProfile.steps.find((candidate) => candidate.id === stepId);
     // The report card resolves a reading just under a rung to that rung. It is the
     // rung, with the raw watts as its evidence, and adds no off-grid exact step.
-    const ceilingStep = exactStep?.id !== stepId && namedStep && planningPowerW !== undefined
-        && isWithinSteppedLoadPowerCeiling(namedStep.planningPowerW, planningPowerW) ? namedStep : undefined;
+    const ceilingStep = exactStep?.id !== stepId && planningPowerW !== undefined
+        ? resolveSteppedLoadCeilingStep(snapshot.steppedLoadProfile, stepId, planningPowerW)
+        : undefined;
     if (!ceilingStep && ((isEvTargetPowerConfig(snapshot.targetPowerConfig) && !exactStep)
         || (exactStep && exactStep.id !== stepId))) return { kind: 'invalid' };
     const ladderStep = ceilingStep ? undefined : exactStep;

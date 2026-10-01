@@ -4,6 +4,7 @@ import {
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
   buildOverviewEventForDevice,
   buildOverviewSignatureForDevice,
+  buildPresentationSignatureForDevice,
   type OverviewDecisionFacts,
   type OverviewLogDevice,
 } from '../../lib/plan/deviceOverviewLog';
@@ -127,13 +128,28 @@ describe('buildOverviewSignatureForDevice', () => {
     expect(buildOverviewSignatureForDevice(batteryDrift)).toBe(buildOverviewSignatureForDevice(base));
   });
 
-  it('still records a change of state, reason or power', () => {
+  it('still records a change of state, reason or kind of power line', () => {
     const base = overviewLogDevice();
     const signature = buildOverviewSignatureForDevice(base);
     expect(buildOverviewSignatureForDevice(withStatus(base, { kind: 'held', label: 'Limited' }))).not.toBe(signature);
     expect(buildOverviewSignatureForDevice(withStatus(base, { reason: { text: 'Waiting to resume' } })))
       .not.toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.4 kW' }))).not.toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.4 kW', powerVariant: 'live' })))
+      .not.toBe(signature);
+  });
+
+  it('ignores a power reading moving within the same kind of power line', () => {
+    const base = withStatus(overviewLogDevice(), { powerText: '1.4 kW', powerVariant: 'live' });
+    const signature = buildOverviewSignatureForDevice(base);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.5 kW' }))).toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: null }))).not.toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, {
+      powerText: 'Reported 1.4 kW', powerVariant: 'reported' }))).not.toBe(signature);
+    expect(buildOverviewSignatureForDevice(withStatus(base, {
+      powerText: '≈ 1.4 kW when active', powerVariant: 'expected' }))).not.toBe(signature);
+    // The open card still receives every reading.
+    expect(buildPresentationSignatureForDevice(withStatus(base, { powerText: '1.5 kW' })))
+      .not.toBe(buildPresentationSignatureForDevice(base));
   });
 
   it('ignores a shortfall that tracks the pace inside the same reason sentence', () => {
