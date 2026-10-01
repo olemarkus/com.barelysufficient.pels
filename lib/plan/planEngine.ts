@@ -20,7 +20,7 @@ import type {
   PendingTargetObservationSource,
   PlanInputDevice,
 } from './planTypes';
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 
 export type PlanEngine = {
   getDeviceExecutionStates: (plan: DevicePlan) => ReadonlyMap<string, DeviceExecutionState>;

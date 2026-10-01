@@ -122,7 +122,7 @@ type ReserveHolder = { reserveHolderName?: string };
  * constant survives for `ComparablePlanReason`, which uses it as its
  * absent-reason marker.
  *
- * User-facing rendering: `packages/shared-domain/src/planCardReasonLine.ts`
+ * User-facing rendering: `lib/plan/planCardReasonLine.ts`
  * (the one card ladder) and `notes/ui-terminology.md`.
  */
 export type DeviceReason =

@@ -26,7 +26,7 @@ import {
   resolveOverviewTemperatureFacet,
 } from './planOverviewTemperatureState';
 import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { buildDeviceStatus } from './deviceStatusReadModel';
 
 export type SettingsOverviewReadModelDeps = {

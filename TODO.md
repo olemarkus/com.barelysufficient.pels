@@ -1205,13 +1205,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       unwritten / malformed / throwing / genuinely-empty as four distinct outcomes. Source:
       adversarial review of the device lane, 2026-09-01. [P2]
 
+- [ ] **`packages/shared-domain/src/deviceOverview.ts` now holds only types.** With the
+      `formatDeviceOverview` family deleted it declares `DeviceOverviewSnapshot`,
+      `DeviceOverviewSteppedLoad` and `DeviceOverviewStrings` and no logic, and
+      `packages/contracts/src/settingsUiApi.ts` imports them from shared-domain. Root `AGENTS.md`
+      puts shared types in `packages/contracts/`. Move the three types there, repoint the
+      `lib/plan`, shared-domain and contracts importers, and delete the file. Done when no
+      `packages/contracts` file imports from `packages/shared-domain`'s `deviceOverview`. Source:
+      adversarial review of the status layering moves, 2026-10-01. [P2]
+
 - [ ] **The observed-state label is a closed set returned as `string`, so consumers hedge against
       their own producer.** `lib/observer/observedState.ts` states the set in prose
       (`on` / `off` / `unknown` / `not_applicable`) while every resolver's signature says `string`,
       and downstream code defends accordingly: `normalizeDeviceState`
       (`packages/shared-domain/src/deviceStatePredicates.ts`) trims and lowercases a value the
-      producer emits as a bare literal, `packages/shared-domain/src/deviceOverview.ts` re-defaults
-      it as `normalizeDeviceState(device.currentState) || 'unknown'` at two sites, and three
+      producer emits as a bare literal (the two `deviceOverview.ts` re-default sites left with the
+      dead `formatDeviceOverview` family), and three
       separate production tables carry a `'disappeared'` member no producer ever emits —
       `deviceStatePredicates.ts`, `planStateLabels.ts` (a duplicated `isOnLike`/`isGray` pair), and
       `planSteppedCardText.ts` (`isSteppedCardOffLikeState`, whose comment declares it deliberately

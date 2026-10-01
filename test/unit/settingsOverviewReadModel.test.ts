@@ -408,12 +408,11 @@ describe('settingsOverviewReadModel', () => {
     // NATIVE stepped devices, so a device whose ladder comes from
     // `deviceControlProfiles` arrived marked `binary_power` and was demoted.
     //
-    // Not a label-only concern: `PlanOverview` picks the card COMPONENT off
-    // stepped-ness, and `formatDeviceOverview` uses it to choose the 'Planned'
-    // vs 'Expected' label, append the step text, and suppress `powerMsg`. The
-    // device rendered as a generic card while the overview log seam recorded the
-    // same device as stepped. The device's own ladder is now the discriminant,
-    // so there is no producer setting left to disagree with it.
+    // Not a label-only concern: the card COMPONENT and the activity log both
+    // follow the resolved card kind. The device once rendered as a generic card
+    // while the overview log seam recorded it as stepped. The device's own
+    // ladder is now the discriminant, so there is no producer setting left to
+    // disagree with it.
     const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
     expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });

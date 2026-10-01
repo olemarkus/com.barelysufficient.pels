@@ -1,8 +1,3 @@
-import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
-import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
-import {
-  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
-} from '../../packages/shared-domain/src/deviceControlProfiles';
 /**
  * Executor-owned stepped-command store.
  *
@@ -24,6 +19,12 @@ import {
  * `steppedCommandState.ts`.
  *
  */
+
+import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
+import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+import {
+  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   confirmSteppedLoadDesiredStep,
   createDeviceControlRuntimeState,

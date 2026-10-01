@@ -295,6 +295,24 @@ describe('PlanService', () => {
     expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
   });
 
+  it('classifies idleness from the plan device, not from executor convergence state', () => {
+    // Stall evidence feeds smart tasks, a decision input: the classifier reads
+    // the observation the plan was built from, never the executor's view.
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, {
+      ...executionStateFixture(device), physicalState: 'off' as const, currentDrawKw: 0 }]])) };
+    const { service } = createPlanService({ planEngine: engine });
+    const classifyAll = vi.spyOn(service['idleClassifier'], 'classifyAll');
+
+    service['tickIdleClassifier'](plan);
+
+    expect(classifyAll).toHaveBeenCalledWith([expect.objectContaining({
+      id: 'heater', currentState: 'on', currentDrawKw: 1.2, plannedState: 'keep' })], expect.any(Number));
+    expect(engine.getDeviceExecutionStates).not.toHaveBeenCalled();
+  });
+
   it('leaves the idle classifier on the plan cadence when observations refresh status', async () => {
     // The capped-idle window keeps a bounded sample history sized for the plan
     // cadence. Observations arrive far more often; sampling on each would push

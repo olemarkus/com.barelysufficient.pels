@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toSimulationReasonLine } from '../../packages/shared-domain/src/simulationReasonMood';
+import { toSimulationReasonLine } from '../../lib/plan/simulationReasonMood';
 import {
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,

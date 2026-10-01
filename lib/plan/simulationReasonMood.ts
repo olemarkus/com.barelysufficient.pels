@@ -15,6 +15,8 @@
 // power" (true in simulation or not), surplus boosts, and normal operation are
 // correctly factual and MUST stay factual.
 
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
+
 // Swap-pending copy has a bare and a named-target variant ("Making room for
 // higher-priority device" / "… (Bedroom)"); the prefix rewrite carries any
 // trailing "(name)" through so both flip.
@@ -23,10 +25,7 @@ const MAKING_ROOM_PREFIX = 'Making room for higher-priority device';
 // The `(simulation)` tag every converted (hypothetical) line carries. With the
 // 2026-07 card grammar the state word stays factual under simulation, so the
 // reason line is the ONLY per-card carrier of the hypothetical framing — the
-// tag keeps a card scrolled away from the banner honest on its own (the same
-// rule the `DEVICE_OVERVIEW_WOULD_*` action labels already follow).
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from './planStateLabels';
-
+// tag keeps a card scrolled away from the banner honest on its own.
 const SIMULATION_TAG = ' (simulation)';
 
 export const toSimulationReasonLine = (label: string, dryRun: boolean): string => {

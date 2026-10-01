@@ -4,7 +4,7 @@ import type {
   SettingsUiDeviceLogPayload,
   SettingsUiPlanDeviceSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { DevicePlanDevice } from './planTypes';
 
 export const DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE = 50;

@@ -23,26 +23,9 @@
  * are present and finite; copy degrades gracefully when they are not.
  */
 
-import type { IdleClassification } from '../../contracts/src/idleClassification';
-export type { IdleClassification } from '../../contracts/src/idleClassification';
+import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
+export type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 
-/**
- * Single source of truth for "which idle classifications mean the device has
- * settled as far as it will go and the objective should read as satisfied".
- *
- * `near_target_idle` (parked inside the hysteresis band) and `capped_idle`
- * (parked at the device's own internal cap below the PELS target) both mean
- * the device's own controller has stopped — pushing harder won't move it, so
- * the deferred objective is "as met as it gets". `unresponsive` (below target
- * and not drawing) and `undefined` (active / no classification) deliberately do
- * NOT count — a device that isn't actually reaching its target must never read
- * as satisfied.
- *
- * Used by BOTH the live status producer (`diagnosticsBridge`) and the
- * postmortem met-reason mapping (`stallClassificationToMetReason`) so the
- * user-facing live status and the recorded outcome can never disagree about
- * what counts as a stall.
- */
 export type IdleClassificationCopyInput = {
   classification: IdleClassification;
   currentTemperatureC?: number;

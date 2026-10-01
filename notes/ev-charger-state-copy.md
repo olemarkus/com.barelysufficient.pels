@@ -4,8 +4,9 @@ The device card must not assert a cause it cannot observe. This note is the
 matrix of record for that: which signals exist, what each combination actually
 means, and the copy each one earns.
 
-Governs `resolveSteppedEvExceptionLabel` and `resolveSteppedLevelFact`
-(`packages/shared-domain/src/planSteppedCardText.ts`). Vocabulary rules live in
+Governs `resolveSteppedEvExceptionLabel`
+(`packages/shared-domain/src/evChargingStateLabel.ts`, where raw plug states are read)
+and `resolveSteppedLevelFact` (`lib/plan/planSteppedCardText.ts`). Vocabulary rules live in
 `notes/ui-terminology.md`; the car association itself in `notes/ev-car-link/README.md`.
 
 ## Four signals, not three

@@ -249,7 +249,7 @@ Every predicate in `evPlugState.ts` classifies the two identically — both
 commandable, both a creditable session, both connected — so the choice between
 them no longer decides whether PELS may drive the charger. What it decides is the
 words the owner reads and a fallback readback:
-`packages/shared-domain/src/planSteppedCardText.ts` renders them `Paused` and
+`packages/shared-domain/src/evChargingStateLabel.ts` renders them `Paused` and
 `Not charging` (and splits them again in its charger-vs-car exception branches —
 `Waiting for car` against `Paused by the car`), and `resolveZaptecChargingValue`
 — when `charging_button` carries no boolean of its own — turns

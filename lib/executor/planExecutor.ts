@@ -43,7 +43,7 @@ import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutablePlan } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveDeviceExecutionState } from './deviceExecutionState';
 import { buildDriftObservedSnapshot } from './driftObservedDevice';

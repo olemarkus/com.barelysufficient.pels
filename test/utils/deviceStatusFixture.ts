@@ -1,4 +1,4 @@
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../../lib/planContract/deviceExecutionState';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';

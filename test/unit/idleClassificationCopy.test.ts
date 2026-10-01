@@ -1,4 +1,4 @@
-import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
+import { formatIdleClassificationCopy } from '../../lib/observer/idleClassificationCopy';
 import {
   classificationImpliesStallSatisfied,
   stallEvidenceCoversTarget,

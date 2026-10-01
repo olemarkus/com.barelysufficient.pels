@@ -1,9 +1,3 @@
-/**
- * The slice of the transport wiring the PLAN-side subscription needs. Narrower
- * than `DeviceTransportWiringDeps` on purpose: this subscription is registered
- * by its own startup step, after the plan service exists, and must not grow a
- * reason to run any earlier.
- */
 import type {
   ObservedStateChangedEvent,
   ObservedStateEmitter,
@@ -12,6 +6,12 @@ import type {
 import { incPerfCounter } from '../../lib/utils/perfCounters';
 import type { AppContext } from '../../lib/app/appContext';
 
+/**
+ * The slice of the transport wiring the PLAN-side subscription needs. Narrower
+ * than `DeviceTransportWiringDeps` on purpose: this subscription is registered
+ * by its own startup step, after the plan service exists, and must not grow a
+ * reason to run any earlier.
+ */
 export type PlanObservedStateSubscriptionDeps = {
   ctx: AppContext;
   syncLivePlanState: (event: ObservedStateChangedEvent) => Promise<boolean>;

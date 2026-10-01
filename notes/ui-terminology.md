@@ -445,8 +445,8 @@ that the row carried no plan reason except external-off guidance is deliberately
 revised: the answer to "why is this Limited?" must not sit three disclosures
 down in the activity log. `Turned off by PELS` / `Lowered by PELS` are not in
 that formatter at all — they lived in `resolveHeldStateActionLabel`, which was
-deleted outright along with them (see the deletion record in
-`packages/shared-domain/src/deviceOverviewStrings.ts`).
+deleted outright along with them, and the whole `formatDeviceOverview` string
+family went with the move to `DeviceStatus`.
 
 **EV limits use the same state label as other devices.** A limited charger
 observed off reads `Limited · Off`; one observed running at a reported charging

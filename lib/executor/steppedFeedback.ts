@@ -2,31 +2,44 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID, PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
+
+/** The step a report is judged against: the latest plan's, else the command still on the ladder. */
+export function resolvePlannedDesiredStepId(
+  previousDesired: SteppedLoadDesiredRuntimeState | undefined,
+  profile: SteppedLoadProfile,
+  latestPlanDesiredStepId: string | undefined,
+): string | undefined {
+  return latestPlanDesiredStepId ?? getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
+}
 
 export function resolvePlannedDesiredStepToPreserve(
   previousDesired: SteppedLoadDesiredRuntimeState | undefined,
-  previousDesiredStepId: string | undefined,
+  profile: SteppedLoadProfile,
   latestPlanDesiredStepId: string | undefined,
-  plannedDesiredStepId: string | undefined,
-  reportedStepId: string,
+  observation: FlowSteppedLoadObservation,
 ): string | undefined {
+  const plannedDesiredStepId = resolvePlannedDesiredStepId(previousDesired, profile, latestPlanDesiredStepId);
   if (!plannedDesiredStepId) return undefined;
+  const previousDesiredStepId = getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
   if (latestPlanDesiredStepId && previousDesired && previousDesiredStepId !== latestPlanDesiredStepId) {
     return latestPlanDesiredStepId;
   }
-  return !previousDesired && plannedDesiredStepId !== reportedStepId ? plannedDesiredStepId : undefined;
+  return !previousDesired && plannedDesiredStepId !== observation.stepId ? plannedDesiredStepId : undefined;
 }
 
 export function emitSteppedFeedbackLog(
   log: PinoLogger | undefined,
-  deviceId: string,
+  observation: FlowSteppedLoadObservation,
   deviceName: string,
-  stepId: string,
   previousReportedStepId: string | undefined,
   previousDesired: SteppedLoadDesiredRuntimeState | undefined,
   plannedDesiredStepId: string | undefined,
 ): void {
+  const { deviceId, stepId } = observation;
   if (previousDesired?.stepId === stepId) {
     logConfirmed(log, deviceId, deviceName, stepId, previousDesired.stepId, previousDesired);
   } else if (plannedDesiredStepId === stepId) {

@@ -1,21 +1,19 @@
+import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
+import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src/evChargingStateLabel';
 import {
-  formatStepDisplayLabel,
   isSteppedTransit,
-  resolveSteppedActiveStepId,
-  resolveSteppedRailSteps,
-  resolveSteppedEvExceptionLabel,
   resolveSteppedLevelFact,
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
-} from '../../shared-domain/src/planSteppedCardText.ts';
+} from '../../lib/plan/planSteppedCardText';
 import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
-} from '../../shared-domain/src/planStateLabels.ts';
-import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
-import type { DeviceOverviewSteppedLoad } from '../../shared-domain/src/deviceOverview.ts';
+} from '../../packages/shared-domain/src/planStateLabels';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
 
 const NOW_MS = 1_000_000;
 
@@ -816,83 +814,7 @@ describe('resolveSteppedTemperatureText', () => {
   });
 });
 
-describe('resolveSteppedRailSteps', () => {
-  const binaryDevice = { currentState: 'on' };
 
-  it('draws the ladder alone when it has an off rung of its own, whatever its name', () => {
-    const idleLadder: SteppedLoadProfile = {
-      steps: [
-        { id: 'idle', planningPowerW: 0 },
-        { id: 'low', planningPowerW: 1250 },
-      ],
-    };
-    expect(resolveSteppedRailSteps(binaryDevice, idleLadder).map((step) => step.id)).toEqual(['idle', 'low']);
-  });
-
-  it('puts the synthetic off rung in front for a binary device whose ladder has none', () => {
-    const ownerNamedOff: SteppedLoadProfile = {
-      steps: [
-        { id: 'Off', planningPowerW: 600 },
-        { id: 'low', planningPowerW: 1250 },
-      ],
-    };
-    expect(resolveSteppedRailSteps(binaryDevice, ownerNamedOff).map((step) => step.id))
-      .toEqual(['off', 'Off', 'low']);
-  });
-
-  it('draws a step-only device\'s ladder as it is', () => {
-    expect(resolveSteppedRailSteps({ currentState: 'not_applicable' }, profile).map((step) => step.id))
-      .toEqual(['low', 'medium', 'max']);
-  });
-});
-
-describe('resolveSteppedActiveStepId', () => {
-  it('returns the off step id when state is off and profile has an explicit off step', () => {
-    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
-    expect(resolveSteppedActiveStepId(device, profileWithOff)).toBe('off');
-  });
-
-  it('returns synthetic "off" id when state is off-like but profile has no off step', () => {
-    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
-    expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
-  });
-
-  it('returns synthetic "off" id for empty currentState with no off step', () => {
-    const device = { ...baseDevice, currentState: '', steppedLoad: steppedLoad({ reportedStepId: 'medium' }) };
-    expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
-  });
-
-  it("returns the ladder's zero-power rung, whatever its name, when state is off", () => {
-    const idleLadder: SteppedLoadProfile = {
-      steps: [
-        { id: 'idle', planningPowerW: 0 },
-        { id: 'low', planningPowerW: 1250 },
-      ],
-    };
-    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
-    expect(resolveSteppedActiveStepId(device, idleLadder)).toBe('idle');
-  });
-
-  it('does not rest a device on a powered rung the owner named "Off"', () => {
-    const ownerNamedOff: SteppedLoadProfile = {
-      steps: [
-        { id: 'Off', planningPowerW: 600 },
-        { id: 'low', planningPowerW: 1250 },
-      ],
-    };
-    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
-    expect(resolveSteppedActiveStepId(device, ownerNamedOff)).toBe('off');
-  });
-
-  it('returns reportedStepId when state is not off-like', () => {
-    const device = {
-      ...baseDevice,
-      currentState: 'not_applicable',
-      steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
-    };
-    expect(resolveSteppedActiveStepId(device, profile)).toBe('medium');
-  });
-});
 
 describe('resolveSteppedStatusLine — held-back hold vs active recovery', () => {
   const heldBack: SettingsUiPlanDeviceStarvation = {

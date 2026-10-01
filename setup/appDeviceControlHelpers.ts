@@ -3,7 +3,6 @@ import { DeviceTargetPowerReachabilityOwner } from '../lib/device/deviceTargetPo
 import { SteppedDeviceControl } from '../lib/executor/steppedDeviceControl';
 import { TargetPowerCommandLifecycle } from '../lib/executor/targetPowerCommandLifecycle';
 import { DeviceControlProjection } from '../lib/planInput/deviceControlProjection';
-import { resolveLatestPlanDesiredStepId } from '../lib/planInput/plannedSteppedCommand';
 import { getDebugEmitter, getLogger } from '../lib/logging/logger';
 import { requireDeviceManager, requirePlanService } from './appInit/contextGuards';
 
@@ -26,9 +25,7 @@ export const createDeviceControlHelpers = (
     getObservedState: (deviceId) => ctx.getObservedRecord(deviceId),
   }, targetPower,
   (deviceId, stepId, powerW) => requireDeviceManager(ctx).reportSteppedLoadActualStep(deviceId, stepId, powerW),
-  (deviceId, profile) => resolveLatestPlanDesiredStepId(
-    requirePlanService(ctx).getLatestPlanSnapshot(), deviceId, profile,
-  ), loggers);
+  (deviceId, profile) => requirePlanService(ctx).getLatestPlannedStepId(deviceId, profile), loggers);
   const projection = new DeviceControlProjection(ctx.steppedCommandStore, ctx.deviceConfiguration,
     (deviceId) => ctx.getObservedRecord(deviceId),
     (deviceId) => ctx.isTemperatureControlDisabled(deviceId),

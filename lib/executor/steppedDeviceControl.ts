@@ -1,6 +1,6 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
-  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
+  getSteppedLoadLowestActiveStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { Loggers } from '../logging/logger';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
@@ -9,7 +9,9 @@ import { readExecutorDevice, type ExecutorDeviceReadDeps } from './executorDevic
 import type { SteppedCommandStore } from './steppedCommandStore';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { ReportSteppedLoadActualStepResult } from './steppedCommandState';
-import { emitSteppedFeedbackLog, resolvePlannedDesiredStepToPreserve } from './steppedFeedback';
+import {
+  emitSteppedFeedbackLog, resolvePlannedDesiredStepId, resolvePlannedDesiredStepToPreserve,
+} from './steppedFeedback';
 import type { TargetPowerCommandLifecycle } from './targetPowerCommandLifecycle';
 
 /** Stepped-command lifecycle over owner-resolved configuration and admitted observations. */
@@ -68,22 +70,22 @@ export class SteppedDeviceControl {
       return this.ignoreReport(deviceId, stepId, admission);
     }
     const { profile, observation } = admission;
-    const previousDesiredStepId = getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
     const latestPlanDesiredStepId = this.readPlannedStep(deviceId, profile);
-    const plannedDesiredStepId = latestPlanDesiredStepId ?? previousDesiredStepId;
     const device = readExecutorDevice(this.source, deviceId);
     if (device) this.targetPower.reconcile([device], observation.observedAtMs);
     const changed = this.store.reportActualStep(observation);
     const preserved = resolvePlannedDesiredStepToPreserve(
-      previousDesired, previousDesiredStepId, latestPlanDesiredStepId, plannedDesiredStepId, observation.stepId,
+      previousDesired, profile, latestPlanDesiredStepId, observation,
     );
     if (preserved) this.store.preserveDesiredStep({ deviceId, desiredStepId: preserved,
       previousStepId: observation.stepId, status: preserved === observation.stepId ? 'success' : 'idle' });
     if (changed === 'unchanged') {
       this.loggers.debugStructured?.({ event: 'stepped_load_feedback_unchanged', deviceId, stepId });
     } else {
-      emitSteppedFeedbackLog(this.loggers.structuredLog, deviceId, device ? device.name.trim() : `device ${deviceId}`,
-        stepId, previousReportedStepId, previousDesired, plannedDesiredStepId);
+      const deviceName = device ? device.name.trim() : `device ${deviceId}`;
+      emitSteppedFeedbackLog(this.loggers.structuredLog, observation, deviceName,
+        previousReportedStepId, previousDesired,
+        resolvePlannedDesiredStepId(previousDesired, profile, latestPlanDesiredStepId));
     }
     return changed;
   }

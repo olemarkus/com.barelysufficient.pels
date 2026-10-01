@@ -1,4 +1,4 @@
-import { resolveSteppedEvExceptionLabel } from '../../shared-domain/src/planSteppedCardText.ts';
+import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src/evChargingStateLabel';
 
 /**
  * The card must not assert a cause it cannot observe. Matrix of record:

@@ -1,15 +1,17 @@
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
-import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
-import { formatStarvationDurationLabel, formatStarvationReason } from './planStarvation';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
+import {
+  formatDeviceReasonUserFacing, resolveRestoreShortfallKw,
+} from '../../packages/shared-domain/src/planReasonFormatting';
+import { formatStarvationDurationLabel, formatStarvationReason } from '../../packages/shared-domain/src/planStarvation';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
   formatReservedForStartStatus,
-} from './planStateLabels';
-import type { DeviceReason } from './planReasonSemanticsCore';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
-import type { SteppedLoadProfile } from '../../contracts/src/types';
-import { isOnLikeState } from './deviceStatePredicates';
+} from '../../packages/shared-domain/src/planStateLabels';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { isOnLikeState } from '../../packages/shared-domain/src/deviceStatePredicates';
 
 // The ONE reason line a held device card may show — shared by all three card
 // variants (temperature, stepped, generic), which until 2026-08-02 each
@@ -126,16 +128,6 @@ const readReserveHolderName = (reason: unknown): string | undefined => {
 // number and the ladder are identical.
 export type HeldCardReasonVerb = 'resume' | 'increase';
 
-export const isActionSpecificRestoreWaitReasonCode = (code: string | undefined): boolean => (
-  code === PLAN_REASON_CODES.cooldownRestore
-  || code === PLAN_REASON_CODES.waitingForOtherDevices
-);
-
-// Kept local because shared-domain cannot take a runtime dependency on
-// contracts helpers (`no-runtime-value-deps-on-contracts`). This is the same
-// canonical rule as contracts/deviceControlProfiles: zero-power or reserved
-// `off` ID means the device is off.
-
 /**
  * The step facts the held-card verb needs, resolved by the caller.
  *
@@ -179,21 +171,6 @@ export const resolveHeldCardReasonVerb = (device: HeldCardStepView & {
   device.steppedLoadProfile !== null && isOnLikeState(device.currentState)
     ? 'increase'
     : 'resume'
-);
-
-export const formatDeviceReasonUserFacingForDevice = (device: {
-  reason: DeviceReason;
-  currentState?: string;
-  reportedStepId?: string;
-  selectedStepId?: string;
-  steppedLoad?: { profile: SteppedLoadProfile; reportedStepId: string | null };
-}): string => (
-  isActionSpecificRestoreWaitReasonCode(device.reason.code)
-    ? resolveHeldCardReasonLine({
-        reason: device.reason,
-        verb: resolveHeldCardReasonVerb({ ...resolveHeldCardStepView(device), currentState: device.currentState }),
-      })
-    : formatDeviceReasonUserFacing(device.reason)
 );
 
 // The need clause every ceiling-hold line ends in, held apart from the stem so

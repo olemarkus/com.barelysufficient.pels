@@ -1,6 +1,6 @@
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { hasBinaryCommand } from './executablePlan';
-import type { DeviceExecutionState, AxisProgress } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState, AxisProgress } from '../planContract/deviceExecutionState';
 import type { ExecutableDeviceIntent, ExecutableObservedDeviceState } from './executablePlan';
 import { hasSteppedCommand, hasTargetCommand, hasReleaseCommand } from './executablePlan';
 import type { DriftCommandRead } from './driftObservedDevice';
