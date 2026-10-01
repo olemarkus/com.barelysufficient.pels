@@ -29,14 +29,16 @@ export function buildPresentationSignatureForDevice(device: OverviewLogDevice): 
 const toSentenceShape = (text: string): string => text.replace(/\d+(?:[.,]\d+)?/gu, '#');
 
 /**
- * What makes a log entry: a change of state, reason, rail or power. The fact line
- * carries measured readings (temperature, battery level) whose drift is not a
- * state change, the reason's figures move with the pace, and a countdown's end
- * and length are re-anchored on rebuilds that have no recorded start, so none of
- * them may move the signature on its own.
+ * What makes a log entry: a change of state, reason, rail, power or a categorical
+ * fact (a charger's plug turning `Unplugged`). The fact line's measured readings
+ * (temperature, battery level) drift without being a state change, the reason's
+ * figures move with the pace, and a countdown's end and length are re-anchored on
+ * rebuilds that have no recorded start, so none of them may move the signature on
+ * their own.
  */
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
-  const { factText: _measuredReadings, ...status } = device.status;
+  const status = { ...device.status,
+    factText: device.status.factText === null ? null : toSentenceShape(device.status.factText) };
   const reason = status.reason;
   if (!reason) return JSON.stringify(status);
   const { countdown, detail } = reason;

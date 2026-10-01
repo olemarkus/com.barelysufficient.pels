@@ -104,6 +104,19 @@ describe('coerceDeferredObjectiveActivePlans', () => {
     expect(result).not.toBeNull();
     expect(Object.keys(result?.plansByDeviceId ?? {})).toEqual(['ev-1']);
   });
+
+  it.each([
+    ['hours that are not an array', { hours: {} }],
+    ['an hour with no start', { hours: [null] }],
+    ['an hour with a non-finite start', { hours: [{ startsAtMs: Number.NaN }] }],
+  ])('drops a plan with %s, which the Overview EV line would walk', (_case, latest) => {
+    const raw = planFor('ev-1', 2);
+    const tampered = {
+      version: 1 as const,
+      plansByDeviceId: { ...raw.plansByDeviceId, 'ev-bad': { ...raw.plansByDeviceId['ev-1'], latest } as unknown },
+    };
+    expect(Object.keys(coerceDeferredObjectiveActivePlans(tampered)?.plansByDeviceId ?? {})).toEqual(['ev-1']);
+  });
 });
 
 describe('reloadDeferredObjectiveActivePlans', () => {

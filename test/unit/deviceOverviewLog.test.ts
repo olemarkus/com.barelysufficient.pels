@@ -112,6 +112,14 @@ describe('buildOverviewSignatureForDevice', () => {
     expect(buildOverviewSignatureForDevice(drifted)).toBe(buildOverviewSignatureForDevice(base));
   });
 
+  it('records a categorical fact change such as a charger becoming unplugged', () => {
+    const base = withStatus(overviewLogDevice(), { factText: 'Charging · 64 % · level 16 A' });
+    const unplugged = withStatus(base, { factText: 'Unplugged · Level 16 A' });
+    expect(buildOverviewSignatureForDevice(unplugged)).not.toBe(buildOverviewSignatureForDevice(base));
+    const batteryDrift = withStatus(base, { factText: 'Charging · 65 % · level 16 A' });
+    expect(buildOverviewSignatureForDevice(batteryDrift)).toBe(buildOverviewSignatureForDevice(base));
+  });
+
   it('still records a change of state, reason or power', () => {
     const base = overviewLogDevice();
     const signature = buildOverviewSignatureForDevice(base);
