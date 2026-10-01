@@ -1,7 +1,6 @@
 import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type {
-  DeviceExecutionState, DeviceStatus, DeviceStatusCountdown,
-} from '../../packages/contracts/src/deviceStatus';
+import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
@@ -11,15 +10,16 @@ import {
 import { isSatisfiedTargetOnlyDevice, type PlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
 import {
   resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
-} from '../../packages/shared-domain/src/planCardReasonLine';
+} from './planCardReasonLine';
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveSteppedStatusLine, resolveSteppedEvExceptionLabel, resolveSteppedLevelFact,
-  resolveSteppedTemperatureText } from '../../packages/shared-domain/src/planSteppedCardText';
+import { resolveSteppedStatusLine, resolveSteppedLevelFact,
+  resolveSteppedTemperatureText } from './planSteppedCardText';
+import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src/evChargingStateLabel';
 import {
   resolveTemperatureLine, resolveTemperatureReasonLine, resolveBinarySurplusReasonLine,
 } from './planTemperatureCardText';
-import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
-import { toSimulationReasonLine } from '../../packages/shared-domain/src/simulationReasonMood';
+import { formatIdleClassificationCopy } from '../observer/idleClassificationCopy';
+import { toSimulationReasonLine } from './simulationReasonMood';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
@@ -198,6 +198,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const intentKind = resolveIntentStateKind(grammar);
   const displayKind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
     satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(device) });
+  // `resolveBaseKind` never yields `unknown`; this narrows the display kind to the wire's vocabulary.
   const kind = displayKind === 'unknown' ? 'unavailable' : displayKind;
   const limited = intentKind === 'held';
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;

@@ -7,7 +7,7 @@ import { DeviceTargetPowerReachabilityOwner } from '../../lib/device/deviceTarge
 import { SteppedDeviceControl } from '../../lib/executor/steppedDeviceControl';
 import { TargetPowerCommandLifecycle } from '../../lib/executor/targetPowerCommandLifecycle';
 import { DeviceControlProjection } from '../../lib/planInput/deviceControlProjection';
-import { resolveLatestPlanDesiredStepId } from '../../lib/planInput/plannedSteppedCommand';
+import { resolveLatestPlanDesiredStepId } from '../../lib/plan/plannedSteppedCommand';
 import type { Loggers } from '../../lib/logging/logger';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { TargetPowerConfigWithReachability } from '../../lib/device/targetPowerReachability';

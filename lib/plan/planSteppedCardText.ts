@@ -2,37 +2,41 @@ import type {
   ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
-  SteppedLoadStep,
-} from '../../contracts/src/types';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
-import type { DeviceOverviewSnapshot, DeviceOverviewSteppedLoad } from './deviceOverview';
+} from '../../packages/contracts/src/types';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  DeviceOverviewSnapshot, DeviceOverviewSteppedLoad,
+} from '../../packages/shared-domain/src/deviceOverview';
 import {
   isHoldReasonCode,
   resolveDisplayStateKind,
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
-} from './planCardGrammar';
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
-import type { DeviceReason } from './planReasonSemanticsCore';
-import { isOnLikeState } from './deviceStatePredicates';
-import { formatDeviceReasonUserFacing, resolveRestoreShortfallKw } from './planReasonFormatting';
+} from '../../packages/shared-domain/src/planCardGrammar';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
+import {
+  formatDeviceReasonUserFacing, resolveRestoreShortfallKw,
+} from '../../packages/shared-domain/src/planReasonFormatting';
 import {
   formatHourlyExhaustedLine,
   formatShortfallLine,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
-import { formatStepDisplayLabel } from './steppedStepLabel';
+import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import {
-  getSteppedLoadOffStep,
+  EV_ROUTINE_CHARGING_LABEL, isRoutineEvChargingState,
+} from '../../packages/shared-domain/src/evChargingStateLabel';
+import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
   isSteppedLoadStepOff,
-} from './deviceControlProfiles';
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   type PlanStateKind,
-} from './planStateLabels';
+} from '../../packages/shared-domain/src/planStateLabels';
 
 const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
@@ -85,39 +89,6 @@ const findStepLabel = (profile: SteppedLoadProfile, stepId: string | null): stri
 const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): boolean => {
   const step = getSteppedLoadStep(profile, stepId);
   return step !== null && !isSteppedLoadStepOff(step);
-};
-
-const SYNTHETIC_OFF_STEP: SteppedLoadStep = { id: 'off', planningPowerW: 0 };
-
-/**
- * The rung a device at rest sits on: the ladder's own off step by the planner's
- * rule (`getSteppedLoadOffStep`, the one a `turn_off` shed parks it at), or the
- * step rail's synthetic `off` rung for a ladder that has none.
- */
-const resolveSteppedOffStep = (profile: SteppedLoadProfile): SteppedLoadStep => (
-  getSteppedLoadOffStep(profile) ?? SYNTHETIC_OFF_STEP
-);
-
-/**
- * The rungs the step rail draws: the ladder, with the synthetic `off` rung in
- * front for a device that has a binary off but no off rung of its own, so a
- * resting device always has a rung to sit on.
- */
-export const resolveSteppedRailSteps = (
-  device: { currentState?: string },
-  profile: SteppedLoadProfile,
-): SteppedLoadStep[] => {
-  const hasBinaryOff = device.currentState !== 'not_applicable';
-  if (!hasBinaryOff || getSteppedLoadOffStep(profile) !== null) return profile.steps;
-  return [SYNTHETIC_OFF_STEP, ...profile.steps];
-};
-
-export const resolveSteppedActiveStepId = (
-  device: SteppedCardDevice,
-  profile: SteppedLoadProfile,
-): string | null => {
-  if (isSteppedCardOffLikeState(device.currentState)) return resolveSteppedOffStep(profile).id;
-  return resolveCurrentStepId(device);
 };
 
 export const isSteppedTransit = (device: {
@@ -315,42 +286,7 @@ export const resolveSteppedTemperatureText = (device: {
   return `${currentTemperature.toFixed(1)} °C · target ${plannedTarget.toFixed(0)} °C`;
 };
 
-const EV_CHARGING_STATE_LABELS: Record<string, string> = {
-  plugged_in_charging: 'Charging',
-  plugged_in_paused: 'Paused',
-  plugged_in: 'Not charging',
-  plugged_in_discharging: 'Discharging',
-  plugged_out: 'Unplugged',
-};
-
-/**
- * The plug state in the words users already read on the device card. Shared so a
- * car's state and its charger's state are never described differently — they are
- * observations of the same plug.
- *
- * Returns `null` for an unrecognised state rather than echoing the raw enum: a
- * capability id is not user-facing copy.
- */
-export const resolveEvChargingStateLabel = (state: string | undefined): string | null => (
-  state === undefined ? null : EV_CHARGING_STATE_LABELS[state] ?? null
-);
-
-// The plugged-in-idle state (`plugged_in`) upgrades to a car-attributed label
-// only when the charger's own command (signal 2) says current is on offer (see
-// `resolveSteppedEvExceptionLabel`).
-const EV_IDLE_STATE = 'plugged_in';
-const EV_IDLE_COMMANDED_LABEL = 'Waiting for car';
-const EV_CAR_DISAGREES_LABEL = 'Car and charger disagree';
-const EV_CAR_PAUSED_LABEL = 'Paused by the car';
-
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
-
-// EV charging states that are the routine "it's doing its thing" case — they
-// fold into the fact line beside the level. Every other EV state (Paused /
-// Not charging / Waiting for car / Discharging / Unplugged) is an exception
-// and renders in
-// the reason slot instead (`resolveSteppedEvExceptionLabel`).
-const EV_ROUTINE_STATE = 'plugged_in_charging';
 
 // The stepped card's one modality fact line: `Charging · level 6 A` for a
 // routinely-charging EV, `Level 6 A` otherwise; `Level unknown` when the
@@ -376,10 +312,9 @@ export const resolveSteppedLevelFact = (device: {
   const levelText = stateWordNamesLevel ? null : `level ${formatStepDisplayLabel(stepId)}`;
   const isEvCharger = device.deviceRole === 'ev_charger';
   const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
-  const isRoutineEvCharge = isEvCharger
-    && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
+  const isRoutineEvCharge = isEvCharger && isRoutineEvChargingState(device.evChargingState);
   const segments = isRoutineEvCharge
-    ? [EV_CHARGING_STATE_LABELS[EV_ROUTINE_STATE], batteryText, levelText]
+    ? [EV_ROUTINE_CHARGING_LABEL, batteryText, levelText]
     : [batteryText, levelText === null ? null : capitalize(levelText)];
   const fact = segments.filter((segment): segment is string => segment !== null).join(' · ');
   return fact === '' ? null : fact;
@@ -429,83 +364,4 @@ const resolveBatteryFact = (
  * charge command PELS never sent — which is how an idle, switched-off charger
  * came to be labelled "Waiting for car". Matrix: `notes/ev-charger-state-copy.md`.
  */
-const isChargerCommandedOn = (currentState: string | undefined): boolean => (
-  isOnLikeState(currentState)
-);
 
-// Exceptional EV states for the reason slot — null for the routine charging
-// state (carried by the fact line) and for non-EV devices. The idle state
-// (`plugged_in`) names the car as the holdout ("Waiting for car") only when the
-// charger has been told to charge; a charger commanded off states the plain
-// fact ("Not charging"), because nothing is waiting on a car that has not been
-// offered any current.
-//
-// The claim is an observation rather than an inference, so it holds in
-// simulation too and takes no `dryRun` argument: `toSimulationReasonLine`
-// leaves factual device states alone by design.
-export const resolveSteppedEvExceptionLabel = (device: {
-  /** Observer-resolved "is current on offer": `off` when commanded off OR at a 0 W step. */
-  currentState?: string;
-  evChargingState?: EvChargingState;
-  /** The associated car's own plug state; absent when no car is associated. */
-  carChargingState?: EvChargingState;
-  deviceRole?: 'ev_charger';
-}): string | null => {
-  if (device.deviceRole !== 'ev_charger') return null;
-  const state = (device.evChargingState ?? '').trim().toLowerCase();
-  if (state === EV_ROUTINE_STATE) return null;
-  const commandedOn = isChargerCommandedOn(device.currentState);
-  const carLabel = resolveEvCarExceptionLabel(device, state, commandedOn);
-  if (carLabel !== null) return carLabel;
-  if (state === EV_IDLE_STATE && commandedOn) return EV_IDLE_COMMANDED_LABEL;
-  return EV_CHARGING_STATE_LABELS[state] ?? null;
-};
-
-/**
- * What the associated CAR adds, and only where the charger alone is ambiguous.
- *
- * The charger table already decides the idle plug on its own — commanded on →
- * `Waiting for car`, commanded off → `Not charging`. What a car adds is the two
- * contradiction readings the charger can never produce by itself, plus
- * confirmation of a pause the charger only reports as its own. Matrix of
- * record: `notes/ev-charger-state-copy.md`.
- */
-const resolveEvCarExceptionLabel = (
-  device: { carChargingState?: EvChargingState },
-  state: string,
-  commandedOn: boolean,
-): string | null => {
-  const carState = device.carChargingState;
-  if (carState === undefined) return null;
-  // The charger reports current flowing, so whatever the car believes, this is
-  // the routine case and the fact line already carries it.
-  if (state === EV_ROUTINE_STATE) return null;
-  if (state === EV_IDLE_STATE) {
-    // A charger commanded off explains the idle plug by itself, and a car that
-    // still reports charging is the expected lag behind that off command rather
-    // than a fault — so neither the car-holdout claim nor the contradiction is
-    // made here. Both need the charger to have been told to deliver current;
-    // yielding leaves the caller to state the plain fact.
-    if (!commandedOn) return null;
-    // Both observe the same plug. Disagreement is a real fault — a lagging car
-    // app or a wrong association — and is reported rather than smoothed over.
-    if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
-    // The car says it is not plugged in at all, so the association is suspect.
-    // Return the plain fact rather than falling through — falling through would
-    // name the car as holdout on the strength of an association the car itself
-    // just contradicted.
-    if (carState === 'plugged_out') return EV_CHARGING_STATE_LABELS[state] ?? null;
-    return EV_IDLE_COMMANDED_LABEL;
-  }
-  if (state === 'plugged_in_paused') {
-    // Same contradiction as the idle case, and reported for the same reason: the
-    // charger says it halted while the car says current is flowing.
-    if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
-    if (carState === 'plugged_in_paused') return EV_CAR_PAUSED_LABEL;
-  }
-  return null;
-};
-
-// Re-exported for existing importers; the definition now lives in
-// `steppedStepLabel.ts` so `planReasonFormatting.ts` can use it without a cycle.
-export { formatStepDisplayLabel } from './steppedStepLabel';

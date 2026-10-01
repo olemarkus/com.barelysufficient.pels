@@ -153,7 +153,7 @@ does).
   deps callback and passes it into `buildDeviceStatus`
   (`lib/plan/deviceStatusReadModel.ts`), which emits it as `status.reason`
   (text, tone and detail). The classification itself never crosses the wire.
-- `packages/shared-domain/src/idleClassificationCopy.ts` — the source of
+- `lib/observer/idleClassificationCopy.ts` — the source of
   exceptional UI status-line strings and matching diagnostic detail, plus the
   diagnostic detail for the quiet `near_target_idle` state.
 - The settings UI renders `status.reason` like any other reason line; benign

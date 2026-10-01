@@ -1,9 +1,3 @@
-/**
- * Structural slice of the home-runtime registry this consumes (multi-home R7b
- * P1#1). Kept structural so this module needs no value import of
- * `HomeRuntimeRegistry` — the wiring passes the registry (or `undefined` before
- * `initHomeRuntimeRegistry`, and for the no-sub-homes case).
- */
 import {
   syncExternalOffHoldForDevice,
   toExternalOffHoldObservedDevice,
@@ -17,6 +11,12 @@ import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import { requirePlanService } from './appInit/contextGuards';
 import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 
+/**
+ * Structural slice of the home-runtime registry this consumes (multi-home R7b
+ * P1#1). Kept structural so this module needs no value import of
+ * `HomeRuntimeRegistry` — the wiring passes the registry (or `undefined` before
+ * `initHomeRuntimeRegistry`, and for the no-sub-homes case).
+ */
 type OwningHomeRouter = {
   getOwningHomeRouteForDevice: (deviceId: string) => {
     homeId: HomeId;

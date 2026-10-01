@@ -129,7 +129,7 @@ smart-task target in the objective's progress direction. A classification agains
 that does not cover the task target must never satisfy it.
 
 The verdict and its setpoint travel together as `StallEvidence`, and
-`stallEvidenceCoversTarget` (`packages/shared-domain/src/idleClassificationCopy.ts`) is the one
+`stallEvidenceCoversTarget` (`lib/objectives/stallEvidence.ts`) is the one
 gate — applied by BOTH stall consumers, `diagnosticsBridge.resolveStallReportedStatus` (live
 status) and `planHistory.maybePromoteOnStall` (recorded outcome), so the two cannot disagree.
 Passing the bare classification is what let a setback satisfy a higher target in production on

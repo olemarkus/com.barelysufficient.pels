@@ -6,7 +6,7 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvCarAssociations } from '../../../../shared-domain/src/settings/evCarAssociations.ts';
-import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
+import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/evChargingStateLabel.ts';
 import {
   deviceDetailCarFlowNote,
   deviceDetailCarList,

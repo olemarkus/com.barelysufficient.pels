@@ -21,6 +21,7 @@ import { PlanStatusWriter } from './planStatusWriter';
 import { buildLiveStatePlan } from './planLiveStateMerge';
 import type {
   DevicePlan,
+  MeteredDevicePlanDevice,
   PendingTargetObservationSource,
   PlanChangeSet,
   PlanInputDevice,
@@ -34,12 +35,15 @@ import type {
 } from './planHeadroomDevice';
 import { PlanChangeTracker } from './planChangeTracker';
 import { DeviceOverviewTransitions } from './planOverviewEmit';
+import { isMeteredPlanDevice } from './planMeteredDevice';
+import { resolveLatestPlanDesiredStepId } from './plannedSteppedCommand';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { OverviewDecisionFacts } from './deviceOverviewLog';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanServiceDeps } from './planServiceDeps';
 import type { PublishedPlan } from './publishedPlan';
-import type { DeviceExecutionState } from '../../packages/contracts/src/deviceStatus';
+import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 /**
  * Rebuild orchestration for the planning layer: PlanService owns WHEN a plan
  * is rebuilt and everything around the build, never WHAT the plan decides —
@@ -274,6 +278,14 @@ export class PlanService {
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
     const plan = this.getLatestPlanSnapshot();
     return plan ? buildOverviewPublication(plan, this.deps, this.idleClassifier)?.snapshot ?? null : null;
+  }
+
+  /**
+   * The step the latest plan wants a stepped device on, as a rung of the caller's
+   * ladder: the plan's own decision, read for the executor's feedback lifecycle.
+   */
+  getLatestPlannedStepId(deviceId: string, profile: SteppedLoadProfile): string | undefined {
+    return resolveLatestPlanDesiredStepId(this.getLatestPlanSnapshot(), deviceId, profile);
   }
 
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
@@ -524,21 +536,23 @@ export class PlanService {
     // input (mirroring the observer's atomic facet): stamped together for a
     // temperature device, omitted otherwise — no nullable fields synthesized.
     // Idle and unresponsive are judged from measured draw, so only a device with
-    // a power reading is classified; one without is never called idle.
-    const execution = this.deps.planEngine.getDeviceExecutionStates(plan);
-    const idleInputs = plan.devices.flatMap((device): IdleClassifierDeviceInput[] => {
-      const state = execution.get(device.id);
-      if (!state || state.currentDrawKw === undefined) return [];
-      const temperature = this.deps.getObservedTemperature(device.id);
-      return [{
-        id: device.id,
-        name: device.name,
-        currentState: state.physicalState,
-        currentDrawKw: state.currentDrawKw,
-        plannedState: device.plannedState,
-        ...(temperature.kind === 'observed' ? { temperature: temperature.value } : {}),
-      }];
-    });
+    // a power reading is classified; one without is never called idle. State and
+    // draw come from the plan device, the observation the decision was made
+    // from, and the temperature from the observer: this verdict feeds smart-task
+    // stall evidence, a decision input, so it reads no executor convergence state.
+    const idleInputs = plan.devices
+      .filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device))
+      .map((device): IdleClassifierDeviceInput => {
+        const temperature = this.deps.getObservedTemperature(device.id);
+        return {
+          id: device.id,
+          name: device.name,
+          currentState: device.currentState,
+          currentDrawKw: device.currentDrawKw,
+          plannedState: device.plannedState,
+          ...(temperature.kind === 'observed' ? { temperature: temperature.value } : {}),
+        };
+      });
     this.idleClassifier.classifyAll(idleInputs, Date.now());
   }
 

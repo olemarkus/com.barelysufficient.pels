@@ -3,11 +3,11 @@ import {
   isCeilingHoldReasonCode,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
-} from '../../shared-domain/src/planCardReasonLine.ts';
-import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
-import { toSimulationReasonLine } from '../../shared-domain/src/simulationReasonMood.ts';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
+} from '../../lib/plan/planCardReasonLine';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
+import { toSimulationReasonLine } from '../../lib/plan/simulationReasonMood';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 
 // The duration is NBSP-joined so "2 h 15 min" cannot break across lines
 // mid-figure at 320 px. Spelled out here rather than pasted invisibly, so a

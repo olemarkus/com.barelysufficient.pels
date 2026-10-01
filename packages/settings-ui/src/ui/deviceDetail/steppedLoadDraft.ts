@@ -4,7 +4,7 @@ import {
   sortSteppedLoadSteps,
 } from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
-import { formatStepDisplayLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
+import { formatStepDisplayLabel } from '../../../../shared-domain/src/steppedStepLabel.ts';
 import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailShedAction,

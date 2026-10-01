@@ -30,7 +30,7 @@ import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import {
   formatIdleClassificationCopy,
-} from '../../packages/shared-domain/src/idleClassificationCopy';
+} from './idleClassificationCopy';
 import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
 import type { ObservedTemperatureState } from './observedDeviceStateProjection';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';

@@ -80,7 +80,7 @@ function resolveLatestLastUpdated(...values: Array<string | number | Date | null
  * (`lib/plan/admission/binaryCommandReachability.ts`). It controls the owner-facing
  * copy and one fallback readback:
  *   - the device-card wording, throughout
- *     `packages/shared-domain/src/planSteppedCardText.ts` — the plain
+ *     `packages/shared-domain/src/evChargingStateLabel.ts` — the plain
  *     `EV_CHARGING_STATE_LABELS` pair (`Paused` vs `Not charging`), and the
  *     charger-vs-car exception branches in `resolveSteppedEvExceptionLabel` /
  *     `resolveEvCarExceptionLabel`, which read the two states separately

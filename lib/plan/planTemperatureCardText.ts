@@ -8,7 +8,7 @@ import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
-import { resolveHeldCardReasonLine } from '../../packages/shared-domain/src/planCardReasonLine';
+import { resolveHeldCardReasonLine } from './planCardReasonLine';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
 

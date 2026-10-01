@@ -17,6 +17,9 @@ export type PlanStateTone =
   | 'neutral'
   | 'warning';
 
+// The status vocabulary has no "Unknown" (notes/ui-terminology.md): a device
+// whose state PELS cannot read is unavailable to it. The `unknown` kind stays a
+// planner classification and never renders a word of its own.
 export const PLAN_STATE_LABEL: Record<PlanStateKind, string> = {
   active: 'Running',
   idle: 'Idle',
@@ -24,7 +27,7 @@ export const PLAN_STATE_LABEL: Record<PlanStateKind, string> = {
   resuming: 'Resuming',
   manual: 'Manual',
   unavailable: 'Unavailable',
-  unknown: 'Unknown',
+  unknown: 'Unavailable',
 };
 
 export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
