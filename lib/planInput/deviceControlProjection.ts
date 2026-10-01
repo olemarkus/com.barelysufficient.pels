@@ -1,5 +1,9 @@
-import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
-import type { DecoratedDeviceSnapshot, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlModel,
+  ObservedDeviceState,
+  ReportedStepObservedProbe,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
@@ -10,12 +14,19 @@ import { resolveCurrentOn } from '../observer/observedState';
 import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial';
 import type { DeviceConfiguration } from '../device/deviceConfiguration';
 import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
-import { readRuntimeDevice } from './runtimeDeviceRead';
+import { readRuntimeDevice, type DeviceControlDecoration } from './runtimeDeviceRead';
 import { projectLifecycleFallbackDevice } from './lifecycleFallbackDeviceProjection';
 
-/** The chosen control axis and accepted observation, with no alternative ladder hints. */
-export type DeviceControlProjectionSource = Omit<DeviceSurfaces,
-  'suggestedSteppedLoadProfile' | 'nativeWriteCapabilities'>;
+/**
+ * What the decorator reads: the chosen control axis and the accepted step
+ * report. Declared as exactly that, not as an inventory snapshot, so planner
+ * input (configuration joined with the Observer record, no inventory metadata)
+ * passes without claiming fields it does not carry.
+ */
+export type DeviceControlProjectionSource = Pick<ObservedDeviceState, 'id' | 'binaryControl'>
+  & ReportedStepObservedProbe
+  & { controlModel?: DeviceControlModel; steppedLoadProfile?: SteppedLoadProfile };
+
 
 /** Pure composition: the device owner has already chosen the profile and admitted its report. */
 export function decorateSnapshotWithDeviceControl<T extends DeviceControlProjectionSource>(
@@ -23,7 +34,7 @@ export function decorateSnapshotWithDeviceControl<T extends DeviceControlProject
   store: SteppedCommandStore,
   temperatureControlDisabled: boolean,
   temperatureAdjustmentsDisabled: boolean,
-): T & DecoratedDeviceSnapshot {
+): T & DeviceControlDecoration {
   const device = {
     ...snapshot,
     temperatureControlDisabled: temperatureControlDisabled ? true as const : undefined,
@@ -39,7 +50,7 @@ export function decorateSnapshotWithDeviceControl<T extends DeviceControlProject
 
 function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
   device: T, profile: SteppedLoadProfile, store: SteppedCommandStore,
-): T & DecoratedDeviceSnapshot {
+): T & DeviceControlDecoration {
   const currentDesired = store.getDesired(device.id);
   const targetStepId = getSteppedLoadStep(profile, currentDesired?.stepId)?.id;
   const selectedStepId = device.reportedStepId ?? getSteppedLoadLowestActiveStep(profile)?.id;
@@ -81,7 +92,7 @@ export class DeviceControlProjection {
       this.isTemperatureControlDisabled(deviceId), !this.allowsTemperatureAdjustments(deviceId)));
   }
 
-  decorateTargetSnapshotList<T extends DeviceControlProjectionSource>(devices: T[]): (T & DecoratedDeviceSnapshot)[] {
+  decorateTargetSnapshotList<T extends DeviceControlProjectionSource>(devices: T[]): (T & DeviceControlDecoration)[] {
     return devices.map((device) => decorateSnapshotWithDeviceControl(
       device, this.store, this.isTemperatureControlDisabled(device.id),
       !this.allowsTemperatureAdjustments(device.id),

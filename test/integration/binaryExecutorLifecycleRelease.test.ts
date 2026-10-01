@@ -66,6 +66,7 @@ const onoffSnapshot: TargetDeviceSnapshot = {
   canSetControl: true,
   binaryControl: { on: true },
   available: true,
+  isEvCharger: false,
 } as unknown as TargetDeviceSnapshot;
 
 const evSnapshot: TargetDeviceSnapshot = {
@@ -76,6 +77,7 @@ const evSnapshot: TargetDeviceSnapshot = {
   binaryControl: { on: true },
   available: true,
   deviceClass: 'evcharger',
+  isEvCharger: true,
   evChargingState: 'plugged_in_charging',
 } as unknown as TargetDeviceSnapshot;
 

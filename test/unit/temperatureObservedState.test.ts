@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readObservedTemperatureState } from '../../lib/observer/observedDeviceStateProjection';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
 
 // Probe-widened fixture: the base snapshot type omits `currentTemperature` (that
 // is the contract under test), so the fixture builds the owner-side widened
@@ -14,6 +15,7 @@ const snap = (
   name: 'D',
   targets: [],
   ...over,
+  ...resolveFixtureDescriptorIdentity(over),
   available: over.available ?? true,
 });
 

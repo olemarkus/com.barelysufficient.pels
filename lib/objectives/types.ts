@@ -74,11 +74,11 @@ export type ObjectiveDeviceInput = {
   id: string;
   name: string;
   // Both are read only through the shared kind predicates — `isEvDevice` and
-  // `isTemperatureControlDevice` (`objectiveSteps` / `planningSpeed`) — never by
-  // comparing the strings here. Optional because they are optional on
-  // `PlanInputDevice`; tightening either would break the structural assignment.
-  deviceClass?: string;
-  deviceType?: 'temperature' | 'onoff';
+  // `isTemperatureControlDevice` (`objectiveSteps` / `planningSpeed`). Required,
+  // as on `PlanInputDevice`: when the EV identity was an optional class it went
+  // missing from planner input and nothing noticed.
+  isEvCharger: boolean;
+  deviceType: 'temperature' | 'onoff';
   steppedLoadProfile?: SteppedLoadProfile;
   priority?: number;
   /**

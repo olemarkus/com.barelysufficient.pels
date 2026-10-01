@@ -2,6 +2,7 @@
 // section nodes. These tests assert the visible order per kind, the EV
 // shed-field relocation, idempotence, and the bare-page Setup auto-expand.
 
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const SECTION_IDS = [
@@ -37,7 +38,7 @@ const buildDom = () => {
 
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({
+): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',
@@ -46,7 +47,7 @@ const buildDevice = (
   capabilities: ['measure_power', 'onoff'],
   expectedPowerKw: 1.5, expectedPowerSource: 'default',
   ...overrides,
-});
+}));
 
 const sectionOrder = (): string[] => Array.from(
   document.querySelectorAll('.slide-panel__content > section'),

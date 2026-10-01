@@ -32,6 +32,7 @@ import {
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
+import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -172,6 +173,10 @@ describe('P1 bug proofs', () => {
           control: fixtureControlPosture({ controllable: true }),
           binaryCapabilityId: 'onoff',
           currentDrawKw: 0,
+          deviceType: 'onoff',
+          isEvCharger: false,
+          observeOnly: false,
+          starvationSupported: false,
         })) as PlanInputDevice,
         withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
@@ -191,6 +196,10 @@ describe('P1 bug proofs', () => {
           currentOn: true,
           control: fixtureControlPosture({ controllable: true }),
           binaryCapabilityId: 'onoff',
+          deviceType: 'onoff',
+          isEvCharger: false,
+          observeOnly: false,
+          starvationSupported: false,
         })) as PlanInputDevice,
       ],
       softLimitSource: 'capacity',
@@ -312,7 +321,7 @@ describe('P1 bug proofs', () => {
       nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
-      getDeviceSurfaces: () => [rawDevice],
+      getDeviceSurfaces: () => [deviceSurfacesFixture(rawDevice)],
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

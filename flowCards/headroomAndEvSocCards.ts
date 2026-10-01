@@ -198,7 +198,7 @@ async function getEvChargerDeviceOptions(
 ): Promise<Array<{ id: string; name: string }>> {
   const snapshot = await deps.getSnapshot();
   return buildDeviceAutocompleteOptions(
-    snapshot.filter((device) => device.deviceClass === 'evcharger'),
+    snapshot.filter((device) => device.isEvCharger),
     query,
   );
 }
@@ -220,7 +220,7 @@ async function requireEvChargerSnapshot(
   if (!charger) {
     throw new Error(`Charger '${chargerDeviceId}' was not found in the snapshot.`);
   }
-  if (charger.deviceClass !== 'evcharger') {
+  if (!charger.isEvCharger) {
     throw new Error(`Device '${charger.name.trim()}' is not an EV charger.`);
   }
   return charger;

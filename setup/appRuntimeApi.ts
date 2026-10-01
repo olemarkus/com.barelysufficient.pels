@@ -145,13 +145,18 @@ abstract class AppRuntimeApi extends Base {
 
   /**
    * The whole observed record, for the consumers that HOLD it rather than ask a
-   * question of it. There are exactly two, and they are worth naming:
+   * question of it. They are worth naming:
    *
+   * - the joins that compose it with device configuration or inventory metadata
+   *   (planner input, device surfaces, the Flow-card device list);
    * - the settings-UI payload refresh, which overlays a fixed list of
    *   raw-observed fields onto the served device (`LIVE_OBSERVED_FIELDS`);
    * - the executor's drift check, which reads the reported step, measured power
    *   and EV state together to decide whether the device has moved off plan
-   *   (`ObserverDeviceRead`, `lib/executor/driftObservedDevice.ts`).
+   *   (`ObserverDeviceRead`, `lib/executor/executorDeviceRead.ts`), joined with
+   *   the configuration's charger identity;
+   * - external-off hold detection, which reads the binary observation and the
+   *   plug state beside the configuration's charger identity.
    *
    * Separate from `getObservedState` and named for what it is, so holding the
    * record stays a deliberate choice. Before this split the drift path took the
@@ -160,7 +165,7 @@ abstract class AppRuntimeApi extends Base {
    * `getObservedState` that ever returned a genuinely narrowed copy would have
    * changed drift decisions with no type error anywhere.
    *
-   * A third caller is the general exit re-opening. Anything wanting one cluster
+   * A new holder is the general exit re-opening. Anything wanting one cluster
    * wants a named read.
    */
   public getObservedRecord(deviceId: string): ProjectedObservedDeviceState | undefined {

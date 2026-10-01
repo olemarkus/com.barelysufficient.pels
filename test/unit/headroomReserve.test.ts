@@ -87,7 +87,7 @@ describe('resolveHeadroomReserves', () => {
       { plannedState: 'inactive' },
       // `commandableNow` is producer-derived, so drive it the way the producer does: an unplugged
       // charger is not commandable, and reserving a block for it costs everyone else for nothing.
-      { deviceClass: 'evcharger', evChargingState: 'plugged_out' },
+      { isEvCharger: true, evChargingState: 'plugged_out' },
     ];
     for (const blocked of blockers) {
       const { reserves } = run(
@@ -105,7 +105,7 @@ describe('resolveHeadroomReserves', () => {
     const armedAt = NOW - 1000;
     const blips: Parameters<typeof buildPlanDevice>[0][] = [
       { available: false },
-      { deviceClass: 'evcharger', evChargingState: 'plugged_out' },
+      { isEvCharger: true, evChargingState: 'plugged_out' },
       // No power estimate at all this cycle: the `unknown_device_power` stamp-preservation path.
       { expectedPowerKw: undefined},
     ];

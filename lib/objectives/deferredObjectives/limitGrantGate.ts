@@ -1,6 +1,7 @@
 import type {
+  DeviceControlModel,
+  ObservedDeviceState,
   SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../../packages/shared-domain/src/steppedLoadObservedState';
 import { getDebugEmitter } from '../../logging/logger';
@@ -26,7 +27,12 @@ type StoredObjectiveState = {
   absenceTrustworthy: boolean;
 };
 
-type GateDevice = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
+// Exactly what the gate reads: the identity it logs, the control model and the
+// stepped ladder. Any device carrier passes, planner input included, without
+// claiming inventory metadata it does not have.
+type GateDevice = Pick<ObservedDeviceState, 'id' | 'name'>
+  & { controlModel?: DeviceControlModel }
+  & SteppedLoadDescriptorProbe;
 
 /** Read one device's objective for the gate; a thrown read is an untrusted absence. */
 export const readStoredObjectiveState = (

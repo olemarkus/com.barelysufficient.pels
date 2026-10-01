@@ -21,6 +21,10 @@ const baseDevice = {
   expectedPowerKw: 1,
   controllable: true,
   available: true,
+  // Producer-resolved identity, required on the overview snapshot: a
+  // setpoint-driven thermostat with no on/off axis, not a charger.
+  binaryControllable: false,
+  isEvCharger: false,
 };
 
 describe('resolveTemperatureLine', () => {

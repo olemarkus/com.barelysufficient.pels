@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
 import { buildHomeyApiMock, emitHomeyEvent, installedHomeyMock, installHomeyMock } from './helpers/homeyApiMock';
@@ -318,12 +319,12 @@ beforeEach(() => {
 afterEach(() => releasePageResources());
 
 const DEFAULT_SETTINGS_DEVICES = [
-  {
+  withDescriptorIdentity<TargetDeviceSnapshot>({
     id: 'dev-1',
     name: 'Heater',
     available: true,
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-  },
+  } as unknown as TargetDeviceSnapshot),
 ];
 
 const withResolvedPlanDeviceBooleans = (value: unknown): unknown => {
@@ -334,7 +335,7 @@ const withResolvedPlanDeviceBooleans = (value: unknown): unknown => {
     ...value,
     devices: devices.map((device) => (
       device && typeof device === 'object'
-        ? { controllable: true, available: true, ...device }
+        ? { controllable: true, available: true, isEvCharger: false, ...device }
         : device
     )),
   };
@@ -377,7 +378,10 @@ const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => {
     settings: buildSettingsHomeyState(settings),
     uiState: {
       devices: Array.isArray(explicitDevices)
-        ? explicitDevices.map((device) => ({ available: true, ...device })) as TargetDeviceSnapshot[]
+        // Identity facts the producer always sets and the list parser requires.
+        ? explicitDevices.map((device) => withDescriptorIdentity<TargetDeviceSnapshot>(
+          { available: true, ...device } as unknown as TargetDeviceSnapshot,
+        ))
         : [],
       plan: withResolvedPlanDeviceBooleans(settings.planSnapshot),
     },
@@ -2499,13 +2503,13 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
 
   // Mirrors the plan's devices: production's device list is a superset of the
   // plan's, and the Overview joins the two on device id.
-  const budgetHeldPlanDevices = budgetHeldPlan.devices.map((device) => ({
+  const budgetHeldPlanDevices = budgetHeldPlan.devices.map((device) => withDescriptorIdentity<TargetDeviceSnapshot>({
     id: device.id,
     name: device.name,
     priority: device.priority,
     targets: [],
     available: true,
-  })) as unknown as TargetDeviceSnapshot[];
+  } as unknown as TargetDeviceSnapshot));
 
   const rescueChipButton = (): HTMLButtonElement | null => (
     document.querySelector('#plan-cards .plan-card__rescue button')

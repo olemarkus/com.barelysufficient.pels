@@ -8,9 +8,10 @@ import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../observer/observedPower';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
-  DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
+  SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
+import type { ToPlanDeviceInput } from './planInputDeviceTypes';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
 const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
@@ -21,7 +22,7 @@ const MEASURED_DRAW_FRESHNESS_WINDOW_MS = 60 * 1000;
 
 export function buildStepPowerCalibrationView(
   snapshot: PowerCalibrationSnapshot,
-  device: DecoratedDeviceSnapshot,
+  device: ToPlanDeviceInput,
 ): Record<string, number> | undefined {
   const profile = device.steppedLoadProfile;
   if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
@@ -33,7 +34,7 @@ export function buildStepPowerCalibrationView(
   // `resolveStepDeliveryUsefulKw`, so producing a synthetic 1-step view here
   // unifies the calibration path for both stepped and binary loads instead
   // of duplicating the lookup logic.
-  if (device.deviceClass === 'evcharger') {
+  if (device.isEvCharger) {
     return buildEvChargerCalibrationView(snapshot, device);
   }
   return undefined;
@@ -41,8 +42,8 @@ export function buildStepPowerCalibrationView(
 
 function buildSteppedCalibrationView(
   snapshot: PowerCalibrationSnapshot,
-  device: DecoratedDeviceSnapshot,
-  steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'],
+  device: ToPlanDeviceInput,
+  steps: SteppedLoadProfile['steps'],
 ): Record<string, number> | undefined {
   const deviceEntry = snapshot.devices[device.id];
   if (!deviceEntry) return undefined;
@@ -58,7 +59,7 @@ function buildSteppedCalibrationView(
 
 function buildEvChargerCalibrationView(
   snapshot: PowerCalibrationSnapshot,
-  device: DecoratedDeviceSnapshot,
+  device: ToPlanDeviceInput,
 ): Record<string, number> | undefined {
   // `planningPowerKw` is the decorated per-step figure and still wins when the
   // decorator supplied one; otherwise the producer's resolved expected power is
@@ -153,7 +154,7 @@ const isMeasurablyIdle = (
 const hasNoRecentDrawAtAnyStep = (params: {
   snapshot: PowerCalibrationSnapshot;
   deviceId: string;
-  steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'];
+  steps: SteppedLoadProfile['steps'];
   nowMs: number;
 }): boolean => {
   const { snapshot, deviceId, steps, nowMs } = params;
@@ -179,7 +180,7 @@ const hasNoRecentDrawAtAnyStep = (params: {
 export function resolveConfirmedNotDrawing(
   snapshot: PowerCalibrationSnapshot,
   nowMs: number,
-  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
+  device: ToPlanDeviceInput & MeasuredPowerObservedProbe,
   observedOff: boolean,
 ): boolean {
   // A device PELS is holding off is reporting the consequence of PELS's own

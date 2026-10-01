@@ -5,6 +5,7 @@ import {
 } from '../helpers/deviceTransportHarness';
 import type { EvObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { transportSnapshotFixture, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import type { Logger } from '../../lib/utils/types';
 import {
   getCanSetControl,
@@ -157,13 +158,13 @@ describe('device manager support helpers', () => {
 
   it('logs EV command and snapshot changes', () => {
     const logger = createLogger();
-    const previousSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
+    const previousSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = transportSnapshotFixtures([
       { available: true, id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
-    ];
-    const nextSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = [
+    ]);
+    const nextSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = transportSnapshotFixtures([
       { available: true, id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', expectedPowerKw: 7.2, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
       { available: true, id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
-    ];
+    ]);
 
     logEvCapabilityRequest({
       logger,
@@ -417,7 +418,7 @@ describe('device manager support helpers', () => {
     const newerObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
     const olderObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
     const config = { preset: 'ev_charger_1_phase' as const, max: 7360 };
-    const latestSnapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+    const latestSnapshot: TransportDeviceSnapshot[] = transportSnapshotFixtures([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'ev-1',
       name: 'Charger',
       controlModel: 'stepped_load',
@@ -429,13 +430,13 @@ describe('device manager support helpers', () => {
       reportedStepId: '25a',
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: newerObservedAtMs,
-    }];
+    }]);
 
     reconcileRealtimeDeviceUpdate({
       latestSnapshot,
       observationState: new TransportObservationState(),
       device: { id: 'ev-1', name: 'Charger' },
-      parseDevice: () => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+      parseDevice: () => transportSnapshotFixture({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
         id: 'ev-1',
         name: 'Charger',
         controlModel: 'stepped_load',

@@ -2,8 +2,8 @@ import type { DevicePlan } from '../plan/planTypes';
 import {
   buildDriftObservedSnapshot,
   type DriftCommandRead,
-  type ObserverDeviceRead,
 } from './driftObservedDevice';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   hasBinaryCommand,
   hasReleaseCommand,
@@ -46,7 +46,7 @@ type ExecutableSteppedLoadTransition = NonNullable<ExecutableSteppedLoadIntent['
 
 export function hasPlanDeviceExecutionDrift(params: {
   planDevice: PlanDevice;
-  observed: ObserverDeviceRead;
+  observed: ExecutorDeviceRead;
   command: DriftCommandRead;
   externalOffHeld: boolean;
 }): boolean {

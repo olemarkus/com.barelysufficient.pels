@@ -40,7 +40,8 @@ const BATTERY_ID = 'home-battery';
 const HEATER_ID = 'heater';
 
 // A managed observe-only home battery, exactly as the producer stamps it: managed,
-// NON-controllable, class:'battery', and NO temperature target / control capability
+// NON-controllable, observe-only (device configuration resolves that from class
+// 'battery'), and NO temperature target / control capability
 // (a battery is not a temperature device). `measure_battery`/`measure_power` are
 // device telemetry, not plan inputs, so they don't appear here.
 const batteryInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice =>
@@ -48,7 +49,7 @@ const batteryInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): Me
     id: BATTERY_ID,
     expectedPowerKw: 1,
     name: 'Home Battery',
-    deviceClass: 'battery',
+    observeOnly: true,
     deviceType: 'onoff',
     managed: true,
     controllable: false,
@@ -67,7 +68,8 @@ const heaterInputDevice = (): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: HEATER_ID,
     name: 'Heater',
-    deviceClass: 'heater',
+    // Resolved from class 'heater' by device configuration.
+    starvationSupported: true,
     deviceType: 'temperature',
     managed: true,
     controllable: true,

@@ -347,8 +347,13 @@ export type BinaryControlObservation = {
 export type DeviceDescriptor = {
     id: string;
     name: string;
-    deviceClass?: string;
-    deviceType?: 'temperature' | 'onoff';
+    /**
+     * The normalized Homey class key (`resolveDeviceClassKey`). Inventory
+     * metadata: planner and executor inputs do not carry it, and decide on the
+     * resolved facts below instead of re-reading the class.
+     */
+    deviceClass: string;
+    deviceType: 'temperature' | 'onoff';
     zone?: string;
     // Zone IDENTITY (uuid) retained from the raw payload (string or `{id}`
     // shape), distinct from the `zone` display label. Additive/dormant: no
@@ -358,9 +363,21 @@ export type DeviceDescriptor = {
     controlModel?: DeviceControlModel;
     controlAdapter?: DeviceControlAdapterSnapshot;
     /** Whether the observer exposes a commandable binary on/off axis. */
-    binaryControllable?: boolean;
-    /** Semantic device role resolved by the producer; never an SDK capability id. */
-    deviceRole?: 'ev_charger';
+    binaryControllable: boolean;
+    /**
+     * Whether the device is an EV charger, resolved once at parse from class
+     * `evcharger` (`managerParseDeviceFields`); the `evcharger_charging` axis is
+     * only ever selected for that class. The one answer to "is this a charger";
+     * required, so a carrier that lost it fails to compile instead of reading
+     * as "not a charger".
+     */
+    isEvCharger: boolean;
+    /**
+     * A tracked battery or panel PELS observes and never commands, resolved once
+     * at parse from the class key (`isObserveOnlyRoleClassKey`). Required for the
+     * same reason as `isEvCharger`.
+     */
+    observeOnly: boolean;
     // `steppedLoadProfile`/`targetPowerConfig` are deliberately NOT here
     // (stepped-descriptor slice of the discriminated-types refactor): they live on
     // `SteppedLoadDescriptorFields`, regrouped onto the snapshot by the

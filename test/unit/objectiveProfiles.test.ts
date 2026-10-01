@@ -41,7 +41,11 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Water heater',
   targets: [target],
+  deviceClass: 'thermostat',
   deviceType: 'temperature',
+  isEvCharger: false,
+  observeOnly: false,
+  binaryControllable: true,
   binaryControl: { on: true },
   temperature: { currentTemperature, target },
   lastFreshDataMs: startMs,
@@ -57,6 +61,10 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',
+  deviceType: 'onoff',
+  isEvCharger: true,
+  observeOnly: false,
+  binaryControllable: true,
   binaryControl: { on: true },
   measuredPowerKw: 7,
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs }),
@@ -710,7 +718,7 @@ describe('objective profiles', () => {
     // seam, so `lib/objectives` no longer models the absence. The assertion is
     // that the resolver refuses it, which is what makes the drop happen.
     const quantity = resolveObjectiveObservedQuantity({
-      deviceClass: 'evcharger',
+      deviceType: 'onoff',
       stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs, unavailable: 'not_reported' }),
     });
 

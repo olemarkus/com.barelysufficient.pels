@@ -307,11 +307,12 @@ describe('plan diagnostics observations', () => {
         objectiveKind: 'ev_soc',
         deviceType: 'onoff',
         targets: [],
-        // `deviceClass` is the producer's ONLY charger evidence
-        // (`isEvObserved` -> `isEvDevice`). The parse boundary always sets it
-        // alongside the capability; spelling only the capability here made the
-        // fixture rely on a test-helper heuristic broader than production.
-        deviceClass: 'evcharger',
+        // `isEvCharger` is the producer's ONLY charger evidence
+        // (`isEvObserved` -> `isEvDevice`). The parse boundary resolves it from
+        // the class or the capability and device configuration carries it;
+        // spelling only the capability here made the fixture rely on a
+        // test-helper heuristic broader than production.
+        isEvCharger: true,
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryControl: { on: false },
@@ -324,7 +325,7 @@ describe('plan diagnostics observations', () => {
         objectiveKind: 'ev_soc',
         currentState: 'off',
         plannedState: 'shed',
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         controllable: true,
@@ -354,7 +355,7 @@ describe('plan diagnostics observations', () => {
         name: 'Driveway EV',
         objectiveKind: 'ev_soc',
         deviceType: 'onoff',
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         targets: [],
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
@@ -366,7 +367,7 @@ describe('plan diagnostics observations', () => {
         id: 'ev-1',
         name: 'Driveway EV',
         objectiveKind: 'ev_soc',
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         currentState: 'off',
         plannedState: 'shed',
         reason: r('shed due to capacity'),
@@ -390,7 +391,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -402,7 +403,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -432,7 +432,7 @@ describe('plan diagnostics observations', () => {
     const inputDevice: PlanInputDevice = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -443,7 +443,6 @@ describe('plan diagnostics observations', () => {
     const basePlanDevice: DevicePlanDevice = buildPlanDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
       currentState: 'not_applicable',
       plannedState: 'shed',
       currentTarget: 19,
@@ -472,7 +471,7 @@ describe('plan diagnostics observations', () => {
     const inputDevice: PlanInputDevice = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -483,7 +482,6 @@ describe('plan diagnostics observations', () => {
     const basePlanDevice: DevicePlanDevice = buildPlanDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
       currentState: 'off',
       plannedState: 'shed',
       currentTarget: 18,
@@ -530,7 +528,7 @@ describe('plan diagnostics observations', () => {
     const inputDevice: PlanInputDevice = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -541,7 +539,6 @@ describe('plan diagnostics observations', () => {
     const offShed: DevicePlanDevice = buildPlanDevice({
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'turn_off',
@@ -588,7 +585,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'heater',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -600,7 +597,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'heater',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -640,7 +636,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'ac-1',
         name: 'Living Room AC',
-        deviceClass: 'airconditioning',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -652,7 +648,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'ac-1',
         name: 'Living Room AC',
-        deviceClass: 'airconditioning',
         currentState: 'on',
         plannedState: 'keep',
         currentTarget: 22,
@@ -687,7 +682,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -699,7 +694,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'on',
         plannedState: 'shed',
         currentTarget: 18,
@@ -722,7 +716,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -734,7 +728,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -762,7 +755,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -774,7 +767,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -799,7 +791,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -811,7 +803,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'keep',
         currentTarget: 21,
@@ -827,7 +818,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -839,7 +830,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -867,7 +857,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -879,7 +869,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'keep',
         currentTarget: 18,
@@ -907,7 +896,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -919,7 +908,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'keep',
         currentTarget: 18,
@@ -956,7 +944,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -968,7 +956,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'keep',
         currentTarget: 18,
@@ -1005,7 +992,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -1017,7 +1004,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
-        deviceClass: 'thermostat',
         currentState: 'not_applicable',
         plannedState: 'shed',
         currentTarget: 18,
@@ -1042,7 +1028,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -1054,7 +1040,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'keep',
         currentTarget: 18,
@@ -1077,7 +1062,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -1089,7 +1074,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'keep',
         currentTarget: 18,
@@ -1119,7 +1103,7 @@ describe('plan diagnostics observations', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -1131,7 +1115,6 @@ describe('plan diagnostics observations', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'shed',
         currentTarget: 18,
@@ -1166,7 +1149,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     inputDevice: {
       id: 'heater-1',
       name: 'Termostat Synne',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -1178,7 +1161,6 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     planDevice: {
       id: 'heater-1',
       name: 'Termostat Synne',
-      deviceClass: 'thermostat',
       currentState: 'off',
       // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
       plannedState: 'shed',
@@ -1244,7 +1226,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     inputDevice: {
       id: 'heater-1',
       name: 'Termostat Synne',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -1256,7 +1238,6 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     planDevice: {
       id: 'heater-1',
       name: 'Termostat Synne',
-      deviceClass: 'thermostat',
       currentState: 'off',
       // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
       plannedState: 'shed',
@@ -1333,7 +1314,7 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
     inputDevice: {
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
+      starvationSupported: true,
       deviceType: 'temperature',
       managed: true,
       controllable: true,
@@ -1345,7 +1326,6 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
     planDevice: {
       id: 'heater-1',
       name: 'Hall Heater',
-      deviceClass: 'thermostat',
       currentState: 'off',
       // PELS commands its 18 °C limit: the hold lane plans it shed at the limit.
       plannedState: 'shed',
@@ -1431,7 +1411,7 @@ describe('turn_off shed reaches the persisted demand counters', () => {
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
+        starvationSupported: true,
         deviceType: 'temperature',
         managed: true,
         controllable: true,
@@ -1442,7 +1422,6 @@ describe('turn_off shed reaches the persisted demand counters', () => {
       planDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
-        deviceClass: 'thermostat',
         currentState: 'off',
         plannedState: 'shed',
         shedAction: 'turn_off',

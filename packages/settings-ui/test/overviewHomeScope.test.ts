@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY,
@@ -131,6 +132,12 @@ const installClient = async ({ api, settings = {}, holdUris = [] }: InstallOptio
         priority: device.priority,
         targets: [],
         available: true,
+        // Identity facts the producer always serves and the list parser requires.
+        deviceClass: 'other',
+        deviceType: 'onoff',
+        isEvCharger: device.isEvCharger === true,
+        binaryControllable: false,
+        observeOnly: false,
       })),
       // The scoped device read discriminates the producer's `homeScope` before
       // any flat field, exactly as the plan read does — so a scoped stub must
@@ -214,9 +221,9 @@ const surfaceText = (): string => (
   document.getElementById('plan-redesign-surface')?.textContent ?? ''
 );
 
-const unavailableDevice = (id: string, name: string): SettingsUiDeviceView => ({
+const unavailableDevice = (id: string, name: string): SettingsUiDeviceView => (withDescriptorIdentity<SettingsUiDeviceView>({
   id, name, managed: true, available: false, targets: [], expectedPowerKw: 1, expectedPowerSource: 'default',
-});
+}));
 
 beforeEach(() => {
   vi.resetModules();

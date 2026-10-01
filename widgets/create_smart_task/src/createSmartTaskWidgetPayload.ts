@@ -1,9 +1,4 @@
-import type {
-  SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
-  StateOfChargeObservedProbe,
-  TemperatureObservedProbe,
-} from '../../../packages/contracts/src/types';
+import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts/src/widgetHostApi';
 import { isSteppedLoadSnapshot } from '../../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
@@ -30,13 +25,12 @@ export const EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDe
 export const EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
 
 const buildDevice = (
-  // Probe-widened for `stateOfCharge` as well: the snapshot physically carries the
-  // observed SoC bag the base type omits, and `resolveSmartTaskCurrentValue` reads
-  // it. Without the probe this parameter has no such property at all, so it stays
-  // assignable to the helper's optional slice and a shape change there compiles
-  // silently — which is how the goal stepper came to seed EV chargers from `null`.
-  device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe
-  & StateOfChargeObservedProbe,
+  // The host's candidate type, which carries the observed SoC bag
+  // `resolveSmartTaskCurrentValue` reads (without it this parameter has no such
+  // property, so a shape change there compiles silently, which is how the goal
+  // stepper came to seed EV chargers from `null`) and the resolved identity the
+  // kind gate reads.
+  device: CreateSmartTaskCandidateDevice,
 ): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
   // Energy tasks are created from the "Add energy task" Flow card only, for now:
@@ -71,10 +65,7 @@ const buildDevice = (
 };
 
 export type CreateSmartTaskWidgetInput = {
-  devices: ReadonlyArray<
-    TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe
-    & StateOfChargeObservedProbe
-  >;
+  devices: ReadonlyArray<CreateSmartTaskCandidateDevice>;
 };
 
 export const buildCreateSmartTaskDevicesPayload = (

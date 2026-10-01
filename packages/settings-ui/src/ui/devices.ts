@@ -67,12 +67,20 @@ const hasValidFlowConflict = (value: unknown): boolean => {
     && (conflict.flowName === undefined || typeof conflict.flowName === 'string');
 };
 
+const isDeviceType = (value: unknown): boolean => value === 'temperature' || value === 'onoff';
+
 const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListItem => (
   typeof value === 'object'
   && value !== null
   && typeof (value as { id?: unknown }).id === 'string'
   && typeof (value as { name?: unknown }).name === 'string'
   && typeof (value as { available?: unknown }).available === 'boolean'
+  // Required on the wire: the charger and on/off checks read them straight.
+  && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
+  && typeof (value as { binaryControllable?: unknown }).binaryControllable === 'boolean'
+  && typeof (value as { observeOnly?: unknown }).observeOnly === 'boolean'
+  && typeof (value as { deviceClass?: unknown }).deviceClass === 'string'
+  && isDeviceType((value as { deviceType?: unknown }).deviceType)
   && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)
 );
 
@@ -153,7 +161,7 @@ const withInitialLoadGuard = (
 const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('managed', async (checked) => {
   const intentGeneration = beginManagedControlIntent(deviceId);
   const device = state.latestDevices.find((entry) => entry.id === deviceId);
-  const phaseRead = checked && device?.deviceClass === 'evcharger'
+  const phaseRead = checked && device?.isEvCharger === true
     ? await ensureChargerPhasePresetsRead()
     : { state: 'resolved' as const, presets: state.chargerPhasePresets };
   if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;

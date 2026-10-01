@@ -16,7 +16,7 @@
 
 import type { EvObservedProbe } from '../../contracts/src/types';
 import { isEvObserved } from './evObservedState';
-import { type EvBlockingChargingState, isEvPlugStateBlocked } from './evPlugState';
+import { type EvBlockingChargingState, type EvDeviceIdentity, isEvPlugStateBlocked } from './evPlugState';
 
 /**
  * TOTAL over the blocking plug-states — a `Record`, not a lookup that can miss,
@@ -71,9 +71,7 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
  * `null` here is the panel's own "no line to show" — it is not standing in for
  * an unknown state, which cannot exist for a snapshotted charger.
  */
-export const resolveEvBoostBlockReason = (dev: {
-  deviceClass?: string;
-} & EvObservedProbe): string | null => {
+export const resolveEvBoostBlockReason = (dev: EvDeviceIdentity & EvObservedProbe): string | null => {
   if (!isEvObserved(dev) || !isEvPlugStateBlocked(dev.evChargingState)) return null;
   return EV_BOOST_BLOCK_REASONS[dev.evChargingState];
 };

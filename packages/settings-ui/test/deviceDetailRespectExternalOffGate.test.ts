@@ -256,7 +256,7 @@ describe('device detail "Leave off until turned on again" gating', () => {
       device: buildBinaryDevice({
         deviceClass: 'evcharger',
         binaryControllable: true,
-        deviceRole: 'ev_charger',
+        isEvCharger: true,
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
       }),
     });

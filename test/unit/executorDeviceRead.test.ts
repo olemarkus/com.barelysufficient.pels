@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   type ExecutorDeviceReadDeps,
+  type ObserverDeviceRead,
   readExecutorDevice,
   readExecutorDevices,
 } from '../../lib/executor/executorDeviceRead';
 import type { DeviceConfigurationRead } from '../../lib/device/deviceConfiguration';
-import type { ObserverDeviceRead } from '../../lib/executor/driftObservedDevice';
 
 // The executor joins runtime configuration with the observer's record.
 
@@ -15,8 +15,10 @@ const configuration = (id: string): DeviceConfigurationRead => ({
   controlModel: 'binary_power',
   capabilities: ['onoff'],
   canSetControl: true,
+  binaryControllable: true,
   observeOnly: false,
   isEvCharger: false,
+  starvationSupported: false,
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',
 });

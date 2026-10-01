@@ -48,6 +48,11 @@ const baseDevice = {
   expectedPowerKw: 1,
   controllable: true,
   available: true,
+  // Producer-resolved identity, required so absence cannot read as "not a
+  // charger" or "no binary axis". The EV cases below say `true`; no fixture here
+  // has a commandable binary axis, which is what the optional field used to mean.
+  isEvCharger: false,
+  binaryControllable: false,
 };
 
 // The stepped cluster — its presence is what makes a fixture stepped-controlled.
@@ -71,7 +76,7 @@ describe('resolveSteppedLevelFact', () => {
   it('returns null when the device is off (the bold state word covers off)', () => {
     expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'off' })).toBeNull();
     expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'unknown' })).toBeNull();
-    expect(resolveSteppedLevelFact({})).toBeNull();
+    expect(resolveSteppedLevelFact({ isEvCharger: false })).toBeNull();
   });
 
   it('names the level when at a powered step', () => {
@@ -116,7 +121,7 @@ describe('resolveSteppedLevelFact', () => {
     expect(resolveSteppedLevelFact({
       ...baseDevice,
       currentState: 'on',
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in_charging',
       steppedLoad: steppedLoad({ reportedStepId: '16a' }),
     })).toBe('Charging · level 16 A');
@@ -125,20 +130,20 @@ describe('resolveSteppedLevelFact', () => {
 
 describe('resolveSteppedEvExceptionLabel', () => {
   it('is null for non-EV devices and for routine charging', () => {
-    expect(resolveSteppedEvExceptionLabel({})).toBeNull();
+    expect(resolveSteppedEvExceptionLabel({ isEvCharger: false })).toBeNull();
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in_charging',
     })).toBeNull();
   });
 
   it('surfaces the exceptional EV states for the reason slot', () => {
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_out',
     })).toBe('Unplugged');
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in_paused',
     })).toBe('Paused');
   });
@@ -147,20 +152,20 @@ describe('resolveSteppedEvExceptionLabel', () => {
     // Signal 2 is off: no current is on offer, so nothing is waiting on the car.
     // Holds whether or not PELS is the one controlling the charger.
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in',
       currentState: 'off',
     })).toBe('Not charging');
     // No read-back at all is not evidence of a charge command either.
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in',
     })).toBe('Not charging');
   });
 
   it('reads "Waiting for car" only when the charger is on and no current flows', () => {
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in',
       currentState: 'on',
     })).toBe('Waiting for car');
@@ -170,7 +175,7 @@ describe('resolveSteppedEvExceptionLabel', () => {
     // The charger really is switched on and really is not delivering; simulation
     // changes what PELS would do, not what the device reports.
     expect(resolveSteppedEvExceptionLabel({
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       evChargingState: 'plugged_in',
       currentState: 'on',
     })).toBe('Waiting for car');
@@ -895,7 +900,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
 describe('battery level on the EV charger fact line', () => {
   const evCard = (overrides: Record<string, unknown> = {}) => ({
     currentState: 'on',
-    deviceRole: 'ev_charger' as const,
+    isEvCharger: true,
     steppedLoad: steppedLoad({ reportedStepId: '16a', targetStepId: '16a' }),
     ...overrides,
   });
@@ -943,7 +948,7 @@ describe('battery level on the EV charger fact line', () => {
     // Only an EV charger has a car behind it; a water heater carrying a stray
     // percentage must not render one.
     expect(resolveSteppedLevelFact(evCard({
-      deviceRole: undefined,
+      isEvCharger: false,
       stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBe('Level 16 A');
   });

@@ -65,7 +65,8 @@ const runSnapshotPrePass = (
     isObservedOn: (deviceId) => isAffirmativelyOn(ctx.getObservedRecord(deviceId)),
     onObservedOn: (deviceId) => {
       const device = snapshot.find((entry) => entry.id === deviceId);
-      const observation = toExternalOffHoldObservedDevice(device);
+      // Planner input carries both the observation and the resolved identity.
+      const observation = toExternalOffHoldObservedDevice(device, device);
       if (
         observation?.binaryAxisOn !== true
         || observation.binaryAxisObservedAtMs === undefined

@@ -16,11 +16,23 @@
 import type {
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  ObservedDeviceState,
   ReportedStepObservedProbe,
+  SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
-import type { ObserverDeviceRead } from './driftObservedDevice';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+
+/**
+ * The observer's live entry for one device, as the executor reads it. Widened
+ * past the base type with the observed clusters the projection physically
+ * carries, because this IS the producer-fed seam that reads them.
+ */
+export type ObserverDeviceRead = ObservedDeviceState
+  & ReportedStepObservedProbe
+  & MeasuredPowerObservedProbe
+  & EvObservedProbe
+  & { steppedLoadProfile?: SteppedLoadProfile };
 
 /**
  * What the executor holds for one device: the narrowed executor surface plus
@@ -73,6 +85,7 @@ const joinExecutorDevice = (
     ...observed,
     id: configuration.id,
     name: configuration.name,
+    isEvCharger: configuration.isEvCharger,
     steppedLoadProfile: 'steppedLoadProfile' in configuration ? configuration.steppedLoadProfile : undefined,
   };
 };

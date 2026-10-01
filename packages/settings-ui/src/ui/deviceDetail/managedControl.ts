@@ -67,7 +67,7 @@ export function initDeviceDetailManagedControlHandlers(
     const nextChecked = deviceDetailManaged.selected;
     const intentGeneration = beginManagedControlIntent(deviceId);
     const device = state.latestDevices.find((entry) => entry.id === deviceId);
-    const phaseRead = nextChecked && device?.deviceClass === 'evcharger'
+    const phaseRead = nextChecked && device?.isEvCharger === true
       ? await ensureChargerPhasePresetsRead()
       : { state: 'resolved' as const, presets: state.chargerPhasePresets };
     if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return;

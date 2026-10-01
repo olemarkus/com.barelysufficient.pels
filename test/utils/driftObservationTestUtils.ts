@@ -1,8 +1,8 @@
 import type {
   DriftCommandRead,
   DriftObservationDeps,
-  ObserverDeviceRead,
 } from '../../lib/executor/driftObservedDevice';
+import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 import type {
   BinaryControlDiscriminantProbe,
   MeteredDiscriminantProbe,
@@ -60,13 +60,15 @@ export const splitPlanInputDevice = (
   live: PlanInputDeviceFixture,
   binaryCommand: DriftCommandRead['binary'],
 ): {
-  observed: ObserverDeviceRead;
+  observed: ExecutorDeviceRead;
   command: DriftCommandRead;
   externalOffHeld: boolean;
 } => ({
   observed: {
     id: live.id,
     name: live.name,
+    // The identity `readExecutorDevice` joins from device configuration.
+    isEvCharger: live.isEvCharger,
     available: live.available,
     targets: live.targets ?? [],
     // Fixtures come in both shapes. Some carry the RAW axis; ones built through
@@ -80,7 +82,7 @@ export const splitPlanInputDevice = (
     ...(live.selectedStepId !== undefined ? { reportedStepId: live.selectedStepId } : {}),
     ...(live.currentDrawKw !== undefined ? { measuredPowerKw: live.currentDrawKw } : {}),
     ...(live.evChargingState !== undefined ? { evChargingState: live.evChargingState } : {}),
-  } as ObserverDeviceRead,
+  } as ExecutorDeviceRead,
   command: {
     binary: binaryCommand,
     step: live.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },

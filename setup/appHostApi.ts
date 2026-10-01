@@ -2,7 +2,11 @@ import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureC
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
-import { readRuntimeDevice, readRuntimeDevices } from '../lib/planInput/runtimeDeviceRead';
+import {
+  readRuntimeDevice,
+  readRuntimeDevices,
+  type PlanInputSnapshotDevice,
+} from '../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
@@ -18,7 +22,6 @@ import type {
   DeviceDescriptorRead,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
-import type { DeviceConfigurationRead } from '../lib/ports/deviceConfigurationRead';
 import type {
   SettingsUiHardCapConfigurationRead,
   SettingsUiPlanSnapshot,
@@ -186,12 +189,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   /** Legacy host alias; internal runtime consumers use `getPlanInputSnapshot()`. */
-  public get latestTargetSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[] {
+  public get latestTargetSnapshot(): PlanInputSnapshotDevice[] {
     return this.getPlanInputSnapshot();
   }
 
   /** Plan/executor input, composed only from their two owners. */
-  public getPlanInputSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[] {
+  public getPlanInputSnapshot(): PlanInputSnapshotDevice[] {
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.getRuntimeDevices());
   }
 
@@ -202,7 +205,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     );
   }
 
-  private getRuntimeDevice(deviceId: string): DecoratedDeviceSnapshot | undefined {
+  private getRuntimeDevice(deviceId: string): PlanInputSnapshotDevice | undefined {
     const device = readRuntimeDevice(
       this.context.deviceConfiguration.get(deviceId),
       this.context.getObservedRecord(deviceId),

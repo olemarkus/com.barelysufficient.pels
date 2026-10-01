@@ -70,6 +70,7 @@ test.describe('Device detail panel', () => {
         name: 'Garage charger',
         available: true,
         deviceClass: 'evcharger',
+        isEvCharger: true,
         capabilities: ['onoff'],
         targets: [],
         nativeWriteCapabilities: ['setDynamicChargerCurrent'],

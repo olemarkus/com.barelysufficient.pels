@@ -81,6 +81,7 @@ type HistoryDevice = {
   name: string;
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  isEvCharger?: boolean;
   binaryControllable?: boolean;
   targets: [];
   temperature?: {
@@ -204,7 +205,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
   it('uses the current device name and inferred objective kind', () => {
     const payload = buildPayloads({
       history: { version: 5, entries: [buildHistoryEntry()] },
-    }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger', targets: [] }])
+    }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger', isEvCharger: true, targets: [] }])
       .getDeferredObjectivePlanHistoryUiPayload();
     expect(payload.entriesByDeviceId['dev-1']?.[0]).toMatchObject({
       deviceName: 'Renamed charger',

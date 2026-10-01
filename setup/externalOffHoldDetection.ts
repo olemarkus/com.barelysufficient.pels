@@ -40,8 +40,7 @@
 
 import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
-import { isEvSessionInactive } from '../packages/shared-domain/src/evPlugState';
-import { isEvObserved } from '../packages/shared-domain/src/evObservedState';
+import { isEvDevice, isEvSessionInactive, type EvDeviceIdentity } from '../packages/shared-domain/src/evPlugState';
 import {
   isBinaryObservedOn,
   type BinaryControlObserved,
@@ -85,8 +84,14 @@ export type ExternalOffHoldObservedDevice = {
 
 export function toExternalOffHoldObservedDevice(
   device: (ObservedDeviceState & EvObservedProbe) | undefined,
+  // The device's resolved identity (device configuration). The session question
+  // below applies only to a charger, and the Observer record carries no
+  // identity: read alone, every charger was "not a charger" and unplugging one
+  // started a hold.
+  identity: EvDeviceIdentity | undefined,
 ): ExternalOffHoldObservedDevice | undefined {
-  if (!device) return undefined;
+  if (!device || !identity) return undefined;
+  const { evChargingState } = device;
   return {
     id: device.id,
     binaryObservationCapabilityId: device.binaryControlObservation?.capabilityId,
@@ -95,7 +100,9 @@ export function toExternalOffHoldObservedDevice(
     // The device's own session question, asked directly of the decided
     // plug-state — this seam wants only that bit, not a whole commandability
     // resolution it would then throw away.
-    evSessionInactive: isEvObserved(device) && isEvSessionInactive(device.evChargingState),
+    evSessionInactive: isEvDevice(identity)
+      && evChargingState !== undefined
+      && isEvSessionInactive(evChargingState),
   };
 }
 

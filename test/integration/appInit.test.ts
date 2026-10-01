@@ -65,6 +65,7 @@ import {
 import type { AppContext } from '../../lib/app/appContext';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildMainHomeScopeForTest, getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 describe('app init plan service wiring', () => {
@@ -142,7 +143,7 @@ describe('app init plan service wiring', () => {
   it('projects transport binary bindings into semantic planner fields', () => {
     const serviceCtx = createAppContextMock({
       planEngine: {} as AppContext['planEngine'],
-      latestTargetSnapshot: [
+      latestTargetSnapshot: transportSnapshotFixtures([
         {
           available: true,
           id: 'socket-1',
@@ -173,7 +174,7 @@ describe('app init plan service wiring', () => {
           targets: [],
           capabilities: ['measure_temperature', 'target_temperature'],
         },
-      ],
+      ]),
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
       isBudgetExempt: () => false,

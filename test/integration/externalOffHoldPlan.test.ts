@@ -108,7 +108,7 @@ describe('external-off hold — plan reason', () => {
       ...buildPlanDevice({
         id: 'ev-1',
         currentState: 'off',
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         binaryCapabilityId: 'evcharger_charging',
         controllable: true,
         externalOffHoldActive: true,

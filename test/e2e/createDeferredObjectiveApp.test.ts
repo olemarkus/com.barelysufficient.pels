@@ -9,12 +9,14 @@ import {
 import {
   DEFERRED_OBJECTIVES_SETTINGS,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
+  MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import type {
   MeasuredPowerObservedFields,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
+import { buildCreateSmartTaskDevicesPayload } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
 
 // A managed temperature device in the runtime-planned snapshot, with a 30..75 °C
 // settable target so device-specific bounds validation has a real range.
@@ -23,11 +25,33 @@ const buildPlannedHeater = (): TargetDeviceSnapshot & MeasuredPowerObservedField
   return {
     id: 'heater-1',
     name: 'Boiler',
+    deviceClass: 'heater',
+    deviceType: 'temperature',
+    isEvCharger: false,
+    binaryControllable: false,
+    observeOnly: false,
     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
     targets: [target],
     temperature: { currentTemperature: 45, target },
     measuredPowerKw: 2,
   } as TargetDeviceSnapshot & MeasuredPowerObservedFields & TemperatureObservedProbe;
+};
+
+// A metered EV charger as Homey reports it. Its class is the only thing that
+// makes it an EV charger: nothing here says so, and the app must resolve it
+// when it parses the device. Every capability PELS reads is reported with a
+// dated value, or the device-read contract ignores the read.
+const buildHomeyCharger = async (): Promise<MockDevice> => {
+  const charger = new MockDevice(
+    'ev-1',
+    'Driveway charger',
+    ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+    'evcharger',
+  );
+  await charger.setCapabilityValue('evcharger_charging', false);
+  await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_paused');
+  await charger.setCapabilityValue('measure_power', 0);
+  return charger;
 };
 
 const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
@@ -169,6 +193,35 @@ describe('createDeferredObjective (app)', () => {
     };
     const result = app.createDeferredObjective('heater-1', evCandidate);
     expect(result).toEqual({ ok: false, reason: 'device_not_eligible' });
+    await app.onUninit?.();
+  });
+
+  it('offers a managed EV charger in the widget and persists an EV-SoC task on it', async () => {
+    // The charger class is inventory metadata, which planner input omits. Read
+    // from planner input, every EV charger resolved to no smart-task kind: the
+    // widget never offered one and a create was refused as not eligible. The
+    // charger is registered with Homey and parsed by the app, so the identity the
+    // widget and the create lane read is the one the app resolved from the class.
+    setMockDrivers({ ev: new MockDriver('ev', [await buildHomeyCharger()]) });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'ev-1': true });
+    const app = createApp();
+    await app.onInit();
+
+    const read = app.getCreateSmartTaskCandidateDevices();
+    expect(read.state).toBe('ready');
+    const payload = buildCreateSmartTaskDevicesPayload({ devices: read.state === 'ready' ? read.devices : [] });
+    expect(payload.state === 'ready' ? payload.devices : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ deviceId: 'ev-1', kind: 'ev_soc' }),
+    ]));
+
+    const result = app.createDeferredObjective('ev-1', {
+      kind: 'ev_soc',
+      enforcement: 'soft',
+      targetPercent: 80,
+      deadlineAtMs: Date.now() + 6 * 60 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: true });
+    expect(readStored().objectivesByDeviceId['ev-1']).toMatchObject({ enabled: true, kind: 'ev_soc' });
     await app.onUninit?.();
   });
 

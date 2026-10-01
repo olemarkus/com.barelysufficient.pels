@@ -1,3 +1,5 @@
+import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_BOOTSTRAP_KEYS,
@@ -107,20 +109,20 @@ describe('homeyApiMock', () => {
     it('serves the explicit uiState.devices array from /ui_devices', async () => {
       const homey = createHomeyMock({
         uiState: {
-          devices: [
+          devices: withDescriptorIdentities<TargetDeviceSnapshot>([
             { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
             { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
-          ],
+          ]),
         },
       });
 
       const result = await callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH);
 
       expect(result).toEqual({
-        devices: [
+        devices: withDescriptorIdentities<TargetDeviceSnapshot>([
           { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
           { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
-        ],
+        ]),
         chargerPhasePresets: { state: 'resolved', presets: {} },
         hasManagedSolarDevice: false,
         hasExhibitedExport: false,
@@ -130,13 +132,13 @@ describe('homeyApiMock', () => {
     it('returns the same explicit array shape from /ui_refresh_devices', async () => {
       const homey = createHomeyMock({
         uiState: {
-          devices: [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
+          devices: withDescriptorIdentities<TargetDeviceSnapshot>([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }]),
         },
       });
 
       await expect(callHomeyApi(homey, 'POST', SETTINGS_UI_REFRESH_DEVICES_PATH))
         .resolves.toEqual({
-          devices: [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
+          devices: withDescriptorIdentities<TargetDeviceSnapshot>([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }]),
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
@@ -171,17 +173,17 @@ describe('homeyApiMock', () => {
           ],
         },
         uiState: {
-          devices: [
+          devices: withDescriptorIdentities<TargetDeviceSnapshot>([
             { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
-          ],
+          ]),
         },
       });
 
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
         .resolves.toEqual({
-          devices: [
+          devices: withDescriptorIdentities<TargetDeviceSnapshot>([
             { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
-          ],
+          ]),
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,

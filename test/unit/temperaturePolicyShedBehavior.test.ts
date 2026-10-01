@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { resolveTemperaturePolicyShedBehavior } from '../../lib/device/temperatureControlPosture';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 
 const noDevice = () => undefined;
-const withOnOff = (): DecoratedDeviceSnapshot => ({
+const withOnOff = (): DecoratedDeviceSnapshot => decoratedSnapshotFixture({
   available: true, id: 'ac', name: 'AC', targets: [], binaryControl: { on: true },
   expectedPowerKw: 1, expectedPowerSource: 'default',
 });
-const steppedOnly = (): DecoratedDeviceSnapshot => ({
+const steppedOnly = (): DecoratedDeviceSnapshot => decoratedSnapshotFixture({
   available: true, id: 'unit', name: 'Unit', targets: [],
   expectedPowerKw: 1, expectedPowerSource: 'default',
   steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 300 }] },

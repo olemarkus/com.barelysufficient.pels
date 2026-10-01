@@ -40,6 +40,7 @@ const charger = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsU
   id: 'charger-1',
   name: 'Elbillader',
   deviceClass: 'evcharger',
+  isEvCharger: true,
   targets: [],
   ...overrides,
 } as SettingsUiDeviceDetailItem);
@@ -107,7 +108,7 @@ describe('charger car picker', () => {
 
   it('stays hidden for a device that is not a charger', async () => {
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
-    renderCarAssociation(charger({ deviceClass: 'heater' }));
+    renderCarAssociation(charger({ deviceClass: 'heater', isEvCharger: false }));
     const section = document.querySelector('#device-detail-car-section') as HTMLElement;
     expect(section.hidden).toBe(true);
   });

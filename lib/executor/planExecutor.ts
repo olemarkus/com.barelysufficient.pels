@@ -469,7 +469,7 @@ export class PlanExecutor {
 
   public driftObservationDeps(): DriftObservationDeps {
     return {
-      getObservedState: (deviceId) => this.deps.getObservedState(deviceId),
+      getObservedState: (deviceId) => readExecutorDevice(this.deps, deviceId),
       getCommandState: (deviceId) => this.resolveCommandState(
         deviceId, this.deps.pendingBinaryCommandStore.get(deviceId),
       ),

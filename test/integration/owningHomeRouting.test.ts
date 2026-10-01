@@ -3,6 +3,7 @@ import { syncOwningHomeLivePlanState } from '../../setup/appObservedControlState
 import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacityBundle';
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
 import type { PlanService } from '../../lib/plan/planService';
@@ -31,7 +32,7 @@ const OUTSIDE_OFF = [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'o
 const buildCtx = (): AppContext => {
   const settings = new Map<string, unknown>([[RESPECT_EXTERNAL_OFF_DEVICES, { 'sub-dev': true, 'main-dev': true }]]);
   const ctx = createAppContextMock({
-    latestTargetSnapshot: ['sub-dev', 'main-dev'].map((id) => ({
+    latestTargetSnapshot: ['sub-dev', 'main-dev'].map((id) => transportSnapshotFixture({
       available: true,
       id,
       expectedPowerKw: 1,

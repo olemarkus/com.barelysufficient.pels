@@ -12,7 +12,7 @@ import type { EvObservedProbe } from '../../packages/contracts/src/types';
 
 const baseSnapshot = (
   overrides: Partial<CanTurnOnDeviceSnapshot & EvObservedProbe & {
-    deviceClass?: string; canSetOnOff?: boolean;
+    deviceClass?: string;
   }> = {},
 ): CanTurnOnDeviceSnapshot & EvObservedProbe & { deviceClass?: string } => ({
   id: 'd1',
@@ -85,18 +85,6 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
       deviceClass: 'thermostat',
       available: true,
     }))).toBe(true);
-  });
-
-  it('returns false for an onoff device when the legacy canSetOnOff fallback is false', () => {
-    // The legacy fallback path: the snapshot may not set `canSetControl`
-    // but a stale `canSetOnOff === false` field from older devices still
-    // blocks writes on the onoff capability. The migration must preserve
-    // this guard.
-    expect(canTurnOnDevice(baseSnapshot({
-      deviceClass: 'thermostat',
-      available: true,
-      canSetOnOff: false,
-    }))).toBe(false);
   });
 
   it('returns false when there is no resolvable binary capability', () => {

@@ -60,7 +60,7 @@ export type LifecycleFallbackPort = Pick<LifecycleFallbackDispatcher, 'abandon' 
 
 export type LifecycleFallbackDevice = Pick<
 DeviceDescriptor,
-'id' | 'name'
+'id' | 'name' | 'isEvCharger'
 > & Pick<
 SteppedLoadDecoration,
   'selectedStepId' | 'stepCommandPending' | 'stepCommandRetryCount'

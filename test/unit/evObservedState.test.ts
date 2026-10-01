@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
 
 // Probe-widened fixture: the base snapshot type omits `evChargingState` (that
 // is the contract under test), so the fixture builds the owner-side widened
@@ -11,21 +12,22 @@ const snap = (over: Partial<TargetDeviceSnapshot & EvObservedProbe>): TargetDevi
   name: 'D',
   targets: [],
   ...over,
+  ...resolveFixtureDescriptorIdentity(over),
   available: over.available ?? true,
 });
 
 describe('isEvObserved', () => {
   it('is false for a non-EV device (even with a charging state present)', () => {
-    expect(isEvObserved(snap({ deviceClass: 'heater', evChargingState: 'plugged_in_charging' }))).toBe(false);
+    expect(isEvObserved(snap({ deviceClass: 'heater', isEvCharger: false, evChargingState: 'plugged_in_charging' }))).toBe(false);
   });
 
-  it('is true for an EV charger with a resolved plug-state (by deviceClass)', () => {
-    const s = snap({ deviceClass: 'evcharger', evChargingState: 'plugged_in_charging' });
+  it('is true for an EV charger with a resolved plug-state (by the producer-resolved identity)', () => {
+    const s = snap({ deviceClass: 'evcharger', isEvCharger: true, evChargingState: 'plugged_in_charging' });
     expect(isEvObserved(s)).toBe(true);
   });
 
   it('is true for an EV charger identified by control capability', () => {
-    const s = snap({ deviceClass: 'evcharger', evChargingState: 'plugged_out' });
+    const s = snap({ isEvCharger: true, evChargingState: 'plugged_out' });
     expect(isEvObserved(s)).toBe(true);
   });
 
@@ -37,11 +39,11 @@ describe('isEvObserved', () => {
     // is dropped rather than managed — so "EV charger with no plug-state" is not a
     // device that reaches a consumer. A fixture that omits it is simply not a
     // device the producer could have built.
-    expect(isEvObserved(snap({ deviceClass: 'evcharger', evChargingState: undefined }))).toBe(true);
+    expect(isEvObserved(snap({ deviceClass: 'evcharger', isEvCharger: true, evChargingState: undefined }))).toBe(true);
   });
 
   it('narrows evChargingState to a non-undefined EvChargingState', () => {
-    const s = snap({ deviceClass: 'evcharger', evChargingState: 'plugged_in_paused' });
+    const s = snap({ deviceClass: 'evcharger', isEvCharger: true, evChargingState: 'plugged_in_paused' });
     if (isEvObserved(s)) {
       // Compile-time: `s.evChargingState` is `EvChargingState` (not `| undefined`).
       const known: 'plugged_in_charging' | 'plugged_in' | 'plugged_in_paused' | 'plugged_out'

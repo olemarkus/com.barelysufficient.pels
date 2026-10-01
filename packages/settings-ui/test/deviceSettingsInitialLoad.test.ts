@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import type { Mock } from 'vitest';
 
@@ -18,14 +19,14 @@ const setupDom = () => {
   `;
 };
 
-const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Test Device',
   targets: [],
   deviceType: 'temperature',
   binaryControl: { on: true },
   ...overrides,
-});
+}));
 
 const setupHarness = async (options: {
   initialLoadComplete: boolean;

@@ -52,7 +52,6 @@ import type {
   StateOfChargeObservedProbe,
 } from '../packages/contracts/src/types';
 import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
-import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
@@ -564,7 +563,7 @@ const devicesPayloadForHome = (
   const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
   if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
   return {
-    devices: members.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    devices: members.filter((device) => !device.observeOnly),
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
@@ -604,7 +603,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // leak into the `managed` list with a misleading no-op "Manage" toggle, so drop them from
     // the user-facing device list. The BACKEND snapshot + telemetry stay untouched; they earn
     // a proper tracked / EMS view later.
-    devices: candidates.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    devices: candidates.filter((device) => !device.observeOnly),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The

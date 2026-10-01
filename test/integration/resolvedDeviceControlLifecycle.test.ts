@@ -9,6 +9,7 @@ import { resolveCurrentOn } from '../../lib/observer/observedState';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
+import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type {
   DeviceControlProfiles,
   MeasuredPowerObservedProbe,
@@ -40,7 +41,7 @@ const baseSnapshot = (
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
   > = {},
 ): TargetDeviceSnapshot & MeasuredPowerObservedProbe
-  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => transportSnapshotFixture({
   available: true,
   steppedLoadProfile: steppedProfiles['dev-1'],
   controlModel: 'stepped_load',

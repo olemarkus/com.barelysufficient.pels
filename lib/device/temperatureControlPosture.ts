@@ -2,13 +2,28 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import type { ResidualKwShedBehavior } from './deviceResidualKw';
 import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type {
-  DecoratedDeviceSnapshot, TemperatureObservedProbe, ThermalDirection,
+  MeasuredPowerObservedProbe,
+  ObservedDeviceState,
+  SteppedLoadDecoration,
+  SteppedLoadDescriptorProbe,
+  TemperatureObservedProbe,
+  ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+
+/**
+ * The slice these resolvers read: the accepted observation and the decorator's
+ * temperature markers. Declared as that slice rather than as an inventory
+ * snapshot, so planner input, which carries no inventory metadata, passes
+ * without claiming fields it does not have.
+ */
+type ControlPostureDevice = ObservedDeviceState & TemperatureObservedProbe & MeasuredPowerObservedProbe
+  & SteppedLoadDescriptorProbe
+  & Pick<SteppedLoadDecoration, 'temperatureControlDisabled' | 'temperatureAdjustmentsDisabled'>;
 
 /**
  * The device's control posture, resolved once, here.
@@ -32,7 +47,7 @@ import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
  * device ... enters the planner controllable/actuated") and both are kept.
  */
 export function resolveDeviceControlPosture(
-  device: DecoratedDeviceSnapshot & DeviceConfigurationRead,
+  device: ControlPostureDevice & DeviceConfigurationRead,
   managed: boolean,
   capacityControlEnabled: boolean,
   startPolicy: DeviceStartPolicy,
@@ -99,7 +114,7 @@ export function resolveStartPolicyInForce(
  * by setpoint stays in force under it. One predicate, the same one
  * `allowsLimiting` answers at the shed-behaviour seam.
  */
-export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot): boolean {
+export function hasTemperaturePolicyPowerControl(device: ControlPostureDevice): boolean {
   return device.temperatureControlDisabled !== true
     || device.binaryControl !== undefined || isSteppedLoadSnapshot(device);
 }
@@ -132,7 +147,7 @@ export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot
  */
 export function resolveTemperaturePolicyShedBehavior(
   configured: ConfiguredShedBehavior,
-  readDevice: () => DecoratedDeviceSnapshot | undefined,
+  readDevice: () => ControlPostureDevice | undefined,
   allowsLimiting: boolean,
   direction: ThermalDirection,
 ): ResidualKwShedBehavior {
@@ -166,7 +181,7 @@ export type ResidualKwForPlanDeviceShedBehavior =
  */
 export function resolveResidualShedBehavior(
   configured: ResidualKwShedBehavior,
-  device: DecoratedDeviceSnapshot & TemperatureObservedProbe,
+  device: ControlPostureDevice,
 ): ResidualKwForPlanDeviceShedBehavior {
   if (configured.action === 'set_temperature') {
     // The setpoint arm — and only it — is denied when the owner switched
@@ -201,7 +216,7 @@ export function resolveResidualShedBehavior(
 }
 
 function resolveShedBehaviorWithoutTemperature(
-  device: DecoratedDeviceSnapshot,
+  device: ControlPostureDevice,
 ): ResidualKwForPlanDeviceShedBehavior {
   if (device.binaryControl !== undefined) return { action: 'turn_off' };
   if (!isSteppedLoadSnapshot(device)) return { action: 'turn_off' };

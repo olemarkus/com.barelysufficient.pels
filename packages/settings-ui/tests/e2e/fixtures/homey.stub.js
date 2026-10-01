@@ -189,7 +189,7 @@
   };
 
   const buildSamplePlanSnapshot = () => {
-    return {
+    const snapshot = {
       meta: {
         totalKw: 1.5,
         lastPowerUpdateMs: Date.now() - 5 * 1000,
@@ -338,7 +338,7 @@
           currentState: 'not_applicable',
           plannedState: 'keep',
           binaryControllable: true,
-          deviceRole: 'ev_charger',
+          isEvCharger: true,
           evChargingState: 'plugged_in_charging',
           priority: 4,
           controllable: true,
@@ -425,6 +425,9 @@
         // every capture.
       ],
     };
+    // `isEvCharger` is required on the plan wire (`planSnapshotParse`): default it
+    // here so every fixture device, and every spec that spreads one, carries it.
+    return { ...snapshot, devices: snapshot.devices.map((device) => ({ isEvCharger: false, ...device })) };
   };
 
   const buildSampleDailyBudgetPayload = () => {
@@ -561,7 +564,7 @@
     deviceType: 'onoff',
     currentOn: false,
     binaryControllable: true,
-    deviceRole: 'ev_charger',
+    isEvCharger: true,
     evChargingState: 'plugged_in_paused',
     measuredPowerKw: 0,
     expectedPowerKw: 7.2,
@@ -682,7 +685,7 @@
         deviceType: 'onoff',
         controlModel: 'stepped_load',
         binaryControllable: true,
-        deviceRole: 'ev_charger',
+        isEvCharger: true,
         evChargingState: 'plugged_in_charging',
         currentOn: true,
         measuredPowerKw: 1.38,
@@ -1073,7 +1076,7 @@
     return { ...plan, devices: plan.devices.map((device) => ({
       id: device.id, name: device.name, controllable: device.controllable ?? true,
       available: device.available ?? true, boostActive: device.boostActive ?? false,
-      deviceClass: device.deviceClass, deviceRole: device.deviceRole, stateOfCharge: device.stateOfCharge,
+      isEvCharger: device.isEvCharger ?? false, stateOfCharge: device.stateOfCharge,
       currentDrawKw: device.currentDrawKw, budgetExempt: device.budgetExempt, starvation: device.starvation,
       status: device.status ?? device.fixtureStatus?.[settings.capacity_dry_run ? 'simulation' : 'live'],
     })) };
@@ -1795,6 +1798,18 @@
   // the WebView as a plain script and cannot import it. Keep the two in sync.
   const OBSERVE_ONLY_ROLE_CLASS_KEYS = new Set(['battery', 'solarpanel']);
 
+  // The producer resolves both on every device it serves (`managerParseDeviceFields`),
+  // and the list parser requires them: default them the way it does, so a spec's
+  // seeded device needs to state them only to say something else.
+  const withResolvedIdentity = (device) => ({
+    isEvCharger: device.deviceClass === 'evcharger',
+    binaryControllable: false,
+    observeOnly: OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass),
+    deviceClass: 'other',
+    deviceType: (device.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff',
+    ...device,
+  });
+
   const scopedDevicesHandler = (query, wholeHomePayload) => {
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
@@ -1805,7 +1820,9 @@
       // removes every observe-only role member from the user-facing list while
       // computing the solar flag from the UNFILTERED member set — mirror both,
       // or scoped specs would render management controls production never offers.
-      devices: members.filter((device) => !OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass)),
+      devices: members
+        .filter((device) => !OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass))
+        .map(withResolvedIdentity),
       chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       hasManagedSolarDevice: members.some((device) => device.deviceClass === 'solarpanel'),
       // A sub-meter has its own export accounting; default false, per-area
@@ -1867,7 +1884,7 @@
       prices: buildPricesPayload(),
     }),
     'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
-      devices: settings.target_devices_snapshot,
+      devices: settings.target_devices_snapshot?.map(withResolvedIdentity),
       // No fixture charger reports its wiring unless a spec seeds one.
       chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       // This fixture home has a tracked solar/PV device by default, so the per-device

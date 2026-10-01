@@ -33,8 +33,9 @@
 // Inlining either re-introduces the kind-coupling we keep pushing down to the
 // producer. The kind vocabulary legitimately lives ONLY in the transport
 // producer (`lib/device/**`) and the browser-safe predicates in
-// `packages/shared-domain/**` (e.g. `isEvDevice`, `isTemperatureControlDevice`,
-// `isStarvationSupportedDeviceClass`); consumers call those predicates.
+// `packages/shared-domain/**` (e.g. `isEvDevice`, `isTemperatureControlDevice`),
+// or is resolved by the producer into a flag (`isEvCharger`, `observeOnly`,
+// `starvationSupported`); consumers call those predicates or read the flags.
 //
 // Detection is AST-based (not raw regex) and deliberately NARROW so legitimate
 // capability ids ('onoff', 'target_temperature') and copy strings never false-positive:
@@ -331,8 +332,8 @@ if (offenders.length > 0) {
     'Device-kind vocabulary containment violation (check-device-kind-vocab):\n'
     + 'lib/plan/**, lib/objectives/** and lib/executor/** must not branch on device\n'
     + 'KIND (deviceClass family names or the deviceType discriminant). Use the\n'
-    + 'shared-domain predicates (isEvDevice, isTemperatureControlDevice,\n'
-    + 'isStarvationSupportedDeviceClass) or producer-resolved bits instead. Kind\n'
+    + 'shared-domain predicates (isEvDevice, isTemperatureControlDevice) or\n'
+    + 'producer-resolved bits (isEvCharger, observeOnly, starvationSupported). Kind\n'
     + 'vocabulary lives only in lib/device/** (transport) and packages/shared-domain/**.\n'
     + 'Offending site(s):\n',
   );

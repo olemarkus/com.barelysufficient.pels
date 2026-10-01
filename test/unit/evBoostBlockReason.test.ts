@@ -4,7 +4,7 @@ import {
   resolveEvBoostBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
 
-const EV = { deviceClass: 'evcharger' as const };
+const EV = { isEvCharger: true };
 
 describe('resolveEvBoostBlockReason', () => {
   it('blocks the two plug-states PELS cannot drive toward a charge', () => {
@@ -28,6 +28,6 @@ describe('resolveEvBoostBlockReason', () => {
   });
 
   it('is not a plug-state question for a non-EV device', () => {
-    expect(resolveEvBoostBlockReason({ deviceClass: 'thermostat' })).toBeNull();
+    expect(resolveEvBoostBlockReason({ isEvCharger: false })).toBeNull();
   });
 });

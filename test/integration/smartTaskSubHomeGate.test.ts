@@ -55,6 +55,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { transportSnapshotFixture, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -221,6 +222,9 @@ const buildHeaterDevice = (): MeteredPlanInputDevice & { thermalDirection: 'heat
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
   deviceType: 'temperature' as const,
+  isEvCharger: false,
+  observeOnly: false,
+  starvationSupported: false,
   controlCapabilityId: 'onoff' as const,
   currentTemperature: 40,
   lastFreshDataMs: NOW_MS,
@@ -399,18 +403,28 @@ describe('smart-task membership and authority predicates', () => {
 
   it('excludes a configured meter from smart-task authority and candidates', () => {
     const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
-    ctx.latestTargetSnapshot.push({
+    ctx.latestTargetSnapshot.push(transportSnapshotFixture({
+      available: true,
       id: 'meter-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Main meter',
       managed: true,
       measuredPowerKw: 0,
-    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
-    ctx.latestTargetSnapshot.push({
+      // Planner input is projected from the Observer record, which reads the
+      // capability list.
+      targets: [],
+    }));
+    ctx.latestTargetSnapshot.push(transportSnapshotFixture({
+      available: true,
       id: 'heater-1',
+      expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Hall heater',
       managed: true,
       measuredPowerKw: 0,
-    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
+      // Planner input is projected from the Observer record, which reads the
+      // capability list.
+      targets: [],
+    }));
 
     expect(resolveSmartTaskHomeScope(ctx, 'meter-1')).toBe('source_device');
     expect(hasMainHomeSmartTaskAuthority(ctx, 'meter-1')).toBe(false);
@@ -440,14 +454,14 @@ describe('smart-task membership and authority predicates', () => {
         isMainHomeActuationFenced: () => true,
         getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
-      latestTargetSnapshot: [{
+      latestTargetSnapshot: transportSnapshotFixtures([{
         available: true,
         id: 'd1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
         name: 'Hall heater',
         targets: [],
         binaryControl: { on: false },
-      }],
+      }]),
       deviceDiagnosticsService: {
         getStarvedRescueEntries: () => [{
           deviceId: 'd1',
@@ -467,7 +481,7 @@ describe('smart-task membership and authority predicates', () => {
 
   it('omits an active meter source from held-back rescue rows', () => {
     const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
-    ctx.latestTargetSnapshot.push({
+    ctx.latestTargetSnapshot.push(transportSnapshotFixture({
       available: true,
       id: 'meter-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -475,7 +489,7 @@ describe('smart-task membership and authority predicates', () => {
       managed: true,
       targets: [],
       binaryControl: { on: false },
-    } as ReturnType<typeof createAppContextMock>['latestTargetSnapshot'][number]);
+    }));
     ctx.deviceDiagnosticsService = {
       getStarvedRescueEntries: () => [{
         deviceId: 'meter-1',
@@ -587,6 +601,10 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
           controlCapabilityId: 'onoff',
           binaryControl: { on: deviceOn },
           targets: [],
+          deviceType: 'onoff',
+          isEvCharger: false,
+          observeOnly: false,
+          starvationSupported: false,
         })) as PlanInputDevice],
       } as unknown as AppContext['planService'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],

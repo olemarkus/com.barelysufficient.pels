@@ -18,8 +18,8 @@ import type { DevicePlanDevice, TemperatureKind } from './planTypes';
  * definition of "is this a temperature device", and shared-domain stays
  * browser-safe (it never imports the plan device types — the narrowing overloads
  * live here, in the plan layer). The producer stamps `deviceType` flat on both
- * the input and output plan devices (mirroring how `deviceClass` rides on both
- * for the EV guard), so the predicate reads identically on either flat type.
+ * the input and output plan devices (as it does `isEvCharger` for the EV
+ * guard), so the predicate reads identically on either flat type.
  *
  * Dedicated overloads narrow the two flat plan device types; the generic
  * overload preserves any structural caller's variable type and intersects it

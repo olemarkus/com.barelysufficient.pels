@@ -59,7 +59,7 @@ const resolveDevices = (
       return {
         temperature,
         limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
-        taskCapable: temperature || device.deviceClass === 'evcharger',
+        taskCapable: temperature || device.isEvCharger,
         priceConfigured: configuredDeviceIds.has(device.id),
         usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
       };

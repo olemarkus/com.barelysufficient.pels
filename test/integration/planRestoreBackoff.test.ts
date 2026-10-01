@@ -2553,7 +2553,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const inactiveEv = buildBinarySteppedPlanDevice({
       id: 'inactive-ev',
       name: 'BilLader',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
       currentState: 'off',
@@ -4573,7 +4573,7 @@ describe('stepped-load shed invariant', () => {
           // population, which boosts on SoC and has no plug-state. The boost is
           // the generic decision above: the planner cannot tell an SoC boost
           // from a temperature one, and carries nothing EV-shaped to tell with.
-          deviceClass: 'evcharger',
+          isEvCharger: true,
         } as DevicePlanDevice,
         buildPlanDevice({
           id: 'lower-priority',

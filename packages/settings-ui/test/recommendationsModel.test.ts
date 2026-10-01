@@ -122,7 +122,7 @@ describe('setup recommendations', () => {
 
   it('recommends connecting each supported, unconfigured car to an available charger', () => {
     const recommendations = resolve(
-      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' })],
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
       [{ id: 'car-1', name: 'Polestar 3' }, { id: 'car-2', name: 'ID.4' }],
       { 'charger-1': { carIds: ['car-2'] } },
     );
@@ -138,7 +138,7 @@ describe('setup recommendations', () => {
 
   it('warns when an enabled Flow still reports battery level for a charger with a selected car', () => {
     const recommendations = resolve(
-      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' })],
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
       [],
       { 'charger-1': { carIds: ['car-1'] } },
       {},
@@ -157,8 +157,8 @@ describe('setup recommendations', () => {
 
   it('does not call battery reporting a conflict until a car is selected for that charger', () => {
     const chargers = [
-      device({ id: 'charger-1', deviceClass: 'evcharger' }),
-      device({ id: 'charger-2', deviceClass: 'evcharger' }),
+      device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true }),
+      device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true }),
     ];
     expect(resolve(chargers, [], {}, {}, [{ chargerDeviceId: 'charger-1' }])).toEqual([]);
     expect(resolve(
@@ -172,7 +172,7 @@ describe('setup recommendations', () => {
 
   it('uses plural cleanup copy when several or unnamed reporting Flows are involved', () => {
     const recommendations = resolve(
-      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' })],
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
       [],
       { 'charger-1': { carIds: ['car-1'] } },
       {},
@@ -186,8 +186,8 @@ describe('setup recommendations', () => {
   it('routes an unconfigured car to the device list when several chargers are available', () => {
     const recommendations = resolve(
       [
-        device({ id: 'charger-1', deviceClass: 'evcharger' }),
-        device({ id: 'charger-2', deviceClass: 'evcharger' }),
+        device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true }),
+        device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true }),
       ],
       [{ id: 'car-1', name: 'Polestar 3' }],
     );
@@ -235,7 +235,7 @@ describe('setup recommendations', () => {
 
   it('ignores associations belonging to chargers that are no longer present', () => {
     const recommendations = resolve(
-      [device({ id: 'charger-2', deviceClass: 'evcharger' })],
+      [device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true })],
       [{ id: 'car-1', name: 'Polestar 3' }],
       { 'removed-charger': { carIds: ['car-1'] } },
     );

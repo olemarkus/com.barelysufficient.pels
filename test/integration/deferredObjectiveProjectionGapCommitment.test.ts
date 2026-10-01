@@ -86,7 +86,11 @@ const buildDeviceReading = (
   measuredPowerKw: 0,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
+  deviceClass: 'heater',
   deviceType: 'temperature',
+  isEvCharger: false,
+  observeOnly: false,
+  binaryControllable: true,
   controlModel: 'stepped_load',
   temperature: {
     currentTemperature: tempC,

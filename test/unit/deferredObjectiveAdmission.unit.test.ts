@@ -23,7 +23,10 @@ const buildEvDevice = (
 ): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   name: overrides.id,
   targets: [],
-  deviceClass: 'evcharger',
+  isEvCharger: true,
+  observeOnly: false,
+  starvationSupported: false,
+  deviceType: 'onoff',
   binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   ...overrides,
@@ -195,6 +198,10 @@ describe('applyDeferredObjectiveAdmission', () => {
       hasStandingDemand: true,
       surplusTracking: false,
       confirmedNotDrawing: false,
+      isEvCharger: false,
+      observeOnly: false,
+      starvationSupported: false,
+      deviceType: 'onoff',
     });
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },

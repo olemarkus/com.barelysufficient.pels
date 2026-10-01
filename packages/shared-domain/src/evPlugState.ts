@@ -35,12 +35,12 @@
 import type { EvChargingState } from '../../contracts/src/types';
 
 /**
- * The two fields {@link isEvDevice} reads. Owned by the device producer, which
- * sets both for a real charger; consumers pass whatever carrier they hold and
- * never re-derive EV-ness from either field alone. Either signal alone is
- * sufficient — see {@link isEvDevice} for why the union is the contract.
+ * The field {@link isEvDevice} reads: the producer-resolved EV identity
+ * (`managerParseDeviceFields`), carried by the inventory descriptor and by
+ * device configuration alike. Required, so a carrier without it is a build
+ * error rather than a device that reads as "not a charger".
  */
-export type EvDeviceIdentity = { deviceClass?: string; isEvCharger?: boolean };
+export type EvDeviceIdentity = { isEvCharger: boolean };
 
 // Membership set derived from a `satisfies Record<EvChargingState, …>` literal so
 // a new union member is a compile error here until it's added to the guard (the
@@ -75,15 +75,10 @@ export const isEvChargingState = (value: unknown): value is EvChargingState => (
 );
 
 /**
- * EV-device predicate. A device is "EV" if EITHER its `deviceClass` is
- * `'evcharger'` OR its resolved binary control capability is
- * `'evcharger_charging'`. Real EV devices set both; the union collapses the two
- * historical gates into one source of truth. Returns `false` when both are
- * missing.
+ * EV-device predicate. The producer resolved it once, from class `evcharger`.
+ * Nothing downstream re-reads the class.
  */
-export const isEvDevice = (dev: EvDeviceIdentity): boolean => (
-  dev.isEvCharger === true || dev.deviceClass === 'evcharger'
-);
+export const isEvDevice = (dev: EvDeviceIdentity): boolean => dev.isEvCharger;
 
 /**
  * Whether PELS may drive the charger, judged on plug-state alone (availability

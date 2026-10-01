@@ -33,6 +33,7 @@ import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { projectLifecycleFallbackDevice } from '../../lib/planInput/lifecycleFallbackDeviceProjection';
+import type { PlanInputSnapshotDevice } from '../../lib/planInput/runtimeDeviceRead';
 
 /**
  * Unwraps the seam's per-device result for the cases under test that expect a
@@ -315,10 +316,15 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Target-only heater',
       expectedPowerKw: 1,
       expectedPowerSource: 'default',
+      controlModel: 'temperature_target',
+      binaryControllable: false,
+      isEvCharger: false,
+      observeOnly: false,
+      starvationSupported: false,
       targets: [{ id: 'target_temperature', value: 21, unit: 'C', min: 5, max: 30, step: 1 }],
       available: true,
       canSetControl: false,
-    } as DecoratedDeviceSnapshot);
+    } as PlanInputSnapshotDevice);
 
     expect(projected).toMatchObject({
       binaryAxis: { state: 'unavailable' },
@@ -346,6 +352,11 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Stepped-only heater',
       expectedPowerKw: 2,
       expectedPowerSource: 'default',
+      controlModel: 'stepped_load',
+      binaryControllable: false,
+      isEvCharger: false,
+      observeOnly: false,
+      starvationSupported: false,
       targets: [],
       available: true,
       canSetControl: false,
@@ -357,7 +368,7 @@ describe('LifecycleFallbackDispatcher', () => {
         ],
       },
       selectedStepId: 'high',
-    } as DecoratedDeviceSnapshot);
+    } as PlanInputSnapshotDevice);
 
     expect(projected).toMatchObject({
       binaryAxis: { state: 'unavailable' },
@@ -390,6 +401,10 @@ describe('LifecycleFallbackDispatcher', () => {
         name: 'Step-only charger',
         expectedPowerKw: 2,
         expectedPowerSource: 'default' as const,
+        binaryControllable: false,
+        isEvCharger: true,
+        observeOnly: false,
+        starvationSupported: false,
         targets: [],
         available: true,
         canSetControl: false,
@@ -403,7 +418,7 @@ describe('LifecycleFallbackDispatcher', () => {
         },
         selectedStepId: reportedStepId,
         reportedStepId,
-      } as DecoratedDeviceSnapshot;
+      } as PlanInputSnapshotDevice;
       const device = projectLifecycleFallbackDevice(raw);
       return resolveRequest({
         device,
@@ -461,11 +476,16 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Binary charger',
       expectedPowerKw: 2,
       expectedPowerSource: 'default',
+      controlModel: 'binary_power',
+      binaryControllable: true,
+      isEvCharger: true,
+      observeOnly: false,
+      starvationSupported: false,
       targets: [],
       available: true,
       canSetControl: true,
       binaryControl: { on: true },
-    } as DecoratedDeviceSnapshot);
+    } as PlanInputSnapshotDevice);
 
     expect(resolveRequest({
       device: projected,
@@ -488,6 +508,11 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Hybrid heater',
       expectedPowerKw: 2,
       expectedPowerSource: 'default',
+      controlModel: 'stepped_load',
+      binaryControllable: true,
+      isEvCharger: false,
+      observeOnly: false,
+      starvationSupported: false,
       targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       available: true,
       capabilities: ['onoff'],
@@ -495,7 +520,7 @@ describe('LifecycleFallbackDispatcher', () => {
       binaryControl: { on: true },
       temperatureControlDisabled: true,
       steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] },
-    } as DecoratedDeviceSnapshot);
+    } as PlanInputSnapshotDevice);
 
     // The step axis is a different axis from the setpoint, so lifecycle
     // fallback can still trim this heater to a lower rung.

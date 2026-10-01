@@ -36,6 +36,12 @@ const buildDevice = (
     controllable: true,
     available: true,
     binaryCapabilityId: 'onoff' as const,
+    // Required planner-input identity, resolved by device configuration: an
+    // ordinary on/off load unless the spec says otherwise.
+    deviceType: 'onoff' as const,
+    isEvCharger: false,
+    observeOnly: false,
+    starvationSupported: false,
     ...overrides,
   };
   return withBinaryDiscriminant({
@@ -980,7 +986,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0,
         }),
@@ -992,7 +998,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0.2,
         }),
@@ -1004,7 +1010,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0.2,
         }),
@@ -1018,7 +1024,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0.8,
         }),
@@ -1084,7 +1090,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0,
@@ -1097,7 +1103,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
@@ -1110,7 +1116,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.25,
@@ -1129,7 +1135,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
@@ -1193,7 +1199,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0,
@@ -1207,7 +1213,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
@@ -1221,7 +1227,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
@@ -1241,7 +1247,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
@@ -1301,7 +1307,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0,
         }),
@@ -1313,7 +1319,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0.2,
         }),
@@ -1327,7 +1333,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         buildDevice({
           id: 'restored-thermostat',
           name: 'Restored Thermostat',
-          deviceClass: 'thermostat',
+          starvationSupported: true,
           binaryControl: { on: true },
           currentDrawKw: 0.8,
         }),

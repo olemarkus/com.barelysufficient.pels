@@ -275,7 +275,6 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
       ...steppedPlanDevice({
         id: DEVICE_ID,
         name: 'Connected 300',
-        deviceClass: 'water_heater',
         currentState: 'off',
         plannedState: 'keep',
         controllable: true,

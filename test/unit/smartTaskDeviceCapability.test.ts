@@ -10,7 +10,11 @@ const buildDevice = (
 ): DecoratedDeviceSnapshot & TemperatureObservedProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Heater',
+  deviceClass: 'thermostat',
   deviceType: 'temperature',
+  isEvCharger: false,
+  observeOnly: false,
+  binaryControllable: false,
   temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
   ...overrides,
@@ -32,6 +36,7 @@ describe('smart-task Flow device capability', () => {
   it('keeps EV objectives eligible independently of temperature control', () => {
     const device = buildDevice({
       deviceClass: 'evcharger',
+      isEvCharger: true,
       temperatureControlDisabled: true,
     });
 

@@ -297,7 +297,7 @@ export const resolveSteppedLevelFact = (device: {
   currentState?: string;
   steppedLoad?: Pick<DeviceOverviewSteppedLoad, 'profile' | 'reportedStepId'>;
   evChargingState?: EvChargingState;
-  deviceRole?: 'ev_charger';
+  isEvCharger: boolean;
   stateOfCharge?: ObservedStateOfCharge;
 }, stateWordNamesLevel = false): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
@@ -310,7 +310,7 @@ export const resolveSteppedLevelFact = (device: {
   // A held device's state word already names its level ("Limited · 6 A"), and
   // the rail marks it; the fact line keeps only what they do not say.
   const levelText = stateWordNamesLevel ? null : `level ${formatStepDisplayLabel(stepId)}`;
-  const isEvCharger = device.deviceRole === 'ev_charger';
+  const { isEvCharger } = device;
   const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
   const isRoutineEvCharge = isEvCharger && isRoutineEvChargingState(device.evChargingState);
   const segments = isRoutineEvCharge

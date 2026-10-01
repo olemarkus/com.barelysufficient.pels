@@ -315,12 +315,11 @@ export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
  * control axes stay with their runtime owners.
  */
 export type SettingsUiPlanDeviceSnapshot = Pick<DeviceOverviewSnapshot,
-  'controllable' | 'available' | 'deviceRole' | 'stateOfCharge'
+  'controllable' | 'available' | 'isEvCharger' | 'stateOfCharge'
   | 'currentDrawKw'> & {
   status: DeviceStatus;
   id: string;
   name: string;
-  deviceClass?: string;
   budgetExempt?: boolean;
   boostActive: boolean;
   starvation?: SettingsUiPlanDeviceStarvation;

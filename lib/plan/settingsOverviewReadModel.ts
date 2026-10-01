@@ -1,5 +1,4 @@
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanMetaMeasuredFields,
@@ -224,11 +223,10 @@ export function buildSettingsOverviewDeviceReadModel(
   return {
     id: device.id,
     name: device.name,
-    deviceClass: device.deviceClass,
     controllable: device.control.commandAuthority,
     available: execution.available,
     status,
-    deviceRole: device.deviceRole,
+    isEvCharger: device.isEvCharger,
     ...(execution.currentDrawKw !== undefined ? { currentDrawKw: execution.currentDrawKw } : {}),
     budgetExempt: device.budgetExempt,
     boostActive: device.boostActive,
@@ -255,7 +253,7 @@ export function buildSettingsOverviewReadModel(
     // the overview derives from the plan snapshot, so it must drop them here too, or an
     // auto-tracked battery renders as a clickable no-op card.
     devices: plan.devices
-      .filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass))
+      .filter((device) => !device.observeOnly)
       .map((device) => buildSettingsOverviewDeviceReadModel(
         device,
         deps,

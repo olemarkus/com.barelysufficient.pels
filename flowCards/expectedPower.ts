@@ -1,7 +1,6 @@
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
-import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
@@ -109,7 +108,7 @@ export function registerExpectedPowerCard(
       // outranks `settings.load`, so overriding a wrong declared load is the
       // point rather than a conflict.
       descriptors.filter(
-        (d) => !isObserveOnlyRoleClassKey(d.deviceClass)
+        (d) => !d.observeOnly
           && !isSteppedLoadSnapshot(d),
       ),
       query,

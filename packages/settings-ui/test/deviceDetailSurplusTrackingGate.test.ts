@@ -71,6 +71,7 @@ const buildCharger = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',
+  isEvCharger: true,
   powerCapable: true,
   controlModel: 'stepped_load',
   steppedLoadProfile: evLadder,

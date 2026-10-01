@@ -170,21 +170,32 @@ export type PlanInputDeviceBase = {
   id: string;
   name: string;
   targets: TargetCapabilitySnapshot[];
-  deviceClass?: string;
-  deviceType?: 'temperature' | 'onoff';
+  /** Producer-resolved from the temperature cluster (`resolveTemperatureInputFields`). */
+  deviceType: 'temperature' | 'onoff';
   /**
    * Producer-resolved device identity, for the surfaces that ask "is this an EV
    * charger" — never re-derived downstream.
    *
    * Identity, not observation, so it belongs on the plan device where
    * `stateOfCharge` and a plug-state do not. The transport resolves it once
-   * (`deviceClass === 'evcharger'` or an `evcharger_charging` binary capability,
-   * `managerParseDeviceFields`) and it has ridden here on the `...deviceFields`
-   * spread ever since — undeclared, so the settings-overview read model could not
-   * see it and inferred the same fact from whether a plug-state reading existed
-   * instead. Declared now, so the two answers cannot diverge again.
+   * from class `evcharger` (`managerParseDeviceFields`), and device
+   * configuration carries it onto the
+   * planner input. Required: as an optional role it went missing when planner
+   * input stopped carrying inventory metadata, and "absent" read as "not a
+   * charger" everywhere.
    */
-  deviceRole?: 'ev_charger';
+  isEvCharger: boolean;
+  /**
+   * Resolved by device configuration from the inventory class: a battery or
+   * panel PELS tracks and never commands. The planner has no class to re-read.
+   */
+  observeOnly: boolean;
+  /**
+   * Resolved by device configuration from the inventory class: a
+   * thermostat-family device whose "held below target" PELS reports as
+   * starvation. The planner has no class to re-read.
+   */
+  starvationSupported: boolean;
   // No device-observation freshness field: the plan trusts the producer-resolved
   // `currentOn`/`currentState`. Nothing anywhere ages a device observation out —
   // a Homey driver only republishes a capability on value CHANGE, so silence
@@ -327,8 +338,7 @@ export type PlanInputDeviceBase = {
   /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
-   * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback
-   * for the `onoff` capability). Consumers MUST go through
+   * cycle (`canSetControl !== false`). Consumers MUST go through
    * `lib/device/deviceActionProjection.isCanSetControl` so the dual-read
    * fallback applies to raw-snapshot call sites uniformly.
    */
@@ -698,6 +708,7 @@ export type DeviceControlPosture = {
  */
 export type PlanDeviceCarriedKey =
   'associatedCar' | 'available' | 'binaryControllable' | 'budgetExempt'
+  | 'isEvCharger' | 'observeOnly' | 'starvationSupported'
   | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
   | 'controllable' | 'desiredStepId'
   | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
@@ -706,6 +717,7 @@ export type PlanDeviceCarriedKey =
   | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'name'
   | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'
+  | 'restorePreparedStepId'
   | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge' | 'stepCommandPending'
   | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targetStepId'
   | 'targets';
@@ -720,5 +732,4 @@ export type PlanDeviceCarriedKey =
 export type PlanDeviceStrippedKey =
   'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature'
-  | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode'
-  | 'observeOnly' | 'isEvCharger';
+  | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

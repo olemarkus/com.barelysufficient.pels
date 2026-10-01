@@ -1,15 +1,16 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Device',
   targets: [],
   binaryControl: { on: true },
   capabilities: ['measure_power', 'onoff'],
   ...overrides,
-});
+}));
 
 const optionValues = (
   options: Array<{ value: string }>,
@@ -116,7 +117,7 @@ describe('device detail control mode options', () => {
         activationRequired: true,
         activationEnabled: true,
       },
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
     });
 
     expect(optionValues(getDeviceDetailControlModeOptions(device))).toEqual([

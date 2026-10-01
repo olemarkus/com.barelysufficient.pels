@@ -20,6 +20,7 @@ import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
@@ -50,7 +51,7 @@ const USABLE_LADDER: SteppedLoadProfile = {
 
 const buildSnapshot = (
   overrides: Partial<DecoratedDeviceSnapshot & MeasuredPowerObservedProbe>,
-): DecoratedDeviceSnapshot & MeasuredPowerObservedProbe => ({
+): DecoratedDeviceSnapshot & MeasuredPowerObservedProbe => decoratedSnapshotFixture({
   id: 'tank',
   name: 'Water heater',
   expectedPowerKw: 1,

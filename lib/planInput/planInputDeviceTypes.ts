@@ -10,11 +10,10 @@ import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powe
 import type {
   AssociatedCarDecoration,
   EvBoostConfig,
-  SteppedLoadDecoration,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { RuntimeDeviceRead } from './runtimeDeviceRead';
+import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import type { ShedBehavior, SteppedClusterFields } from '../plan/planTypes';
 import type { PlanInputDevice } from '../plan/planTypes';
 
@@ -43,7 +42,8 @@ export type ToPlanDeviceOptions = {
   projectCommandability: (params: BinaryCommandabilityProjectionInput) => BinaryCommandabilityProjection;
 };
 
-export type ToPlanDeviceInput = RuntimeDeviceRead & SteppedLoadDecoration & AssociatedCarDecoration;
+/** Planner input as served (`PlanInputSnapshotDevice`), plus the associated car the producer decorates on. */
+export type ToPlanDeviceInput = PlanInputSnapshotDevice & AssociatedCarDecoration;
 export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
 
 /** Resolved facts shared by the plan-device assembly stages. */

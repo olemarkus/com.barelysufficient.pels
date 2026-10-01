@@ -1,3 +1,5 @@
+import type { SettingsUiDeviceView } from '../src/ui/state.ts';
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
 import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
@@ -1103,7 +1105,7 @@ describe('Redesign plan UI', () => {
       const { state } = await import('../src/ui/state.ts');
       // The device response is independent of the empty plan: an unavailable
       // device has not become unmanaged just because PELS has no decision for it.
-      state.latestDevices = Array.from({ length: 5 }, (_, index) => ({
+      state.latestDevices = Array.from({ length: 5 }, (_, index) => (withDescriptorIdentity<SettingsUiDeviceView>({
         id: `unavailable-${index}`,
         name: `Unavailable heater ${index + 1}`,
         managed: true,
@@ -1112,7 +1114,7 @@ describe('Redesign plan UI', () => {
         targets: [],
         expectedPowerKw: 1,
         expectedPowerSource: 'default',
-      }));
+      })));
       state.devicesLoaded = true;
       const { renderPlan } = await import('../src/ui/plan.ts');
 
@@ -1213,6 +1215,8 @@ describe('Redesign plan UI', () => {
       const devices = [{
         id: 'recovered', name: 'Recovered heater', managed: true, available: true, targets: [],
         expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+        deviceClass: 'heater', deviceType: 'onoff' as const, isEvCharger: false,
+        binaryControllable: false, observeOnly: false,
       }];
       const plan = { meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] };
       const homey = installHomeyMock({

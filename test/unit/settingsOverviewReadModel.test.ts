@@ -114,9 +114,9 @@ describe('settingsOverviewReadModel', () => {
 
   it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {
     const keepReason = { code: PLAN_REASON_CODES.keep, detail: null } as const;
-    const heater = buildPlanDevice({ id: 'heater', deviceClass: 'heater', reason: keepReason });
-    const battery = buildPlanDevice({ id: 'home-battery', deviceClass: 'battery', reason: keepReason });
-    const solar = buildPlanDevice({ id: 'solar', deviceClass: 'solarpanel', reason: keepReason });
+    const heater = buildPlanDevice({ id: 'heater', reason: keepReason });
+    const battery = buildPlanDevice({ id: 'home-battery', observeOnly: true, reason: keepReason });
+    const solar = buildPlanDevice({ id: 'solar', observeOnly: true, reason: keepReason });
 
     const readModel = buildSettingsOverviewReadModel({
       meta: buildPlanMeta({
@@ -202,7 +202,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('keeps a settled stepped hold ahead of the car waiting explanation', () => {
     const device = steppedPlanDevice({
-      deviceRole: 'ev_charger', plannedState: 'shed', currentState: 'on',
+      isEvCharger: true, plannedState: 'shed', currentState: 'on',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.capacity },
     });
@@ -230,7 +230,7 @@ describe('settingsOverviewReadModel', () => {
     // A probe asks for the rung above the confirmed ladder; the card is given the
     // confirmed ladder, so the probe target is not one of its steps. Show where
     // the charger is, not a turn-off it never received.
-    const device = steppedPlanDevice({ deviceRole: 'ev_charger', currentState: 'on', plannedState: 'keep',
+    const device = steppedPlanDevice({ isEvCharger: true, currentState: 'on', plannedState: 'keep',
       reportedStepId: 'medium', selectedStepId: 'max', desiredStepId: 'max', stepCommandPending: true });
     const confirmed = { steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max') };
     const wire = buildDevice(device, {
@@ -270,12 +270,12 @@ describe('settingsOverviewReadModel', () => {
   it('calls a charger a charger before it has reported any plug-state', () => {
     const device = buildPlanDevice({
       id: 'ev-1',
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
     });
 
     const read = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
-    expect(read.deviceRole).toBe('ev_charger');
+    expect(read.isEvCharger).toBe(true);
     // …and still reports no plug-state, which is the honest half of the answer.
     expect(read).not.toHaveProperty('evChargingState');
   });
@@ -285,7 +285,7 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
-    }).deviceRole).toBeUndefined();
+    }).isEvCharger).toBe(false);
   });
 
   it('surfaces the EV battery reading so the card can show it beside the level', () => {
@@ -321,7 +321,7 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it('includes the observer battery percentage in the complete stepped charger fact', () => {
-    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger',
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging', currentState: 'on', reportedStepId: 'low' });
     const getObservedStateOfCharge = vi.fn(() => ({ kind: 'observed' as const,
       value: { level: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000 }).level } }));
@@ -341,7 +341,7 @@ describe('settingsOverviewReadModel', () => {
     ['a charger PELS holds at a lower level', { plannedState: 'shed' as const,
       reason: { code: PLAN_REASON_CODES.capacity } }, 'Unplugged', 'Waiting to resume'],
   ])('keeps the charger exception in the fact line for %s', (_case, overrides, factText, reasonText) => {
-    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', ...overrides });
     const wire = buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
@@ -378,7 +378,7 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it('names a held stepped charger\'s level once, in its state word', () => {
-    const device = steppedPlanDevice({ id: 'ev-1', deviceRole: 'ev_charger', currentState: 'on',
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
       plannedState: 'shed', reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.capacity } });
     const wire = buildSettingsOverviewDeviceReadModel(device, {

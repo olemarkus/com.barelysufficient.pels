@@ -25,7 +25,6 @@ import {
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type {
-  DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -39,7 +38,8 @@ import type {
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type {
   SettingsUiPlanMetaMeasuredFields,
   SettingsUiPlanMetaSnapshot,
@@ -70,7 +70,9 @@ import {
   buildResidualKwForPlanDevice,
   resolveResidualShedBehavior,
 } from '../../lib/planInput/residualKwForPlanDevice';
+import type { ToPlanDeviceInput } from '../../lib/planInput/planInputDeviceTypes';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
+import { type DescriptorIdentity, resolveFixtureDescriptorIdentity } from './deviceSnapshotFixture';
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
@@ -240,21 +242,22 @@ const withFixtureTemperatureKind = <T extends {
 }>(
   fields: T & TemperatureDiscriminantProbe,
 ):
-| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'> & { deviceType?: 'onoff' })
+| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'> & { deviceType: 'onoff' })
 | (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'>
   & { deviceType: 'temperature' } & TemperatureKind) => {
   const observation = fixtureTemperatureObservation(fields);
   const {
     currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt,
-    deviceType, ...rest
+    deviceType: _deviceType, ...rest
   } = fields;
   if (!observation) {
     return {
       ...rest,
-      // Only a fixture that CLAIMED temperature is corrected; one that said
-      // nothing keeps saying nothing, so an unrelated fixture does not acquire a
-      // discriminant it never had.
-      ...(deviceType !== undefined ? { deviceType: 'onoff' as const } : {}),
+      // The discriminant is REQUIRED on both plan device types, and the
+      // producer answers it for every device: no facet is `'onoff'`
+      // (`resolveTemperatureInputFields`), whether or not the fixture claimed
+      // temperature. A fixture that said nothing is an on/off device.
+      deviceType: 'onoff' as const,
     };
   }
   return withTemperatureDiscriminant({
@@ -293,7 +296,7 @@ const withFixtureTemperatureKind = <T extends {
  * producer would have given it.
  */
 export const withMaterializedEvPlugState = <T extends {
-  deviceClass?: string; deviceRole?: 'ev_charger'; binaryCapabilityId?: string;
+  isEvCharger?: boolean; binaryCapabilityId?: string;
   available?: boolean;
 }>(
   overrides: T & { evChargingState?: string },
@@ -310,14 +313,18 @@ export const withMaterializedEvPlugState = <T extends {
   startPolicyInForce: DeviceStartPolicy;
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
+  // The producer-resolved identity the plan device carries, resolved ONCE and
+  // read by every derived bit below. Production resolves it from the class alone
+  // (`managerParseDeviceFields`), so a fixture that does not say it is a charger
+  // is not one, whatever its binary axis: it cannot be "not a charger" for
+  // commandability and an EV task for standing demand at the same time.
+  const isEvCharger = overrides.isEvCharger ?? false;
   const dev = {
     ...overrides,
+    isEvCharger,
     available: overrides.available ?? true,
     evChargingState: overrides.evChargingState as EvChargingState | undefined,
   };
-  const isEv = overrides.deviceClass === 'evcharger'
-    || overrides.deviceRole === 'ev_charger'
-    || overrides.binaryCapabilityId === 'evcharger_charging';
   let commandabilityReason: 'charger_unplugged' | 'charger_discharging' | undefined;
   if (overrides.evChargingState === 'plugged_out') {
     commandabilityReason = 'charger_unplugged';
@@ -340,7 +347,7 @@ export const withMaterializedEvPlugState = <T extends {
     boostRequested: explicitBoost.boostRequested ?? resolveBoostRequested(boostInput),
     // Mirrors the producer: everything but a charger is going without when it is
     // off. A fixture may still say otherwise explicitly.
-    hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEv,
+    hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEvCharger,
     surplusTracking: (overrides as { surplusTracking?: boolean }).surplusTracking ?? false,
     // Required two-state producer bit; `false` is "no calibration opinion".
     confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
@@ -350,10 +357,10 @@ export const withMaterializedEvPlugState = <T extends {
     startPolicy: (overrides as { startPolicy?: DeviceStartPolicy }).startPolicy
       ?? DEFAULT_DEVICE_START_POLICY,
     startPolicyInForce: fixtureStartPolicyInForce(overrides as Parameters<typeof fixtureStartPolicyInForce>[0]),
-    ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
+    ...(isEvCharger ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
-    objectiveSessionInactive: isEv
+    objectiveSessionInactive: isEvCharger
       && (overrides.evChargingState === 'plugged_out'
         || overrides.evChargingState === 'plugged_in_discharging'),
     ...(commandabilityReason ? { commandabilityReason } : {}),
@@ -418,13 +425,11 @@ const evidenceFreeEstimateByCapability = new Map<string, number>();
  */
 export const fixtureExpectedPowerKw = (o: {
   expectedPowerKw?: number;
-  deviceClass?: string;
-  deviceRole?: 'ev_charger';
+  isEvCharger?: boolean;
   binaryCapabilityId?: string;
 }): number => {
   if (typeof o.expectedPowerKw === 'number') return o.expectedPowerKw;
-  const isEv = o.deviceClass === 'evcharger'
-    || o.deviceRole === 'ev_charger'
+  const isEv = o.isEvCharger === true
     || o.binaryCapabilityId === 'evcharger_charging';
   const key = isEv ? 'ev_charger' : 'generic';
   const memoised = evidenceFreeEstimateByCapability.get(key);
@@ -454,23 +459,46 @@ export const fixtureExpectedPowerKw = (o: {
 export const withDeviceConfiguration = <T extends {
   id: string;
   name: string;
-  deviceClass?: string;
-  deviceRole?: 'ev_charger';
-  binaryCapabilityId?: string;
   expectedPowerKw?: number;
   expectedPowerSource?: DeviceConfigurationRead['expectedPowerSource'];
-} & Pick<DeviceDescriptorRead, 'deviceType' | 'steppedLoadProfile'>>(device: T): T & DeviceConfigurationRead => {
-  const { steppedLoadProfile, ...descriptor } = device;
-  const fields = {
-    ...descriptor,
-    observeOnly: isObserveOnlyRoleClassKey(device.deviceClass),
-    isEvCharger: device.deviceClass === 'evcharger',
+  binaryControl?: { on: boolean };
+  temperature?: unknown;
+  binaryCapabilityId?: string;
+} & Partial<DescriptorIdentity> & Pick<DeviceDescriptorRead, 'steppedLoadProfile'>>(
+  device: T,
+): T & DeviceConfigurationRead => {
+  const { steppedLoadProfile: _steppedLoadProfile, ...descriptor } = device;
+  // The inventory identity the parse producer resolves for every device, from
+  // what the fixture says (an explicit fact wins), then configuration resolved
+  // from it by the production resolver itself (`DeviceConfigurationStore` in
+  // `lib/device/deviceConfiguration.ts`), so a fixture cannot disagree with it
+  // about which class is a charger, observe-only or starvation-eligible.
+  const identity = resolveFixtureDescriptorIdentity(device);
+  const store = new DeviceConfigurationStore();
+  store.set({
+    ...device,
+    ...identity,
+    // The fixture's own modality claim, as before: a fixture that never said
+    // `'temperature'` keeps the binary axis it was written against.
+    deviceType: device.deviceType === 'temperature' ? 'temperature' : 'onoff',
     expectedPowerKw: fixtureExpectedPowerKw(device),
     expectedPowerSource: device.expectedPowerSource ?? 'default',
+  } as unknown as TransportDeviceSnapshot);
+  const configuration = store.get(device.id)!;
+  // Only the fields configuration RESOLVES are taken from it; everything else
+  // keeps the fixture's own keys, so no fixture gains a key it never had.
+  const fields = {
+    ...descriptor,
+    binaryControllable: configuration.binaryControllable,
+    observeOnly: configuration.observeOnly,
+    isEvCharger: configuration.isEvCharger,
+    starvationSupported: configuration.starvationSupported,
+    expectedPowerKw: configuration.expectedPowerKw,
+    expectedPowerSource: configuration.expectedPowerSource,
   };
-  return steppedLoadProfile
-    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile }
-    : { ...fields, controlModel: device.deviceType === 'temperature' ? 'temperature_target' : 'binary_power' };
+  return (configuration.controlModel === 'stepped_load'
+    ? { ...fields, controlModel: 'stepped_load', steppedLoadProfile: configuration.steppedLoadProfile }
+    : { ...fields, controlModel: configuration.controlModel }) as T & DeviceConfigurationRead;
 };
 
 
@@ -576,8 +604,7 @@ export const fixtureResidualKw = (
   device: Record<string, unknown> & {
     currentDrawKw?: number;
     expectedPowerKw?: number;
-    deviceClass?: string;
-    deviceRole?: 'ev_charger';
+    isEvCharger?: boolean;
     binaryCapabilityId?: string;
     binaryControl?: { on: boolean };
     binaryControllable?: boolean;
@@ -632,12 +659,12 @@ export const fixtureResidualKw = (
     // from lets the two read different numbers.
     targets: temperature ? [temperature.target] : [],
   } satisfies Partial<
-  DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & TemperatureObservedProbe
+  ToPlanDeviceInput & MeasuredPowerObservedProbe & TemperatureObservedProbe
   >;
   const snapshot = withFixtureSteppedTriple({
     ...device,
     ...producerFields,
-  }) as unknown as DecoratedDeviceSnapshot & MeasuredPowerObservedProbe
+  }) as unknown as ToPlanDeviceInput & MeasuredPowerObservedProbe
     & TemperatureObservedProbe;
   return buildResidualKwForPlanDevice({
     device: snapshot,
@@ -740,7 +767,6 @@ export type PlanDeviceFixtureOverrides = Partial<DevicePlanDevice> & Temperature
   binaryControl?: { on: boolean };
   binaryControllable?: boolean;
   binaryCapabilityId?: string;
-  deviceRole?: 'ev_charger';
   /**
    * Fixture shorthands for the control posture, resolved exactly as on the
    * input builder: a spec that only cares whether the device is power-limited
@@ -849,6 +875,11 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
     // an explicit `false` still lands.
     control: fixtureControlPosture(overrides),
     available: overrides.available ?? true,
+    // Producer-resolved identity, REQUIRED for the same reason: absence must not
+    // read as "not a charger" or "not observe-only". A fixture that says nothing
+    // is an ordinary commandable load.
+    isEvCharger: overrides.isEvCharger ?? false,
+    observeOnly: overrides.observeOnly ?? false,
     // The plan device's one boost truth, REQUIRED for the same reason: the
     // planner resolves it for every device, so a fixture that omits it would let
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
@@ -883,17 +914,19 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
  */
 /**
  * Mirror the producer's standing-demand resolution EXACTLY: `!isEvObserved`,
- * which is `deviceClass === 'evcharger'` and nothing else
+ * which reads the producer-resolved `isEvCharger` and nothing else
  * (`packages/shared-domain/src/evPlugState.ts`). It used to also accept
  * `deviceRole` and `binaryCapabilityId` as charger evidence, which made the
  * fixture a superset of the producer — a fixture could express a starvation or
  * surplus posture `toPlanDevice` can never emit. A mirror that is broader than
- * what it mirrors is not a mirror.
+ * what it mirrors is not a mirror. A fixture that does not say it is a charger
+ * is not one, which is the builders' `isEvCharger` default.
  */
 export const fixtureHasStandingDemand = (overrides: {
   hasStandingDemand?: boolean;
-  deviceClass?: string;
-}): boolean => overrides.hasStandingDemand ?? !isEvDevice(overrides);
+  isEvCharger?: boolean;
+}): boolean => overrides.hasStandingDemand
+  ?? !isEvDevice({ isEvCharger: overrides.isEvCharger ?? false });
 
 export type FixtureBoostFields = {
   evBoost?: EvBoostConfig;
@@ -907,7 +940,7 @@ export type FixtureBoostFields = {
 // readings, before any plan shape exists. `commandableNow` is resolved from the
 // fixture's plug state and availability exactly as `toPlanDevice` does.
 const fixtureBoostInput = (overrides: FixtureBoostFields & {
-  deviceClass?: string;
+  isEvCharger?: boolean;
   available?: boolean;
   commandableNow?: boolean;
   targets?: TargetCapabilitySnapshot[];
@@ -920,7 +953,7 @@ const fixtureBoostInput = (overrides: FixtureBoostFields & {
   // `commandableNow: false` still resolved `boostSupported: true` — a state the
   // producer cannot emit, which is exactly what this mirror exists to prevent.
   commandableNow: overrides.commandableNow ?? resolveCommandableNow({
-    deviceClass: overrides.deviceClass,
+    isEvCharger: overrides.isEvCharger ?? false,
     available: overrides.available ?? true,
     evChargingState: overrides.evChargingState as EvChargingState | undefined,
   }),
@@ -992,7 +1025,6 @@ export type PlanInputDeviceFixtureOverrides = Partial<PlanInputDevice> & Tempera
   binaryControl?: { on: boolean };
   binaryControllable?: boolean;
   binaryCapabilityId?: string;
-  deviceRole?: 'ev_charger';
   /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
   measuredPowerKw?: number;
   /** The power axis (`MeteredPlanInputKind`); defaulted by `fixtureCurrentDrawKw`. */
@@ -1097,6 +1129,13 @@ export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides 
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
     control: fixtureControlPosture(overrides),
     available: available ?? true,
+    // Resolved by device configuration from the inventory class, REQUIRED so
+    // absence cannot read as "no". A fixture that says nothing is an ordinary
+    // commandable load with no starvation reporting; a spec whose subject is one
+    // of them says so.
+    isEvCharger: overrides.isEvCharger ?? false,
+    observeOnly: overrides.observeOnly ?? false,
+    starvationSupported: overrides.starvationSupported ?? false,
     // The two producer-resolved boost bits, materialized from the fixture's own
     // config and readings by the SAME resolvers `toPlanDevice` calls, so a
     // fixture cannot express a boost state the producer would never emit. An

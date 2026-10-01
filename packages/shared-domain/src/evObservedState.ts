@@ -1,5 +1,5 @@
 import type { EvObservedFields, EvObservedProbe } from '../../contracts/src/types';
-import { isEvDevice } from './evPlugState';
+import { isEvDevice, type EvDeviceIdentity } from './evPlugState';
 
 /**
  * Type guard: the device is an EV charger, and therefore has an observed
@@ -35,6 +35,6 @@ import { isEvDevice } from './evPlugState';
  * shared-domain (browser-safe, next to `isEvDevice`) so the settings UI can
  * narrow the same way the runtime does.
  */
-export const isEvObserved = <T extends { deviceClass?: string } & EvObservedProbe>(
+export const isEvObserved = <T extends EvDeviceIdentity & EvObservedProbe>(
   snapshot: T,
 ): snapshot is T & EvObservedFields => isEvDevice(snapshot);

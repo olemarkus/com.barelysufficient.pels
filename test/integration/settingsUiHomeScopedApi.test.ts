@@ -152,7 +152,7 @@ const installBoundary = (options: {
     latestTargetSnapshot: [
       { id: 'dev-main', name: 'Main heater', deviceClass: 'heater' },
       { id: 'dev-area', name: 'Area heater', deviceClass: 'heater' },
-      { id: 'dev-area-pv', name: 'Area PV', deviceClass: 'solarpanel' },
+      { id: 'dev-area-pv', name: 'Area PV', deviceClass: 'solarpanel', observeOnly: true },
     ],
     getSettingsUiManagedDevices: () => app.latestTargetSnapshot,
     getUiPickerDevices: () => [],

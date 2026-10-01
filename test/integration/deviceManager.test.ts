@@ -25,6 +25,7 @@ import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -2270,7 +2271,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2285,7 +2286,7 @@ describe('DeviceTransport', () => {
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: true },
                 binaryControlObservation: trustedOnEvidence,
-            }]);
+            }]));
             const snapshotBefore = structuredClone(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1'));
             const liveStateListener = vi.fn();
             const reconcileListener = vi.fn();
@@ -2314,7 +2315,7 @@ describe('DeviceTransport', () => {
         });
 
         it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2328,7 +2329,7 @@ describe('DeviceTransport', () => {
                 deviceType: 'temperature',
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: true },
-            }]);
+            }]));
 
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
             const realtimeEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
@@ -2554,7 +2555,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2565,7 +2566,7 @@ describe('DeviceTransport', () => {
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: false },
                 binaryControlObservation: realtimeOff,
-            }]);
+            }]));
             const pushOn = (onoff: { value: boolean; id: string; lastUpdated?: string }) => {
                 deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
@@ -2608,7 +2609,7 @@ describe('DeviceTransport', () => {
             try {
                 const originalObservedAt = '2026-06-03T06:00:00.000Z';
                 const originalObservedAtMs = new Date(originalObservedAt).getTime();
-                deviceManager.setSnapshotForTests([{
+                deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                     available: true,
                     id: 'dev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2626,7 +2627,7 @@ describe('DeviceTransport', () => {
                         observedAtMs: originalObservedAtMs,
                         source: 'snapshot_refresh',
                     },
-                }]);
+                }]));
                 vi.setSystemTime(new Date('2026-06-03T06:05:00.000Z'));
 
                 deviceManager.injectDeviceUpdateForTest({
@@ -2653,7 +2654,7 @@ describe('DeviceTransport', () => {
 
         it('rejects an older raw EV OFF from a delayed device.update', () => {
             const newerRawObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2666,7 +2667,7 @@ describe('DeviceTransport', () => {
                 evCharging: true,
                 evChargingObservedAtMs: newerRawObservedAtMs,
                 evChargingState: 'plugged_in_paused',
-            }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
@@ -2700,7 +2701,7 @@ describe('DeviceTransport', () => {
 
         it('rejects stale raw EV OFF and stale paused state from one delayed update', () => {
             const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2722,7 +2723,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: newerObservedAtMs,
                     source: 'snapshot_refresh',
                 },
-            }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
@@ -2765,7 +2766,7 @@ describe('DeviceTransport', () => {
 
         it('keeps the state clock after a raw EV event and rejects a later stale state', () => {
             const stateObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2787,7 +2788,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: stateObservedAtMs,
                     source: 'snapshot_refresh',
                 },
-            }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -2910,7 +2911,7 @@ describe('DeviceTransport', () => {
 
         it('uses device.update capability lastUpdated as the binary evidence timestamp', async () => {
             const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2920,7 +2921,7 @@ describe('DeviceTransport', () => {
                 deviceType: 'onoff',
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: false },
-            }]);
+            }]));
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -2965,7 +2966,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                 source: 'snapshot_refresh' as const,
             };
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2976,7 +2977,7 @@ describe('DeviceTransport', () => {
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: false },
                 binaryControlObservation: cachedEvidence,
-            }]);
+            }]));
 
             await deliver({
                 id: 'dev1',
@@ -3004,7 +3005,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3015,7 +3016,7 @@ describe('DeviceTransport', () => {
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: true },
                 binaryControlObservation: newerEvidence,
-            }]);
+            }]));
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -3047,7 +3048,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3058,7 +3059,7 @@ describe('DeviceTransport', () => {
                 binaryCapabilityId: 'onoff',
                 binaryControl: { on: true },
                 binaryControlObservation: newerEvidence,
-            }]);
+            }]));
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -3085,7 +3086,7 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3103,7 +3104,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                     source: 'snapshot_refresh',
                 },
-            }]);
+            }]));
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
             // A single empty read is held under abandon-grace; drive past the
@@ -3117,7 +3118,7 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence on destroy', async () => {
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'dev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3135,7 +3136,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                     source: 'snapshot_refresh',
                 },
-            }]);
+            }]));
 
             deviceManager.destroy();
 
@@ -3155,7 +3156,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            evDeviceManager.setSnapshotForTests([{
+            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3168,7 +3169,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: previousEvidence,
-            }] as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3221,7 +3222,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
                 source: 'realtime_capability' as const,
             };
-            evDeviceManager.setSnapshotForTests([{
+            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3234,7 +3235,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: newerEvidence,
-            }] as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3280,7 +3281,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T11:59:00.000Z').getTime(),
                 source: 'snapshot_refresh' as const,
             };
-            evDeviceManager.setSnapshotForTests([{
+            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'ev1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3292,7 +3293,7 @@ describe('DeviceTransport', () => {
                 binaryControl: { on: false },
                 evCharging: false,
                 binaryControlObservation: previousRawEvidence,
-            }]);
+            }]));
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3351,7 +3352,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                     source: 'snapshot_refresh' as const,
                 };
-                evDeviceManager.setSnapshotForTests([{
+                evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                     available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3363,7 +3364,7 @@ describe('DeviceTransport', () => {
                     binaryControl: { on: true },
                     evCharging: true,
                     binaryControlObservation: previousRawEvidence,
-                }]);
+                }]));
 
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_paused');
@@ -3399,7 +3400,7 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                     source: 'realtime_capability' as const,
                 };
-                evDeviceManager.setSnapshotForTests([{
+                evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                     available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3412,7 +3413,7 @@ describe('DeviceTransport', () => {
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: previousEvidence,
-            }] as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
+            }]) as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
 
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'mystery');
@@ -5401,7 +5402,7 @@ describe('DeviceTransport', () => {
         });
 
         it('ignores realtime state of charge capability updates for non-EV devices', () => {
-            deviceManager.setSnapshotForTests([{
+            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
                 available: true,
                 id: 'sensor1',
                 expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -5411,7 +5412,7 @@ describe('DeviceTransport', () => {
                 targets: [],
                 powerCapable: false,
                 capabilities: ['measure_battery'],
-            }]);
+            }]));
 
             deviceManager.injectCapabilityUpdateForTest('sensor1', 'measure_battery', 48);
 
@@ -7997,7 +7998,7 @@ describe('DeviceTransport', () => {
                 // `lastUpdated`, and the merge only carries forward fresher prior observations.
                 const observationState = createObservationState();
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
-                const previousSnapshot: (TransportDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+                const previousSnapshot: (TransportDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = transportSnapshotFixtures([{
                     available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -8009,7 +8010,7 @@ describe('DeviceTransport', () => {
                     targets: [],
                     powerCapable: false,
                     lastFreshDataMs: initialFreshAt,
-                }];
+                }]);
                 const nextSnapshot: (TransportDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
                     ...previousSnapshot[0],
                     binaryControlObservation: {
@@ -8048,7 +8049,7 @@ describe('DeviceTransport', () => {
                 const realtimeObservedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
                 const refreshObservedAtMs = new Date('2026-04-01T11:59:00.000Z').getTime();
                 const config = { preset: 'ev_charger_1_phase' as const, max: 7360 };
-                const previousSnapshot: TransportDeviceSnapshot[] = [{
+                const previousSnapshot: TransportDeviceSnapshot[] = transportSnapshotFixtures([{
                     available: true,
                     id: 'ev1',
                     expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -8065,7 +8066,7 @@ describe('DeviceTransport', () => {
                     reportedStepId: '25a',
                     reportedStepPowerW: 5750,
                     reportedStepObservedAtMs: realtimeObservedAtMs,
-                }];
+                }]);
                 const nextSnapshot: TransportDeviceSnapshot[] = [{
                     ...previousSnapshot[0],
                     steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 5520),
