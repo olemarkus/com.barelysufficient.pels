@@ -33,7 +33,7 @@ describe('parsePlanSnapshot resolved status boundary', () => {
       'binaryCommandPending', 'execution']) expect(accepted).not.toHaveProperty(key);
   });
 
-  it.each(['available', 'controllable'])('requires a resolved %s boolean', (key) => {
+  it.each(['available', 'controllable', 'isEvCharger'])('requires a resolved %s boolean', (key) => {
     for (const value of [undefined, null, 1, 'true']) {
       expect(parsePlanSnapshot({ devices: [{ ...device(), [key]: value }] })).toBeNull();
     }

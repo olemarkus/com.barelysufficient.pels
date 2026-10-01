@@ -11,7 +11,6 @@ import {
   normalizeMeasuredPowerKw,
 } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import {
   splitControlledUsageKw,
   sumBudgetExemptMeasuredUsageKw,
@@ -107,7 +106,7 @@ const resolveManagedLoadDraw = (
   if (mayCoverLoad(devices, generationW)) return NO_LOAD_EVIDENCE;
   const measured = devices
     .filter(hasObservedMeasuredPower)
-    .filter((device) => device.measuredPowerIsDirectMeasurement && !isObserveOnlyRoleClassKey(device.deviceClass));
+    .filter((device) => device.measuredPowerIsDirectMeasurement && !device.observeOnly);
   let totalW = 0;
   for (const device of measured) totalW += device.measuredPowerKw * 1000;
   return { totalW, loadKey: resolveManagedLoadKey(measured.map((device) => device.id)) };

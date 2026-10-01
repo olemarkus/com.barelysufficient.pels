@@ -7,6 +7,7 @@ import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { partialDouble } from '../helpers/partialDouble';
+import { transportSnapshotFixtures } from './deviceSnapshotFixture';
 
 /**
  * Adds `getSnapshotByDeviceId` derived from the same backing snapshot source
@@ -33,7 +34,11 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
   isFlowBackedCapability: (deviceId: string, capabilityId: string) => boolean;
 } => {
   const deviceConfigurationStore = new DeviceConfigurationStore();
-  deviceConfigurationStore.replace(mock.getSnapshot() as unknown as TransportDeviceSnapshot[]);
+  // Resolved through the fixture identity helper: an ad-hoc stub's snapshots
+  // often omit the identity facts the parser always sets (the class first).
+  deviceConfigurationStore.replace(
+    transportSnapshotFixtures(mock.getSnapshot() as unknown as TransportDeviceSnapshot[]),
+  );
   return {
     dispatchObservedStateForDevice: () => {},
     deviceConfigurationStore,

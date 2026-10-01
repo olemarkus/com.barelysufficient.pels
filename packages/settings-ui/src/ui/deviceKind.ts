@@ -22,17 +22,17 @@ export type DeviceDetailControlMode =
   | 'ev_charger_3_phase';
 
 export const isEvChargerDevice = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  device?.deviceClass === 'evcharger'
+  device?.isEvCharger === true
 );
 
 export const hasEvChargingControl = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  device?.deviceRole === 'ev_charger' && device.binaryControllable === true
+  device?.isEvCharger === true && device.binaryControllable
 );
 
 export const isNativeEvWiringActive = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
-  && device.deviceRole === 'ev_charger'
+  && device.isEvCharger
 );
 
 export const hasEvTargetPowerPreset = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => {
@@ -64,8 +64,8 @@ export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | n
 );
 
 // Kind precedence: an EV charger stays an EV charger even when its preset is
-// cleared (deviceClass) or when only its config marks it as one (preset /
-// native EV wiring / charging control on a device whose class says otherwise).
+// cleared (`isEvCharger`), or when only its config marks it as one (preset /
+// native EV wiring).
 // Temperature beats stepped: a thermostat given a stepped control model still
 // composes as a temperature page that happens to show the step editor.
 export const resolveDeviceDetailKind = (
@@ -76,7 +76,6 @@ export const resolveDeviceDetailKind = (
     isEvChargerDevice(device)
     || hasEvTargetPowerPreset(device)
     || isNativeEvWiringActive(device)
-    || hasEvChargingControl(device)
   ) return 'ev_charger';
   if (supportsTemperatureDevice(device)) return 'temperature';
   if (isSteppedLoadControlModel(device)) return 'stepped';

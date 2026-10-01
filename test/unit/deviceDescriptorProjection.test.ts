@@ -9,6 +9,9 @@ const snapshot = {
   id: 'dev-1',
   name: 'Heater',
   deviceClass: 'heater',
+  deviceType: 'onoff',
+  isEvCharger: false,
+  binaryControllable: true,
   capabilities: ['onoff', 'measure_power'],
   canSetControl: true,
   managed: true,
@@ -28,14 +31,18 @@ describe('projectDeviceDescriptor', () => {
   it('carries every defined descriptor key and no observed key', () => {
     const descriptor = projectDeviceDescriptor(snapshot);
     expect(Object.keys(descriptor).sort()).toEqual([
+      'binaryControllable',
       'canSetControl',
       'capabilities',
       'deviceClass',
+      'deviceType',
       'expectedPowerKw',
       'expectedPowerSource',
       'id',
+      'isEvCharger',
       'managed',
       'name',
+      'observeOnly',
       'steppedLoadProfile',
     ]);
     expect(descriptor).not.toBe(snapshot);

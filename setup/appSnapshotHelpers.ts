@@ -2,8 +2,7 @@ import type { PowerSource } from '../lib/power/powerSource';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
-import type { DeviceConfigurationRead } from '../lib/ports/deviceConfigurationRead';
-import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
+import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
 import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
@@ -114,7 +113,7 @@ export class AppSnapshotHelpers {
     getDeviceManager: () => DeviceTransportPort | undefined;
     getPlanEngine: () => PlanEngine | undefined;
     getPlanService: () => PlanService | undefined;
-    getPlanInputSnapshot: () => (DecoratedDeviceSnapshot & DeviceConfigurationRead)[];
+    getPlanInputSnapshot: () => PlanInputSnapshotDevice[];
     resolveManagedState: (deviceId: string) => boolean;
     isCapacityControlEnabled: (deviceId: string) => boolean;
     getStructuredLogger: (component: string) => PinoLogger | undefined;

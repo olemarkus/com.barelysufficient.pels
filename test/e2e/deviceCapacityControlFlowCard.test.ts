@@ -1,5 +1,6 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 describe('Capacity control device condition', () => {
   beforeEach(() => {
@@ -87,7 +88,7 @@ describe('Capacity control device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests([{ available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [] }]);
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{ available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [] }]));
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
     expect(runCondition).toBeDefined();

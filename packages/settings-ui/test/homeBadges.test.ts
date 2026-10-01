@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../contracts/src/settingsKeys';
@@ -33,7 +34,7 @@ const buildHomesPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'dev-main',
   name: 'Hall heater',
   deviceClass: 'heater',
@@ -41,7 +42,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
   binaryControl: { on: true },
   ...overrides,
-});
+}));
 
 const THREE_DEVICES = [
   buildDevice({ id: 'dev-rental', name: 'Rental panel' }),
@@ -494,6 +495,54 @@ describe('devices list home badges', () => {
     expect(state.hasManagedSolarDevice).toBe(true);
     expect(state.hasExhibitedExport).toBe(true);
     expect(state.surplusPoolReachable).toBe(true);
+  });
+
+  // The resolved identity is REQUIRED on the wire: the charger, on/off and
+  // observe-only checks read these fields straight, so a device without them
+  // must be refused at this boundary rather than read as "no".
+  const omitField = (field: string): TargetDeviceSnapshot => Object.fromEntries(
+    Object.entries(buildDevice()).filter(([key]) => key !== field),
+  ) as unknown as TargetDeviceSnapshot;
+  const withField = (field: string, value: unknown): TargetDeviceSnapshot => (
+    { ...buildDevice(), [field]: value } as unknown as TargetDeviceSnapshot
+  );
+
+  it('accepts the fixture device, which carries every resolved identity field', async () => {
+    const device = buildDevice();
+    expect(device).toMatchObject({
+      deviceClass: 'heater',
+      deviceType: 'temperature',
+      isEvCharger: false,
+      binaryControllable: false,
+      observeOnly: false,
+    });
+    const homey = createHomeyMock({ uiState: { devices: [device] } });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { getTargetDevices } = await import('../src/ui/devices.ts');
+
+    await expect(getTargetDevices()).resolves.toEqual([device]);
+  });
+
+  it.each([
+    ['isEvCharger', 'missing', () => omitField('isEvCharger')],
+    ['isEvCharger', 'non-boolean', () => withField('isEvCharger', 'yes')],
+    ['binaryControllable', 'missing', () => omitField('binaryControllable')],
+    ['binaryControllable', 'non-boolean', () => withField('binaryControllable', 1)],
+    ['observeOnly', 'missing', () => omitField('observeOnly')],
+    ['observeOnly', 'non-boolean', () => withField('observeOnly', 'false')],
+    ['deviceClass', 'missing', () => omitField('deviceClass')],
+    ['deviceClass', 'non-string', () => withField('deviceClass', 42)],
+    ['deviceType', 'missing', () => omitField('deviceType')],
+    ['deviceType', 'non-string', () => withField('deviceType', true)],
+    ['deviceType', 'unknown', () => withField('deviceType', 'stepped')],
+  ])('rejects a device whose %s is %s at the WebView boundary', async (_field, _label, buildMalformed) => {
+    const homey = createHomeyMock({ uiState: { devices: [buildMalformed()] } });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { getTargetDevices } = await import('../src/ui/devices.ts');
+
+    await expect(getTargetDevices()).rejects.toThrow('Invalid device list response.');
   });
 
   it('rejects malformed discovery data before rendering or caching it', async () => {

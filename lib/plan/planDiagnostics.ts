@@ -17,10 +17,7 @@ import type {
   TemperatureSetpoints,
   TemperatureSetpointsByDevice,
 } from '../../packages/planner-types/src/temperatureSetpoints';
-import {
-  isStarvationSupportedDeviceClass,
-  isTemperatureControlDevice,
-} from '../../packages/shared-domain/src/temperatureDeviceKind';
+import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 
 const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   suppressionState: 'none',
@@ -168,7 +165,7 @@ const resolveEligibleForStarvation = (params: {
   const { device, inputDevice, hasStandingDemand } = params;
   if (!hasStandingDemand || !inputDevice) return false;
   if (!isTemperatureInputDevice(inputDevice)) return false;
-  if (!isStarvationSupportedDeviceClass(device.deviceClass ?? inputDevice.deviceClass)) return false;
+  if (!inputDevice.starvationSupported) return false;
   // A device the user turned off outside PELS is not starved — PELS is not
   // withholding power from it, it is respecting an explicit action. Excluding it
   // from ELIGIBILITY (rather than pausing an episode) resets any accrual and

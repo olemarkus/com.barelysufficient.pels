@@ -1,15 +1,16 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Device',
   targets: [],
   binaryControl: { on: true },
   capabilities: ['measure_power', 'onoff'],
   ...overrides,
-});
+}));
 
 describe('resolveDeviceDetailKind', () => {
   beforeEach(async () => {
@@ -41,7 +42,7 @@ describe('resolveDeviceDetailKind', () => {
       deviceClass: 'socket',
       deviceType: 'onoff',
       controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
     });
     expect(resolveDeviceDetailKind(device)).toBe('ev_charger');
   });
@@ -52,7 +53,7 @@ describe('resolveDeviceDetailKind', () => {
       deviceClass: 'socket',
       deviceType: 'onoff',
       binaryControllable: true,
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
     });
     expect(resolveDeviceDetailKind(device)).toBe('ev_charger');
   });

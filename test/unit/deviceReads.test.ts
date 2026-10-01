@@ -27,7 +27,8 @@ describe('device reads', () => {
   it('serves inventory descriptors without runtime observations or transport fields', () => {
     const [device] = readsOver([snapshot('a')]).descriptors();
     expect(Object.keys(device!).sort()).toEqual([
-      'capabilities', 'deviceClass', 'expectedPowerKw', 'expectedPowerSource', 'id', 'name',
+      'binaryControllable', 'capabilities', 'deviceClass', 'deviceType', 'expectedPowerKw',
+      'expectedPowerSource', 'id', 'isEvCharger', 'name', 'observeOnly',
     ]);
     expect(readsOver([snapshot('a')]).descriptor('a')).toEqual(device);
     expect(readsOver([snapshot('a')]).descriptor('missing')).toBeUndefined();

@@ -24,8 +24,8 @@ const load = async (
   const { state } = await import('../src/ui/state.ts');
   state.devicesLoaded = true;
   state.latestDevices = [
-    { id: 'thermostat', deviceType: 'temperature', powerCapable: true },
-    { id: 'unmanaged', deviceType: 'temperature', powerCapable: true },
+    { id: 'thermostat', deviceType: 'temperature', powerCapable: true, isEvCharger: false },
+    { id: 'unmanaged', deviceType: 'temperature', powerCapable: true, isEvCharger: false },
   ] as typeof state.latestDevices;
   state.managedMap = { thermostat: true };
   state.controllableMap = { thermostat: true };
@@ -70,8 +70,8 @@ describe('after-setup facts', () => {
       'area-heater': 'h_area',
     });
     state.latestDevices = [
-      { id: 'thermostat', deviceType: 'temperature', powerCapable: true },
-      { id: 'area-heater', deviceType: 'temperature', powerCapable: true },
+      { id: 'thermostat', deviceType: 'temperature', powerCapable: true, isEvCharger: false },
+      { id: 'area-heater', deviceType: 'temperature', powerCapable: true, isEvCharger: false },
     ] as typeof state.latestDevices;
     state.managedMap = { thermostat: true, 'area-heater': true };
     state.controllableMap = { thermostat: true, 'area-heater': true };

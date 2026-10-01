@@ -27,28 +27,12 @@
  */
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type {
-  EvObservedProbe,
-  MeasuredPowerObservedProbe,
-  ObservedDeviceState,
-  ReportedStepObservedProbe,
-  SteppedLoadProfile,
-} from '../../packages/contracts/src/types';
-
-/**
- * The observer's live entry for one device, as the executor reads it. Widened
- * past the base type with the observed clusters the projection physically
- * carries, because this IS the producer-fed seam that reads them.
- */
-export type ObserverDeviceRead = ObservedDeviceState
-  & ReportedStepObservedProbe
-  & MeasuredPowerObservedProbe
-  & EvObservedProbe
-  & { steppedLoadProfile?: SteppedLoadProfile };
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 /** In-flight command state, owned by this layer. */
 export type DriftCommandRead = {
@@ -62,8 +46,12 @@ export type DriftCommandRead = {
  * on a projection, a store, or a plan.
  */
 export type DriftObservationDeps = {
-  /** Observer projection, live. `undefined` before a device's first observation. */
-  getObservedState: (deviceId: string) => ObserverDeviceRead | undefined;
+  /**
+   * The executor's live read: Observer's record joined with the resolved
+   * identity from device configuration (`readExecutorDevice`). `undefined`
+   * before a device's first observation.
+   */
+  getObservedState: (deviceId: string) => ExecutorDeviceRead | undefined;
   /** This layer's pending-command state for the device. */
   getCommandState: (deviceId: string) => DriftCommandRead;
   /**
@@ -103,7 +91,7 @@ export const resolveObservedSelectedStepId = (
  * questions the same way on every path.
  */
 export const buildDriftObservedSnapshot = (
-  observed: ObserverDeviceRead,
+  observed: ExecutorDeviceRead,
   profile: SteppedLoadProfile | undefined,
 ) => {
   const selectedStepId = resolveObservedSelectedStepId(profile, observed.reportedStepId);

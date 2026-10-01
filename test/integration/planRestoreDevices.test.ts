@@ -385,7 +385,7 @@ describe('plan restore device helpers', () => {
     const shed = makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' });
     const inactiveSteppedEv = makeDevice({
       id: 'inactive-stepped-ev',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
       currentState: 'off',
       plannedState: 'inactive',

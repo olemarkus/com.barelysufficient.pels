@@ -42,6 +42,7 @@ vi.mock('../../lib/device/liveFeed', () => {
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { deviceTransportDouble } from '../utils/deviceObservationMock';
 import { captureLogger } from '../utils/loggerCapture';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -1114,7 +1115,7 @@ describe('MyApp initialization', () => {
 
     // Overshoot convergence bypasses the anti-storm guards only while the plan
     // still has something to act on — give the snapshot an on, drawing device.
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1127,7 +1128,7 @@ describe('MyApp initialization', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
@@ -1459,7 +1460,7 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1470,7 +1471,7 @@ describe('MyApp initialization', () => {
         targets: [],
         stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.now(), capabilityId: 'measure_battery' }),
       },
-    ]);
+    ]));
     const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
     const lastUpdated = new Date().toISOString();
@@ -1933,7 +1934,7 @@ describe('MyApp initialization', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1945,7 +1946,7 @@ describe('MyApp initialization', () => {
         controllable: true,
         expectedPowerKw: 1,
       },
-    ]);
+    ]));
 
     app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
@@ -3576,7 +3577,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = transportSnapshotFixtures([{
       available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3586,7 +3587,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBackedCapabilityIds: ['measure_battery'],
       targets: [],
       stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
-    }];
+    }]);
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
@@ -3619,7 +3620,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = transportSnapshotFixtures([{
       available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3629,7 +3630,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBackedCapabilityIds: ['evcharger_charging'],
       targets: [],
       stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
-    }];
+    }]);
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
@@ -3665,7 +3666,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = transportSnapshotFixtures([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3673,7 +3674,7 @@ describe('periodic snapshot refresh scheduling', () => {
       targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
-    }];
+    }]);
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
@@ -3716,7 +3717,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TransportDeviceSnapshot[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+    const snapshot: TransportDeviceSnapshot[] = transportSnapshotFixtures([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
@@ -3724,7 +3725,7 @@ describe('periodic snapshot refresh scheduling', () => {
       targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
-    }];
+    }]);
     const dispatchObservedStateForDevice = vi.fn();
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
@@ -3762,7 +3763,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
-    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
+    const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = transportSnapshotFixtures([{
       available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3772,7 +3773,7 @@ describe('periodic snapshot refresh scheduling', () => {
       flowBackedCapabilityIds: ['measure_battery'],
       targets: [],
       stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: initialReportedAt }),
-    }];
+    }]);
     const dispatchObservedStateForDevice = vi.fn();
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
@@ -3798,7 +3799,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot: TransportDeviceSnapshot[] = [{
+    const snapshot: TransportDeviceSnapshot[] = transportSnapshotFixtures([{
       available: true,
       id: 'ev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -3809,7 +3810,7 @@ describe('periodic snapshot refresh scheduling', () => {
       targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
-    }];
+    }]);
     app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });

@@ -1,4 +1,5 @@
 import type { DesiredBinaryKind } from './executableDesiredState';
+import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
   DeviceControlAdapterSnapshot,
   ObservedDeviceState,
@@ -37,6 +38,10 @@ export type ExecutablePlan = {
  * remains structurally assignable to this, so producers feed it unchanged.
  */
 export type ExecutorDeviceSnapshot = ObservedDeviceState
+  // The resolved EV identity, joined from device configuration: whether the
+  // plug-state gates commandability. The observer record alone carries none, so
+  // without it every charger read as commandable while unplugged.
+  & EvDeviceIdentity
   & { steppedLoadProfile?: SteppedLoadProfile }
   & { currentOn?: boolean };
 

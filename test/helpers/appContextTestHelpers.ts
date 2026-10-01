@@ -6,6 +6,7 @@ import { joinObservedDeviceDescriptors } from '../../lib/device/deviceReadSource
 import { DeviceConfigurationStore, createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
+import { readRuntimeDevices } from '../../lib/planInput/runtimeDeviceRead';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -288,13 +289,17 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const context: AppContext = {
     deviceReads,
     deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
-    getPlanInputSnapshot: () => {
-      const configurations = getDeviceConfigurationStore();
-      return latestTargetSnapshot.map((snapshot) => ({
-        ...snapshot,
-        ...configurations.get(snapshot.id),
-      })) as ReturnType<AppContext['getPlanInputSnapshot']>;
-    },
+    // Composed the way production composes it (`setup/appHostApi.ts`
+    // `getPlanInputSnapshot`): device configuration joined with the Observer
+    // record, then decorated. It used to spread the whole fixture, which handed
+    // the planner inventory metadata (the class) that production planner input
+    // does not carry, and hid every consumer still reading it.
+    getPlanInputSnapshot: () => context.deviceControlHelpers.decorateTargetSnapshotList(
+      readRuntimeDevices(
+        getDeviceConfigurationStore().getAll(),
+        (deviceId) => context.getObservedRecord(deviceId),
+      ),
+    ),
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,

@@ -22,8 +22,13 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   const available = device.available ?? device.stateKind !== 'unavailable';
   const physicalState = device.currentState === 'off' ? 'off'
     : device.currentState === 'not_applicable' ? 'not_applicable' : 'on';
+  // Producer-resolved identity, required on the overview snapshot so absence
+  // cannot read as "no". A fixture that says nothing has no commandable binary
+  // axis and is not a charger, which is what the optional fields used to mean.
+  const isEvCharger = device.isEvCharger ?? false;
   const status = device.status ?? buildDeviceStatus({
     ...device, reason, controllable: device.controllable ?? true, available,
+    binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
     currentState: physicalState,
     execution: {
@@ -43,7 +48,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   return {
     id: device.id ?? 'device', name: device.name ?? 'Device',
     controllable: device.controllable ?? true, available, status,
-    deviceClass: device.deviceClass, deviceRole: device.deviceRole,
+    isEvCharger,
     currentDrawKw: device.currentDrawKw, stateOfCharge: device.stateOfCharge,
     budgetExempt: device.budgetExempt, boostActive: device.boostActive ?? false,
     starvation: device.starvation,

@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -101,7 +102,7 @@ const buildDevice = (
   overrides: Partial<
     TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => (withDescriptorIdentity<TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name,
@@ -111,7 +112,7 @@ const buildDevice = (
   binaryControl: { on: true },
   capabilities: ['target_temperature', 'onoff'],
   ...overrides,
-});
+}));
 
 describe('device detail managed state saves', () => {
   beforeEach(() => {
@@ -1050,7 +1051,7 @@ describe('device detail managed state saves', () => {
         activationEnabled: true,
       },
       binaryControllable: true,
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
       binaryControl: { on: true },
     })];
@@ -1167,7 +1168,7 @@ describe('device detail managed state saves', () => {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
       binaryControllable: true,
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
       evChargingState: 'plugged_in_charging',
@@ -1672,7 +1673,7 @@ describe('device detail managed state saves', () => {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
       controlModel: 'binary_power',
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
       suggestedSteppedLoadProfile: {
@@ -1743,7 +1744,7 @@ describe('device detail managed state saves', () => {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
       controlModel: 'binary_power',
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
       targets: [],
       capabilities: ['measure_power', 'evcharger_charging', 'charging_button'],
       evChargingState: 'plugged_in_charging',

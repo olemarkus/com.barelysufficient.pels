@@ -23,7 +23,7 @@ import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugStat
 describe('resolveCommandableNow — EV plug state', () => {
   it('returns commandableNow=false when the charger is plugged_out', () => {
     const commandableNow = resolveCommandableNow({
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         evChargingState: 'plugged_out',
         available: true,
     });
@@ -32,7 +32,7 @@ describe('resolveCommandableNow — EV plug state', () => {
 
   it('returns commandableNow=true when the charger is plugged_in_charging', () => {
     const commandableNow = resolveCommandableNow({
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         evChargingState: 'plugged_in_charging',
         available: true,
     });
@@ -41,7 +41,7 @@ describe('resolveCommandableNow — EV plug state', () => {
 
   it('returns commandableNow=true when the charger is plugged_in_paused', () => {
     const commandableNow = resolveCommandableNow({
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         evChargingState: 'plugged_in_paused',
         available: true,
     });
@@ -50,7 +50,7 @@ describe('resolveCommandableNow — EV plug state', () => {
 
   it('returns commandableNow=false when discharging', () => {
     const commandableNow = resolveCommandableNow({
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         evChargingState: 'plugged_in_discharging',
         available: true,
     });
@@ -60,18 +60,18 @@ describe('resolveCommandableNow — EV plug state', () => {
 
 describe('resolveCommandableNow — availability', () => {
   it('returns commandableNow=false when available is explicitly false', () => {
-    expect(resolveCommandableNow({ available: false })).toBe(false);
+    expect(resolveCommandableNow({ isEvCharger: false, available: false })).toBe(false);
   });
 
   it('returns commandableNow=true for a generic non-EV available device', () => {
-    expect(resolveCommandableNow({ deviceClass: 'thermostat', available: true })).toBe(true);
+    expect(resolveCommandableNow({ isEvCharger: false, available: true })).toBe(true);
   });
 });
 
 describe('resolveCommandableNow — no trusted plug state', () => {
   it('stays commandable when an EV charger has no evChargingState', () => {
     const commandableNow = resolveCommandableNow({
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         evChargingState: undefined,
         available: true,
     });
@@ -144,28 +144,14 @@ describe('resolveCanSetControl — producer', () => {
     })).toBe(false);
   });
 
-  it('returns true for an onoff device when the legacy canSetOnOff is true or undefined', () => {
+  it('returns true for a binary device unless canSetControl is false', () => {
     expect(resolveCanSetControl({
       binaryControl: { on: true },
-      canSetOnOff: true,
+      canSetControl: true,
     })).toBe(true);
     expect(resolveCanSetControl({
       binaryControl: { on: true },
     })).toBe(true);
-  });
-
-  it('returns false for an onoff device when the legacy canSetOnOff fallback is false', () => {
-    expect(resolveCanSetControl({
-      binaryControl: { on: true },
-      canSetOnOff: false,
-    })).toBe(false);
-  });
-
-  it('applies the same writeability flag to every binary device', () => {
-    expect(resolveCanSetControl({
-      binaryControl: { on: true },
-      canSetOnOff: false,
-    })).toBe(false);
   });
 
   it('does not reconstruct a binary axis from raw capabilities', () => {
@@ -187,7 +173,7 @@ describe('isCanSetControl — dual-read fallback', () => {
   it('falls back to fresh resolution from raw fields when resolved bit is absent', () => {
     expect(isCanSetControl({
       binaryControl: { on: true },
-      canSetOnOff: false,
+      canSetControl: false,
     })).toBe(false);
     expect(isCanSetControl({
       binaryControl: { on: true },

@@ -6,7 +6,6 @@
  */
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -16,14 +15,33 @@ export type DeviceConfiguration = {
   ids(): string[];
 };
 
+/**
+ * Thermostat-family classes whose "held below target" PELS reports as
+ * starvation. Resolved here, at the class's owner, into `starvationSupported`,
+ * so the planner reads the flag and never the class set.
+ */
+const STARVATION_SUPPORTED_DEVICE_CLASSES: ReadonlySet<string> = new Set([
+  'thermostat',
+  'heater',
+  'heatpump',
+  'airconditioning',
+  'airtreatment',
+]);
+
+/** Whether a device class is one PELS reports starvation for. Case-insensitive. */
+export const isStarvationSupportedDeviceClass = (deviceClass: string): boolean => (
+  STARVATION_SUPPORTED_DEVICE_CLASSES.has(deviceClass.trim().toLowerCase())
+);
+
 const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigurationRead => {
   const fields = {
     id: snapshot.id,
     name: snapshot.name,
     controlAdapter: snapshot.controlAdapter,
     binaryControllable: snapshot.binaryControllable,
-    observeOnly: isObserveOnlyRoleClassKey(snapshot.deviceClass),
-    isEvCharger: snapshot.deviceClass === 'evcharger',
+    observeOnly: snapshot.observeOnly,
+    isEvCharger: snapshot.isEvCharger,
+    starvationSupported: isStarvationSupportedDeviceClass(snapshot.deviceClass),
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
     powerCapable: snapshot.powerCapable,

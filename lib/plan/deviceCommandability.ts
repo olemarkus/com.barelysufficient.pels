@@ -37,7 +37,6 @@ export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => 
     currentOn: snapshot.currentOn,
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
-    canSetOnOff: (snapshot as { canSetOnOff?: boolean }).canSetOnOff,
   })) return false;
   return true;
 };

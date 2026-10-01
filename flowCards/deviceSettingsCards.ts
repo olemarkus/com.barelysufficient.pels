@@ -1,5 +1,4 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
-import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { formatDeviceMustBeProvidedMessage } from '../packages/shared-domain/src/smartTaskRescueStrings';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
@@ -20,7 +19,7 @@ import { readFlowDeviceArg } from './flowArgParsers';
 // is exactly the path to flip it on — filtering on a live flag would block that real enable
 // flow. The role is the immutable signal that the device is observe-only forever.
 const isUserSelectableDevice = (device: DeviceDescriptorRead): boolean => (
-  !isObserveOnlyRoleClassKey(device.deviceClass)
+  !device.observeOnly
 );
 
 // The gate an action card applies to the device its Flow names, and — over the

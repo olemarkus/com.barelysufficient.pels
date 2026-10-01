@@ -63,7 +63,7 @@ describe('resolveEvCardStateLines', () => {
 describe('on/off charger card EV smart-task line', () => {
   const renderReason = (device: Record<string, unknown>, evStateLine: string | null): string | undefined => {
     const mount = document.createElement('div');
-    render(h(PlanGenericCard, { dev: uiDeviceFixture({ id: CHARGER_ID, name: 'Charger', deviceRole: 'ev_charger',
+    render(h(PlanGenericCard, { dev: uiDeviceFixture({ id: CHARGER_ID, name: 'Charger', isEvCharger: true,
       ...device }, false, NOW_MS), dryRun: false, nowMs: NOW_MS, evStateLine }), mount);
     return mount.querySelector('.plan-card__reason')?.textContent?.trim();
   };

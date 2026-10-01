@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 import type { AfterSetupFactsRead } from '../src/ui/afterSetupFacts.ts';
 import {
@@ -66,12 +67,14 @@ vi.mock('../src/ui/homeScope.ts', async () => {
   };
 });
 
-const device = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsUiDeviceDetailItem => ({
-  id: 'device-1',
-  name: 'Connected 300',
-  targets: [],
-  ...overrides,
-} as SettingsUiDeviceDetailItem);
+const device = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsUiDeviceDetailItem => (
+  withDescriptorIdentity<SettingsUiDeviceDetailItem>({
+    id: 'device-1',
+    name: 'Connected 300',
+    targets: [],
+    ...overrides,
+  } as SettingsUiDeviceDetailItem)
+);
 
 const installSurfaces = () => {
   document.body.innerHTML = `
@@ -170,6 +173,7 @@ describe('recommendation loading', () => {
   it('does not count an optional car as a recommendation in a mixed banner', async () => {
     const recommendations = await loadSubject([device({
       deviceClass: 'evcharger',
+      isEvCharger: true,
       controlAdapter: {
         kind: 'capability_adapter', activationAvailable: true,
         activationRequired: false, activationEnabled: false,
@@ -316,7 +320,7 @@ describe('recommendation loading', () => {
   });
 
   it('shows selected-car battery reporting as a Flow conflict and preserves the last good scan', async () => {
-    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' });
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
@@ -341,7 +345,7 @@ describe('recommendation loading', () => {
   });
 
   it('offers a retry when the selected-car Flow inventory is unavailable', async () => {
-    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' });
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
@@ -366,7 +370,7 @@ describe('recommendation loading', () => {
   });
 
   it('queues a stale selected-car Flow retry after an older advisory scan', async () => {
-    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' });
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
@@ -418,7 +422,7 @@ describe('recommendation loading', () => {
   });
 
   it('finds a reporting Flow added after the WebView loaded when recommendations opens', async () => {
-    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' });
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
@@ -453,7 +457,7 @@ describe('recommendation loading', () => {
   });
 
   it('runs an explicit Flow check after an older advisory scan finishes', async () => {
-    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger' });
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
@@ -532,6 +536,7 @@ describe('recommendation loading', () => {
       id: 'charger-1',
       name: 'Car charger',
       deviceClass: 'evcharger',
+      isEvCharger: true,
     });
     const recommendations = await loadSubject([
       firstDevice,
@@ -748,7 +753,7 @@ describe('recommendation loading', () => {
   });
 
   it('refreshes added, renamed and removed cars without reloading dismissal settings', async () => {
-    const recommendations = await loadSubject([device({ deviceClass: 'evcharger' })]);
+    const recommendations = await loadSubject([device({ deviceClass: 'evcharger', isEvCharger: true })]);
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue(resolvedCars());
     await recommendations.loadRecommendationData();
@@ -793,7 +798,7 @@ describe('recommendation loading', () => {
   });
 
   it('shows available car guidance while the independent dismissal read is still pending', async () => {
-    const recommendations = await loadSubject([device({ deviceClass: 'evcharger' })]);
+    const recommendations = await loadSubject([device({ deviceClass: 'evcharger', isEvCharger: true })]);
     let resolveDismissals!: (value: Record<string, number>) => void;
     getSetting.mockReturnValueOnce(new Promise((resolve) => { resolveDismissals = resolve; }));
     callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar' }]));
@@ -909,6 +914,7 @@ describe('recommendation loading', () => {
       id: 'charger-1',
       name: 'Easee',
       deviceClass: 'evcharger',
+      isEvCharger: true,
     })]);
     getSetting.mockResolvedValue({});
     callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar 3' }]));

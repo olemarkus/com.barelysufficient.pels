@@ -64,7 +64,10 @@ export function syncExternalOffHoldForObservation(params: {
       ...buildExternalOffHoldHooks(ctx, subHomeHooks, debugStructured),
     },
     deviceId: event.deviceId,
-    observedDevice: toExternalOffHoldObservedDevice(ctx.getObservedRecord(event.deviceId)),
+    observedDevice: toExternalOffHoldObservedDevice(
+      ctx.getObservedRecord(event.deviceId),
+      ctx.deviceConfiguration.get(event.deviceId),
+    ),
     changes: event.changes,
   });
 }

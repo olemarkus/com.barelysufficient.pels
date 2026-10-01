@@ -1,4 +1,12 @@
-import type { DecoratedDeviceSnapshot } from './types.js';
+import type {
+  DecoratedDeviceSnapshot,
+  DeviceDescriptor,
+  ObservedDeviceState,
+  StateOfChargeObservedProbe,
+  SteppedLoadDecoration,
+  SteppedLoadDescriptorProbe,
+  TemperatureObservedProbe,
+} from './types.js';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
@@ -24,8 +32,21 @@ export type WidgetObjectiveWriteResult =
       | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
   };
 
+/**
+ * A smart-task candidate as the host serves it: the planner's runtime view of
+ * the device. Its identity is the resolved facts (`isEvCharger`,
+ * `binaryControllable`), never the inventory class, which planner input does
+ * not carry.
+ */
+export type CreateSmartTaskCandidateDevice = ObservedDeviceState
+  & TemperatureObservedProbe
+  & StateOfChargeObservedProbe
+  & SteppedLoadDescriptorProbe
+  & Pick<DeviceDescriptor, 'isEvCharger' | 'binaryControllable' | 'controlModel'>
+  & Pick<SteppedLoadDecoration, 'temperatureControlDisabled' | 'temperatureAdjustmentsDisabled'>;
+
 export type CreateSmartTaskCandidateDevicesRead =
-  | { state: 'ready'; devices: DecoratedDeviceSnapshot[] }
+  | { state: 'ready'; devices: CreateSmartTaskCandidateDevice[] }
   | { state: 'unavailable' };
 
 /** create_smart_task widget host surface. */

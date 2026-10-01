@@ -27,7 +27,7 @@ describe('requiresNativeWiringForActivation', () => {
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
       binaryControllable: true,
-      deviceRole: 'ev_charger',
+      isEvCharger: true,
     } as SettingsUiDeviceListItem)).toBe(false);
   });
 });

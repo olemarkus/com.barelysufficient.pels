@@ -7,6 +7,7 @@
 // callsite passes its live `state.*` snapshot as the fallback so a
 // transient non-object SDK read does not erase entries for other devices.
 
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -127,7 +128,7 @@ const buildDevice = (
   overrides: Partial<
     TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => (withDescriptorIdentity<TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name: id,
@@ -137,7 +138,7 @@ const buildDevice = (
   binaryControl: { on: true },
   capabilities: ['target_temperature', 'onoff'],
   ...overrides,
-});
+}));
 
 const installCommonMocks = () => {
   vi.doMock('../src/ui/devices.ts', () => ({

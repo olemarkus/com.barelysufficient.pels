@@ -217,7 +217,7 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
       device: buildBinaryDevice({
         deviceClass: 'evcharger',
         binaryControllable: true,
-        deviceRole: 'ev_charger',
+        isEvCharger: true,
         capabilities: ['evcharger_charging', 'evcharger_charging_state'],
       }),
     });

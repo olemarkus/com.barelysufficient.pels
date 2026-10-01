@@ -32,7 +32,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
-    | 'controlAdapter' | 'binaryControllable' | 'deviceRole'
+    | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'observeOnly'
   >;
 
 // The device fields the settings-UI device DETAIL surface reads — a superset of
@@ -91,7 +91,10 @@ export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListI
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationRequired === true
   && device.controlAdapter.activationEnabled !== true
-  && device.deviceRole !== 'ev_charger'
+  // A charger with its own on/off axis is exempt; one whose only control is
+  // the adapter still needs it switched on. (No producer sets
+  // `activationRequired: true` today, so this predicate is unreachable.)
+  && !(device.isEvCharger && device.binaryControllable)
 );
 
 /**

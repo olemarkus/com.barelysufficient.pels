@@ -7,9 +7,9 @@ import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 
 // Objectives identify EV chargers through the canonical `isEvDevice`, never a
-// class literal of their own. The EV fixture carries the charger class (the
-// planner device keeps no capability list for the capability branch of
-// `isEvDevice` to read); what these cases pin is that the two branches give
+// class literal of their own. The EV fixture carries the producer-resolved
+// `isEvCharger` (the planner device keeps no class or capability list to
+// re-derive it from); what these cases pin is that the two branches give
 // different answers: the EV branch plans at the calibrated `expectedPowerKw`
 // (7 kW), the plain on/off fallback at the live draw (3 kW).
 const NOW = 1_700_000_000_000;
@@ -17,7 +17,8 @@ const NOW = 1_700_000_000_000;
 const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveDeviceInput => ({
   id: 'ev-cap',
   name: 'EV (capability only)',
-  deviceClass: 'evcharger',
+  isEvCharger: true,
+  deviceType: 'onoff',
   currentDrawKw: 3,
   expectedPowerKw: 7,
   objectiveSessionInactive: false,
@@ -28,7 +29,7 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
 // Non-EV, non-temperature device drawing 3 kW (a relay an energy task runs):
 // one synthetic rung at its live draw, not at the expected power.
 const plainOnOff: ObjectiveDeviceInput = {
-  id: 'x', name: 'Plain', currentDrawKw: 3, expectedPowerKw: 7,
+  id: 'x', name: 'Plain', isEvCharger: false, deviceType: 'onoff', currentDrawKw: 3, expectedPowerKw: 7,
   objectiveSessionInactive: false, thermalDirection: 'heating',
 };
 
@@ -51,7 +52,8 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
     const observed = {
       id: 'ev-cap',
       name: 'EV (capability only)',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
+      deviceType: 'onoff' as const,
       targets: [],
       available: true,
       stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: NOW }),

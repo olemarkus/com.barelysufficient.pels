@@ -3,21 +3,22 @@ import type {
   LifecycleFallbackObservedState,
 } from '../executor/lifecycleFallbackDispatcher';
 import type {
-  DecoratedDeviceSnapshot,
   ProjectedObservedDeviceState,
 } from '../../packages/contracts/src/types';
+import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import { isCanSetControl } from '../device/deviceActionProjection';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 /** Narrow the app-owned decorated carrier before it crosses into the executor. */
 export const projectLifecycleFallbackDevice = (
-  device: DecoratedDeviceSnapshot,
+  device: PlanInputSnapshotDevice,
 ): LifecycleFallbackDevice => {
   const targetDescriptor = getPrimaryTargetCapability(device.targets);
   return {
     id: device.id,
     name: device.name,
+    isEvCharger: device.isEvCharger,
     controlAdapter: device.controlAdapter,
     selectedStepId: device.selectedStepId,
     stepCommandPending: device.stepCommandPending,

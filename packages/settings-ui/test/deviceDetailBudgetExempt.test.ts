@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
@@ -52,7 +53,7 @@ const buildDom = () => {
   `;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Hall Heater',
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
@@ -61,7 +62,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   binaryControl: { on: true },
   capabilities: ['target_temperature', 'onoff'],
   ...overrides,
-});
+}));
 
 describe('device detail budget exemption', () => {
   beforeEach(() => {

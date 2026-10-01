@@ -28,6 +28,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
@@ -108,11 +109,13 @@ const readObjectivesMap = (
   return out;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; name: string }): TargetDeviceSnapshot => ({
-  capabilities: [],
-  targets: [],
-  ...overrides,
-} as TargetDeviceSnapshot);
+// The cards read the producer-resolved identity (`isEvCharger`), never the
+// class, so a fixture's charger class is resolved the way the parse producer
+// resolves it.
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; name: string }): TargetDeviceSnapshot => {
+  const fixture = { capabilities: [], targets: [], ...overrides };
+  return { ...fixture, ...resolveFixtureDescriptorIdentity(fixture) } as TargetDeviceSnapshot;
+};
 
 const buildActivePlanRevision = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
@@ -506,12 +509,19 @@ describe('deadline objective flow cards', () => {
       measuredPowerIsDirectMeasurement: true,
     };
     const meterOnlyRelay = { ...relay, id: 'relay-2', measuredPowerIsDirectMeasurement: false };
+    // A thermostat as the producer emits one: the observed temperature facet and
+    // the setpoint it was admitted from, which is what makes it one.
+    const boilerTarget = { id: 'target_temperature' as const, value: 60, unit: '°C' };
     const thermostat = {
-      ...buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature', binaryControllable: true }),
+      ...buildDevice({
+        id: 'heater-1', name: 'Boiler', deviceType: 'temperature', binaryControllable: true,
+        targets: [boilerTarget],
+      }),
+      temperature: { currentTemperature: 50, target: boilerTarget },
       measuredPowerKw: 0,
       measuredPowerIsDirectMeasurement: true,
     };
-    const charger = { ...relay, id: 'ev-1', deviceClass: 'evcharger' };
+    const charger = { ...relay, id: 'ev-1', deviceClass: 'evcharger', isEvCharger: true };
 
     it('writes an energy objective for an on/off device with a live power reading', async () => {
       const { deps, mock } = buildDeps({ snapshot: [relay] });

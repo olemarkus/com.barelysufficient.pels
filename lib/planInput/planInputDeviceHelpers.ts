@@ -8,7 +8,6 @@ import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugStat
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { resolveResidualShedBehavior, type ResidualKwForPlanDeviceShedBehavior } from './residualKwForPlanDevice';
 import type {
-  DecoratedDeviceSnapshot,
   DeviceControlModel,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
@@ -30,6 +29,7 @@ import {
 import type { PlanInputDevice } from '../plan/planTypes';
 import type {
   PlanInputProjectionSource,
+  ToPlanDeviceInput,
   ToPlanDeviceOptions,
 } from './planInputDeviceTypes';
 
@@ -40,7 +40,7 @@ export const isPlainBinaryControlDevice = (
   && (controlModel === undefined || controlModel === 'binary_power');
 
 export function resolvePlanCommandability(
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe,
   opts: ToPlanDeviceOptions,
   base: boolean,
 ): BinaryCommandabilityProjection {
@@ -106,7 +106,7 @@ export function resolvePlanCommandability(
  */
 export function resolveSurplusPostureForDevice(
   source: PlanInputProjectionSource,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe & MeasuredPowerObservedProbe,
   opts: ToPlanDeviceOptions,
   control: DeviceControlPosture,
 ): { surplusOnly: boolean; surplusTracking: boolean } {
@@ -276,7 +276,7 @@ export function resolveTemperatureInputFields(
 
 export function resolveEffectiveShedBehavior(
   source: PlanInputProjectionSource,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ): ResidualKwForPlanDeviceShedBehavior {
   // The ctx lookup is the only half that belongs here; the projection onto the
   // device is pure and lives beside the residual builder, so the fixture
@@ -286,7 +286,7 @@ export function resolveEffectiveShedBehavior(
 
 export function resolveEffectiveTemperatureBoost(
   source: PlanInputProjectionSource,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ) {
   if (device.temperatureControlDisabled === true) return undefined;
   return source.getTemperatureBoostConfig(device.id);
@@ -317,7 +317,7 @@ export function resolvePlanBoostFields(
 type PlanCommandabilityReason = PlanInputDevice['commandabilityReason'];
 
 export function resolvePlanCommandabilityReason(
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe,
 ): PlanCommandabilityReason | undefined {
   if (device.available === false) return 'device_unavailable';
   if (device.evChargingState === 'plugged_out') return 'charger_unplugged';
@@ -326,7 +326,7 @@ export function resolvePlanCommandabilityReason(
 }
 
 export function resolvePlanObjective(
-  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  device: ToPlanDeviceInput & EvObservedProbe,
 ): Pick<PlanInputDevice, 'objectiveKind' | 'objectiveSessionInactive'> {
   if (isEvObserved(device)) {
     return {

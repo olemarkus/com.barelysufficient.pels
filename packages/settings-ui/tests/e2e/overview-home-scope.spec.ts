@@ -51,6 +51,7 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     name: device.name,
     controllable: true,
     available: true,
+    isEvCharger: false,
     currentDrawKw: 0.5,
     boostActive: false,
     status: {

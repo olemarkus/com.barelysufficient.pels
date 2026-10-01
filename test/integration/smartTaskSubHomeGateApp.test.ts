@@ -21,7 +21,6 @@ import {
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives';
 import { DEVICE_HOME_ASSIGNMENTS } from '../../lib/utils/settingsKeys';
 import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 describe('smart-task sub-home gate (app lanes)', () => {
   beforeEach(() => {
@@ -67,7 +66,7 @@ describe('smart-task sub-home gate (app lanes)', () => {
     const candidates = app.getCreateSmartTaskCandidateDevices();
     expect(candidates.state).toBe('ready');
     expect(candidates.state === 'ready'
-      ? candidates.devices.map((device: TargetDeviceSnapshot) => device.id)
+      ? candidates.devices.map((device) => device.id)
       : []).toEqual(['heater-main']);
 
     // Main-home device: unaffected — the create persists.

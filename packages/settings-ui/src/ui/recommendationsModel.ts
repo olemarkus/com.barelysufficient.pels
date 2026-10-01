@@ -110,7 +110,7 @@ export const resolveCarAssociationRecommendations = (
   cars: readonly SettingsUiRecommendationCar[],
   associations: EvCarAssociations,
 ): SetupRecommendation[] => {
-  const chargers = devices.filter((device) => device.deviceClass === 'evcharger');
+  const chargers = devices.filter((device) => device.isEvCharger);
   if (chargers.length === 0) return [];
   const chargerIds = new Set(chargers.map((charger) => charger.id));
   const associatedCarIds = new Set(
@@ -141,7 +141,7 @@ export const resolveEvSocFlowConflictRecommendations = (
 ): SetupRecommendation[] => {
   const chargersById = new Map(
     devices
-      .filter((device) => device.deviceClass === 'evcharger')
+      .filter((device) => device.isEvCharger)
       .map((device) => [device.id, device]),
   );
   return reporters.flatMap((reporter) => {

@@ -333,7 +333,6 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
       name: `Room ${i + 1} Thermostat`,
       currentState: i % 3 === 0 ? 'off' : 'on',
       plannedState: 'keep',
-      deviceClass: 'thermostat',
       temperature: { currentTarget: 21, currentTemperature: 19 + (i % 5), plannedTarget: 21 },
       controllable: true,
       available: true,

@@ -16,6 +16,7 @@ import {
 import type { HomeyDeviceLike } from '../../utils/types';
 import {
     getCapabilities,
+    isObserveOnlyRoleClassKey,
     resolveZoneId,
     resolveZoneLabel,
 } from './managerHelpers';
@@ -472,9 +473,8 @@ function buildParsedDeviceSnapshot(params: {
         ...resolveParsedDeviceSettings(device, deviceId, providers),
         controlModel,
         binaryControllable: binaryControl !== undefined,
-        deviceRole: binaryCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger'
-            ? 'ev_charger'
-            : undefined,
+        isEvCharger: deviceClassKey === 'evcharger',
+        observeOnly: isObserveOnlyRoleClassKey(deviceClassKey),
         steppedLoadProfile,
         nativeWriteCapabilities,
         targetPowerConfig,

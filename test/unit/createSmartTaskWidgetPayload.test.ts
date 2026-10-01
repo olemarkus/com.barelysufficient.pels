@@ -25,6 +25,11 @@ const buildDevice = (
   & SteppedLoadDescriptorProbe => ({
   targets: [],
   binaryControl: { on: false },
+  // The kind is decided on the producer-resolved identity, never the class: a
+  // fixture is a charger only when it says so, and switchable only when it says
+  // so (absent used to read as "no").
+  isEvCharger: false,
+  binaryControllable: false,
   ...overrides,
 } as TargetDeviceSnapshot & SteppedLoadDescriptorProbe);
 
@@ -78,6 +83,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         id: 'ev',
         name: 'Driveway',
         deviceClass: 'evcharger',
+        isEvCharger: true,
         stateOfCharge: stateOfChargeFixture({ percent: 42 }),
       })],
     });
@@ -116,9 +122,9 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
   it('orders by device group (heating → EV chargers) then name, dropping ineligible ones', () => {
     const payload = buildCreateSmartTaskDevicesPayload({
       devices: [
-        buildDevice({ id: 'ev-z', name: 'Zoe', deviceClass: 'evcharger' }),
+        buildDevice({ id: 'ev-z', name: 'Zoe', deviceClass: 'evcharger', isEvCharger: true }),
         buildDevice({ id: 'plug', name: 'Lamp', deviceType: 'onoff' }),
-        buildDevice({ id: 'ev-a', name: 'Audi', deviceClass: 'evcharger' }),
+        buildDevice({ id: 'ev-a', name: 'Audi', deviceClass: 'evcharger', isEvCharger: true }),
         buildDevice({ id: 'tank', name: 'Tank', deviceClass: 'waterheater', deviceType: 'temperature', temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 60, unit: 'C' } } }),
         buildDevice({ id: 'attic', name: 'Attic', deviceType: 'temperature', temperature: { currentTemperature: 18, target: { id: 'target_temperature', value: 20, unit: 'C' } } }),
         buildDevice({ id: 'boiler', name: 'Cellar', deviceClass: 'boiler', deviceType: 'temperature', temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 60, unit: 'C' } } }),
@@ -139,7 +145,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
 
   it('uses the device id as the name when the snapshot name is blank', () => {
     const payload = buildCreateSmartTaskDevicesPayload({
-      devices: [buildDevice({ id: 'ev-1', name: '   ', deviceClass: 'evcharger' })],
+      devices: [buildDevice({ id: 'ev-1', name: '   ', deviceClass: 'evcharger', isEvCharger: true })],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices[0].deviceName).toBe('ev-1');

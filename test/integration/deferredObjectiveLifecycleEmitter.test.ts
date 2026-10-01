@@ -39,7 +39,8 @@ const buildEvDevice = (
   id: 'ev-1',
   name: 'Driveway EV',
   thermalDirection: 'heating',
-  deviceClass: 'evcharger',
+  isEvCharger: true,
+  deviceType: 'onoff',
   evChargingState: 'plugged_in_paused',
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
   steppedLoadProfile: {

@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type {
   SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
@@ -24,7 +25,7 @@ const setupDom = (): void => {
 const buildSteppedDevice = (
   id: string,
   steps: SteppedLoadProfile['steps'],
-): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => (withDescriptorIdentity<TargetDeviceSnapshot & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name: `Stepped Device ${id}`,
@@ -34,7 +35,7 @@ const buildSteppedDevice = (
   // stepped_load without needing state.deviceControlProfiles wired up.
   controlModel: 'stepped_load',
   steppedLoadProfile: { steps },
-});
+}));
 
 const readDraftSteps = (): Array<{ id: string; planningPowerW: number }> => {
   const steps = document.querySelectorAll('#device-detail-stepped-steps [data-step-row="true"]');

@@ -205,8 +205,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   const loose: LooseDevicePlanDevice = {
     id: dev.id,
     name: dev.name,
-    deviceClass: dev.deviceClass,
-    deviceRole: dev.deviceRole,
+    isEvCharger: dev.isEvCharger,
+    observeOnly: dev.observeOnly,
     deviceType: dev.deviceType,
     currentState,
     plannedState,

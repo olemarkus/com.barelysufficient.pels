@@ -19,7 +19,7 @@ import type { SheddingPlan } from '../../lib/plan/shedding/types';
  * carry it all fail here.
  *
  * A key present with an `undefined` VALUE is present. That is deliberate
- * throughout the builder (`deviceClass`, the step bookkeeping, `controlAdapter`,
+ * throughout the builder (the step bookkeeping, `controlAdapter`,
  * `binaryCommandPending`), and `Object.keys` sees it the same way `in` does.
  */
 const ALWAYS: readonly string[] = [
@@ -29,9 +29,9 @@ const ALWAYS: readonly string[] = [
   // for all of them at `toPlanDevice` — so the binary cluster is universal in
   // practice even though `isBinaryPlanDevice` gates it.
   'currentOn',
-  'currentState', 'desiredStepId', 'deviceClass', 'deviceRole', 'deviceType',
-  'expectedPowerKw', 'expectedPowerSource', 'hasStandingDemand', 'id',
-  'lastDesiredStepId', 'lastStepCommandIssuedAt', 'name', 'nextStepCommandRetryAtMs',
+  'currentState', 'desiredStepId', 'deviceType',
+  'expectedPowerKw', 'expectedPowerSource', 'hasStandingDemand', 'id', 'isEvCharger',
+  'lastDesiredStepId', 'lastStepCommandIssuedAt', 'name', 'nextStepCommandRetryAtMs', 'observeOnly',
   'plannedState', 'previousStepId', 'priority', 'reason', 'recordRestoreOnTargetApply',
   'releaseShedStepId', 'reportedStepId', 'residualKw', 'shedAction', 'shedTemperature',
   'stepCommandPending', 'stepCommandRetryCount', 'stepCommandStatus', 'surplusAbsorbActive',
@@ -146,7 +146,7 @@ const kinds: Kind[] = [
   {
     label: 'an EV charger with calibrated rungs and an unplugged cable',
     dev: steppedInputDevice({
-      id: 'ev1', name: 'EV', deviceRole: 'ev_charger', steppedLoadProfile: steppedProfile,
+      id: 'ev1', name: 'EV', isEvCharger: true, steppedLoadProfile: steppedProfile,
       selectedStepId: 'medium', currentDrawKw: 2,
       stepPowerCalibration: { low: 1180, medium: 1950, max: 2900 },
       objectiveKind: 'ev_soc', commandabilityReason: 'charger_unplugged',

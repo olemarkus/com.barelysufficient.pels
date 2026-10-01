@@ -6,6 +6,7 @@ import {
 } from '../../lib/device/targetPowerReachability';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 
 // `toPlanDevice` is the per-device half of a two-stage producer: ranking needs
@@ -28,7 +29,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
       nextProbeAtMs: 2_000,
     });
     const runtimeConfig = { ...baseConfig, reachability };
-    const device: DecoratedDeviceSnapshot = {
+    const device: DecoratedDeviceSnapshot = decoratedSnapshotFixture({
       available: true,
       id: 'charger',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -39,7 +40,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
       selectedStepId: '6a',
       targetPowerConfig: baseConfig,
       binaryControl: { on: true },
-    };
+    });
     const ctx = createAppContextMock({
       deviceTargetPowerConfigs: { charger: runtimeConfig },
       getNow: () => new Date(1_999),
@@ -68,7 +69,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
   // dropping a device out of stepped control that a lower rung could price.
   it('falls through a non-finite carried planning power to the ladder rung', () => {
     const config = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
-    const device: DecoratedDeviceSnapshot = {
+    const device: DecoratedDeviceSnapshot = decoratedSnapshotFixture({
       available: true,
       id: 'charger',
       expectedPowerKw: 1,
@@ -83,7 +84,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
       // nothing and the carried value is consulted next — as junk.
       selectedStepId: '99a',
       planningPowerKw: Number.NaN,
-    };
+    });
     const ctx = createAppContextMock({ deviceTargetPowerConfigs: { charger: config } });
 
     const planDevice = ranked(toPlanDevice(ctx, withDeviceConfiguration(device)));

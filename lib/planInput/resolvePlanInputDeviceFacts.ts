@@ -32,7 +32,6 @@ import {
   resolveSurplusPostureForDevice,
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 /** Resolve configuration and observation into the facts used by plan input. */
 export const resolvePlanInputDeviceFacts = (
@@ -74,7 +73,6 @@ export const resolvePlanInputDeviceFacts = (
     binaryControl: device.binaryControl,
     capabilities: device.capabilities,
     canSetControl: device.canSetControl,
-    canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
   });
   const shedBehavior = resolveEffectiveShedBehavior(source, device);
   const temperatureBoost = resolveEffectiveTemperatureBoost(source, device);

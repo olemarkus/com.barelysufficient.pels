@@ -7,8 +7,10 @@ import {
   type DeferredObjectivePlanPreviewCandidate,
 } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { CreateSmartTaskHostApi } from '../../packages/contracts/src/widgetHostApi';
+import type {
+  CreateSmartTaskCandidateDevice,
+  CreateSmartTaskHostApi,
+} from '../../packages/contracts/src/widgetHostApi';
 import {
   createCreateSmartTask,
   getCreateSmartTaskDevices,
@@ -31,15 +33,17 @@ const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> 
   ...overrides,
 });
 
-const evDevice: TargetDeviceSnapshot = {
+// The host serves the planner's runtime view: resolved identity, no inventory
+// class.
+const evDevice: CreateSmartTaskCandidateDevice = {
   available: true,
   id: 'ev-1',
-  expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Driveway',
   targets: [],
   binaryControl: { on: false },
-  deviceClass: 'evcharger',
-} as TargetDeviceSnapshot;
+  isEvCharger: true,
+  binaryControllable: true,
+};
 
 type AppMock = {
   getCreateSmartTaskCandidateDevices: ReturnType<typeof vi.fn>;

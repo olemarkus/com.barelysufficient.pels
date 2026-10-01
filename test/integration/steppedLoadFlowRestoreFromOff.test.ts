@@ -165,7 +165,7 @@ const buildRestoreTo6aPlan = (
       ...steppedPlanDevice({
         id: DEVICE_ID,
         name: DEVICE_NAME,
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         currentState: 'off',
         plannedState: 'keep',
         controllable: true,
@@ -193,7 +193,7 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
       ...steppedPlanDevice({
         id: DEVICE_ID,
         name: DEVICE_NAME,
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         currentState: 'on',
         plannedState: 'keep',
         controllable: true,

@@ -715,7 +715,7 @@ describe('settingsUiApi', () => {
       settings: { power_source: 'homey_energy' },
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
       ],
     });
     // The producer prefers the LIVE app tracker over the persisted settings
@@ -736,7 +736,7 @@ describe('settingsUiApi', () => {
     // no longer a configuration that exists.
     const solarDevices = [
       { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-      { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+      { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
     ];
     const flowHomey = createHomey({
       settings: { power_source: 'flow' },
@@ -766,14 +766,14 @@ describe('settingsUiApi', () => {
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery' },
-        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', observeOnly: true },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
       ],
       // A picker that (defensively) still surfaced an observe-only device must
       // also be filtered out here, so the payload never double-renders it.
       uiPickerDevices: [
         { id: 'pump-1', name: 'Pump', deviceType: 'onoff' },
-        { id: 'batt-2', name: 'Other Battery', deviceClass: 'battery' },
+        { id: 'batt-2', name: 'Other Battery', deviceClass: 'battery', observeOnly: true },
       ],
     });
 
@@ -981,7 +981,7 @@ describe('settingsUiApi', () => {
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery' },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', observeOnly: true },
       ],
     });
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(false);

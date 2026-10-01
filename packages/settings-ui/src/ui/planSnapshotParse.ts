@@ -66,6 +66,9 @@ const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   && typeof (value as { name?: unknown }).name === 'string'
   && typeof (value as { controllable?: unknown }).controllable === 'boolean'
   && typeof (value as { available?: unknown }).available === 'boolean'
+  // Required on the wire: the EV card lines read it straight, and a missing one
+  // would render a charger as a plain device rather than fail.
+  && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
   && isStatus((value as { status?: unknown }).status)
 );
 

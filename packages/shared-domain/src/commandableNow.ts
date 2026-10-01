@@ -9,7 +9,7 @@
  * owner-facing wording in `commandableNowReason.ts`.
  */
 import { isEvObserved } from './evObservedState';
-import { isEvPlugStateCommandable } from './evPlugState';
+import { isEvPlugStateCommandable, type EvDeviceIdentity } from './evPlugState';
 import type { EvObservedProbe } from '../../contracts/src/types';
 
 export { isEvDevice } from './evPlugState';
@@ -20,9 +20,7 @@ export { isEvDevice } from './evPlugState';
  * charger that cannot report a valid plug-state is dropped at the parse boundary
  * rather than admitted without one (see `evPlugState.ts`).
  */
-export type CommandableNowInput = {
-  deviceClass?: string;
-  isEvCharger?: boolean;
+export type CommandableNowInput = EvDeviceIdentity & {
   available: boolean;
 } & EvObservedProbe;
 

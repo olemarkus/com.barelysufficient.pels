@@ -67,6 +67,7 @@ import {
   withFixtureResidualKw,
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
+import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -117,6 +118,11 @@ const pd = (
   // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
   withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
     ...withMaterializedEvPlugState(loose),
+    // Producer-resolved identity, REQUIRED on the plan device: a fixture that
+    // says nothing is an ordinary on/off load.
+    deviceType: loose.deviceType ?? 'onoff',
+    isEvCharger: loose.isEvCharger ?? false,
+    observeOnly: loose.observeOnly ?? false,
     control: fixtureControlPosture(loose),
     currentOn: resolveFixtureCurrentOn(loose),
     // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
@@ -149,6 +155,8 @@ const buildPlan = (): DevicePlan => ({
       surplusTracking: false,
       confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
+      isEvCharger: false,
+      observeOnly: false,
       currentState: 'off',
       plannedState: 'keep' as const,
       boostActive: false,
@@ -182,6 +190,8 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       surplusTracking: false,
       confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
+      isEvCharger: false,
+      observeOnly: false,
       currentState: 'on',
       plannedState: 'keep' as const,
       boostActive: false,
@@ -1789,6 +1799,8 @@ describe('PlanExecutor stepped loads', () => {
       id: 'dev-1',
       name: 'Tank',
       deviceType: 'temperature' as const,
+      isEvCharger: false,
+      observeOnly: false,
       plannedState: 'keep' as const,
       boostActive: false,
       currentTarget: 68,
@@ -2361,7 +2373,7 @@ describe('PlanExecutor stepped loads', () => {
     // here. Guard that this gate never starts depending on it again.
     const { executor } = buildExecutor();
     const plan = preparedRestoreFromOffPlan({
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       objectiveKind: 'ev_soc',
       commandableNow: true,
       boostSupported: false,
@@ -2414,7 +2426,7 @@ describe('PlanExecutor stepped loads', () => {
       boostActive: false,
       controllable: true,
       reason: KEEP_REASON,
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       binaryControl: { on: false },
@@ -3538,7 +3550,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     > & { selectedStepId?: string } = { binaryControl: { on: false } },
   ): (TransportDeviceSnapshot & EvObservedProbe & SteppedLoadDescriptorProbe)[] => {
     const { selectedStepId: _selectedStepId, ...snapshotOverrides } = overrides;
-    return [{
+    return [transportSnapshotFixture({
       id: 'dev-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Tank',
@@ -3550,7 +3562,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       controlModel: 'stepped_load' as const,
       steppedLoadProfile: steppedProfile,
       ...snapshotOverrides,
-    }];
+    })];
   };
 
   it('detects onoff drift and restores a keep device turned off externally', async () => {
@@ -4248,6 +4260,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
+      deviceType: 'onoff' as const, isEvCharger: false, observeOnly: false,
       control: fixtureControlPosture({ controllable: true }),
       available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
@@ -4259,6 +4272,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
+      deviceType: 'onoff' as const, isEvCharger: false, observeOnly: false,
       control: fixtureControlPosture({ controllable: true }),
       available: true, reason: KEEP_REASON, commandableNow: true,
       boostActive: false, hasStandingDemand: true,

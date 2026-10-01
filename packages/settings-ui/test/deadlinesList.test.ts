@@ -1,3 +1,4 @@
+import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinesList.ts';
@@ -85,7 +86,7 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: T0 + 12 * HOUR_MS,
 };
 
-const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [
+const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([
   { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, temperature: { currentTemperature: 18.4, target: { id: 'target_temperature', unit: 'C', value: 20 } } },
   { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
     id: 'dev_b',
@@ -94,7 +95,7 @@ const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & ObservedStateO
     binaryControl: { on: false },
     stateOfCharge: stateOfChargeFixture({ percent: 45 }),
   },
-];
+]);
 
 describe('resolveDeadlinesListCards', () => {
   it('returns an empty list when no plans exist', () => {

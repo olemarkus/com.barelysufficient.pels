@@ -81,6 +81,7 @@ describe('handleDeferredDeadlineReached — unavailable device must not disarm w
     built.ctx.deviceControlHelpers.getLifecycleFallbackDevice = () => ({
       id: 'd1',
       name: 'EV charger',
+      isEvCharger: false,
       binaryAxis: {
         state: 'writable',
       },
@@ -126,6 +127,7 @@ describe('handleDeferredDeadlineReached — observer availability is authoritati
     ctx.deviceControlHelpers.getLifecycleFallbackDevice = () => ({
       id: 'd1',
       name: 'EV charger',
+      isEvCharger: false,
       binaryAxis: {
         state: 'writable',
       },
@@ -164,6 +166,7 @@ describe('handleDeferredDeadlineReached — undriveable device must not disarm w
     built.ctx.deviceControlHelpers.getLifecycleFallbackDevice = () => ({
       id: 'd1',
       name: 'Thermostat',
+      isEvCharger: false,
       binaryAxis: { state: 'unavailable' },
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },

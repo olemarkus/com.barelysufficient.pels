@@ -14,7 +14,7 @@ import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceReads } from '../device/deviceReads';
 import type { DeviceConfiguration } from '../device/deviceConfiguration';
-import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
+import type { PlanInputSnapshotDevice } from '../planInput/runtimeDeviceRead';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { SettingsUiDeviceReads } from '../device/settingsUiDeviceReads';
 import type { DeviceTransportPort } from '../device/deviceTransport';
@@ -196,9 +196,10 @@ export type AppContext = {
   // it handed out the whole record, the same fact was reachable two ways — raw
   // off the record, or resolved through a read — and the raw way won by being
   // shorter.
-  // The whole record, for the two consumers that HOLD it: the settings-UI payload
-  // refresh and the executor's drift check. Everything else asks a question, and
-  // gets `getObservedState` or a named read above.
+  // The whole record, for the consumers that HOLD it: the configuration and
+  // inventory joins, the settings-UI payload refresh, the executor's drift check
+  // and external-off hold detection. Everything else asks a question, and gets
+  // `getObservedState` or a named read above.
   getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
@@ -284,7 +285,7 @@ export type AppContext = {
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
   get planRebuildThrottle(): PlanRebuildThrottle;
   /** Plan/executor runtime inputs joined from DeviceConfiguration and Observer. */
-  getPlanInputSnapshot(): (DecoratedDeviceSnapshot & DeviceConfigurationRead)[];
+  getPlanInputSnapshot(): PlanInputSnapshotDevice[];
   /** Inventory metadata joined with accepted Observer state for consumers needing both. */
   getDeviceSurfaces(): DeviceSurfaces[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];

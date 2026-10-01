@@ -34,6 +34,12 @@ import type {
   SteppedLoadDescriptorProbe,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
+import type Homey from 'homey';
+import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { mockHomeyInstance } from '../mocks/homey';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { syncExternalOffHoldForObservation } from '../../setup/appObservedControlStateRuntime';
 
 const NOW = new Date('2026-07-25T12:00:00Z').getTime();
 const DEVICE_ID = 'heater-1';
@@ -50,7 +56,7 @@ const buildSnapshot = (
   const explicitlyWithoutBinary = Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
     && overrides.binaryCapabilityId === undefined;
   const capabilityId = overrides.binaryCapabilityId ?? 'onoff';
-  return {
+  const fixture = {
     id: DEVICE_ID,
     name: 'Water heater',
     targets: [],
@@ -68,7 +74,10 @@ const buildSnapshot = (
       },
     } : {}),
     ...overrides,
-  } as SnapshotProbe;
+  };
+  // The identity facts the parse producer resolves (a charger from its class);
+  // the hold reads `isEvCharger`, not the class.
+  return { ...fixture, ...resolveFixtureDescriptorIdentity(fixture) } as SnapshotProbe;
 };
 
 type Harness = {
@@ -130,9 +139,10 @@ const buildCtx = (params: {
 const observedDeviceFor = (
   _ctx: AppContext,
   overrides: Partial<SnapshotProbe> = {},
-): ExternalOffHoldObservedDevice => toExternalOffHoldObservedDevice(
-  buildSnapshot(overrides),
-)!;
+): ExternalOffHoldObservedDevice => {
+  const snapshot = buildSnapshot(overrides);
+  return toExternalOffHoldObservedDevice(snapshot, snapshot)!;
+};
 
 /** The ON->OFF transition every real outside-off observation carries. */
 const OFF_TRANSITION = [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }];
@@ -378,7 +388,7 @@ describe('syncExternalOffHoldForDevice — releasing a hold', () => {
       selectedStepId: 'off',
       reportedStepId: 'off',
     });
-    const observed = toExternalOffHoldObservedDevice(snapshot)!;
+    const observed = toExternalOffHoldObservedDevice(snapshot, snapshot)!;
 
     expect(toPlanDevice(h.ctx, withDeviceConfiguration(snapshot)).currentState).toBe('off');
     expect(sync(h, observed)).toBe('cleared');
@@ -461,7 +471,7 @@ describe('external-off hold — release under an unreadable store', () => {
       confirmedAtMs: NOW,
     });
     h.ctx.externalOffHold?.startHold(DEVICE_ID);
-    const observed = toExternalOffHoldObservedDevice(buildSnapshot({
+    const charger = buildSnapshot({
       deviceClass: 'evcharger',
       binaryControl: { on: true },
       binaryControlObservation: {
@@ -475,7 +485,8 @@ describe('external-off hold — release under an unreadable store', () => {
       evCharging: true,
       evChargingObservedAtMs: NOW + 1,
       evChargingState: 'plugged_in_paused',
-    }))!;
+    });
+    const observed = toExternalOffHoldObservedDevice(charger, charger)!;
 
     releaseExternalOffHoldsForObservedOn({
       policy: h.ctx.externalOffHold,
@@ -536,5 +547,125 @@ describe('external-off hold — a second off during the release rebuild', () => 
   it('re-arms the hold without consulting the stale plan', () => {
     const h = buildCtx({ optedIn: true });
     expect(sync(h, observedDeviceFor(h.ctx))).toBe('started');
+  });
+});
+
+/**
+ * The same gate, driven through the production entry
+ * (`syncExternalOffHoldForObservation`) with nothing hand-built: the devices are
+ * raw Homey reads parsed by the real transport, and the detector reads them
+ * through the real device configuration (identity) and the real Observer
+ * projection (plug state, binary axis), exactly as the app wires them.
+ *
+ * Unplugging a car folds the charger's control axis to OFF without anyone
+ * turning the charger off; that fold arrives as an ON->OFF change on the
+ * charging switch, observed from the plug state. Only the resolved charger
+ * identity tells the detector to ask the session question, so a charger whose
+ * identity is lost (as when the detector read the Observer record alone) starts
+ * a hold on every unplug.
+ */
+describe('external-off hold — real configuration and Observer reads', () => {
+  const CHARGER_ID = 'charger-1';
+  const SOCKET_ID = 'socket-1';
+  const noop = (): void => undefined;
+  const loggerMock: Logger = {
+    log: noop,
+    debug: noop,
+    error: noop,
+    structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
+  };
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date(NOW).toISOString();
+
+  // Nothing here says "charger" but the class.
+  const rawUnpluggedCharger = (): HomeyDeviceLike => ({
+    id: CHARGER_ID,
+    name: 'Driveway charger',
+    class: 'evcharger',
+    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+    capabilitiesObj: {
+      evcharger_charging: { value: false, setable: true, lastUpdated },
+      evcharger_charging_state: { value: 'plugged_out', lastUpdated },
+      measure_power: { value: 0, lastUpdated },
+    },
+    available: true,
+    ready: true,
+  });
+
+  const rawSocket = (): HomeyDeviceLike => ({
+    id: SOCKET_ID,
+    name: 'Garage socket',
+    class: 'socket',
+    capabilities: ['onoff', 'measure_power'],
+    capabilitiesObj: {
+      onoff: { value: false, setable: true, lastUpdated },
+      measure_power: { value: 0, lastUpdated },
+    },
+    available: true,
+    ready: true,
+  });
+
+  const buildParsedCtx = (): AppContext => {
+    const parsed = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      loggerMock,
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+    ).parseDeviceListForTests([rawUnpluggedCharger(), rawSocket()]);
+    // `getObservedRecord` and `deviceConfiguration` are backed by this snapshot
+    // through the production projections.
+    const ctx = createAppContextMock({ latestTargetSnapshot: parsed });
+    // Both devices opted in to "Leave off until turned on again".
+    const settings = new Map<string, unknown>([
+      ['some_other_pels_setting', 1],
+      [RESPECT_EXTERNAL_OFF_DEVICES, { [CHARGER_ID]: true, [SOCKET_ID]: true }],
+    ]);
+    ctx.externalOffHold = createExternalOffHoldPolicy({
+      get: (key) => settings.get(key) ?? null,
+      set: (key, value) => { settings.set(key, value); },
+      unset: (key) => { settings.delete(key); },
+      getKeys: () => Array.from(settings.keys()),
+    });
+    // No PELS command is in flight for either device: any OFF is an outsider's.
+    ctx.planEngine = {
+      hasAttributablePendingBinaryCommand: () => false,
+      clearRecentBinaryOffCommand: vi.fn(),
+    } as unknown as AppContext['planEngine'];
+    return ctx;
+  };
+
+  it('resolves the charger identity and plug state from the parsed device, not a fixture', () => {
+    const ctx = buildParsedCtx();
+    expect(ctx.deviceConfiguration.get(CHARGER_ID)?.isEvCharger).toBe(true);
+    expect(ctx.deviceConfiguration.get(SOCKET_ID)?.isEvCharger).toBe(false);
+    expect(ctx.getObservedRecord(CHARGER_ID)).toMatchObject({ evChargingState: 'plugged_out' });
+  });
+
+  it('does not start a hold when an unplugged charger folds its charging switch to OFF', () => {
+    const ctx = buildParsedCtx();
+    syncExternalOffHoldForObservation({
+      ctx,
+      event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
+    });
+    expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(false);
+  });
+
+  it('starts a hold when the same unplugged charger has its charging switch turned off', () => {
+    // The control: same device, same plug state, but an explicit ON->OFF on the
+    // switch itself. The only thing the case above relies on is the session gate.
+    const ctx = buildParsedCtx();
+    syncExternalOffHoldForObservation({
+      ctx,
+      event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
+    });
+    expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(true);
+  });
+
+  it('starts a hold when a plain on/off device is turned off', () => {
+    const ctx = buildParsedCtx();
+    syncExternalOffHoldForObservation({
+      ctx,
+      event: { deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },
+    });
+    expect(ctx.externalOffHold?.isHeld(SOCKET_ID)).toBe(true);
   });
 });

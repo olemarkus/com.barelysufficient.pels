@@ -290,7 +290,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedInput({
         id: 'charger',
         name: 'Driveway charger',
-        deviceClass: 'evcharger',
+        isEvCharger: true,
         objectiveKind: 'ev_soc',
         deviceType: 'onoff',
         targets: [],

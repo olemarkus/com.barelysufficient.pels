@@ -36,11 +36,7 @@ import {
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
-import type {
-  MeasuredPowerObservedProbe,
-  SteppedLoadProfile,
-  TargetDeviceSnapshot,
-} from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -49,6 +45,7 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -93,12 +90,14 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       // resolved on/off truth (`currentOn`); the plan kinds no longer carry the
       // raw `binaryControl`.
       binaryControl: isBinaryPlanDevice(device) ? { on: device.currentOn } : undefined,
+      // The identity `readExecutorDevice` joins from device configuration.
+      isEvCharger: device.isEvCharger,
       targets: [],
       controlModel: 'stepped_load',
       selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
       reportedStepId: device.reportedStepId,
       measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
-    } as TargetDeviceSnapshot & MeasuredPowerObservedProbe),
+    } as Parameters<typeof buildExecutableObservedDeviceStateFromSnapshot>[0]),
   );
 };
 
@@ -1540,7 +1539,7 @@ describe('native stepped-load wiring', () => {
       undefined,
       { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
     );
-    deviceManager.setSnapshotForTests([{
+    deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       available: true,
       id: 'flow-step-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1555,7 +1554,7 @@ describe('native stepped-load wiring', () => {
           { id: '8a', planningPowerW: 1840 },
         ],
       },
-    } as TargetDeviceSnapshot]);
+    }]));
 
     await expect(deviceManager.requestSteppedLoadStep({
       deviceId: 'flow-step-1',
@@ -1649,7 +1648,7 @@ describe('native stepped-load wiring', () => {
       undefined,
       { getFlowTriggerCard: () => ({ trigger: () => Promise.reject(failure) }) },
     );
-    deviceManager.setSnapshotForTests([{
+    deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       available: true,
       id: 'flow-step-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1658,7 +1657,7 @@ describe('native stepped-load wiring', () => {
       binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
-    } as TargetDeviceSnapshot]);
+    }]));
 
     await expect(deviceManager.requestSteppedLoadStep({
       deviceId: 'flow-step-1',
@@ -1700,7 +1699,7 @@ describe('native stepped-load wiring', () => {
         undefined,
         { getFlowTriggerCard: () => ({ trigger }) },
       );
-      deviceManager.setSnapshotForTests([{
+      deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
         available: true,
         id: 'flow-step-1',
         expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1709,7 +1708,7 @@ describe('native stepped-load wiring', () => {
         binaryControl: { on: true },
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
-      } as TargetDeviceSnapshot]);
+      }]));
 
       const request = deviceManager.requestSteppedLoadStep({
         deviceId: 'flow-step-1',

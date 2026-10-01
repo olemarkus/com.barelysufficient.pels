@@ -27,7 +27,7 @@ export type ObjectiveObservedQuantity = Pick<DeviceObjectiveProfileSample, 'valu
 // `ObservedDeviceState` — a caller should not have to supply an unrelated device
 // shape to ask this question.
 export type ObjectiveQuantityDevice =
-  & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
+  & Pick<DeviceDescriptor, 'deviceType'>
   & TemperatureObservedProbe
   & StateOfChargeObservedProbe;
 

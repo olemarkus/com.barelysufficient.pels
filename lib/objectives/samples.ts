@@ -41,7 +41,7 @@ const MIN_CREDIBLE_DEVICE_POWER_KW = 0.005;
 export type ObjectiveSampleDevice = ObservedDeviceState
   & TemperatureObservedProbe
   & StateOfChargeObservedProbe
-  & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
+  & Pick<DeviceDescriptor, 'isEvCharger' | 'deviceType'>
   & {
     currentDrawKw: number;
     thermalDirection: ThermalDirection;

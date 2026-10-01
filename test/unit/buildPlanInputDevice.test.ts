@@ -77,6 +77,14 @@ describe('buildPlanInputDevice', () => {
       // not a state any consumer can observe. A fixture nobody described lands
       // on the same last rung the 1 kW above came from.
       expectedPowerSource: 'default',
+      // Producer-resolved and required, so absence never reads as "no": no
+      // temperature facet plans as `'onoff'` (`resolveTemperatureInputFields`),
+      // and device configuration resolves the other three from the class, which
+      // an undescribed device does not have.
+      deviceType: 'onoff',
+      isEvCharger: false,
+      observeOnly: false,
+      starvationSupported: false,
     });
   });
 
@@ -111,14 +119,14 @@ describe('buildPlanInputDevice', () => {
   it('passes through optional fields unchanged and leaves unspecified ones undefined', () => {
     const device = buildPlanInputDevice({
       id: 'dev-3',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       currentOn: true,
       priority: 4,
       expectedPowerKw: 7.2,
       objectiveKind: 'ev_soc',
     });
 
-    expect(device.deviceClass).toBe('evcharger');
+    expect(device.isEvCharger).toBe(true);
     expect((device as MeteredPlanInputDevice & { currentOn: boolean }).currentOn).toBe(true);
     expect(device.priority).toBe(4);
     expect(device.expectedPowerKw).toBe(7.2);

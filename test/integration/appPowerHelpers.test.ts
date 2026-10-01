@@ -18,6 +18,7 @@ import type {
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
+import { deviceSurfacesFixtures } from '../utils/deviceSnapshotFixture';
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -65,7 +66,7 @@ describe('recordPowerSampleForApp', () => {
   it('records measured budget exempt usage into exempt buckets', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getDeviceSurfaces = () => ([
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
       {
         available: true,
         id: 'dev-budget',
@@ -132,13 +133,12 @@ describe('recordPowerSampleForApp', () => {
     // heater's 2 kW was recorded as exempt and the budget counted nothing used.
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getDeviceSurfaces = () => ([
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
       {
         available: true,
         id: 'dev-charger',
         name: 'Budget exempt charger',
         targets: [],
-        binaryCapabilityId: 'onoff',
         binaryControl: { on: false },
         measuredPowerKw: 0,
         expectedPowerKw: 11,
@@ -197,7 +197,7 @@ describe('recordPowerSampleForApp', () => {
   it('does not record budget-exempt buckets for devices with capacity control disabled', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getDeviceSurfaces = () => ([
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
       {
         available: true,
         id: 'dev-budget',
@@ -259,7 +259,7 @@ describe('recordPowerSampleForApp', () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let observedAtMs = start;
-    const getDeviceSurfaces = () => ([
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
       {
         available: true,
         id: 'fresh-heater',
@@ -341,7 +341,7 @@ describe('recordPowerSampleForApp', () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let observedAtMs = start;
-    const getDeviceSurfaces = () => ([
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
       {
         available: true,
         id: 'idle-heater',
@@ -420,7 +420,7 @@ describe('recordPowerSampleForApp', () => {
     let observedAtMs = start;
     const getDeviceSurfaces = () => {
       const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
-      return [{
+      return deviceSurfacesFixtures([{
         available: true,
         id: 'heater-objective',
         expectedPowerKw: 1,
@@ -432,7 +432,7 @@ describe('recordPowerSampleForApp', () => {
         temperature: { currentTemperature, target },
         lastFreshDataMs: observedAtMs,
         measuredPowerKw: 2,
-      }];
+      }]);
     };
 
     // Mirrors the production wiring (`setup/powerSamplePipeline.ts`): the raw

@@ -38,6 +38,7 @@ describe('planExecutablePlan', () => {
     it('answers both questions for a stepped device parked at its off rung with the switch armed', () => {
       const observed = buildExecutableObservedDeviceStateFromSnapshot({
         available: true,
+        isEvCharger: false,
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: true },
@@ -55,13 +56,13 @@ describe('planExecutablePlan', () => {
 
     it('agrees on both fields for a pure-binary device', () => {
       const on = buildExecutableObservedDeviceStateFromSnapshot({
-        available: true, id: 'dev-1', name: 'Tank', binaryControl: { on: true }, targets: [],
+        available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', binaryControl: { on: true }, targets: [],
       });
       expect(on.observedBinaryAxis).toBe('on');
       expect(on.observedEffectiveOn).toBe(true);
 
       const off = buildExecutableObservedDeviceStateFromSnapshot({
-        available: true, id: 'dev-1', name: 'Tank', binaryControl: { on: false }, targets: [],
+        available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', binaryControl: { on: false }, targets: [],
       });
       expect(off.observedBinaryAxis).toBe('off');
       expect(off.observedEffectiveOn).toBe(false);
@@ -69,7 +70,7 @@ describe('planExecutablePlan', () => {
 
     it('reads an unobserved binary control as on — "may draw, stays sheddable"', () => {
       const unobserved = buildExecutableObservedDeviceStateFromSnapshot({
-        available: true, id: 'dev-1', name: 'Tank', targets: [],
+        available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', targets: [],
       });
       expect(unobserved.observedBinaryAxis).toBe('on');
       expect(unobserved.observedEffectiveOn).toBe(true);
@@ -139,6 +140,7 @@ describe('planExecutablePlan', () => {
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
       available: true,
+      isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
@@ -176,6 +178,7 @@ describe('planExecutablePlan', () => {
     // Observed moved off the floor (a person nudged it to 17) after the build.
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
       available: true,
+      isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
@@ -209,6 +212,7 @@ describe('planExecutablePlan', () => {
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
       available: true,
+      isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
@@ -241,6 +245,7 @@ describe('planExecutablePlan', () => {
     const intent = buildExecutableTargetIntent(coolingUnit);
     const observedAt = (value: number) => buildExecutableObservedDeviceStateFromSnapshot({
       available: true,
+      isEvCharger: false,
       id: 'ac-1',
       name: 'AC',
       binaryControl: { on: true },
@@ -286,7 +291,7 @@ describe('planExecutablePlan', () => {
     const evCharger = buildPlanDevice({
       id: 'ev-1',
       name: 'EV Charger',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
       plannedState: 'keep',
       currentState: 'on',
@@ -317,7 +322,7 @@ describe('planExecutablePlan', () => {
     const evCharger = buildPlanDevice({
       id: 'ev-1',
       name: 'EV Charger',
-      deviceClass: 'evcharger',
+      isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
       plannedState: 'keep',
       currentState: 'on',
@@ -455,6 +460,7 @@ describe('planExecutablePlan', () => {
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
       available: true,
+      isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },

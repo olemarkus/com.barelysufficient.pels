@@ -55,6 +55,11 @@ export const asOutputDevice = (
   } = materialized;
   return withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
+    // Producer-resolved and REQUIRED on the plan device, so absence never reads
+    // as "no": a fixture that says nothing is an ordinary on/off load.
+    deviceType: semantic.deviceType ?? 'onoff',
+    isEvCharger: semantic.isEvCharger ?? false,
+    observeOnly: semantic.observeOnly ?? false,
     control: fixtureControlPosture(loose),
     // Resolved from the UN-stripped bag: `binaryCapabilityId` and
     // `binaryControl` are destructured out above, and the producer's residual
@@ -122,6 +127,12 @@ export const inputDevice = (
   const materialized = withMaterializedEvPlugState(loose);
   return {
     ...materialized,
+    // Resolved by device configuration and the temperature facet, REQUIRED on
+    // planner input; a fixture that says nothing is an ordinary on/off load.
+    deviceType: materialized.deviceType ?? 'onoff',
+    isEvCharger: materialized.isEvCharger ?? false,
+    observeOnly: materialized.observeOnly ?? false,
+    starvationSupported: materialized.starvationSupported ?? false,
     residualKw: fixtureResidualKw(materialized),
     control: fixtureControlPosture(materialized),
     available: materialized.available ?? true,
@@ -181,7 +192,7 @@ export const buildEvDevice = (
   id: 'ev-1',
   name: 'EV Charger',
   plannedTarget: undefined,
-  deviceClass: 'evcharger',
+  isEvCharger: true,
   binaryCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
   deferredReleaseIntent: 'binary_restore',

@@ -15,6 +15,10 @@ const baseDevice = {
   expectedPowerKw: 1,
   controllable: true,
   available: true,
+  // Producer-resolved identity, required on the overview snapshot: a plain
+  // binary load with an on/off axis, not a charger.
+  binaryControllable: true,
+  isEvCharger: false,
   plannedState: 'keep',
   // The producer resolves an unmetered device to 0 kW, so that is the base case
   // here too — `currentDrawKw` is required on `DeviceOverviewSnapshot` and there

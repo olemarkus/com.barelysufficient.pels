@@ -68,8 +68,9 @@ export type DeviceOverviewSnapshot = {
    * numbers to display. Do not re-add it here to answer that question; the two
    * surfaces ask different ones.
    */
-  binaryControllable?: boolean;
-  deviceRole?: 'ev_charger';
+  binaryControllable: boolean;
+  /** Producer-resolved: the planner's `isEvCharger`, forwarded, never re-derived. */
+  isEvCharger: boolean;
   evChargingState?: EvChargingState;
   /**
    * The PRODUCER-RESOLVED current draw, never the raw `measure_power`

@@ -35,7 +35,8 @@ const DESCRIPTOR_KEY_RECORD: Record<keyof DeviceDescriptorRead, true> = {
     controlModel: true,
     controlAdapter: true,
     binaryControllable: true,
-    deviceRole: true,
+    isEvCharger: true,
+    observeOnly: true,
     suggestedSteppedLoadProfile: true,
     nativeWriteCapabilities: true,
     flowConflict: true,
@@ -58,6 +59,11 @@ export function projectDeviceDescriptor(source: DeviceDescriptorRead): DeviceDes
     const descriptor: DeviceDescriptorRead = {
         id: source.id,
         name: source.name,
+        deviceClass: source.deviceClass,
+        deviceType: source.deviceType,
+        isEvCharger: source.isEvCharger,
+        observeOnly: source.observeOnly,
+        binaryControllable: source.binaryControllable,
         expectedPowerKw: source.expectedPowerKw,
         expectedPowerSource: source.expectedPowerSource,
     };

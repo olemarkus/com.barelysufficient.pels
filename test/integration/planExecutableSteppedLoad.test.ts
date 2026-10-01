@@ -42,6 +42,8 @@ const buildObservedState = (
     measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
     ...overrides,
     available: overrides.available ?? true,
+    // The identity `readExecutorDevice` joins from device configuration.
+    isEvCharger: overrides.isEvCharger ?? device.isEvCharger,
   });
 };
 

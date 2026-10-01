@@ -71,9 +71,9 @@ export const resolveSteppedEvExceptionLabel = (device: {
   evChargingState?: EvChargingState;
   /** The associated car's own plug state; absent when no car is associated. */
   carChargingState?: EvChargingState;
-  deviceRole?: 'ev_charger';
+  isEvCharger: boolean;
 }): string | null => {
-  if (device.deviceRole !== 'ev_charger') return null;
+  if (!device.isEvCharger) return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
   if (state === EV_ROUTINE_STATE) return null;
   const commandedOn = isChargerCommandedOn(device.currentState);

@@ -3,11 +3,12 @@
 // editor against stub DOM handles and assert the row shows for exactly that
 // device, and that what it persists is the owner's pair.
 
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 type StubOption = { disabled: boolean; hidden: boolean; removeAttribute: () => void; setAttribute: () => void };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',
@@ -19,7 +20,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   powerCapable: true,
   expectedPowerKw: 1.5, expectedPowerSource: 'default',
   ...overrides,
-});
+}));
 
 const loadHarness = async () => {
   vi.resetModules();

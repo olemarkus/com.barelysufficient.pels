@@ -209,11 +209,10 @@ export function resolveBoostRequested(dev: BoostResolveInput): boolean {
  * `ExecutorDeviceSnapshot` in executor), never a whole `TargetDeviceSnapshot`.
  * Declaring the parameter as the full descriptor only type-checked for as long as
  * every descriptor field happened to be optional, so the first required one broke
- * both callers — and the `canSetOnOff` cast below existed for the same reason.
+ * both callers.
  */
 export type BinaryControlPlanInput = BinaryCapabilityResolveInput & {
   canSetControl?: boolean;
-  canSetOnOff?: boolean;
 };
 
 export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryControlPlan | null {
@@ -227,7 +226,6 @@ export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryC
       currentOn: snapshot.currentOn,
       capabilities: snapshot.capabilities,
       canSetControl: snapshot.canSetControl,
-      canSetOnOff: snapshot.canSetOnOff,
     }),
   };
 }
@@ -268,8 +266,7 @@ const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
 // -----------------------------------------------------------------------------
 // canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype
 // refactor). Mirrors the `canSet` computation inside `getBinaryControlPlan`
-// (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback for the
-// `onoff` capability) so executor consumers can read a single resolved flag
+// (`canSetControl !== false`) so executor consumers can read a single resolved flag
 // instead of round-tripping through `getBinaryControlPlan`.
 //
 // Kept separate from `commandableNow`: commandableNow answers "is the device
@@ -280,7 +277,6 @@ const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
 
 export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
   canSetControl?: boolean;
-  canSetOnOff?: boolean;
 };
 
 /**
@@ -288,8 +284,7 @@ export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
  * cycle. Returns `false` when:
  *  - the device exposes no resolvable binary capability (no `controlCapabilityId`,
  *    no matching entry in `capabilities`); or
- *  - `canSetControl === false`; or
- *  - the resolved capability is `onoff` and the legacy `canSetOnOff === false`.
+ *  - `canSetControl === false`.
  *
  * Mirrors `getBinaryControlPlan(snapshot)?.canSet ?? false` exactly so the
  * migrated `canTurnOnDevice` gate stays byte-for-byte equivalent for the
@@ -297,9 +292,7 @@ export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
  */
 export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
   if (!hasBinaryAxis(input)) return false;
-  if (input.canSetControl === false) return false;
-  if (input.canSetOnOff === false) return false;
-  return true;
+  return input.canSetControl !== false;
 }
 
 type CanSetControlConsumerInput = CanSetControlResolveInput & {

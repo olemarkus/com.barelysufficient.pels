@@ -37,13 +37,14 @@ const SOLAR_ID = 'solar';
 const HEATER_ID = 'heater';
 
 // A managed observe-only solar device, exactly as the producer stamps it: managed,
-// NON-controllable, class:'solarpanel', NO temperature target / control capability.
+// NON-controllable, observe-only (device configuration resolves that from class
+// 'solarpanel'), NO temperature target / control capability.
 const solarInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: SOLAR_ID,
     expectedPowerKw: 1,
     name: 'Solar Panel',
-    deviceClass: 'solarpanel',
+    observeOnly: true,
     deviceType: 'onoff',
     managed: true,
     controllable: false,
@@ -57,7 +58,8 @@ const heaterInputDevice = (): MeteredPlanInputDevice =>
   buildPlanInputDevice({
     id: HEATER_ID,
     name: 'Heater',
-    deviceClass: 'heater',
+    // Resolved from class 'heater' by device configuration.
+    starvationSupported: true,
     deviceType: 'temperature',
     managed: true,
     controllable: true,

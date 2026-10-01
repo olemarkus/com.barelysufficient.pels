@@ -9,9 +9,7 @@ export const supportsTemperatureObjective = (device: DecoratedDeviceSnapshot): b
   && (device.deviceType === 'temperature' || device.targets.length > 0)
 );
 
-export const isEvCharger = (device: DecoratedDeviceSnapshot): boolean => (
-  device.deviceClass === 'evcharger'
-);
+export const isEvCharger = (device: DecoratedDeviceSnapshot): boolean => device.isEvCharger;
 
 // A pure on/off device with a live power reading (a relay switching a water
 // heater): the shared gate every creation path asks.

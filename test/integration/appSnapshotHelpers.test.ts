@@ -15,6 +15,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { PowerSampleAdmission } from '../../lib/app/appContext';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { targetSnapshotFixtures, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
@@ -195,7 +196,7 @@ describe('appSnapshotHelpers', () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const syncLivePlanState = vi.fn(async () => false);
     const syncHeadroomCardState = vi.fn();
-    const snapshot: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[] = [{
+    const snapshot: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[] = transportSnapshotFixtures([{
       id: 'dev-1',
       name: 'Heater',
       targets: [],
@@ -204,7 +205,7 @@ describe('appSnapshotHelpers', () => {
       binaryControl: { on: true },
       expectedPowerKw: 1.2,
       measuredPowerKw: 1.2,
-    }];
+    }]);
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
@@ -244,6 +245,7 @@ describe('appSnapshotHelpers', () => {
       isEvCharger: false,
       managed: true,
       observeOnly: false,
+      starvationSupported: false,
       controllable: true,
       countsAsManagedUsage: true,
       currentOn: true,
@@ -269,7 +271,7 @@ describe('appSnapshotHelpers', () => {
     const emitSettingsUiDevicesUpdated = vi.fn(() => {
       callOrder.push('emitSettingsUiDevicesUpdated');
     });
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TargetDeviceSnapshot[] = targetSnapshotFixtures([{
       id: 'dev-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
@@ -278,7 +280,7 @@ describe('appSnapshotHelpers', () => {
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
-    }];
+    }]);
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
@@ -322,7 +324,7 @@ describe('appSnapshotHelpers', () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const settingsSeenByLivePlan: unknown[] = [];
     const settingsSeenByHeadroom: unknown[] = [];
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TargetDeviceSnapshot[] = targetSnapshotFixtures([{
       id: 'socket-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
@@ -333,7 +335,7 @@ describe('appSnapshotHelpers', () => {
       expectedPowerSource: 'default',
       managed: true,
       controllable: true,
-    }];
+    }]);
     const syncHeadroomCardState = vi.fn(() => {
       settingsSeenByHeadroom.push(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES));
     }) as unknown as PlanService['syncHeadroomCardState'] & ReturnType<typeof vi.fn>;
@@ -388,6 +390,7 @@ describe('appSnapshotHelpers', () => {
       isEvCharger: false,
       managed: true,
       observeOnly: false,
+      starvationSupported: false,
       controllable: true,
       // Missing power evidence does not alter the saved owner preference.
       countsAsManagedUsage: true,
@@ -401,7 +404,7 @@ describe('appSnapshotHelpers', () => {
     // Missing power evidence is not a durable device verdict, so the snapshot
     // settings pass must not overwrite the owner's managed choice here.
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
-    const snapshot: TargetDeviceSnapshot[] = [{
+    const snapshot: TargetDeviceSnapshot[] = targetSnapshotFixtures([{
       id: 'socket-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
@@ -410,7 +413,7 @@ describe('appSnapshotHelpers', () => {
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
-    }];
+    }]);
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),

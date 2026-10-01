@@ -24,6 +24,7 @@ import {
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/planTestUtils';
+import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -347,7 +348,7 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -392,7 +393,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 0.5,
         controllable: false,
       },
-    ]);
+    ]));
 
     const pendingStartedMs = Date.now();
     app.planEngine.state.pendingBinaryCommands['dev-pending'] = {
@@ -406,7 +407,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(3000);
     structuredEvents.length = 0;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -460,7 +461,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 1.8,
         controllable: false,
       },
-    ]);
+    ]));
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -529,22 +530,22 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(2000);
     structuredEvents.length = 0;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.5, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.2, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.0, controllable: true },
       { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.8, controllable: true },
-    ]);
+    ]));
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -575,7 +576,7 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerKw: 0,
@@ -587,7 +588,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 0.7,
         controllable: true,
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
@@ -597,7 +598,7 @@ describe('Device plan snapshot', () => {
       desired: false,
       startedMs: Date.now(),
     };
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerKw: 0,
@@ -609,7 +610,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 1.3,
         controllable: true,
       },
-    ]);
+    ]));
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -640,7 +641,7 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -652,7 +653,7 @@ describe('Device plan snapshot', () => {
         expectedPowerKw: 1.4,
         controllable: true,
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(2500);
     structuredEvents.length = 0;
@@ -663,7 +664,7 @@ describe('Device plan snapshot', () => {
       startedMs: Date.now(),
     };
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -675,7 +676,7 @@ describe('Device plan snapshot', () => {
         expectedPowerKw: 1.4,
         controllable: true,
       },
-    ]);
+    ]));
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -707,7 +708,7 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerKw: 0,
@@ -721,7 +722,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 0.7,
         controllable: true,
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
@@ -735,7 +736,7 @@ describe('Device plan snapshot', () => {
       nextRetryAtMs: Date.now() + 60_000,
       status: 'waiting_confirmation',
     };
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerKw: 0,
@@ -749,7 +750,7 @@ describe('Device plan snapshot', () => {
         measuredPowerKw: 1.2,
         controllable: true,
       },
-    ]);
+    ]));
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -1030,7 +1031,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1042,7 +1043,7 @@ describe('Device plan snapshot', () => {
         expectedPowerKw: 1.2,
         binaryControl: { on: true },
       },
-    ]);
+    ]));
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
     app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
@@ -1073,7 +1074,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         measuredPowerKw: 0,
@@ -1087,7 +1088,7 @@ describe('Device plan snapshot', () => {
         capabilities: ['onoff'],
         lastFreshDataMs: Date.now(),
       },
-    ]);
+    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -1113,7 +1114,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         measuredPowerKw: 0,
@@ -1126,7 +1127,7 @@ describe('Device plan snapshot', () => {
         binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
       },
-    ]);
+    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -1153,7 +1154,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         measuredPowerKw: 0,
@@ -1167,13 +1168,13 @@ describe('Device plan snapshot', () => {
         capabilities: ['onoff'],
         lastFreshDataMs: Date.now(),
       },
-    ]);
+    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
 
     await dev1.setCapabilityValue('onoff', false);
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         measuredPowerKw: 0,
@@ -1186,7 +1187,7 @@ describe('Device plan snapshot', () => {
         binaryCapabilityId: 'onoff',
         capabilities: ['onoff'],
       },
-    ]);
+    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
@@ -1733,7 +1734,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 1;
     app.computeDynamicSoftLimit = () => 1;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1760,7 +1761,7 @@ describe('Device plan snapshot', () => {
         controllable: true,
         priority: 10,
       },
-    ]);
+    ]));
 
     // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
     // stale, and these cases would then be exercising the fail-closed shed
@@ -1772,7 +1773,7 @@ describe('Device plan snapshot', () => {
     expect(initialShed).toEqual(['dev-2']);
 
     // Simulate the shed device turning off, but no new measurement arrives.
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -1799,7 +1800,7 @@ describe('Device plan snapshot', () => {
         controllable: true,
         priority: 10,
       },
-    ]);
+    ]));
 
     app.planEngine.state.actuation.lastRestoreMs = Date.now() - 60000;
     await app.planService.rebuildPlanFromCache('unknown');
@@ -1824,7 +1825,7 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
@@ -1834,11 +1835,11 @@ describe('Device plan snapshot', () => {
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       controllable: true,
-    }]);
+    }]));
 
     await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
@@ -1849,7 +1850,7 @@ describe('Device plan snapshot', () => {
       capabilities: ['onoff'],
       binaryControl: { on: true },
       controllable: true,
-    }]);
+    }]));
     await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(putSpy).toHaveBeenCalledTimes(1);
@@ -1864,7 +1865,7 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
@@ -1873,7 +1874,7 @@ describe('Device plan snapshot', () => {
       targets: [],
       capabilities: ['measure_power'],
       controllable: true,
-    }]);
+    }]));
 
     await executorOf(app).applySheddingToDevice('dev-1', 'No On/Off Device');
 
@@ -2034,7 +2035,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Only 1 kW available to shed
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -2046,7 +2047,7 @@ describe('Device plan snapshot', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync - Plan calls Guard methods directly
 
@@ -2122,7 +2123,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -2134,7 +2135,7 @@ describe('Device plan snapshot', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
@@ -2177,7 +2178,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -2189,7 +2190,7 @@ describe('Device plan snapshot', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
@@ -2413,7 +2414,7 @@ describe('Device plan snapshot', () => {
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -2427,7 +2428,7 @@ describe('Device plan snapshot', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
@@ -3168,7 +3169,7 @@ describe('Dry run mode', () => {
     const applyPlanSpy = vi.spyOn(app.planEngine, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3179,7 +3180,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     // Guard no longer needs explicit sync
     await app['powerSamplePipeline'].recordPowerSample(6000);
 
@@ -3212,7 +3213,7 @@ describe('Dry run mode', () => {
     });
 
     // Setup snapshot with a device that will be shed
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3225,7 +3226,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     // Guard no longer needs explicit sync
 
     // Set a low soft limit to trigger shedding
@@ -3425,7 +3426,7 @@ describe('Dry run mode', () => {
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Ensure the device is in snapshot with correct structure
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3437,7 +3438,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
 
     // A reading rebuilds the plan with the cheap price in force.
     await app['powerSamplePipeline'].recordPowerSample(1000);
@@ -3491,7 +3492,7 @@ describe('Dry run mode', () => {
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set();
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3504,7 +3505,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
@@ -3542,7 +3543,7 @@ describe('Dry run mode', () => {
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3555,7 +3556,7 @@ describe('Dry run mode', () => {
         expectedPowerKw: 1,
         binaryControl: { on: true },
       },
-    ]);
+    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -3604,7 +3605,7 @@ describe('Dry run mode', () => {
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3617,7 +3618,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
 
     // createApp seeds a fresh 0 kW sample; the 4 kW limit leaves room for the
     // first-seen load and isolates the price-versus-temperature behavior.
@@ -3831,7 +3832,7 @@ describe('Dry run mode', () => {
       await dev2.setCapabilityValue('target_temperature', 15);
     }
     // Refresh snapshot so the plan sees the new shed temperature.
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -3864,7 +3865,7 @@ describe('Dry run mode', () => {
         binaryControl: { on: true },
         controllable: true,
       },
-    ]);
+    ]));
 
     // 3. Trigger another overshoot.
     // Total power still 2kW (heater might still run at lower temp).
@@ -4046,19 +4047,21 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    // `canSetOnOff` is the legacy setability input (`BinaryControlPlanInput`);
-    // it is live in the projection but not declared on the snapshot type, so
-    // the fixture widens the element type to carry it explicitly.
-    const readOnlyRelay: TransportDeviceSnapshot & { canSetOnOff: boolean } = {
+    const readOnlyRelay: TransportDeviceSnapshot = {
       id: 'dev-1',
       name: 'Read-only relay',
+      deviceClass: 'socket',
+      deviceType: 'onoff',
+      isEvCharger: false,
+      observeOnly: false,
+      binaryControllable: true,
       targets: [],
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
-      canSetOnOff: false,
+      canSetControl: false,
       binaryControl: { on: true },
       controllable: true,
     };
@@ -4092,7 +4095,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
       deviceType: 'temperature',
@@ -4116,7 +4119,7 @@ describe('Dry run mode', () => {
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
-    }]);
+    }]));
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4164,7 +4167,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
       deviceType: 'temperature',
@@ -4188,7 +4191,7 @@ describe('Dry run mode', () => {
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
-    }]);
+    }]));
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4237,7 +4240,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
       id: 'dev-1',
       name: 'Failing device',
       targets: [],
@@ -4259,7 +4262,7 @@ describe('Dry run mode', () => {
       available: true,
       expectedPowerKw: 0,
       expectedPowerSource: 'default',
-    }]);
+    }]));
 
     const callback = vi.fn().mockImplementation(async (deviceId: string) => {
       if (deviceId === 'dev-1') {
@@ -4342,7 +4345,7 @@ describe('Dry run mode', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -4371,7 +4374,7 @@ describe('Dry run mode', () => {
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),
       },
-    ]);
+    ]));
 
     // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
     // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
@@ -4420,7 +4423,7 @@ describe('Dry run mode', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
-    app.deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
       {
         available: true,
         expectedPowerSource: 'default',
@@ -4449,7 +4452,7 @@ describe('Dry run mode', () => {
         expectedPowerKw: 0.6,
         lastFreshDataMs: Date.now(),
       },
-    ]);
+    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(200);
 

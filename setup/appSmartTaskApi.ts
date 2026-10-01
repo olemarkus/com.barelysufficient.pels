@@ -1,7 +1,7 @@
 import type { AppContext } from '../lib/app/appContext';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import {
@@ -237,7 +237,7 @@ export class AppSmartTaskApi {
   private resolveValidatedObjectiveEntry(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true; device: TargetDeviceSnapshot; entry: DeferredObjectiveSettingsEntry } | {
+  ): { ok: true; device: PlanInputSnapshotDevice; entry: DeferredObjectiveSettingsEntry } | {
     ok: false;
     reason: SmartTaskWriteRejectReason;
   } {

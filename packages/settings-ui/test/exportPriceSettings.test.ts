@@ -1,3 +1,5 @@
+import type { SettingsUiDeviceView } from '../src/ui/state.ts';
+import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 // The extra homey exports (callApi/getApiReadModel/primeApiCache/
@@ -316,7 +318,7 @@ describe('Price-aware devices power support (via priceConfig)', () => {
 
   it('lists a thermostat without power support, since PELS still applies its price shift', async () => {
     const { state } = await import('../src/ui/state.ts');
-    state.latestDevices = [
+    state.latestDevices = withDescriptorIdentities<SettingsUiDeviceView>([
       {
         id: 'unsupported',
         name: 'Unsupported thermostat',
@@ -335,7 +337,7 @@ describe('Price-aware devices power support (via priceConfig)', () => {
         powerCapable: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       },
-    ];
+    ]);
     state.managedMap = { unsupported: true, supported: true };
     const stored: Record<string, unknown> = {
       price_optimization_settings: {

@@ -30,8 +30,6 @@ import { MAX_TARGET_ENERGY_KWH, MIN_TARGET_ENERGY_KWH } from './settings/deferre
 // have one answer.
 
 export type SmartTaskDeviceLike = {
-  deviceClass?: string;
-  deviceType?: 'temperature' | 'onoff';
   temperatureControlDisabled?: true;
   temperatureAdjustmentsDisabled?: true;
   temperature?: {
@@ -44,26 +42,24 @@ export type SmartTaskDeviceLike = {
   // `ObservedStateOfCharge` makes the next such change a build error here, and
   // keeps one spelling across every consumer of a resolved level.
   stateOfCharge?: ObservedStateOfCharge;
-// The facts that say a device is a pure on/off load: an on/off axis, and no
-// target, stepped ladder or charger role on top of it. Named off the contract
-// so a change to any of them is a build error here. The stepped ladder is read
-// through its cluster (`isSteppedLoadSnapshot`), which the snapshot carries
-// physically; callers holding the base type pass it unchanged.
-} & Pick<DeviceDescriptor, 'binaryControllable' | 'deviceRole'>
+// The resolved identity facts, named off the contract and required there, so a
+// carrier that lacks one is a build error rather than a device that silently
+// reads as "not a charger". The raw class is not here on purpose: planner input
+// does not carry it, and reading it there classed every EV charger as
+// ineligible. The stepped ladder is read through its cluster
+// (`isSteppedLoadSnapshot`), which the snapshot carries physically; callers
+// holding the base type pass it unchanged.
+} & Pick<DeviceDescriptor, 'isEvCharger' | 'binaryControllable'>
   & Pick<ObservedDeviceState, 'targets'>
   & SteppedLoadDescriptorProbe;
 
-const isEvCharger = (device: SmartTaskDeviceLike): boolean => device.deviceClass === 'evcharger';
-
 // A pure on/off load: a relay switching a water heater, a plug, a pump. It can
 // be on or off and nothing else, so running it is all a smart task can do with
-// it, and the only goal it can carry is an amount of energy. A device with a
-// charger role is not one, whatever its class: it is excluded here rather than
-// counted as an EV above, which would change which devices take an EV task.
+// it, and the only goal it can carry is an amount of energy. A charger is never
+// one: it takes an EV goal.
 const isPureBinaryDevice = (device: SmartTaskDeviceLike): boolean => (
-  device.binaryControllable === true
-  && device.deviceRole !== 'ev_charger'
-  && device.deviceType !== 'temperature'
+  device.binaryControllable
+  && !device.isEvCharger
   && device.targets.length === 0
   && !isSteppedLoadSnapshot(device)
 );
@@ -79,7 +75,7 @@ const supportsTemperatureGoal = (device: SmartTaskDeviceLike): boolean => (
 export const resolveSmartTaskDeviceKind = (
   device: SmartTaskDeviceLike,
 ): DeferredObjectiveSettingsKind | null => {
-  if (isEvCharger(device)) return 'ev_soc';
+  if (device.isEvCharger) return 'ev_soc';
   if (device.temperatureControlDisabled === true || device.temperatureAdjustmentsDisabled === true) return null;
   if (supportsTemperatureGoal(device)) return 'temperature';
   if (isPureBinaryDevice(device)) return 'energy';

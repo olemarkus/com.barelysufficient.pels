@@ -20,10 +20,10 @@ import { hasTemperaturePolicyPowerControl } from '../device/temperatureControlPo
  * dep-cruiser rule).
  */
 import type {
-  DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
   RestorePowerSource,
 } from '../../packages/contracts/src/types';
+import type { ToPlanDeviceInput } from './planInputDeviceTypes';
 import {
   resolveResidualKwRestore,
   resolveResidualKwShed,
@@ -46,7 +46,7 @@ export type { ResidualKwForPlanDeviceShedBehavior } from '../../lib/device/tempe
 import type { ResidualKwForPlanDeviceShedBehavior } from '../../lib/device/temperatureControlPosture';
 
 export function buildResidualKwForPlanDevice(params: {
-  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
+  device: ToPlanDeviceInput & MeasuredPowerObservedProbe;
   hasBinaryControl: boolean;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
@@ -75,7 +75,7 @@ export function buildResidualKwForPlanDevice(params: {
 }
 
 function toRestoreSteppedLoad(
-  device: DecoratedDeviceSnapshot,
+  device: ToPlanDeviceInput,
 ): ResidualKwRestoreSteppedDevice | undefined {
   if (!isSteppedLoadSnapshot(device)) return undefined;
   // The `currentState !== 'off'` question the restore ladder asks.
@@ -109,7 +109,7 @@ function toResidualShedBehavior(
 }
 
 function toResidualSteppedLoad(
-  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
+  device: ToPlanDeviceInput & MeasuredPowerObservedProbe,
   currentDrawKw: number,
   hasBinaryControl: boolean,
 ): ResidualKwShedSteppedDevice | undefined {
@@ -129,7 +129,7 @@ function toResidualSteppedLoad(
 }
 
 function toResidualTemperatureTarget(
-  device: DecoratedDeviceSnapshot,
+  device: ToPlanDeviceInput,
 ): ResidualKwShedTemperatureTarget | undefined {
   // Taking `targets[0]` is safe because the parse seam already made the list
   // atomic with the facet: `managerParseDeviceFields.ts` writes

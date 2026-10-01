@@ -4,7 +4,8 @@
  * `deviceType` / `deviceClass` literals. Same vocabulary-containment goal as
  * `isEvDevice` (`commandableNow.ts`): the kind vocabulary lives here
  * (browser-safe), and consumers stay abstract — they ask "is this a temperature
- * device / a starvation-eligible class?" without knowing the literal values.
+ * device?" without knowing the literal values. (Starvation eligibility is
+ * resolved by device configuration into `starvationSupported`.)
  *
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
@@ -17,21 +18,3 @@
 export const isTemperatureControlDevice = (
   dev: { deviceType?: string | null } | null | undefined,
 ): boolean => dev?.deviceType === 'temperature';
-
-/**
- * Thermostat-family device classes whose "held below target" condition PELS
- * surfaces as a starvation diagnostic. Owned here (not in `lib/plan`) so the
- * planner reads the predicate, never the class set.
- */
-const STARVATION_SUPPORTED_DEVICE_CLASSES: ReadonlySet<string> = new Set([
-  'thermostat',
-  'heater',
-  'heatpump',
-  'airconditioning',
-  'airtreatment',
-]);
-
-/** Whether a device class is one PELS reports starvation for. Case-insensitive. */
-export const isStarvationSupportedDeviceClass = (deviceClass: string | null | undefined): boolean => (
-  STARVATION_SUPPORTED_DEVICE_CLASSES.has((deviceClass ?? '').trim().toLowerCase())
-);

@@ -1,3 +1,4 @@
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SteppedLoadDescriptorProbe, TargetDeviceSnapshot } from '../../contracts/src/types';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../contracts/src/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
@@ -49,7 +50,7 @@ const buildDom = () => {
 
 type TestDevice = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
 
-const buildDevice = (overrides: Partial<TestDevice> = {}): TestDevice => ({
+const buildDevice = (overrides: Partial<TestDevice> = {}): TestDevice => (withDescriptorIdentity<TestDevice>({
   available: true,
   id: 'heater-1',
   name: 'Hall Heater',
@@ -61,7 +62,7 @@ const buildDevice = (overrides: Partial<TestDevice> = {}): TestDevice => ({
   binaryControl: { on: true },
   capabilities: ['onoff'],
   ...overrides,
-});
+}));
 
 const mockCollaborators = () => {
   vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));

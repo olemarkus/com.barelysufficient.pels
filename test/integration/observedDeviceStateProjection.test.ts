@@ -8,6 +8,7 @@ import { ObservedDeviceStateProjection } from '../../lib/observer/observedDevice
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type { Logger } from '../../lib/utils/types';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type {
@@ -164,14 +165,14 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     });
 
     it('projects the complete exact-step observation cluster', () => {
-        const snapshot: TransportDeviceSnapshot = { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+        const snapshot: TransportDeviceSnapshot = transportSnapshotFixture({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
             id: 'ev-1',
             name: 'Charger',
             targets: [],
             reportedStepId: '25a',
             reportedStepPowerW: 5_750,
             reportedStepObservedAtMs: 2_000,
-        };
+        });
         const projected: ObservedDeviceState & ReportedStepObservedProbe = projectObservedState(snapshot);
 
         expect(projected).toMatchObject({
@@ -446,7 +447,11 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(h.projection.getObservedState('dev1')).toBeUndefined();
 
         h.transport.setSnapshotForTests([
-            { id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true }, expectedPowerKw: 1 },
+            {
+                id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true }, expectedPowerKw: 1,
+                deviceClass: 'socket', deviceType: 'onoff', isEvCharger: false, binaryControllable: true,
+                observeOnly: false,
+            },
         ] as unknown as Parameters<typeof h.transport.setSnapshotForTests>[0]);
 
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);

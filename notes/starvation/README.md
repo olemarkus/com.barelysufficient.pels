@@ -251,7 +251,7 @@ A device is eligible only when all are true:
 
 - supported by PELS
 - `deviceType === 'temperature'`
-- `deviceClass` is one of `thermostat`, `heater`, `heatpump`, `airconditioning`, `airtreatment`
+- `deviceClass` is one of `thermostat`, `heater`, `heatpump`, `airconditioning`, `airtreatment` (resolved once by device configuration into `starvationSupported`; the planner reads that flag, never the class)
 - device is managed
 - device is capacity-controlled
 - device is available

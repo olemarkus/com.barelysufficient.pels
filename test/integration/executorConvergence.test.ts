@@ -1,5 +1,19 @@
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
-import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorConvergence';
+import {
+  hasLiveStateDivergedFromSnapshot,
+  hasPlanExecutionDriftAgainstIntent,
+} from '../../lib/executor/executorConvergence';
+import type Homey from 'homey';
+import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import { projectObservedState } from '../../lib/device/observedStateProjection';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { mockHomeyInstance } from '../mocks/homey';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { hasPlanDeviceExecutionDrift } from '../../lib/executor/planExecutionDrift';
 import { splitPlanInputDevice } from '../utils/driftObservationTestUtils';
 import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
@@ -244,6 +258,9 @@ describe('executorConvergence stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
         name: 'EV Charger',
+        // The charger identity device configuration resolves from class
+        // `evcharger`: the plug-state gate reads it, never the binary axis.
+        isEvCharger: true,
         binaryControl: { on: false },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
@@ -258,6 +275,9 @@ describe('executorConvergence stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
         name: 'EV Charger',
+        // The charger identity device configuration resolves from class
+        // `evcharger`: the plug-state gate reads it, never the binary axis.
+        isEvCharger: true,
         binaryControl: { on: true },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
@@ -277,6 +297,9 @@ describe('executorConvergence stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
         name: 'EV Charger',
+        // The charger identity device configuration resolves from class
+        // `evcharger`: the plug-state gate reads it, never the binary axis.
+        isEvCharger: true,
         binaryControl: { on: true },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
@@ -294,6 +317,9 @@ describe('executorConvergence stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
         name: 'EV Charger',
+        // The charger identity device configuration resolves from class
+        // `evcharger`: the plug-state gate reads it, never the binary axis.
+        isEvCharger: true,
         binaryControl: { on: true },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
@@ -901,5 +927,130 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     // where the plan wants it. No binary axis is demanded, so no drift.
     expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
+  });
+});
+
+/**
+ * Drift through the executor's OWN reads: `PlanExecutor.driftObservationDeps()`,
+ * which joins the device-configuration identity (`isEvCharger`) with the Observer
+ * record (`readExecutorDevice`), instead of a fixture-built observation. The
+ * devices are raw Homey reads parsed by the real transport, configured by the
+ * real `DeviceConfigurationStore`, and observed through the real Observer
+ * projection, the way `createPlanEngine` wires the executor.
+ *
+ * A planned binary restore is drift only while the device is off AND can be
+ * commanded. An unplugged charger cannot be, but only a read that knows it is a
+ * charger asks its plug state: read off the bare Observer record, every charger
+ * was "not a charger", and its restore drifted forever.
+ */
+describe('executor drift through PlanExecutor.driftObservationDeps', () => {
+  const noop = (): void => undefined;
+  const loggerMock: Logger = {
+    log: noop,
+    debug: noop,
+    error: noop,
+    structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
+  };
+  // Homey dates every capability value it reports.
+  const lastUpdated = new Date().toISOString();
+
+  // Nothing here says "charger" but the class.
+  const unpluggedCharger: HomeyDeviceLike = {
+    id: 'ev-1',
+    name: 'Driveway charger',
+    class: 'evcharger',
+    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+    capabilitiesObj: {
+      evcharger_charging: { value: false, setable: true, lastUpdated },
+      evcharger_charging_state: { value: 'plugged_out', lastUpdated },
+      measure_power: { value: 0, lastUpdated },
+    },
+    available: true,
+    ready: true,
+  };
+
+  const offSocket: HomeyDeviceLike = {
+    id: 'socket-1',
+    name: 'Garage socket',
+    class: 'socket',
+    capabilities: ['onoff', 'measure_power'],
+    capabilitiesObj: {
+      onoff: { value: false, setable: true, lastUpdated },
+      measure_power: { value: 0, lastUpdated },
+    },
+    available: true,
+    ready: true,
+  };
+
+  const buildExecutor = (): PlanExecutor => {
+    const parsed = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      loggerMock,
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+    ).parseDeviceListForTests([unpluggedCharger, offSocket]);
+    const configuration = new DeviceConfigurationStore();
+    configuration.replace(parsed);
+    const observedById = new Map(parsed.map((snapshot) => [snapshot.id, projectObservedState(snapshot)]));
+    const state = createPlanEngineState();
+    const deps: PlanExecutorDeps = {
+      getHomeDisplayName: () => 'Main home',
+      homeId: 'main',
+      setCapacityInShortfall: vi.fn(),
+      persistLastControlledMs: vi.fn(),
+      getDeviceConfiguration: (deviceId) => configuration.get(deviceId),
+      getDeviceConfigurations: () => configuration.getAll(),
+      getObservationRevision: () => 0,
+      getObservedState: (deviceId) => observedById.get(deviceId),
+      actuator: createDeviceActuator({
+        canTurnOnDevice: () => true,
+        resolveTemperatureTarget: (_deviceId, desired) => desired,
+        requestBinaryControl: vi.fn(async () => undefined),
+        requestTemperatureTarget: async (_deviceId, desired) => desired,
+        requestSteppedLoadStep: vi.fn(async () => ({ requested: true, transport: 'native_capability' as const })),
+      }),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getPowerTracker: () => ({}),
+      getCapacityPaceKw: () => 9.5,
+      getShortfallThresholdKw: () => 0,
+      getCapacityDryRun: () => false,
+      getOperatingMode: () => 'Home',
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      markSteppedLoadDesiredStepIssued: vi.fn(),
+      getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    };
+    return new PlanExecutor(deps, state);
+  };
+
+  // The same planned restore for either device; only the device differs. The
+  // plan carries no target, so any drift reported is the binary axis.
+  const restorePlanFor = (device: { id: string; name: string; binaryCapabilityId: string; isEvCharger: boolean }) => (
+    buildPlan([buildBinaryDevice({
+      ...device,
+      currentState: 'off',
+      plannedState: 'keep',
+      plannedTarget: undefined,
+      deferredReleaseIntent: 'binary_restore',
+    })])
+  );
+
+  it('reads the charger identity from configuration and its plug state from the Observer', () => {
+    const observed = buildExecutor().driftObservationDeps().getObservedState('ev-1');
+    expect(observed).toMatchObject({ id: 'ev-1', isEvCharger: true, evChargingState: 'plugged_out' });
+  });
+
+  it('reports no drift for a planned restore of an unplugged charger', () => {
+    const plan = restorePlanFor({
+      id: 'ev-1', name: 'Driveway charger', binaryCapabilityId: 'evcharger_charging', isEvCharger: true,
+    });
+    expect(hasPlanExecutionDriftAgainstIntent(plan, buildExecutor().driftObservationDeps())).toBe(false);
+  });
+
+  it('reports drift for the same planned restore of a plain on/off device observed off', () => {
+    const plan = restorePlanFor({
+      id: 'socket-1', name: 'Garage socket', binaryCapabilityId: 'onoff', isEvCharger: false,
+    });
+    expect(hasPlanExecutionDriftAgainstIntent(plan, buildExecutor().driftObservationDeps())).toBe(true);
   });
 });

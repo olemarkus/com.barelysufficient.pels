@@ -12,7 +12,7 @@ import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src
 type EvCard = Parameters<typeof resolveSteppedEvExceptionLabel>[0];
 
 const card = (overrides: Partial<EvCard> = {}): EvCard => ({
-  deviceRole: 'ev_charger',
+  isEvCharger: true,
   evChargingState: 'plugged_in',
   currentState: 'on',
   ...overrides,

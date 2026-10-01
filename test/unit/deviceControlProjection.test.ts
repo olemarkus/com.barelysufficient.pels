@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import {
-  decorateSnapshotWithDeviceControl,
-  type DeviceControlProjectionSource,
-} from '../../lib/planInput/deviceControlProjection';
+import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
+import type { RuntimeDeviceRead } from '../../lib/planInput/runtimeDeviceRead';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 
-const snapshot: DeviceControlProjectionSource = {
+// Planner input as production hands it to the decorator: configuration joined
+// with the Observer record, so resolved identity facts and no inventory class.
+const snapshot: RuntimeDeviceRead = {
   available: true,
   id: 'dev-1',
   name: 'Water heater',
   targets: [],
-  deviceType: 'onoff',
+  binaryControllable: true,
+  observeOnly: false,
+  isEvCharger: false,
+  starvationSupported: false,
   controlModel: 'stepped_load',
   binaryControl: { on: false },
   expectedPowerKw: 1,

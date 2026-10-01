@@ -4,13 +4,14 @@
 // setDeviceDetailShedBehavior against stub DOM handles and assert which of the
 // two presentations wins and with which sentence.
 
+import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 type StubOption = { disabled: boolean; hidden: boolean };
 
 const buildDevice = (
   overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({
+): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',
@@ -23,7 +24,7 @@ const buildDevice = (
   powerCapable: true,
   expectedPowerKw: 1.5, expectedPowerSource: 'default',
   ...overrides,
-});
+}));
 
 const loadShedStatementHarness = async () => {
   vi.resetModules();
