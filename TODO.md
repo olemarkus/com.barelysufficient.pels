@@ -1391,13 +1391,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       copy so runtime logs and UI cannot drift. Pre-existing since May 2026. Source: starvation
       classification work, 2026-08-08. [P3]
 
-- [ ] **A switched-off EV charger's reason line may restate its own state word.**
+- [ ] **A switched-off EV charger's fact line may restate its own state word.**
       With signal-2 gating (2026-08-04), a charger the owner switched off renders the state word
-      `Off` above the reason line `Not charging` — close to saying the same thing twice, the failure
+      `Off` above the fact line `Not charging` — close to saying the same thing twice, the failure
       mode that retired `Turned off by PELS`. It clearly earns the slot on the case that motivated
       the gate (state word `Manual`, where nothing else names the plug state), so the fix is
-      conditional, not a revert: suppress `resolveSteppedEvExceptionLabel`'s idle label when the
-      display state word is already `Off`. Persona: owner glancing at a charger they unplugged from
+      conditional, not a revert: in `resolveFactText` (`lib/plan/deviceStatusReadModel.ts`),
+      drop `resolveSteppedEvExceptionLabel`'s idle label when the display state word is already
+      `Off`. Done when an `Off` charger plugged in but idle shows no `Not charging`
+      fact. Persona: owner glancing at a charger they unplugged from
       the app. *Hypothesis:* the pair reads as padding at `Off` and as information at `Manual`, so
       gating on the state word keeps the informative case without the echo. Source: 2026-08-04
       `pels-copy-and-terminology` pass on the signal-2 change. [P3]

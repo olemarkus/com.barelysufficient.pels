@@ -1,4 +1,4 @@
-import { emitDeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
+import { DeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
 import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
@@ -43,7 +43,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         value: { currentTarget: 16, currentTemperature: 20.8 } }),
     };
     const snapshot = buildSettingsOverviewReadModel(plan, deps)!;
-    const changed = emitDeviceOverviewTransitions(snapshot, new Map(), {
+    const changed = new DeviceOverviewTransitions().capture(snapshot, {
       deviceOverviewLogRecorder: { record: (deviceId: string, entry: Record<string, unknown>) => {
         captured.push({ deviceId, entry });
       } } as never,
@@ -82,7 +82,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     };
     const captured: Record<string, unknown>[] = [];
 
-    emitDeviceOverviewTransitions(buildSettingsOverviewReadModel(stalePlan, deps)!, new Map(), {
+    new DeviceOverviewTransitions().capture(buildSettingsOverviewReadModel(stalePlan, deps)!, {
       ...deps,
       deviceOverviewLogRecorder: {
         record: (_deviceId: string, entry: Record<string, unknown>) => captured.push(entry),

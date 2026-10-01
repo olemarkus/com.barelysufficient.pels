@@ -45,6 +45,9 @@ type OverviewProps = {
   // nothing — no active tasks and no recent misses). Resolved in the
   // orchestrator (`planRedesign.ts`) so this view stays props-in.
   smartTaskRow: OverviewSmartTaskRow | null;
+  // Each charger's EV smart-task line, keyed by device id; the on/off card shows
+  // it when its status carries no reason. Resolved in the orchestrator.
+  evStateLines: ReadonlyMap<string, string>;
   // Explicit first-run setup state for the Main home. Meter areas resolve to
   // `complete`; Main remains `loading` until every required fact arrives.
   // Resolved in the orchestrator so this view stays props-in.
@@ -96,10 +99,12 @@ const PlanCard = ({
   dev,
   dryRun,
   nowMs,
+  evStateLine,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
   nowMs: number;
+  evStateLine: string | null;
 }) => {
   // The backend resolves card kind, including devices with a stored step ladder.
   if (dev.status.cardKind === 'stepped') {
@@ -108,7 +113,7 @@ const PlanCard = ({
   if (isTemperatureCard(dev)) {
     return <PlanTemperatureCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
   }
-  return <PlanGenericCard dev={dev} dryRun={dryRun} nowMs={nowMs} />;
+  return <PlanGenericCard dev={dev} dryRun={dryRun} nowMs={nowMs} evStateLine={evStateLine} />;
 };
 
 /**
@@ -146,7 +151,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, setupPath,
+  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, evStateLines, setupPath,
   context, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
@@ -233,6 +238,7 @@ const PlanOverviewRoot = ({
               dev={row.plan}
               dryRun={context.dryRun}
               nowMs={nowMs}
+              evStateLine={evStateLines.get(row.device.id) ?? null}
             />
           ) : (
             <PlanUndecidedCard key={row.device.id} row={row} />

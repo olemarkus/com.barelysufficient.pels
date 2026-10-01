@@ -60,16 +60,19 @@ export class TargetPowerCommandLifecycle {
   private reconcileDevice(device: ReachabilityDevice, nowMs: number): void {
     const configuration = this.owner.readProbeConfiguration(device.id);
     const desired = this.store.getDesired(device.id);
+    // Acknowledged probes and unacknowledged EV writes alike carry planning watts;
+    // both are retired here when the planner's ladder no longer represents them.
     if (configuration.kind === 'unconfigured') {
-      if (desired?.targetPowerProbeConfirmedMaxPowerW !== undefined) this.store.clearCommandSession(device.id);
+      if (desired?.planningPowerW !== undefined) this.store.clearCommandSession(device.id);
       return;
     }
     const evidence = device.reportedStepPowerW !== undefined && device.reportedStepObservedAtMs !== undefined
       ? { planningPowerW: device.reportedStepPowerW, observedAtMs: device.reportedStepObservedAtMs }
       : undefined;
-    if (desired?.targetPowerProbeConfirmedMaxPowerW !== undefined) {
+    if (desired?.planningPowerW !== undefined) {
       const currentPowers = this.owner.resolveIssuedStepPowers({ deviceId: device.id, desiredStepId: desired.stepId,
-        previousStepId: desired.previousStepId, issuedAtMs: desired.targetPowerProbeStartedAtMs });
+        previousStepId: desired.previousStepId,
+        issuedAtMs: desired.targetPowerProbeStartedAtMs ?? desired.lastIssuedAtMs ?? desired.changedAtMs });
       if (currentPowers.planningPowerW !== desired.planningPowerW) {
         this.store.clearCommandSession(device.id);
         return;

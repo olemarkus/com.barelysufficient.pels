@@ -261,13 +261,16 @@ reason line: the temperature fact already shows the measured value and target.
 In particular, do not revive `Holding near setpoint`; a device can legitimately
 be idle after overshooting far above a lowered target, where “near” is false.
 
-### EV charger exception labels (stepped card reason slot)
+### EV charger exception labels (stepped card fact line)
 
-An EV charger's exceptional charging states render in the reason slot when no
-status line claims it (source: `resolveSteppedEvExceptionLabel` in
-`planSteppedCardText.ts`): `Paused`, `Discharging`, `Unplugged`, and the
-plugged-in-idle pair below. Routine charging folds into the fact line
-(`Charging · level 16 A`) instead.
+An EV charger's exceptional charging states lead the status fact line, before the
+level (source: `resolveSteppedEvExceptionLabel` in `planSteppedCardText.ts`, joined
+in `resolveFactText` in `lib/plan/deviceStatusReadModel.ts`): `Paused`,
+`Discharging`, `Unplugged`, and the plugged-in-idle pair below, e.g.
+`Unplugged · Level 16 A`. They are facts about the plug, so they show whatever PELS
+decided, also for a charger with Power-limit control off and beside a hold reason;
+the reason slot stays with what the device needs. Routine charging folds into the
+same line as `Charging · level 16 A` (lower-case level after the charging word).
 
 The plugged-in-idle state (`plugged_in`) discriminates on the charger's own
 on/off capability (`evcharger_charging`), because the plug state only states a

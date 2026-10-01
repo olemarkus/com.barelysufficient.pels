@@ -293,10 +293,14 @@ export const PlanGenericCard = ({
   dev,
   dryRun,
   nowMs,
+  evStateLine,
 }: {
   dev: PlanDeviceSnapshot;
   dryRun: boolean;
   nowMs: number;
+  // The charger's EV smart-task line, resolved by the orchestrator; null when
+  // the device has none.
+  evStateLine: string | null;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
@@ -313,7 +317,9 @@ export const PlanGenericCard = ({
   const powerReadout: PowerReadout | null = presentation.powerText === null ? null
     : { text: presentation.powerText, variant: presentation.powerVariant };
   const displayName = formatDisplayDeviceName(dev.name);
-  const singleReason = presentation.reason?.text ?? '';
+  // One reason line per card: the device's own reason wins; a charger's EV
+  // smart-task line fills the slot only when no reason renders.
+  const singleReason = presentation.reason?.text ?? evStateLine ?? '';
 
   return (
     <article
