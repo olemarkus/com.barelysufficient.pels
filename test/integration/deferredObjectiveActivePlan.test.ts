@@ -21,6 +21,7 @@ import {
   buildTaskAllocationContextSignature,
 } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { buildReservationSegmentsFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
+import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 
 // Legacy persisted revisions predate the `energyNeededKWh`/`planStatus` fields;
 // the backfill path tolerates their absence. Cast each legacy fixture revision
@@ -171,6 +172,76 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it('preserves a sub-Wh booking and its physical reservation across persistence and frozen serving', () => {
+    const nowMs = 3 * HOUR_MS - 1000;
+    const bookedKWh = 1.25 / 3600;
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    const diagnostic = makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 8,
+      kwhPerUnitLastAcceptedAtMs: nowMs,
+      horizonPlan: makeHorizon([
+        makeBucket(nowMs, bookedKWh, {
+          current: true,
+          endMs: 3 * HOUR_MS,
+          durationHours: 1 / 3600,
+          plannedAdmissionPowerKw: 1.25,
+        }),
+        makeBucket(3 * HOUR_MS, 0.5, { plannedAdmissionPowerKw: 1.25 }),
+      ]),
+    });
+    recorder.observe([diagnostic], nowMs);
+    recorder.flushIfDirty();
+    const restored = normalizeDeferredObjectiveActivePlans(persist.saved());
+    const latest = restored.plansByDeviceId.dev!.latest!;
+    expect(latest.hours[0]?.plannedKWh).toBe(bookedKWh);
+    expect(latest.reservationSegments?.[0]).toMatchObject({
+      startMs: nowMs, endMs: 3 * HOUR_MS,
+      plannedKWh: bookedKWh, plannedAdmissionPowerKw: 1.25,
+    });
+    const frozen = buildFrozenHorizonPlan({
+      nowMs: nowMs + 500,
+      objectiveId: 'dev:temperature',
+      objectiveKind: 'temperature',
+      enforcement: 'soft',
+      deadlineAtMs: 6 * HOUR_MS,
+      deadlineMarginMs: 0,
+      committedHours: latest.hours,
+      planStatus: latest.planStatus,
+      floorShortfallCause: 'none',
+      budgetContributedToShortfall: false,
+      energyNeededKWh: 0.5,
+      aheadOfHourMilestone: false,
+      steps: [{ id: 'low', usefulPowerKw: 1.25, admissionPowerKw: 1.25 }],
+      epsilonKWh: 0.001,
+    });
+    expect(frozen.currentHourClaim).toBe('claimed');
+    expect(frozen.expectedStepId).toBe('low');
+
+    for (const activePlans of [undefined, restored, {
+      ...restored,
+      plansByDeviceId: { dev: {
+        ...restored.plansByDeviceId.dev!,
+        latest: { ...latest, reservationSegments: undefined },
+      } },
+    }]) {
+      const reservations = buildPriorityReservations({
+        diagnostic: activePlans ? { ...diagnostic, horizonPlan: frozen } : diagnostic,
+        objective: {
+          enabled: true, kind: 'temperature', enforcement: 'soft',
+          targetTemperatureC: 65, deadlineAtMs: 6 * HOUR_MS,
+        },
+        device: undefined,
+        activePlans,
+        sustainableRateKw: 10,
+      });
+      expect(reservations[0]).toMatchObject({ plannedKWh: bookedKWh, admissionPowerKw: 1.25 });
+    }
+  });
+
   it('persists allocation context without persisting the runtime-derived priority', () => {
     const persist = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);

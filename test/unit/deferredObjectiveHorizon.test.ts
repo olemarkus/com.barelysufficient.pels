@@ -61,6 +61,31 @@ const plannedBucket = (
 ) => buckets.find((candidate) => candidate.id === id);
 
 describe('planDeferredObjectiveHorizon', () => {
+  it.each(['fresh', 'committed', 'expanded'] as const)(
+    'keeps the heater claimed in the final second of an equally priced hour (%s allocation)',
+    (allocationKind) => {
+      const plan = planDeferredObjectiveHorizon({
+        nowMs: NOW_MS + HOUR_MS - 1000,
+        objective: objective({ kind: 'temperature', energyNeededKWh: 0.6 }),
+        steps: defaultSteps,
+        buckets: [bucket(0), bucket(1), bucket(2)],
+        ...(allocationKind === 'fresh' ? {} : {
+          committed: true,
+          committedHours: allocationKind === 'committed'
+            ? [{ startsAtMs: NOW_MS, plannedKWh: 0.6 }]
+            : [],
+        }),
+      });
+
+      expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeGreaterThan(0);
+      expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeLessThan(0.001);
+      expect(plan.currentHourClaim).toBe('claimed');
+      expect(plan.expectedStepId).toBe('low');
+      expect(plan.priceDeferralEligible).toBe(false);
+      expect(plan.coldStartReleaseEligible).toBe(false);
+    },
+  );
+
   it('waits through the current bucket when future preferred windows cover the objective', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
@@ -1284,6 +1309,24 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plan.priceDeferralEligible).toBe(true);
+  });
+
+  it('keeps an ahead EV price-released when its booked hour has only a sub-Wh remainder', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS + HOUR_MS - 1000,
+      objective: objective({ energyNeededKWh: 2 }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred')],
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeGreaterThan(0);
+    expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeLessThan(0.001);
+    expect(plan.priceDeferralEligible).toBe(true);
+    expect(plan.coldStartReleaseEligible).toBe(false);
+    expect(plan.currentHourClaim).toBe('released');
   });
 
   it('does not flag priceDeferralEligible when not ahead of the milestone', () => {

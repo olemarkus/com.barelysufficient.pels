@@ -8,8 +8,9 @@ import { isMeaningfullyCheaper } from './bucketAllocation';
 import { roundKWh } from './activePlanMath';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
-// Mirrors the planner's booked-energy epsilon: a bucket the allocation booked
-// essentially nothing into is not a real deferral target.
+// Minimum energy for a meaningful price-deferral target and the ordinary
+// persisted kWh precision. Positive bookings below this still carry control
+// and physical reservations until their bucket ends.
 const PLANNED_EPSILON_KWH = 0.001;
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
@@ -51,7 +52,8 @@ export const buildHoursFromHorizonPlan = (
   const hours = [...byHour.entries()]
     .map(([startsAtMs, { plannedKWh, plannedAdmissionPowerKw, earliestStartMs }]) => ({
       startsAtMs,
-      plannedKWh: roundKWh(plannedKWh),
+      // Preserve positive sub-Wh bookings across the fresh-to-frozen handoff.
+      plannedKWh: plannedKWh < PLANNED_EPSILON_KWH ? plannedKWh : roundKWh(plannedKWh),
       ...(plannedAdmissionPowerKw > 0 ? { plannedAdmissionPowerKw } : {}),
       // When the earliest bucket folded into this hour starts after the hour
       // boundary, the planner trimmed it to `nowMs` (the current hour on a
@@ -78,7 +80,7 @@ export const buildLiveReservationSegments = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanReservationSegmentV1[] => (
   (diag.horizonPlan?.plannedBuckets ?? []).flatMap((bucket) => {
-    if (bucket.plannedUsefulEnergyKWh <= PLANNED_EPSILON_KWH) return [];
+    if (bucket.plannedUsefulEnergyKWh <= 0) return [];
     const durationHours = (bucket.endMs - bucket.startMs) / ONE_HOUR_MS;
     if (durationHours <= 0) return [];
     const admissionPowerKw = bucket.plannedAdmissionPowerKw ?? (
@@ -100,7 +102,7 @@ const scaleSegmentsToHour = (params: {
   hour: DeferredObjectiveActivePlanHourV1;
 }): DeferredObjectiveActivePlanReservationSegmentV1[] => {
   const totalKWh = params.segments.reduce((sum, segment) => sum + segment.plannedKWh, 0);
-  if (totalKWh <= 0 || params.hour.plannedKWh <= PLANNED_EPSILON_KWH) return [];
+  if (totalKWh <= 0 || params.hour.plannedKWh <= 0) return [];
   return params.segments.map((segment) => ({
     ...segment,
     plannedKWh: segment.plannedKWh * params.hour.plannedKWh / totalKWh,
@@ -179,7 +181,7 @@ export const buildReservationSegmentsFromHorizonPlan = (params: {
   const liveSegments = buildLiveReservationSegments(params.diag);
   const previousSegments = params.previousSegments ?? [];
   return params.effectiveHours.flatMap((hour) => {
-    if (hour.plannedKWh <= PLANNED_EPSILON_KWH) return [];
+    if (hour.plannedKWh <= 0) return [];
     const liveForHour = liveSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
     const previousForHour = previousSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
     const exactSegments = selectExactSegmentsForHour({

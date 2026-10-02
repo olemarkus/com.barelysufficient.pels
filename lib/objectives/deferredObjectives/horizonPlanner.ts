@@ -447,7 +447,7 @@ const resolvePriceDeferralEligible = (params: {
 }): boolean => {
   if (!params.aheadOfHourMilestone) return false;
   const current = params.allocation.plannedBuckets.find((bucket) => bucket.current);
-  if (!current || current.plannedUsefulEnergyKWh <= params.epsilonKWh) return false;
+  if (!current || current.plannedUsefulEnergyKWh <= 0) return false;
   return params.allocation.plannedBuckets.some((bucket) => (
     !bucket.current
     && !bucket.reserve
