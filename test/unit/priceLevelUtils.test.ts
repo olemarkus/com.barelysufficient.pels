@@ -5,7 +5,7 @@
 // planner. Includes the non-prosumer invariance pins: absent or total-equal
 // budgetPrice must classify byte-identically to the historical total-only path.
 import { describe, expect, it } from 'vitest';
-import { resolveCurrentPricePeriodLevel } from '../../lib/price/priceLevelUtils';
+import { resolveCurrentPricePeriodLevel, resolvePriceLevelChangesWithin } from '../../lib/price/priceLevelUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -75,5 +75,68 @@ describe('resolveCurrentPricePeriodLevel — planning price', () => {
       expect(classify(withEqualBudget, level)).toBe(classify(without, level));
     }
     expect(classify(withEqualBudget, 'cheap')).toBe(true);
+  });
+});
+
+// The look-ahead behind the `price_level_changes_within` condition: which levels
+// the price switches TO inside a window, classified against the same series
+// average as the current level.
+describe('resolvePriceLevelChangesWithin', () => {
+  const BAND = { thresholdPercent: 25, minDiff: 0 };
+  // Average 100 over the day; with a 25% band, 50 is cheap, 100 normal, 150 expensive.
+  const day = [100, 100, 150, 150, 100, 50, 50, 100].map((total, hour) => entry(hour, total));
+  const changes = (prices: Array<ReturnType<typeof entry>>, nowHours: number, horizonHours: number) => (
+    resolvePriceLevelChangesWithin(prices, BAND, {
+      nowMs: BASE_MS + nowHours * HOUR_MS,
+      horizonMs: horizonHours * HOUR_MS,
+    })
+  );
+
+  it('reports each change in time order', () => {
+    expect(changes(day, 0.5, 6)).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]);
+  });
+
+  it('does not count the period in force, nor a following period at the same level', () => {
+    // In hour 2 (expensive): hour 3 is expensive too, so it is no change.
+    expect(changes(day, 2.5, 1)).toEqual([]);
+    expect(changes(day, 2.5, 2)).toEqual([PriceLevel.NORMAL]);
+  });
+
+  it('includes a change starting exactly at the end of the window and excludes one starting now', () => {
+    expect(changes(day, 1, 1)).toEqual([PriceLevel.EXPENSIVE]);
+    expect(changes(day, 2, 1)).toEqual([]);
+  });
+
+  it('reports nothing past the last known price', () => {
+    expect(changes(day, 7.5, 24)).toEqual([]);
+  });
+
+  it('counts a period after a gap in the prices as a change', () => {
+    const withGap = day.filter((_, hour) => hour !== 4);
+    // Hour 5 has no predecessor, so it is a change to cheap; hour 6 continues it.
+    expect(changes(withGap, 3.5, 3)).toEqual([PriceLevel.CHEAP]);
+  });
+
+  it('follows quarter-hour periods', () => {
+    const quarters = [100, 100, 150, 100, 50, 100, 100, 100].map((total, quarter) => ({
+      startsAt: new Date(BASE_MS + quarter * 15 * 60 * 1000).toISOString(),
+      totalPrice: total,
+      durationMinutes: 15,
+    }));
+    expect(changes(quarters, 0.1, 1)).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]);
+  });
+
+  it('reads the series in time order whatever order it arrives in', () => {
+    expect(changes([...day].reverse(), 0.5, 6)).toEqual(changes(day, 0.5, 6));
+  });
+
+  it('agrees with the current level once each change starts', () => {
+    for (let hour = 1; hour < day.length; hour += 1) {
+      const startMs = BASE_MS + hour * HOUR_MS;
+      const reported = changes(day, hour - 0.5, 0.5);
+      const before = resolveCurrentPricePeriodLevel(day, BAND, startMs - 1);
+      const after = resolveCurrentPricePeriodLevel(day, BAND, startMs);
+      expect(reported).toEqual(before === after ? [] : [after]);
+    }
   });
 });

@@ -66,22 +66,97 @@ export const resolveCurrentPricePeriodLevel = (
   band: PriceLevelBand,
   nowMs?: number,
 ): PriceLevel => {
-  const { thresholdPercent, minDiff } = band;
   const currentPrice = getCurrentPricePeriod(prices, nowMs);
   if (!currentPrice) return PriceLevel.UNKNOWN;
+  return createPricePeriodClassifier(prices, band)(currentPrice);
+};
+
+/**
+ * Classifies any period of `prices` against the owner's band, over the
+ * duration-weighted average of the whole series. Built once per series, so the
+ * current level and the look-ahead below answer from the same average.
+ */
+const createPricePeriodClassifier = (
+  prices: PriceEntry[],
+  band: PriceLevelBand,
+): (period: PriceEntry) => PriceLevel => {
   const avgPrice = calculateDurationWeightedAveragePrice(
     prices,
     (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
     (entry) => entry.durationMinutes,
   );
-  const flags = getPriceLevelFlags({
-    price: resolvePlanningPrice(currentPrice.budgetPrice, currentPrice.totalPrice),
-    avgPrice,
-    thresholds: calculateThresholds(avgPrice, thresholdPercent),
-    minDiff,
-  });
-  if (flags.isCheap) return PriceLevel.CHEAP;
-  if (flags.isExpensive) return PriceLevel.EXPENSIVE;
-  return PriceLevel.NORMAL;
+  const thresholds = calculateThresholds(avgPrice, band.thresholdPercent);
+  return (period) => {
+    const flags = getPriceLevelFlags({
+      price: resolvePlanningPrice(period.budgetPrice, period.totalPrice),
+      avgPrice,
+      thresholds,
+      minDiff: band.minDiff,
+    });
+    if (flags.isCheap) return PriceLevel.CHEAP;
+    if (flags.isExpensive) return PriceLevel.EXPENSIVE;
+    return PriceLevel.NORMAL;
+  };
+};
+
+/** The window a look-ahead covers: periods starting after `nowMs`, up to and including `nowMs + horizonMs`. */
+export type PriceLevelLookahead = {
+  nowMs: number;
+  horizonMs: number;
+};
+
+/**
+ * A look-ahead's answer. `unavailable` is a series that could not be built
+ * right now, kept apart from an empty `levels`: "no change is coming" and "the
+ * prices could not be read" send a Flow opposite ways.
+ */
+export type PriceLevelChangesRead =
+  | { state: 'resolved'; levels: PriceLevel[] }
+  | { state: 'unavailable' };
+
+const MINUTE_MS = 60 * 1000;
+
+const periodStartMs = (period: PriceEntry): number => new Date(period.startsAt).getTime();
+
+/**
+ * The levels the price CHANGES TO inside the window, in time order.
+ *
+ * A change is a period that starts inside the window at a different level from
+ * the period ending where it starts. The period in force at `nowMs` began
+ * before the window, so it is never a change itself, but it is what the first
+ * period in the window is compared with. A period with no predecessor in the
+ * series (a gap in the prices) counts as a change: PELS knew no level before it.
+ *
+ * Classified against the same average and band as
+ * {@link resolveCurrentPricePeriodLevel}, so a level reported here is the
+ * current level once that period starts, provided the series holds until then.
+ * It does not always hold: tomorrow's prices arriving move the average. That is
+ * a promise about the level, not about `price_level_changed`, which fires only
+ * when PELS next publishes its status and can miss a period shorter than the
+ * gap between two meter readings. Past the last known price nothing is
+ * reported, because missing prices are not a level.
+ */
+export const resolvePriceLevelChangesWithin = (
+  prices: PriceEntry[],
+  band: PriceLevelBand,
+  window: PriceLevelLookahead,
+): PriceLevel[] => {
+  const classify = createPricePeriodClassifier(prices, band);
+  const byEndMs = new Map(prices.map((period) => [
+    periodStartMs(period) + period.durationMinutes * MINUTE_MS,
+    period,
+  ]));
+  const windowEndMs = window.nowMs + window.horizonMs;
+  return prices
+    .filter((period) => {
+      const startMs = periodStartMs(period);
+      return startMs > window.nowMs && startMs <= windowEndMs;
+    })
+    .sort((a, b) => periodStartMs(a) - periodStartMs(b))
+    .flatMap((period) => {
+      const level = classify(period);
+      const previous = byEndMs.get(periodStartMs(period));
+      return previous !== undefined && classify(previous) === level ? [] : [level];
+    });
 };
 

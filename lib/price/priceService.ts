@@ -52,7 +52,12 @@ import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhour
 import { applyExportPrices } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
-import { resolveCurrentPricePeriodLevel, type PriceLevelBand } from './priceLevelUtils';
+import {
+  resolveCurrentPricePeriodLevel,
+  resolvePriceLevelChangesWithin,
+  type PriceLevelBand,
+  type PriceLevelLookahead,
+} from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
 import { readPriceSchemeSetting } from './priceTypes';
 import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
@@ -544,6 +549,14 @@ export default class PriceService {
    */
   getCurrentHourPriceLevel(): PriceLevel {
     return resolveCurrentPricePeriodLevel(this.getCombinedPricePeriods(), this.priceLevelBand);
+  }
+
+  /**
+   * The levels the price changes to inside `window`, from a SINGLE series
+   * build. See `resolvePriceLevelChangesWithin`.
+   */
+  getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevel[] {
+    return resolvePriceLevelChangesWithin(this.getCombinedPricePeriods(), this.priceLevelBand, window);
   }
 
   private get norwaySchemeSettings(): NorwaySchemeSettings {

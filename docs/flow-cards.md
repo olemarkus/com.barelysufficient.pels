@@ -59,6 +59,7 @@ passes without a reading. To use the longer durations there, have your Flow repo
 | **Is there available power for device?** | Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
+| **Price level changes to... within...** | True when a coming price period switches to the chosen level within the number of hours you set. Only a switch counts: if the price is already at that level, a following period at the same level is not a change. Use it to start heating ahead of expensive hours. It reads the prices PELS has now, so the answer can change when tomorrow's prices arrive. |
 | **Current price is one of today's lowest** | True when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | True when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |

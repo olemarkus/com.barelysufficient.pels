@@ -1,4 +1,5 @@
 import { PriceLevel } from '../lib/price/priceLevels';
+import type { PriceLevelChangesRead, PriceLevelLookahead } from '../lib/price/priceLevelUtils';
 import type { DecoratedDeviceSnapshot, DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
@@ -71,6 +72,7 @@ export type FlowCardDeps = {
   getCurrentOperatingMode: () => string;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
+  getPriceLevelChangesWithin: (window: PriceLevelLookahead) => PriceLevelChangesRead;
   recordPowerSample: (powerW: number) => Promise<void>;
   getHeadroom: () => number | null;
   /**
