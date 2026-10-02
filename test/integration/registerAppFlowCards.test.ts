@@ -121,7 +121,14 @@ describe('registerAppFlowCards', () => {
       powerTracker: {},
     } as unknown as AppContext;
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
 
     expect(registerFlowCards).toHaveBeenCalledWith(expect.objectContaining({
       homey,
@@ -141,7 +148,14 @@ describe('registerAppFlowCards', () => {
     ctx.deferredObjectivePlanHistoryRecorder = {} as AppContext['deferredObjectivePlanHistoryRecorder'];
     ctx.deferredObjectiveEnergyDelivery = partialDouble<EnergyTaskDeliveryTracker>({ getDeliveredKWh: vi.fn() });
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       upsertDeferredObjectiveForDevice: (params: {
         deviceId: string;
@@ -181,7 +195,14 @@ describe('registerAppFlowCards', () => {
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
     } as unknown as AppContext['homeMembership'];
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       isDeviceInMainHome: (deviceId: string) => boolean;
       hasMainHomeSmartTaskAuthority: (deviceId: string) => boolean;
@@ -235,7 +256,14 @@ describe('registerAppFlowCards', () => {
       powerTracker: {},
     } as unknown as AppContext;
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0];
 
     await deps.updateDailyBudgetState({ forcePlanRebuild: true });
@@ -257,7 +285,14 @@ describe('registerAppFlowCards', () => {
       noteAdmittedFlowHomeSample,
     } as unknown as AppContext['homeMembership'];
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };
@@ -282,7 +317,14 @@ describe('registerAppFlowCards', () => {
       noteAdmittedFlowHomeSample,
     } as unknown as AppContext['homeMembership'];
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };
@@ -305,7 +347,14 @@ describe('registerAppFlowCards', () => {
       noteAdmittedFlowHomeSample,
     } as unknown as AppContext['homeMembership'];
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };
@@ -328,7 +377,14 @@ describe('registerAppFlowCards', () => {
       error: structuredError,
     });
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };
@@ -351,7 +407,14 @@ describe('registerAppFlowCards', () => {
       recordPowerSample,
     });
 
-    registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
+    registerAppFlowCards(
+      ctx,
+      homeModeCatalog.resolveModeName,
+      homeModeCatalog.getAllModes,
+      homeModeCatalog.getOperatingMode,
+      homeModeCatalog.listDeviceTargetModes,
+      homeModeCatalog.setDeviceModeTarget,
+    );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
       recordPowerSample: (powerW: number) => Promise<void>;
     };

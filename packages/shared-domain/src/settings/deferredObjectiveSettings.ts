@@ -140,3 +140,22 @@ export const isValidTargetEnergyKWh = (value: unknown): value is number => (
   && value >= MIN_TARGET_ENERGY_KWH
   && value <= MAX_TARGET_ENERGY_KWH
 );
+
+/**
+ * Whether a stored Smart task is in progress: enabled, with its ready-by still
+ * ahead. While one is, the device's "When the temperature changes outside
+ * PELS" choice stays at Return to mode target, because a temperature Smart task
+ * needs PELS to set the temperature. The settings UI and the runtime both ask
+ * here, so the two never disagree about which tasks hold the choice.
+ */
+export const isSmartTaskInProgress = (
+  entry: Pick<DeferredObjectiveSettingsEntry, 'enabled' | 'deadlineAtMs'>,
+  nowMs: number,
+): boolean => entry.enabled && Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
+
+/**
+ * One device's {@link isSmartTaskInProgress} answer as read from storage.
+ * `unavailable` is a read that could not tell, which a caller deciding whether
+ * to allow a change must treat as a refusal, never as `none`.
+ */
+export type SmartTaskInProgressRead = 'in_progress' | 'none' | 'unavailable';

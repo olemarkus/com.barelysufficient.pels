@@ -57,7 +57,7 @@ This is useful when a water heater, room heating, or an EV charger may all take 
 
 Price-based temperature shift is per-device temperature behavior. PELS can work the device harder while power is cheap and let it coast while it is expensive. On a heater that means raising the target temperature while power is cheap and lowering it while it is expensive.
 
-On a unit that is cooling, the same settings move the target the other way: the cheap-price boost lowers it and the expensive-price reduction raises it. PELS reads the device's own heating/cooling mode to decide, so an air conditioner and a water heater can both be price-aware without separate settings. A device that reports no mode, or reports `auto`, is treated as heating — if yours runs in `auto` and cools, turn its price response off.
+On a unit that is cooling, the same settings move the target the other way: the cheap-hour boost lowers it and the expensive-hour reduction raises it. PELS reads the device's own heating/cooling mode to decide, so an air conditioner and a water heater can both be price-aware without separate settings. A device that reports no mode, or reports `auto`, is treated as heating — if yours runs in `auto` and cools, turn its price response off.
 
 "Use solar surplus" follows the device's mode the same way: while cooling it lowers the target to use the surplus. Smart tasks also measure progress in the device's reported direction: a cooling task continues until the room cools to its target. A device without a mode report, or in `auto`, is treated as heating. Power limiting knows the difference too: a device that reports its heating/cooling mode gets its own [limited temperature when cooling](/technical#limited-temperature-for-a-heating-and-cooling-device).
 

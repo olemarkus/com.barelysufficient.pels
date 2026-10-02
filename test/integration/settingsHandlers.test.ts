@@ -19,6 +19,7 @@ import {
   HOMES_CONFIG,
   MANAGED_DEVICES,
   OVERSHOOT_BEHAVIORS,
+  PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
@@ -284,6 +285,17 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(DEVICE_TARGET_POWER_CONFIGS);
+  });
+
+  it('reloads price settings, refreshes snapshot, and rebuilds when a device\'s price adjustment changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(PRICE_OPTIMIZATION_SETTINGS);
+
+    expect(deps.loadPriceOptimizationSettings).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS);
   });
 
   it('logs when a refresh snapshot fails', async () => {
