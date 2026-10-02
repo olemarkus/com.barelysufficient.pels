@@ -17,7 +17,7 @@ import type { ObservedControlStateChangedEvent } from '../lib/observer/observedS
  * `HomeRuntimeRegistry` — the wiring passes the registry (or `undefined` before
  * `initHomeRuntimeRegistry`, and for the no-sub-homes case).
  */
-type OwningHomeRouter = {
+export type OwningHomeRouter = {
   getOwningHomeRouteForDevice: (deviceId: string) => {
     homeId: HomeId;
     hooks: OwningHomeHooks;
@@ -117,6 +117,17 @@ export function invalidateOwningHomeRebuildSuppression(params: {
     return;
   }
   ctx.planRebuildThrottle.onObservation();
+}
+
+/** Ask the plan of the home that OWNS this device whether its move can change that home's actionable load. */
+export function canDeviceChangeOwningHomeActionableLoad(
+  ctx: AppContext,
+  deviceId: string,
+  router: OwningHomeRouter | undefined,
+): boolean {
+  const subHomeHooks = router?.getOwningHomeRouteForDevice(deviceId)?.hooks;
+  if (subHomeHooks) return subHomeHooks.canDeviceChangeActionableLoad(deviceId);
+  return requirePlanService(ctx).canDeviceChangeActionableLoad(deviceId);
 }
 
 /** Route observation-driven settlement and display refresh to the same device owner. */

@@ -261,7 +261,7 @@ export type SteppedDiscriminantProbe = {
  * Producers build the trio as a unit, so supplying a profile without its step
  * or its planning power is a compile error at the producer, where the ladder
  * invariant actually lives. Two spellings, same guarantee: a conditional that
- * returns this type or `{}` (`toPlanDevice`, `planLiveStateMerge`), or one
+ * returns this type or `{}` (`toPlanDevice`), or one
  * literal `satisfies SteppedLoadKind` written onto an already-narrowed loose
  * device (`buildBasePlanDevice`).
  */
@@ -339,21 +339,6 @@ export type TemperatureDiscriminantProbe = {
 };
 
 /**
- * The temperature cluster as a UNIT: all three fields or none. Same enforcement
- * shape as `SteppedClusterFields`, for the same reason: the regrouper's result
- * type is a union whose non-temperature member accepts anything, so without a
- * co-presence type at the producer, a half-cluster (a target with no reading,
- * or either with no planned target) would type-check and read `undefined` at
- * runtime behind a required type. Producers build the trio as a unit — a
- * conditional returning this type or `{}`, or one literal
- * `satisfies TemperatureKind` — so a partial cluster is a compile error at the
- * producer, where the atomic-facet invariant actually lives.
- */
-export type TemperatureClusterFields =
-  | TemperatureKind
-  | { currentTarget?: never; currentTemperature?: never; plannedTarget?: never };
-
-/**
  * Regroup the temperature field cluster off a loose bag (whose temperature
  * fields are independent optionals on the base, e.g. the result of a
  * `{ ...current, ...updates }` merge or a `...snapshot` spread) onto the
@@ -371,9 +356,9 @@ export type TemperatureClusterFields =
  *
  * The cast mirrors `withSteppedDiscriminant`'s: the probe types the fields as
  * independent optionals, so nothing HERE proves the trio co-varies — that proof
- * lives at the producers, which build the cluster as a unit — through
- * `TemperatureClusterFields` or `satisfies TemperatureKind` — where a partial
- * trio is a plain, local compile error.
+ * lives at the producers, which build the cluster as a unit with one literal
+ * `satisfies TemperatureKind`, where a partial trio is a plain, local compile
+ * error.
  */
 export function withTemperatureDiscriminant<TBase extends object>(
   loose: TBase & TemperatureDiscriminantProbe,
@@ -463,22 +448,17 @@ export type MeteredDiscriminantProbe = {
 
 /**
  * Regroup the power-axis field off a loose bag onto the `MeteredKind`
- * intersection, or strip it when the device has no power reading.
- *
- * Like the other regroupers it keys on the producer-resolved field alone
- * (`toPlanDevice` stamps `currentDrawKw` only for a device with a real reading),
- * and it strips a key present with `undefined` — a spread can never remove a
- * key, so a merge would otherwise hand a device without a reading a
- * `currentDrawKw` the guard reports as present.
+ * intersection. A type regroup only: like the other regroupers it keys on the
+ * producer-resolved field alone, and its one producer (`buildBasePlanDevice`)
+ * writes `currentDrawKw` only for a device with a real reading, so there is
+ * never a key present with `undefined` to strip.
  */
 export function withMeteredDiscriminant<TBase>(
   loose: TBase & MeteredDiscriminantProbe,
 ):
   | (Omit<TBase, keyof MeteredDiscriminantProbe> & MeteredKind)
   | Omit<TBase, keyof MeteredDiscriminantProbe> {
-  if (!('currentDrawKw' in loose) || loose.currentDrawKw !== undefined) return loose;
-  const { currentDrawKw: _strippedCurrentDrawKw, ...base } = loose;
-  return { ...base };
+  return loose;
 }
 
 export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
@@ -564,7 +544,6 @@ type DevicePlanDeviceBase = {
   // Present iff the device has a real per-device power reading this cycle.
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
-  zone?: string;
   /**
    * What PELS is permitted to do with this device — see
    * {@link DeviceControlPosture}. Carried through from the plan input unchanged,
@@ -670,7 +649,7 @@ type DevicePlanDeviceBase = {
   reservesStartupPower?: true;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
-  binaryCommandPending?: boolean;
+  binaryCommandPending: boolean;
   // The shed triple, materialized as a unit by `materializeShedSnapshotFields`
   // (`lib/plan/planActionMaterialization.ts`) at both producers
   // (`lib/plan/planDevicesBase.ts`, `lib/plan/restore/marking.ts`), so in

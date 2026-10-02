@@ -10,8 +10,8 @@ import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryComma
  * The store owns the in-flight question, in the two forms consumers actually
  * mean. These predicates exist because one answer used to serve both: the
  * planner counted a pending turn-ON, the plan-input producer counted any
- * direction, and a device republished through `planLiveStateMerge` therefore
- * changed what `binaryCommandPending` meant. Pin the distinction here, so the
+ * direction, and a device republished through the (since removed) live-state
+ * merge therefore changed what `binaryCommandPending` meant. Pin the distinction here, so the
  * four call sites can stop re-deriving it.
  */
 const pending = (overrides: Partial<PendingBinaryCommand> = {}): PendingBinaryCommand => ({
@@ -49,8 +49,8 @@ describe('PendingBinaryCommandStore in-flight predicates', () => {
 
   it('treats an expired entry as not in flight, and does not evict it', () => {
     // Eviction fires the timeout lifecycle, which belongs to `get` and the
-    // reconcile sweep. A predicate a projection may call must not have that
-    // side effect — `buildLiveStatePlan` is a projection, not a re-plan.
+    // reconcile sweep. A predicate a read path may call must not have that
+    // side effect — asking is not commanding.
     const backing = { 'stale-1': pending({ startedMs: Date.now() - 120_000 }) };
     const store = createPendingBinaryCommandStore(backing);
 

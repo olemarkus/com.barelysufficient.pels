@@ -1,10 +1,10 @@
 /**
  * Rebuild orchestration for `PlanService`. Extracted (slice: full builder
  * pipeline run) so the service file stays under the line ceiling while keeping
- * reconcile/sync sequencing alongside the public surface. These functions own
- * the WHEN-to-actuate sequencing of a single rebuild: build → stamp → track
- * changes → snapshot/status update → conditional apply → reconcile-snapshot
- * commit → completion metrics/log. They mutate `PlanService` state only through
+ * sync sequencing alongside the public surface. These functions own the
+ * WHEN-to-actuate sequencing of a single rebuild: build → stamp → track
+ * changes → snapshot/status update → conditional apply → pending-target
+ * decoration republish → completion metrics/log. They mutate `PlanService` state only through
  * the `PlanRebuildHost` seam so the service keeps its private fields. Behaviour
  * is identical to the former `PlanService.performPlanRebuild` and its private
  * helpers; the intent-queue serialization stays in `PlanService`.
@@ -27,7 +27,6 @@ import {
 } from './planRebuildMetrics';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { describePlanRebuildTrigger, type PlanRebuildTrigger } from './planRebuildTrigger';
-import { buildLiveStatePlan } from './planLiveStateMerge';
 import type { PlanServiceDeps } from './planServiceDeps';
 import type {
   DevicePlan,
@@ -261,7 +260,7 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * The build awaits, so a realtime observation can land mid-build; acting on a
  * device change this plan never incorporated would apply a decision nobody made
  * against it — the `inc_26449fb9` shape under a new name. When the observer has
- * moved, this cycle declines and the observation's own rebuild re-decides.
+ * moved, this cycle declines and the next whole-home reading re-decides.
  *
  * The planner hands over NO live side any more. It used to pass the same
  * `PlanInputDevice[]` the plan was built from, on the reasoning that a re-read
@@ -333,10 +332,7 @@ async function maybeApplyPlanChanges(
     if (appliedActions) {
       host.deps.schedulePostActuationRefresh?.();
     }
-    const refreshed = refreshLatestPlanSnapshotFromSettledLiveState(host, plan);
-    if (!refreshed) {
-      refreshLatestPlanSnapshotPendingState(host);
-    }
+    refreshLatestPlanSnapshotPendingState(host);
   } catch (error) {
     (host.deps.loggers?.structuredLog ?? logger).error({
       event: 'plan_actions_apply_failed',
@@ -353,33 +349,14 @@ async function maybeApplyPlanChanges(
   };
 }
 
-function refreshLatestPlanSnapshotFromSettledLiveState(host: PlanRebuildHost, basePlan: DevicePlan): boolean {
-  const livePlan = host.deps.planEngine.decoratePlanWithPendingTargetCommands(
-    buildLiveStatePlan(
-      basePlan,
-      host.deps.getPlanDevices(),
-      (deviceId) => host.deps.planEngine.hasActiveBinaryTurnOnCommand(deviceId),
-    ),
-  );
-  if (!host.deps.planEngine.hasSettledActuation(basePlan, livePlan)) return false;
-  const refreshedPlan = host.preservePlanGeneratedAt(livePlan, basePlan);
-  const nowMs = Date.now();
-  host.publishPlan(refreshedPlan, nowMs);
-  host.emitPlanUpdated(refreshedPlan);
-  return true;
-}
-
-function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): boolean {
+function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): void {
   const current = host.getLatestPlanSnapshot();
-  if (!current) return false;
+  if (!current) return;
   const nextPlan = host.deps.planEngine.decoratePlanWithPendingTargetCommands(current);
-  if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) {
-    return false;
-  }
+  if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(current)) return;
   const refreshedPlan = host.preservePlanGeneratedAt(nextPlan, current);
   const nowMs = Date.now();
   host.publishPlan(refreshedPlan, nowMs);
   host.emitPlanUpdated(refreshedPlan);
-  return true;
 }
 

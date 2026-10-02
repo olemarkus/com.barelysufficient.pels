@@ -58,7 +58,6 @@ const ALLOWED = new Set([
   'binaryExecutor.ts -> planBinaryControl',
   'executablePlanProjection.ts -> planBinaryDevice',
   'executablePlanProjection.ts -> planSteppedLoad',
-  'executablePlanProjection.ts -> planTemperatureDevice',
   'executablePlanProjection.ts -> planTypes',
   'executableSteppedLoadProjection.ts -> planBinaryDevice',
   'executableSteppedLoadProjection.ts -> planSteppedLoad',

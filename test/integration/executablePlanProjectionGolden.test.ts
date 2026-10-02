@@ -22,10 +22,7 @@
  * positive projection coverage — the axis PR3 totalizes.
  */
 import { describe, expect, it } from 'vitest';
-import {
-  buildExecutableConvergenceDevice,
-  buildExecutablePlan,
-} from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
 import {
   buildBinaryDevice,
   buildPlan,
@@ -67,27 +64,6 @@ describe('executable plan projection (characterization)', () => {
           "name": "Heater",
         },
       ],
-    });
-  });
-
-  // A resume is `plannedState: 'keep'` on a device observed off — there is no
-  // 'restore' member of PlannedDeviceState ('shed' | 'keep' | 'inactive'). It is
-  // pinned on the CONVERGENCE view, not the intent: `buildExecutableBinaryIntent`
-  // never reads `currentState`, so on the intent a resume is byte-identical to a
-  // keep and a test asserting it there would pin nothing.
-  it('projects the convergence view of a binary device the plan resumes', () => {
-    expect(buildExecutableConvergenceDevice(
-      buildBinaryDevice({ currentState: 'off', plannedState: 'keep' }),
-    )).toEqual({
-      "available": undefined,
-      "desiredBinaryState": "on",
-      "desiredStepId": undefined,
-      "desiredTarget": null,
-      "id": "dev-2",
-      "observedBinaryOn": false,
-      "observedState": "off",
-      "observedStep": null,
-      "observedTarget": null,
     });
   });
 
@@ -350,39 +326,6 @@ describe('executable plan projection (characterization)', () => {
           },
         },
       ],
-    });
-  });
-
-  it('projects the convergence view of a stepped device', () => {
-    expect(buildExecutableConvergenceDevice(buildSteppedDevice())).toEqual({
-      "available": undefined,
-      "desiredBinaryState": "on",
-      "desiredStepId": "low",
-      "desiredTarget": null,
-      "id": "dev-1",
-      "observedBinaryOn": true,
-      "observedState": "on",
-      "observedStep": {
-        "reportedStepId": undefined,
-        "selectedStepId": "low",
-      },
-      "observedTarget": null,
-    });
-  });
-
-  it('projects the convergence view of a binary device with a planned setpoint', () => {
-    expect(buildExecutableConvergenceDevice(buildBinaryDevice({
-      deviceType: 'temperature', currentTarget: 18, plannedTarget: 21,
-    }))).toEqual({
-      "available": undefined,
-      "desiredBinaryState": "on",
-      "desiredStepId": undefined,
-      "desiredTarget": 21,
-      "id": "dev-2",
-      "observedBinaryOn": true,
-      "observedState": "on",
-      "observedStep": null,
-      "observedTarget": 18,
     });
   });
 });

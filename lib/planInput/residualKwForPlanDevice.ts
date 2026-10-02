@@ -114,10 +114,7 @@ function toResidualSteppedLoad(
   hasBinaryControl: boolean,
 ): ResidualKwShedSteppedDevice | undefined {
   if (!isSteppedLoadSnapshot(device)) return undefined;
-  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
-    fields: device,
-    selectedStepFallbackIsPlanningAssumption: true,
-  });
+  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({ fields: device });
   const hasKnownEffectiveStep = resolveKnownEffectiveStepId(stepState) !== undefined;
   return {
     profile: device.steppedLoadProfile,

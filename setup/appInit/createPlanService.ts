@@ -11,6 +11,8 @@ import type {
 import type { HomeScope } from '../homeRuntime/homeScope';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
+import { resolveStandingCommandGrant } from '../../lib/planInput/resolvePlanInputDeviceFacts';
+import { createPlanInputProjectionSource } from './planInputDeviceProjection';
 
 // How long a home may sit with no meter reading before the gate warns. Matches
 // the boot grace the zone-tree gate uses, and is short in tests so a suite can
@@ -23,6 +25,7 @@ const NO_POWER_SAMPLE_WARN_MS = process.env.NODE_ENV === 'test' ? 500 : 5 * 60 *
 // and made the default silently wrong for anyone else who omitted it.
 export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine: PlanEngine): PlanService {
   const deviceManager = requireDeviceManager(ctx);
+  const planInputSource = createPlanInputProjectionSource(ctx);
   return new PlanService({
     homeId: scope.homeId,
     homey: ctx.homey,
@@ -32,6 +35,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
     getPlanDevices: scope.getPlanDevices,
+    hasStandingCommandGrant: (deviceId) => resolveStandingCommandGrant(planInputSource, deviceId),
     // Explicit observer projection: transport capability and Flow bindings must
     // never cross into the plan-owned service merely because structural typing
     // accepts a wider object.

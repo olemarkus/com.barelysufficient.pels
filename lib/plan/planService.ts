@@ -18,7 +18,6 @@ import {
 import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
-import { buildLiveStatePlan } from './planLiveStateMerge';
 import type {
   DevicePlan,
   MeteredDevicePlanDevice,
@@ -75,7 +74,14 @@ import type { DeviceExecutionState } from '../planContract/deviceExecutionState'
  * cheaper.
  *
  * `syncLivePlanState*` is cheaper than a rebuild and remains: it settles pending
- * command bookkeeping and refreshes the published snapshot, with no actuation.
+ * command bookkeeping and re-renders device status against the live owners,
+ * with no actuation. It never re-publishes the plan with fresh device inputs
+ * merged in. That merge (`buildLiveStatePlan`, removed) copied the raw planner
+ * input over the plan's own fields, so the published plan carried decisions
+ * made under one posture beside a posture taken from another: a smart task's
+ * command authority, granted at admission, was dropped on every settled step
+ * change and the device card flipped to "Manual". The published plan is what a
+ * build decided; readers take observations from the observer and the executor.
  *
  * The rebuild pipeline itself lives in `planServiceRebuild.ts` (driven through
  * the `PlanRebuildHost` seam built in the constructor); signature-change
@@ -152,7 +158,6 @@ export class PlanService {
   private idleClassifier: IdleClassifier;
   private changeTracker: PlanChangeTracker;
   private readonly rebuildHost: PlanRebuildHost;
-  private lastTickedPlanRef: DevicePlan | null = null;
   private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
 
   constructor(private deps: PlanServiceDeps) {
@@ -275,6 +280,24 @@ export class PlanService {
     );
   }
 
+  /**
+   * Can this device's move change the load the latest plan found actionable?
+   * Asked by the observation lane, which clears the rebuild throttle's
+   * "nothing is actionable" verdict (read off this plan) only for a device
+   * whose move can falsify it.
+   *
+   * Yes when the owner granted PELS standing authority over the device,
+   * whether or not this plan carries it: authority also takes a measured draw,
+   * a device without one is not planned at all, and its first reading is the
+   * move that grants it. And yes when this plan holds authority the standing
+   * grants do not explain, which is a smart task's grant.
+   */
+  canDeviceChangeActionableLoad(deviceId: string): boolean {
+    if (this.deps.hasStandingCommandGrant(deviceId)) return true;
+    const device = this.getLatestPlanSnapshot()?.devices.find((candidate) => candidate.id === deviceId);
+    return device?.control.commandAuthority === true;
+  }
+
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
     const plan = this.getLatestPlanSnapshot();
     return plan ? buildOverviewPublication(plan, this.deps, this.idleClassifier)?.snapshot ?? null : null;
@@ -350,9 +373,8 @@ export class PlanService {
       return this.refreshDeviceStatus() || steppedChanged;
     }
 
-    const liveDevices = this.deps.getPlanDevices();
     const pendingTargetChanged = hasPendingTargetCommands
-      ? this.deps.planEngine.syncPendingTargetCommands(liveDevices, source)
+      ? this.deps.planEngine.syncPendingTargetCommands(this.deps.getPlanDevices(), source)
       : false;
     const pendingBinaryChanged = hasPendingBinaryCommands
       ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
@@ -361,20 +383,6 @@ export class PlanService {
     const current = this.getLatestPlanSnapshot();
     if (current === null) {
       return pendingChanged;
-    }
-
-    const livePlan = this.decoratePlanWithPendingTargetCommands(
-      buildLiveStatePlan(
-        current,
-        liveDevices,
-        (deviceId) => this.deps.planEngine.hasActiveBinaryTurnOnCommand(deviceId),
-      ),
-    );
-    if (this.deps.planEngine.hasSettledActuation(current, livePlan)) {
-      const refreshedPlan = this.preservePlanGeneratedAt(livePlan, current);
-      this.latestPublishedPlan = { plan: refreshedPlan, publishedAtMs: Date.now() };
-      this.emitPlanUpdated(refreshedPlan);
-      return true;
     }
 
     if (!pendingChanged) {
@@ -526,12 +534,13 @@ export class PlanService {
     this.refreshDeviceStatus(plan);
   }
 
-  // Once per published plan. The capped-idle window's bounded sample history is
-  // sized for the plan cadence; observation-driven status refreshes reuse the
-  // last classification instead of sampling again.
+  // Once per BUILT plan (`updatePlanSnapshot`). The capped-idle window's bounded
+  // sample history is sized for the plan cadence; observation-driven status
+  // refreshes reuse the last classification instead of sampling again. A
+  // pending-target republish is not a build: it is the same plan with the same
+  // build-time draw under a new reference, and sampling it would record that
+  // draw again as if it were a new reading.
   private tickIdleClassifier(plan: DevicePlan): void {
-    if (this.lastTickedPlanRef === plan) return;
-    this.lastTickedPlanRef = plan;
     // The temperature cluster rides as ONE optional object on the classifier
     // input (mirroring the observer's atomic facet): stamped together for a
     // temperature device, omitted otherwise — no nullable fields synthesized.
@@ -557,7 +566,6 @@ export class PlanService {
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {
-    this.tickIdleClassifier(plan);
     const publication = buildOverviewPublication(plan, this.deps, this.idleClassifier);
     if (publication) {
       this.emitOverviewTransitions(publication);

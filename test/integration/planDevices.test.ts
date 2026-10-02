@@ -674,7 +674,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
 
-  it('omits binaryCommandPending when no pending binary command exists', () => {
+  it('reports no binary turn-on in flight when no pending binary command exists', () => {
     const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -690,10 +690,10 @@ describe('buildInitialPlanDevices', () => {
       },
     });
 
-    expect(planDevice.binaryCommandPending).toBeUndefined();
+    expect(planDevice.binaryCommandPending).toBe(false);
   });
 
-  it('omits binaryCommandPending when pending command is a shed (desired=false)', () => {
+  it('reports no binary turn-on in flight when the pending command is a shed (desired=false)', () => {
     const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const state = createPlanEngineState();
@@ -716,7 +716,7 @@ describe('buildInitialPlanDevices', () => {
       },
     });
 
-    expect(planDevice.binaryCommandPending).toBeUndefined();
+    expect(planDevice.binaryCommandPending).toBe(false);
   });
 
   it('carries the producer-resolved unknown label for a stale binary device', () => {

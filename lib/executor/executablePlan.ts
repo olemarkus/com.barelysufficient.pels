@@ -120,36 +120,6 @@ export const hasSteppedCommand = <T extends ExecutableDeviceIntent>(
   'steppedLoad' in i && (i as T & ExecutableSteppedCommandKind).steppedLoad != null
 );
 
-/**
- * The narrow, executor-facing view of one planned device that the convergence
- * predicates (`executorConvergence.ts`) compare: identity, the observation the
- * plan snapshot recorded, and the end state the plan decided.
- *
- * Deliberately NOT the plan device — `lib/AGENTS.md` § Layer boundaries: "Avoid
- * passing broad planner device shapes into executor modules." In particular it
- * carries no shed-policy discriminant: the desired end state per axis is
- * resolved once, in the producer (`buildExecutableConvergenceDevice`), so the
- * predicates converge onto a decision instead of re-deriving it.
- *
- * Each observed axis is `null` exactly when the device does not have that axis
- * this cycle, mirroring the plan-device facet guards it is projected through.
- */
-export type ExecutableConvergenceDevice = {
-  id: string;
-  /** "Not known to be unavailable" — the plan device's own optimistic read. */
-  available: boolean;
-  observedState: string;
-  observedBinaryOn: boolean | null;
-  observedTarget: number | null;
-  observedStep: { selectedStepId: string; reportedStepId: string | undefined } | null;
-  /** The step the plan wants this device parked at, when it wants one. */
-  desiredStepId: string | undefined;
-  /** The binary state the plan demands of this device, when it demands one. */
-  desiredBinaryState: 'on' | 'off' | null;
-  /** The setpoint the plan wants written to this device, when it wants one written. */
-  desiredTarget: number | null;
-};
-
 export type ExecutableObservedState = {
   devices: ExecutableObservedDeviceState[];
 };

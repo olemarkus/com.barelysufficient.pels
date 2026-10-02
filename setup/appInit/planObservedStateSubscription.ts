@@ -5,6 +5,7 @@ import type {
 } from '../../lib/observer/observedStateEvents';
 import { incPerfCounter } from '../../lib/utils/perfCounters';
 import type { AppContext } from '../../lib/app/appContext';
+import { canDeviceChangeOwningHomeActionableLoad, type OwningHomeRouter } from '../appObservedControlStateRuntime';
 
 /**
  * The slice of the transport wiring the PLAN-side subscription needs. Narrower
@@ -29,7 +30,19 @@ export type PlanObservedStateSubscriptionDeps = {
    * the wrong house and leaves the right one throttled.
    */
   invalidateRebuildSuppression: (deviceId: string) => void;
+  /**
+   * The home-runtime registry, so the actionable-load question below reaches
+   * the plan of the home that OWNS the device. Undefined before
+   * `initHomeRuntimeRegistry` and with no sub-homes: main answers.
+   */
+  getHomeRuntimeRegistry: () => OwningHomeRouter | undefined;
 };
+
+// Only a device whose move can change the actionable load can falsify a
+// "nothing is actionable" verdict; the owning home's plan says which.
+const canFalsifyUnactionableVerdict = (deps: PlanObservedStateSubscriptionDeps, deviceId: string): boolean => (
+  canDeviceChangeOwningHomeActionableLoad(deps.ctx, deviceId, deps.getHomeRuntimeRegistry())
+);
 
 /**
  * The plan-dependent half of the observed-state fan-out, registered by its own
@@ -72,18 +85,17 @@ export type PlanObservedStateSubscriptionDeps = {
  * distrusted.
  */
 export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDeps): void {
-  const { ctx } = deps;
   const emitter = deps.getObservedStateEmitter();
   emitter.onObservedControlStateChanged((event: ObservedControlStateChangedEvent) => {
     deps.syncExternalOffHold(event);
-    if (!ctx.isCapacityControlEnabled(event.deviceId)) return;
+    if (!canFalsifyUnactionableVerdict(deps, event.deviceId)) return;
     incPerfCounter('plan_rebuild_suppression_invalidate_requested.control_state_total');
     deps.invalidateRebuildSuppression(event.deviceId);
   });
   emitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
     if (
       event.measurePowerBecameSignificantlyPositive === true
-      && ctx.isCapacityControlEnabled(event.deviceId)
+      && canFalsifyUnactionableVerdict(deps, event.deviceId)
     ) {
       incPerfCounter('plan_rebuild_suppression_invalidate_requested.measure_power_total');
       deps.invalidateRebuildSuppression(event.deviceId);

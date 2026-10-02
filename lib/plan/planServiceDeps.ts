@@ -31,13 +31,11 @@ type PlanServicePlanEngine = Pick<
   | 'handleShortfallCleared'
   | 'applyPlanActions'
   | 'shouldApplyStablePlanActions'
-  | 'hasSettledActuation'
   | 'hasExecutionWorkOutstanding'
   | 'getObservationRevision'
   | 'syncPendingTargetCommands'
   | 'syncPendingBinaryCommands'
   | 'syncSteppedCommands'
-  | 'hasActiveBinaryTurnOnCommand'
   | 'prunePendingTargetCommands'
   | 'decoratePlanWithPendingTargetCommands'
   | 'hasPendingTargetCommands'
@@ -66,6 +64,12 @@ export type PlanServiceDeps = {
   publishPelsStatus: (status: PelsStatus) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
+  /**
+   * Whether the owner has granted PELS standing command authority over a
+   * device: Power-limit control, or "Only PELS starts this device". Answers for
+   * a device the plan does not carry, which the plan itself cannot.
+   */
+  hasStandingCommandGrant: (deviceId: string) => boolean;
   // Minimal observer projection for binary confirmation; never raw transport
   // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];

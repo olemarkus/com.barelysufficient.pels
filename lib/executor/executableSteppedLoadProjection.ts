@@ -378,9 +378,8 @@ const resolveDesiredOn = (params: {
   // false for every inactive producer, all of which run on off devices).
   //
   // The honest shape is no stepped intent at all for an inactive device — the
-  // binary projection already filters that way, and `resolveConvergenceDesiredBinaryState`
-  // carves `inactive` out explicitly. That is a behaviour change, so it is filed
-  // rather than bundled here.
+  // binary projection already filters that way. That is a behaviour change, so
+  // it is filed rather than bundled here.
   if (dev.plannedState === 'inactive') return false;
   if (dev.plannedState === 'keep') {
     // No binary handle means no binary axis to drive, so the plan drives none:

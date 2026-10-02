@@ -35,7 +35,7 @@ const ALWAYS: readonly string[] = [
   'plannedState', 'previousStepId', 'priority', 'reason', 'recordRestoreOnTargetApply',
   'releaseShedStepId', 'reportedStepId', 'residualKw', 'shedAction', 'shedTemperature',
   'stepCommandPending', 'stepCommandRetryCount', 'stepCommandStatus', 'surplusAbsorbActive',
-  'surplusTracking', 'targetStepId', 'zone',
+  'surplusTracking', 'targetStepId',
 ];
 
 const TEMPERATURE_CLUSTER = ['currentTarget', 'currentTemperature', 'plannedTarget'];
@@ -220,8 +220,8 @@ describe('buildBasePlanDevice — the key set a consumer sees', () => {
     });
   }
 
-  // The runtime half of what `SteppedClusterFields` / `TemperatureClusterFields`
-  // enforce at compile time. Both halves matter: the types catch the producer
+  // The runtime half of what `satisfies SteppedLoadKind` / `satisfies
+  // TemperatureKind` in `buildBasePlanDevice` enforce at compile time. Both halves matter: the types catch the producer
   // that drops a field, this catches a condition that splits the cluster.
   it('never carries a cluster in half', () => {
     const partial: string[] = [];

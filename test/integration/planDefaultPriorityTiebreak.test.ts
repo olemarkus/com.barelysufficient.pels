@@ -61,6 +61,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
 
 const buildRestoreDevice = (id: string): DevicePlanDevice => (withFixtureResidualKw({
   recordRestoreOnTargetApply: false,
+  binaryCommandPending: false,
   id,
   name: id,
   currentDrawKw: 1.5,

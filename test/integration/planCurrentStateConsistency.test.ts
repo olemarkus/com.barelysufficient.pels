@@ -1,7 +1,6 @@
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { isShedPostureBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
@@ -77,21 +76,17 @@ const buildContext = (device: PlanInputDevice): PlanCycle => buildPlanCycleObjec
   headroom: -1,
 });
 
-// The merge asks the pending-command store whether a turn-ON is in flight;
-// these specs issue no commands.
-const noPendingBinary = (): boolean => false;
-
 describe('planner current-state consistency', () => {
   async function resolvePhaseAnswers(params: {
     liveDevice: PlanInputDevice;
     pendingRestore?: boolean;
   }): Promise<{
-    mergedCurrentState: string;
     restoreCandidate: boolean;
     shedCandidate: boolean;
   }> {
     const { liveDevice, pendingRestore = false } = params;
-    const plan = buildPlan();
+    // As the builder stamps it: the store's "turn-ON in flight" answer.
+    const plan = buildPlan(pendingRestore ? { binaryCommandPending: true } : {});
     const state = createPlanEngineState();
     if (pendingRestore) {
       state.pendingBinaryCommands[liveDevice.id] = {
@@ -101,7 +96,6 @@ describe('planner current-state consistency', () => {
       };
     }
 
-    const mergedPlan = buildLiveStatePlan(plan, [liveDevice], noPendingBinary);
     const cycle = buildContext(liveDevice);
     const sheddingPlan = await buildSheddingPlanForSpec(
       cycle,
@@ -119,8 +113,7 @@ describe('planner current-state consistency', () => {
     );
 
     return {
-      mergedCurrentState: mergedPlan.devices[0].currentState,
-      restoreCandidate: isShedPostureBinaryRestoreCandidate(mergedPlan.devices[0], previousKeepHistory(liveDevice.id)),
+      restoreCandidate: isShedPostureBinaryRestoreCandidate(plan.devices[0], previousKeepHistory(liveDevice.id)),
       shedCandidate: sheddingPlan.shedSet.has(liveDevice.id),
     };
 }
@@ -138,7 +131,6 @@ function previousKeepHistory(deviceId: string): ShedDecisions {
     });
 
     expect(phaseAnswers).toEqual({
-      mergedCurrentState: 'off',
       restoreCandidate: false,
       shedCandidate: false,
     });
@@ -151,7 +143,6 @@ function previousKeepHistory(deviceId: string): ShedDecisions {
     });
 
     expect(phaseAnswers).toEqual({
-      mergedCurrentState: 'off',
       restoreCandidate: false,
       shedCandidate: false,
     });

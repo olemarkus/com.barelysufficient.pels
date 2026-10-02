@@ -144,8 +144,9 @@ does).
   vanished devices, emits structured-log transitions, exposes the plain
   classification for the read model, and exposes objective evidence carrying
   the exact temperature target against which the verdict was reached.
-- `lib/plan/planService.ts` — ticks the classifier once per published plan
-  via `tickIdleClassifier`. Idempotent on plan reference. Observation-driven
+- `lib/plan/planService.ts` — ticks the classifier once per built plan
+  via `tickIdleClassifier`, not on a pending-target republish of the same
+  plan, whose draw is still the build's. Observation-driven
   status refreshes reuse the last classification: the capped-idle window keeps a
   bounded sample history sized for the plan cadence, and sampling per
   observation would push its first half out.

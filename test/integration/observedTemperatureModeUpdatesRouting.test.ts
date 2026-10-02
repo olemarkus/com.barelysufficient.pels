@@ -38,6 +38,7 @@ describe('observed temperature mode updates ask the owning home whether a device
         clearRecentBinaryOffCommand: () => {},
         rebuildPlan: async () => undefined,
         invalidateRebuildSuppression: () => {},
+        canDeviceChangeActionableLoad: () => false,
       },
     };
     const registry = partialDouble<HomeRuntimeRegistry>({

@@ -126,12 +126,14 @@ the cycle merely passes through it twice.
 
 - **Full cycle** (something should change): all boxes.
 - **Observation / drift** (new control input): telemetry flows
-  `transport → observer → planner`; the planner decides again, then executor and
-  actuator converge onto that new plan. There is no apply-without-decide loop.
+  `transport → observer → planner` as input to the next whole-home reading's
+  rebuild, which decides again; executor and actuator then converge onto that
+  new plan. There is no apply-without-decide loop.
 - **Settlement** is the dashed feedback, **not** a pipeline stage and **not**
   the actuator's job: executor records the semantic pending command when the
   transport request is accepted, observer confirms it from subsequent normalized
-  telemetry, and changed observations trigger an ordinary plan rebuild.
+  telemetry. A changed observation may clear the rebuild throttle's suppression
+  so the next whole-home reading decides; it does not trigger a rebuild itself.
 
 ---
 

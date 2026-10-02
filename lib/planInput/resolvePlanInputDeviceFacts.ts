@@ -1,4 +1,6 @@
-import { resolveDeviceControlPosture, resolveStartPolicyInForce } from '../device/temperatureControlPosture';
+import {
+  hasStandingCommandGrant, resolveDeviceControlPosture, resolveStartPolicyInForce,
+} from '../device/temperatureControlPosture';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveObservedCurrentState } from '../observer/observedState';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -32,6 +34,20 @@ import {
   resolveSurplusPostureForDevice,
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
+
+/**
+ * The owner's standing grants for a device, read from the same settings the
+ * facts below resolve its posture from. Needs no device facts, so it answers
+ * for a device the plan input does not carry yet (one with no power reading).
+ */
+export const resolveStandingCommandGrant = (
+  source: PlanInputProjectionSource,
+  deviceId: string,
+): boolean => hasStandingCommandGrant(
+  source.resolveManagedState(deviceId),
+  source.isCapacityControlEnabled(deviceId),
+  resolveDeviceStartPolicy(source.getDeviceStartPolicies(), deviceId),
+);
 
 /** Resolve configuration and observation into the facts used by plan input. */
 export const resolvePlanInputDeviceFacts = (
