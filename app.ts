@@ -152,6 +152,8 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected readonly reloadHomeModeCatalog = () => this.homeModeCatalog.reload();
   protected readonly resolveHomeModeName = (mode: string) => this.homeModeCatalog.resolveModeName(mode);
   protected readonly getHomeModeNames = () => this.homeModeCatalog.getAllModes();
+  protected readonly listDeviceTargetModes = (deviceId: string) => this.homeModeCatalog.listDeviceTargetModes(deviceId);
+  protected readonly setDeviceModeTarget = this.homeModeCatalog.setDeviceModeTarget;
   /** Narrow settings bridge; the UI never receives the catalog owner itself. */
   public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
     this.homeModeCatalog.getPrioritiesForDevices(deviceIds)

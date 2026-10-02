@@ -31,6 +31,9 @@ import {
 } from './priceFlowCards';
 import { registerEvSocCard, registerHeadroomForDeviceCard } from './headroomAndEvSocCards';
 import { registerSteppedLoadCards } from './steppedLoadFlowCards';
+import { registerTemperatureSettingsCards } from './temperatureSettingsCards';
+import type { DeviceModeTargetEdit, ModeTargetSelection } from '../lib/home/modeDeviceTargetWrite';
+import type { SmartTaskInProgressRead } from '../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type {
   DeferredObjectiveEndedBus,
   DeferredObjectiveHoursRemainingBus,
@@ -93,6 +96,17 @@ export type FlowCardDeps = {
    * "which devices can take this setting" cannot reach an observation.
    */
   getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
+  /** The modes a device's target temperature can be set in; `null` when they cannot be read. */
+  listDeviceTargetModes: (deviceId: string) => string[] | null;
+  /** Saves a device's target temperature in a mode of its own home's catalog. */
+  setDeviceModeTarget: (deviceId: string, selection: ModeTargetSelection, targetC: number) => DeviceModeTargetEdit;
+  /** Whether the device has a Smart task in progress, as a read that can say it could not tell. */
+  readSmartTaskInProgress: (deviceId: string) => SmartTaskInProgressRead;
+  /**
+   * A temperature snapped to the device's own target range and step, as the
+   * executor would write it. Throws for a device with no temperature target.
+   */
+  normalizeTemperatureTarget: (deviceId: string, temperatureC: number) => number;
   refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   reportFlowBackedCapability: (params: {
@@ -166,6 +180,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerEvChargingPhaseCard(deps);
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);
+    registerTemperatureSettingsCards(deps);
     registerManagedDeviceCondition(deps);
     registerCapacityControlCondition(deps);
     registerBudgetExemptionCondition(deps);

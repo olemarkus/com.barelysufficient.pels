@@ -18,6 +18,7 @@ import {
 } from '../priceOptimization.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { showToastError } from '../toast.ts';
+import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
 
 const ensurePriceOptimizationConfig = (deviceId: string) => {
   if (!state.priceOptimizationSettings[deviceId]) {
@@ -29,7 +30,7 @@ const ensurePriceOptimizationConfig = (deviceId: string) => {
 const parsePriceDeltaInput = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseFloat(value || '');
   if (!Number.isFinite(parsed)) return fallback;
-  if (parsed < -20 || parsed > 20) return fallback;
+  if (Math.abs(parsed) > MAX_PRICE_ADJUSTMENT_C) return fallback;
   return parsed;
 };
 

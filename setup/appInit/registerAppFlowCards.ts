@@ -1,5 +1,5 @@
-import { requireDailyBudgetService, requireFlowHomey } from './contextGuards';
-import { registerFlowCards } from '../../flowCards/registerFlowCards';
+import { requireDailyBudgetService, requireDeviceManager, requireFlowHomey } from './contextGuards';
+import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
@@ -11,6 +11,7 @@ import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
+  readSmartTaskInProgress,
   upsertObjectiveForDevice,
 } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
@@ -23,6 +24,8 @@ export function registerAppFlowCards(
   resolveModeName: (mode: string) => string,
   getAllModes: () => Set<string>,
   getCurrentOperatingMode: () => string,
+  listDeviceTargetModes: FlowCardDeps['listDeviceTargetModes'],
+  setDeviceModeTarget: FlowCardDeps['setDeviceModeTarget'],
 ): void {
   registerFlowCards({
     homey: requireFlowHomey(ctx),
@@ -73,6 +76,14 @@ export function registerAppFlowCards(
     getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
+    listDeviceTargetModes,
+    setDeviceModeTarget,
+    readSmartTaskInProgress: (deviceId) => (
+      readSmartTaskInProgress(ctx.homey.settings, deviceId, ctx.getNow().getTime())
+    ),
+    normalizeTemperatureTarget: (deviceId, temperatureC) => (
+      requireDeviceManager(ctx).resolveTemperatureTarget(deviceId, temperatureC)
+    ),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),
     reportFlowBackedCapability: (params) => ctx.reportFlowBackedCapability(params),

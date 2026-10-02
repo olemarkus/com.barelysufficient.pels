@@ -11,6 +11,7 @@ import {
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from '../lib/price/priceLevelUtils';
+import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { PowerSource } from '../lib/power/powerSource';
 import type {
@@ -78,6 +79,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly reloadHomeModeCatalog: () => void;
   protected abstract readonly resolveHomeModeName: (mode: string) => string;
   protected abstract readonly getHomeModeNames: () => Set<string>;
+  protected abstract readonly listDeviceTargetModes: FlowCardDeps['listDeviceTargetModes'];
+  protected abstract readonly setDeviceModeTarget: FlowCardDeps['setDeviceModeTarget'];
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;

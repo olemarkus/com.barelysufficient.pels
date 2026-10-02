@@ -3,6 +3,7 @@ import type { PriceOptDevice } from '../priceConfigTypes.ts';
 import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
 import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
 
 export type PriceAwareDevicesViewProps = {
   optimizationEnabled: boolean;
@@ -13,7 +14,7 @@ export type PriceAwareDevicesViewProps = {
 };
 
 const DELTA_MIN = 0;
-const DELTA_MAX = 20;
+const DELTA_MAX = MAX_PRICE_ADJUSTMENT_C;
 const DELTA_STEP = 0.5;
 
 const clamp = (val: number, min: number, max: number): number => Math.min(max, Math.max(min, val));

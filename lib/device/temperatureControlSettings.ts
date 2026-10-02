@@ -2,8 +2,10 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { TEMPERATURE_CONTROL_DISABLED_DEVICES, TEMPERATURE_CONTROL_MODES } from '../utils/settingsKeys';
 import { isBooleanMap } from '../utils/appTypeGuards';
 import {
-  readTemperatureControlModes, temperatureControlDisabledDevices,
+  readTemperatureControlModes, temperatureControlDisabledDevices, type TemperatureControlMode,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
+import type { SettingsPort } from '../ports/homeyRuntime';
+import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 
 /**
  * The two reads this classification needs, typed as the untrusted boundary they
@@ -85,3 +87,37 @@ export const resolveTemperatureControlDisabled = (
 ): boolean => policyState === 'resolved'
   ? disabledDevices[deviceId] === true
   : device?.deviceType === 'temperature';
+
+export type TemperatureControlModeWrite = 'written' | 'unchanged' | 'blocked_by_smart_task' | 'unavailable';
+
+/**
+ * Saves one device's "When the temperature changes outside PELS" choice, as
+ * the device's Setup selector does. An explicit entry outranks the legacy
+ * disable toggle (`resolveTemperatureControlMode`), so the modes key is the
+ * only one written, and every other device's entry is kept as read.
+ *
+ * A temperature Smart task needs PELS to set the temperature, so while one is
+ * in progress only the default choice is written. A Smart-task read that could
+ * not tell refuses the other choices as `unavailable`.
+ */
+export function writeTemperatureControlMode(
+  settings: SettingsPort,
+  deviceId: string,
+  mode: TemperatureControlMode,
+  smartTask: SmartTaskInProgressRead,
+): TemperatureControlModeWrite {
+  if (mode !== 'mode' && smartTask !== 'none') {
+    return smartTask === 'in_progress' ? 'blocked_by_smart_task' : 'unavailable';
+  }
+  let current: Record<string, TemperatureControlMode> | null;
+  try {
+    const raw = settings.get(TEMPERATURE_CONTROL_MODES);
+    current = readTemperatureControlModes(raw) ?? (isAbsent(settings, TEMPERATURE_CONTROL_MODES, raw) ? {} : null);
+  } catch {
+    return 'unavailable';
+  }
+  if (current === null) return 'unavailable';
+  if (current[deviceId] === mode) return 'unchanged';
+  settings.set(TEMPERATURE_CONTROL_MODES, { ...current, [deviceId]: mode });
+  return 'written';
+}
