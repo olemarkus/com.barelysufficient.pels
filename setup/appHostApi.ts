@@ -10,6 +10,7 @@ import {
 } from '../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import { PriceLevel } from '../lib/price/priceLevels';
+import type { PriceLevelChangesRead, PriceLevelLookahead } from '../lib/price/priceLevelUtils';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { PowerSource } from '../lib/power/powerSource';
 import type {
@@ -257,6 +258,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getNow = (): Date => new Date();
   public getCurrentHourPriceLevel = (): PriceLevel => (
     this.requirePriceCoordinator().getCurrentHourPriceLevel()
+  );
+  public getPriceLevelChangesWithin = (window: PriceLevelLookahead): PriceLevelChangesRead => (
+    this.requirePriceCoordinator().getPriceLevelChangesWithin(window)
   );
 
   public storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {

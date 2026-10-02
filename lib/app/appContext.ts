@@ -42,6 +42,7 @@ import type { PlanService } from '../plan/planService';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
+import type { PriceLevelChangesRead, PriceLevelLookahead } from '../price/priceLevelUtils';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
@@ -155,6 +156,8 @@ export type AppContext = {
    * for the cheap and expensive flags separately would build it twice.
    */
   getCurrentHourPriceLevel: () => PriceLevel;
+  /** The levels the price changes to inside a window — see `PriceService.getPriceLevelChangesWithin`. */
+  getPriceLevelChangesWithin: (window: PriceLevelLookahead) => PriceLevelChangesRead;
   areFlowBackedCardsAvailable: () => boolean;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   /**

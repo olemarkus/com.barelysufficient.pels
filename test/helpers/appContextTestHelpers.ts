@@ -345,6 +345,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
+    getPriceLevelChangesWithin: vi.fn(() => ({ state: 'resolved' as const, levels: [] })),
     areFlowBackedCardsAvailable: vi.fn(() => false),
     setExpectedOverride: vi.fn(() => false),
     reloadExpectedPowerOverrides: vi.fn(),

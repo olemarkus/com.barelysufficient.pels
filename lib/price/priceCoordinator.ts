@@ -14,6 +14,7 @@
  */
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceLevel } from './priceLevels';
+import type { PriceLevelChangesRead, PriceLevelLookahead } from './priceLevelUtils';
 import PriceService from './priceService';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
@@ -374,6 +375,21 @@ export class PriceCoordinator {
       moduleLogger.warn({ event: 'price_level_read_failed', err: normalizeError(error) });
     }
     return this.lastGoodHourPriceLevel;
+  }
+
+  /**
+   * The levels the price changes to inside `window` — see
+   * `PriceService.getPriceLevelChangesWithin`. Unlike the current level there
+   * is no last good answer to carry forward: an older look-ahead describes a
+   * window that has since moved. A failed build is `unavailable`.
+   */
+  getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevelChangesRead {
+    try {
+      return { state: 'resolved', levels: this.priceService.getPriceLevelChangesWithin(window) };
+    } catch (error) {
+      moduleLogger.warn({ event: 'price_level_lookahead_read_failed', err: normalizeError(error) });
+      return { state: 'unavailable' };
+    }
   }
 
   private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {
