@@ -296,6 +296,12 @@ the allocator actually applies stacks three caps via `Math.min`:
 `allocateCommittedEnergyToBuckets` fills each committed hour up to that stacked ceiling,
 so slow drift in `energyNeededKWh` is absorbed into the existing committed hours
 instead of spilling sliver allocations into new hours via phase-2 expansion.
+The energy epsilon decides whether the task's remaining need is satisfied; it does
+not erase positive bucket bookings. In the final seconds of an hour, a booking can
+fall below 0.001 kWh and still carry a current-hour claim, active step, and physical
+reservation. Persistence preserves positive sub-Wh bookings so the frozen read does
+not release the device during the fresh-to-frozen handoff. Actual zero-capacity
+buckets remain unbooked, and explicit price releases still apply.
 `mergeHoursPreservingCommitment` (`activePlanSchedule.ts`) preserves the floor by taking
 `Math.max(committed.plannedKWh, live.plannedKWh)` on overlap, so a transient shrink in
 `live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds

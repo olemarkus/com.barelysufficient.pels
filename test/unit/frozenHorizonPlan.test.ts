@@ -93,4 +93,17 @@ describe('buildFrozenHorizonPlan', () => {
     expect(build({ committedHours: hours, aheadOfHourMilestone: false }).coldStartReleaseEligible).toBe(false);
     expect(build({ committedHours: hours, aheadOfHourMilestone: true }).coldStartReleaseEligible).toBe(false);
   });
+
+  it('keeps a positive sub-Wh EV booking price-released when ahead with a cheaper hour booked', () => {
+    const plan = build({
+      objectiveKind: 'ev_soc',
+      aheadOfHourMilestone: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 0.0003, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 2 },
+      ],
+    });
+    expect(plan.priceDeferralEligible).toBe(true);
+    expect(plan.currentHourClaim).toBe('released');
+  });
 });

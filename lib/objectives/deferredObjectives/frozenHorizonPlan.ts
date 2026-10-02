@@ -158,7 +158,7 @@ export const buildFrozenHorizonPlan = (params: {
     : null;
 
   const priceDeferralEligible = resolveFrozenPriceDeferralEligible({
-    currentBooked: currentBookedKWh > epsilonKWh,
+    currentBooked: currentBookedKWh > 0,
     cheaperHourAhead: currentHour?.cheaperHourAhead === true,
     aheadOfHourMilestone,
   });

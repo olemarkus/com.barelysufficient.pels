@@ -22,7 +22,6 @@ import type {
 import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
-import { roundKWh } from './activePlanMath';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -277,14 +276,14 @@ const reservationsFromHours = (params: {
   exemptFromBudget: boolean;
   deadlineAtMs: number;
 }): DeferredObjectivePriorityReservation[] => params.hours.flatMap((hour) => {
-  if (hour.plannedKWh <= EPSILON_KWH) return [];
+  if (hour.plannedKWh <= 0) return [];
   return [{
     deviceId: params.deviceId,
     topologyKey: `legacy:${hour.startsAtMs}:${hour.energySegments.map((segment) => (
       `${segment.startMs}-${segment.endMs}`
     )).join(',')}`,
     startsAtMs: hour.startsAtMs,
-    plannedKWh: roundKWh(hour.plannedKWh),
+    plannedKWh: hour.plannedKWh,
     admissionPowerKw: resolveLegacyAdmissionPowerKw({
       hour,
       device: params.device,

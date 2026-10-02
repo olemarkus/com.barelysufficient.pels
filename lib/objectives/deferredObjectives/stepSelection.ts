@@ -87,7 +87,9 @@ export const selectMinimumStepForEnergy = (params: {
     durationHours,
     epsilonKWh,
   } = params;
-  if (energyKWh <= epsilonKWh || durationHours <= 0) return null;
+  // Positive booked energy always needs an active step, even in the last
+  // seconds of a bucket. Epsilon only tolerates a small delivery shortfall.
+  if (energyKWh <= 0 || durationHours <= 0) return null;
   const activeSteps = getActiveObjectiveSteps(steps);
   for (const step of activeSteps) {
     if ((step.usefulPowerKw * durationHours) + epsilonKWh >= energyKWh) {

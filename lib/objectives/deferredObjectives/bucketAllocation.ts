@@ -178,6 +178,9 @@ export const normalizeHorizonBuckets = (params: {
 };
 /* eslint-enable functional/immutable-data */
 
+// Epsilon decides whether the remaining task need is satisfied, not whether a
+// bucket is booked. A positive sliver at hour-end still carries an active claim;
+// dropping it would release the device just before the next booked hour.
 export const allocateEnergyToBuckets = (params: {
   buckets: NormalizedBucket[];
   stepForBucket: StepForBucket;
@@ -200,7 +203,7 @@ export const allocateEnergyToBuckets = (params: {
     if (remainingKWh <= epsilonKWh) break;
     const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket));
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
-    if (plannedKWh <= epsilonKWh) continue;
+    if (plannedKWh <= 0) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
@@ -260,7 +263,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
     if (!committedHourSet.has(hourStartMs)) continue;
     const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket));
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
-    if (plannedKWh <= epsilonKWh) continue;
+    if (plannedKWh <= 0) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
@@ -384,7 +387,7 @@ const expandCommittedAllocation = (params: {
       remainingKWh,
       resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
     );
-    if (plannedKWh <= epsilonKWh) continue;
+    if (plannedKWh <= 0) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
