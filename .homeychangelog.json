@@ -565,5 +565,8 @@
   },
   "3.9.1": {
     "en": "Device cards and the activity log now update as soon as a device reports a change, instead of waiting for the next whole-home power reading. A limited device now shows whether it is off or running at a lower level, for example Limited · Off. Stepped devices with built-in level control, such as the Høiax Connected 300, no longer keep re-sending a level the device already reports. Hyundai and Kia cars now appear in the charger's car picker."
+  },
+  "3.9.2": {
+    "en": "Device cards now update as soon as a device reports a change, instead of waiting for the next whole-home power reading. A limited device now shows whether it is off or running at a lower level, for example 'Limited · Off', and the activity log records changes in state rather than every small change in power.\n\nEV chargers can again be chosen in the New smart task widget and when editing a smart task. Devices PELS has held back for a long time are flagged 'Held back' again, and home batteries and solar panels no longer appear as device cards on the Overview. Unplugging a car no longer counts as turning the charger off for 'Leave off until turned on again'. Stepped devices using Built-in device control, such as the Høiax Connected 300, no longer keep re-sending a level the device already reports. Hyundai and Kia cars now appear in the charger's car picker."
   }
 }
