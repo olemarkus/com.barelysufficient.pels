@@ -1491,6 +1491,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **The settings UI's two price-adjustment editors encode and parse the stored values themselves.**
+      `price_optimization_settings` has a shared owner for the adjustment range and its stored
+      encoding (`MAX_PRICE_ADJUSTMENT_C`, `encodePriceAdjustment` in
+      `packages/shared-domain/src/settings/priceOptimization.ts`), which the Flow card's writer
+      (`writeDevicePriceAdjustment`) uses. The two UI editors still store the sign on their own:
+      `readPriceOptInputs` (`packages/settings-ui/src/ui/deviceDetail/priceOpt.ts`, `-Math.abs`)
+      and the Prices tab's `onExpensiveChange(-val)`
+      (`packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`). The UI also parses the key
+      with its own `priceOptimizationConfig.ts` alongside `classifyDeviceSetting` in
+      `lib/price/priceOptimizationSettingsStore.ts`. **What changes:** route both editors' writes
+      through `encodePriceAdjustment`, then move the per-device read policy into the shared owner
+      and have both sides call it. **Done when:** no file outside the shared owner writes a sign
+      onto `cheapDelta` / `expensiveDelta`, and one parser classifies a stored entry for both
+      sides. [P2]
+
 - [ ] **The horizon planner accepts looser inputs than its one producer sends.**
       `planDeferredObjectiveHorizon`'s only production caller (`rescueReplan.ts`) always passes
       `committed` and, on the nested objective, `fullyReserved` and `deadlineMarginMs`, and never

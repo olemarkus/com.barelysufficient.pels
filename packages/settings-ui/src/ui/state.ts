@@ -14,7 +14,10 @@ import type {
   TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import {
+  createEmptyDeferredObjectiveSettings,
+  isSmartTaskInProgress,
+} from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ChargerPhasePresets } from '../../../contracts/src/settingsUiApi.ts';
@@ -203,8 +206,7 @@ export const resolveManagedState = (deviceId: string): boolean => {
 // gates) held equal only by comments.
 export const hasActiveDeadlineObjective = (deviceId: string, nowMs: number = Date.now()): boolean => {
   const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
-  if (!entry || !entry.enabled) return false;
-  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
+  return entry !== undefined && isSmartTaskInProgress(entry, nowMs);
 };
 
 // "This home has solar surfaces at all" — a role-detected solar/PV device OR a

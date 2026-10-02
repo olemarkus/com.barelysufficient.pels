@@ -1555,6 +1555,162 @@
       },
       {
         "title": {
+          "en": "Set mode temperature for device"
+        },
+        "titleFormatted": {
+          "en": "Set the temperature for [[device]] in [[mode]] to [[temperature]] °C"
+        },
+        "hint": {
+          "en": "Saves the device's target temperature for a mode, the same setting as the device's Temperature per mode section. Choose Active mode to change whichever mode is in force when the Flow runs. With Return to mode target selected for the device, PELS still applies price adjustments and power limiting on top. With Keep the new temperature selected, PELS saves it but does not apply it."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          },
+          {
+            "name": "mode",
+            "type": "autocomplete",
+            "title": {
+              "en": "Mode"
+            },
+            "placeholder": {
+              "en": "Select mode"
+            }
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Target temperature (°C)"
+            },
+            "placeholder": {
+              "en": "21"
+            },
+            "min": -30,
+            "max": 100,
+            "step": 0.5
+          }
+        ],
+        "id": "set_device_mode_temperature"
+      },
+      {
+        "title": {
+          "en": "Set price adjustment for device"
+        },
+        "titleFormatted": {
+          "en": "Set the [[adjustment]] for [[device]] to [[amount]] °C"
+        },
+        "hint": {
+          "en": "Saves how far PELS moves this device's temperature in cheap or expensive hours, the same setting as the device's Price response section. Use 0 to stop that adjustment. Needs Price-based control turned on for the device. Not applied while the device keeps or saves temperature changes made outside PELS."
+        },
+        "args": [
+          {
+            "name": "adjustment",
+            "type": "dropdown",
+            "title": {
+              "en": "Adjustment"
+            },
+            "values": [
+              {
+                "id": "cheap_hour_boost",
+                "label": {
+                  "en": "Cheap-hour boost"
+                }
+              },
+              {
+                "id": "expensive_hour_reduction",
+                "label": {
+                  "en": "Expensive-hour reduction"
+                }
+              }
+            ]
+          },
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          },
+          {
+            "name": "amount",
+            "type": "number",
+            "title": {
+              "en": "Amount (°C)"
+            },
+            "placeholder": {
+              "en": "0 - 20"
+            },
+            "min": 0,
+            "max": 20,
+            "step": 0.5
+          }
+        ],
+        "id": "set_device_price_adjustment"
+      },
+      {
+        "title": {
+          "en": "Set what happens when a device's temperature changes outside PELS"
+        },
+        "titleFormatted": {
+          "en": "Set what happens when the temperature of [[device]] changes outside PELS: [[choice]]"
+        },
+        "hint": {
+          "en": "The same setting as \"When the temperature changes outside PELS\" in the device's Setup section. With \"Keep the new temperature\", PELS stops setting this device's temperature: price adjustments stop, and PELS cannot limit its power by lowering the temperature. With \"Save as current mode target\", price and solar adjustments stop. While the device has an active Smart task, only \"Return to mode target\" is accepted. Switching back to \"Return to mode target\" puts the device on its mode target again."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          },
+          {
+            "name": "choice",
+            "type": "dropdown",
+            "title": {
+              "en": "Choice"
+            },
+            "values": [
+              {
+                "id": "mode",
+                "label": {
+                  "en": "Return to mode target"
+                }
+              },
+              {
+                "id": "external",
+                "label": {
+                  "en": "Keep the new temperature"
+                }
+              },
+              {
+                "id": "update_mode",
+                "label": {
+                  "en": "Save as current mode target"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "set_device_temperature_control_mode"
+      },
+      {
+        "title": {
           "en": "Add energy task"
         },
         "titleFormatted": {
@@ -1689,7 +1845,7 @@
           "en": "Set expected power for [[device]] to [[power_w]] W"
         },
         "hint": {
-          "en": "Legacy/manual override of a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
+          "en": "Legacy card, kept for Flows that already use it. Sets the device's Power when running figure in watts. Fails for a stepped-load device, which is sized per configured step."
         },
         "args": [
           {

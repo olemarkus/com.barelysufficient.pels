@@ -81,7 +81,10 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
 | **Enable power-limit control for device** | Turns on power-limit control for one device. Only devices PELS can limit are offered; for a device with no power reading (no power meter and no *Energy used when on* in its Homey settings) the card does nothing and PELS logs why. |
 | **Disable power-limit control for device** | Turns off power-limit control for one device. |
-| **Set expected power for device** | Sets a device's expected draw in watts — the same **Power when running** figure as the device's Setup section, for when you would rather set it from a Flow. Outranks every other source, including a configured load and a higher measured reading. Fails only for a stepped-load device, which is sized per configured step. |
+| **Set mode temperature for device** | Saves a temperature device's target for one mode, the same setting as its **Temperature per mode** section. Choose **Active mode** to change whichever mode is in force when the Flow runs. With **Return to mode target** selected, PELS keeps applying price adjustments and power limiting on top. With **Keep the new temperature**, the value is saved but not applied. |
+| **Set price adjustment for device** | Saves a device's **Cheap-hour boost** or **Expensive-hour reduction** (0 to 20 °C), the same settings as its **Price response** section. Use `0` to stop that adjustment. The device needs **Price-based control** turned on. Not applied while the device keeps or saves temperature changes made outside PELS. |
+| **Set what happens when a device's temperature changes outside PELS** | Sets the device's **When the temperature changes outside PELS** choice: **Return to mode target**, **Keep the new temperature**, or **Save as current mode target**. **Keep the new temperature** also stops price adjustments and any power limiting done by lowering the temperature. **Save as current mode target** stops price and solar adjustments. While a Smart task is active on the device, only **Return to mode target** is accepted. |
+| **Set expected power for device** | Legacy card, kept for Flows that already use it; it is not offered for new Flows. Sets a device's expected draw in watts — the same **Power when running** figure as the device's Setup section, for when you would rather set it from a Flow. Outranks every other source, including a configured load and a higher measured reading. Fails only for a stepped-load device, which is sized per configured step. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
 | **Report stepped load** as **step** | Reports the selected stepped-load level directly, usually after a vendor-specific action card. |
@@ -99,6 +102,16 @@ The device-aware available-power condition includes built-in hysteresis after re
 ### Mode switching
 
 Use **Set operating mode** from schedules or presence events to move between comfort profiles without changing every device manually.
+
+### Temperature changes from a Flow
+
+Let your Flows change PELS's settings for a thermostat instead of writing to the thermostat directly. With the device on **Return to mode target**, PELS then keeps adjusting for price and power on top of what the Flow chose.
+
+- **Lower a room while a door is open:** when the door opens, **Set mode temperature for device** in **Active mode** to 17 °C; when it closes, set it back to 21 °C.
+- **Keep a steady temperature for a session, without price adjustments:** at the start, set the temperature for **Active mode** and set both price adjustments to `0`. At the end, put the temperature and adjustments back.
+- **Hand a thermostat to another Flow for a while:** at the start, set **When the temperature changes outside PELS** to **Keep the new temperature**, then set the thermostat with its own card. Until you switch back, PELS does not adjust its temperature for price and cannot lower it to limit power. At the end, set it back to **Return to mode target**, and PELS returns the device to its mode target with price adjustments.
+
+**Active mode** means the mode in force when each card runs. If the mode can change between the start and end Flows, the end Flow writes to the new mode and the first mode keeps the temporary value, so pick the mode by name instead.
 
 ### Daily-budget automation
 

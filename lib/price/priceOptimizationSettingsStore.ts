@@ -6,7 +6,11 @@ import {
   PRICE_THRESHOLD_PERCENT,
 } from '../utils/settingsKeys';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
-import { resolvePriceConfigured } from '../../packages/shared-domain/src/settings/priceOptimization';
+import {
+  encodePriceAdjustment,
+  resolvePriceConfigured,
+  type PriceAdjustmentKind,
+} from '../../packages/shared-domain/src/settings/priceOptimization';
 import type { PriceOptimizationSettings } from './priceOptimizer';
 
 export type PriceOptimizationDeviceSetting = PriceOptimizationSettings & {
@@ -164,3 +168,46 @@ export const createPriceOptimizationSettingsStore = (
     return readNumberOrDefault(settings.get(PRICE_MIN_DIFF_ORE), DEFAULT_MIN_DIFF_ORE);
   },
 });
+
+export type DevicePriceAdjustmentWrite =
+  | 'written' | 'unchanged' | 'out_of_range' | 'price_control_off' | 'unavailable';
+
+/**
+ * Saves one of a device's price adjustments, as the device's Price response
+ * fields do, encoded by the key's shared owner (`encodePriceAdjustment`).
+ *
+ * Only while Price-based control is on for the device, which is when the
+ * settings UI lets the owner edit these fields. A device with no price
+ * settings at all is the same answer: creating an entry would also decide
+ * whether price-based control is on, a different setting than this edit names.
+ * Every other device's entry is written back exactly as it was read.
+ */
+export function writeDevicePriceAdjustment(
+  settings: SettingsPort,
+  deviceId: string,
+  kind: PriceAdjustmentKind,
+  sizeC: number,
+): DevicePriceAdjustmentWrite {
+  const encoded = encodePriceAdjustment(kind, sizeC);
+  if (encoded === null) return 'out_of_range';
+  let raw: unknown;
+  try {
+    raw = settings.get(PRICE_OPTIMIZATION_SETTINGS);
+    if (raw === null || raw === undefined) {
+      const keys = settings.getKeys();
+      // An empty key list is the SDK's transient unreadable-store answer.
+      return keys.length > 0 && !keys.includes(PRICE_OPTIMIZATION_SETTINGS) ? 'price_control_off' : 'unavailable';
+    }
+  } catch {
+    return 'unavailable';
+  }
+  const read = classifyDeviceSettings(raw);
+  if (read.state === 'unavailable' || !isRecord(raw)) return 'unavailable';
+  const entry = raw[deviceId];
+  if (!Object.hasOwn(read.settings, deviceId) || !isRecord(entry) || !read.settings[deviceId]?.enabled) {
+    return 'price_control_off';
+  }
+  if (entry[encoded.field] === encoded.value) return 'unchanged';
+  settings.set(PRICE_OPTIMIZATION_SETTINGS, { ...raw, [deviceId]: { ...entry, [encoded.field]: encoded.value } });
+  return 'written';
+}

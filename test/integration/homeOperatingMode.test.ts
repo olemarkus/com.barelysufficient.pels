@@ -925,6 +925,38 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     readSpy.mockRestore();
   });
 
+  // Where a Flow's temperature edit for a device lands: Main's catalog while
+  // the area still follows Main, in the area's own pinned mode, and the area's
+  // own catalog once it is initialized.
+  it('edits Main\'s catalog in the pinned mode for a legacy area device', () => {
+    const catalog = getHomeModeCatalogForTest(ctx);
+
+    expect(catalog.listDeviceTargetModes('vt-1')).toEqual(['Cooler', 'Home']);
+    expect(catalog.setDeviceModeTarget('vt-1', { kind: 'active' }, 19)).toEqual({ state: 'written', mode: 'Cooler' });
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'vt-1': 24 }, Cooler: { 'vt-1': 19 } });
+  });
+
+  it('edits the area\'s own catalog for an initialized area device', () => {
+    mockHomeyInstance.settings.set('mode_aliases:h_a', {});
+    mockHomeyInstance.settings.set('capacity_priorities:h_a', { Night: { 'vt-1': 1 } });
+    mockHomeyInstance.settings.set('mode_device_targets:h_a', { Night: { 'vt-1': 18 } });
+    mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Night');
+    mockHomeyInstance.settings.set('mode_catalog_initialized:h_a', true);
+    const catalog = getHomeModeCatalogForTest(ctx);
+
+    expect(catalog.listDeviceTargetModes('vt-1')).toEqual(['Night']);
+    expect(catalog.setDeviceModeTarget('vt-1', { kind: 'active' }, 17)).toEqual({ state: 'written', mode: 'Night' });
+    expect(mockHomeyInstance.settings.get('mode_device_targets:h_a')).toEqual({ Night: { 'vt-1': 17 } });
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual(MODE_TARGETS);
+  });
+
+  it('edits Main\'s catalog in Main\'s active mode for a Main device', () => {
+    expect(getHomeModeCatalogForTest(ctx).setDeviceModeTarget('main-device', { kind: 'active' }, 20))
+      .toEqual({ state: 'written', mode: 'Home' });
+    expect(mockHomeyInstance.settings.get('mode_device_targets'))
+      .toEqual({ ...MODE_TARGETS, Home: { ...MODE_TARGETS.Home, 'main-device': 20 } });
+  });
+
   it('skips the overshoot seed while the pinned mode read throws, then seeds under the PIN once it recovers', () => {
     // Precondition: the device really is a sub-home member, so the seed would
     // otherwise resolve through the pin.

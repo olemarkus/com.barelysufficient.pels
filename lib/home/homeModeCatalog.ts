@@ -28,6 +28,12 @@ import { sanitizeModeDeviceTargets } from '../../packages/shared-domain/src/sett
 import { readModeAliases } from '../../packages/shared-domain/src/settings/modeAliases';
 import { readHomeModeSetting } from './homeModeSettingsRead';
 import { HomeModeDeviceResolver, type DeviceOperatingModeOutcome } from './homeModeDeviceRead';
+import {
+  editDeviceModeTarget,
+  listTargetModes,
+  type DeviceModeTargetEdit,
+  type ModeTargetSelection,
+} from './modeDeviceTargetWrite';
 
 /** Persisted mode settings that the active mode is resolved against. */
 export type HomeModeCatalogConfiguration = {
@@ -53,6 +59,14 @@ export type HomeModeCatalog = {
     membershipOverride?: HomeMembershipPort,
     allowPendingOwnershipGeneration?: boolean,
   ) => DeviceOperatingModeOutcome;
+  /**
+   * The modes a device's target temperature can be set in, from the catalog
+   * its mode targets live in, which may be a meter area's. `null` when that
+   * catalog cannot be read.
+   */
+  listDeviceTargetModes: (deviceId: string) => string[] | null;
+  /** Saves a device's target in one of those modes. See `editDeviceModeTarget`. */
+  setDeviceModeTarget: (deviceId: string, selection: ModeTargetSelection, targetC: number) => DeviceModeTargetEdit;
   setOperatingMode: (mode: string) => { previous: string; resolved: string };
   isInitialized: () => boolean;
   reload: (allowPendingOwnershipGeneration?: boolean) => void;
@@ -336,6 +350,19 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     allowPendingOwnershipGeneration = false,
   ): DeviceOperatingModeOutcome => this.deviceModeResolver.resolve(
     deviceId, membershipOverride, allowPendingOwnershipGeneration,
+  );
+
+  listDeviceTargetModes = (deviceId: string): string[] | null => {
+    const catalog = this.deviceModeResolver.resolveCatalog(deviceId);
+    return catalog.state === 'resolved' ? listTargetModes(catalog) : null;
+  };
+
+  setDeviceModeTarget = (
+    deviceId: string,
+    selection: ModeTargetSelection,
+    targetC: number,
+  ): DeviceModeTargetEdit => editDeviceModeTarget(
+    this.settings, this.deviceModeResolver.resolveCatalog(deviceId), deviceId, selection, targetC,
   );
 
   setOperatingMode = (mode: string): { previous: string; resolved: string } => {

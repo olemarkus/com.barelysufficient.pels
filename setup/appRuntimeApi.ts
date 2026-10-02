@@ -443,6 +443,8 @@ abstract class AppRuntimeApi extends Base {
       this.resolveHomeModeName,
       this.getHomeModeNames,
       this.getHomeOperatingMode,
+      this.listDeviceTargetModes,
+      this.setDeviceModeTarget,
     );
   }
   public isTemperatureControlDisabled = (deviceId: string): boolean => (

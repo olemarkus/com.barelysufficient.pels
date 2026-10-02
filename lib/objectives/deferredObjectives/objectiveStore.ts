@@ -5,7 +5,9 @@ import {
 import {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
+  isSmartTaskInProgress,
   normalizeDeferredObjectiveSettingsEntry,
+  type SmartTaskInProgressRead,
 } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type {
   DeferredObjectiveSettingsEntry,
@@ -81,6 +83,29 @@ export const hasOpenDeferredObjective = (
   const entry = readObjectiveForDevice(store, deviceId);
   if (!entry) return false;
   return entry.enabled || entry.deadlineAtMs > nowMs;
+};
+
+/**
+ * Whether the device has a Smart task in progress, as a three-state read: the
+ * gate on the device's temperature choice must refuse when it cannot tell, so
+ * a transient read is `unavailable`, never `none`. A present entry the
+ * normalizer rejects is unavailable too: the store holds something for the
+ * device, and this read cannot say what.
+ */
+export const readSmartTaskInProgress = (
+  store: ObjectiveSettingsStore,
+  deviceId: string,
+  nowMs: number,
+): SmartTaskInProgressRead => {
+  try {
+    const raw = store.get(perDeviceKey(deviceId));
+    const entry = normalizeDeferredObjectiveSettingsEntry(raw);
+    if (entry) return isSmartTaskInProgress(entry, nowMs) ? 'in_progress' : 'none';
+    if (raw !== null && raw !== undefined) return 'unavailable';
+    return objectiveAbsenceIsTrustworthy(store, deviceId) ? 'none' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
 };
 
 /**

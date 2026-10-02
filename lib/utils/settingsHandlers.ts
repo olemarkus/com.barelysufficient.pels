@@ -520,6 +520,10 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');
+      // A device's price adjustment changes its setpoint this hour, so the owner's
+      // edit is decided now; a snapshot refresh alone waits for the next meter
+      // reading, which under Flow-reported power may be a long way off.
+      await rebuildPlanFromSettings(deps, PRICE_OPTIMIZATION_SETTINGS);
     },
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [HOMEY_ENERGY_METER_DEVICE_ID]: async () => handleHomeyEnergyMeterChange(deps),

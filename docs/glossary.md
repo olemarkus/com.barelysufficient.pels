@@ -133,7 +133,7 @@ and export that reflects what your energy is actually worth to you. It is always
 estimate — your bills and receipts stay on the import price. Surfaces that act on it
 show a *using your solar* reason line.
 
-### Cheap-price boost / expensive-price reduction
+### Cheap-hour boost / expensive-hour reduction
 Temperature nudges (in °C) PELS applies to a price-aware device while electricity
 is cheap or expensive — for example +2 °C overnight, −2 °C during the evening peak.
 They follow the price for as long as it lasts, which is a quarter of an hour where
