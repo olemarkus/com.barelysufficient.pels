@@ -4,6 +4,7 @@ import { DeferredObjectiveDecorationController } from '../../lib/objectives/defe
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 
 const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: 'dev',
@@ -29,6 +30,47 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureRes
 const buildPowerTracker = () => ({ lastTimestamp: Date.now() });
 
 describe('DeferredObjectiveDecorationController', () => {
+  it.each([
+    { controllable: true, delayMs: 0 },
+    { controllable: true, delayMs: 1 },
+    { controllable: false, delayMs: 0 },
+    { controllable: false, delayMs: 1 },
+  ])('drops all task claims at expiry before the clock disarms it (control=$controllable, delay=$delayMs)', ({ controllable, delayMs }) => {
+    const deadlineAtMs = Date.UTC(2026, 9, 2, 4);
+    const settings: DeferredObjectiveSettingsV1 = {
+      version: 1,
+      objectivesByDeviceId: {
+        dev: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs },
+      },
+    };
+    const device = { ...buildDevice(), controlModel: 'binary_power' as const, control: fixtureControlPosture({ controllable }) };
+    const controller = new DeferredObjectiveDecorationController({
+      getThermalDirection: () => 'heating',
+      getPrioritiesForDevices: createFixturePriorityQuery(),
+      getDeferredObjectiveSettings: () => settings,
+      getTimeZone: () => 'UTC',
+      getPowerTracker: buildPowerTracker,
+      getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: () => [],
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getDeferredObjectiveActivePlans: () => null,
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
+    });
+
+    const bundle = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: deadlineAtMs + delayMs });
+
+    expect(settings.objectivesByDeviceId.dev.enabled).toBe(true);
+    expect(bundle.admittedDevices[0]).toBe(device);
+    expect(bundle.forceShedSet.size).toBe(0);
+    expect(bundle.deferredAvoidDeviceIds.size).toBe(0);
+    expect(bundle.deferredReleaseIntentByDeviceId).toEqual({});
+    expect(bundle.admittedDeviceIds.size).toBe(0);
+    expect(bundle.drivingDeviceIds.size).toBe(0);
+    expect(bundle.lentAuthorityDeviceIds.size).toBe(0);
+  });
+
   it('reads deferred objective settings every decoration cycle so admission can run', () => {
     const getDeferredObjectiveSettings = vi.fn(() => ({
       version: 1,

@@ -25,7 +25,7 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
+import { isDeferredObjectiveExpired, type DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
 
@@ -202,19 +202,6 @@ export class DeferredObjectiveLifecycleEmitter {
     // See notes/state-management/deferred-objective-lifecycle-carveout.md.
     this.deps.observeDeferredObjectiveActivePlans(diagnostics, nowMs);
 
-    // Emission to the UI / Flow buses + clock-owned terminal fallback/ending.
-    const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
-    // Reset the announce memory whenever the topic is off, so enabling the
-    // debug topic to investigate a task always yields its current state on the
-    // next tick instead of silence left over from the last time it was on.
-    this.announced = debugStructured
-      ? emitDeferredObjectiveDiagnostics({
-        diagnostics,
-        debugStructured,
-        nowMs,
-        announced: this.announced,
-      })
-      : new Map();
     this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions({
       diagnostics,
       knownDeviceIds: this.lifecycleDeviceIds,
@@ -223,12 +210,28 @@ export class DeferredObjectiveLifecycleEmitter {
       onDeadlineReached: this.deps.onDeadlineReached,
       onFallbackInactive: this.deps.onFallbackInactive,
     });
+
+    // Finalization and terminal fallback still observe expired tasks. Their
+    // history outcome is authoritative; no live verdict survives the deadline.
+    const liveDiagnostics = diagnostics.filter((diagnostic) => !isDeferredObjectiveExpired(diagnostic, nowMs));
+    const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
+    // Reset the announce memory whenever the topic is off, so enabling the
+    // debug topic to investigate a task always yields its current state on the
+    // next tick instead of silence left over from the last time it was on.
+    this.announced = debugStructured
+      ? emitDeferredObjectiveDiagnostics({
+        diagnostics: liveDiagnostics,
+        debugStructured,
+        nowMs,
+        announced: this.announced,
+      })
+      : new Map();
     const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
-    if (statusBus) emitDeferredObjectiveStatusTransitions({ diagnostics, statusBus, nowMs });
+    if (statusBus) emitDeferredObjectiveStatusTransitions({ diagnostics: liveDiagnostics, statusBus, nowMs });
     const hoursRemainingBus = this.deps.getDeferredObjectiveHoursRemainingBus?.();
     const hoursRemainingTracker = this.deps.getDeferredObjectiveHoursRemainingTracker?.();
     if (hoursRemainingBus && hoursRemainingTracker) {
-      hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+      hoursRemainingTracker.observe({ diagnostics: liveDiagnostics, nowMs, bus: hoursRemainingBus });
     }
   }
 }

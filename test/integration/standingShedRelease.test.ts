@@ -101,7 +101,7 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
  */
 const smartTaskGoverns = (decision: DeferredAdmissionDecision) => (devices: PlanInputDevice[]) => {
   const decisions = new Map([[HEATER, decision]]);
-  const admission = applyDeferredAdmissionToInput(devices, decisions, {});
+  const admission = applyDeferredAdmissionToInput(devices, decisions);
   return {
     ...buildIdentityDecorationBundle(admission.devices),
     forceShedSet: admission.forceShedSet,

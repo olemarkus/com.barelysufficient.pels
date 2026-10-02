@@ -4,7 +4,6 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
   buildDeferredReleaseIntents,
-  buildDeferredTargetOverrides,
 } from '../../lib/objectives/deferredObjectives/admission';
 import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
@@ -94,7 +93,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan(),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
   });
 
   it('adds an EV resume intent for an EV objective in a planned bucket', () => {
@@ -184,7 +183,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     // Non-negotiable: when it comes to stepped-load / shedding, the planner must not tell an EV
     // charger apart from a stepped water heater (e.g. Connected 300). Both are controlModel
     // 'stepped_load'; only their objective unit (SoC% vs °C) differs, which never reaches the
-    // release routing. So their admission decisions must be byte-identical across buckets.
+    // release routing. Their control branches agree; only the heater carries a temperature floor.
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
     const waterHeater: PlanInputDevice = withFixtureResidualKw({
       available: true,
@@ -216,7 +215,9 @@ describe('applyDeferredObjectiveAdmission', () => {
         [buildDiagnostic({ deviceId: 'dev', objectiveKind: 'temperature', horizonPlan: buildHorizonPlan({ kind: 'temperature', ...horizon }) })],
         [waterHeater],
       ).get('dev');
-      expect(evDecision).toEqual(heaterDecision);
+      expect(heaterDecision).toEqual(evDecision?.kind === 'planned'
+        ? { ...evDecision, deadlineFloorTargetC: 65 }
+        : evDecision);
     }
   });
 
@@ -278,7 +279,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    const applied = applyDeferredAdmissionToInput([device], decisions, {});
+    const applied = applyDeferredAdmissionToInput([device], decisions);
     // Managed, so it competes on its own priority in the normal shed/restore lane:
     // the task contributes the authority term the cap-off setting withheld.
     expect(applied.devices[0]?.control.commandAuthority).toBe(true);
@@ -298,7 +299,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       trajectory: { kind: 'resolved', status: 'cannot_meet' },
       horizonPlan: buildHorizonPlan(shortUnbookedHour),
     });
-    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+    expect(applyDeferredObjectiveAdmission([diagnostic]).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 
   it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
@@ -409,7 +410,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
   });
 
   it('returns inactive when the horizon plan is missing', () => {
@@ -431,7 +432,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('marks the decision budget-exempt when exempt-from-budget is applied to the plan', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: true, engageBoost: false, reservesStartupPower: false });
+      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: true, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
 
     // Not applied once the task is no longer being pursued.
     const satisfied = buildDiagnostic({
@@ -464,7 +465,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
 
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
     expect(devices[0]?.budgetExempt).toBeUndefined();
   });
 
@@ -472,14 +473,14 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const capOnDevice = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions, {});
+    const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions);
     expect(devices[0]?.budgetExempt).toBe(true);
   });
 
   it('engages boost on a planned limit-lower-priority task, but not once it is satisfied', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: true, reservesStartupPower: false });
+      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: true, reservesStartupPower: false, deadlineFloorTargetC: 65 });
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
@@ -497,7 +498,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
     // Admission only requests the boost (kind-agnostic); the boost resolvers decide whether
     // it resolves to temperatureBoost or evBoost by device kind.
     expect(devices[0]?.forceBoostActive).toBe(true);
@@ -506,7 +507,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('sets reservesStartupPower (boost-free) on a planned pause-lower-priority task, not once satisfied', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', pauseLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: true });
+      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: true, deadlineFloorTargetC: 65 });
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
@@ -524,7 +525,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', pauseLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
     expect(devices[0]?.reservesStartupPower).toBe(true);
     expect(devices[0]?.forceBoostActive).toBeUndefined();
   });
@@ -535,7 +536,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const decisions = applyDeferredObjectiveAdmission([planned]);
     const device = buildEvDevice({ id: 'dev1', controllable: true });
-    const { devices } = applyDeferredAdmissionToInput([device], decisions, {});
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
     expect(devices[0]?.reservesStartupPower).toBe(true);
     expect(devices[0]?.forceBoostActive).toBe(true);
   });
@@ -572,14 +573,17 @@ describe('applyDeferredObjectiveAdmission', () => {
   });
 });
 
-describe('buildDeferredTargetOverrides', () => {
+describe('planned admission temperature floor', () => {
   it('includes the temperature target for a planned temperature diagnostic', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       targetTemperatureC: 65,
       horizonPlan: buildHorizonPlan(),
     });
-    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({ heater1: 65 });
+    const device = buildEvDevice({ id: 'heater1', controllable: true });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('heater1')).toMatchObject({ kind: 'planned', deadlineFloorTargetC: 65 });
+    expect(applyDeferredAdmissionToInput([device], decisions).devices[0]).toHaveProperty('deadlineFloorTargetC', 65);
   });
 
   it('skips EV diagnostics', () => {
@@ -592,7 +596,7 @@ describe('buildDeferredTargetOverrides', () => {
       kWhPerUnitBanded: 1,
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
     });
-    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+    expect(applyDeferredObjectiveAdmission([diagnostic]).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 
   it('skips a temperature diagnostic whose current bucket has no planned energy', () => {
@@ -603,7 +607,7 @@ describe('buildDeferredTargetOverrides', () => {
         currentHourClaim: 'released',
       }),
     });
-    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+    expect(applyDeferredObjectiveAdmission([diagnostic]).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 
   it('skips a price-deferred temperature diagnostic (no deadline floor while released)', () => {
@@ -615,7 +619,7 @@ describe('buildDeferredTargetOverrides', () => {
       targetTemperatureC: 65,
       horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
     });
-    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+    expect(applyDeferredObjectiveAdmission([diagnostic]).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 });
 

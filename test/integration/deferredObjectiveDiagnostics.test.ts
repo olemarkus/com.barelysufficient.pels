@@ -21,7 +21,6 @@ import {
 import { reportStalledTasksAsSatisfied } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
-import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import type {
   DeferredObjectivePlannedBucket,
 } from '../../lib/objectives/deferredObjectives';
@@ -1813,7 +1812,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(frozenClaimForCause('')).toBe('released');
   });
 
-  it('releases an expired frozen commitment at the exact deadline boundary', () => {
+  it('discards an expired frozen commitment at the exact deadline boundary', () => {
     const deadlineAtMs = NOW_MS;
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs, targetPercent: 50 }));
     const device = buildDevice({
@@ -1838,8 +1837,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.currentBucket ?? null).toBeNull();
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('cannot_meet');
     expect(diagnostic?.reasonCode).toBe('deadline_passed');
-    const decision = applyDeferredObjectiveAdmission(diagnostic ? [diagnostic] : [], [device]).get('ev-1');
-    expect(decision).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
