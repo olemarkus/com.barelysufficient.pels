@@ -1,0 +1,40 @@
+{
+  "title": {
+    "en": "Price level changes to... within..."
+  },
+  "titleFormatted": {
+    "en": "Price level !{{changes|does not change}} to [[level]] within [[hours]] h"
+  },
+  "hint": {
+    "en": "True when a coming price period switches to the chosen level within this many hours. If the price is already at that level, it has to leave it and come back to count. The first period after missing prices counts as a change too. Uses the prices PELS has now, so the answer can change when tomorrow's prices arrive."
+  },
+  "args": [
+    {
+      "name": "level",
+      "type": "autocomplete",
+      "title": {
+        "en": "Price level"
+      },
+      "placeholder": {
+        "en": "Choose a price level"
+      },
+      "example": {
+        "en": "Expensive"
+      }
+    },
+    {
+      "name": "hours",
+      "type": "number",
+      "title": {
+        "en": "Hours"
+      },
+      "placeholder": {
+        "en": "0.25 - 24"
+      },
+      "min": 0.25,
+      "max": 24,
+      "step": 0.25
+    }
+  ],
+  "id": "price_level_changes_within"
+}
