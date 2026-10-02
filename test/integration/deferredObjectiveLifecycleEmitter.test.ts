@@ -270,11 +270,12 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
   // deadline ending. These drive the SDK boundary only via the real buses and
   // the wired lifecycle hooks — no PELS internals are mocked.
 
-  it('on a passed deadline, publishes the status transition AND fires the device disable', () => {
+  it('on a passed deadline, ends the task without publishing a stale live status', () => {
     const statusBus = createDeferredObjectiveStatusBus();
     const published: DeferredObjectiveStatusSnapshot[] = [];
     statusBus.onTransition((snapshot) => published.push(snapshot));
     const onDeadlineReached = vi.fn();
+    const debugStructured = vi.fn();
 
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       // Deadline an hour in the past → the device cannot meet it, and the
@@ -283,28 +284,50 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
       getDeferredObjectiveStatusBus: () => statusBus,
+      getDeferredObjectiveDebugStructured: () => debugStructured,
       onDeadlineReached,
     }));
 
     emitter.tick(NOW_MS);
 
-    // (b) deadline-passed → device disable through the status bus, with the
-    // exact (deviceId, kind, deadlineAtMs, nowMs) the wiring needs to cap off
-    // and disarm the task.
+    // Deadline ending is independent of live status publication and still
+    // carries the device and clock facts needed for terminal fallback.
     expect(onDeadlineReached).toHaveBeenCalledTimes(1);
     expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', NOW_MS - HOUR_MS, NOW_MS);
 
-    // (a) status-transition publish from the implicit `none` baseline. The run
-    // is below target with the deadline gone, so it publishes a missed
-    // `cannot_meet`.
-    expect(published).toHaveLength(1);
-    expect(published[0]).toMatchObject({
-      deviceId: 'ev-1',
-      kind: 'ev_soc',
-      status: 'cannot_meet',
-      previousStatus: 'none',
-      deadlineMissed: true,
-    });
+    expect(published).toEqual([]);
+    expect(statusBus.getCurrent('ev-1')).toBeNull();
+    expect(debugStructured).not.toHaveBeenCalled();
+  });
+
+  it('forgets the live status at expiry while retrying terminal fallback on later ticks', () => {
+    const deadlineAtMs = NOW_MS + 30_000;
+    const statusBus = createDeferredObjectiveStatusBus();
+    const published: DeferredObjectiveStatusSnapshot[] = [];
+    statusBus.onTransition((snapshot) => published.push(snapshot));
+    const onDeadlineReached = vi.fn();
+    const debugStructured = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => buildEvSettings(deadlineAtMs),
+      getDevices: () => [buildEvDevice()],
+      getPriceOptimizationEnabled: () => true,
+      getDeferredObjectiveStatusBus: () => statusBus,
+      getDeferredObjectiveDebugStructured: () => debugStructured,
+      onDeadlineReached,
+    }));
+
+    emitter.tick(NOW_MS);
+    expect(statusBus.getCurrent('ev-1')).not.toBeNull();
+    const livePublishCount = published.length;
+    debugStructured.mockClear();
+
+    emitter.tick(deadlineAtMs);
+    emitter.tick(deadlineAtMs + 30_000);
+
+    expect(onDeadlineReached).toHaveBeenCalledTimes(2);
+    expect(statusBus.getCurrent('ev-1')).toBeNull();
+    expect(published).toHaveLength(livePublishCount);
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
   it('fires deadline ending without a status bus', () => {

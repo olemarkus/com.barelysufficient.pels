@@ -51,7 +51,7 @@ const decorateWithDecision = (
   decision: DeferredAdmissionDecision,
 ) => (input: { devices: PlanInputDevice[] }) => {
   const decisions = new Map([[deviceId, decision]]);
-  const admission = applyDeferredAdmissionToInput(input.devices, decisions, {});
+  const admission = applyDeferredAdmissionToInput(input.devices, decisions);
   return {
     ...buildIdentityDecorationBundle(admission.devices),
     forceShedSet: admission.forceShedSet,

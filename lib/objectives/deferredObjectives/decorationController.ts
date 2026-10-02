@@ -1,5 +1,5 @@
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
+import { isDeferredObjectiveExpired, type DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { resolveObjectiveDeviceInputs } from '../types';
 import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
@@ -20,7 +20,6 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
   buildDeferredReleaseIntents,
-  buildDeferredTargetOverrides,
   type DeferredAdmissionDecision,
 } from './admission';
 import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
@@ -90,8 +89,7 @@ export class DeferredObjectiveDecorationController {
     // `resolveCommittedHours`) to decorate the device inputs — reading is free
     // every cycle; only the write rides the clock. See the carve-out note.
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
-    const targetOverrides = buildDeferredTargetOverrides(evaluations);
-    const admission = applyDeferredAdmissionToInput(devices, decisions, targetOverrides);
+    const admission = applyDeferredAdmissionToInput(devices, decisions);
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
@@ -116,6 +114,8 @@ export class DeferredObjectiveDecorationController {
     try {
       const settings = this.deps.getDeferredObjectiveSettings();
       if (!settings) return [];
+      // The lifecycle clock may not have disarmed an elapsed task yet. Its
+      // terminal fallback belongs to that clock; it has no admission claims.
       return buildDeferredObjectiveDiagnostics({
         nowMs: nowTs,
         timeZone: this.deps.getTimeZone(),
@@ -132,7 +132,7 @@ export class DeferredObjectiveDecorationController {
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
         getStallClassification: this.deps.getStallClassification,
         getDeliveredEnergyKWh: this.deps.getDeliveredEnergyKWh,
-      });
+      }).filter((diagnostic) => !isDeferredObjectiveExpired(diagnostic, nowTs));
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());

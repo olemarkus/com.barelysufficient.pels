@@ -34,8 +34,9 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
 - public flow cards expose deadline creation, clearing, status conditions, and status-change /
   missed-deadline triggers; the earlier device-detail Settings UI card has been removed in favor of
   the flow-card surface (see `docs/flow-cards.md`)
-- an internal status bus publishes live status transitions and missed-deadline lifecycle events,
-  while public status Flow cards read the settled active-plan status
+- an internal status bus publishes live status transitions before expiry; terminal outcomes
+  are recorded in history and published through the ended-event bus, while public status Flow
+  cards read the settled active-plan status
 - soft temperature objectives participate in planner admission: planned hours admit the device,
   idle hours keep cap-off devices off, and planned temperature targets are lifted to the deadline
   target
@@ -105,8 +106,9 @@ Storage rules:
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
 enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
-publishes live status transitions and deadline-missed lifecycle events to an in-process status
-bus. Public status Flow cards read the settled active-plan status instead; create/clear Flow cards
+publishes live status transitions before expiry to an in-process status bus. History and the
+ended-event bus own terminal outcomes. Public status Flow cards read the settled active-plan
+status instead; create/clear Flow cards
 remain the user-facing surface for managing deadlines. For soft temperature objectives, the
 planner uses the evaluation to decide planned/idle participation and deadline target overrides.
 
@@ -147,9 +149,14 @@ Runtime admission for the cap-off case is produced by
 fallback actuation stays on the independent lifecycle clock:
 
 - The horizon planner computes the planned hours per cycle.
-- For each enabled objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
-  decision is produced: `planned` for the current bucket if it has planned energy, `idle`
-  otherwise. `satisfied`, `unknown`, and `invalid` resolve to `inactive` so the device returns to
+- Only future-deadline objectives enter admission. At expiry, the objective controller drops
+  all task claims immediately, even before the lifecycle clock disarms the setting. The clock
+  still finalizes history and retries terminal fallback, but stops publishing live task status
+  and diagnostics; the recorded terminal outcome remains authoritative.
+- For each live objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
+  decision maps the resolved hour claim: `claimed` becomes `planned`, `released` becomes `idle`,
+  and `unclaimed` hands the device back to ordinary planning. `satisfied`, `unknown`, and
+  `invalid` resolve to `inactive` so the device returns to
   its normal behavior once the goal is met or the objective cannot be trusted.
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
   devices are always managed; a device the owner has not opted into power limiting is
@@ -177,8 +184,9 @@ fallback actuation stays on the independent lifecycle clock:
   target, except in a released hour, where the task holds the device as above. The override
   applies regardless of the
   capacity-based control toggle (cap-on and cap-off devices both pick it up).
-  Implementation: `buildDeferredTargetOverrides` in `lib/objectives/deferredObjectives/admission.ts`
-  derives the per-cycle map from `deferredEvaluations`; `resolvePlannedTarget` in
+  The temperature floor travels on the `planned` admission decision and is applied with that
+  decision's other decorations in `lib/objectives/deferredObjectives/admission.ts`.
+  `resolvePlannedTarget` in
   `lib/plan/planDevices.ts` consumes it after applying the price-opt delta and before the
   capability clip. Capacity-based shedding (`set_temperature` shed action) still wins because
   `buildBasePlanDevice` overwrites `plannedTarget` with the shed temperature when the device is

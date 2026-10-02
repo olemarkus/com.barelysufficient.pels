@@ -245,6 +245,11 @@ export type DeferredObjectiveDiagnostic =
     currentTemperatureC?: never;
   });
 
+/** Expired tasks remain observable for finalization, but no longer govern a device or publish live status. */
+export const isDeferredObjectiveExpired = (diagnostic: DeferredObjectiveDiagnostic, nowMs: number): boolean => (
+  diagnostic.deadlineAtMs !== null && diagnostic.deadlineAtMs <= nowMs
+);
+
 /**
  * The trajectory verdict when there is one, `undefined` when there is not.
  *

@@ -53,7 +53,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
    effective settings into the `PlanInputDevice` for the current moment ("we're in an active hour
    for this device → enable caps / set the target"); the planner then plans on those decorated
    inputs, ignorant that smart tasks exist. This is the existing override channel
-   (`applyDeferredAdmissionToInput` / `buildDeferredTargetOverrides` / `applyDeferredObjectiveAdmission`),
+   (`applyDeferredAdmissionToInput` / `applyDeferredObjectiveAdmission`, including the planned temperature floor),
    **relocated to the controller** and made the *sole* channel — with the in-loop lifecycle
    advancement/emission deleted from the planner.
 
@@ -111,7 +111,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
    input contract (`ObjectiveDeviceInput`), not `PlanInputDevice`.
 
 2. **Device-input decoration (controller → planner)** — the controller owns
-   `applyDeferredAdmissionToInput` / `buildDeferredTargetOverrides` / `buildDeferredReleaseIntents`
+   `applyDeferredAdmissionToInput` / `buildDeferredReleaseIntents`
    / the objective admission applier, and emits **decorated `PlanInputDevice`s** (or a narrow
    override set the input pipeline applies). This is the *only* channel into the planner. The
    planner imports nothing smart-task; it just plans on the inputs it is handed.

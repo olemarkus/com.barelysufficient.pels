@@ -100,13 +100,15 @@ const bootHeater = async (nowMs: number, cheaperAhead = false) => {
   });
   const writes = vi.spyOn(mockHomeyInstance.api, 'put');
   const app = createApp();
-  const plans: Array<{ event?: string; deviceId?: string; currentHourClaim?: string }> = [];
+  const plans: Array<{ atMs: number; event?: string; deviceId?: string; currentHourClaim?: string; outcome?: string }> = [];
   const originalLog = app.log.bind(app);
   app.log = (...args: unknown[]) => {
     for (const arg of args) {
       if (typeof arg !== 'string' || !arg.startsWith('{')) continue;
       const entry = JSON.parse(arg) as (typeof plans)[number];
-      if (entry.event === 'deferred_objective_horizon_planned' && entry.deviceId === HEATER_ID) plans.push(entry);
+      if (entry.deviceId === HEATER_ID && (
+        entry.event === 'deferred_objective_horizon_planned' || entry.event === 'deferred_objective_history_finalized'
+      )) plans.push({ ...entry, atMs: Date.now() });
     }
     return originalLog(...args);
   };
@@ -157,5 +159,28 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     await drainPending();
     expect(plans.some((plan) => plan.currentHourClaim === 'released')).toBe(true);
     expect(writes).toHaveBeenCalledWith(cap('onoff'), { value: false });
+  });
+
+  it('returns an expired task to normal control without shedding or publishing a live failure after met', async () => {
+    const deadlineAtMs = DAY_MS + 4 * HOUR_MS;
+    // Establish the observer's five-minute near-target idle evidence, then
+    // put a meter poll at deadline + 1 s ahead of the lifecycle tick at +21 s.
+    const nowMs = deadlineAtMs - 7 * 60_000 - 9000;
+    vi.setSystemTime(nowMs);
+    const { heater, writes, plans, pollTimes } = await bootHeater(nowMs);
+
+    await vi.advanceTimersByTimeAsync(8 * 60_000);
+    await drainPending();
+
+    expect(pollTimes.some((time) => time >= deadlineAtMs && time < deadlineAtMs + 10_000)).toBe(true);
+    expect(plans).toContainEqual(expect.objectContaining({
+      event: 'deferred_objective_history_finalized', outcome: 'met',
+    }));
+    expect(plans.filter((entry) => entry.atMs >= deadlineAtMs
+      && entry.event === 'deferred_objective_horizon_planned')).toEqual([]);
+    expect(writes).not.toHaveBeenCalledWith(cap('onoff'), { value: false });
+    expect(writes).not.toHaveBeenCalledWith(cap('target_temperature'), { value: 40 });
+    await expect(heater.getCapabilityValue('onoff')).resolves.toBe(true);
+    expect(mockHomeyInstance.settings.get(`deferred_objective.${HEATER_ID}`)).toMatchObject({ enabled: false });
   });
 });

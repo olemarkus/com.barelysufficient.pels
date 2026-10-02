@@ -16,6 +16,7 @@ export type DeferredAdmissionDecision =
       // engageBoost — it reserves power, it does not escalate this device or shed anyone.
       reservesStartupPower: boolean;
       expectedStepId: string | null;
+      deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_restore';
     }
   | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' }
@@ -65,18 +66,7 @@ const resolveDecision = (
   // Producer-resolved flat flag: the smart task's exempt-from-budget permission is active
   // for the current planned bucket. Idle/background cycles must not inherit a standing
   // budget exemption from a future planned bucket.
-  const plannable = PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic));
-  const budgetExempt = diagnostic.budgetExemptApplied === true && plannable;
-  // The limit-lower-priority permission engages the device's boost, but only while the task
-  // is in its planned hours (the 'planned' decision below) — so it claims capacity from
-  // lower-priority devices only when it is actually scheduled to run.
-  const engageBoost = diagnostic.limitLowerPriorityApplied === true && plannable;
-  // Boost-free sibling of engageBoost: the pause-lower-priority permission entitles the device to
-  // reserve the power it needs to start, so cycling loads cannot nibble the block away. The plan
-  // layer (lib/plan/admission/headroomReserve.ts) owns the amount, the release, and the bound —
-  // here we only surface the granted intent for planned hours.
-  const reservesStartupPower = diagnostic.pauseLowerPriorityApplied === true && plannable;
-  if (!plannable) {
+  if (!PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) {
     // Terminal fallback actuation belongs exclusively to the lifecycle clock. In particular,
     // `handleDeferredSatisfied` retries cap-off devices until their fallback posture is observed;
     // the power-driven plan must not duplicate it.
@@ -121,14 +111,16 @@ const resolveDecision = (
   }
   return {
     kind: 'planned',
-    budgetExempt,
-    engageBoost,
-    reservesStartupPower,
+    budgetExempt: diagnostic.budgetExemptApplied === true,
+    engageBoost: diagnostic.limitLowerPriorityApplied === true,
+    reservesStartupPower: diagnostic.pauseLowerPriorityApplied === true,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
+    ...(diagnostic.objectiveKind === 'temperature' ? { deadlineFloorTargetC: diagnostic.targetTemperatureC } : {}),
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
 };
 
+/** Admission consumes live evaluations; the objective controller excludes expired tasks before this seam. */
 export const applyDeferredObjectiveAdmission = (
   diagnostics: readonly DeferredObjectiveDiagnostic[],
   devices: readonly PlanInputDevice[] = [],
@@ -297,24 +289,21 @@ const claimsAnything = (claims: DeferredHourClaims): boolean => (
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
 // they only see a managed device and (for idle hours) a seeded shed-set entry. The deadline
-// thermostat-floor (built once via `buildDeferredTargetOverrides`) is stamped onto the device
-// here too so `resolvePlannedTarget` can read it from a single per-device field instead of a
-// parallel id→°C map.
+// thermostat floor travels on the same planned decision as the task's other claims.
 export const applyDeferredAdmissionToInput = (
   devices: PlanInputDevice[],
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
-  targetOverrides: Readonly<Record<string, number>>,
 ): DeferredAdmissionInput => {
-  if (decisions.size === 0 && Object.keys(targetOverrides).length === 0) {
+  if (decisions.size === 0) {
     return { devices, forceShedSet: new Set(), lentAuthorityDeviceIds: new Set() };
   }
   const forceShedSet = new Set<string>();
   const lentAuthorityDeviceIds = new Set<string>();
   const transformed = devices.map((device) => {
     const decision = decisions.get(device.id);
-    const deadlineFloorTargetC = targetOverrides[device.id];
+    if (!decision) return device;
+    const deadlineFloorTargetC = decision.kind === 'planned' ? decision.deadlineFloorTargetC : undefined;
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
-    if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
     const override = contributesCommandAuthority(decision, device);
     if (override) lentAuthorityDeviceIds.add(device.id);
     const holdsOwnAuthorityOff = holdsDeviceOff(decision, device);
@@ -329,34 +318,6 @@ export const applyDeferredAdmissionToInput = (
   });
   return { devices: transformed, forceShedSet, lentAuthorityDeviceIds };
 };
-
-// Per-cycle map of the deadline temperature target a device should be commanded to during a
-// planned hour. EV objectives and non-planned diagnostics are skipped. Consumed by
-// `resolvePlannedTarget` to lift the mode setpoint above the configured operating-mode target so
-// the device's own thermostat can actually reach the deadline.
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export const buildDeferredTargetOverrides = (
-  diagnostics: readonly DeferredObjectiveDiagnostic[],
-): Record<string, number> => {
-  const overrides: Record<string, number> = {};
-  for (const diag of diagnostics) {
-    if (diag.objectiveKind !== 'temperature') continue;
-    if (!PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diag))) continue;
-    const horizonPlan = diag.horizonPlan;
-    // Skip every hour the task does not claim, reading the SAME producer verdict
-    // `resolveDecision` maps so the two cannot drift: a released, price-deferred OR
-    // unclaimed device must not be commanded to the deadline floor, or
-    // `resolvePlannedTarget` would lift the setpoint and run it in an hour the task
-    // either released it from or never claimed.
-    if (!horizonPlan || horizonPlan.currentHourClaim !== 'claimed') continue;
-    // Defensive: persisted settings can yield NaN/Infinity on corrupt reads; the type-level
-    // `number` invariant does not survive Homey settings drift. See feedback_homey_sdk_unreliable.
-    if (!Number.isFinite(diag.targetTemperatureC)) continue;
-    overrides[diag.deviceId] = diag.targetTemperatureC;
-  }
-  return overrides;
-};
-/* eslint-enable functional/immutable-data */
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildDeferredReleaseIntents = (
