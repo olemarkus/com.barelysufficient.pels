@@ -125,10 +125,7 @@ function toPlanResidualSteppedLoad(device: MeteredDevicePlanDevice): ResidualKwS
   if (!isSteppedLoadDevice(device)) {
     return undefined;
   }
-  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
-    fields: device,
-    selectedStepFallbackIsPlanningAssumption: true,
-  });
+  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({ fields: device });
   return {
     profile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,

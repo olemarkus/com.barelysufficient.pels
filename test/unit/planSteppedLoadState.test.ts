@@ -1,7 +1,6 @@
 import {
   normalizeSteppedLoadStepState,
   resolveEffectiveStepId,
-  serializeLegacyStepFields,
 } from '../../lib/plan/planSteppedLoadState';
 
 describe('planSteppedLoadState', () => {
@@ -28,7 +27,7 @@ describe('planSteppedLoadState', () => {
     });
   });
 
-  it('represents unknown explicitly and derives legacy fields only at serialization', () => {
+  it('represents unknown explicitly', () => {
     const state = normalizeSteppedLoadStepState({
       nowMs: 2_000,
       targetStep: { stepId: 'max', changedAtMs: 1_700, status: 'pending' },
@@ -38,30 +37,7 @@ describe('planSteppedLoadState', () => {
     expect(state.planningAssumption).toEqual({ kind: 'none' });
     expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
     expect(resolveEffectiveStepId(state)).toBe('unknown');
-    expect(serializeLegacyStepFields(state)).toEqual({
-      reportedStepId: undefined,
-      targetStepId: 'max',
-      desiredStepId: 'max',
-      selectedStepId: undefined,
-      restorePreparedStepId: undefined,
-    });
-  });
-
-  it('serializes reported and fallback evidence without making fallback restore proof', () => {
-    const state = normalizeSteppedLoadStepState({
-      nowMs: 2_000,
-      planningFallback: { stepId: 'low', reason: 'lowest_active_step' },
-    });
-
-    expect(resolveEffectiveStepId(state)).toBe('low');
-    expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
-    expect(serializeLegacyStepFields(state)).toEqual({
-      reportedStepId: undefined,
-      targetStepId: undefined,
-      desiredStepId: undefined,
-      selectedStepId: 'low',
-      restorePreparedStepId: undefined,
-    });
+    expect(state.intent).toEqual({ kind: 'target', stepId: 'max', changedAtMs: 1_700, status: 'pending' });
   });
 
   it('does not let a planning fallback prepare restore without a reported step', () => {

@@ -39,7 +39,6 @@
     "device-kind:vocab": "node scripts/check-device-kind-vocab.mjs",
     "binary:vocab": "node scripts/check-binary-vocab.mjs",
     "binary:seam": "node scripts/check-binary-seam.mjs",
-    "executor:settle-seam": "node scripts/check-executor-settle-seam.mjs",
     "setup:stateless": "node scripts/check-setup-stateless.mjs",
     "setup:boundaries": "node scripts/check-setup-boundaries.mjs",
     "params:no-bundles": "node scripts/check-param-bundles.mjs",

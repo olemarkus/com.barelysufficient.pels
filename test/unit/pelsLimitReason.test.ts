@@ -50,6 +50,7 @@ describe('pels status limit reason', () => {
     devices: [
       withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         recordRestoreOnTargetApply: false,
+        binaryCommandPending: false,
         ...baseDevice,
         reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
       }),
@@ -194,6 +195,7 @@ describe('pels status limit reason', () => {
       devices: [
         withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          binaryCommandPending: false,
           id: 'ev-1',
           name: 'EV Charger',
           deviceType: 'onoff' as const,

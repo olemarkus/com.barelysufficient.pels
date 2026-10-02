@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isRestoreLiveEligibleDevice } from '../../lib/plan/restore/devices';
-import { buildExecutableConvergenceDevice } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent } from '../../lib/executor/executablePlanProjection';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 /**
@@ -15,7 +15,7 @@ import { buildPlanDevice } from '../utils/planTestUtils';
  *
  * These cases pin that split directly, without the admission machinery, at two
  * consumers that decide whether PELS acts: restore candidacy, and the executor's
- * desired binary state.
+ * binary intent.
  */
 const rescuedByTask = () => buildPlanDevice({
   id: 'charger',
@@ -44,11 +44,17 @@ describe('a smart task can grant command authority on its own', () => {
     expect(isRestoreLiveEligibleDevice(ignoredByPels())).toBe(false);
   });
 
-  it('demands the binary axis on for a task-rescued device the plan keeps', () => {
-    expect(buildExecutableConvergenceDevice(rescuedByTask()).desiredBinaryState).toBe('on');
+  it('drives the binary axis as a controlled restore for a task-rescued device the plan keeps', () => {
+    expect(buildExecutableDeviceIntent(rescuedByTask())).toEqual(expect.objectContaining({
+      commandAuthority: true,
+      binary: expect.objectContaining({ desiredOn: true, source: 'controlled' }),
+    }));
   });
 
-  it('leaves the binary axis undemanded when PELS has no authority', () => {
-    expect(buildExecutableConvergenceDevice(ignoredByPels()).desiredBinaryState).toBeNull();
+  it('marks the binary intent uncontrolled when PELS has no authority', () => {
+    expect(buildExecutableDeviceIntent(ignoredByPels())).toEqual(expect.objectContaining({
+      commandAuthority: false,
+      binary: expect.objectContaining({ source: 'uncontrolled' }),
+    }));
   });
 });

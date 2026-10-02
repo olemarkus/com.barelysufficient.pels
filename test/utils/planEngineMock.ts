@@ -6,15 +6,13 @@
 import { vi } from 'vitest';
 import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from './planEngineStateFixture';
-import {
-  canRefreshPlanSnapshotFromLiveState,
-  hasPlanExecutionDriftAgainstIntent,
-} from '../../lib/executor/executorConvergence';
+import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import { buildPlanMeta } from './planTestUtils';
 import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
 import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import { executionStateFixture } from './deviceStatusFixture';
+import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 
 export type MockPlanEngineOptions = {
   getDriftDevices?: () => PlanInputDevice[];
@@ -61,25 +59,18 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   hasPendingTargetCommands: vi.fn(() => false),
   hasPendingTargetCommandsOlderThan: vi.fn(() => false),
   hasPendingBinaryCommands: vi.fn(() => false),
-  hasActiveBinaryTurnOnCommand: vi.fn(() => false),
   syncPendingTargetCommands: vi.fn(() => false),
   syncPendingBinaryCommands: vi.fn(() => false),
   syncSteppedCommands: () => false,
   prunePendingTargetCommands: vi.fn(() => false),
   shouldApplyStablePlanActions: vi.fn(() => false),
-  // These two delegate to the REAL predicates rather than returning a canned
-  // value. Before they were surfaced on PlanEngine, PlanService imported the
-  // pure functions directly, so every existing spec exercised the real
-  // convergence logic — a `vi.fn(() => false)` default here would silently
-  // switch those specs to a no-op reconcile/refresh and hide regressions. The
-  // functions are pure (no I/O, no clock), so calling them from a mock is safe.
-  hasSettledActuation: vi.fn(
-    (basePlan: DevicePlan, livePlan: DevicePlan) => canRefreshPlanSnapshotFromLiveState(basePlan, livePlan),
-  ),
-  // Still the REAL predicate (see the note above), now fed the way production
-  // feeds it: readers, not a device list. A spec that wants drift supplies the
-  // fixtures via `getDriftDevices`; one that does not gets no observations,
-  // which the predicate skips rather than treating as agreement.
+  // Delegates to the REAL predicate rather than returning a canned value: a
+  // `vi.fn(() => false)` default would silently switch every PlanService spec
+  // to a no-op convergence check and hide regressions. It is pure (no I/O, no
+  // clock), and fed the way production feeds it: readers, not a device list. A
+  // spec that wants drift supplies the fixtures via `getDriftDevices`; one that
+  // does not gets no observations, which the predicate skips rather than
+  // treating as agreement.
   getObservationRevision: vi.fn(() => options?.getObservationRevision?.() ?? 0),
   hasExecutionWorkOutstanding: vi.fn(
     (plannedSnapshot: DevicePlan, observationRevisionAtBuild: number) => {
@@ -97,10 +88,23 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   ),
   getDeviceExecutionStates: vi.fn((plan: DevicePlan) => new Map(plan.devices.map((device) => {
     const live = options?.getDriftDevices?.().find((candidate) => candidate.id === device.id);
-    const binary = live as (PlanInputDevice & BinaryControlDiscriminantProbe & { currentOn?: boolean }) | undefined;
-    const fixture = live ? { ...device, ...live,
-      currentState: binary?.currentOn === false || binary?.binaryControl?.on === false ? 'off' : device.currentState,
-    } as typeof device : device;
+    if (!live) return [device.id, executionStateFixture(device)];
+    // Built the way the executor builds it: the observation from the live
+    // device, whichever way it moved since the plan was built; the desired state
+    // from the plan; in-flight binary state from the command store.
+    const observed = live as PlanInputDevice & BinaryControlDiscriminantProbe
+      & { currentOn?: boolean; reportedStepId?: string };
+    const liveOn = observed.currentOn ?? observed.binaryControl?.on;
+    const liveState = liveOn === true ? 'on' : 'off';
+    const binaryCommand = options?.getDriftBinaryCommand?.(device.id) ?? { kind: 'none' };
+    const fixture = {
+      ...device,
+      currentState: liveOn === undefined ? device.currentState : liveState,
+      available: observed.available,
+      ...(isMeteredPlanDevice(observed) ? { currentDrawKw: observed.currentDrawKw } : {}),
+      ...('reportedStepId' in observed ? { reportedStepId: observed.reportedStepId } : {}),
+      binaryCommandPending: binaryCommand.kind === 'pending' || undefined,
+    } as typeof device;
     return [device.id, executionStateFixture(fixture)];
   }))),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),

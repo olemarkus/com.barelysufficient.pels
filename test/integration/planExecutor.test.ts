@@ -30,7 +30,6 @@ import type {
   BinaryControlDiscriminantProbe,
   DevicePlan,
   DevicePlanDevice,
-  PlanInputDevice,
   ShedAction,
   SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
@@ -50,8 +49,6 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
-import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorConvergence';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
@@ -146,6 +143,7 @@ const buildPlan = (): DevicePlan => ({
   devices: [
     withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       recordRestoreOnTargetApply: false,
+      binaryCommandPending: false,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -181,6 +179,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       // What production's `finalizePlanDevices` stamps for this harness's flat
       // 16° floor: observed at the floor and the plan raises it.
       recordRestoreOnTargetApply: currentTarget === 16 && plannedTarget > currentTarget,
+      binaryCommandPending: false,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -355,10 +354,6 @@ const buildExecutor = (
 let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
-
-// The merge asks the pending-command store whether a turn-ON is in flight;
-// these specs issue no commands.
-const noPendingBinary = (): boolean => false;
 
 describe('PlanExecutor shortfall side-effect retry', () => {
   it('keeps enter and clear retryable when the durable writer fails once', async () => {
@@ -1830,6 +1825,7 @@ describe('PlanExecutor stepped loads', () => {
       devices: [
         withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          binaryCommandPending: false,
           ...merged,
           control: fixtureControlPosture(merged),
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
@@ -3519,27 +3515,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     })],
   });
 
-  const buildLiveDevices = (
-    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & SteppedDiscriminantProbe
-      & { binaryCapabilityId?: string } = {},
-  ): PlanInputDevice[] => {
-    const merged = {
-      id: 'dev-1',
-      expectedPowerKw: 1,
-      name: 'Tank',
-      targets: [],
-      steppedLoadProfile: steppedProfile,
-      binaryCapabilityId: 'onoff' as const,
-      ...overrides,
-    };
-    return [
-      withBinaryDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({
-        ...merged,
-        currentOn: resolveFixtureCurrentOn(merged),
-      }))) as PlanInputDevice,
-    ];
-  };
-
   const buildSnapshot = (
     // `selectedStepId` is a plan-device field, not an observed-snapshot field
     // (the snapshot carries `reportedStepId`); accepted on the loose override so
@@ -3565,53 +3540,35 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     })];
   };
 
-  it('detects onoff drift and restores a keep device turned off externally', async () => {
-    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
-    const liveDevices = buildLiveDevices({
-      binaryControl: { on: false },
-      selectedStepId: 'low',
-      reportedStepId: 'low',
-    });
-
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
-    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
-    expect(livePlan.devices[0].currentState).toBe('off');
+  it('restores a keep device turned off externally', async () => {
+    // The plan a rebuild decides from that observation: still keep, now off.
+    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'low', reportedStepId: 'low', desiredStepId: 'low' });
 
     const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
       binaryControl: { on: false },
       selectedStepId: 'low',
       reportedStepId: 'low',
     }));
-    await executor.applyPlanActions(livePlan);
+    await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('restores then reasserts the desired step when live state only has fallback evidence', async () => {
-    const appliedPlan = steppedPlan({
-      currentState: 'on',
+    const plan = steppedPlan({
+      currentState: 'off',
+      // Fallback-only state: no reported step, selectedStepId is the planning
+      // fallback.
       selectedStepId: 'low',
-      reportedStepId: 'low',
+      reportedStepId: undefined,
       desiredStepId: 'low',
     });
-    const liveDevices = buildLiveDevices({
-      binaryControl: { on: false },
-      // Fallback-only live state: no reported step, selectedStepId is the
-      // planning fallback.
-      selectedStepId: 'low',
-    });
-
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
-    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
-      reportedStepId: undefined,
-      selectedStepId: 'low',
-    }));
 
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
       undefined,
       buildSnapshot({ binaryControl: { on: false } }),
     );
-    await executor.applyPlanActions(livePlan);
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3620,15 +3577,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
-  it('detects step drift and re-issues step command for a keep device at off-step', async () => {
-    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
-    const liveDevices = buildLiveDevices({ binaryControl: { on: false }, selectedStepId: 'off' });
-
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
-    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
+  it('re-issues the step command for a keep device found at its off-step', async () => {
+    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', reportedStepId: undefined, desiredStepId: 'low' });
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
-    await executor.applyPlanActions(livePlan);
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4028,27 +3981,20 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
   });
 
-  it('detects step drift and re-issues shed step when external actor raises step', async () => {
-    const appliedPlan = steppedPlan({
-      currentState: 'off',
+  it('re-issues the shed step when an external actor raises the step', async () => {
+    const plan = steppedPlan({
+      currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'set_step',
       releaseShedStepId: 'low',
-      selectedStepId: 'low',
+      selectedStepId: 'max',
+      reportedStepId: 'max',
       desiredStepId: 'low',
     });
-    const liveDevices = buildLiveDevices({
-      binaryControl: { on: true },
-      reportedStepId: 'max',
-      selectedStepId: 'max',
-    });
-
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
-    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(livePlan);
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4067,32 +4013,21 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('preserves effective shed step during telemetry gaps so down-step is not blocked', async () => {
-    const appliedPlan = steppedPlan({
-      currentState: 'off',
+  it('issues the shed down-step when no step report backs the selected step', async () => {
+    const plan = steppedPlan({
+      currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'set_step',
       releaseShedStepId: 'low',
       selectedStepId: 'max',
       desiredStepId: 'low',
-      reportedStepId: 'max',
+      reportedStepId: undefined,
       lastDesiredStepId: 'low',
     });
-    // The telemetry gap as the producer emits it: no step evidence resolved this
-    // cycle, so `resolveSteppedClusterFields` refused the stepped cluster and the
-    // live device is non-stepped. The merge preserves the prior plan's cluster.
-    const liveDevices = buildLiveDevices({ binaryControl: { on: true }, steppedLoadProfile: undefined });
-
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
-    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
-      selectedStepId: 'max',
-      reportedStepId: undefined,
-    }));
-    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(livePlan);
+    await executor.applyPlanActions(plan);
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -4259,6 +4194,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const shedDevice = withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
+      binaryCommandPending: false,
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       deviceType: 'onoff' as const, isEvCharger: false, observeOnly: false,
       control: fixtureControlPosture({ controllable: true }),
@@ -4271,6 +4207,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
     const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
+      binaryCommandPending: false,
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       deviceType: 'onoff' as const, isEvCharger: false, observeOnly: false,
       control: fixtureControlPosture({ controllable: true }),

@@ -162,6 +162,13 @@ export type OwningHomeHooks = {
    */
   invalidateRebuildSuppression: () => void;
   /**
+   * Whether the device's move can change the load THIS home's latest plan
+   * found actionable, which decides whether its observation may clear the
+   * suppressions above. Main's plan does not contain this device, so main
+   * would say "no".
+   */
+  canDeviceChangeActionableLoad: (deviceId: string) => boolean;
+  /**
    * Whether THIS home's latest plan has the device limited by setpoint. Asked by
    * the mode-target adoption path, which must not save an owner's reaction to a
    * limit; main's plan does not contain this device, so main would say "no".

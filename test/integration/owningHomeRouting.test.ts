@@ -8,6 +8,7 @@ import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter'
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
 import type { PlanService } from '../../lib/plan/planService';
 import {
+  canDeviceChangeOwningHomeActionableLoad,
   invalidateOwningHomeRebuildSuppression,
   syncExternalOffHoldForObservation,
 } from '../../setup/appObservedControlStateRuntime';
@@ -86,6 +87,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       rebuildPlan: () => Promise.resolve(),
       invalidateRebuildSuppression: vi.fn(),
           isDeviceLimited: () => false,
+      canDeviceChangeActionableLoad: () => false,
     };
 
     syncExternalOffHoldForObservation({
@@ -167,6 +169,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
             rebuildPlan,
             invalidateRebuildSuppression: vi.fn(),
           isDeviceLimited: () => false,
+      canDeviceChangeActionableLoad: () => false,
           },
         },
       }),
@@ -204,6 +207,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
             rebuildPlan: () => Promise.resolve(),
             invalidateRebuildSuppression: invalidateSubHome,
           isDeviceLimited: () => false,
+      canDeviceChangeActionableLoad: () => false,
           },
         },
       }),
@@ -228,6 +232,48 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
   });
 });
 
+// The question that gates an observation's invalidation is the OWNING home's
+// plan's: main's plan does not contain a sub-home device, so main would answer
+// "no" and the sub-home's verdict would never be cleared.
+describe('actionable-load routing', () => {
+  it('asks the owning sub-home\'s plan and leaves main\'s alone', () => {
+    const mainAuthority = vi.fn(() => false);
+    const ctx = createAppContextMock({
+      planService: { canDeviceChangeActionableLoad: mainAuthority } as unknown as PlanService,
+    });
+    const subAuthority = vi.fn(() => true);
+
+    const answer = canDeviceChangeOwningHomeActionableLoad(ctx, 'sub-dev', routerFor({
+      'sub-dev': {
+        homeId: 'h_sub',
+        hooks: {
+          syncLivePlanState: vi.fn().mockResolvedValue(false),
+          hasPendingBinaryCommand: () => false,
+          clearRecentBinaryOffCommand: vi.fn(),
+          rebuildPlan: () => Promise.resolve(),
+          invalidateRebuildSuppression: vi.fn(),
+          isDeviceLimited: () => false,
+          canDeviceChangeActionableLoad: subAuthority,
+        },
+      },
+    }));
+
+    expect(answer).toBe(true);
+    expect(subAuthority).toHaveBeenCalledWith('sub-dev');
+    expect(mainAuthority).not.toHaveBeenCalled();
+  });
+
+  it('asks main\'s plan when no sub-home owns the device', () => {
+    const mainAuthority = vi.fn(() => true);
+    const ctx = createAppContextMock({
+      planService: { canDeviceChangeActionableLoad: mainAuthority } as unknown as PlanService,
+    });
+
+    expect(canDeviceChangeOwningHomeActionableLoad(ctx, 'main-dev', routerFor({}))).toBe(true);
+    expect(mainAuthority).toHaveBeenCalledWith('main-dev');
+  });
+});
+
 describe('owning-home live-status refresh', () => {
   it('refreshes the sub-home owner and falls back to main for its own device', async () => {
     const mainRefresh = vi.fn().mockResolvedValue(true);
@@ -238,6 +284,7 @@ describe('owning-home live-status refresh', () => {
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
       rebuildPlan: async () => undefined, invalidateRebuildSuppression: () => undefined,
       isDeviceLimited: () => false,
+      canDeviceChangeActionableLoad: () => false,
     };
     const router = { getOwningHomeRouteForDevice: (id: string) => (
       id === 'sub-device' ? { homeId: 'sub-home', hooks } : undefined

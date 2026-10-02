@@ -722,10 +722,7 @@ function clampSteppedShedTarget(
 }
 
 function normalizePlannerStepState(device: StepIdentityFields) {
-  return normalizeSteppedLoadStepStateFromLegacyFields({
-    fields: device,
-    selectedStepFallbackIsPlanningAssumption: true,
-  });
+  return normalizeSteppedLoadStepStateFromLegacyFields({ fields: device });
 }
 
 function resolvePlannerEffectiveStepId(device: Parameters<typeof normalizePlannerStepState>[0]): string | undefined {

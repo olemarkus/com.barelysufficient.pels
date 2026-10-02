@@ -33,7 +33,6 @@ export type PlanEngine = {
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: DevicePlan) => Promise<PlanActuationResult>;
   shouldApplyStablePlanActions: (plan: DevicePlan) => boolean;
-  hasSettledActuation: (basePlan: DevicePlan, livePlan: DevicePlan) => boolean;
   /**
    * Does the executor still have work to do against this plan?
    *
@@ -67,8 +66,6 @@ export type PlanEngine = {
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;
   hasPendingBinaryCommands: () => boolean;
-  /** "Is an unconfirmed turn-ON in flight" — the store's own predicate, not the record. */
-  hasActiveBinaryTurnOnCommand: (deviceId: string) => boolean;
   hasAttributablePendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;

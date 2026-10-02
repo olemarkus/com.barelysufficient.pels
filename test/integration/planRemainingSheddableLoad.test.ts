@@ -233,10 +233,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
         ? { action: 'set_temperature', temperature: 18 }
         : { action: 'turn_off' };
       const stepState = device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile
-        ? normalizeSteppedLoadStepStateFromLegacyFields({
-          fields: device,
-          selectedStepFallbackIsPlanningAssumption: true,
-        })
+        ? normalizeSteppedLoadStepStateFromLegacyFields({ fields: device })
         : null;
       const target = getPrimaryTargetCapability(device.targets);
       const shed = resolveResidualKwShed({

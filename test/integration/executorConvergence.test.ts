@@ -1,8 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
-import {
-  hasLiveStateDivergedFromSnapshot,
-  hasPlanExecutionDriftAgainstIntent,
-} from '../../lib/executor/executorConvergence';
+import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
@@ -48,43 +45,6 @@ const hasPlanExecutionDriftForDevice = (
 };
 
 describe('executorConvergence stepped device drift', () => {
-  describe('hasLiveStateDivergedFromSnapshot', () => {
-    it('detects step drift for a stepped device', () => {
-      const previous = buildPlan([buildSteppedDevice({ selectedStepId: 'low' })]);
-      const live = buildPlan([buildSteppedDevice({ selectedStepId: 'max' })]);
-
-      expect(hasLiveStateDivergedFromSnapshot(previous, live)).toBe(true);
-    });
-
-    it('detects binary (onoff) drift for a stepped device', () => {
-      const previous = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
-      const live = buildPlan([buildSteppedDevice({ currentState: 'off', selectedStepId: 'low' })]);
-
-      expect(hasLiveStateDivergedFromSnapshot(previous, live)).toBe(true);
-    });
-
-    it('detects combined step and binary drift for a stepped device', () => {
-      const previous = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
-      const live = buildPlan([buildSteppedDevice({ currentState: 'off', selectedStepId: 'max' })]);
-
-      expect(hasLiveStateDivergedFromSnapshot(previous, live)).toBe(true);
-    });
-
-    it('reports no drift when both step and binary state match', () => {
-      const previous = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
-      const live = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
-
-      expect(hasLiveStateDivergedFromSnapshot(previous, live)).toBe(false);
-    });
-
-    it('still detects binary drift for non-stepped devices', () => {
-      const previous = buildPlan([buildBinaryDevice({ currentState: 'on' })]);
-      const live = buildPlan([buildBinaryDevice({ currentState: 'off' })]);
-
-      expect(hasLiveStateDivergedFromSnapshot(previous, live)).toBe(true);
-    });
-  });
-
   describe('hasPlanExecutionDriftForDevice', () => {
     it('treats a keep device that is still observed off as drift even if the stored snapshot is stale', () => {
       const plan = buildPlan([buildBinaryDevice({

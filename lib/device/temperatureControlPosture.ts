@@ -26,6 +26,21 @@ type ControlPostureDevice = ObservedDeviceState & TemperatureObservedProbe & Mea
   & Pick<SteppedLoadDecoration, 'temperatureControlDisabled' | 'temperatureAdjustmentsDisabled'>;
 
 /**
+ * The owner's standing grants of command authority, OR'd: Power-limit control,
+ * or "Only PELS starts this device" on a managed device. Before the device
+ * facts that gate them (an axis to command, a measured draw), and before any
+ * term a decorator ORs on later (a smart task's grant). Shared with the
+ * observation lane, which asks it for devices not yet in a plan.
+ */
+export function hasStandingCommandGrant(
+  managed: boolean,
+  capacityControlEnabled: boolean,
+  startPolicy: DeviceStartPolicy,
+): boolean {
+  return capacityControlEnabled || (managed && startPolicy === 'pels_only');
+}
+
+/**
  * The device's control posture, resolved once, here.
  *
  * The only place `commandAuthority` is SEEDED. Pure: the caller reads the
@@ -81,7 +96,7 @@ export function resolveDeviceControlPosture(
     // turning it on are all power decisions, which take a measured draw (owner
     // ruling 2026-09-23). Its setpoints still follow the temperature logic —
     // those writes never needed this authority — but PELS never switches it.
-    commandAuthority: (capacityControlEnabled || (managed && startPolicy === 'pels_only'))
+    commandAuthority: hasStandingCommandGrant(managed, capacityControlEnabled, startPolicy)
       && hasTemperaturePolicyPowerControl(device)
       && hasObservedMeasuredPower(device),
   };

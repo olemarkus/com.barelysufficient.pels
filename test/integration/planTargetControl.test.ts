@@ -54,6 +54,7 @@ const buildPlanDevice = (
   // actually emits.
   hasStandingDemand: true,
   boostActive: false,
+  binaryCommandPending: false,
   surplusTracking: false,
   recordRestoreOnTargetApply: false,
 })) as DevicePlan['devices'][number];

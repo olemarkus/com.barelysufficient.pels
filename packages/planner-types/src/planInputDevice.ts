@@ -504,7 +504,6 @@ export type PlanInputDeviceBase = {
   budgetExempt?: boolean;
   /** Producer-resolved device reachability; absence is not a planner state. */
   available: boolean;
-  zone?: string;
   lastLocalWriteMs?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
@@ -519,7 +518,7 @@ export type PlanInputDeviceBase = {
   // "Resuming" state and the restore serializer mean) and `hasActiveCommand`
   // (any direction — what the shortfall log means). The producer answered the
   // second and the builder the first, under one field name, so a device
-  // republished through `planLiveStateMerge` changed what
+  // republished through the (since removed) live-state merge changed what
   // `DevicePlanDeviceBase.binaryCommandPending` meant. The plan OUTPUT still
   // carries that bit, resolved through the store's predicate; the plan INPUT
   // does not carry it at all.

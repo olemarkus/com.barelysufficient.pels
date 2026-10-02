@@ -13,6 +13,16 @@ import type { PlanRebuildPosture } from './rebuildScheduler/rebuildSignal';
  * gate: no controlled load left to act on. With no plan yet (`null`) nothing has
  * been proved, so nothing is unactionable or unrecoverable — a first rebuild is
  * never held. That is decided here, once.
+ *
+ * The summary is the plan AS BUILT: between builds it does not see a device a
+ * restore has since turned on. An observation of a device that can change the
+ * actionable load (`PlanService.canDeviceChangeActionableLoad`) clears the
+ * throttle's latch so the next reading still decides, but the 15 s execution
+ * floor (`TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS`) may space that decision.
+ * That is the throttle's deliberate CPU-versus-capacity trade: the hard cap is
+ * an average over the selected capacity period (60 or 15 minutes), so a
+ * re-shed held for those seconds costs a small share of the period's
+ * allowance, four times larger on a 15-minute period.
  */
 export function resolvePlanRebuildPosture(
   summary: PlanCapacityStateSummary | null,

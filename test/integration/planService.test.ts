@@ -1,4 +1,8 @@
 import { PassThrough } from 'node:stream';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
+import { invalidateOwningHomeRebuildSuppression } from '../../setup/appObservedControlStateRuntime';
+import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
@@ -135,6 +139,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
   const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
     homeId: 'main',
+    hasStandingCommandGrant: () => false,
     getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
     getObservedEvChargingState: () => ({ kind: 'absent' } as const),
     getObservedTemperature: () => ({ kind: 'absent' } as const),
@@ -363,6 +368,39 @@ describe('PlanService', () => {
     expect(classifyAll).not.toHaveBeenCalled();
   });
 
+  // A pending-target republish is the built plan under a new reference, with
+  // the build's draw. Sampling it would record that draw again as a reading.
+  it('does not sample the idle classifier when a pending target command settles', async () => {
+    const plan = buildPlan(18, 'keep', {}, { currentDrawKw: 0 });
+    let pendingTarget = true;
+    const engine = {
+      ...createMockPlanEngine(),
+      hasPendingTargetCommands: vi.fn(() => pendingTarget),
+      syncPendingTargetCommands: vi.fn(() => {
+        pendingTarget = false;
+        return true;
+      }),
+      decoratePlanWithPendingTargetCommands: vi.fn((current: DevicePlan): DevicePlan => ({
+        ...current,
+        devices: current.devices.map((device) => ({ ...device, pendingTargetCommand: undefined })),
+      })),
+    };
+    const { service } = createPlanService({ planEngine: engine });
+    service['rebuildHost'].publishPlan({
+      ...plan,
+      devices: plan.devices.map((device) => ({ ...device, pendingTargetCommand: {
+        desired: 20, retryCount: 0, nextRetryAtMs: Date.now() + 30_000, status: 'waiting_confirmation' as const,
+        lastObservedValue: 18, lastObservedSource: 'rebuild' as const,
+      } })),
+    }, Date.now());
+    const classifyAll = vi.spyOn(service['idleClassifier'], 'classifyAll');
+
+    await expect(service.syncLivePlanState('realtime_capability')).resolves.toBe(true);
+
+    expect(service.getLatestPlanSnapshot()?.devices[0]?.pendingTargetCommand).toBeUndefined();
+    expect(classifyAll).not.toHaveBeenCalled();
+  });
+
   it('keeps detail-only plan changes in memory and emits realtime updates', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
@@ -387,6 +425,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
@@ -448,6 +487,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -495,6 +535,7 @@ describe('PlanService', () => {
       devices: [
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          binaryCommandPending: false,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -519,6 +560,7 @@ describe('PlanService', () => {
         }))) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          binaryCommandPending: false,
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -543,6 +585,7 @@ describe('PlanService', () => {
         }))) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          binaryCommandPending: false,
           id: 'ev-1',
           name: 'EV',
           commandableNow: true,
@@ -922,6 +965,7 @@ describe('PlanService', () => {
   it('logs overview changes during live sync when a visible field changes', async () => {
     const overviewDebugStructured = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
+    let liveOn = false;
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({
         control: fixtureControlPosture({ controllable: true }), available: true,
         id: 'dev-1',
@@ -940,14 +984,14 @@ describe('PlanService', () => {
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
+        binaryControl: { on: liveOn },
+        currentOn: liveOn,
         currentTemperature: 21,
-        currentDrawKw: 0.25,
+        currentDrawKw: liveOn ? 0.25 : 0,
         expectedPowerKw: 3, expectedPowerSource: 'default',
-        binaryCommandPending: true,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -957,15 +1001,13 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation()),
-        hasPendingBinaryCommands: vi.fn(() => true),
-        syncPendingBinaryCommands: vi.fn(() => false),
         syncSteppedCommands: () => false,
       }),
       getPlanDevices: liveFixtureDevices,
@@ -984,11 +1026,12 @@ describe('PlanService', () => {
       boostActive: false,
       currentDrawKw: 0,
       expectedPowerKw: 3,
-      binaryCommandPending: true,
     });
     service['rebuildHost'].publishPlan(publishedPlan, Date.now());
     service['emitPlanUpdated'](publishedPlan);
     overviewDebugStructured.mockClear();
+    // The device turns on after the plan was published.
+    liveOn = true;
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
@@ -998,6 +1041,9 @@ describe('PlanService', () => {
       powerMsg: '0.3 kW',
       statusMsg: '',
     }));
+    // The card moved; the plan did not. Observations reach the overview from
+    // the executor, never by being merged onto the published plan.
+    expect(service.getLatestPlanSnapshot()).toBe(publishedPlan);
   });
 
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
@@ -1036,7 +1082,6 @@ describe('PlanService', () => {
         shedAction: 'set_temperature',
         shedTemperature: 12,
         priority: 3,
-        zone: 'Living room',
         budgetExempt: false,
         currentTemperature: 16,
         currentDrawKw: 1.2,
@@ -1088,7 +1133,7 @@ describe('PlanService', () => {
     });
   });
 
-  it('logs a post-actuation overview transition once the live state settles', async () => {
+  it('logs the post-actuation overview transition when the device observation arrives', async () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
@@ -1114,6 +1159,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1123,7 +1169,7 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
@@ -1152,6 +1198,9 @@ describe('PlanService', () => {
     });
 
     await service.rebuildPlanFromCache('power_delta');
+    // The device reports the restore landing: an observed-state change, which
+    // production routes into the live sync.
+    await service.syncLivePlanState('device_update');
 
     expect(overviewDebugStructured).toHaveBeenCalledTimes(2);
     expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
@@ -1181,6 +1230,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1218,6 +1268,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1270,6 +1321,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1321,6 +1373,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1414,6 +1467,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1501,6 +1555,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
@@ -1557,7 +1612,7 @@ describe('PlanService', () => {
     }));
   });
 
-  it('refreshes the stored current target when a pending target command is confirmed', async () => {
+  it('clears a confirmed pending target command and reads the setpoint live', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     let hasPendingTargetCommands = true;
@@ -1601,6 +1656,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
@@ -1638,11 +1694,9 @@ describe('PlanService', () => {
     service['rebuildHost'].publishPlan(decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep')), Date.now());
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
-    expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
-      id: 'dev-1',
-      currentTarget: 20,
-      plannedTarget: 20,
-    });
+    // The pending-command decoration is re-applied; the decided device is not
+    // re-sourced from live input. The card reads the setpoint from the observer.
+    expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({ id: 'dev-1', currentTarget: 18 });
     expect(service.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
@@ -1651,7 +1705,7 @@ describe('PlanService', () => {
     }));
   });
 
-  it('preserves generatedAtMs when syncLivePlanState refreshes live state', async () => {
+  it('keeps the published plan and its generatedAtMs when live sync re-renders status', async () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
         id: 'dev-1',
@@ -1676,6 +1730,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1685,7 +1740,7 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1704,37 +1759,31 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['rebuildHost'].publishPlan({
+    const publishedPlan = {
       ...buildPlan(20, 'meter settling (30s remaining)', {}, {
         currentState: 'on',
         plannedState: 'shed',
         boostActive: false,
       }),
       generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
-    }, Date.now());
+    };
+    service['rebuildHost'].publishPlan(publishedPlan, Date.now());
 
     vi.setSystemTime(new Date('2026-02-07T00:00:10.000Z'));
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
 
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          plannedState: 'shed',
-          boostActive: false,
-        }),
-      ],
-    }));
+    expect(service.getLatestPlanSnapshot()).toBe(publishedPlan);
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
+      devices: [
+        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'held', label: 'Limited · Off' }) }),
+      ],
     }));
   });
 
 
-  it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
+  it('re-renders status from live state when a pending binary command is confirmed', async () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
     const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
@@ -1760,6 +1809,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1769,7 +1819,7 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1791,22 +1841,18 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
-    service['rebuildHost'].publishPlan(buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
+    const publishedPlan = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
       currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 20,
       currentTemperature: 20,
       plannedTarget: 20,
-    }), Date.now());
+    });
+    service['rebuildHost'].publishPlan(publishedPlan, Date.now());
 
     await expect(service.syncLivePlanState('device_update')).resolves.toBe(true);
-    expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
-      id: 'dev-1',
-      currentState: 'off',
-      plannedState: 'shed',
-      boostActive: false,
-    });
+    expect(service.getLatestPlanSnapshot()).toBe(publishedPlan);
     expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
       devices: [
         expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'held', label: 'Limited · Off' }) }),
@@ -1815,66 +1861,93 @@ describe('PlanService', () => {
   });
 
 
-  it('does not refresh the stored plan snapshot from partially updated live state immediately after rebuild actuation', async () => {
-    let liveCurrentOnById: Record<string, boolean> = {
-      'dev-1': false,
-      'dev-2': false,
-    };
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockImplementation(async () => {
-      liveCurrentOnById = {
-        'dev-1': true,
-        'dev-2': false,
-      };
-      return actuation();
+  it('says which devices can change the actionable load, task grants included', () => {
+    const { service } = createPlanService({ hasStandingCommandGrant: (deviceId) => deviceId === 'charger-1' });
+    // A standing grant answers with no plan, and for a device the plan does not
+    // carry: an ordinary device with no power reading is not planned at all.
+    expect(service.canDeviceChangeActionableLoad('charger-1')).toBe(true);
+    expect(service.canDeviceChangeActionableLoad('dev-1')).toBe(false);
+
+    // Authority with no standing grant behind it: a smart task's.
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
+      control: { managed: true, commandAuthority: true },
+      currentDrawKw: 1,
+    }), Date.now());
+    expect(service.canDeviceChangeActionableLoad('dev-1')).toBe(true);
+    expect(service.canDeviceChangeActionableLoad('charger-1')).toBe(true);
+    expect(service.canDeviceChangeActionableLoad('absent')).toBe(false);
+
+    service['rebuildHost'].publishPlan(buildPlan(20, 'capacity control off', {}, {
+      control: { managed: true, commandAuthority: false },
+      currentDrawKw: 1,
+    }), Date.now());
+    expect(service.canDeviceChangeActionableLoad('dev-1')).toBe(false);
+  });
+
+  // End to end from the observation lane: a charger with Power-limit control
+  // on and no power reading is not in the plan, so only the standing grant can
+  // tell its first reading falsifies a "nothing is actionable" verdict.
+  it('lets an unplanned power-limited device clear the throttle with its first reading', () => {
+    const { service } = createPlanService({ hasStandingCommandGrant: (deviceId) => deviceId === 'charger-1' });
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep'), Date.now());
+    const ctx = createAppContextMock({ planService: service });
+    const onObservation = vi.spyOn(ctx.planRebuildThrottle, 'onObservation');
+    const emitter = new ObservedStateEmitter();
+    subscribePlanObservedState({
+      ctx,
+      getObservedStateEmitter: () => emitter,
+      getHomeRuntimeRegistry: () => undefined,
+      syncLivePlanState: () => Promise.resolve(false),
+      syncExternalOffHold: vi.fn(),
+      invalidateRebuildSuppression: (deviceId) => invalidateOwningHomeRebuildSuppression({ ctx, deviceId }),
     });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-          id: 'dev-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 1',
-          commandableNow: true,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-1'] },
-          currentOn: liveCurrentOnById['dev-1'],
-          currentTemperature: 21,
-        }),
-        withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-          id: 'dev-2',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 2',
-          commandableNow: true,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-2'] },
-          currentOn: liveCurrentOnById['dev-2'],
-          currentTemperature: 21,
-        }),
-      ];
+
+    emitter.emitObservedStateChanged({
+      deviceId: 'charger-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
+    });
+    emitter.emitObservedStateChanged({
+      deviceId: 'lamp-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
+    });
+
+    expect(onObservation).toHaveBeenCalledTimes(1);
+  });
+
+  // Prod 2026-10-01: an EV charger with Power-limit control off, driven by a
+  // smart task, read "Manual" after nearly every settled step change. The live
+  // planner input predates deferred admission, so it carries no task grant; a
+  // live sync that merged it onto the published plan replaced the plan's
+  // authority with it until the next rebuild.
+  it('keeps a smart task\'s command authority when live sync runs after a confirmed command', async () => {
+    let hasPendingBinaryCommands = true;
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({
+        // The raw input: Power-limit control off, no grant yet.
+        control: { managed: true, commandAuthority: false },
+        available: true,
+        currentDrawKw: 2,
+        id: 'dev-1',
+        expectedPowerKw: 2, expectedPowerSource: 'default',
+        name: 'Heater',
+        commandableNow: true,
+        objectiveSessionInactive: false,
+        boostSupported: false,
+        boostRequested: false,
+        hasStandingDemand: true,
+        surplusTracking: false,
+        confirmedNotDrawing: false,
+        isEvCharger: false,
+        observeOnly: false,
+        starvationSupported: false,
+        currentTarget: 20,
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        binaryCapabilityId: 'onoff',
+        binaryControl: { on: true },
+        currentOn: true,
+        currentTemperature: 19,
+      })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -1884,48 +1957,15 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: buildPlanMeta({
-            totalKw: 1,
-            softLimitKw: 5,
-            headroomKw: 4}),
-          devices: [
-            {
-              id: 'dev-1',
-              name: 'Heater 1',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: true }),
-              binaryCapabilityId: 'onoff',
-              currentOn: false,
-            },
-            {
-              id: 'dev-2',
-              name: 'Heater 2',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: true }),
-              binaryCapabilityId: 'onoff',
-              currentOn: false,
-            },
-          ],
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
+        buildDevicePlanSnapshot: vi.fn(),
+        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
+        hasPendingBinaryCommands: vi.fn(() => hasPendingBinaryCommands),
+        syncPendingBinaryCommands: vi.fn(() => {
+          hasPendingBinaryCommands = false;
+          return true;
         }),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
+        syncSteppedCommands: () => false,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1933,39 +1973,31 @@ describe('PlanService', () => {
       readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
-          });
+    });
 
-    await service.rebuildPlanFromCache('power_delta');
+    // Built after admission: the task lent PELS authority and the plan resumed
+    // the device, which the confirmed command has now turned on.
+    service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
+      currentState: 'off',
+      plannedState: 'keep',
+      boostActive: false,
+      control: { managed: true, commandAuthority: true },
+    }), Date.now());
 
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+    await expect(service.syncLivePlanState('device_update')).resolves.toBe(true);
+    expect(service.getLatestPlanSnapshot()?.devices[0]?.control.commandAuthority).toBe(true);
+    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentState: 'off',
-          currentTarget: 20,
-          plannedState: 'keep',
-          boostActive: false,
-          plannedTarget: 20,
+          controllable: true,
+          status: expect.objectContaining({ kind: 'active', label: 'Running' }),
         }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-          currentTarget: 20,
-          plannedState: 'keep',
-          boostActive: false,
-          plannedTarget: 20,
-        }),
-      ],
-    }));
-    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
-      devices: [
-        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'resuming', label: 'Resuming' }) }),
-        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'resuming', label: 'Resuming' }) }),
       ],
     }));
   });
 
-  it('refreshes the stored plan snapshot after rebuild actuation once all live state has settled', async () => {
+  it('shows a settled actuation from live state while the plan stays as built', async () => {
     let currentOn = false;
     const realtime = vi.fn().mockResolvedValue(undefined);
     const applyPlanActions = vi.fn().mockImplementation(async () => {
@@ -1995,6 +2027,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2004,7 +2037,7 @@ describe('PlanService', () => {
       publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+        ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
@@ -2028,15 +2061,16 @@ describe('PlanService', () => {
           });
 
     await service.rebuildPlanFromCache('power_delta');
+    await service.syncLivePlanState('device_update');
 
+    // The plan records the observation it was decided from; the card shows
+    // the device as it is now.
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentState: 'on',
-          currentTarget: 20,
+          currentState: 'off',
           plannedState: 'keep',
-          boostActive: false,
           plannedTarget: 20,
         }),
       ],
@@ -2044,384 +2078,6 @@ describe('PlanService', () => {
     expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
       devices: [
         expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
-      ],
-    }));
-  });
-
-  it('refreshes the stored plan snapshot when settled actuation leaves an uncontrollable keep-device off', async () => {
-    let liveCurrentOnById: Record<string, boolean> = {
-      'dev-1': false,
-      'dev-2': false,
-    };
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockImplementation(async () => {
-      liveCurrentOnById = {
-        'dev-1': true,
-        'dev-2': false,
-      };
-      return actuation();
-    });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        withFixtureResidualKw({ available: true, currentDrawKw: 0,
-          id: 'dev-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 1',
-          commandableNow: true,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-1'] },
-          currentOn: liveCurrentOnById['dev-1'],
-          currentTemperature: 21,
-          control: fixtureControlPosture({ controllable: true }),
-        }),
-        withFixtureResidualKw({ available: true, currentDrawKw: 0,
-          id: 'dev-2',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 2',
-          commandableNow: true,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-2'] },
-          currentOn: liveCurrentOnById['dev-2'],
-          currentTemperature: 21,
-          control: fixtureControlPosture({ controllable: false }),
-        }),
-      ];
-    const service = new PlanService({
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: stubDepsHomey({ set: vi.fn(), realtime }),
-      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: buildPlanMeta({
-            totalKw: 1,
-            softLimitKw: 5,
-            headroomKw: 4}),
-          devices: [
-            {
-              id: 'dev-1',
-              name: 'Heater 1',
-              deviceType: 'temperature',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: true }),
-            },
-            {
-              id: 'dev-2',
-              name: 'Heater 2',
-              deviceType: 'temperature',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: false }),
-            },
-          ],
-        }),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-      }),
-      getPlanDevices: liveFixtureDevices,
-      getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-          });
-
-    await service.rebuildPlanFromCache('power_delta');
-
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-        }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-        }),
-      ],
-    }));
-    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
-      devices: [
-        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
-        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'manual', label: 'Manual' }) }),
-      ],
-    }));
-  });
-
-  it('refreshes the stored plan snapshot when settled actuation leaves an unavailable keep-device off', async () => {
-    let liveCurrentOnById: Record<string, boolean> = {
-      'dev-1': false,
-      'dev-2': false,
-    };
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockImplementation(async () => {
-      liveCurrentOnById = {
-        'dev-1': true,
-        'dev-2': false,
-      };
-      return actuation();
-    });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [
-        withFixtureResidualKw({ currentDrawKw: 0,
-          id: 'dev-1',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 1',
-          commandableNow: true,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-1'] },
-          currentOn: liveCurrentOnById['dev-1'],
-          currentTemperature: 21,
-          control: fixtureControlPosture({ controllable: true }),
-          available: true,
-        }),
-        withFixtureResidualKw({ currentDrawKw: 0,
-          id: 'dev-2',
-          expectedPowerKw: 1, expectedPowerSource: 'default',
-          name: 'Heater 2',
-          // `available: false` below: the producer resolves that to
-          // commandableNow=false ('device unavailable'), so the fixture must too.
-          commandableNow: false,
-          objectiveSessionInactive: false,
-          boostSupported: false,
-          boostRequested: false,
-          hasStandingDemand: true,
-          surplusTracking: false,
-          confirmedNotDrawing: false,
-          isEvCharger: false,
-          observeOnly: false,
-          starvationSupported: false,
-          currentTarget: 20,
-          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-          deviceType: 'temperature',
-          binaryCapabilityId: 'onoff',
-          binaryControl: { on: liveCurrentOnById['dev-2'] },
-          currentOn: liveCurrentOnById['dev-2'],
-          currentTemperature: 21,
-          control: fixtureControlPosture({ controllable: true }),
-          available: false,
-        }),
-      ];
-    const service = new PlanService({
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: stubDepsHomey({ set: vi.fn(), realtime }),
-      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
-          meta: buildPlanMeta({
-            totalKw: 1,
-            softLimitKw: 5,
-            headroomKw: 4}),
-          devices: [
-            {
-              id: 'dev-1',
-              name: 'Heater 1',
-              deviceType: 'temperature',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: true }),
-              available: true,
-            },
-            {
-              id: 'dev-2',
-              name: 'Heater 2',
-              deviceType: 'temperature',
-              currentState: 'off',
-              plannedState: 'keep',
-              boostActive: false,
-              currentTarget: 20,
-              currentTemperature: 20,
-              plannedTarget: 20,
-              reason: 'keep',
-              control: fixtureControlPosture({ controllable: true }),
-              available: false,
-            },
-          ],
-        }),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-      }),
-      getPlanDevices: liveFixtureDevices,
-      getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-          });
-
-    await service.rebuildPlanFromCache('power_delta');
-
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'on',
-        }),
-        expect.objectContaining({
-          id: 'dev-2',
-          currentState: 'off',
-          available: false,
-        }),
-      ],
-    }));
-    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
-      devices: [
-        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ kind: 'active' }) }),
-        expect.objectContaining({ id: 'dev-2', status: expect.objectContaining({ kind: 'unavailable' }) }),
-      ],
-    }));
-  });
-
-  it('refreshes the stored plan snapshot after a settled shed-off even if the target remains unchanged', async () => {
-    let currentOn = true;
-    const realtime = vi.fn().mockResolvedValue(undefined);
-    const applyPlanActions = vi.fn().mockImplementation(async () => {
-      currentOn = false;
-      return actuation();
-    });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        observeOnly: false,
-        starvationSupported: false,
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: currentOn },
-        currentOn: currentOn,
-        currentTarget: 21,
-        currentTemperature: 21,
-      })];
-    const service = new PlanService({
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({
-        kind: 'observed',
-        value: { currentTarget: 21, currentTemperature: 21 },
-      }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: stubDepsHomey({ set: vi.fn(), realtime }),
-      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'keep', {}, {
-          currentState: 'on',
-          currentTarget: 21,
-          currentTemperature: 21,
-          plannedState: 'shed',
-          boostActive: false,
-          plannedTarget: 18,
-          shedAction: 'turn_off',
-        })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-      }),
-      getPlanDevices: liveFixtureDevices,
-      getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-          });
-
-    await service.rebuildPlanFromCache('power_delta');
-
-    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
-      devices: [
-        expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off',
-          currentTarget: 21,
-          plannedState: 'shed',
-          boostActive: false,
-          plannedTarget: 18,
-        }),
-      ],
-    }));
-    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
-      devices: [
-        expect.objectContaining({ id: 'dev-1', status: expect.objectContaining({ cardKind: 'temperature', factText: expect.stringContaining('target '+21+' °C') }) }),
       ],
     }));
   });
@@ -2468,6 +2124,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2524,6 +2181,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2619,6 +2277,7 @@ describe('PlanService', () => {
     }];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2697,6 +2356,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2806,6 +2466,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2893,6 +2554,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2940,6 +2602,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -2996,6 +2659,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -3051,6 +2715,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -3393,6 +3058,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -3455,6 +3121,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -3543,6 +3210,7 @@ describe('PlanService', () => {
         })];
       };
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
@@ -3597,6 +3265,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),

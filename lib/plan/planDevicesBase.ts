@@ -231,7 +231,6 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     commandableNow: dev.commandableNow,
     hasStandingDemand: dev.hasStandingDemand,
     reason: baseReason,
-    zone: dev.zone || 'Unknown',
     control,
     budgetExempt: dev.budgetExempt,
     available: dev.available,
@@ -239,7 +238,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     surplusAbsorbActive,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
-    binaryCommandPending: binaryCommandPending || undefined,
+    binaryCommandPending,
     shedAction,
     shedTemperature,
     releaseShedStepId,
@@ -255,8 +254,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   // The temperature cluster as a UNIT, and the `satisfies` is the unit: the
   // three fields are independent optionals on `LooseDevicePlanDevice`, so
   // written one line at a time a dropped field compiles clean and the device
-  // reads `undefined` behind a required `number` — the exact hole
-  // `TemperatureClusterFields` exists to close. One literal per cluster per
+  // reads `undefined` behind a required `number`. One literal per cluster per
   // device is the price of keeping that a compile error; the fourteen this
   // commit removes were per device too.
   if (isTemperaturePlanDevice(dev)) {

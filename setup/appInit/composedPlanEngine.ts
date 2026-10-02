@@ -3,10 +3,7 @@ import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
 import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
-import {
-  canRefreshPlanSnapshotFromLiveState,
-  hasPlanExecutionDriftAgainstIntent,
-} from '../../lib/executor/executorConvergence';
+import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
 import { getLogger, type Logger as PinoLogger, type StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -118,10 +115,6 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.executor.hasStablePlanActuation(plan);
   }
 
-  public hasSettledActuation(basePlan: DevicePlan, livePlan: DevicePlan): boolean {
-    return canRefreshPlanSnapshotFromLiveState(basePlan, livePlan);
-  }
-
   public getObservationRevision(): number {
     return this.executor.getObservationRevision();
   }
@@ -134,8 +127,8 @@ export class ComposedPlanEngine implements PlanEngine {
     // `observationRevisionAtBuild`. If the observer has accepted a write since,
     // this plan has not been decided against the world it would now be applied
     // to — and acting anyway is an apply-without-decide, the shape that breached
-    // the hard cap (`inc_26449fb9`). Decline; the observation that moved is
-    // itself a rebuild trigger, and the re-decide is the honest answer.
+    // the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
+    // re-decides against the observation that moved, which is the honest answer.
     if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
     return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
   }
@@ -209,10 +202,6 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public hasPendingBinaryCommands(): boolean {
     return this.pendingBinaryCommandStore.hasAny();
-  }
-
-  public hasActiveBinaryTurnOnCommand(deviceId: string): boolean {
-    return this.pendingBinaryCommandStore.hasActiveTurnOn(deviceId);
   }
 
   public hasAttributablePendingBinaryCommand(deviceId: string): boolean {

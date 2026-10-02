@@ -77,6 +77,7 @@ describe('Price level flow cards', () => {
     app.registerFlowCards();
 
     const planService = new PlanService({
+      hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),

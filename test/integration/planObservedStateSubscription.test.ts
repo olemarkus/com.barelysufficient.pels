@@ -16,9 +16,17 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 
 const buildDeps = (planService: PlanService | undefined) => {
-  const ctx = createAppContextMock({ planService });
+  // Main's plan answers the actionable-load question: no sub-home is registered.
+  const canDeviceChangeActionableLoad = vi.fn((_deviceId: string) => false);
+  const ctx = createAppContextMock({
+    planService: planService
+      ? { ...planService, canDeviceChangeActionableLoad } as unknown as PlanService
+      : undefined,
+  });
   return {
     ctx,
+    canDeviceChangeActionableLoad,
+    getHomeRuntimeRegistry: () => undefined,
     syncLivePlanState: (event: { source: Parameters<PlanService['syncLivePlanState']>[0] }) => {
       if (!ctx.planService) throw new Error('PlanService must be initialized before use.');
       return ctx.planService.syncLivePlanState(event.source);
@@ -69,7 +77,9 @@ describe('subscribePlanObservedState', () => {
   it('gives a control-state observation to the external-off hold, not to a rebuild', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
     const rebuildPlanFromCache = vi.fn();
-    deps.ctx.planService = { rebuildPlanFromCache } as unknown as PlanService;
+    deps.ctx.planService = {
+      rebuildPlanFromCache, canDeviceChangeActionableLoad: () => false,
+    } as unknown as PlanService;
     subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
@@ -83,22 +93,40 @@ describe('subscribePlanObservedState', () => {
   // is. Routing is asserted in `owningHomeRouting.test.ts`.
   it('asks for the suppressions of the moved device\'s home to be cleared', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
-    deps.ctx.isCapacityControlEnabled = () => true;
+    deps.canDeviceChangeActionableLoad.mockReturnValue(true);
     subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
 
+    expect(deps.canDeviceChangeActionableLoad).toHaveBeenCalledWith('heater-1');
     expect(deps.invalidateRebuildSuppression).toHaveBeenCalledWith('heater-1');
   });
 
-  it('leaves the suppressions alone for a device PELS does not control', () => {
+  it('leaves the suppressions alone for a device whose move cannot change the actionable load', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
-    deps.ctx.isCapacityControlEnabled = () => false;
     subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
+    deps.emitter.emitObservedStateChanged({
+      deviceId: 'heater-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
+    });
 
     expect(deps.invalidateRebuildSuppression).not.toHaveBeenCalled();
+  });
+
+  // The gate is the owning plan's answer, not a setting read here: which
+  // devices that covers is `PlanService.canDeviceChangeActionableLoad`'s spec.
+  it('clears the suppressions when the owning plan says the device\'s move counts', () => {
+    const deps = buildDeps({ syncLivePlanState: vi.fn().mockResolvedValue(false) } as unknown as PlanService);
+    deps.ctx.isCapacityControlEnabled = () => false;
+    deps.canDeviceChangeActionableLoad.mockReturnValue(true);
+    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+
+    deps.emitter.emitObservedStateChanged({
+      deviceId: 'charger-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
+    });
+
+    expect(deps.invalidateRebuildSuppression).toHaveBeenCalledWith('charger-1');
   });
 
   // If this step is ever moved back before `initPlanService`, boot-time
