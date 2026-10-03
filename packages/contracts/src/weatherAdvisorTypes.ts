@@ -42,6 +42,8 @@ export type WeatherDailyQuality = {
  * and suggestion resolve it to flat outputs.
  */
 export type WeatherDaySuppression = {
+  /** Budget-attributed heater denial still unrecovered at day close. Absent on older builds. */
+  budgetUnservedKwh?: number;
   /**
    * Whether `budgetDeniedKwh` came from the continuous denial integrator.
    * False distinguishes upgraded pre-integrator diagnostics rows from a real
@@ -76,8 +78,8 @@ export type WeatherDaySuppression = {
    * Energy deadline-bound smart tasks never got: what the misses on this day
    * committed to needing, less what their runs actually delivered, summed over
    * the misses the daily budget caused OUTRIGHT. The smart-task counterpart of
-   * `budgetDeniedKwh` above — that one prices what the budget was still denying
-   * devices at midnight, this one what it denied a task at a deadline that has
+   * the unrecovered heater estimate above — this records what it denied a task
+   * at a deadline that has
    * already gone by.
    *
    * A magnitude, not a flag: ABSENT means there is no measured denial to add,
@@ -256,6 +258,8 @@ export type WeatherHistoryState = {
 
 /** See `WeatherHistoryState.budgetPressure` and `foldBudgetPressureDay`. */
 export type BudgetPressureState = {
+  /** Version 2 excludes temporary/capacity holds and credits unused allowance. */
+  algorithmVersion?: 2;
   /** Accumulated extra kWh; never negative. */
   kwh: number;
   /** Newest day already folded in — days at or before this are skipped. */
@@ -321,6 +325,9 @@ export type EnergySignatureFit = {
   residualQ10: number;
   residualQ50: number;
   residualQ80: number;
+  /** Recent fortnight residuals keep headroom responsive to changed household usage. */
+  recentResidualQ80?: number;
+  recentResidualQ90?: number;
   residualQ90: number;
   fittedAtMs: number;
 };

@@ -1,3 +1,4 @@
+import { getBudgetDailyHistoryFromHomey, getBudgetDecisionHistoryFromHomey } from './lib/weather/budgetDiagnosticsApi';
 import type Homey from 'homey';
 import type { DailyBudgetModelPreviewResponse, DailyBudgetUiRead } from './lib/dailyBudget/dailyBudgetTypes';
 import type { Logger as PinoLogger } from 'pino';
@@ -136,6 +137,14 @@ export = {
   ui_deferred_objective_settings: withApiLogging('ui_deferred_objective_settings', ({ homey }: ApiContext) => (
     getSettingsUiDeferredObjectiveSettingsPayload({ homey })
   )),
+  diagnostics_budget_days: withApiLogging(
+    'diagnostics_budget_days',
+    ({ homey, query }: ApiContext & { query?: unknown }) => getBudgetDailyHistoryFromHomey(homey, query),
+  ),
+  diagnostics_budget_decisions: withApiLogging(
+    'diagnostics_budget_decisions',
+    ({ homey, query }: ApiContext & { query?: unknown }) => getBudgetDecisionHistoryFromHomey(homey, query),
+  ),
   get_daily_budget: withApiLogging('get_daily_budget', ({ homey }: ApiContext): DailyBudgetUiRead => (
     getSettingsUiDailyBudget({ homey })
   )),

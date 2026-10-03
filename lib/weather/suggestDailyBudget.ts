@@ -1,5 +1,7 @@
 import type { BudgetPressureState, EnergySignatureFit } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { predictDailyKwh } from '../../packages/shared-domain/src/energySignature/energySignature';
+import {
+  predictDailyKwh, resolveResidualHeadroom,
+} from '../../packages/shared-domain/src/energySignature/energySignature';
 import { resolveBudgetPressureKwh } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 // Mirrors lib/dailyBudget/dailyBudgetConstants.ts and packages/contracts/src/
@@ -16,10 +18,11 @@ const MAX_DAILY_BUDGET_KWH = 360;
  *    exactly during cold snaps, when a too-tight budget hurts most).
  * 2. Add q80 residual headroom (right-skewed residuals: guests/laundry days
  *    inflate the upper tail; ~4 of 5 typical days fit inside the suggestion),
- *    leaning to q90 when the daily budget has recently been limiting.
+ *    retaining a wider recent-fortnight quantile when household usage changes,
+ *    and leaning to q90 only for unresolved budget-attributed shortfall.
  * 3. Add the budget-pressure term — the integral half of the loop, which keeps
- *    escalating while the budget is demonstrably holding devices back. See
- *    `budgetPressure.ts` for why the model alone cannot be trusted here.
+ *    correcting measured overshoot or unresolved budget-attributed shortfall. See
+ *    `budgetPressure.ts` for recovery and unused-allowance accounting.
  * 4. Floor at the 5th percentile of observed days — never suggest below what the
  *    home has demonstrably used.
  * 5. Clamp to the daily-budget setting bounds and (when known) the capacity
@@ -68,18 +71,11 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   );
   const predictedKwh = predictDailyKwh(fit, evaluationTempC) ?? fit.medianDayKwh;
 
-  // Raise-lean: when the daily budget has recently been limiting the home, the
-  // measured days it was limiting are censored lower bounds on demand, so the
-  // fit reads low. Widen the headroom q80→q90 so a held-back home is nudged UP,
-  // never lower — the suggestion may only ever over-cover here, so a rough
-  // detection threshold is safe.
-  //
-  // This used to also require a forecast below the heating knee. That made the
-  // correction dead above the knee, which is exactly where the base load is an
-  // extrapolated value rather than an observed one, and where a mild-weather
-  // home can be throttled all day without a single cold hour to trigger it.
+  // Keep annual uncertainty, but widen for measured recent demand. Only proven
+  // unresolved budget shortfall enables q90; routine shifting does not.
   const budgetMayBeLimiting = fit.recentSuppressionSuspected;
-  const headroomQuantile = budgetMayBeLimiting ? fit.residualQ90 : fit.residualQ80;
+  const residualHeadroom = resolveResidualHeadroom(fit);
+  const headroomQuantile = budgetMayBeLimiting ? residualHeadroom.q90 : residualHeadroom.q80;
   const headroom = Math.max(headroomQuantile, MIN_RELATIVE_HEADROOM * predictedKwh);
   // Integral term on top of that proportional one. It is measured against the
   // budget that was actually applied — which already carried the headroom — so
@@ -108,7 +104,9 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   return {
     predictedKwh,
     predictedLowKwh,
-    predictedHighKwh: Math.max(predictedLowKwh, predictedKwh + fit.residualQ90),
+    predictedHighKwh: Math.max(
+      predictedLowKwh, predictedKwh + residualHeadroom.q90,
+    ),
     suggestedBudgetKwh,
     beyondObservedCold,
     beyondObservedWarm,

@@ -47,6 +47,8 @@ const buildObservation = (
   pelsHoldsBelowTarget: true,
   expectedPowerKw: 1,
   budgetPressureDenied: false,
+  budgetUnservedDenied: false,
+  budgetDemandRecovered: false,
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
@@ -1626,5 +1628,63 @@ describe('DeviceDiagnosticsService budget-pressure denial integral', () => {
 
     const totals = service.getDaySuppressionTotals('2026-10-25');
     expect(totals?.budgetDeniedMs).toBe(60 * MIN);
+  });
+});
+
+
+describe('budget-attributed unresolved heater demand', () => {
+  const MIN = 60000;
+  const dateKey = '2026-10-02';
+  const start = getDateKeyStartMs(dateKey, 'Europe/Oslo') + 12 * 3600000;
+  const denied = buildObservation({ budgetPressureDenied: true, budgetUnservedDenied: true,
+    countingCause: 'daily_budget', expectedPowerKw: 2 });
+  const accrue = (service: DeviceDiagnosticsService) => {
+    for (let ts = start; ts <= start + 30 * MIN; ts += 5 * MIN) {
+      service.observePlanSample({ nowTs: ts, observations: [denied] });
+    }
+  };
+  it('preserves denial until observed physical recovery, rather than a restore command', () => {
+    const { service } = createDeps();
+    accrue(service);
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
+    const restored = buildObservation({ unmetDemand: false, pelsHoldsBelowTarget: false,
+      commandedTargetC: 22, currentTemperatureC: 18, budgetDemandRecovered: false });
+    service.observePlanSample({ nowTs: start + 35 * MIN, observations: [restored] });
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(7 / 6);
+    service.observePlanSample({ nowTs: start + 40 * MIN, observations: [
+      { ...restored, currentTemperatureC: 22, budgetDemandRecovered: true },
+    ] });
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBe(0);
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetDeniedKwh).toBeCloseTo(7 / 6);
+    service.destroy();
+  });
+  it('does not turn a capacity-only hold into unresolved budget evidence', () => {
+    const { service } = createDeps();
+    for (let ts = start; ts <= start + 30 * MIN; ts += 5 * MIN) {
+      service.observePlanSample({ nowTs: ts, observations: [{ ...denied, budgetUnservedDenied: false,
+        countingCause: 'capacity' }] });
+    }
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeUndefined();
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetDeniedKwh).toBeCloseTo(1);
+    service.destroy();
+  });
+  it('retains unresolved evidence across a restart without pricing the unobserved gap', () => {
+    const { service, stateStore } = createDeps();
+    accrue(service);
+    service.destroy();
+    const restarted = createDeps({ initialState: stateStore.read().state }).service;
+    restarted.observePlanSample({ nowTs: start + 60 * MIN, observations: [denied] });
+    expect(restarted.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
+    restarted.destroy();
+  });
+  it('does not erase a closed day when physical recovery occurs the following day', () => {
+    const { service } = createDeps();
+    accrue(service);
+    const midnight = getDateKeyStartMs('2026-10-03', 'Europe/Oslo');
+    service.observePlanSample({ nowTs: midnight + 2 * MIN,
+      observations: [buildObservation({ unmetDemand: false, budgetDemandRecovered: true })] });
+    expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
+    expect(service.getDaySuppressionTotals('2026-10-03')?.budgetUnservedKwh).toBe(0);
+    service.destroy();
   });
 });

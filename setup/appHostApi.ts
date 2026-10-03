@@ -1,3 +1,7 @@
+import { createWeatherHistoryStore } from '../lib/weather/weatherHistoryStore';
+import { createBudgetAdviceHistoryStore } from '../lib/weather/budgetAdviceHistoryStore';
+import { readBudgetDailyHistory, readBudgetDecisionHistory } from '../lib/weather/budgetDiagnosticsHistory';
+import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
 import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
@@ -307,6 +311,20 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
     return this.requirePlanService().getDeviceLogUiPayload();
+  }
+
+  public getBudgetDailyHistory(query: unknown): BudgetDailyHistory {
+    return readBudgetDailyHistory(
+      createWeatherHistoryStore(this.context.getUserdataDatabase()), query,
+      this.context.getNow().getTime(), this.context.getTimeZone(),
+    );
+  }
+
+  public getBudgetDecisionHistory(query: unknown): BudgetDecisionHistory {
+    return readBudgetDecisionHistory(
+      createBudgetAdviceHistoryStore(this.context.getUserdataDatabase()), query,
+      this.context.getNow().getTime(), this.context.getTimeZone(),
+    );
   }
 
   public async getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {

@@ -858,3 +858,21 @@ describe('normalizeWeatherHistoryState', () => {
     expect(normalized?.records[0].kwhUncontrolled).toBeUndefined();
   });
 });
+
+
+describe('budget feedback version migration', () => {
+  it('drops the old cumulative-hold correction while preserving daily history', () => {
+    const raw = { records: [liveRecord('2026-01-05')],
+      budgetPressure: { kwh: 56, throughDateKey: '2026-01-05' } };
+    const normalized = normalizeWeatherHistoryState(raw);
+    expect(normalized?.records).toHaveLength(1);
+    expect(normalized?.budgetPressure).toBeUndefined();
+  });
+  it('retains the revised correction and unrecovered demand, including an observed zero', () => {
+    const raw = { records: [liveRecord('2026-01-05', { suppression: { budgetUnservedKwh: 0 } })],
+      budgetPressure: { algorithmVersion: 2, kwh: 4, throughDateKey: '2026-01-05' } };
+    const normalized = normalizeWeatherHistoryState(raw);
+    expect(normalized?.budgetPressure).toEqual(raw.budgetPressure);
+    expect(normalized?.records[0]?.suppression?.budgetUnservedKwh).toBe(0);
+  });
+});

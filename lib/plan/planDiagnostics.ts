@@ -299,6 +299,33 @@ const resolveUnmetDemand = (
   return includeDemandMetrics && device.currentState === 'off' && device.plannedState !== 'inactive';
 };
 
+/** Daily-budget demand evidence; the thermostat owns physical target comparisons. */
+const resolveBudgetUnservedDenied = (
+  device: DevicePlanDevice,
+  setpoints: TemperatureSetpoints | null,
+  suppression: StarvationSuppressionNormalization,
+  eligible: boolean,
+  heldBelowTarget: boolean,
+  budgetReleasable: boolean,
+): boolean => (
+  eligible
+  && budgetReleasable
+  && heldBelowTarget
+  && setpoints !== null
+  && setpoints.roomShortOfIntended
+  && suppression.countingCause === 'daily_budget'
+  && isMeteredPlanDevice(device)
+);
+
+const resolveBudgetDemandRecovered = (
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  setpoints: TemperatureSetpoints | null,
+): boolean => (
+  device.available && inputDevice?.available === true
+  && setpoints !== null && !setpoints.roomShortOfIntended
+);
+
 const buildDiagnosticsObservation = (params: {
   temperatureSetpoints: TemperatureSetpointsByDevice;
   inputDevice?: PlanInputDevice;
@@ -386,6 +413,11 @@ const buildDiagnosticsObservation = (params: {
     // temperature device planned for its setpoints alone was never offered power
     // to deny, so holding it below target is not budget pressure.
     budgetPressureDenied: budgetPressureEligible && unmetDemand && isMeteredPlanDevice(device),
+    budgetUnservedDenied: resolveBudgetUnservedDenied(
+      device, setpoints, starvationSuppression, eligibleForStarvation, pelsHoldsBelowTarget,
+      budgetReleasableHeadroomHold,
+    ),
+    budgetDemandRecovered: resolveBudgetDemandRecovered(device, inputDevice, setpoints),
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

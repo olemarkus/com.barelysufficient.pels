@@ -4,9 +4,6 @@ import type {
   EnergySignatureModel,
   WeatherDailyRecord,
 } from '../../../contracts/src/weatherAdvisorTypes';
-// One predicate, one threshold, shared with the integral half of the same
-// correction: the raise-lean and the pressure loop must never disagree about
-// whether a day was held back by the daily budget.
 import { dayWasBudgetDamaged } from './budgetPressure';
 
 /**
@@ -100,13 +97,8 @@ function selectFitRecords(records: WeatherDailyRecord[]): FitSelection {
 /**
  * Recent days the DAILY BUDGET damaged — the suggestion then leans up.
  *
- * Keyed on `dayWasBudgetDamaged`, which reads the cause-independent denied-energy
- * integral. Records predating that integral retain their legacy hold-time bar.
- *
- * Deliberately NOT gated on temperature. It used to require the day to be below
- * the heating knee, which made the whole correction dead above it: a home whose
- * budget was hurting it in mild weather produced no lean at all, precisely when
- * the model's warm-regime base load is least trustworthy.
+ * Only unresolved, budget-attributed shortfall enables the more generous
+ * quantile. Cumulative historical holds cannot establish that outcome.
  */
 function detectRecentSuppression(records: WeatherDailyRecord[]): boolean {
   return records
@@ -132,6 +124,8 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
 
   const { model, line, balancePointC } = resolveModel(usable);
   const residuals = usable.map((day) => day.kwh - predictWithLine(model, line, balancePointC, day.tempC));
+  // The annual model captures seasons; recent residuals capture occupancy/load changes.
+  const recentResiduals = residuals.slice(-DRIFT_RECENT_DAYS);
   const pseudoR2 = pseudoR2L1(kwhs, residuals);
   const ci = senSlopeInterval(line.slopes, usable.length);
   const driftSuspected = detectDrift(residuals);
@@ -146,6 +140,8 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
     ...(model === 'linear' ? { interceptKwhAtZeroC: line.intercept } : {}),
     slopeKwhPerDegree: line.slope,
     ...(ci ? { slopeCiLow: ci.low, slopeCiHigh: ci.high } : {}),
+    recentResidualQ80: quantile(recentResiduals, 0.8),
+    recentResidualQ90: quantile(recentResiduals, 0.9),
     pseudoR2,
     usableDays: usable.length,
     observedTempMinC,
@@ -403,4 +399,13 @@ export function quantile(values: number[], p: number): number {
   if (lower === upper) return lowerValue;
   const weight = position - lower;
   return lowerValue * (1 - weight) + upperValue * weight;
+}
+
+
+/** Budget and browser verdicts share the same recent-usage calibration. */
+export function resolveResidualHeadroom(fit: EnergySignatureFit): { q80: number; q90: number } {
+  return {
+    q80: Math.max(fit.residualQ80, fit.recentResidualQ80 ?? fit.residualQ80),
+    q90: Math.max(fit.residualQ90, fit.recentResidualQ90 ?? fit.residualQ90),
+  };
 }

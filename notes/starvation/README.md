@@ -75,173 +75,69 @@ The detection feature is detection only:
 - no budget adjustment **except** through the bounded weather-advisor loop
   described below (the v2 widget rescue is the other, user-initiated, exception)
 
-## The weather-advisor lane: a bounded loop, not an exemption
+## The weather-advisor lane: demand feedback
 
-Be honest about what this is. Censoring evidence — how long devices sat held
-below target, and with which counting cause — flows one way out of diagnostics
-and *does* end up changing `daily_budget_kwh`, which is a planner input. That
-closes a loop: planner counting cause → diagnostics → weather → suggestion →
-budget → planner. It runs unattended once a day after a one-time opt-in, which
-is a weaker gate than the rescue widget's per-incident user action.
+Weather auto-apply remains explicitly opted in. It changes only the daily
+allowance; diagnostics do not change admission, priority, or physical capacity.
+Starvation retains its commanded-target entry/clear rules. Budget feedback has
+an independent recovery criterion: observed physical temperature.
 
-So the rule is not "never, unless it isn't the planner". The rule is the set of
-bounds that make the loop safe, and **every one of them is load-bearing — a
-change to this lane that breaks one is a regression, not a tuning choice**:
+The annual weather signature predicts typical usage. Budget headroom is the
+larger of its annual residual quantile and the recent fortnight's residual
+quantile, so occupancy/equipment changes can increase the allowance without
+inventing missing energy. Ordinary days use q80; proven unresolved budget
+shortfall enables q90 for the trailing 14 usable days.
 
-1. **Raise-only.** Neither correction can lower a budget. Auto-apply additionally
-   refuses to lower one the home has demonstrably been running past — gated on
-   the pressure ACCUMULATOR, not on `budgetMayBeLimiting` (devices being held
-   back is the ordinary state of a working budget, so gating there would make
-   auto-apply a one-way ratchet) and not on the suggestion's displayed
-   `budgetPressureKwh` (that is a post-clamp contribution and reads 0 whenever a
-   floor or the cap set the number). `lib/weather/weatherAutoApply.ts`.
-2. **Opt-in gated.** Nothing is written unless the owner enabled
-   `autoApplyDailyBudget`. With it off the loop is display-only.
-3. **Fed by a cause-independent denial integral.** While the configured daily
-   budget is below the sustainable ceiling (`hard cap − safety margin`, multiplied
-   by the actual 23/24/25-hour local day), every continuously observed unmet-demand
-   span contributes `budgetDeniedMs` and `budgetDeniedKwh`. The instantaneous
-   planner reason is deliberately irrelevant: a `capacity` label can still be a
-   day-level budget failure because more daily energy could have moved the load to
-   another hour. A Smart task's booked hour is demand too, including an EV charger
-   with no thermostat-style standing-demand signal.
+`budgetDeniedKwh` remains a cumulative diagnostic of all observed unmet-demand
+spans below sustainable daily capacity. It is not a magnitude of unmet daily
+energy and does not drive the recommendation. Neither legacy hold duration nor
+a starvation latch proves how much energy remained unserved.
 
-   The integral is persisted and sliced at local-day boundaries as it accrues. A
-   restart or sample gap loses only the unobserved interval, not the whole day's
-   verdict. Expected device power prices denial; actual Smart-task delivery is
-   recorded separately from the device's required real meter. The older
-   cause-attributed day-close fields remain readable only as history compatibility.
+The revised `budgetUnservedKwh` is separate, persisted per device and local day:
 
-   > History: the previous evidence (`targetDeficitMs` / `blockedByHeadroomMs`
-   > hold-time at a one-hour bar) counted served deferrals and unserved denials
-   > identically, and was additionally blind to `turn_off` sheds for
-   > 2026-08-03 → 08-10 (the counters read ~36 s/day while devices sat off for
-   > hours; fixed by the producer-resolved `pelsHoldsBelowTarget`, see the
-   > un-blinding PR). The later incident review showed the day-close latch was
-   > the wrong gate: budget pressure existed throughout the day even when no
-   > episode happened to remain latched at midnight. That is why the continuous,
-   > cause-independent integral replaced it.
+- The planner resolves a metered, eligible temperature device being held below
+  its intended target, physically short of that target, with counting cause
+  `daily_budget`. Capacity, cooldown, owner holds and task deferrals do not
+  contribute. This evidence is not disabled by the old daily-capacity gate.
+  Current budget pace must bind without a capacity breach: a carried budget
+  reason alone cannot price new intervals after capacity becomes binding.
+  Earlier accrued budget evidence remains pending until observed recovery.
+- Diagnostics integrates only observed intervals, priced at expected device
+  power. Gaps over ten minutes contribute nothing.
+- Commanding the intended target does not clear pending evidence. An observed
+  temperature reaching the intended target clears that device's pending estimate
+  for the current local day. Recovery the following day cannot rewrite a closed
+  weather record. Heating/cooling comparisons remain thermostat-owned facts.
+- A restart retains accrued evidence but does not price the unobserved gap.
+  Old aggregates lack this field; their cumulative counters are not substituted.
 
-4. **Bounded per day and by physical capacity.** ≤ 10 kWh is added per damaged
-   day. There is no prediction-relative ceiling: that ceiling prevented pressure
-   from correcting the model error it exists to learn around. Both accumulator
-   and suggestion are capped by sustainable capacity × the actual local-day
-   length and by the [20, 360] setting bounds. The hard cap minus margin always
-   wins; physical capacity is never a remedy.
-5. **Leaky.** The *pressure term* decays 0.75/day on every UNDAMAGED day —
-   including a day that overshot its budget while denying nothing, because a
-   budget that hurt nobody needs no correction (the overshoot says the estimate
-   ran low, and tomorrow's estimate is the fit's job). It cannot ratchet — it
-   must be able to discover that the budget it pushed up is now more than the
-   home needs. Note this bound covers the integral term only: the raise-lean is
-   a binary flag that stays on while any day in the trailing 14 carried damage,
-   so it does not decay and must not be treated as if it did.
-6. **Once per day, idempotently.** `throughDateKey` makes repeat rollups and boot
-   catch-ups no-ops. Gaps contribute no invented energy; quiet days decay.
+At rollup, heater shortfall is `max(0, actualKwh + budgetUnservedKwh - appliedBudgetKwh)`.
+Unused allowance therefore absorbs pending heater demand: a hold with sufficient
+spare daily energy calls for pacing/scheduling, not a bigger energy allowance.
+Unreliable/missing meter readings cannot prove spare allowance or heater shortfall.
+A finalized, priced budget-exhausted task miss remains independent evidence at
+its deadline. It uses `max(0, initialEnergyExpectedKWh - deliveredKWh)` from the
+anchored entry figures, never a remaining-energy revision. Missing figures do
+not become zero delivery. The larger of heater shortfall and terminal task
+shortfall avoids counting one heater task twice.
 
-The planner emits only two resolved facts for diagnostics: whether the daily
-budget is below sustainable capacity, and whether a Smart task is driving a
-device this hour. It does not attribute a denial cause or adjust a setting.
+The correction grows by at most 10 kWh per day from that shortfall or a reliable
+measured budget overshoot, whichever is greater. Measured overshoot alone
+corrects the allowance without claiming device damage or enabling q90.
+Shortfalls below 0.25 kWh do not grow correction or select q90.
+On other days it decays by 0.75 and credits up to 10 kWh of reliably unused
+allowance. It snaps to zero below 0.25 kWh. `throughDateKey` prevents duplicate
+integration, and sustainable capacity times the actual local-day length bounds
+both the correction and the final suggestion.
 
-The path:
+Auto-apply follows the recommendation in either direction. The correction is
+already included in that recommendation and cannot veto decreases. Version-1
+corrections are discarded on load because their cause/recovery cannot be
+reconstructed. Cached pre-upgrade advice is recomputed at startup; startup
+alone does not apply a new setting.
 
-```
-persisted continuous demand spans (budgetDeniedKwh; cause-independent)
-  → DeviceDiagnosticsService.getDaySuppressionTotals
-                                            ⎫
-finalized smart-task history (the misses)   ⎬→ setup/appInit/createWeatherCollector.ts
-  → resolveDeadlineMissSuppression          ⎭      getDaySuppression
-  → WeatherDailyRecord.suppression            (lib/weather/weatherCollector.ts)
-  → packages/shared-domain/src/energySignature/  fit + pressure predicate
-  → lib/weather/suggestDailyBudget.ts            suggestion
-  → lib/weather/weatherAutoApply.ts → DailyBudgetService.applyAutoSuggestedBudget
-```
-
-Two consumers of the evidence:
-
-- **The raise-lean** (`suggestDailyBudget.ts`): a recent damaged day widens the
-  residual headroom q80→q90. It used to also require a forecast below the heating
-  knee, which made the correction hostage to the weather rather than to the
-  evidence. Measured on a real incident: the home starved for 3 days and 36
-  episodes, and the budget only rose when the forecast happened to cross below
-  the knee — +9 kWh in one step, after which starvation stopped.
-- **The budget-pressure loop** (`budgetPressure.ts`): a leaky integral term that
-  grows on damaged days by the denied energy plus the measured overshoot, and
-  leaks on every day that recorded no denial. It exists because the
-  raise-lean is a single fixed nudge and cannot track a mismatch bigger than
-  itself. The denied energy carries the step on its own when the budget held the
-  home UNDER its number by denying a device — the day the old overshoot-only
-  step could never see, because the denial is precisely what prevented the
-  overshoot.
-
-Both consumers read the same predicate (`dayWasBudgetDamaged`), so they cannot
-disagree about whether a day was damaged. **Adding evidence to that predicate adds
-it to BOTH.** The lean is not a passive reader: `recentSuppressionSuspected`
-holds for `DRIFT_RECENT_DAYS = 14` days and raises the written budget through the
-quantile swap, so a day that reaches the verdict raises the setting even on a
-path the integral itself refuses. Anything gated here must be evidence you would
-be willing to raise the budget on for a fortnight.
-
-### The second denial: a deadline the budget let go by
-
-The continuous integral catches a booked Smart-task hour whose device is off,
-including a miss that the planner happened to label as capacity-bound. A second
-terminal signal still matters for partial delivery while a device remains on:
-`deadlineMissDeniedKwh` compares the task's committed energy with the run's
-metered delivery when a finalized miss was budget-exhausted.
-`resolveDeadlineMissSuppression` (`lib/weather/deadlineMissBudgetDay.ts`) folds
-those finalized misses in `lib/weather`, the owner of the evidence it produces.
-
-Three rulings worth keeping:
-
-**It is priced from the run's anchored figures, not from a revision snapshot.**
-`max(0, initialEnergyExpectedKWh − deliveredKWh)`, both entry-level. A revision's
-`energyExpectedKWh` shrinks as the run delivers and is frozen at the last
-revision written (at most hourly, only on drift), so reading it would price a
-nearly-complete run at almost its whole requirement — on a term that writes a
-real setting. EITHER figure being absent makes the answer unknowable, and
-unknowable is not zero: an absent commitment means the profile never resolved, an
-absent delivery means the entry predates real-meter recording,
-and reading that as "delivered nothing" would charge a nearly-complete run its
-whole commitment. Decline the comparison, never substitute a stand-in.
-
-**It is a magnitude, and silence is the answer when there is none.** A miss PELS
-could not price stamps `deadlineMissedToBudget` (so the fit still excludes the
-day) and no kWh at all — never a 0, which would assert the budget denied nothing.
-Such a terminal signal adds no separate kWh; the continuously recorded denial
-integral still answers for any observed off interval.
-
-**The two denials are combined with `max`, not `+`.** They usually describe
-different holds, but they can describe one hold twice: a device can accumulate
-an off interval and then miss its deadline, and neither producer excludes the
-other. Summing would price one unmet need twice.
-Under-counting two genuinely separate denials is the safer error — an integrator
-recovers from under-counting on the next day, while over-correction has to be
-decayed back out of the owner's budget.
-
-**A contributing miss no longer disappears.** The pressure integral does not
-branch on `budgetContributedToShortfall` or any other miss-reason classification.
-If the budget was below sustainable capacity and the task's booked demand went
-unserved, that observed interval already contributed. The terminal comparison
-remains conservative and does not add a second speculative amount.
-
-There is no exception to that list. There used to be one: the smart-task
-`pause lower-priority devices` permission was implemented as a proactive shed lane
-(`lib/plan/shedding/pauseHold.ts`) and this note carried a carve-out sanctioning it.
-That was the wrong call twice over — it shed idle devices for zero relief, and a
-carve-out written into a note is the tell that a design has crossed a boundary rather
-than a reason it may. The permission is now an *admission* term
-(`lib/plan/admission/headroomReserve.ts`, design of record in
-`notes/deferred-load-objectives/preemptive-power-reservation.md`): it reserves
-available power against lower-priority devices' resumes and sheds nobody, so the
-shed order is untouched and the carve-out is void.
-
-The **solar surplus-absorb** lift ("Use solar surplus") only ever *raises* a
-target, so it sits outside this note's below-target model entirely and is
-structurally starvation-safe (the fit-test keeps it net-neutral, so it neither
-starves the lifted device nor manufactures capacity/budget pressure on others).
-The full rationale lives in the sibling note
-[`surplus-absorb-safety.md`](surplus-absorb-safety.md).
+Historical evaluation and reproducible replay instructions are in
+`notes/budget-feedback-replay.md`.
 
 ## Scope
 

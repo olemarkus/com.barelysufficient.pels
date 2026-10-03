@@ -2,6 +2,7 @@ import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';
 import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
+import { TEMP_BACKFILL_VERSION } from '../../lib/weather/weatherInsightsBackfill';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
@@ -1436,5 +1437,53 @@ describe('WeatherCollector', () => {
     await vi.advanceTimersByTimeAsync(0); // its finally re-kicks the new generation's refresh
     collector.stop();
     expect(calls).toBeGreaterThanOrEqual(2);
+  });
+});
+
+
+describe('weather feedback upgrade', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(START_MS); });
+  afterEach(() => { vi.useRealTimers(); });
+  it('refreshes old advice recovered after a transient startup read failure without applying it', async () => {
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({ ...state,
+      latestFit: { ...state.latestFit, recentResidualQ80: 4,
+        recentSuppressionSuspected: false } as WeatherHistoryState['latestFit'],
+      latestSuggestion: undefined,
+    }));
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    const { collector, store, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
+    persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+      backfilledDeviceId: 'out-1', backfillVersion: TEMP_BACKFILL_VERSION,
+      meterKwhBackfillDone: true, controlledBackfillVersion: CONTROLLED_BACKFILL_VERSION,
+      latestFit: { recentSuppressionSuspected: true },
+      latestSuggestion: { budgetPressureKwh: 56 },
+      budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
+    store.read.mockImplementationOnce(() => { throw new Error('temporarily unreadable'); });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(recomputeDerived).toHaveBeenCalledOnce();
+    expect(recomputeDerived.mock.calls[0]?.[0].budgetPressure).toBeUndefined();
+    expect(collector.getHistoryStateSnapshot().latestFit?.recentResidualQ80).toBe(4);
+    expect(collector.getHistoryStateSnapshot().latestFit?.recentSuppressionSuspected).toBe(false);
+    expect(collector.getHistoryStateSnapshot().latestSuggestion).toBeUndefined();
+    expect(lastWritten(store).latestFit?.recentResidualQ80).toBe(4);
+    expect(applySuggestedDailyBudget).not.toHaveBeenCalled();
+    collector.stop();
+  });
+  it('recomputes old cached advice at boot without applying a budget merely because of restart', () => {
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({ ...state,
+      latestFit: { ...state.latestFit, recentResidualQ80: 4 } as WeatherHistoryState['latestFit'],
+    }));
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
+    persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+      latestFit: { recentSuppressionSuspected: true },
+      budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
+    collector.start();
+    expect(recomputeDerived).toHaveBeenCalledOnce();
+    expect(recomputeDerived.mock.calls[0]?.[0].budgetPressure).toBeUndefined();
+    expect(collector.getHistoryStateSnapshot().latestFit?.recentResidualQ80).toBe(4);
+    expect(applySuggestedDailyBudget).not.toHaveBeenCalled();
+    collector.stop();
   });
 });

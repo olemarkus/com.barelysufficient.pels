@@ -134,21 +134,22 @@ export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been lim
 
 /**
  * The reason line under a raised suggestion. Names the part of the raise that
- * came from days which actually ran past their budget, because "raised to match"
+ * covers measured extra usage or unresolved demand, because "raised to match"
  * with no number leaves the owner unable to tell a small nudge from a large
  * correction.
  *
- * "of that covers" is deliberate: the raise also includes a widened headroom, so
- * this number is a COMPONENT, not the whole delta — an owner who subtracts it
- * from the suggestion must not end up with a figure that fails to reconcile.
+ * Name the suggestion explicitly: the correction is a component of that total,
+ * and can exceed the visible difference from the currently applied budget.
  * Callers pass the contribution that survived the clamp ladder, so the sentence
  * never claims a raise the suggestion did not receive; under 1 kWh it is dropped
  * as too small to act on.
  */
-export const composeBudgetLimitingReason = (budgetPressureKwh: number): string => {
-  if (!Number.isFinite(budgetPressureKwh) || budgetPressureKwh < 1) return WEATHER_REASON_BUDGET_LIMITING;
-  return `${WEATHER_REASON_BUDGET_LIMITING} ${formatDailyKwh(budgetPressureKwh)} of that `
-    + 'covers days that ran past your budget.';
+export const composeBudgetLimitingReason = (budgetPressureKwh: number, budgetMayBeLimiting = true): string => {
+  const reason = budgetMayBeLimiting ? WEATHER_REASON_BUDGET_LIMITING
+    : 'Recent usage exceeded your budget — the suggestion includes extra room.';
+  if (!Number.isFinite(budgetPressureKwh) || budgetPressureKwh < 1) return reason;
+  return `${reason} ${formatDailyKwh(budgetPressureKwh)} of the suggestion `
+    + 'covers recent demand beyond your budget.';
 };
 
 // Over-hard-cap warning: tomorrow's expected usage is more than the hard cap can

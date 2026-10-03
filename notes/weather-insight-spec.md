@@ -98,36 +98,19 @@ card → `Choose temperature device` → Settings, Weather insight section.
   prediction) and the forecast half of the detail footer.
 - `Suggested daily budget` is the q80-headroom figure, clamped [20, 360],
   capped by capacity. Display-only unless the user opted into auto-apply.
-  Two corrections sit on top of the model, both upward-only:
-  - **raise-lean** — recent suppression widens the headroom q80→q90. Not gated on
-    a cold forecast (it used to be, which made the correction wait for the weather
-    to cross the heating knee instead of acting on the evidence).
-  - **budget pressure** — a leaky integral term fed by continuously observed
-    unmet-demand spans while the daily budget is below sustainable capacity
-    (`hard cap − safety margin`, multiplied by the actual local day's
-    23/24/25 hours). Demand includes a Smart task's booked hour. The immediate
-    planner reason does not gate this evidence: capacity and cooldown holds
-    can contribute, and admission before midnight does not erase accrued denial.
-    The daily step uses the larger of integrated denial and priced terminal
-    Smart-task denial, plus measured budget overshoot, adding at most 10 kWh.
-    Days without damage decay the term by 0.75; it snaps to zero below 0.25 kWh.
-    There is no prediction-relative ceiling. The accumulator is bounded by
-    sustainable daily capacity; the final suggestion also respects the setting
-    bounds, with physical capacity taking precedence over the minimum.
-    The reason line names the term when its contribution after clamping is
-    ≥ 1 kWh. Design of record: `notes/starvation/README.md`.
-    It accumulates whether or not auto-apply is on; changing the budget still
-    requires the owner's auto-apply opt-in.
-  Auto-apply is **asymmetric**: it may raise the budget, but a nonzero pressure
-  accumulator prevents lowering it (`weather_advisor_budget_auto_apply_skipped`
-  with `reason: would_lower_while_limiting`). This checks the accumulator,
-  not `budgetMayBeLimiting` or the displayed contribution: a floor or ceiling
-  can absorb the contribution without clearing the accumulated evidence.
+  Headroom retains the larger annual or recent-fortnight residual quantile.
+  Proven unresolved budget shortfall widens q80 to q90. The bounded correction
+  uses measured overshoot, unrecovered budget-attributed heater demand net of
+  unused allowance, or finalized budget-exhausted task misses. Capacity and
+  recovered holds do not accumulate into future budgets. Quiet days decay the
+  correction and credit unused allowance. Auto-apply follows the recommendation
+  upward or downward; a remaining correction is not a lowering veto.
+  See `notes/starvation/README.md` for the evidence and migration rules.
 - The reason line under a raised suggestion (`composeBudgetLimitingReason`):
   `Your budget has recently been limiting your devices — the suggestion is raised
   to match.` plus, when the pressure term contributed ≥ 1 kWh after clamping,
-  ` N kWh of that covers days that ran past your budget.` — "of that" because the
-  raise also includes the widened headroom, so the number is a component and not
+  ` N kWh of the suggestion covers recent demand beyond your budget.` — the
+  suggestion also includes headroom, so the number is a component and not
   the whole delta.
 - When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
   over-cap banner (`.banner banner--warning banner--stacked`) renders before the

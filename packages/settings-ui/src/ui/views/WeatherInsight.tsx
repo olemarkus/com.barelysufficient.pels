@@ -1,3 +1,4 @@
+import { resolveResidualHeadroom } from '../../../../shared-domain/src/energySignature/energySignature';
 import type { ComponentChildren } from 'preact';
 import { MdCircularProgress, MdElevation, MdTextButton } from './materialWebJSX.tsx';
 import { ExpandMoreIcon, WarningIcon } from './icons.tsx';
@@ -126,13 +127,14 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
   const roughReason = prediction?.beyondObservedCold
     ? WEATHER_REASON_COLDER_THAN_OBSERVED
     : (readout.driftSuspected ? WEATHER_REASON_DRIFT_WIDER : null);
-  const rawVerdict = prediction && fit
+  const residualHeadroom = fit ? resolveResidualHeadroom(fit) : null;
+  const rawVerdict = prediction && fit && residualHeadroom
     ? resolveTomorrowVerdict({
       currentDailyBudgetKwh: suggestion?.currentDailyBudgetKwh ?? null,
       predictionKwh: prediction.kwh,
       residualQ50: fit.residualQ50,
-      residualQ80: fit.residualQ80,
-      residualQ90: fit.residualQ90,
+      residualQ80: residualHeadroom.q80,
+      residualQ90: residualHeadroom.q90,
       coldEveningSuspected: suggestion?.coldEveningSuspected,
     })
     : null;
@@ -206,7 +208,9 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       {readout.dailyBudgetEnabled
         && (suggestion?.budgetMayBeLimiting === true || (suggestion?.budgetPressureKwh ?? 0) >= 1) && (
         <p class="pels-card-supporting weather-card__reason">
-          {composeBudgetLimitingReason(suggestion?.budgetPressureKwh ?? 0)}
+          {composeBudgetLimitingReason(
+            suggestion?.budgetPressureKwh ?? 0, suggestion?.budgetMayBeLimiting === true,
+          )}
         </p>
       )}
       {/* Explains why the budget tracks the suggestion when auto-apply is on.

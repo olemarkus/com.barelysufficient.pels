@@ -14,6 +14,8 @@ export type PersistedDayAggregate = {
   targetDeficitMs: number;
   budgetDeniedMs: number;
   budgetDeniedKwh: number;
+  /** Unrecovered budget-attributed denial; absent on pre-feedback-v2 aggregates. */
+  budgetUnservedKwh?: number;
   budgetDenialObserved: boolean;
   shedCount: number;
   restoreCount: number;
@@ -106,6 +108,8 @@ const sanitizeDayAggregate = (raw: unknown): PersistedDayAggregate => {
     budgetDeniedMs: clampDurationMs(record.budgetDeniedMs),
     budgetDeniedKwh: clampDurationMs(record.budgetDeniedKwh),
     budgetDenialObserved: record.budgetDenialObserved === true,
+    ...(isFiniteNumber(record.budgetUnservedKwh) && record.budgetUnservedKwh >= 0
+      ? { budgetUnservedKwh: record.budgetUnservedKwh } : {}),
     shedCount: clampNonNegativeInt(record.shedCount),
     restoreCount: clampNonNegativeInt(record.restoreCount),
     failedActivationCount: clampNonNegativeInt(record.failedActivationCount),

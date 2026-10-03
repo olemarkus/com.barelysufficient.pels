@@ -100,6 +100,8 @@ describe('smart-task sub-home gate (app lanes)', () => {
       pelsHoldsBelowTarget: true,
       expectedPowerKw: 2,
       budgetPressureDenied: true,
+      budgetUnservedDenied: false,
+      budgetDemandRecovered: false,
       suppressionState: 'counting',
       countingCause: 'daily_budget',
       pauseReason: null,

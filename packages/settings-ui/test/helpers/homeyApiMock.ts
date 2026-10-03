@@ -405,6 +405,13 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     const override = getUiOverride(homey, 'weatherAdvisorReadout');
     return override ? { kind: 'readout', payload: override } : { kind: 'inactive' };
   },
+  // History requires an explicit range. Query-specific fixtures use apiHandlers.
+  [buildRouteKey('GET', '/diagnostics/budget/days')]: () => async () => {
+    throw new Error('from and to are required');
+  },
+  [buildRouteKey('GET', '/diagnostics/budget/decisions')]: () => async () => {
+    throw new Error('from and to are required');
+  },
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH)]: (homey) => async () => ({
     state: 'resolved',

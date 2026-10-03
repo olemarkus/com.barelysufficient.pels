@@ -262,6 +262,24 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(stuck?.textContent).toContain(WEATHER_LEARNING_STUCK);
   });
 
+  it('uses recent demand headroom when judging whether the current budget covers tomorrow', () => {
+    const mount = mountIntoBody();
+    const readout = buildReadout({ fit: buildFit({ recentResidualQ80: 12, recentResidualQ90: 20 }) });
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
+    const verdict = mount.querySelector('#weather-tomorrow-card .weather-card__verdict');
+    expect(verdict?.classList.contains('weather-card__verdict--warn')).toBe(true);
+    expect(verdict?.textContent).not.toContain('room to spare');
+  });
+
+  it('explains overshoot correction without claiming devices were limited', () => {
+    const mount = mountIntoBody();
+    const readout = buildReadout();
+    readout.suggestion = { ...readout.suggestion!, budgetPressureKwh: 4, budgetMayBeLimiting: false };
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
+    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).toContain('Recent usage exceeded your budget');
+    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).not.toContain('limiting your devices');
+  });
+
   it('ready: renders the Tomorrow card with rows, verdict, and both actions', () => {
     const mount = mountIntoBody();
     const readout = buildReadout();

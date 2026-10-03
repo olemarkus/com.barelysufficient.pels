@@ -27,7 +27,7 @@ const STATE: WeatherHistoryState = {
   backfilledDeviceId: 'out-1',
   backfillVersion: 2,
   meterScopeSignature: 'source:homey_energy|main:meter-a',
-  budgetPressure: { kwh: 3.5, throughDateKey: '2026-03-02' },
+  budgetPressure: { algorithmVersion: 2, kwh: 3.5, throughDateKey: '2026-03-02' },
 };
 
 const rowCounts = (db: ReturnType<typeof open>['db']) => ({

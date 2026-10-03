@@ -1,3 +1,6 @@
+import { getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
+import { normalizeError } from '../utils/errorUtils';
+import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
 import type { Logger as PinoLogger } from 'pino';
 import type {
   WeatherAdvisorSettings,
@@ -18,54 +21,15 @@ type AutoApplyDeps = {
   getNowMs: () => number;
   /** Returns true when applied, false when the daily budget feature is off (leave-off semantics). */
   applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
-  /** The daily budget in force right now, for the lowering guard. `undefined` = feature off/unreadable. */
+  /** The daily budget in force right now, for the decision journal. `undefined` = feature off/unreadable. */
   getAppliedDailyBudgetKwh?: () => number | undefined;
   /** Notifies setup that the auto-apply landed so it can fire the Flow trigger; see WeatherCollectorDeps. */
   onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
+  getSustainableCapacityKw?: () => number;
+  getTimeZone?: () => string;
+  recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
   logger: PinoLogger;
 };
-
-/**
- * Auto-apply is asymmetric on purpose: it may raise the budget freely, but it
- * may not TIGHTEN one the home has demonstrably been running past. The model can
- * read low for reasons it cannot see (an away stretch inside the fit window, a
- * new load, an occupancy change), and lowering on top of that compounds the harm
- * rather than correcting it. Raising stays unguarded — over-covering costs the
- * owner some money, under-covering costs them heat.
- *
- * The gate is the budget-pressure term, NOT `budgetMayBeLimiting`. That flag
- * only says devices were held back, which is the ordinary state of a home whose
- * daily budget is doing its job; gating on it would make auto-apply a one-way
- * ratchet that could only ever raise the budget until it stopped binding at all,
- * overriding an owner who set a tight budget deliberately. A live pressure term
- * is the stronger claim — recent days actually ran PAST their budget while being
- * held back — and it decays on its own once that stops.
- */
-type LoweringGuard = {
-  /** Non-null blocks the apply and names the reason in the skip log. */
-  reason: 'would_lower_while_limiting' | null;
-  currentKwh: number | null;
-};
-
-function resolveLoweringGuard(
-  state: WeatherHistoryState,
-  deps: AutoApplyDeps,
-): LoweringGuard {
-  const suggestion = state.latestSuggestion;
-  // Read the budget ONCE and carry it to the log: re-reading it there would
-  // record a comparison that never happened if the value moved in between, and
-  // the point of the event is to be the record of this decision.
-  const currentKwh = deps.getAppliedDailyBudgetKwh?.();
-  if (currentKwh === undefined || !Number.isFinite(currentKwh)) return { reason: null, currentKwh: null };
-  if (!suggestion || suggestion.suggestedBudgetKwh >= currentKwh) return { reason: null, currentKwh };
-  // Read the ACCUMULATOR, not `suggestion.budgetPressureKwh`. That field is the
-  // term's post-clamp contribution to the displayed number, so it reads 0
-  // whenever a floor, the hard cap, or the 20 kWh minimum set the suggestion
-  // instead — which is exactly when the loop is most active. Gating on it
-  // disarmed this guard for the very home it was written for.
-  if ((state.budgetPressure?.kwh ?? 0) > 0) return { reason: 'would_lower_while_limiting', currentKwh };
-  return { reason: null, currentKwh };
-}
 
 /**
  * At a completed rollup (state already refit), apply the fresh suggestion to the
@@ -77,23 +41,22 @@ function resolveLoweringGuard(
 export function performBudgetAutoApply(state: WeatherHistoryState, deps: AutoApplyDeps): WeatherHistoryState {
   const settings = deps.getSettings();
   const suggestion = state.latestSuggestion;
-  if (!settings.enabled || !settings.autoApplyDailyBudget || !suggestion) return state;
+  if (!settings.enabled || !suggestion) return state;
   // Idempotent per target day: catchUpRollups also runs on collector start (boot
   // and settings-reload), so without this a missed-midnight catch-up could re-apply
   // for a day already applied. The audit doubles as the once-per-day gate.
   if (state.lastAutoApply?.dateKey === suggestion.targetDateKey) return state;
-  const loweringGuard = resolveLoweringGuard(state, deps);
-  if (loweringGuard.reason !== null) {
-    deps.logger.info({
-      event: 'weather_advisor_budget_auto_apply_skipped',
-      dateKey: suggestion.targetDateKey,
-      reason: loweringGuard.reason,
-      toKwh: suggestion.suggestedBudgetKwh,
-      currentKwh: loweringGuard.currentKwh,
-    });
+  if (!settings.autoApplyDailyBudget) {
+    recordDecision(state, deps, 'auto_apply_off', null);
     return state;
   }
-  if (!(deps.applySuggestedDailyBudget?.(suggestion.suggestedBudgetKwh) ?? false)) return state;
+  // The recommendation already includes demand correction; allow it to move both ways.
+  const currentKwh = deps.getAppliedDailyBudgetKwh?.() ?? null;
+  if (!(deps.applySuggestedDailyBudget?.(suggestion.suggestedBudgetKwh) ?? false)) {
+    recordDecision(state, deps, 'budget_disabled_or_unavailable', currentKwh);
+    return state;
+  }
+  recordDecision(state, deps, 'applied', currentKwh);
   deps.logger.info({
     event: 'weather_advisor_budget_auto_applied',
     dateKey: suggestion.targetDateKey,
@@ -109,4 +72,61 @@ export function performBudgetAutoApply(state: WeatherHistoryState, deps: AutoApp
       dateKey: suggestion.targetDateKey, kwh: suggestion.suggestedBudgetKwh, appliedAtMs: deps.getNowMs(),
     },
   };
+}
+
+/** Journal failure is observational and must not prevent an authorized budget apply. */
+function recordDecision(
+  state: WeatherHistoryState,
+  deps: AutoApplyDeps,
+  outcome: BudgetAdviceDecision['outcome'],
+  budgetBeforeKwh: number | null,
+): void {
+  const suggestion = state.latestSuggestion;
+  if (!suggestion || !deps.recordBudgetDecision) return;
+  try {
+    deps.recordBudgetDecision({
+      budgetAlgorithmVersion: 2,
+      recordedAtMs: deps.getNowMs(),
+      targetDateKey: suggestion.targetDateKey,
+      meterScopeSignature: state.meterScopeSignature ?? null,
+      outcome,
+      budgetBeforeKwh: outcome === 'auto_apply_off' ? readAppliedBudget(deps) : budgetBeforeKwh,
+      budgetAfterKwh: outcome === 'applied' ? readAppliedBudget(deps) : null,
+      suggestedBudgetKwh: suggestion.suggestedBudgetKwh,
+      predictedKwh: suggestion.predictedKwh,
+      predictedLowKwh: suggestion.predictedLowKwh,
+      predictedHighKwh: suggestion.predictedHighKwh,
+      forecastMeanTempC: suggestion.forecastMeanTempC,
+      forecastSource: suggestion.forecastSource,
+      computedAtMs: suggestion.computedAtMs,
+      beyondObservedCold: suggestion.beyondObservedCold,
+      beyondObservedWarm: suggestion.beyondObservedWarm,
+      budgetMayBeLimiting: suggestion.budgetMayBeLimiting,
+      sustainableDailyCeilingKwh: resolveDailyCeiling(suggestion.targetDateKey, deps),
+      pressureThroughDateKey: state.budgetPressure?.throughDateKey ?? null,
+      pressureAccumulatorKwh: state.budgetPressure?.kwh ?? 0,
+      pressureContributionKwh: suggestion.budgetPressureKwh,
+      modelPseudoR2: numberOrNull(state.latestFit?.pseudoR2),
+      modelUsableDays: numberOrNull(state.latestFit?.usableDays),
+    });
+  } catch (error) {
+    deps.logger.warn({ event: 'budget_advice_history_record_failed', err: normalizeError(error) });
+  }
+}
+
+function resolveDailyCeiling(targetDateKey: string, deps: AutoApplyDeps): number | null {
+  const capacityKw = deps.getSustainableCapacityKw?.();
+  const timeZone = deps.getTimeZone?.();
+  if (capacityKw === undefined || timeZone === undefined) return null;
+  const startMs = getDateKeyStartMs(targetDateKey, timeZone);
+  const hours = (getNextLocalDayStartUtcMs(startMs, timeZone) - startMs) / (60 * 60 * 1000);
+  return capacityKw * hours;
+}
+
+function readAppliedBudget(deps: AutoApplyDeps): number | null {
+  return deps.getAppliedDailyBudgetKwh?.() ?? null;
+}
+
+function numberOrNull(value: number | undefined): number | null {
+  return value ?? null;
 }

@@ -1,3 +1,4 @@
+import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
 import type { Logger as PinoLogger } from 'pino';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type {
@@ -106,5 +107,6 @@ export type WeatherCollectorDeps = {
    * the domain emits the values that drove the change; setup shapes the tokens.
    */
   onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
+  recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
   logger: PinoLogger;
 };

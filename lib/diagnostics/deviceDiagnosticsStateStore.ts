@@ -215,6 +215,8 @@ const mergeDayAggregates = (legacy: PersistedDayAggregate, stored: PersistedDayA
   budgetDeniedMs: legacy.budgetDeniedMs + stored.budgetDeniedMs,
   budgetDeniedKwh: legacy.budgetDeniedKwh + stored.budgetDeniedKwh,
   budgetDenialObserved: legacy.budgetDenialObserved || stored.budgetDenialObserved,
+  ...(legacy.budgetUnservedKwh !== undefined || stored.budgetUnservedKwh !== undefined
+    ? { budgetUnservedKwh: (legacy.budgetUnservedKwh ?? 0) + (stored.budgetUnservedKwh ?? 0) } : {}),
   shedCount: legacy.shedCount + stored.shedCount,
   restoreCount: legacy.restoreCount + stored.restoreCount,
   failedActivationCount: legacy.failedActivationCount + stored.failedActivationCount,

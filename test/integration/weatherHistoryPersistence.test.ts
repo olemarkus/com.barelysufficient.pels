@@ -196,12 +196,12 @@ describe('weather history persistence through the userdata store', () => {
         appliedBudgetKwh: 44,
         suppression: { blockedByHeadroomMs: 6 * 60 * 60 * 1000 },
       }],
-      budgetPressure: { kwh: 13.9, throughDateKey: '2026-07-31' },
+      budgetPressure: { algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' },
     };
     const store = freshStore();
     store.write(persisted as unknown as WeatherHistoryState);
     const normalized = normalizeWeatherHistoryState(store.read());
-    expect(normalized?.budgetPressure).toEqual({ kwh: 13.9, throughDateKey: '2026-07-31' });
+    expect(normalized?.budgetPressure).toEqual({ algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' });
     expect(normalized?.records[0].appliedBudgetKwh).toBe(44);
     expect(normalized?.records[0].suppression?.blockedByHeadroomMs).toBe(6 * 60 * 60 * 1000);
   });
@@ -214,9 +214,9 @@ describe('weather history persistence through the userdata store', () => {
       store.write({ records: [], budgetPressure } as unknown as WeatherHistoryState);
       return normalizeWeatherHistoryState(store.read())?.budgetPressure;
     };
-    expect(roundTrip({ kwh: 5 })).toBeUndefined();
-    expect(roundTrip({ throughDateKey: 'd' })).toBeUndefined();
-    expect(roundTrip({ kwh: -1, throughDateKey: 'd' })).toBeUndefined();
-    expect(roundTrip({ kwh: Number.NaN, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 2, kwh: 5 })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 2, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 2, kwh: -1, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 2, kwh: Number.NaN, throughDateKey: 'd' })).toBeUndefined();
   });
 });

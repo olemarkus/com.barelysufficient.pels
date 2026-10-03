@@ -1,392 +1,98 @@
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
-  dayWasBudgetDamaged,
-  foldBudgetPressureDay,
-  measuredBudgetOvershootKwh,
-  resolveBudgetPressureKwh,
+  dayWasBudgetDamaged, foldBudgetPressureDay, measuredBudgetOvershootKwh,
+  resolveBudgetPressureKwh, unresolvedBudgetShortfallKwh,
 } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
-const HOUR_MS = 60 * 60 * 1000;
-
-const day = (overrides: Partial<WeatherDailyRecord> & { dateKey: string }): WeatherDailyRecord => ({
-  kwhTotal: 40,
-  tempMeanC: 5,
-  tempMinC: 2,
-  tempMaxC: 8,
-  tempSampleCount: 24,
-  quality: {
-    partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false,
-  },
-  ...overrides,
+const day = (over: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
+  dateKey: '2026-10-02', tempMeanC: 10, tempMinC: 8, tempMaxC: 12, tempSampleCount: 24,
+  kwhTotal: 50, appliedBudgetKwh: 60,
+  quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+  ...over,
 });
+const carried = { algorithmVersion: 2 as const, kwh: 20, throughDateKey: '2026-10-01' };
 
-/** Budget-suppressed AND over budget — the only shape that grows the term. */
-const pressureDay = (dateKey: string, kwhTotal: number, appliedBudgetKwh: number): WeatherDailyRecord => day({
-  dateKey,
-  kwhTotal,
-  appliedBudgetKwh,
-  suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
-});
-
-describe('dayWasBudgetDamaged — continuous denial integral', () => {
-  it('is damaged whenever observed denied energy is positive', () => {
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd', suppression: { budgetDenialObserved: true, budgetDeniedKwh: 1.2 },
-    }))).toBe(true);
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd', suppression: { budgetDenialObserved: true, budgetDeniedKwh: 0.001 },
-    }))).toBe(true);
+describe('budget demand feedback', () => {
+  it('does not turn historical temporary/capacity holds into damaged days', () => {
+    const record = day({ suppression: {
+      budgetDenialObserved: true, budgetDeniedKwh: 30, targetDeficitMs: 12 * 3600000,
+      blockedByHeadroomMs: 12 * 3600000,
+    } });
+    expect(dayWasBudgetDamaged(record)).toBe(false);
+    expect(foldBudgetPressureDay(undefined, record).kwh).toBe(0);
   });
-
-  // The whole point of recording an explicit zero: a day watched to its close
-  // that denied nothing is NOT the same as a day with no verdict, and must not
-  // fall through to counters that count served deferrals as evidence.
-  it('takes a recorded zero as authoritative, never falling back to the legacy counters', () => {
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd',
-      suppression: {
-        budgetDenialObserved: true,
-        budgetDeniedKwh: 0,
-        targetDeficitMs: 6 * HOUR_MS,
-        blockedByHeadroomMs: 6 * HOUR_MS,
-      },
-    }))).toBe(false);
+  it('credits unused allowance before growing on unresolved heater demand', () => {
+    expect(unresolvedBudgetShortfallKwh(day({ suppression: { budgetUnservedKwh: 8 } }))).toBe(0);
+    expect(unresolvedBudgetShortfallKwh(day({ suppression: { budgetUnservedKwh: 13 } }))).toBe(3);
+    expect(foldBudgetPressureDay(undefined, day({ suppression: { budgetUnservedKwh: 13 } })).kwh).toBe(3);
   });
-
-  // Post-verdict builds mark unwitnessed days explicitly; the legacy counters
-  // count served deferrals, so they must never answer for a modern day whose
-  // close simply was not witnessed.
-  it('never lets an unwitnessed modern day fall back to the legacy counters', () => {
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd',
-      suppression: { budgetDeniedUnwitnessed: true, targetDeficitMs: 6 * HOUR_MS, blockedByHeadroomMs: 6 * HOUR_MS },
-    }))).toBe(false);
+  it('recovered holds do not indicate damage, but actual overshoot corrects the allowance', () => {
+    const recovered = day({ kwhTotal: 65, suppression: { budgetDeniedKwh: 20, budgetUnservedKwh: 0 } });
+    expect(dayWasBudgetDamaged(recovered)).toBe(false);
+    expect(foldBudgetPressureDay(carried, recovered).kwh).toBe(25);
   });
-
-  it('ignores a junk verdict rather than treating it as evidence', () => {
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd',
-      suppression: { budgetDenialObserved: true, budgetDeniedKwh: Number.NaN, targetDeficitMs: 6 * HOUR_MS },
-    }))).toBe(false);
+  it('keeps a finalized, priced budget-exhausted task miss as evidence at its deadline', () => {
+    const missed = day({ suppression: { deadlineMissDeniedKwh: 4, budgetUnservedKwh: 0 } });
+    expect(dayWasBudgetDamaged(missed)).toBe(true);
+    expect(foldBudgetPressureDay(undefined, missed).kwh).toBe(4);
   });
-});
-
-describe('dayWasBudgetDamaged — legacy records (no verdict)', () => {
-  it('reads either censoring total the diagnostics layer already records', () => {
-    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { blockedByHeadroomMs: 6 * HOUR_MS } })))
-      .toBe(true);
-    expect(dayWasBudgetDamaged(day({ dateKey: 'd', suppression: { targetDeficitMs: 6 * HOUR_MS } })))
-      .toBe(true);
-    expect(dayWasBudgetDamaged(day({ dateKey: 'd' }))).toBe(false);
+  it('does not double count heater and smart-task denial', () => {
+    expect(unresolvedBudgetShortfallKwh(day({ kwhTotal: 65,
+      suppression: { budgetUnservedKwh: 3, deadlineMissDeniedKwh: 4 },
+    }))).toBe(9);
   });
-
-  it('falls back for an upgraded diagnostics row that has synthetic zero denial fields', () => {
-    expect(dayWasBudgetDamaged(day({
-      dateKey: 'd',
-      suppression: {
-        budgetDenialObserved: false,
-        budgetDeniedKwh: 0,
-        budgetDeniedMs: 0,
-        targetDeficitMs: 6 * HOUR_MS,
-      },
-    }))).toBe(true);
+  it('does not price an unmeasured task miss', () => {
+    expect(dayWasBudgetDamaged(day({ suppression: { deadlineMissedToBudget: true } }))).toBe(false);
   });
-
-  it('pins the one-hour bar exactly for records that predate the verdict', () => {
-    // Old records keep the meaning they were written with. A drifting bar here
-    // would silently re-tune what those days already said.
-    const at = (ms: number) => dayWasBudgetDamaged(day({
-      dateKey: 'd', suppression: { blockedByHeadroomMs: ms },
-    }));
-    expect(at(60 * 60 * 1000)).toBe(true);
-    expect(at(60 * 60 * 1000 - 1)).toBe(false);
+  it('does not let negligible pressure prevent decay or widen headroom', () => {
+    const record = day({ suppression: { deadlineMissDeniedKwh: 0.1 } });
+    expect(dayWasBudgetDamaged(record)).toBe(false);
+    expect(foldBudgetPressureDay(carried, record).kwh).toBe(5);
   });
-});
-
-describe('measuredBudgetOvershootKwh', () => {
-  it('measures how far the day ran past its budget', () => {
-    expect(measuredBudgetOvershootKwh(day({ dateKey: 'd', kwhTotal: 50, appliedBudgetKwh: 44 }))).toBe(6);
-    expect(measuredBudgetOvershootKwh(day({ dateKey: 'd', kwhTotal: 40, appliedBudgetKwh: 44 }))).toBe(0);
+  it('adds no more than 10 kWh per day', () => {
+    expect(foldBudgetPressureDay(undefined, day({ suppression: { budgetUnservedKwh: 100 } })).kwh).toBe(10);
   });
-
-  it('is undefined when either side is missing, rather than guessing a zero', () => {
-    expect(measuredBudgetOvershootKwh(day({ dateKey: 'd', kwhTotal: 50 }))).toBeUndefined();
-    expect(measuredBudgetOvershootKwh(day({ dateKey: 'd', kwhTotal: undefined, appliedBudgetKwh: 44 })))
-      .toBeUndefined();
+  it('unwinds stale correction using observed spare allowance', () => {
+    expect(foldBudgetPressureDay(carried, day()).kwh).toBe(5);
+    expect(foldBudgetPressureDay({ ...carried, kwh: 17.8 }, day({ appliedBudgetKwh: 112.8 })).kwh)
+      .toBeCloseTo(3.35);
   });
-});
-
-describe('foldBudgetPressureDay', () => {
-  it('grows by the measured overshoot on a day the budget both limited and ran out', () => {
-    const first = foldBudgetPressureDay(undefined, pressureDay('2026-07-30', 51.6, 43.7));
-    expect(first.kwh).toBeCloseTo(7.9, 5);
-    expect(first.throughDateKey).toBe('2026-07-30');
-    const second = foldBudgetPressureDay(first, pressureDay('2026-07-31', 50, 44));
-    expect(second.kwh).toBeCloseTo(13.9, 5);
-  });
-
-  it('caps a single day so the loop ramps rather than jumping', () => {
-    const folded = foldBudgetPressureDay(undefined, pressureDay('2026-07-30', 200, 40));
-    expect(folded.kwh).toBe(10);
-  });
-
-  it('leaks on a day that stayed inside its budget, even if devices were still held back', () => {
-    // The windup guard. Short holds are routine (shed cooldowns, price shaping),
-    // so suppression alone must not ratchet the budget up forever — a day that
-    // never ran out of budget is a shaping problem, not a level problem.
-    const carried = { kwh: 8, throughDateKey: '2026-07-30' };
-    const folded = foldBudgetPressureDay(carried, day({
-      dateKey: '2026-07-31',
-      kwhTotal: 40,
-      appliedBudgetKwh: 50,
-      suppression: { blockedByHeadroomMs: 12 * HOUR_MS },
-    }));
-    expect(folded.kwh).toBeCloseTo(6, 5);
-  });
-
-  it('HOLDS rather than decaying when the day is unmeasurable', () => {
-    // A boot catch-up stamps no budget rather than a stale one, and a tracker
-    // gap leaves no kWh total. Neither is evidence, so a badly-timed restart
-    // must not quietly erode real evidence that the budget is too tight.
-    const carried = { kwh: 8, throughDateKey: '2026-07-30' };
-    const noBudget = foldBudgetPressureDay(carried, day({
-      dateKey: '2026-07-31', kwhTotal: 50, suppression: { blockedByHeadroomMs: 12 * HOUR_MS },
-    }));
-    expect(noBudget).toEqual({ kwh: 8, throughDateKey: '2026-07-31' });
-  });
-
-  it('refuses a day the power tracker flagged unreliable', () => {
-    // The fit already distrusts it, and this term writes a setting — the stuck
-    // meter case must not grow the budget through a gap the model rejects.
-    const folded = foldBudgetPressureDay({ kwh: 8, throughDateKey: '2026-07-30' }, day({
-      dateKey: '2026-07-31',
-      kwhTotal: 200,
-      appliedBudgetKwh: 44,
-      quality: {
-        partialTemp: false, missingKwh: false, unreliablePower: true, backfilled: false,
-      },
-      suppression: { blockedByHeadroomMs: 12 * HOUR_MS },
-    }));
-    expect(folded.kwh).toBe(8);
-  });
-
-  it('will not integrate past what the suggestion could apply (anti-windup)', () => {
-    // Without this the accumulator runs far above the reachable output, then
-    // owes the owner days of decay before the correction even starts to relax.
-    let state = foldBudgetPressureDay(undefined, pressureDay('2026-07-25', 60, 40), 9);
-    for (let index = 6; index <= 9; index += 1) {
-      state = foldBudgetPressureDay(state, pressureDay(`2026-07-2${index}`, 60, 40), 9);
+  it('decays without using unreliable or missing readings as spare allowance', () => {
+    for (const quality of [
+      { ...day().quality, unreliablePower: true }, { ...day().quality, missingKwh: true },
+    ]) {
+      const record = day({ quality, suppression: { budgetUnservedKwh: 100 } });
+      expect(dayWasBudgetDamaged(record)).toBe(false);
+      expect(foldBudgetPressureDay(carried, record).kwh).toBe(15);
+      expect(measuredBudgetOvershootKwh(record)).toBeUndefined();
     }
-    expect(state.kwh).toBe(9);
+    expect(foldBudgetPressureDay(carried, day({ appliedBudgetKwh: undefined })).kwh).toBe(15);
   });
-
-  it('re-clamps a carried term when the applicable ceiling drops', () => {
-    const carried = { kwh: 30, throughDateKey: '2026-07-30' };
-    const folded = foldBudgetPressureDay(carried, pressureDay('2026-07-31', 60, 40), 12);
-    expect(folded.kwh).toBe(12);
+  it('still respects priced deadline evidence when the household meter was unavailable', () => {
+    const record = day({ quality: { ...day().quality, unreliablePower: true },
+      suppression: { deadlineMissDeniedKwh: 4 },
+    });
+    expect(foldBudgetPressureDay(undefined, record).kwh).toBe(4);
   });
-
-  it('decays to exactly zero rather than trailing a negligible remainder', () => {
-    // Measurable days that stayed inside their budget — the only shape that leaks.
-    const quietDay = (dateKey: string) => day({ dateKey, kwhTotal: 40, appliedBudgetKwh: 50 });
-    let state = { kwh: 1, throughDateKey: '2026-07-30' };
-    for (let index = 1; index <= 4; index += 1) {
-      state = foldBudgetPressureDay(state, quietDay(`2026-08-0${index}`));
-    }
-    expect(state.kwh).toBeGreaterThan(0);
-    state = foldBudgetPressureDay(state, quietDay('2026-08-05'));
-    expect(state.kwh).toBe(0);
+  it('caps correction at sustainable capacity', () => {
+    expect(foldBudgetPressureDay(carried, day({ suppression: { deadlineMissDeniedKwh: 8 } }), 24).kwh).toBe(24);
   });
-
-  it('is idempotent per day so a repeat rollup or boot catch-up cannot inflate it', () => {
-    const record = pressureDay('2026-07-31', 50, 44);
-    const once = foldBudgetPressureDay(undefined, record);
-    expect(foldBudgetPressureDay(once, record)).toBe(once);
-    // An older day arriving late (backfill, catch-up) is ignored too.
-    expect(foldBudgetPressureDay(once, pressureDay('2026-07-30', 60, 40))).toBe(once);
+  it('is idempotent and ignores older days', () => {
+    const once = foldBudgetPressureDay(carried, day());
+    expect(foldBudgetPressureDay(once, day())).toBe(once);
+    expect(foldBudgetPressureDay(once, day({ dateKey: '2026-09-30' }))).toBe(once);
   });
-
-  it('does not grow when the overshoot cannot be measured', () => {
-    // A boot catch-up deliberately stamps no budget on an older day rather than
-    // a stale one; with nothing to measure the term must not invent a step.
-    const folded = foldBudgetPressureDay(undefined, day({
-      dateKey: '2026-07-31',
-      kwhTotal: 50,
-      suppression: { blockedByHeadroomMs: 12 * HOUR_MS },
-    }));
-    expect(folded.kwh).toBe(0);
+  it('snaps negligible corrections to zero', () => {
+    expect(foldBudgetPressureDay({ ...carried, kwh: 0.3 }, day({ appliedBudgetKwh: undefined })).kwh).toBe(0);
   });
-
-  it('does not impose a model-relative or absolute ceiling when no physical ceiling is known', () => {
-    let state;
-    for (let index = 1; index <= 9; index += 1) {
-      state = foldBudgetPressureDay(state, pressureDay(`2026-07-0${index}`, 200, 40));
-    }
-    expect(state?.kwh).toBe(90);
+  it('reports measured overshoot only when both values are reliable', () => {
+    expect(measuredBudgetOvershootKwh(day({ kwhTotal: 65 }))).toBe(5);
+    expect(measuredBudgetOvershootKwh(day())).toBe(0);
+    expect(measuredBudgetOvershootKwh(day({ kwhTotal: undefined }))).toBeUndefined();
   });
-});
-
-describe('resolveBudgetPressureKwh', () => {
-  it('returns the full accumulated pressure', () => {
-    expect(resolveBudgetPressureKwh({ state: { kwh: 7, throughDateKey: 'd' } })).toBe(7);
-    expect(resolveBudgetPressureKwh({ state: { kwh: 90, throughDateKey: 'd' } })).toBe(90);
-  });
-
-  it('contributes nothing without a valid term', () => {
+  it('returns a finite positive pressure contribution', () => {
+    expect(resolveBudgetPressureKwh({ state: carried })).toBe(20);
     expect(resolveBudgetPressureKwh({ state: undefined })).toBe(0);
-    expect(resolveBudgetPressureKwh({ state: { kwh: Number.NaN, throughDateKey: 'd' } })).toBe(0);
-  });
-});
-
-
-describe('foldBudgetPressureDay — day-close verdict', () => {
-  /** A day that ended with energy still denied, and measurably over budget. */
-  const damagedDay = (dateKey: string, deniedKwh: number, kwhTotal: number, budget: number) => day({
-    dateKey,
-    kwhTotal,
-    appliedBudgetKwh: budget,
-    suppression: {
-      budgetDenialObserved: true,
-      budgetDeniedKwh: deniedKwh,
-      budgetDeniedMs: 2 * HOUR_MS,
-    },
-  });
-
-  it('grows by denied energy plus the measured overshoot', () => {
-    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 3, 62.83, 60.72));
-    expect(folded.kwh).toBeCloseTo(3 + 2.11, 5);
-  });
-
-  it('grows by the denied energy alone on a day that never overshot — the day the old step could not see', () => {
-    // The budget held everything in check AND denied a device: no overshoot
-    // occurs precisely because the denial worked. The old overshoot-only step
-    // read this as "nothing to correct" forever.
-    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 4, 50, 60));
-    expect(folded.kwh).toBeCloseTo(4, 5);
-  });
-
-  it('grows by the denial even when the meter made the overshoot unmeasurable', () => {
-    // The denied side comes from diagnostics, not the meter — an unreliable
-    // power day still proved its denial.
-    const folded = foldBudgetPressureDay(undefined, day({
-      dateKey: '2026-08-08',
-      kwhTotal: 62,
-      appliedBudgetKwh: 60,
-      quality: {
-        partialTemp: false, missingKwh: false, unreliablePower: true, backfilled: false,
-      },
-      suppression: { budgetDenialObserved: true, budgetDeniedKwh: 2.5 },
-    }));
-    expect(folded.kwh).toBeCloseTo(2.5, 5);
-  });
-
-  it('DECAYS through an overshoot when nothing was denied at day close — served holds are not damage', () => {
-    // The model flip: every hold was admitted before the day ended, so the
-    // budget shaped the day and hurt nobody. The overshoot says the estimate ran
-    // low; correcting the estimate is the fit's job, not this term's. On the old
-    // code this day GREW the term.
-    const carried = { kwh: 8, throughDateKey: '2026-08-07' };
-    const folded = foldBudgetPressureDay(carried, day({
-      dateKey: '2026-08-08',
-      kwhTotal: 62.83,
-      appliedBudgetKwh: 60.72,
-      suppression: {
-        budgetDenialObserved: true,
-        budgetDeniedKwh: 0,
-        blockedByHeadroomMs: 6 * HOUR_MS,
-      },
-    }));
-    expect(folded.kwh).toBeCloseTo(6, 5);
-  });
-
-  it('still caps a verdict-bearing day at the single-day step', () => {
-    const folded = foldBudgetPressureDay(undefined, damagedDay('2026-08-08', 30, 100, 60));
-    expect(folded.kwh).toBe(10);
-  });
-});
-
-describe('budget-caused deadline misses', () => {
-  /**
-   * The shape this exists for: the daily budget bound the day, a deadline-bound
-   * smart task missed because of it, and by midnight nothing was still latched —
-   * so the device sweep recorded an honest `budgetDeniedKwh: 0`. Before the miss
-   * was wired in, that day argued for LOWERING the very budget that caused it.
-   */
-  const missDay = (
-    dateKey: string,
-    deadlineMissDeniedKwh: number,
-    over: Partial<WeatherDailyRecord> = {},
-  ) => day({
-    dateKey,
-    kwhTotal: 44,
-    appliedBudgetKwh: 50,
-    suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh },
-    ...over,
-  });
-
-  it('counts a budget-caused deadline miss as damage though nothing was latched at midnight', () => {
-    expect(dayWasBudgetDamaged(missDay('2026-09-07', 2.4))).toBe(true);
-  });
-
-  it('grows the term by the energy the missed task never got', () => {
-    // The day stayed UNDER its budget (44 of 50), so there is no overshoot to
-    // find and the device verdict is a truthful zero. The miss is the only
-    // evidence, and it is enough.
-    expect(foldBudgetPressureDay(undefined, missDay('2026-09-07', 2.4)).kwh).toBeCloseTo(2.4, 5);
-  });
-
-  it('would have DECAYED the same day before the miss was wired in', () => {
-    // Pins the regression: strip only the miss and the day reads as quiet.
-    const carried = { kwh: 8, throughDateKey: '2026-09-06' };
-    const withoutMiss = day({
-      dateKey: '2026-09-07', kwhTotal: 44, appliedBudgetKwh: 50, suppression: { budgetDeniedKwh: 0 },
-    });
-    expect(foldBudgetPressureDay(carried, withoutMiss).kwh).toBeCloseTo(6, 5);
-    expect(foldBudgetPressureDay(carried, missDay('2026-09-07', 2.4)).kwh).toBeCloseTo(10.4, 5);
-  });
-
-  it('takes the LARGER of the two denials, never their sum', () => {
-    // A temperature device carrying a smart task can miss at 22:00 and still be
-    // budget-held at midnight, so the two figures can price one unmet need
-    // twice. Under-counting two separate denials is the safer error for a term
-    // that writes a real setting: an integrator recovers from it next day.
-    const folded = foldBudgetPressureDay(undefined, day({
-      dateKey: '2026-09-07',
-      kwhTotal: 44,
-      appliedBudgetKwh: 50,
-      suppression: { budgetDeniedKwh: 1.5, deadlineMissDeniedKwh: 2 },
-    }));
-    expect(folded.kwh).toBeCloseTo(2, 5);
-  });
-
-  it('decays on a day whose miss could not be priced, keeping the integrator leaky', () => {
-    // The producer stamps no magnitude for a miss it cannot measure, so the day
-    // reaches the loop carrying only the device verdict. It must NOT freeze the
-    // term: a term that stops decaying keeps auto-apply's lowering guard armed
-    // forever, and this home would never have its budget lowered again.
-    const carried = { kwh: 8, throughDateKey: '2026-09-06' };
-    const unpriceable = day({
-      dateKey: '2026-09-07',
-      kwhTotal: 44,
-      appliedBudgetKwh: 50,
-      suppression: { budgetDeniedKwh: 0, deadlineMissedToBudget: true },
-    });
-    expect(foldBudgetPressureDay(carried, unpriceable).kwh).toBeCloseTo(6, 5);
-  });
-
-  it('still caps a miss-driven day at the single-day step', () => {
-    expect(foldBudgetPressureDay(undefined, missDay('2026-09-07', 30)).kwh).toBe(10);
-  });
-
-  it('ignores a junk denied figure rather than treating it as damage', () => {
-    const folded = foldBudgetPressureDay({ kwh: 8, throughDateKey: '2026-09-06' }, day({
-      dateKey: '2026-09-07',
-      kwhTotal: 44,
-      appliedBudgetKwh: 50,
-      // Defensive: the normalizer drops this before it lands, but the loop must
-      // not treat a tampered persisted value as damage either.
-      suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh: Number.NaN },
-    }));
-    expect(folded.kwh).toBeCloseTo(6, 5);
+    expect(resolveBudgetPressureKwh({ state: { ...carried, kwh: NaN } })).toBe(0);
   });
 });

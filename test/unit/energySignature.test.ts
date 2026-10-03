@@ -139,7 +139,6 @@ describe('fitEnergySignature', () => {
 });
 
 describe('fitEnergySignature — suppression awareness', () => {
-  const HOUR_MS = 60 * 60 * 1000;
   // Censor the coldest six days to a near-zero total (kept "usable" so they only
   // leave the fit via the suppression flag, not the kwhTotal>0 quality gate).
   const censorColdest = (days: WeatherDailyRecord[], flag: boolean): WeatherDailyRecord[] => {
@@ -202,7 +201,8 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: -3,
           tempMaxC: 3,
           kwhTotal: 50,
-          suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
+          appliedBudgetKwh: 45,
+          suppression: { budgetUnservedKwh: 6 },
         }
         : record
     ));
@@ -245,7 +245,8 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: 22,
           tempMaxC: 28,
           kwhTotal: 50,
-          suppression: { blockedByHeadroomMs: 6 * HOUR_MS },
+          appliedBudgetKwh: 45,
+          suppression: { budgetUnservedKwh: 6 },
         }
         : record
     ));
@@ -269,5 +270,17 @@ describe('predictDailyKwh', () => {
     );
     if (!flat) throw new Error('expected flat fit');
     expect(predictDailyKwh(flat, -5)).toBeUndefined();
+  });
+});
+
+
+describe('recent usage calibration', () => {
+  it('captures a changed household load in recent residuals while retaining the seasonal model', () => {
+    const records = heatingDays(120).map((record, index) => ({
+      ...record, kwhTotal: (record.kwhTotal as number) + (index >= 106 ? 20 : 0),
+    }));
+    const fit = fitEnergySignature(records, NOW_MS);
+    expect(fit?.recentResidualQ80).toBeGreaterThan((fit?.residualQ80 ?? 0) + 10);
+    expect(fit?.recentSuppressionSuspected).toBe(false);
   });
 });
