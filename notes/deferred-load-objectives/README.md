@@ -517,6 +517,35 @@ as an in-page route off `index.html`.):
   active plan, and start a fresh pending active plan. History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new
   run.
+- Each hour's booking is recorded once, on the run's first tick in the hour, as
+  `hourStartBookings` (`captureHourStartBooking` in `planHistoryHourStartBookings.ts`). The
+  source is the revision in force at the hour's start: the newest of the plan's `latest`,
+  `history` and `original` written at or before it (normally the previous hour's `:58`
+  settle). Revisions written before the run's history record started still count, because
+  they normally belong to the run: a Flow objective change restarts the plan with none
+  (`markPending`). The rarer in-place `objective_changed` revision clears `history` but keeps
+  `original`, so the hour that change lands in can be booked from that pre-change revision;
+  later hours read the new `latest`. Otherwise the run's first plan books the hour it arrives
+  in. An hour with no revision in
+  force at its start (a plan rebuilt after the hour began) has no entry, and neither has an
+  hour with no tick inside it. The bookings are saved with the in-progress metered state and
+  merged back after a restart, the saved booking winning for an hour both hold. The final
+  revision cannot answer "what was scheduled": every hourly re-plan drops the elapsed hours,
+  so it ends holding the last hour's remainder (an overnight EV run once logged
+  `plannedKWh: 0.03` against 29.6 kWh delivered). The chart run bands, hourly strip,
+  receipt's largest planned hour and the logged `plannedKWh` read the record through
+  `pickScheduledHours` (`packages/shared-domain/src/deferredPlanHistoryShared.ts`); entries
+  without it keep the final-revision reading. The record is per hour, not the run's need: a
+  `:58` re-plan books an under-delivered hour's shortfall into later hours, so `plannedKWh`
+  includes that re-booked energy and is telemetry only. The Missed shortfall chip divides by
+  `initialEnergyExpectedKWh` instead (an energy task's target; the bare delivered figure when
+  neither is known), and the "Observed N of M scheduled hours" line is hidden on entries
+  that carry the record: every booked hour is observed by construction, and after a restart
+  the bookings are restored while `observedIntervals` are not. Accepted one-time artifact: a
+  run in flight when a device first upgrades to this build restores with no bookings (the
+  migration default), so its entry holds only post-upgrade hours and the readers take that
+  list as complete (earlier hours read "Not scheduled", `plannedKWh` runs low, the coverage
+  line is hidden).
 - Entries are persisted to the userdata store, one row per entry (`planHistoryStore.ts`), with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders

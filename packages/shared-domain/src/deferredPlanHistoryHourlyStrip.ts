@@ -8,6 +8,7 @@
 // lives here so the renderer is a pure mapper.
 import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryHourStartBooking,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -33,8 +34,9 @@ export type HourlyStripBucket = {
   // entry never carried a contribution or plan for — the view treats those
   // as gap buckets.
   tone: DeferredObjectivePlanHistoryHourlyTone | null;
-  // True when the hour was planned by the original or final schedule
-  // (regardless of whether the runtime delivered against it).
+  // True when the hour had work booked when it began (on entries recorded
+  // before the per-hour record, when the original or final schedule planned
+  // it), regardless of whether the runtime delivered against it.
   planned: boolean;
   // True when at least one delivery contribution landed on the bucket.
   // Bucket gets the solid-fill treatment.
@@ -82,14 +84,31 @@ const indexContributions = (
 // Collect planned-hour metadata from the original + final snapshots so the
 // strip can show "scheduled but not delivered" even when the planner
 // revised the schedule mid-run. The final plan wins on `plannedKWh`
-// because it represents the planner's last word for that hour.
-const indexPlannedHours = (
+// because it represents the planner's last word for that hour. The fallback
+// for entries recorded before `hourStartBookings`.
+const indexLegacyPlannedHours = (
   original: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
 ): Map<number, number> => {
   const byAtMs = new Map<number, number>();
   original?.hours.forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
   final?.hours.forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
+  return byAtMs;
+};
+
+// Each hour's booking at its start, the same schedule the planned total and the
+// chart's run bands read (`pickScheduledHours`). Only positive bookings count
+// as planned: an hour the plan in force booked nothing for reads as not
+// scheduled, which is what it was when it ran.
+const indexBookedHours = (
+  bookings: readonly DeferredObjectivePlanHistoryHourStartBooking[],
+): Map<number, number> => {
+  const byAtMs = new Map<number, number>();
+  for (const booking of bookings) {
+    if (Number.isFinite(booking.bookedKWh) && booking.bookedKWh > 0) {
+      byAtMs.set(floorToHour(booking.atMs), booking.bookedKWh);
+    }
+  }
   return byAtMs;
 };
 
@@ -123,7 +142,7 @@ const resolveCheapestDeliveredAtMs = (
  */
 export const resolveHistoryDetailHourlyStrip = (
   entry: Pick<DeferredObjectivePlanHistoryEntry,
-    'startedAtMs' | 'deadlineAtMs' | 'hourlyContributions' | 'originalPlan' | 'finalPlan'>,
+    'startedAtMs' | 'deadlineAtMs' | 'hourlyContributions' | 'hourStartBookings' | 'originalPlan' | 'finalPlan'>,
 ): DeferredPlanHistoryHourlyStripData => {
   const contributions = entry.hourlyContributions ?? [];
   // Suppress the strip entirely for entries with no hourly delivery data,
@@ -138,7 +157,9 @@ export const resolveHistoryDetailHourlyStrip = (
   if (contributions.length === 0) {
     return { mode: 'absent' };
   }
-  const plannedByAtMs = indexPlannedHours(entry.originalPlan, entry.finalPlan);
+  const plannedByAtMs = entry.hourStartBookings !== undefined
+    ? indexBookedHours(entry.hourStartBookings)
+    : indexLegacyPlannedHours(entry.originalPlan, entry.finalPlan);
   const contributionsByAtMs = indexContributions(contributions);
   const cheapestAtMs = resolveCheapestDeliveredAtMs(contributions);
   const windowStartMs = floorToHour(entry.startedAtMs);

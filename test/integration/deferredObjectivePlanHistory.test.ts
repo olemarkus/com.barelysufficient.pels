@@ -27,6 +27,7 @@ import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { formatPlanHistoryObservedCoverage } from '../../packages/shared-domain/src/deferredPlanHistory';
 import type {
   PersistedMeteredDeliveryState,
 } from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
@@ -2153,7 +2154,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
         deviceId: 'dev', deadlineAtMs, startedAtMs: 0,
         commitment: { kind: 'unknown' }, deliveredKWh: 0, totalCost: 0,
-        costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [],
+        costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [],
       }]);
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 10 * 60_000, null);
@@ -2217,6 +2218,327 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
       expect(persisted.savedMeteredDelivery()).toEqual([]);
+    });
+  });
+
+  describe('hour-start bookings', () => {
+    // Regression, prod 2026-10-01/02: the active-plan recorder re-plans every
+    // hour and each revision drops the hours that have passed, so an overnight
+    // EV run's final revision held one hour shrunk to 0.03 kWh, and history
+    // reported plannedKWh 0.03 against 29.6 kWh delivered.
+    const H0 = Date.UTC(2026, 9, 1, 19, 0, 0);
+    const MIN_MS = 60_000;
+    type PlanHour = DeferredObjectiveActivePlanRevisionV1['hours'][number];
+
+    const revision = (index: number, revisedAtMs: number, hours: PlanHour[]): DeferredObjectiveActivePlanRevisionV1 => ({
+      revision: index,
+      revisedAtMs,
+      computedFromPricesUpTo: null,
+      reason: index === 1 ? 'flow_card' : 'prices_revised',
+      hours,
+      energyNeededKWh: 10,
+      planStatus: 'on_track',
+    });
+
+    const plansFor = (
+      deadlineAtMs: number,
+      original: DeferredObjectiveActivePlanRevisionV1 | null,
+      latest: DeferredObjectiveActivePlanRevisionV1 | null,
+      // Most-recent-first log of the revisions before `latest`.
+      history: DeferredObjectiveActivePlanRevisionV1[] = [],
+    ) => ({
+      version: 1 as const,
+      plansByDeviceId: {
+        dev: {
+          liveCompletion: { kind: 'unavailable' as const },
+          deviceId: 'dev',
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature' as const,
+          targetValue: 65,
+          deadlineAtMs,
+          startedAtMs: H0,
+          pending: latest === null,
+          objectiveSignature: 'sig',
+          original,
+          latest,
+          history,
+        },
+      },
+    });
+
+    const tickWith = (
+      recorder: DeferredObjectivePlanHistoryRecorder,
+      nowMs: number,
+      deadlineAtMs: number,
+      plans: ReturnType<typeof plansFor>,
+    ): void => {
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentDrawKw: 2 })], nowMs, plans);
+    };
+
+    it('records each hour\'s booking at its start, so the planned total survives hourly re-plans', () => {
+      const events: Record<string, unknown>[] = [];
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
+        ...persisted.deps,
+        debugStructured: (payload) => { events.push(payload); },
+      });
+      const deadlineAtMs = H0 + 4 * HOUR_MS;
+      const plans = (original: DeferredObjectiveActivePlanRevisionV1 | null, latest: typeof original) => (
+        plansFor(deadlineAtMs, original, latest)
+      );
+      // The run's first plan arrives inside its first hour, trimmed to "now".
+      const rev1 = revision(1, H0 + 5 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 1.8, coversFromMs: H0 + 5 * MIN_MS },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      // Each `:58` settle drops the hour that is ending.
+      const rev2 = revision(2, H0 + 58 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 0.1, coversFromMs: H0 + 58 * MIN_MS },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 2.5 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      // A mid-hour coordination change: not what the second hour began under.
+      const rev3 = revision(3, H0 + HOUR_MS + 20 * MIN_MS, [
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 1, coversFromMs: H0 + HOUR_MS + 20 * MIN_MS },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 4 },
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      const rev4 = revision(4, H0 + 2 * HOUR_MS + 58 * MIN_MS, [
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 0.1, coversFromMs: H0 + 2 * HOUR_MS + 58 * MIN_MS },
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 2 },
+      ]);
+      // The final revision: one hour, shrunk to its last two minutes.
+      const rev5 = revision(5, H0 + 3 * HOUR_MS + 58 * MIN_MS, [
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 0.03, coversFromMs: H0 + 3 * HOUR_MS + 58 * MIN_MS },
+      ]);
+
+      tickWith(recorder, H0 + 5 * MIN_MS, deadlineAtMs, plans(null, null));
+      tickWith(recorder, H0 + 5 * MIN_MS + 30_000, deadlineAtMs, plans(rev1, rev1));
+      tickWith(recorder, H0 + 58 * MIN_MS, deadlineAtMs, plans(rev1, rev1));
+      tickWith(recorder, H0 + HOUR_MS + 10_000, deadlineAtMs, plans(rev1, rev2));
+      tickWith(recorder, H0 + HOUR_MS + 30 * MIN_MS, deadlineAtMs, plans(rev1, rev3));
+      tickWith(recorder, H0 + 2 * HOUR_MS + 10_000, deadlineAtMs, plans(rev1, rev3));
+      tickWith(recorder, H0 + 3 * HOUR_MS + 10_000, deadlineAtMs, plans(rev1, rev4));
+      tickWith(recorder, H0 + 3 * HOUR_MS + 58 * MIN_MS + 30_000, deadlineAtMs, plans(rev1, rev5));
+      tickWith(recorder, deadlineAtMs, deadlineAtMs, plans(rev1, rev5));
+      recorder.flushIfDirty();
+
+      const entry = persisted.saved()!.entries[0]!;
+      expect(entry.finalPlan!.hours).toHaveLength(1);
+      expect(entry.hourStartBookings).toEqual([
+        { atMs: H0, bookedKWh: 1.8 },
+        { atMs: H0 + HOUR_MS, bookedKWh: 2.5 },
+        { atMs: H0 + 2 * HOUR_MS, bookedKWh: 4 },
+        { atMs: H0 + 3 * HOUR_MS, bookedKWh: 2 },
+      ]);
+      const resolvedEntry = toResolvedPlanHistoryEntry(entry, { name: 'Water Heater', objectiveKind: 'temperature' });
+      expect(resolveDeferredPlanHistoryMissAttribution(resolvedEntry).plannedKWh).toBeCloseTo(10.3);
+      const finalized = events.find((event) => event.event === 'deferred_objective_history_finalized');
+      expect(finalized?.plannedKWh).toBeCloseTo(10.3);
+      // The sum includes energy re-booked after a short hour: telemetry, never
+      // compared with delivery.
+      // Every booked hour was observed by construction, so the coverage line
+      // is hidden on an entry that carries the record.
+      expect(formatPlanHistoryObservedCoverage(resolvedEntry)).toBeNull();
+    });
+
+    it('keeps saved bookings across a restart and leaves an hour that began under a rebuilt plan unrecorded', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = H0 + 3 * HOUR_MS;
+      const settled = revision(1, H0 - 2 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 3 },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      tickWith(beforeRestart, H0 + 10_000, deadlineAtMs, plansFor(deadlineAtMs, settled, settled));
+      tickWith(beforeRestart, H0 + 20 * MIN_MS, deadlineAtMs, plansFor(deadlineAtMs, settled, settled));
+      beforeRestart.flushIfDirty();
+      expect(persisted.savedMeteredDelivery()[0]!.hourStartBookings).toEqual([{ atMs: H0, bookedKWh: 3 }]);
+
+      // Restart inside the first hour under a plan rebuilt after it began: the
+      // hour keeps the booking saved at its start.
+      const rebuiltMidHour = revision(1, H0 + 30 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 1.2, coversFromMs: H0 + 30 * MIN_MS },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      tickWith(afterRestart, H0 + 30 * MIN_MS, deadlineAtMs, plansFor(deadlineAtMs, rebuiltMidHour, rebuiltMidHour));
+      tickWith(afterRestart, H0 + 45 * MIN_MS, deadlineAtMs, plansFor(deadlineAtMs, rebuiltMidHour, rebuiltMidHour));
+      afterRestart.flushIfDirty();
+
+      // Down across the second hour's start, and the persisted plan was lost:
+      // the plan rebuilt after the hour began is the only revision, so no
+      // revision was in force at that hour's start and it has no booking. The
+      // third began under the rebuilt plan.
+      const rebuiltAfterOutage = revision(1, H0 + HOUR_MS + 10 * MIN_MS, [
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 2, coversFromMs: H0 + HOUR_MS + 10 * MIN_MS },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3.5 },
+      ]);
+      const afterOutage = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const outagePlans = plansFor(deadlineAtMs, rebuiltAfterOutage, rebuiltAfterOutage);
+      tickWith(afterOutage, H0 + HOUR_MS + 10 * MIN_MS, deadlineAtMs, outagePlans);
+      tickWith(afterOutage, H0 + 2 * HOUR_MS + 10_000, deadlineAtMs, outagePlans);
+      tickWith(afterOutage, deadlineAtMs, deadlineAtMs, outagePlans);
+      afterOutage.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.hourStartBookings).toEqual([
+        { atMs: H0, bookedKWh: 3 },
+        { atMs: H0 + 2 * HOUR_MS, bookedKWh: 3.5 },
+      ]);
+    });
+
+    it('reads the revision in force at an hour start from the plan history when a write lands just after it', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = H0 + 3 * HOUR_MS;
+      const first = revision(1, H0 + 10_000, [
+        { startsAtMs: H0, plannedKWh: 2, coversFromMs: H0 + 10_000 },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      const settled = revision(2, H0 + 58 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 0.1, coversFromMs: H0 + 58 * MIN_MS },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 2.5 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      // A coordination change written seconds into the second hour, before the
+      // recorder's first tick in it.
+      const coordinated = revision(3, H0 + HOUR_MS + 5_000, [
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 0.8, coversFromMs: H0 + HOUR_MS + 5_000 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 4 },
+      ]);
+      tickWith(recorder, H0 + 10_000, deadlineAtMs, plansFor(deadlineAtMs, first, first));
+      tickWith(recorder, H0 + 59 * MIN_MS, deadlineAtMs, plansFor(deadlineAtMs, first, settled, [first]));
+      tickWith(recorder, H0 + HOUR_MS + 20_000, deadlineAtMs,
+        plansFor(deadlineAtMs, first, coordinated, [settled, first]));
+      tickWith(recorder, deadlineAtMs - HOUR_MS + 10_000, deadlineAtMs,
+        plansFor(deadlineAtMs, first, coordinated, [settled, first]));
+      tickWith(recorder, deadlineAtMs, deadlineAtMs, plansFor(deadlineAtMs, first, coordinated, [settled, first]));
+      recorder.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.hourStartBookings).toEqual([
+        { atMs: H0, bookedKWh: 2 },
+        // The second hour began under the `:58` settle, not the later write.
+        { atMs: H0 + HOUR_MS, bookedKWh: 2.5 },
+        { atMs: H0 + 2 * HOUR_MS, bookedKWh: 4 },
+      ]);
+    });
+
+    it('records an hour that began during an outage from the revision still in force when PELS came back', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = H0 + 3 * HOUR_MS;
+      const settled = revision(1, H0 + 10_000, [
+        { startsAtMs: H0, plannedKWh: 3, coversFromMs: H0 + 10_000 },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3 },
+      ]);
+      const plans = plansFor(deadlineAtMs, settled, settled);
+      const beforeOutage = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      tickWith(beforeOutage, H0 + 10_000, deadlineAtMs, plans);
+      tickWith(beforeOutage, H0 + 50 * MIN_MS, deadlineAtMs, plans);
+      beforeOutage.flushIfDirty();
+
+      // Down from :50 to 10 past the next hour; nothing wrote a revision, so the
+      // persisted one is what the second hour began under.
+      const afterOutage = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      tickWith(afterOutage, H0 + HOUR_MS + 10 * MIN_MS, deadlineAtMs, plans);
+      tickWith(afterOutage, deadlineAtMs, deadlineAtMs, plans);
+      afterOutage.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.hourStartBookings).toEqual([
+        { atMs: H0, bookedKWh: 3 },
+        { atMs: H0 + HOUR_MS, bookedKWh: 3 },
+      ]);
+    });
+
+    it('books every later hour from the revision in force after a restart whose store write failed', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = H0 + 4 * HOUR_MS;
+      const stable = revision(1, H0 + 10_000, [
+        { startsAtMs: H0, plannedKWh: 2, coversFromMs: H0 + 10_000 },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+        { startsAtMs: H0 + 2 * HOUR_MS, plannedKWh: 3.5 },
+        { startsAtMs: H0 + 3 * HOUR_MS, plannedKWh: 2.5 },
+      ]);
+      const plans = plansFor(deadlineAtMs, stable, stable);
+      // The lifecycle flushes right after every observe, so the one way to
+      // restart with no saved metered row is a store write that failed: the
+      // run's history record then starts over after the restart, later than the
+      // plan it runs under.
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder({ ...persisted.deps, save: () => false });
+      tickWith(beforeRestart, H0 + 10_000, deadlineAtMs, plans);
+      expect(beforeRestart.flushIfDirty()).toBe(false);
+      expect(persisted.savedMeteredDelivery()).toEqual([]);
+
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      tickWith(afterRestart, H0 + HOUR_MS + 20 * MIN_MS, deadlineAtMs, plans);
+      tickWith(afterRestart, H0 + 2 * HOUR_MS + 10_000, deadlineAtMs, plans);
+      tickWith(afterRestart, H0 + 3 * HOUR_MS + 10_000, deadlineAtMs, plans);
+      tickWith(afterRestart, deadlineAtMs, deadlineAtMs, plans);
+      afterRestart.flushIfDirty();
+
+      expect(persisted.saved()!.entries[0]!.hourStartBookings).toEqual([
+        { atMs: H0 + HOUR_MS, bookedKWh: 3 },
+        { atMs: H0 + 2 * HOUR_MS, bookedKWh: 3.5 },
+        { atMs: H0 + 3 * HOUR_MS, bookedKWh: 2.5 },
+      ]);
+    });
+
+    it('merges a run recovered after a failed boot read under the live one, saved bookings first', () => {
+      const deadlineAtMs = H0 + 2 * HOUR_MS;
+      const savedRun: PersistedMeteredDeliveryState = {
+        deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+        commitment: { kind: 'known', kwh: 5 },
+        deviceId: 'dev', deadlineAtMs, startedAtMs: H0, deliveredKWh: 0.5, totalCost: 0, costDisplay: null,
+        deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [{ atMs: H0, bookedKWh: 3 }],
+      };
+      let recovered = false;
+      let savedHistory: DeferredObjectivePlanHistoryV6 | null = null;
+      let savedMetered: readonly PersistedMeteredDeliveryState[] = [];
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
+        ...inertPlanHistoryDeps(),
+        load: () => (recovered
+          ? { snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [savedRun] }
+          : { snapshot: { version: 6, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] }),
+        save: (history, states) => { savedHistory = history; savedMetered = states; return true; },
+      });
+      // The boot read failed, so the run starts afresh under a plan rebuilt
+      // after its first hour began and books that hour from it.
+      const rebuilt = revision(1, H0 + 15 * MIN_MS, [
+        { startsAtMs: H0, plannedKWh: 1.2, coversFromMs: H0 + 15 * MIN_MS },
+        { startsAtMs: H0 + HOUR_MS, plannedKWh: 3 },
+      ]);
+      const plans = plansFor(deadlineAtMs, rebuilt, rebuilt);
+      tickWith(recorder, H0 + 15 * MIN_MS, deadlineAtMs, plans);
+
+      recovered = true;
+      expect(recorder.flushIfDirty()).toBe(true);
+      expect(savedMetered).toHaveLength(1);
+      // The saved booking, captured when the hour began, replaces the live one.
+      expect(savedMetered[0]).toMatchObject({ startedAtMs: H0, hourStartBookings: [{ atMs: H0, bookedKWh: 3 }] });
+
+      tickWith(recorder, H0 + HOUR_MS + 10_000, deadlineAtMs, plans);
+      tickWith(recorder, deadlineAtMs, deadlineAtMs, plans);
+      recorder.flushIfDirty();
+      expect(savedHistory!.entries[0]!.hourStartBookings).toEqual([
+        { atMs: H0, bookedKWh: 3 },
+        { atMs: H0 + HOUR_MS, bookedKWh: 3 },
+      ]);
+    });
+
+    it('omits the record when the run never had a plan', () => {
+      const persisted = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      const deadlineAtMs = H0 + HOUR_MS;
+      tickWith(recorder, H0, deadlineAtMs, plansFor(deadlineAtMs, null, null));
+      tickWith(recorder, deadlineAtMs, deadlineAtMs, plansFor(deadlineAtMs, null, null));
+      recorder.flushIfDirty();
+      expect(persisted.saved()!.entries[0]!.hourStartBookings).toBeUndefined();
     });
   });
 

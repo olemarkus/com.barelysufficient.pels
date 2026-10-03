@@ -11,7 +11,7 @@
 //
 //   - Succeeded: a 3-row receipt timeline beneath the outcome line.
 //     Started → largest planned hour → ready-time. Sourced from
-//     `progressSamples`, the recorded plan's largest planned hour, and
+//     `progressSamples`, the largest hour-start booking, and
 //     `metAtMs`/`deadlineAtMs`. No fabrication: each row is suppressed
 //     individually when its data is missing, and the timeline itself returns
 //     `null` when fewer than two rows can be composed (one row alone is
@@ -21,7 +21,8 @@
 //     short ≈ 23 min"). 1-decimal precision matches the abandoned-details
 //     and receipt-row rounding; NBSP between the approx glyph and the time
 //     value keeps the chip from wrapping mid-figure at 320 px. Sourced from
-//     the final-plan total kWh, observed delivery, and the start→target
+//     the run's committed need (`initialEnergyExpectedKWh`, or an energy
+//     task's target), observed delivery, and the start→target
 //     span the run was meant to cover (the heuristic suppresses itself
 //     rather than defaulting a missing start reading to 0). No red — the
 //     chip consumes the muted/info tone already in CSS.
@@ -51,7 +52,6 @@
 //     (re-exported below) for the same reason.
 
 import type {
-  DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryProgressSample,
 } from '../../contracts/src/deferredObjectivePlanHistory';
@@ -91,6 +91,7 @@ import {
   RECEIPT_ROW_LABEL_READY,
   RECEIPT_ROW_LABEL_STARTED,
 } from './deferredPlanHistoryReceiptStrings';
+import { pickScheduledHours, type ScheduledHistoryHour } from './deferredPlanHistoryShared';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
 
@@ -189,12 +190,16 @@ const startAnchorSample = (
   return samples[motionIndex - 1] ?? null;
 };
 
+// The largest positive booking among the run's scheduled hours
+// (`pickScheduledHours`): each hour as it was booked when it began, so an
+// overnight run re-planned hourly no longer reads its final revision's
+// last-minute remainder ("0.0 kWh planned").
 const pickLargestHour = (
-  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+  hours: readonly ScheduledHistoryHour[] | null,
 ): { startsAtMs: number; plannedKWh: number } | null => {
-  if (snapshot === null) return null;
+  if (hours === null) return null;
   let best: { startsAtMs: number; plannedKWh: number } | null = null;
-  for (const hour of snapshot.hours) {
+  for (const hour of hours) {
     if (!Number.isFinite(hour.plannedKWh) || hour.plannedKWh <= 0) continue;
     if (best === null || hour.plannedKWh > best.plannedKWh) {
       best = { startsAtMs: hour.startsAtMs, plannedKWh: hour.plannedKWh };
@@ -214,8 +219,9 @@ const pickLargestHour = (
  *      with motion (the last still-at-start reading), with the start reading
  *      as the detail tail. Suppressed when `progressSamples` carries < 2
  *      entries or none of them landed in time.
- *   2. "Largest planned hour" — the largest planned kWh hour from the
- *      recorded plan (preferring `finalPlan`). Detail tail names the kWh.
+ *   2. "Largest planned hour" — the hour with the largest booking when it
+ *      began (`pickScheduledHours`; the final plan's hours on entries
+ *      recorded before that record). Detail tail names the kWh.
  *      Suppressed when no plan was recorded or every hour was zero.
  *   3. "Ready" — `metAtMs` with the margin vs deadline. Suppressed when
  *      `metAtMs` is null or the entry didn't meet its target.
@@ -235,6 +241,7 @@ export const formatPlanHistoryReceiptTimeline = (
     | 'progressSamples'
     | 'finalPlan'
     | 'originalPlan'
+    | 'hourStartBookings'
   >,
   timeZone: string,
 ): PlanHistoryReceiptRow[] | null => {
@@ -256,7 +263,7 @@ export const formatPlanHistoryReceiptTimeline = (
   }
 
   // Row 2 — Largest planned hour.
-  const largest = pickLargestHour(entry.finalPlan ?? entry.originalPlan);
+  const largest = pickLargestHour(pickScheduledHours(entry));
   if (largest !== null) {
     const peakClock = formatClock(largest.startsAtMs, timeZone);
     if (peakClock !== null) {
@@ -288,17 +295,6 @@ export const formatPlanHistoryReceiptTimeline = (
 };
 
 // ─── Missed shortfall chip ────────────────────────────────────────────────────
-
-const sumPlannedKWh = (
-  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot | null,
-): number => {
-  if (snapshot === null) return 0;
-  let total = 0;
-  for (const hour of snapshot.hours) {
-    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
-  }
-  return total;
-};
 
 // Estimates the time shortfall as `windowMs × (remaining_gap / total_span)`
 // where `total_span` is the start→target distance the run was meant to cover.
@@ -349,7 +345,7 @@ const estimateTimeShortfall = (
 export const formatPlanHistoryShortfallChip = (
   entry: Pick<
     ResolvedDeferredObjectivePlanHistoryEntry,
-    'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
+    'outcome' | 'deliveredKWh' | 'initialEnergyExpectedKWh'
     | 'startProgressValue' | 'finalProgressValue' | 'targetValue'
     | 'progressDirection' | 'objectiveKind'
     | 'startedAtMs' | 'deadlineAtMs'
@@ -357,12 +353,21 @@ export const formatPlanHistoryShortfallChip = (
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
   const parts: string[] = [];
-  // An energy task's target IS an amount of energy, so the chip divides by it,
-  // as the live hero does; the postmortem sentence on the same screen states
-  // the shortfall against it too.
-  const plannedTotal = entry.objectiveKind === 'energy' && entry.targetValue !== null
+  // The denominator is what the run committed to need. An energy task's target
+  // IS an amount of energy, so the chip divides by it, as the live hero does;
+  // the postmortem sentence on the same screen states the shortfall against it
+  // too. Any other task's is the requirement the recorder captured once, before
+  // anything was delivered (`initialEnergyExpectedKWh`).
+  //
+  // Never the scheduled hours. Every `:58` re-plan books an under-delivered
+  // hour's shortfall into later hours, so the sum of hour-start bookings counts
+  // that energy again (a starved run booked 3, 3, 4, 7 would read "Delivered
+  // 4.0 of 17.0 kWh"), and the final revision holds only the last hour's
+  // remainder. With no captured need, the chip shows the bare delivered figure.
+  const committedKWh = entry.objectiveKind === 'energy'
     ? entry.targetValue
-    : sumPlannedKWh(entry.finalPlan ?? entry.originalPlan);
+    : entry.initialEnergyExpectedKWh ?? null;
+  const plannedTotal = committedKWh !== null && Number.isFinite(committedKWh) ? committedKWh : 0;
   const hasDelivery = typeof entry.deliveredKWh === 'number'
     && Number.isFinite(entry.deliveredKWh);
   if (hasDelivery && plannedTotal > 0 && entry.deliveredKWh! < plannedTotal) {
@@ -370,14 +375,13 @@ export const formatPlanHistoryShortfallChip = (
     // round to "0 kWh" and read as zero delivery, and so the chip matches the
     // toFixed(1) precision the abandoned-details + receipt rows already use.
     //
-    // The "of {plannedTotal}" denominator is the energy the plan *scheduled*,
-    // not the energy needed to reach the temperature/charge target. On a heat
-    // run that lost heat faster than planned (or stayed on longer than the
-    // schedule reserved), delivery can exceed the scheduled total while the
-    // target is still missed — so "Delivered 14.2 of 9.9 kWh · short ≈ 49 min"
-    // reads as a >100% contradiction. When delivery already meets/exceeds the
-    // scheduled total, energy wasn't the limiting factor: drop the denominator
-    // and show the bare delivered figure rather than a ratio over 100%.
+    // The requirement is a mean estimate, not the energy that turned out to be
+    // needed. On a heat run that lost heat faster than estimated, delivery can
+    // exceed it while the target is still missed — so "Delivered 14.2 of 9.9
+    // kWh · short ≈ 49 min" reads as a >100% contradiction. When delivery
+    // already meets/exceeds the committed need, energy wasn't the limiting
+    // factor: drop the denominator and show the bare delivered figure rather
+    // than a ratio over 100%.
     parts.push(formatReceiptDeliveredOf(entry.deliveredKWh!.toFixed(1), plannedTotal.toFixed(1)));
   } else if (hasDelivery) {
     parts.push(formatReceiptDeliveredBare(entry.deliveredKWh!.toFixed(1)));

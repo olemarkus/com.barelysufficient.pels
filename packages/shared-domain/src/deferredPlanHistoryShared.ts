@@ -70,3 +70,52 @@ export const pickLastPlan = (
   // finalized before the planner replanned (no finalPlan recorded).
   entry.finalPlan ?? entry.originalPlan
 );
+
+// One scheduled hour as the history readers and the run-band producer
+// (`resolveRunBands`, live plans included) read it. `coversFromMs` only comes
+// from a revision's hours. A booking covers its whole hour; for the run's first
+// hour the run-band producer clamps that to the window start.
+export type ScheduledHistoryHour = Pick<
+  DeferredObjectivePlanHistoryRevisionSnapshot['hours'][number],
+  'startsAtMs' | 'plannedKWh' | 'coversFromMs'
+>;
+
+/**
+ * The hours a finished run had scheduled, with what each booked: the per-hour
+ * answer the chart's run bands, the receipt's largest planned hour and the
+ * logged planned total read. The hourly strip reads the same record.
+ *
+ * It is a per-hour view, not the run's need. A `:58` re-plan books an
+ * under-delivered hour's shortfall into later hours, so a sum over these hours
+ * counts that energy again; compare delivery against `initialEnergyExpectedKWh`.
+ *
+ * The source is each hour's booking at its start (`hourStartBookings`). The
+ * final revision cannot answer this: every hourly re-plan drops the hours that
+ * have elapsed, so by the end it holds only what was still ahead, and the
+ * current hour's booking has shrunk to its remainder — an overnight charging
+ * run read back as one hour of 0.03 kWh. Hours the plan in force booked
+ * nothing for stay in the list at zero; callers count only positive bookings.
+ *
+ * An entry without the record (finalized before it shipped, or a run that
+ * never had a plan) falls back to the hours of the planner's last word
+ * (`pickLastPlan`), today's reading for those entries. `null` means no plan was
+ * recorded at all.
+ */
+export const pickScheduledHours = (
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'hourStartBookings' | 'finalPlan' | 'originalPlan'>,
+): readonly ScheduledHistoryHour[] | null => {
+  if (entry.hourStartBookings !== undefined) {
+    return entry.hourStartBookings.map((booking) => ({ startsAtMs: booking.atMs, plannedKWh: booking.bookedKWh }));
+  }
+  return pickLastPlan(entry)?.hours ?? null;
+};
+
+// Sum of the positive bookings in a schedule (see `pickScheduledHours`). With
+// hour-start bookings this includes energy re-booked after a short hour.
+export const sumScheduledKWh = (hours: readonly ScheduledHistoryHour[]): number => {
+  let total = 0;
+  for (const hour of hours) {
+    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
+  }
+  return total;
+};

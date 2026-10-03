@@ -62,6 +62,8 @@ describe('planHistoryStore', () => {
       costDisplay: { unit: 'kr', divisor: 100 },
       deliveryPriceComplete: true,
       hourlyContributions: [{ atMs: 0, deliveredKWh: 1.25, priceValue: 0.4, tone: 'cheap' }],
+      // Hours whose start the run saw, zero bookings included, round-trip as saved.
+      hourStartBookings: [{ atMs: 0, bookedKWh: 2 }, { atMs: 3_600_000, bookedKWh: 0 }],
     };
 
     expect(store.readMeteredDelivery()).toEqual([]);
@@ -82,7 +84,26 @@ describe('planHistoryStore', () => {
     };
     db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
       .run('dev|10000', JSON.stringify(legacy));
-    expect(store.readMeteredDelivery()).toEqual([{ ...legacy, commitment: { kind: 'unknown' }, deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } } }]);
+    expect(store.readMeteredDelivery()).toEqual([{
+      ...legacy,
+      commitment: { kind: 'unknown' },
+      deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+      // A row saved before hour-start bookings existed has none captured.
+      hourStartBookings: [],
+    }]);
+  });
+
+  it('quarantines an in-progress row whose hour-start bookings are malformed', () => {
+    const { db, store } = open();
+    const row = {
+      deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+      commitment: { kind: 'unknown' }, deviceId: 'dev', deadlineAtMs: 10_000, startedAtMs: 1_000,
+      deliveredKWh: 0, totalCost: 0, costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [],
+      hourStartBookings: [{ atMs: 0, bookedKWh: -1 }],
+    };
+    db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
+      .run('dev|10000', JSON.stringify(row));
+    expect(store.readMeteredDelivery()).toEqual([]);
   });
 
   it('answers null while empty, and round-trips a history one row per entry, oldest first', () => {

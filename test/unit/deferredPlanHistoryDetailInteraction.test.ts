@@ -288,6 +288,20 @@ describe('resolveHistoryStripReadout', () => {
     expect(readout.rows[0]!.secondary).toBe(HISTORY_STRIP_PLANNED_NOT_RUN);
   });
 
+  it('never blames a plan change for an hour that still had its booking when it began', () => {
+    // With the per-hour record, an outlined hour was booked at its start; its
+    // absence from the final plan only means it had passed by the last re-plan.
+    const readout = resolveRows(stripEntry({
+      hourStartBookings: [
+        { atMs: START_MS, bookedKWh: 1.0 },
+        { atMs: START_MS + HOUR_MS, bookedKWh: 0.8 },
+        { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 1.2 },
+      ],
+    }));
+    expect(readout.rows[0]!.primary).toBe('19:00 · 1.0 kWh planned');
+    expect(readout.rows[0]!.secondary).toBe(HISTORY_STRIP_PLANNED_NOT_RUN);
+  });
+
   it('falls back to the neutral line when the hour stayed in the final plan but never ran', () => {
     // 22:00 (index 3) is booked by BOTH plans but received no delivery —
     // there is no replan to attribute, so the neutral line renders.

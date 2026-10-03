@@ -8,6 +8,7 @@ import type {
 import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanTrajectory,
+  DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRecord,
@@ -44,6 +45,7 @@ import {
 } from './planHistoryInProgressState';
 import { randomUUID } from 'node:crypto';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
+import { captureHourStartBooking, mergeHourStartBookings } from './planHistoryHourStartBookings';
 
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -284,7 +286,7 @@ export class DeferredObjectivePlanHistoryRecorder {
           targetValue: diag.evaluation.requestedTarget,
           completion: diag.evaluation.completion.kind, evidence: this.deps.getStallClassification(diag.deviceId) });
       }
-      this.inProgress.set(key, settled);
+      this.storeWithHourStartBooking(key, settled, plan, nowMs);
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
@@ -320,7 +322,20 @@ export class DeferredObjectivePlanHistoryRecorder {
     // on its first tick and stick until finalization. The next tick — where
     // the classifier has had a chance to re-evaluate against the actual
     // current objective — handles promotion through the `existing` branch.
-    this.inProgress.set(key, next);
+    // The hour-start capture runs after the restore so a restart inside an
+    // hour the run already recorded keeps that hour's saved booking.
+    this.storeWithHourStartBooking(key, next, plan, nowMs);
+  }
+
+  // Store a run's record after recording the current hour's booking. A newly
+  // recorded hour is in-progress state to save, so it marks the recorder dirty
+  // itself rather than relying on the delivery tick to.
+  private storeWithHourStartBooking(
+    key: InProgressKey, record: InProgressRecord, plan: DeferredObjectiveActivePlanV1 | undefined, nowMs: number,
+  ): void {
+    const captured = captureHourStartBooking(record, plan, nowMs);
+    if (captured !== record) this.dirty = true;
+    this.inProgress.set(key, captured);
   }
 
   /**
@@ -590,6 +605,7 @@ export class DeferredObjectivePlanHistoryRecorder {
           costDisplay: record.costDisplay,
           deliveryPriceComplete: record.deliveryPriceComplete,
           hourlyContributions: record.hourlyContributions.slice(),
+          hourStartBookings: record.hourStartBookings.slice(),
         }));
     return [...restored, ...active];
   }
@@ -625,6 +641,7 @@ const mergeMeteredDelivery = (
     hasDeliveryContribution: true,
     deliveryPriceComplete: state.deliveryPriceComplete && record.deliveryPriceComplete,
     hourlyContributions,
+    hourStartBookings: mergeHourStartBookings(state.hourStartBookings, record.hourStartBookings),
   };
 };
 

@@ -1,10 +1,15 @@
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 import type { TaskDeliveryCause } from '../../contracts/src/taskDelivery';
+import { pickScheduledHours, sumScheduledKWh } from './deferredPlanHistoryShared';
 
 export type DeferredPlanHistoryMissCause = TaskDeliveryCause | 'legacy_unrecorded';
 export type DeferredPlanHistoryMissAttribution = {
   cause: DeferredPlanHistoryMissCause | null;
   contributors: TaskDeliveryCause[];
+  // Sum of each hour's booking at its start (`pickScheduledHours`), including
+  // energy re-booked after a short hour: a `:58` re-plan moves an hour's
+  // shortfall into later hours, so it can exceed what the run needed (that is
+  // `initialEnergyExpectedKWh`). Telemetry only.
   plannedKWh: number | null;
   deliveredKWh: number | null;
   planningSpeedKw: number | null;
@@ -13,7 +18,7 @@ export type DeferredPlanHistoryMissAttribution = {
   dailyBudgetExhaustedBucketCount: number;
 };
 type AttributionEntry = Pick<ResolvedDeferredObjectivePlanHistoryEntry,
-  'outcome' | 'deliveryExplanation' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'>;
+  'outcome' | 'deliveryExplanation' | 'deliveredKWh' | 'finalPlan' | 'originalPlan' | 'hourStartBookings'>;
 
 const resolveRecordedCause = (entry: AttributionEntry): DeferredPlanHistoryMissCause | null => {
   if (entry.outcome !== 'missed') return null;
@@ -28,11 +33,12 @@ export const resolveDeferredPlanHistoryMissAttribution = (
 ): DeferredPlanHistoryMissAttribution => {
   const snapshot = entry.finalPlan ?? entry.originalPlan;
   const evidence = entry.deliveryExplanation;
+  const scheduled = pickScheduledHours(entry);
 
   return {
     cause: resolveRecordedCause(entry),
     contributors: evidence.kind === 'recorded' ? evidence.contributors : [],
-    plannedKWh: snapshot === null ? null : snapshot.hours.reduce((sum, hour) => sum + hour.plannedKWh, 0),
+    plannedKWh: scheduled === null ? null : sumScheduledKWh(scheduled),
     deliveredKWh: entry.deliveredKWh ?? null,
     planningSpeedKw: snapshot?.planningSpeedKw ?? null,
     rateConfidence: snapshot?.rateConfidence ?? null,
