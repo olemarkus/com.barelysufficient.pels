@@ -8,7 +8,8 @@
  * policy, and query helpers.
  *
  * One query primitive is exposed for a step's learned power. Samples are
- * accepted only inside the configured step band, so learned values never
+ * accepted only inside the configured step band (above the step floor and the
+ * rung beneath, at or below the step's nameplate), so learned values never
  * exceed the configured step ceiling.
  */
 
@@ -27,6 +28,35 @@ import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
  */
 export const POWER_CALIBRATION_VERSION: PowerCalibrationVersion = 1;
 
+/**
+ * The persisted value: the snapshot plus `stepFloorApplied`, the mark a build
+ * that rejects samples below the step floor writes alongside it.
+ *
+ * Earlier builds accepted any draw above 10 % of the step's nameplate, and a
+ * stepped device's lowest rung has no rung beneath to guard it (their anomaly
+ * gate, `|x - mu| > 3 mu`, could only ever reject a high sample). A charger's
+ * lowest rung learned its trickle and paused draws: a 6 A rung (1.38 kW)
+ * settled at 0.79 kW while the car drew 1.13-1.36 kW. A value without the mark
+ * still loads, but every step learned below
+ * {@link LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO} of the nameplate it was
+ * learned against is dropped so it relearns from nameplate under the current
+ * gates; a legitimately low step, such as a single-phase car on a charger
+ * configured three-phase, relearns once too.
+ *
+ * A mark and not a version bump, because earlier builds read only `version: 1`
+ * and treat anything else as no calibration at all: installing one (a branch
+ * build on the same Homey) would then overwrite every learned step. They ignore
+ * the mark instead and write the value back without it, so on the way back the
+ * reset runs again over whatever they learned, which is the right answer.
+ */
+export type PersistedPowerCalibrationValue = PowerCalibrationSnapshot & { stepFloorApplied: true };
+
+export function toPersistedPowerCalibrationValue(snapshot: PowerCalibrationSnapshot): PersistedPowerCalibrationValue {
+  return { ...snapshot, stepFloorApplied: true };
+}
+
+const LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO = 0.8;
+
 export function createEmptyPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
   return { version: POWER_CALIBRATION_VERSION, devices: {} };
 }
@@ -38,7 +68,17 @@ const CONFIDENCE_MIN_SUSTAINED_SECONDS = 300;
 const DEFAULT_FRESHNESS_WINDOW_MS = 60_000;
 const SUSTAINED_SECONDS_GAP_CAP_MS = 60_000;
 const NAMEPLATE_TOLERANCE_RATIO = 0.02;
-const ANOMALY_MULTIPLIER = 3;
+/**
+ * A draw below this share of the step's nameplate is not that step's power. 30 %
+ * and not higher: a single-phase car on a charger configured three-phase draws
+ * about a third of nameplate and must stay learnable at the lowest rung.
+ *
+ * With the nameplate ceiling this bounds every accepted sample to a band under
+ * 3.4x wide, so there is no anomaly gate around the learned power: a ratio wide
+ * enough to admit the band could never fire, and a narrower one would freeze a
+ * step whose load really changed (another car on the same charger).
+ */
+const STEP_FLOOR_NAMEPLATE_RATIO = 0.3;
 const RECENT_DRAW_DEFAULT_MIN_KW = 0.05;
 
 export type RecordSampleInput = {
@@ -57,8 +97,8 @@ export type RecordSampleSkipReason =
   | 'stale_observation'
   | 'below_floor'
   | 'below_lower_step'
-  | 'above_step_ceiling'
-  | 'anomaly';
+  | 'below_step_floor'
+  | 'above_step_ceiling';
 
 export type RecordSampleOutcome =
   | {
@@ -88,27 +128,86 @@ export type HasRecentDrawAtParams = {
   nameplateKw?: number;
 };
 
+/** A step the step-floor reset dropped, as it was persisted. */
+export type LegacyStepReset = {
+  deviceId: string;
+  stepId: string;
+  observedKw: number;
+  nameplateAtSampleKw: number;
+};
+
+/**
+ * What a persisted calibration value read as. `upgraded` is a value without the
+ * step-floor mark ({@link PersistedPowerCalibrationValue}) with the step reset
+ * applied: the stored bytes still lack the mark (and may hold steps it dropped),
+ * so the store must write it back. `loaded` covers every other read, including
+ * absent, malformed and unknown-version values, which load as empty.
+ */
+export type PersistedPowerCalibration =
+  | { kind: 'loaded'; snapshot: PowerCalibrationSnapshot }
+  | { kind: 'upgraded'; snapshot: PowerCalibrationSnapshot; resetSteps: LegacyStepReset[] };
+
 /**
  * Returns a defensively-typed snapshot. Unknown shapes degrade to an empty
  * snapshot rather than throwing; partial step records are dropped silently.
- * Use this whenever a snapshot crosses a persistence boundary.
+ * A value without the step-floor mark comes back `upgraded`, with the step
+ * reset applied. Use this whenever a snapshot crosses a persistence boundary.
  */
-export function normalizePowerCalibrationSnapshot(value: unknown): PowerCalibrationSnapshot {
-  if (!isRecord(value)) return createEmptyPowerCalibrationSnapshot();
+export function normalizePersistedPowerCalibration(value: unknown): PersistedPowerCalibration {
+  const empty: PersistedPowerCalibration = { kind: 'loaded', snapshot: createEmptyPowerCalibrationSnapshot() };
+  if (!isRecord(value)) return empty;
   const versionRaw = (value as { version?: unknown }).version;
-  if (versionRaw !== POWER_CALIBRATION_VERSION) return createEmptyPowerCalibrationSnapshot();
+  if (versionRaw !== POWER_CALIBRATION_VERSION) return empty;
   const devicesRaw = (value as { devices?: unknown }).devices;
-  if (!isRecord(devicesRaw)) return createEmptyPowerCalibrationSnapshot();
+  if (!isRecord(devicesRaw)) return empty;
 
   const entries = Object.entries(devicesRaw).flatMap(([deviceId, deviceRaw]) => {
     if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
     const normalized = normalizeDeviceCalibration(deviceRaw);
     return normalized ? [[deviceId, normalized] as const] : [];
   });
-  return {
+  const snapshot: PowerCalibrationSnapshot = {
     version: POWER_CALIBRATION_VERSION,
     devices: Object.fromEntries(entries),
   };
+  if ((value as { stepFloorApplied?: unknown }).stepFloorApplied !== true) {
+    return resetUnderLearnedLegacySteps(snapshot);
+  }
+  return { kind: 'loaded', snapshot };
+}
+
+/**
+ * Drop every step a build without the step floor learned below
+ * {@link LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO} of its nameplate. Device
+ * entries survive with whatever steps remain (possibly none), as the normaliser
+ * keeps them, so `lastTouchedMs` retention is unchanged.
+ */
+function resetUnderLearnedLegacySteps(snapshot: PowerCalibrationSnapshot): PersistedPowerCalibration {
+  const resetSteps = Object.entries(snapshot.devices).flatMap(([deviceId, device]) => (
+    Object.entries(device.steps)
+      .filter(([, step]) => isUnderLearnedLegacyStep(step))
+      .map(([stepId, step]) => ({
+        deviceId,
+        stepId,
+        observedKw: step.observedKw,
+        nameplateAtSampleKw: step.nameplateAtSampleKw,
+      }))
+  ));
+  const devices = Object.entries(snapshot.devices).map(([deviceId, device]) => [deviceId, {
+    steps: Object.fromEntries(
+      Object.entries(device.steps).filter(([, step]) => !isUnderLearnedLegacyStep(step)),
+    ),
+    lastTouchedMs: device.lastTouchedMs,
+  }] as const);
+  return {
+    kind: 'upgraded',
+    snapshot: { version: POWER_CALIBRATION_VERSION, devices: Object.fromEntries(devices) },
+    resetSteps,
+  };
+}
+
+function isUnderLearnedLegacyStep(step: StepCalibration): boolean {
+  return step.observedKw < LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO * step.nameplateAtSampleKw;
 }
 
 export function recordSample(
@@ -128,10 +227,6 @@ export function recordSample(
       previousNameplateKw: existingStep.nameplateAtSampleKw,
       nextNameplateKw: input.nameplateKw,
     });
-
-  if (!shouldReset && existingStep !== undefined && isAnomalousSample(existingStep, input)) {
-    return { accepted: false, snapshot, reason: 'anomaly' };
-  }
 
   const baseStep: StepCalibration = (shouldReset || existingStep === undefined)
     ? buildResetStep(input)
@@ -286,6 +381,7 @@ function evaluateRecordSampleGates(params: {
   if (isStaleObservation(input, config.freshnessWindowMs)) return 'stale_observation';
   if (isBelowActiveFloor(input, config.minActiveFloorKw)) return 'below_floor';
   if (isBelowLowerStep(input)) return 'below_lower_step';
+  if (isBelowStepFloor(input)) return 'below_step_floor';
   if (isAboveStepCeiling(input)) return 'above_step_ceiling';
   return null;
 }
@@ -313,6 +409,17 @@ function isBelowLowerStep(input: RecordSampleInput): boolean {
     && input.measuredPowerKw <= input.lowerStepCeilingKw;
 }
 
+/**
+ * A draw under {@link STEP_FLOOR_NAMEPLATE_RATIO} of the step's nameplate is a
+ * paused, trickling or ramping device that still reports the step. A higher
+ * rung is usually guarded tighter by the rung beneath (`isBelowLowerStep`,
+ * checked first, so the reason there is unchanged); the lowest rung has only
+ * this and the active floor.
+ */
+function isBelowStepFloor(input: RecordSampleInput): boolean {
+  return input.measuredPowerKw < STEP_FLOOR_NAMEPLATE_RATIO * input.nameplateKw;
+}
+
 function isAboveStepCeiling(input: RecordSampleInput): boolean {
   return input.measuredPowerKw > input.nameplateKw;
 }
@@ -336,11 +443,6 @@ function isStepUsableForNameplate(
     previousNameplateKw: step.nameplateAtSampleKw,
     nextNameplateKw: nameplateKw,
   });
-}
-
-function isAnomalousSample(step: StepCalibration, input: RecordSampleInput): boolean {
-  if (!isConfident(step)) return false;
-  return Math.abs(input.measuredPowerKw - step.observedKw) > ANOMALY_MULTIPLIER * step.observedKw;
 }
 
 function buildResetStep(input: RecordSampleInput): StepCalibration {
@@ -469,6 +571,6 @@ export const POWER_CALIBRATION_CONSTANTS = {
   DEFAULT_FRESHNESS_WINDOW_MS,
   SUSTAINED_SECONDS_GAP_CAP_MS,
   NAMEPLATE_TOLERANCE_RATIO,
-  ANOMALY_MULTIPLIER,
+  STEP_FLOOR_NAMEPLATE_RATIO,
   RECENT_DRAW_DEFAULT_MIN_KW,
 } as const;
