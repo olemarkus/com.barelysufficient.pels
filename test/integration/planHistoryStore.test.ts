@@ -53,15 +53,18 @@ describe('planHistoryStore', () => {
     const { db, store } = open();
     const state: PersistedMeteredDeliveryState = {
       deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
-      commitment: { kind: 'known', kwh: 5 },
+      // A run still learning (undelivered, with a trusted start) round-trips
+      // as learning with its anchor, not frozen as unknown.
+      commitment: { kind: 'learning', startProgressValue: 50 },
       deviceId: 'dev',
       deadlineAtMs: 10_000,
       startedAtMs: 1_000,
-      deliveredKWh: 1.25,
-      totalCost: 0.5,
+      startProgressValue: 50,
+      deliveredKWh: 0,
+      totalCost: 0,
       costDisplay: { unit: 'kr', divisor: 100 },
       deliveryPriceComplete: true,
-      hourlyContributions: [{ atMs: 0, deliveredKWh: 1.25, priceValue: 0.4, tone: 'cheap' }],
+      hourlyContributions: [{ atMs: 0, deliveredKWh: 0, priceValue: 0.4, tone: 'cheap' }],
       // Hours whose start the run saw, zero bookings included, round-trip as saved.
       hourStartBookings: [{ atMs: 0, bookedKWh: 2 }, { atMs: 3_600_000, bookedKWh: 0 }],
     };
@@ -88,7 +91,9 @@ describe('planHistoryStore', () => {
       ...legacy,
       commitment: { kind: 'unknown' },
       deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
-      // A row saved before hour-start bookings existed has none captured.
+      // A row saved before these fields existed: no trusted start, no
+      // hour-start bookings captured.
+      startProgressValue: null,
       hourStartBookings: [],
     }]);
   });
