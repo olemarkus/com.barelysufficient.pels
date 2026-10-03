@@ -2,6 +2,7 @@ import { EMPTY_DELIVERY_EVIDENCE } from './deliveryEvidence';
 import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { MeteredRunCommitment } from './planHistoryMeteredState';
+import type { TaskEvaluation } from './taskEvaluation';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -35,9 +36,16 @@ import { randomUUID } from 'node:crypto';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
 
-// Only a newly observed run may learn its original requirement before delivery.
-// Restored unknown requirements stay unknown: a later estimate is not the original.
-type InProgressCommitment = MeteredRunCommitment | { kind: 'learning' };
+// A run learns its original requirement only from a point where nothing has
+// been delivered (`backfillCommitment`). Restored known and unknown
+// requirements stay as saved: a later estimate is not the original. A run saved
+// while still learning resumes as `resumed_learning`, carrying the trusted
+// start progress it had before the restart, because a restart adds a second
+// way to have moved unseen (`resumeSavedCommitment` in `planHistoryMeteredRun.ts`).
+export type InProgressCommitment =
+  | Exclude<MeteredRunCommitment, { kind: 'learning' }>
+  | { kind: 'learning' }
+  | { kind: 'resumed_learning'; startProgressValue: number };
 
 export type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
@@ -420,9 +428,9 @@ const backfillStartProgress = (
 // power to be valid, so it produces credible samples, learns a rate, and
 // resolves a requirement — the question is only when, not whether.
 //
-// Only learning runs can capture a requirement; known and restored unknown values stay fixed.
-// The first answer wins: this is the energy the run set
-// out to need, not a later remainder.
+// Only learning runs, including one resumed after a restart, can capture a
+// requirement; known and unknown values stay fixed. The first answer wins: this
+// is the energy the run set out to need, not a later remainder.
 //
 // Gated on no positive energy having been delivered yet, and that gate is
 // load-bearing. A trusted 0 kW interval is still an exact delivery observation,
@@ -430,24 +438,65 @@ const backfillStartProgress = (
 // `resolveCommitment` reads `remainingUnits` as of the cycle it is asked, so
 // once the device has already made progress the answer is a REMAINDER, not the
 // run's total requirement — while `deliveredKWh` keeps accumulating from the
-// run's start. Comparing the two would inflate the ratio and mislabel a run that
-// delivered less than it needed as `energy_underestimate`: precisely the
-// cumulative-vs-remainder confusion this whole change exists to remove, and the
-// backfill would have reintroduced it one layer down.
+// run's start. The commitment's readers set the two side by side: the
+// budget-damage sizing prices a budget-caused miss as committed minus delivered
+// (`lib/weather/deadlineMissBudgetDay.ts`), and the Missed shortfall chip reads
+// "Delivered X of Y kWh". A remainder would understate both.
 //
 // So the commitment is only stated from a point where nothing has been
 // delivered. A run that was still learning when delivery began keeps no
-// commitment, the delivered-vs-committed comparison is declined, and the
-// attribution lands on `low_confidence` — "Still learning this device's energy
-// use." — which is the honest thing to say about a run whose requirement PELS
-// never got to measure from the start.
+// commitment, and its readers decline rather than substitute another figure.
+//
+// A restart adds a second way to have moved unseen: energy delivered while
+// PELS was down is never metered, so a run resumed while learning
+// (`resumed_learning`) passes `hasMovedSinceResumedStart` as well. The
+// zero-delivery gate above still covers what was metered on both sides of the
+// restart, since the restored delivery is summed into `deliveredKWh`.
 const backfillCommitment = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
 ): InProgressCommitment => {
-  if (record.commitment.kind !== 'learning') return record.commitment;
+  const { commitment } = record;
+  if (commitment.kind === 'known' || commitment.kind === 'unknown') return commitment;
   if (record.deliveredKWh > 0) return { kind: 'unknown' };
-  return resolveCommitment(diag);
+  if (commitment.kind === 'resumed_learning') {
+    const { progress } = diag.evaluation;
+    // For the type only: this runs on plannable or satisfied ticks, and the
+    // producer allocates a plan or accepts completion only from known progress
+    // (`buildAllocatedTaskEvaluation`, `completionFromDiagnostic`).
+    if (progress.kind !== 'known') return commitment;
+    if (hasMovedSinceResumedStart(commitment.startProgressValue, record.objectiveKind, progress)) {
+      return { kind: 'unknown' };
+    }
+  }
+  const resolved = resolveCommitment(diag);
+  // Still unresolved: keep the learning state, including its restart gate.
+  return resolved.kind === 'known' ? resolved : commitment;
+};
+
+// How far a resumed run's progress may move toward its target before a
+// requirement stated after the restart could be a remainder: a single sensor
+// tick is not progress. Owned here, by the restart gate.
+const RESTART_PROGRESS_DEADBAND: Record<DeferredObjectiveSettingsKind, number> = {
+  temperature: 0.5,
+  ev_soc: 1,
+  energy: 0.1,
+};
+
+// Has a run resumed while learning made progress since it started? Compares
+// the start progress saved before the restart with this cycle's trusted
+// reading. "Moved" is progress in the task's direction of at least the
+// per-kind deadband. A reading that fell back (a tank cooling while PELS was
+// down) is not progress, and the requirement read from it is no smaller than
+// the one the run started with. Known progress always carries its direction.
+const hasMovedSinceResumedStart = (
+  startProgressValue: number,
+  kind: DeferredObjectiveSettingsKind,
+  progress: Extract<TaskEvaluation['progress'], { kind: 'known' }>,
+): boolean => {
+  const change = progress.value - startProgressValue;
+  const towardTarget = progress.direction === 'increasing' ? change : -change;
+  return towardTarget >= RESTART_PROGRESS_DEADBAND[kind];
 };
 
 

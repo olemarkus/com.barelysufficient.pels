@@ -45,7 +45,8 @@ import {
 } from './planHistoryInProgressState';
 import { randomUUID } from 'node:crypto';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
-import { captureHourStartBooking, mergeHourStartBookings } from './planHistoryHourStartBookings';
+import { captureHourStartBooking } from './planHistoryHourStartBookings';
+import { mergeSavedRun, toPersistedMeteredDeliveryState } from './planHistoryMeteredRun';
 
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -299,7 +300,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       const recovered = startRecord(diag, nowMs, plan);
       if (recovered === null) return;
       this.pushObservedEntry(finalizeRecord(
-        restoreMeteredDelivery(recovered, restored),
+        mergeSavedRun(recovered, restored),
         nowMs,
         'deadline_passed',
       ));
@@ -310,7 +311,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     if (!next) return;
     const restored = this.restoredMeteredDeliveryByKey.get(key);
     if (restored !== undefined) {
-      next = restoreMeteredDelivery(next, restored);
+      next = mergeSavedRun(next, restored);
       this.restoredMeteredDeliveryByKey.delete(key);
     }
     // Deliberately skip stall promotion on first-seen records. The
@@ -583,7 +584,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (active === undefined) {
         this.restoreDeliveryState(state);
       } else {
-        this.inProgress.set(key, mergeMeteredDelivery(active, state));
+        this.inProgress.set(key, mergeSavedRun(active, state));
       }
     }
     this.trimEntries();
@@ -592,21 +593,7 @@ export class DeferredObjectivePlanHistoryRecorder {
 
   private buildMeteredDeliverySnapshot(): PersistedMeteredDeliveryState[] {
     const restored = [...this.restoredMeteredDeliveryByKey.values()];
-    const active = [...this.inProgress.values()].map((record) => ({
-          deviceId: record.deviceId,
-          deadlineAtMs: record.deadlineAtMs,
-          startedAtMs: record.startedAtMs,
-          deliveryEvidence: record.deliveryEvidence,
-          commitment: record.commitment.kind === 'learning'
-            ? { kind: 'unknown' as const }
-            : record.commitment,
-          deliveredKWh: record.deliveredKWh,
-          totalCost: record.totalCost,
-          costDisplay: record.costDisplay,
-          deliveryPriceComplete: record.deliveryPriceComplete,
-          hourlyContributions: record.hourlyContributions.slice(),
-          hourStartBookings: record.hourStartBookings.slice(),
-        }));
+    const active = [...this.inProgress.values()].map(toPersistedMeteredDeliveryState);
     return [...restored, ...active];
   }
 
@@ -616,34 +603,6 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.lastDeliveryTickByDeviceId.clear();
   }
 }
-
-const restoreMeteredDelivery = (
-  record: InProgressRecord,
-  state: PersistedMeteredDeliveryState,
-): InProgressRecord => mergeMeteredDelivery(record, state);
-
-const mergeMeteredDelivery = (
-  record: InProgressRecord,
-  state: PersistedMeteredDeliveryState,
-): InProgressRecord => {
-  let hourlyContributions = state.hourlyContributions.slice();
-  for (const contribution of record.hourlyContributions) {
-    hourlyContributions = appendHourlyContribution(hourlyContributions, contribution);
-  }
-  return {
-    ...record,
-    startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
-    deliveryEvidence: { ...state.deliveryEvidence, nonDelivery: { kind: 'none' } },
-    commitment: state.commitment,
-    deliveredKWh: state.deliveredKWh + record.deliveredKWh,
-    totalCost: state.totalCost + record.totalCost,
-    costDisplay: state.costDisplay ?? record.costDisplay,
-    hasDeliveryContribution: true,
-    deliveryPriceComplete: state.deliveryPriceComplete && record.deliveryPriceComplete,
-    hourlyContributions,
-    hourStartBookings: mergeHourStartBookings(state.hourStartBookings, record.hourStartBookings),
-  };
-};
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const mergeRecoveredEntries = (

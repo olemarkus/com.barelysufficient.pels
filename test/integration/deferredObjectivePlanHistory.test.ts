@@ -114,7 +114,9 @@ const makeDiag = (
   const evaluation: TaskEvaluation = overrides.evaluation ?? {
     ...inactiveTaskEvaluation(diag.deviceId, overrides.deadlineAtMs, targetValue),
     progress, completion,
-    planning: diag.horizonPlan !== undefined && diag.trajectory.kind === 'resolved'
+    // As the producer does, a plan is allocated only from known progress
+    // (`buildAllocatedTaskEvaluation`): an untrusted reading cannot plan.
+    planning: progress.kind === 'known' && diag.horizonPlan !== undefined && diag.trajectory.kind === 'resolved'
       && diag.trajectory.status !== 'invalid'
       ? { kind: 'allocated', plan: diag.horizonPlan }
       : { kind: 'inactive' },
@@ -2148,11 +2150,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
     });
 
+    // A row saved as unknown (including every row an older build saved for a
+    // run still learning) stays unknown, even where a row saved as learning
+    // would pass the restart gate: nothing delivered, progress unchanged.
     it('keeps a restored unknown commitment unknown after zero delivery and later ticks', () => {
       const deadlineAtMs = 20 * 60_000;
       const persisted = buildPersistDeps(undefined, [{
         deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
-        deviceId: 'dev', deadlineAtMs, startedAtMs: 0,
+        deviceId: 'dev', deadlineAtMs, startedAtMs: 0, startProgressValue: 50,
         commitment: { kind: 'unknown' }, deliveredKWh: 0, totalCost: 0,
         costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [],
       }]);
@@ -2165,6 +2170,203 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
       expect(persisted.saved()!.entries[0]!.initialEnergyExpectedKWh).toBeUndefined();
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBe(0);
+    });
+
+    describe('a run still learning when PELS restarts', () => {
+      // Regression, prod 2026-10-01/02: an EV task started ten minutes before a
+      // restart while its rate was still being learned. The run was saved as
+      // `unknown`, so it never captured its requirement after the restart.
+      // Main now saves every open run, so every run still learning at a
+      // restart lost its chance this way.
+      const learning = { energyNeededKWh: null, energyExpectedKWh: null };
+      const resolved = { energyNeededKWh: 5, energyExpectedKWh: 3 };
+      const deadlineAtMs = 2 * HOUR_MS;
+
+      const saveWhileLearning = (drawKw: number, overrides: Partial<Parameters<typeof makeDiag>[0]> = {}) => {
+        const persisted = buildPersistDeps();
+        const before = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+        tick(before, 0, deadlineAtMs, drawKw, { ...learning, ...overrides });
+        tick(before, 10 * 60_000, deadlineAtMs, drawKw, { ...learning, ...overrides });
+        expect(before.flushIfDirty()).toBe(true);
+        return persisted;
+      };
+
+      // Restart, then two post-restart ticks: the first restores the run, the
+      // second is the first cycle that can capture.
+      type DiagOverrides = Partial<Parameters<typeof makeDiag>[0]>;
+      const resumeAndFinish = (
+        persisted: ReturnType<typeof buildPersistDeps>,
+        afterRestart: DiagOverrides,
+        finish: [DiagOverrides, DiagOverrides] = [{ currentTemperatureC: 55 }, { currentTemperatureC: 58 }],
+      ) => {
+        const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+        tick(recorder, 15 * 60_000, deadlineAtMs, 0, { ...resolved, ...afterRestart });
+        tick(recorder, 20 * 60_000, deadlineAtMs, 2, { ...resolved, ...afterRestart });
+        recorder.flushIfDirty();
+        const savedCommitment = persisted.savedMeteredDelivery()[0]!.commitment;
+        tick(recorder, HOUR_MS, deadlineAtMs, 2, finish[0]);
+        tick(recorder, deadlineAtMs, deadlineAtMs, 0, finish[1]);
+        recorder.flushIfDirty();
+        return { savedCommitment, entry: persisted.saved()!.entries[0]! };
+      };
+
+      it('saves the run as learning with its start progress', () => {
+        const persisted = saveWhileLearning(0);
+        expect(persisted.savedMeteredDelivery()[0]).toMatchObject({
+          commitment: { kind: 'learning', startProgressValue: 50 }, startProgressValue: 50, deliveredKWh: 0,
+        });
+      });
+
+      it('captures the requirement when nothing was delivered and progress stood still', () => {
+        const { savedCommitment, entry } = resumeAndFinish(saveWhileLearning(0), {});
+        expect(savedCommitment).toEqual({ kind: 'known', kwh: 3 });
+        expect(entry).toMatchObject({ outcome: 'missed', initialEnergyExpectedKWh: 3, startProgressValue: 50 });
+      });
+
+      it('treats a reading that fell back while PELS was down as no progress', () => {
+        const { entry } = resumeAndFinish(saveWhileLearning(0), { currentTemperatureC: 49 });
+        expect(entry.initialEnergyExpectedKWh).toBe(3);
+      });
+
+      it('treats a rise below the restart deadband as a sensor tick, not progress', () => {
+        // 0.3 °C is under the 0.5 °C temperature deadband.
+        const { savedCommitment } = resumeAndFinish(saveWhileLearning(0), { currentTemperatureC: 50.3 });
+        expect(savedCommitment).toEqual({ kind: 'known', kwh: 3 });
+      });
+
+      it('saves a learning run that was delivered energy as unknown, and keeps it unknown', () => {
+        const persisted = saveWhileLearning(1);
+        // What the next plannable tick decides anyway; an older build rejects a
+        // `learning` row and would delete it with its delivery.
+        expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'unknown' });
+        expect(persisted.savedMeteredDelivery()[0]!.deliveredKWh).toBeCloseTo(1 / 6, 6);
+        const { savedCommitment, entry } = resumeAndFinish(persisted, {});
+        expect(savedCommitment).toEqual({ kind: 'unknown' });
+        expect(entry.initialEnergyExpectedKWh).toBeUndefined();
+      });
+
+      it('keeps the commitment unknown when progress moved while PELS was down', () => {
+        const { savedCommitment, entry } = resumeAndFinish(saveWhileLearning(0), { currentTemperatureC: 53 });
+        expect(savedCommitment).toEqual({ kind: 'unknown' });
+        expect(entry.initialEnergyExpectedKWh).toBeUndefined();
+        // The run began where it stood before the restart.
+        expect(entry.startProgressValue).toBe(50);
+      });
+
+      it('saves a learning run with no trusted start as unknown, and keeps it unknown', () => {
+        // Nothing could show after a restart that the run stood still while
+        // PELS was down, and a start adopted after it would measure only from
+        // the restart.
+        const persisted = saveWhileLearning(0, { reasonCode: 'objective_progress_stale' });
+        expect(persisted.savedMeteredDelivery()[0]).toMatchObject({
+          commitment: { kind: 'unknown' }, startProgressValue: null,
+        });
+        const { savedCommitment, entry } = resumeAndFinish(persisted, {});
+        expect(savedCommitment).toEqual({ kind: 'unknown' });
+        expect(entry.initialEnergyExpectedKWh).toBeUndefined();
+        // Nothing trusted before the restart, so the first trusted reading after it.
+        expect(entry.startProgressValue).toBe(50);
+      });
+
+      it('finalizes a learning run whose deadline passed while PELS was down, without a commitment', () => {
+        const persisted = buildPersistDeps(undefined, [{
+          deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+          deviceId: 'dev', deadlineAtMs, startedAtMs: 0, startProgressValue: 50,
+          commitment: { kind: 'learning', startProgressValue: 50 }, deliveredKWh: 0, totalCost: 0, costDisplay: null,
+          deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [{ atMs: 0, bookedKWh: 2 }],
+        }]);
+        const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+        // The first tick back is past the deadline; a requirement stated now is
+        // not one the run started with.
+        tick(recorder, deadlineAtMs + 10 * 60_000, deadlineAtMs, 0, resolved);
+        recorder.flushIfDirty();
+        const entry = persisted.saved()!.entries[0]!;
+        expect(entry).toMatchObject({
+          outcome: 'missed', startedAtMs: 0, startProgressValue: 50, deliveredKWh: 0,
+          hourStartBookings: [{ atMs: 0, bookedKWh: 2 }],
+        });
+        expect(entry.initialEnergyExpectedKWh).toBeUndefined();
+        expect(persisted.savedMeteredDelivery()).toEqual([]);
+      });
+
+      it('stale ticks after a restart cannot plan and leave the resumed learning state untouched', () => {
+        // An untrusted reading allocates no plan, so the tick is not plannable
+        // and the restart gate is not asked; the first trusted tick decides.
+        const persisted = saveWhileLearning(0);
+        const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+        const stale = { ...resolved, reasonCode: 'objective_progress_stale' as const };
+        tick(recorder, 15 * 60_000, deadlineAtMs, 0, stale);
+        tick(recorder, 20 * 60_000, deadlineAtMs, 0, stale);
+        recorder.flushIfDirty();
+        expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'learning', startProgressValue: 50 });
+        tick(recorder, 25 * 60_000, deadlineAtMs, 0, resolved);
+        recorder.flushIfDirty();
+        expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'known', kwh: 3 });
+      });
+
+      it('applies the restart gate to a run recovered after a failed boot read', () => {
+        const savedRun: PersistedMeteredDeliveryState = {
+          deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
+          deviceId: 'dev', deadlineAtMs, startedAtMs: 0, startProgressValue: 50,
+          commitment: { kind: 'learning', startProgressValue: 50 }, deliveredKWh: 0, totalCost: 0, costDisplay: null,
+          deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [],
+        };
+        let recovered = false;
+        let savedMetered: readonly PersistedMeteredDeliveryState[] = [];
+        const recorder = new DeferredObjectivePlanHistoryRecorder({
+          ...inertPlanHistoryDeps(),
+          load: () => (recovered
+            ? { snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [savedRun] }
+            : { snapshot: { version: 6, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] }),
+          save: (_history, states) => { savedMetered = states; return true; },
+        });
+        // The boot read failed, so the run starts afresh and states its
+        // requirement at once, from progress that has moved.
+        const moved = { ...resolved, currentTemperatureC: 53 };
+        tick(recorder, 15 * 60_000, deadlineAtMs, 0, moved);
+        tick(recorder, 16 * 60_000, deadlineAtMs, 0, moved);
+
+        recovered = true;
+        expect(recorder.flushIfDirty()).toBe(true);
+        expect(savedMetered).toHaveLength(1);
+        // The saved learning state and start replace the live capture.
+        expect(savedMetered[0]).toMatchObject({
+          startedAtMs: 0, startProgressValue: 50, commitment: { kind: 'learning', startProgressValue: 50 },
+        });
+
+        // The restart gate now applies: progress moved from the saved start.
+        tick(recorder, 20 * 60_000, deadlineAtMs, 0, moved);
+        recorder.flushIfDirty();
+        expect(savedMetered[0]!.commitment).toEqual({ kind: 'unknown' });
+      });
+
+      describe('an EV charge', () => {
+        // The production regression was an EV task: SoC in %, 1 % deadband.
+        const ev = (currentPercent: number): DiagOverrides => ({
+          objectiveKind: 'ev_soc',
+          objectiveId: 'dev:ev_soc',
+          targetTemperatureC: null,
+          currentTemperatureC: null,
+          targetPercent: 80,
+          currentPercent,
+        });
+        const finish: [DiagOverrides, DiagOverrides] = [ev(55), ev(67)];
+
+        it('captures the requirement after the restart when the SoC did not move', () => {
+          const persisted = saveWhileLearning(0, ev(40));
+          expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'learning', startProgressValue: 40 });
+          const { savedCommitment, entry } = resumeAndFinish(persisted, ev(40), finish);
+          expect(savedCommitment).toEqual({ kind: 'known', kwh: 3 });
+          expect(entry).toMatchObject({ outcome: 'missed', initialEnergyExpectedKWh: 3, startProgressValue: 40 });
+        });
+
+        it('stays unknown when the SoC rose by the deadband while PELS was down', () => {
+          const { savedCommitment, entry } = resumeAndFinish(saveWhileLearning(0, ev(40)), ev(41), finish);
+          expect(savedCommitment).toEqual({ kind: 'unknown' });
+          expect(entry.initialEnergyExpectedKWh).toBeUndefined();
+          expect(entry.startProgressValue).toBe(40);
+        });
+      });
     });
 
     it('restores accumulated metered delivery after a restart without billing the downtime', () => {
@@ -2494,7 +2696,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const savedRun: PersistedMeteredDeliveryState = {
         deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
         commitment: { kind: 'known', kwh: 5 },
-        deviceId: 'dev', deadlineAtMs, startedAtMs: H0, deliveredKWh: 0.5, totalCost: 0, costDisplay: null,
+        deviceId: 'dev', deadlineAtMs, startedAtMs: H0, startProgressValue: 50,
+        deliveredKWh: 0.5, totalCost: 0, costDisplay: null,
         deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [{ atMs: H0, bookedKWh: 3 }],
       };
       let recovered = false;

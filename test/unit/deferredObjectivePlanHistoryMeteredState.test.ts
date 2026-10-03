@@ -1,8 +1,9 @@
-// Unit tests for the persisted in-progress metered-delivery row's hour-start
-// bookings: the boundary that resolves a saved row (including rows saved by an
+// Unit tests for the persisted in-progress metered-delivery row (commitment, start
+// progress, hour-start bookings): the boundary that resolves a saved row (including rows saved by an
 // older build) into the state the plan-history recorder restores after a restart.
 import {
   isPersistedMeteredDeliveryState,
+  type MeteredRunCommitment,
   migrateMeteredDeliveryState,
   type PersistedMeteredDeliveryState,
 } from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
@@ -15,6 +16,7 @@ const state = (overrides: Partial<PersistedMeteredDeliveryState> = {}): Persiste
   deviceId: 'dev',
   deadlineAtMs: 6 * HOUR_MS,
   startedAtMs: 0,
+  startProgressValue: 50,
   deliveredKWh: 0,
   totalCost: 0,
   costDisplay: null,
@@ -58,5 +60,49 @@ describe('migrateMeteredDeliveryState hour-start bookings', () => {
       .toEqual(state().hourStartBookings);
     const malformed = migrateMeteredDeliveryState({ ...state(), hourStartBookings: 'none' });
     expect(isPersistedMeteredDeliveryState(malformed)).toBe(false);
+  });
+});
+
+describe('isPersistedMeteredDeliveryState commitment and start progress', () => {
+  it.each<[string, MeteredRunCommitment]>([
+    ['learning', { kind: 'learning', startProgressValue: 50 }],
+    ['known', { kind: 'known', kwh: 3 }],
+    ['unknown', { kind: 'unknown' }],
+  ])('accepts a %s commitment', (_label, commitment) => {
+    expect(isPersistedMeteredDeliveryState(state({ commitment }))).toBe(true);
+  });
+
+  it('accepts a run saved before any trusted progress reading', () => {
+    expect(isPersistedMeteredDeliveryState(state({ startProgressValue: null }))).toBe(true);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['an unknown commitment kind', { commitment: { kind: 'guessing' } }],
+    // A learning row is saved only with its start anchor.
+    ['a learning commitment with no anchor', { commitment: { kind: 'learning' } }],
+    ['a learning commitment with a null anchor', { commitment: { kind: 'learning', startProgressValue: null } }],
+    ['a negative known commitment', { commitment: { kind: 'known', kwh: -1 } }],
+    ['a non-finite start progress', { startProgressValue: Number.NaN }],
+    ['a missing start progress', { startProgressValue: undefined }],
+    ['a non-numeric start progress', { startProgressValue: 'fifty' }],
+  ])('rejects %s', (_label, overrides) => {
+    expect(isPersistedMeteredDeliveryState({ ...state(), ...overrides })).toBe(false);
+  });
+});
+
+describe('migrateMeteredDeliveryState commitment and start progress', () => {
+  it('resolves a row saved before start progress existed to an untrusted start', () => {
+    const { startProgressValue: _start, ...legacy } = state();
+    const migrated = migrateMeteredDeliveryState(legacy);
+    expect(migrated).toEqual({ ...legacy, startProgressValue: null });
+    expect(isPersistedMeteredDeliveryState(migrated)).toBe(true);
+  });
+
+  it('keeps a saved unknown commitment unknown and a saved learning one learning', () => {
+    const asState = (raw: unknown) => raw as PersistedMeteredDeliveryState;
+    expect(asState(migrateMeteredDeliveryState(state({ commitment: { kind: 'unknown' } }))).commitment)
+      .toEqual({ kind: 'unknown' });
+    expect(asState(migrateMeteredDeliveryState(state({ commitment: { kind: 'learning', startProgressValue: 50 } })))
+      .commitment).toEqual({ kind: 'learning', startProgressValue: 50 });
   });
 });

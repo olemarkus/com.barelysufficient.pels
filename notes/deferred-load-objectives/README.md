@@ -546,6 +546,21 @@ as an in-page route off `index.html`.):
   migration default), so its entry holds only post-upgrade hours and the readers take that
   list as complete (earlier hours read "Not scheduled", `plannedKWh` runs low, the coverage
   line is hidden).
+- The run's committed need, `initialEnergyExpectedKWh`, is captured once, on the first cycle
+  that can state it while nothing has been delivered (`backfillCommitment`); after delivery a
+  stated figure is a remainder. Its readers set it against delivery: budget-damage sizing of a
+  budget-caused miss (`lib/weather/deadlineMissBudgetDay.ts`) and the Missed shortfall chip.
+  Every open run is saved with the in-progress metered state and merged back after a restart
+  (`planHistoryMeteredRun.ts`, which owns both directions), the saved start, start progress,
+  commitment and bookings winning. A run still learning is saved as `learning`, carrying its
+  trusted start progress as the anchor; it is saved as `unknown` instead once energy was
+  delivered (which also keeps the row readable by an older build) or when it had no trusted
+  start. After a restart it resumes as `resumed_learning` and may still capture its
+  requirement, but only while restored plus live delivery is zero and its progress has not
+  moved toward the target by `RESTART_PROGRESS_DEADBAND` (`planHistoryInProgressState.ts`)
+  since that anchor: energy delivered while PELS was down is never metered. Once moved it is
+  unknown for good. Rows already saved as `unknown` (every learning run an older build saved)
+  stay unknown.
 - Entries are persisted to the userdata store, one row per entry (`planHistoryStore.ts`), with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders

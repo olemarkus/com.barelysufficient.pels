@@ -252,30 +252,43 @@ export type DeferredObjectivePlanHistoryEntry = {
   // "Target needed more energy than estimated" for a nine-hour run that was
   // capacity-bound throughout.
   //
+  // Read wherever a run's delivery is set against its need: the budget-damage
+  // sizing of a budget-caused miss (committed minus delivered,
+  // `lib/weather/deadlineMissBudgetDay.ts`) and the Missed shortfall chip's
+  // "Delivered X of Y kWh".
+  //
   // Filled on the FIRST cycle the producer can state it and frozen thereafter
   // (`backfillCommitment`), not only when the record is created — the recorder
   // starts a run on first sight of a future deadline "regardless of status",
   // which routinely lands inside the learning window before any profile has
-  // resolved.
+  // resolved. It is stated only while nothing has been delivered, since a later
+  // figure is a remainder. A run still learning when PELS restarts keeps
+  // learning across the restart, and may still state it afterwards while
+  // nothing has been delivered and its progress has not moved toward the target
+  // since the run started.
   //
   // Optional, and the reason is narrow enough to state exactly. A smart-task
   // device must have measured power to be valid; that yields credible profile
   // samples, which yield a learned rate, which yields a requirement. So a valid
   // run does not lack a commitment — it only lacks one for as long as the
-  // profile is still learning. Absence therefore means one of exactly two
-  // things:
+  // profile is still learning. Absence therefore means one of three things:
   //
   //   1. the entry predates this field (v4 shipped in v2.7.2; additive-optional
   //      needs no bump because the normalizer filters rather than reconstructs,
   //      so older clients round-trip it untouched), or
   //   2. the run finalized without the profile EVER resolving — a deadline
-  //      shorter than the learning window, or the `discoveredFrom: 'backfill'`
-  //      path, which synthesizes an entry with no live diagnostic at all.
+  //      shorter than the learning window, the `discoveredFrom: 'backfill'`
+  //      path, which synthesizes an entry with no live diagnostic at all, or a
+  //      run still learning whose deadline passed while PELS was down, or
+  //   3. PELS could not show the run had not moved when the requirement
+  //      resolved: energy had been delivered; progress was made across a
+  //      restart while PELS was not metering; the run had no trusted start
+  //      reading to compare against when it was saved; or the run was saved by
+  //      an older build, which saved every learning run as unknown.
   //
-  // Both are honestly "PELS never knew what this run needed", which is what the
-  // `low_confidence` attribution already says out loud ("Still learning this
-  // device's energy use."). Consumers decline the delivered-vs-committed
-  // comparison on absence — never substitute a different quantity for it.
+  // All three are honestly "PELS never knew what this run needed". Consumers
+  // decline the comparison on absence — never substitute a different quantity
+  // for it.
   initialEnergyExpectedKWh?: number;
   outcome: DeferredObjectivePlanOutcome;
   // When `outcome === 'met'` and absent, the run is interpreted as having

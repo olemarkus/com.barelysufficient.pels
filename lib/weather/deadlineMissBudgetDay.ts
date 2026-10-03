@@ -46,8 +46,9 @@ import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dat
  * almost its whole requirement. The contract says so at the field itself.
  *
  * EITHER figure being absent makes the answer unknowable, and unknowable is not
- * zero. An absent commitment means the run finalized without its profile ever
- * resolving; an absent delivery means the hourly feed was unavailable, or the
+ * zero. An absent commitment means PELS never knew what the run needed (the
+ * contract lists why, at `initialEnergyExpectedKWh`); an absent delivery means
+ * the hourly feed was unavailable, or the
  * entry predates the field. Reading a missing delivery as "delivered nothing"
  * would charge a task that may have received almost all of its energy the whole
  * commitment — up to a full `MAX_STEP_KWH` of pressure on a budget PELS then
