@@ -4506,6 +4506,8 @@ describe('stepped-load shed invariant', () => {
           boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
+          // Drawing its rung: a boosted climb is priced from what is flowing.
+          currentDrawKw: 2,
         }),
         buildPlanDevice({
           id: 'lower-priority',
@@ -4568,6 +4570,8 @@ describe('stepped-load shed invariant', () => {
             boostActive: true,
             selectedStepId: 'medium',
             desiredStepId: 'medium',
+            // Drawing its rung: a boosted climb is priced from what is flowing.
+            currentDrawKw: 2,
           }),
           // A stepped charger with no EV capabilities — the `target_power`
           // population, which boosts on SoC and has no plug-state. The boost is
@@ -4623,6 +4627,8 @@ describe('stepped-load shed invariant', () => {
           boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
+          // Drawing its rung: a boosted climb is priced from what is flowing.
+          currentDrawKw: 2,
         }),
         buildPlanDevice({
           id: 'lower-priority',
@@ -4658,6 +4664,8 @@ describe('stepped-load shed invariant', () => {
           boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
+          // Drawing its rung: a boosted climb is priced from what is flowing.
+          currentDrawKw: 2,
         }),
         buildPlanDevice({
           id: 'lower-priority',

@@ -7,13 +7,12 @@ import {
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { getLogger } from '../../logging/logger';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
-import { isSteppedLoadDevice, resolveStepPowerKw } from '../planSteppedLoad';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../../../packages/shared-domain/src/deviceControlProfiles';
-import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import { HEADROOM_RESERVE_MAX_MS } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from './reserve';
 
@@ -325,11 +324,11 @@ function resolveStartupPowerKw(device: DevicePlanDevice): number | null {
   if (isSteppedLoadDevice(device)) {
     const lowest = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
     if (!lowest) return null;
-    // Reserve what the step will ACTUALLY draw, not its nameplate: the same calibrated figure the
-    // admission gate downstream will judge against (`resolveStepPowerKw`). Reserving nameplate
-    // for a charger whose lowest step really pulls more just lets the block get nibbled anyway.
-    const admissionKw = resolveStepPowerKw(device, lowest.id);
-    return isFiniteNumber(admissionKw) && admissionKw > 0 ? admissionKw : null;
+    // The step's nameplate: the same figure the holder's own restore admission will judge its
+    // start against (`resolveStepChangeKw`). A learned figure is never above nameplate, so
+    // reserving it could only hold back less than the start needs; a charger whose `6a` rung had
+    // learned 0.79 kW against 1.38 kW nameplate would have had its block nibbled down to 0.79.
+    return lowest.planningPowerW / 1000;
   }
   return device.expectedPowerKw;
 }

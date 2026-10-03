@@ -64,9 +64,11 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  *
  * Kept deliberately separate from `PlanInputDevice` per the architecture
  * boundary (AGENTS.md: accept duplication when consolidation would cross a
- * layering boundary). `stepPowerCalibration` carries the one calibrated figure
- * per step that the controller reads — it sizes objective energy and reserves
- * physical capacity from the same number, because the store learns only one.
+ * layering boundary). `stepPowerCalibration` carries the one learned figure per
+ * step, and it sizes objective ENERGY only (`usefulPowerKw`, planning speed).
+ * Physical capacity is reserved at the step's nameplate (`admissionPowerKw`), the
+ * same price the planner puts on the rung; this layer is now the field's only
+ * reader.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */

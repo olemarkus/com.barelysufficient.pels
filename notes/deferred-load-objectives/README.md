@@ -275,8 +275,8 @@ the allocator actually applies stacks three caps via `Math.min`:
 
 - **Step capacity** — `step.usefulPowerKw × durationHours`, where `step` is the
   per-bucket-resolved floor step. For fully-reserved tasks, each bucket promotes
-  independently to the highest active step whose `usefulPowerKw` fits THAT bucket's
-  own `reservedHeadroomKw` forecast — generous-headroom hours commit at a higher step
+  independently to the highest active step whose `admissionPowerKw` (its nameplate)
+  fits THAT bucket's own `reservedHeadroomKw` forecast — generous-headroom hours commit at a higher step
   (e.g. `max`); tight-headroom hours stay at the lower step (or `activeSteps[0]` if even
   the min step exceeds the forecast). For non-fully-reserved tasks and single-step
   devices every bucket stays at `activeSteps[0]`. Bounded by the device's calibrated
@@ -1003,7 +1003,10 @@ both with the exact rate, see "Energy objectives"):
 For stepped loads, per-step useful kW comes from `resolveStepDeliveryUsefulKw`
 (`lib/objectives/deferredObjectives/objectiveStepPower.ts`), which prefers measured calibration
 (`lib/device/devicePowerCalibration.ts`) over nameplate planning power. That governs how the
-horizon planner sizes bucket allocation, not the `energyNeededKwh` computation itself.
+horizon planner sizes bucket allocation, not the `energyNeededKwh` computation itself. A step's
+`admissionPowerKw`, which fits it into capacity room and sizes the reservation a booking holds
+against lower-priority tasks, is the nameplate: the same price the planner's restore admission
+puts on the rung.
 
 #### Future rate-source preference (not the v1 path)
 

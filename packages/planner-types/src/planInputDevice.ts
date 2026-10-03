@@ -532,8 +532,13 @@ export type PlanInputDeviceBase = {
    * ONE number per step, not a band. It used to be a two-field view whose
    * fields were produced by the same function, which invited consumers to read
    * an "admission" and a "delivery" end that were always equal.
-   * Missing entries mean the planner should fall back to `planningPowerW`
-   * from the profile.
+   *
+   * Read by smart-task energy planning only (`ObjectiveDeviceInput`, which this
+   * device is assigned to structurally): how fast a rung delivers. The planner
+   * never reads it. Every capacity decision prices a rung at its profile
+   * `planningPowerW` (`resolveStepChangeKw`), because a learned figure is never
+   * above nameplate and an under-priced rung is admitted into room it does not
+   * fit. Missing entries mean the smart task falls back to `planningPowerW`.
    */
   stepPowerCalibration?: Record<string, number>;
   /**

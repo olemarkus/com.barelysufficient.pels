@@ -4653,10 +4653,12 @@ describe('buildSheddingPlan', () => {
       ...cycleArgs({
         devices: [
           // The `inc_26449fb9` stale-meter shape, one notch less stale: the
-          // reported 1.5 kW sits between `low`'s calibrated admission (1.193)
-          // and `medium`'s (1.671), so `max -> medium` prices at exactly zero
-          // while `max -> low` releases 0.307 kW. Stopping the ladder at the
-          // adjacent rung dropped this device from candidacy entirely.
+          // reported 1.5 kW sits between `low`'s nameplate (1.25) and
+          // `medium`'s (1.75), so `max -> medium` prices at exactly zero while
+          // `max -> low` releases 0.25 kW. Stopping the ladder at the adjacent
+          // rung dropped this device from candidacy entirely. The learned
+          // figures below are what the heater carried; capacity prices rungs at
+          // nameplate and does not read them.
           buildDevice({
             id: 'heater',
             name: 'Connected 300',

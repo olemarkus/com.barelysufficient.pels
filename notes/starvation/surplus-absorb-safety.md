@@ -118,7 +118,8 @@ expectedDraw + reserve`") is stated over a draw the device cannot change. The
 tracking modality chooses its draw, so the equivalent claim is:
 
 > the rung the allocator writes never costs more than `pool − reserve`, measured
-> in **calibrated admission power** (`resolveStepAdmissionKw`), not nameplate.
+> at the rung's **nameplate** (`planningPowerW`), the price every capacity
+> decision puts on a rung, not its learned power.
 
 `resolveHighestStepWithinKw` enforces exactly that, and `claimForTrackingDevice`
 subtracts the chosen rung from the running pool, so leg 3 (no two devices on the

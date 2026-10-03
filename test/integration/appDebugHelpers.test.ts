@@ -500,9 +500,6 @@ describe('appDebugHelpers', () => {
               currentTemperature: 18,
               plannedTarget: 21,
               control: fixtureControlPosture({ controllable: true }),
-              stepPowerCalibration: {
-                low: 1.2,
-              },
               reason: { code: 'keep', detail: null },
             },
           ],
@@ -553,9 +550,6 @@ describe('appDebugHelpers', () => {
         currentTarget: 18,
         plannedTarget: 21,
         reason: 'keep',
-        stepPowerCalibration: {
-          low: 1.2,
-        },
       }),
       powerCalibration: {
         lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),

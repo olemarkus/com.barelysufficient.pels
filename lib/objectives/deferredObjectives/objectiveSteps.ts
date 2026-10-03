@@ -5,15 +5,19 @@ import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { drawWhenActivelyDrawingKw } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
-// Grid draw for a step: the step's calibrated power when one exists, else the
-// nameplate. `null` when neither yields a usable figure — the caller then DROPS the
-// rung rather than planning with a made-up one.
+// Grid draw for a step: the step's NAMEPLATE, never its learned power. `null` when
+// the nameplate is not a usable figure — the caller then DROPS the rung rather than
+// planning with a made-up one.
 //
-// This reads the SAME calibrated figure as `resolveStepDeliveryUsefulKw`, because
-// the store learns one number per rung. So `admissionPowerKw` and `usefulPowerKw`
-// are equal for every ladder PELS builds today; they stay separate fields because
-// they diverge for a device with conversion loss or gain, not because the
-// calibration view distinguishes them.
+// This is the figure every capacity question asks about the rung: the bucket's
+// contended-room fit, the reservation a higher-priority booking holds against the
+// tasks behind it, and the committed step a fully-reserved hour climbs to. It is
+// the same price the planner's own restore admission puts on the rung
+// (`resolveStepChangeKw` in `lib/plan/planSteppedLoad.ts`), so a task cannot book
+// room the planner will then refuse. The learned figure is at or below nameplate
+// and can be polluted low (a charger's `6a` rung learned 0.79 kW from trickle
+// samples against a 1.38 kW nameplate, 2026-10-01), so it answers `usefulPowerKw`
+// — how fast energy lands — and nothing that fits a rung into room.
 //
 // `DeferredObjectiveStep.admissionPowerKw` promises finite and non-negative and
 // consumers now read it flat on that promise, so this is one of the two producers
@@ -26,15 +30,9 @@ import type { DeferredObjectiveStep } from './types';
 // nothing while delivering positive useful power passes every headroom check and
 // could be planned straight past the hard cap. Absence is absence — see the root
 // AGENTS.md ("never fabricate `0`") and `hard-cap-is-physical`.
-const resolveAdmissionPowerKw = (
-  device: ObjectiveDeviceInput,
-  stepId: string,
-  fallbackKw: number,
-): number | null => {
-  const calibrated = device.stepPowerCalibration?.[stepId];
-  if (typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0) return calibrated;
-  return Number.isFinite(fallbackKw) && fallbackKw >= 0 ? fallbackKw : null;
-};
+const resolveAdmissionPowerKw = (nameplateKw: number): number | null => (
+  Number.isFinite(nameplateKw) && nameplateKw >= 0 ? nameplateKw : null
+);
 
 // Drop a rung whose grid draw could not be resolved. A ladder is allowed to be
 // shorter than the device's nameplate profile; it is not allowed to contain a rung
@@ -58,7 +56,7 @@ const buildSyntheticChargeStep = (
 ): { id: string; usefulPowerKw: number; admissionPowerKw: number | null } => ({
   id: 'charge',
   usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', nameplateKw),
-  admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', nameplateKw),
+  admissionPowerKw: resolveAdmissionPowerKw(nameplateKw),
 });
 
 // Resolves the per-objective step list the horizon planner consumes. Stepped
@@ -77,7 +75,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
       return {
         id: step.id,
         usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, nameplateKw),
-        admissionPowerKw: resolveAdmissionPowerKw(device, step.id, nameplateKw),
+        admissionPowerKw: resolveAdmissionPowerKw(nameplateKw),
       };
     }));
   }
@@ -86,7 +84,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
     return withResolvedAdmission([{
       id: 'charge',
       usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning),
-      admissionPowerKw: resolveAdmissionPowerKw(device, 'charge', planning),
+      admissionPowerKw: resolveAdmissionPowerKw(planning),
     }]);
   }
   // The producer refused an incomplete stepped projection cluster. Answer

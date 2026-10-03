@@ -347,9 +347,14 @@ describe('planSteppedLoad', () => {
   });
 
   it('prices a climb up the ladder as the draw it commits', () => {
-    // `low` -> `max` on the shared 0/1.25/2.0/3.0 profile.
-    expect(resolveStepChangeKw(steppedInputDevice(), 'low', 'max'))
+    // `low` -> `max` on the shared 0/1.25/2.0/3.0 profile, with `low` drawing
+    // its nameplate: the climb adds the difference.
+    expect(resolveStepChangeKw(steppedInputDevice({ currentDrawKw: 1.25 }), 'low', 'max'))
       .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.75, 6) });
+    // With no positive reading nothing of `low` is in the whole-home total, so
+    // the climb commits `max`'s whole nameplate.
+    expect(resolveStepChangeKw(steppedInputDevice({ currentDrawKw: 0 }), 'low', 'max'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(3, 6) });
 
     // An OFF device is at its off step, whatever step it reports. `medium` ->
     // `low` runs DOWN the profile, but from off it is a climb that commits the
@@ -398,7 +403,7 @@ describe('planSteppedLoad', () => {
     // every rung above it forever.
     const tiedRungs = steppedInputDevice({
       selectedStepId: 'a',
-      currentDrawKw: 2,
+      currentDrawKw: 1.6,
       steppedLoadProfile: {
         steps: [
           { id: 'off', planningPowerW: 0 },
@@ -407,10 +412,10 @@ describe('planSteppedLoad', () => {
           { id: 'c', planningPowerW: 3000 },
         ],
       },
-      stepPowerCalibration: { b: 2.4 },
     });
 
-    // Same watts on the profile, a higher learned draw on `b`: a climb worth
+    // Same watts on the profile, and the meter reads `a` below its nameplate:
+    // `b` commits its 2.0 kW nameplate against the 1.6 kW flowing, a climb worth
     // 0.4 kW, not nothing.
     expect(resolveStepChangeKw(tiedRungs, 'a', 'b'))
       .toEqual({ direction: 'up', deltaKw: expect.closeTo(0.4, 6) });
@@ -461,6 +466,63 @@ describe('planSteppedLoad', () => {
     // is credited what is flowing and no more.
     expect(resolveStepChangeKw(steppedInputDevice({ selectedStepId: 'max', currentDrawKw: 1.193 }), undefined, 'off'))
       .toEqual({ direction: 'down', deltaKw: expect.closeTo(1.193, 6) });
+  });
+
+  // Production 2026-10-01 19:50Z: Elbillader's `6a` rung (1.38 kW nameplate)
+  // had learned 0.7878 kW from trickle samples, and a resume from off was
+  // admitted at `deltaKw` 0.7877936 while the rung really drew 1.13-1.36 kW.
+  describe('prices rungs at nameplate, not a learned figure below it', () => {
+    const chargerProfile = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 1380 },
+        { id: '10a', planningPowerW: 2300 },
+        { id: '16a', planningPowerW: 3680 },
+      ],
+    };
+    const learnedLow = { '6a': 0.7878, '10a': 1.9, '16a': 3.1 };
+
+    it('commits the whole nameplate for a resume from off', () => {
+      const charger = steppedInputDevice({
+        steppedLoadProfile: chargerProfile,
+        selectedStepId: 'off',
+        binaryControl: { on: false },
+        currentDrawKw: 0,
+        stepPowerCalibration: learnedLow,
+      });
+      expect(resolveStepChangeKw(charger, undefined, '6a'))
+        .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.38, 6) });
+    });
+
+    it('prices a running climb from the meter up to the target nameplate', () => {
+      // 1.2 kW flowing at `6a`: below its 1.38 kW nameplate, above the 0.79 kW
+      // it learned. The meter is what is already accounted for, and `10a`
+      // commits its 2.3 kW nameplate, not the 1.9 kW it learned.
+      const charger = steppedInputDevice({
+        steppedLoadProfile: chargerProfile,
+        selectedStepId: '6a',
+        currentDrawKw: 1.2,
+        stepPowerCalibration: learnedLow,
+      });
+      expect(resolveStepChangeKw(charger, undefined, '10a'))
+        .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.1, 6) });
+    });
+
+    it('commits the target\'s whole nameplate for a climb from a rung reading zero', () => {
+      // A paused car on `6a`: the meter shows nothing of the rung, so none of it
+      // is in the whole-home total. Resuming at `10a` adds the full 2.3 kW.
+      const charger = steppedInputDevice({
+        steppedLoadProfile: chargerProfile,
+        selectedStepId: '6a',
+        currentDrawKw: 0,
+        stepPowerCalibration: learnedLow,
+      });
+      expect(resolveStepChangeKw(charger, undefined, '10a'))
+        .toEqual({ direction: 'up', deltaKw: expect.closeTo(2.3, 6) });
+    });
+
+    // The descent half is pinned through its real consumer, the shed ladder
+    // (`test/unit/steppedShedRungDescent.test.ts`).
   });
 
   it('isSteppedLoadDevice identifies stepped devices', () => {

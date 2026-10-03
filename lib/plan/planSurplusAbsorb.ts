@@ -28,7 +28,6 @@ import {
 import {
   isSteppedLoadDevice,
   resolveHighestStepWithinKw,
-  resolveStepPowerKw,
 } from './planSteppedLoad';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
@@ -416,7 +415,10 @@ function claimForTrackingDevice(params: {
     clearSurplusTracking(state, dev.id);
     return 0;
   }
-  const floorKw = resolveStepPowerKw(dev, floorStep.id);
+  // Every rung is priced at its nameplate here, as `resolveHighestStepWithinKw`
+  // fits it: the claim on the pool is what the rung may draw, never a learned
+  // figure that can only be lower.
+  const floorKw = floorStep.planningPowerW / 1000;
 
   const { eligible } = syncSurplusEligibilityState({
     state,
@@ -432,7 +434,7 @@ function claimForTrackingDevice(params: {
     const paced = paceCeilingClimb({
       dev, state, target: resolveTrackingRung({ dev, state, poolKw, floorStep }), nowTs,
     });
-    const rungKw = resolveStepPowerKw(dev, paced.id);
+    const rungKw = paced.planningPowerW / 1000;
     state.surplusTrackingByDevice[dev.id] = {
       kind: 'rung', stepId: paced.id, funded: rungKw <= poolKw,
     };
@@ -471,7 +473,7 @@ function resolveTrackingRung(params: {
   // What the pool would buy from scratch, reserve included.
   const affordable = resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW);
   const held = resolveHeldStep(dev, state);
-  if (held && resolveStepPowerKw(dev, held.id) <= poolKw) {
+  if (held && held.planningPowerW / 1000 <= poolKw) {
     // The held rung is still covered on the bare pool, so keep it — and move
     // only for something strictly HIGHER. Answering `affordable` here instead
     // would step the device DOWN the moment the pool dipped inside the reserve,

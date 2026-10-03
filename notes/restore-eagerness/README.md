@@ -54,13 +54,13 @@ Field behavior still needs monitoring for this narrower case:
 This is no longer the broad "restore logic is wrong" problem from the earlier investigation. It
 is now a calibration and observability problem around delayed power visibility.
 
-Per-device-per-step calibration (`lib/device/devicePowerCalibration.ts`) is one of the signals
-available to the restore-admission path: stepped-load helpers consult the conservative-high
-admission view (`max(observed, nameplate)`) when sizing restore deltas, so a device that
-historically draws more than its nameplate at a given step reserves more headroom on restore.
-Calibration does not directly address the "second restore admitted before the first ramps"
-race — admission still uses the nameplate-bounded estimate during the warmup window — but it
-narrows the upper-bound estimate as evidence accrues.
+Per-device-per-step calibration (`lib/device/devicePowerCalibration.ts`) is not a restore-admission
+signal. It learns one figure per rung, capped at the rung's nameplate, so it can only ever price a
+restore delta lower than the nameplate does; on 2026-10-01 a charger's `6a` rung had learned
+0.79 kW from trickle samples against 1.38 kW and was resumed into room it did not fit. Stepped
+restore deltas, the startup reserve and surplus rung fitting therefore price every rung at its
+nameplate (`resolveStepChangeKw`), and the learned figure feeds smart-task energy planning only.
+Neither addresses the "second restore admitted before the first ramps" race.
 
 ## Bounded Restore Batching
 

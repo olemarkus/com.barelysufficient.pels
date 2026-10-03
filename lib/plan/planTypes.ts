@@ -721,12 +721,14 @@ type DevicePlanDeviceBase = {
   available: boolean;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
-  stepPowerCalibration?: Record<string, number>;
   // `confirmedNotDrawing` deliberately does NOT travel onto the plan output.
   // It is an input to the one boost decision (`resolveBoostActive`), and that
   // decision's result — `boostActive` — is what the plan carries. Propagating
   // the evidence as well is how the restore path came to re-ask the same
   // question with its own answer.
+  // `stepPowerCalibration` does not travel either: the planner prices every rung
+  // at its nameplate (`resolveStepChangeKw`) and does not read the learned
+  // figure. Smart tasks read it off `PlanInputDevice`, which is where it stays.
   /**
    * Producer-resolved residual-kW projection propagated from
    * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the

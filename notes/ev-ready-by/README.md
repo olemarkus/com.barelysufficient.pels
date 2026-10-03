@@ -84,8 +84,9 @@ end-to-end, including charger pause/resume actuation:
 - Plan history (`lib/objectives/deferredObjectives/planHistory.ts`) capturing per-deadline outcomes
   (`met` / `missed` / `abandoned` / `replaced`).
 - Per-device-per-step power calibration (`lib/device/devicePowerCalibration.ts`,
-  `lib/objectives/deferredObjectives/objectiveStepPower.ts`) with EMA learning, conservative-high and
-  conservative-low query primitives, already wired into stepped-load deferred objectives.
+  `lib/objectives/deferredObjectives/objectiveStepPower.ts`) with EMA learning and one learned figure
+  per step (`getStepPowerKw`), wired into stepped-load deferred objectives for useful energy only;
+  capacity decisions price steps at nameplate.
 - Smart tasks UI surfaces: list and per-device deadline-plan and history pages
   (`packages/settings-ui/src/ui/deadlinePlan.ts`, `deadlinesList.ts`).
 - Temperature admission wired in `lib/objectives/deferredObjectives/admission.ts`, with intents

@@ -6,10 +6,13 @@ import {
   resolveReserveAdmission,
 } from '../../lib/plan/admission/headroomReserve';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
+import { buildBasePlanDevice } from '../../lib/plan/planDevicesBase';
+import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
+import type { SheddingPlan } from '../../lib/plan/shedding/types';
 import { resolveRestoreShortfallKw } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice, steppedProfile } from '../utils/planTestUtils';
+import { buildPlanDevice, steppedInputDevice, steppedProfile } from '../utils/planTestUtils';
 
 // A device that has NOT started: binary control off, drawing nothing. Every reserve case starts
 // from here, because a confirmed-on device counts as started and is never reserved for.
@@ -56,17 +59,54 @@ describe('resolveHeadroomReserves', () => {
     expect(reserves[0]?.kw).toBe(1.25);
   });
 
-  it('reserves the CALIBRATED lowest-step draw, not its nameplate', () => {
-    // A charger whose "low" step really pulls 1.9 kW against a 1.25 kW nameplate must reserve the
-    // real figure, or the block gets nibbled anyway. Same view the admission gate judges against.
-    const { reserves } = run([waiting({
+  it('reserves the lowest step\'s NAMEPLATE, not a lower learned figure its input carries', () => {
+    // Production 2026-10-01: a charger's `6a` rung (1.38 kW nameplate) had learned 0.79 kW from
+    // trickle samples. The block has to hold what the start needs, and a learned figure is never
+    // above nameplate, so reserving it could only let the block get nibbled. Built through the real
+    // plan-device producer, because the INPUT is where the learned figure arrives.
+    const input = steppedInputDevice({
       id: 'charger',
       priority: 1,
       reservesStartupPower: true,
-      steppedLoadProfile: steppedProfile,
-      stepPowerCalibration: { low: 1.9 },
-    })]);
-    expect(reserves[0]?.kw).toBe(1.9);
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: '6a', planningPowerW: 1380 },
+          { id: '10a', planningPowerW: 2300 },
+        ],
+      },
+      selectedStepId: 'off',
+      binaryControl: { on: false },
+      currentDrawKw: 0,
+      targets: [],
+      stepPowerCalibration: { '6a': 0.7878, '10a': 1.9 },
+    });
+    const noShedding: SheddingPlan = {
+      shedSet: new Set<string>(),
+      shedReasons: new Map(),
+      shedStepTargets: new Map(),
+      sheddingActive: false,
+      guardInShortfall: false,
+      outcome: NO_SHEDDING_OUTCOME,
+      recoveredAtMs: null,
+      overshootStats: null,
+    };
+    const charger = buildBasePlanDevice({
+      dev: input,
+      priority: 1,
+      recentlyRestored: false,
+      binaryCommandPending: false,
+      currentState: 'off',
+      plannedTarget: undefined,
+      control: input.control,
+      shedBehavior: { action: 'turn_off' },
+      sheddingPlan: noShedding,
+      anyOtherDeviceLimited: false,
+      boostActive: false,
+      surplusAbsorbActive: false,
+      surplusCeilingStepId: undefined,
+    });
+    expect(run([charger]).reserves.map((reserve) => reserve.kw)).toEqual([1.38]);
   });
 
   it('does not reserve for a device that never asked', () => {
