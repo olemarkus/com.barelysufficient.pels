@@ -49,6 +49,10 @@ export type DeviceDiagnosticsPlanObservation = {
   // Cause-independent daily-budget pressure. True whenever this device has
   // unmet demand while the configured budget is below sustainable capacity.
   budgetPressureDenied: boolean;
+  /** Temperature demand held specifically by daily pace, while physically short of target. */
+  budgetUnservedDenied: boolean;
+  /** Observed physical recovery; commanding the full target is not sufficient. */
+  budgetDemandRecovered: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
@@ -140,6 +144,10 @@ export type LiveDemandObservation = {
   appliedStateSummary: string;
   expectedPowerKw: number;
   budgetPressureDenied: boolean;
+  /** Temperature demand held specifically by daily pace, while physically short of target. */
+  budgetUnservedDenied: boolean;
+  /** Observed physical recovery; commanding the full target is not sufficient. */
+  budgetDemandRecovered: boolean;
 };
 
 
@@ -196,6 +204,7 @@ export type LiveStarvationState = {
 export type DeviceDiagnosticsDaySuppressionTotals = {
   targetDeficitMs: number;
   blockedByHeadroomMs: number;
+  budgetUnservedKwh?: number;
   budgetDeniedKwh: number;
   budgetDeniedMs: number;
   /** True when the continuous budget-denial signal was actually observed. */

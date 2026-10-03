@@ -116,6 +116,7 @@ export class DeviceDiagnosticsPersistence {
     let budgetDeniedMs = 0;
     let budgetDeniedKwh = 0;
     let budgetDenialObserved = false;
+    let budgetUnservedKwh: number | undefined;
     for (const deviceState of Object.values(this.persistedState.devicesById)) {
       const aggregate = deviceState.daysByDateKey[dateKey];
       if (!aggregate) continue;
@@ -124,14 +125,19 @@ export class DeviceDiagnosticsPersistence {
       budgetDeniedMs += aggregate.budgetDeniedMs;
       budgetDeniedKwh += aggregate.budgetDeniedKwh;
       budgetDenialObserved ||= aggregate.budgetDenialObserved;
+      if (aggregate.budgetUnservedKwh !== undefined) {
+        budgetUnservedKwh = (budgetUnservedKwh ?? 0) + aggregate.budgetUnservedKwh;
+      }
     }
-    if (targetDeficitMs <= 0 && blockedByHeadroomMs <= 0 && budgetDeniedMs <= 0) return undefined;
+    if (targetDeficitMs <= 0 && blockedByHeadroomMs <= 0 && budgetDeniedMs <= 0
+      && budgetUnservedKwh === undefined) return undefined;
     return {
       targetDeficitMs,
       blockedByHeadroomMs,
       budgetDeniedMs,
       budgetDeniedKwh,
       budgetDenialObserved,
+      ...(budgetUnservedKwh === undefined ? {} : { budgetUnservedKwh }),
     };
   }
 
@@ -160,9 +166,26 @@ export class DeviceDiagnosticsPersistence {
     } else if (observation.blockCause === 'cooldown_backoff') {
       this.addDurationByDay(deviceId, startTs, endTs, 'blockedByCooldownBackoffMs');
     }
+    if (observation.budgetUnservedDenied) {
+      this.forEachLocalDaySlice(startTs, endTs, (dateKey, sliceMs) => {
+        const aggregate = this.getDayAggregate(deviceId, dateKey);
+        aggregate.budgetUnservedKwh = (aggregate.budgetUnservedKwh ?? 0)
+          + observation.expectedPowerKw * sliceMs / MS_PER_HOUR;
+        this.markDirty(deviceId);
+      });
+    }
     if (observation.budgetPressureDenied) {
       this.addBudgetDeniedByDay(deviceId, startTs, endTs, observation.expectedPowerKw);
     }
+  }
+
+  /** Recovery clears today's pending estimate, leaving closed-day history intact. */
+  recordBudgetDemandRecovery(deviceId: string, nowTs: number): void {
+    const dateKey = getDateKeyInTimeZone(new Date(nowTs), this.deps.getTimeZone());
+    const aggregate = this.getDayAggregate(deviceId, dateKey);
+    if (aggregate.budgetUnservedKwh === 0) return;
+    aggregate.budgetUnservedKwh = 0;
+    this.markDirty(deviceId);
   }
 
   private markBudgetDenialObservedByDay(deviceId: string, startTs: number, endTs: number): void {

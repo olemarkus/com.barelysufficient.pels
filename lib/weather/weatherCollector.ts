@@ -265,6 +265,7 @@ export class WeatherCollector {
     const normalized = read.readable ? normalizeWeatherHistoryState(raw, this.getCurrentDateKey()) : null;
     if (normalized) {
       this.state = normalized;
+      this.refreshLegacyAdvice();
       this.loadedImplausibleAtMs = undefined;
       return;
     }
@@ -276,6 +277,14 @@ export class WeatherCollector {
     } else {
       this.deps.logger.warn({ event: 'weather_history_state_implausible' });
     }
+  }
+
+  /** Upgrade cached advice without applying a budget merely because state loaded. */
+  private refreshLegacyAdvice(): void {
+    if (!this.state.latestFit || this.state.latestFit.recentResidualQ80 !== undefined) return;
+    const refreshed = this.deps.recomputeDerived?.(this.state) ?? this.state;
+    if (refreshed !== this.state) this.markDirty();
+    this.state = refreshed;
   }
 
   /**
@@ -441,6 +450,7 @@ export class WeatherCollector {
     // wholesale; if the arrangement changed while the store was unreadable,
     // forget them again before the caller persists the merged state.
     const meterScope = this.reconcileMeterScope();
+    this.refreshLegacyAdvice();
     if (!meterScope.resolved) this.scheduleMeterScopeRetry();
     if (meterScope.resolved) {
       this.backfillChain.startMeterKwhBackfill();
@@ -645,8 +655,8 @@ export class WeatherCollector {
    * the one that just closed: the normal 00:05 rollup runs BEFORE auto-apply
    * writes the new day's number. A boot catch-up rolling up days further back
    * would read a budget that has since moved, so it reports nothing rather than
-   * stamping a wrong one. The pressure loop then HOLDS that day: an unmeasurable
-   * day is not evidence in either direction, so it must neither grow nor decay.
+   * stamping a wrong one. Without a measured balance the pressure loop can
+   * only age the correction, unless a terminal task miss proves budget damage.
    */
   private resolveAppliedBudgetKwh(dateKey: string): number | undefined {
     const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());

@@ -76,7 +76,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
 - **Smart tasks** — 1: `on_track` while the planned bucket goes undelivered
-- **Daily budget and weather** — 1: weather budget-correction sentence contradicts its card
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
 - **Docs** — 1: safe pace defined as "hard cap minus safety margin"
 
@@ -903,15 +902,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Daily budget and weather
 
-- [ ] **The weather budget-correction sentence can contradict the numbers on its own card.**
-      `composeBudgetLimitingReason` (`packages/shared-domain/src/weatherInsightCopy.ts:148`)
-      appends "N kWh of that covers days that ran past your budget", anchoring "that" to the raw
-      raise — a number the card never shows. With Suggested 48 / Your budget 45, the only visible
-      raise is 3 kWh, so a 6.4 kWh component reads as bigger than the whole; production hits this
-      whenever accumulated pressure exceeds suggested − current. Anchor the sentence to a number
-      on the card ("N kWh of the suggestion covers days that ran past your budget"). Source:
-      2026-08-02 release review (v2.19.3..origin/main), pels-ux-fit rendered walk. [P1]
-
 - [ ] **A smart task's "May go over daily budget" lifts the pace but its energy still counts as
       used.** The exempt kWh integral (`exemptBuckets`, accrued in `lib/power/sampleIngest.ts`) reads
       the raw snapshot's `budgetExempt`, which carries only the owner's static
@@ -956,7 +946,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       investigation. [P2]
 
 - [ ] **The budget-pressure overshoot compares whole-home kWh against a budget that paces on non-exempt energy.**
-      `measuredBudgetOvershootKwh` (`packages/shared-domain/src/energySignature/budgetPressure.ts`) computes
+      `measuredBalanceKwh` (`packages/shared-domain/src/energySignature/budgetPressure.ts`) computes
       `kwhTotal - appliedBudgetKwh`, but `kwhTotal` is metered whole-home consumption while the daily-budget
       controller deliberately subtracts budget-exempt usage before pacing (`dailyBudgetState.ts`:
       "Budget control ignores exempt load, but reporting stays on real metered usage"). On a home with exempt
@@ -1861,12 +1851,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       *sustainable* rate and is the right frame only for the Advanced page's "safe pace starts
       each hour at" preview. Persona: first-time user reading the glossary link from the hero
       tooltip. Source: safe-pace definition audit (2026-07-26). [P1]
-
-- [ ] **docs/weather-insight.md still says auto-apply "replaces" the budget each day.** Since
-      8ec444cd8 auto-apply is asymmetric: it skips `would_lower_while_limiting`, so it will not
-      lower a budget the home has been running past. Add the one-line caveat to the
-      "Auto-applying the suggested budget" section. Source: 2026-08-02 release review, docs
-      freshness pass. [P2]
 
 - [ ] **Eleven device-detail captures are committed but referenced by no docs page.**
       `docs/public/screenshots/device-detail/` holds fourteen images; only

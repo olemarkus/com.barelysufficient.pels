@@ -18,12 +18,18 @@ describe('composeBudgetLimitingReason', () => {
     expect(composeBudgetLimitingReason(0)).toBe(WEATHER_REASON_BUDGET_LIMITING);
   });
 
-  it('names the pressure contribution as a COMPONENT of the raise, not the whole of it', () => {
-    // "of that covers" matters: the raise also includes a widened headroom, so
-    // an owner subtracting this figure from the suggestion must still reconcile.
+  it('names the pressure contribution as part of the suggestion', () => {
+    // The contribution may exceed the visible increase over the current budget.
     expect(composeBudgetLimitingReason(7)).toBe(
       'Your budget has recently been limiting your devices — the suggestion is raised to match.'
-      + ' 7.0 kWh of that covers days that ran past your budget.',
+      + ' 7.0 kWh of the suggestion covers recent demand beyond your budget.',
+    );
+  });
+
+  it('explains measured overshoot without claiming devices were limited', () => {
+    expect(composeBudgetLimitingReason(7, false)).toBe(
+      'Recent usage exceeded your budget — the suggestion includes extra room.'
+      + ' 7.0 kWh of the suggestion covers recent demand beyond your budget.',
     );
   });
 

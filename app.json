@@ -280,6 +280,14 @@
     "log_homey_device": {
       "method": "POST",
       "path": "/log_homey_device"
+    },
+    "diagnostics_budget_days": {
+      "method": "GET",
+      "path": "/diagnostics/budget/days"
+    },
+    "diagnostics_budget_decisions": {
+      "method": "GET",
+      "path": "/diagnostics/budget/decisions"
     }
   },
   "images": {

@@ -1453,3 +1453,49 @@ describe('turn_off shed reaches the persisted demand counters', () => {
     expect(totals?.targetDeficitMs ?? 0).toBe(0);
   });
 });
+
+
+describe('budget feedback cause and physical recovery', () => {
+  const observation = (source: 'daily' | 'capacity', currentTemperature: number,
+    plannedTarget = 18,
+    reason = r(source === 'daily' ? 'shed due to daily budget' : 'shed due to capacity')) => buildObservation({
+    inputDevice: { id: 'heater-1', name: 'Hall Heater', deviceType: 'temperature',
+      starvationSupported: true, managed: true, controllable: true, available: true,
+      currentTemperature,
+      targets: [{ id: 'target_temperature', value: plannedTarget, unit: 'C', step: 0.5 }] },
+    planDevice: { id: 'heater-1', name: 'Hall Heater', deviceType: 'temperature',
+      currentState: 'not_applicable', plannedState: plannedTarget === 18 ? 'shed' : 'keep',
+      currentTemperature, currentTarget: plannedTarget, plannedTarget,
+      shedAction: 'set_temperature', shedTemperature: 18, reason },
+    modeTargets: { 'heater-1': 22 }, softLimitSource: source,
+  });
+  it('attributes pending denial to daily pace, independently of the old capacity-ceiling gate', () => {
+    expect(observation('daily', 18)).toMatchObject({
+      budgetUnservedDenied: true, budgetDemandRecovered: false, countingCause: 'daily_budget',
+    });
+    expect(observation('capacity', 18)).toMatchObject({ budgetUnservedDenied: false });
+  });
+  it('does not accept an unavailable device temperature as observed recovery', () => {
+    const result = buildObservation({
+      inputDevice: { id: 'heater-1', deviceType: 'temperature', available: false,
+        currentTemperature: 22, targets: [{ id: 'target_temperature', value: 22, unit: 'C' }] },
+      planDevice: { id: 'heater-1', deviceType: 'temperature', available: false,
+        currentTemperature: 22, currentTarget: 22, plannedTarget: 22 },
+      modeTargets: { 'heater-1': 22 },
+    });
+    expect(result?.budgetDemandRecovered).toBe(false);
+  });
+  it('does not price new capacity-bound intervals from a carried daily-budget reason', () => {
+    expect(observation('capacity', 18, 18, { code: PLAN_REASON_CODES.dailyBudget })).toMatchObject({
+      countingCause: 'daily_budget', budgetUnservedDenied: false, budgetDemandRecovered: false,
+    });
+  });
+  it('requires physical recovery rather than commanding the intended target', () => {
+    expect(observation('daily', 18, 22)).toMatchObject({
+      budgetUnservedDenied: false, budgetDemandRecovered: false,
+    });
+    expect(observation('daily', 22, 22)).toMatchObject({
+      budgetUnservedDenied: false, budgetDemandRecovered: true,
+    });
+  });
+});

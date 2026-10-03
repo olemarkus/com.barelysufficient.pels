@@ -1,3 +1,7 @@
+import api from '../../api';
+import { partialDouble } from '../helpers/partialDouble';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { createWeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
 // The boot window at the host-API façade. `hasDailyBudgetSeam` (settings/widget
 // side) can only see that the prototype methods exist — they do, from
 // construction — so whether the daily budget is READABLE has to be answered
@@ -13,10 +17,10 @@ import { withAppHostApi } from '../../setup/appHostApi';
 import type { AppContext } from '../../lib/app/appContext';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 
-const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService']) => {
+const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService'], overrides: Partial<AppContext> = {}) => {
   const Base = withAppHostApi(Homey.App);
   class TestHostApi extends Base {
-    protected readonly context = { dailyBudgetService } as AppContext;
+    protected readonly context = partialDouble<AppContext>({ dailyBudgetService, ...overrides });
     protected readonly getHomeOperatingMode = () => 'Home';
     protected readonly setHomeOperatingMode = (mode: string) => ({ previous: 'Home', resolved: mode });
     protected readonly reloadHomeModeCatalog = () => {};
@@ -56,5 +60,31 @@ describe('AppHostApi boot window', () => {
 
   it('reports price-optimization setup as unavailable before its owner is wired', () => {
     expect(createHostApi(undefined).readPriceOptimizationSetup()).toEqual({ state: 'unavailable' });
+  });
+});
+
+
+describe('budget history app API wiring', () => {
+  it('reads persisted evidence through the actual API handler even without a running weather collector', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      createWeatherHistoryStore(db).write({ records: [{
+        dateKey: '2026-10-01', kwhTotal: 42.5, appliedBudgetKwh: 112.8,
+        tempMeanC: 16, tempMinC: 12, tempMaxC: 18, tempSampleCount: 24,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+      }] });
+      const host = createHostApi(undefined, {
+        getUserdataDatabase: () => db, getNow: () => new Date('2026-10-03T06:00:00Z'),
+        getTimeZone: () => 'Europe/Oslo',
+      });
+      const homey = partialDouble<Homey.App['homey']>({ app: host });
+      const query = { from: '2026-10-01', to: '2026-10-02' };
+      const days = await api.diagnostics_budget_days({ homey, query });
+      expect(days.records[0]).toMatchObject({ dateKey: '2026-10-01', kwhTotal: 42.5, appliedBudgetKwh: 112.8 });
+      expect(days.meta.missingDates).toEqual(['2026-10-02']);
+      const decisions = await api.diagnostics_budget_decisions({ homey, query });
+      expect(decisions.records).toEqual([]);
+      expect(decisions.meta.missingDates).toEqual(['2026-10-01', '2026-10-02']);
+    } finally { db.close(); }
   });
 });

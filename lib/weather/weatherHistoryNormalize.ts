@@ -53,10 +53,12 @@ export function defaultStoredSuggestion(raw: Record<string, unknown>): WeatherHi
  */
 export function normalizeBudgetPressure(raw: unknown): WeatherHistoryState['budgetPressure'] {
   if (typeof raw !== 'object' || raw === null) return undefined;
-  const { kwh, throughDateKey } = raw as Record<string, unknown>;
+  const { kwh, throughDateKey, algorithmVersion } = raw as Record<string, unknown>;
+  // Old pressure priced all holds without recovery. It cannot be carried into this loop.
+  if (algorithmVersion !== 2) return undefined;
   if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh < 0) return undefined;
   if (typeof throughDateKey !== 'string' || throughDateKey.length === 0) return undefined;
-  return { kwh, throughDateKey };
+  return { kwh, throughDateKey, algorithmVersion };
 }
 
 /**
@@ -161,6 +163,7 @@ export function normalizeSuppression(raw: unknown): WeatherDaySuppression | unde
     budgetDenialObserved = true;
   }
   const normalized: WeatherDaySuppression = {
+    ...(isNonNegativeFinite(raw.budgetUnservedKwh) ? { budgetUnservedKwh: raw.budgetUnservedKwh } : {}),
     ...(budgetDenialObserved === undefined ? {} : { budgetDenialObserved }),
     ...(isNonNegativeFinite(raw.budgetDeniedKwh) ? { budgetDeniedKwh: raw.budgetDeniedKwh } : {}),
     ...(isNonNegativeFinite(raw.budgetDeniedMs) ? { budgetDeniedMs: raw.budgetDeniedMs } : {}),

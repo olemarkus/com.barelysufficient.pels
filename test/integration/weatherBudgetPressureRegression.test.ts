@@ -19,9 +19,8 @@ import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySi
  * 365-day window as ordinary warm-regime observations, which is what dragged the
  * base load down to 35.7 kWh against a ~50 kWh reality.
  *
- * `blockedByHeadroomMs` stands in for what the fixed build records: the
- * running build had no budget-attributed field, and the logs show 33 of 34
- * episodes were budget-caused, so the headroom total is the faithful value.
+ * Legacy headroom totals do not establish unresolved budget damage. The new
+ * policy instead learns from recent actual residuals and measured overshoot.
  */
 
 // Resolved from the project root (vitest's cwd) rather than `import.meta.url`:
@@ -57,12 +56,11 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
     expect(FORECAST_MEAN_C).toBeGreaterThan(fit.balancePointC as number);
   });
 
-  it('now detects the suppression the old cold gate hid', () => {
+  it('does not infer unresolved budget damage from legacy hold durations', () => {
     const fit = fitEnergySignature(records, NOW_MS);
-    // The home was throttled every day for a week at 12–15 °C. The old detector
-    // required a day below the 13 °C knee AND a forecast below it, so this read
-    // false and the correction never fired.
-    expect(fit?.recentSuppressionSuspected).toBe(true);
+    // The archived fields cannot establish cause or subsequent recovery.
+    expect(fit?.recentSuppressionSuspected).toBe(false);
+    expect(fit?.recentResidualQ80).toBeGreaterThan(fit?.residualQ80 ?? 0);
   });
 
   it('suggests at least what the home actually used, instead of the 44.1 kWh that starved it', () => {
@@ -74,7 +72,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
       budgetPressure: foldClosedDays('2026-07-24'),
     });
 
-    expect(result.budgetMayBeLimiting).toBe(true);
+    expect(result.budgetMayBeLimiting).toBe(false);
     expect(result.budgetPressureKwh).toBeGreaterThan(0);
     // The load-bearing assertion: never again below what the home demonstrably
     // drew WHILE being held back — that draw is a lower bound on true demand.
@@ -83,17 +81,19 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
     expect(result.suggestedBudgetKwh).toBeLessThan(2 * OBSERVED_DEMAND_KWH);
   });
 
-  it('would have suggested the starving 44.1 kWh with every correction switched off', () => {
-    // Pins the diagnosis itself: without the lean and the pressure term, this
-    // history still produces the number that caused the incident.
+  it('recent headroom alone covers the recorded demand where annual headroom fell short', () => {
+    // Disable recent calibration to reproduce the original annual-only advice.
     const fit = fitEnergySignature(records, NOW_MS);
     if (!fit) throw new Error('expected a fit');
     const asShipped = suggestDailyBudgetKwh({
-      fit: { ...fit, recentSuppressionSuspected: false },
+      fit: { ...fit, recentSuppressionSuspected: false,
+        recentResidualQ80: undefined, recentResidualQ90: undefined },
       forecastMeanTempC: FORECAST_MEAN_C,
     });
     expect(asShipped.suggestedBudgetKwh).toBeCloseTo(44.1, 1);
     expect(asShipped.suggestedBudgetKwh).toBeLessThan(OBSERVED_DEMAND_KWH);
+    expect(suggestDailyBudgetKwh({ fit, forecastMeanTempC: FORECAST_MEAN_C })
+      .suggestedBudgetKwh).toBeGreaterThan(OBSERVED_DEMAND_KWH);
   });
 
   it('releases the pressure term once the home stops running past its budget', () => {
@@ -130,17 +130,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
   });
 });
 
-/**
- * 2026-08-08 replayed under the day-close damage model, with the production
- * numbers: the day overshot its 60.72 kWh budget by 2.11 kWh, but every hold was
- * admitted before the day ended — nothing was latched at any observed midnight
- * that week. Under the old hold-time model this day was a blindness casualty;
- * under the damage model it is simply NOT a damage day, and the term's decay
- * through it was the correct answer. The third case is the day the old
- * overshoot-only step could never see: a budget that held the home under its
- * number BY denying a device shows no overshoot at all, precisely because the
- * denial worked.
- */
+/** Production overshoot corrects allowance; only unresolved budget denial selects q90. */
 describe('2026-08-08 under the day-close damage model (real production numbers)', () => {
   const CARRIED = { kwh: 3.1640625, throughDateKey: '2026-08-07' };
   const augEighth = (suppression: WeatherDailyRecord['suppression']): WeatherDailyRecord => ({
@@ -157,17 +147,17 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     suppression,
   });
 
-  it('decays through the served-holds overshoot day — exactly what production did', () => {
+  it('corrects measured overshoot even when every held device recovered', () => {
     // Watched to the close, nothing denied: the verdict is an explicit zero even
     // though devices were held (and served) for hours during the day.
     const folded = foldBudgetPressureDay(CARRIED, augEighth({
       budgetDenialObserved: true,
       budgetDeniedKwh: 0,
+      budgetUnservedKwh: 0,
       budgetDeniedMs: 0,
       blockedByHeadroomMs: 6 * 60 * 60 * 1000,
     }));
-    // ×0.75 — the value production actually persisted the next morning.
-    expect(folded.kwh).toBeCloseTo(2.373046875, 9);
+    expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 2.1108292141741956, 9);
   });
 
   it('grows when the day instead ends with a device still denied', () => {
@@ -176,6 +166,7 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     const folded = foldBudgetPressureDay(CARRIED, augEighth({
       budgetDenialObserved: true,
       budgetDeniedKwh: 2.28,
+      budgetUnservedKwh: 2.28,
       budgetDeniedMs: 2 * 60 * 60 * 1000,
     }));
     // Denied energy plus the measured 2.11 kWh overshoot.
@@ -187,10 +178,12 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
       ...augEighth({
         budgetDenialObserved: true,
         budgetDeniedKwh: 3.42,
+        budgetUnservedKwh: 3.42,
         budgetDeniedMs: 3 * 60 * 60 * 1000,
       }),
       kwhTotal: 58,
     });
-    expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 3.42, 9);
+    // Credit 2.72 kWh of unused allowance against the 3.42 kWh pending denial.
+    expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 3.42 + 58 - 60.719406746659125, 9);
   });
 });

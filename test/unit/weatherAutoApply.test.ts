@@ -48,9 +48,8 @@ describe('performBudgetAutoApply', () => {
     expect(budgetOff.onDailyBudgetAutoApplied).not.toHaveBeenCalled();
   });
 
-  it('refuses to LOWER a budget the home has demonstrably been running past', () => {
-    // Auto-apply is asymmetric: tightening a budget recent days already blew
-    // through compounds the harm instead of correcting it.
+  it('lowers toward a recommendation that already includes pressure', () => {
+    // Pressure affects the recommendation, never vetoes applying it.
     const d = deps({ getAppliedDailyBudgetKwh: () => 55 });
     const state = baseState({
       latestSuggestion: {
@@ -59,8 +58,8 @@ describe('performBudgetAutoApply', () => {
       budgetPressure: { kwh: 4, throughDateKey: '2026-01-10' },
     });
     const next = performBudgetAutoApply(state, d);
-    expect(d.applySuggestedDailyBudget).not.toHaveBeenCalled();
-    expect(next.lastAutoApply).toBeUndefined();
+    expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+    expect(next.lastAutoApply?.kwh).toBe(48);
   });
 
   it('still RAISES freely under pressure, and still lowers when nothing ran past its budget', () => {
@@ -82,11 +81,8 @@ describe('performBudgetAutoApply', () => {
     expect(noPressure.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
   });
 
-  it('blocks lowering off the ACCUMULATOR even when the displayed contribution is 0', () => {
-    // Regression: the guard used to read `suggestion.budgetPressureKwh`, which
-    // is the post-clamp contribution and reads 0 whenever a floor or the hard
-    // cap set the suggestion — disarming the guard for exactly the home whose
-    // loop was most active.
+  it('allows lowering when a ceiling absorbs the pressure contribution', () => {
+    // The ceiling must not freeze a larger configured budget.
     const d = deps({ getAppliedDailyBudgetKwh: () => 55 });
     performBudgetAutoApply(baseState({
       latestSuggestion: {
@@ -94,7 +90,7 @@ describe('performBudgetAutoApply', () => {
       } as WeatherHistoryState['latestSuggestion'],
       budgetPressure: { kwh: 13.9, throughDateKey: '2026-01-10' },
     }), d);
-    expect(d.applySuggestedDailyBudget).not.toHaveBeenCalled();
+    expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
   });
 
   it('does NOT block lowering merely because devices were held back', () => {
@@ -134,5 +130,80 @@ describe('performBudgetAutoApply', () => {
 
     const budgetOff = deps({ applySuggestedDailyBudget: vi.fn(() => false) });
     expect(performBudgetAutoApply(baseState(), budgetOff).lastAutoApply).toBeUndefined();
+  });
+});
+
+describe('budget advice decision recording', () => {
+  it.each([
+    ['auto_apply_off', { getSettings: () => ({ enabled: true, autoApplyDailyBudget: false }) }],
+    ['budget_disabled_or_unavailable', { applySuggestedDailyBudget: vi.fn(() => false) }],
+  ] as const)('records %s with the prediction and accumulated pressure', (outcome, overrides) => {
+    const recordBudgetDecision = vi.fn();
+    const d = deps({ recordBudgetDecision, ...overrides });
+    performBudgetAutoApply(baseState({
+      meterScopeSignature: 'scope-a', budgetPressure: { kwh: 17.8, throughDateKey: '2026-01-10' },
+    }), d);
+    expect(recordBudgetDecision).toHaveBeenCalledWith(expect.objectContaining({
+      outcome, suggestedBudgetKwh: 48, forecastMeanTempC: -4, pressureAccumulatorKwh: 17.8,
+      meterScopeSignature: 'scope-a', budgetAfterKwh: null,
+    }));
+  });
+
+  it('reads the applied value back, preserving rounding rather than claiming the suggestion was written exactly', () => {
+    const recordBudgetDecision = vi.fn();
+    const readBudget = vi.fn().mockReturnValueOnce(40).mockReturnValueOnce(48.1);
+    const d = deps({ recordBudgetDecision, getAppliedDailyBudgetKwh: readBudget });
+    performBudgetAutoApply(baseState(), d);
+    expect(recordBudgetDecision).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'applied', budgetBeforeKwh: 40, budgetAfterKwh: 48.1,
+    }));
+  });
+
+  it('journal failures do not interrupt applies, audit stamps, or Flow notifications', () => {
+    const warn = vi.fn();
+    const d = deps({
+      recordBudgetDecision: () => { throw new Error('disk full'); },
+      logger: { info: vi.fn(), warn } as unknown as PinoLogger,
+    });
+    expect(performBudgetAutoApply(baseState(), d).lastAutoApply?.kwh).toBe(48);
+    expect(d.onDailyBudgetAutoApplied).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'budget_advice_history_record_failed' }));
+  });
+
+  it('does not add a budget read when opted out without a journal, and contains journal read failures', () => {
+    const readBudget = vi.fn(() => { throw new Error('read unavailable'); });
+    const warn = vi.fn();
+    const d = deps({
+      getSettings: () => ({ enabled: true, autoApplyDailyBudget: false }),
+      getAppliedDailyBudgetKwh: readBudget,
+      logger: { info: vi.fn(), warn } as unknown as PinoLogger,
+    });
+    expect(performBudgetAutoApply(baseState(), d)).toEqual(baseState());
+    expect(readBudget).not.toHaveBeenCalled();
+    const recordBudgetDecision = vi.fn();
+    expect(() => performBudgetAutoApply(baseState(), { ...d, recordBudgetDecision })).not.toThrow();
+    expect(recordBudgetDecision).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('does not journal or reapply a day already applied', () => {
+    const recordBudgetDecision = vi.fn();
+    const d = deps({ recordBudgetDecision });
+    performBudgetAutoApply(baseState({ lastAutoApply: {
+      dateKey: '2026-01-11', kwh: 48, appliedAtMs: NOW_MS,
+    } }), d);
+    expect(recordBudgetDecision).not.toHaveBeenCalled();
+    expect(d.applySuggestedDailyBudget).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('recorded sustainable daily ceiling', () => {
+  it.each([['2026-03-29', 23], ['2026-10-25', 25]])('uses the actual Oslo day length for %s', (dateKey, hours) => {
+    const recordBudgetDecision = vi.fn();
+    performBudgetAutoApply(baseState({
+      latestSuggestion: { ...baseState().latestSuggestion!, targetDateKey: dateKey },
+    }), deps({ recordBudgetDecision, getTimeZone: () => 'Europe/Oslo', getSustainableCapacityKw: () => 4.7 }));
+    expect(recordBudgetDecision.mock.calls[0][0].sustainableDailyCeilingKwh).toBeCloseTo(4.7 * hours);
   });
 });

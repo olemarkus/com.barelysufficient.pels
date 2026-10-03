@@ -257,6 +257,8 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       appliedStateSummary: observation.appliedStateSummary,
       expectedPowerKw: observation.expectedPowerKw,
       budgetPressureDenied: observation.budgetPressureDenied,
+      budgetUnservedDenied: observation.budgetUnservedDenied,
+      budgetDemandRecovered: observation.budgetDemandRecovered,
     };
     const nextStarvationObservation = normalizeStarvationObservation(observation);
 
@@ -281,6 +283,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           );
         }
       }
+    }
+
+    if (observation.budgetDemandRecovered) {
+      this.persistence.recordBudgetDemandRecovery(observation.deviceId, nowTs);
     }
 
     logObservationTransition(this.emit, observation.deviceId, live.name, live.lastObservation, nextObservation);

@@ -1,3 +1,4 @@
+import { createBudgetAdviceHistoryStore } from '../../lib/weather/budgetAdviceHistoryStore';
 import type { AppContext } from '../../lib/app/appContext';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
@@ -68,8 +69,10 @@ export function createWeatherCollector(
   >,
 ): WeatherCollector {
   const logger = getLogger('weather');
+  const adviceHistory = createBudgetAdviceHistoryStore(ctx.getUserdataDatabase());
   return new WeatherCollector({
     store: createWeatherHistoryStoreForApp(ctx),
+    recordBudgetDecision: (decision) => adviceHistory.record(decision),
     readDevice: (deviceId) => getRawDevice(deviceId),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh: (dateKey) => resolveDailyKwh({

@@ -153,3 +153,21 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.predictedKwh).toBe(40);
   });
 });
+
+
+describe('recent measured demand headroom', () => {
+  it('covers increased recent usage without claiming budget damage', () => {
+    const result = suggestDailyBudgetKwh({
+      fit: { ...baseFit, recentResidualQ80: 14, recentResidualQ90: 20 }, forecastMeanTempC: 0,
+    });
+    expect(result.predictedKwh).toBe(50);
+    expect(result.suggestedBudgetKwh).toBe(64);
+    expect(result.budgetMayBeLimiting).toBe(false);
+  });
+  it('retains annual headroom during a quiet fortnight and uses recent q90 only for damage', () => {
+    expect(suggestDailyBudgetKwh({ fit: { ...baseFit, recentResidualQ80: -3 }, forecastMeanTempC: 0 })
+      .suggestedBudgetKwh).toBe(55);
+    expect(suggestDailyBudgetKwh({ fit: { ...baseFit, recentSuppressionSuspected: true,
+      recentResidualQ90: 20 }, forecastMeanTempC: 0 }).suggestedBudgetKwh).toBe(70);
+  });
+});
