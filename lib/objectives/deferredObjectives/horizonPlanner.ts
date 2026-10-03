@@ -289,7 +289,7 @@ const resolveClimbedBandFeasibility = (params: {
 // level guaranteed for the full hour). When the objective holds both the
 // `exemptFromBudget` and `limitLowerPriorityDevices === 'always'` rescue
 // permissions, each bucket can be promoted independently to the highest
-// active step whose `usefulPowerKw` fits THAT bucket's own
+// active step whose `admissionPowerKw` (its nameplate) fits THAT bucket's own
 // `reservedHeadroomKw` forecast. Hours with generous forecast headroom
 // commit at a higher step's capacity; hours with tight forecast headroom
 // stay at the lower step. Buckets lacking a forecast fall back to

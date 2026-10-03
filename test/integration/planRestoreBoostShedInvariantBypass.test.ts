@@ -67,6 +67,8 @@ describe('boost bypasses the shed invariant unconditionally', () => {
           boostActive: true,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
+          // Drawing its rung: a boosted climb is priced from what is flowing.
+          currentDrawKw: 2,
         }),
         // A shed device makes countShedDevices > 0, which is exactly the
         // condition that used to re-engage the invariant against boost.

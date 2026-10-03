@@ -15,9 +15,11 @@ const waterHeaterProfile: SteppedLoadProfile = {
   ],
 };
 
-// Calibration as it stood at 20:02:04Z: `low` had just been calibrated from the
-// 1.193 kW reading, and `medium` sits above it. That ordering is what collapses
-// the `max -> medium` delta to zero while the measurement lags.
+// The learned figures the heater carried at 20:02:04Z (`low` had just been
+// calibrated from the 1.193 kW reading). They ride along as the production input
+// they were, and the ladder must not read them: every rung is priced at its
+// nameplate, and the stale 1.193 kW reading sits below both `low` (1.25) and
+// `medium` (1.75), which is what collapses those deltas to zero.
 const waterHeaterCalibration = {
   low: 1.193,
   medium: 1.671,
@@ -99,9 +101,9 @@ const ladderFor = (
 describe('stepped shed ladder pricing', () => {
   it('descends to the off step when every active rung prices at zero relief', () => {
     // The 2026-08-05 hard-cap breach: `measure_power` is stale at the `low`-step
-    // value while the device runs at `max`. Both `max -> medium` (1.193 - 1.193)
-    // and `max -> low` (1.193 - 1.193) price at exactly zero, which is what made
-    // the heater vanish from candidacy for 4.5 minutes.
+    // value while the device runs at `max`. Both `max -> medium` (1.193 - 1.75)
+    // and `max -> low` (1.193 - 1.25) price at zero, which is what made the
+    // heater vanish from candidacy for 4.5 minutes.
     const result = ladderFor(heater(), waterHeaterProfile, 'turn_off');
 
     expect(result.kind).toBe('ladder');
@@ -115,8 +117,8 @@ describe('stepped shed ladder pricing', () => {
 
   it('descends a set_step device past a zero-relief adjacent rung', () => {
     // The same stale-meter shape, on `set_step`. `max -> medium` prices at
-    // exactly zero (1.193 - 1.193), which used to end the search and drop a
-    // device the meter shows drawing. The walk now continues to `low`, which
+    // zero (1.193 - 1.75), which used to end the search and drop a device the
+    // meter shows drawing. The walk now continues to `low`, which
     // prices at zero here too — so the ladder honestly reports that no ACTIVE
     // rung releases anything, having tried both, rather than only the first.
     const result = ladderFor(heater(), waterHeaterProfile, 'set_step');
@@ -160,8 +162,8 @@ describe('stepped shed ladder pricing', () => {
   });
 
   it('credits a set_step device exactly the relief the deeper rung releases', () => {
-    // Measured 1.5 kW sits between `low`'s admission (1.193) and `medium`'s
-    // (1.671): `max -> medium` prices at zero, `max -> low` at 0.307. The
+    // Measured 1.5 kW sits between `low`'s nameplate (1.25) and `medium`'s
+    // (1.75): `max -> medium` prices at zero, `max -> low` at 0.25. The
     // executor commands the rung priced here (`plannedShedStepId`), so crediting
     // `low` credits watts that actually arrive — and skipping the device over its
     // zero-relief adjacent rung would have left the breach unanswered.
@@ -169,31 +171,55 @@ describe('stepped shed ladder pricing', () => {
     const setStep = ladderFor(device, waterHeaterProfile, 'set_step');
     expect(setStep.kind).toBe('ladder');
     if (setStep.kind !== 'ladder') return;
-    expect(setStep.rungs).toEqual([{ toStepId: 'low', reliefKw: expect.closeTo(0.307, 6) }]);
+    expect(setStep.rungs).toEqual([{ toStepId: 'low', reliefKw: expect.closeTo(0.25, 6) }]);
 
     // The same device on `turn_off` may descend the whole ladder.
     const turnOff = ladderFor(device, waterHeaterProfile, 'turn_off');
     expect(turnOff.kind).toBe('ladder');
     if (turnOff.kind !== 'ladder') return;
     expect(turnOff.rungs.map((rung) => rung.toStepId)).toEqual(['low', 'off']);
-    // A 0.3 kW deficit is covered by `max -> low`, so the choice stops there
+    // A 0.2 kW deficit is covered by `max -> low`, so the choice stops there
     // instead of taking the off rung.
-    const chosen = chooseShedRung(turnOff.rungs, 0.3);
+    const chosen = chooseShedRung(turnOff.rungs, 0.2);
     expect(chosen?.toStepId).toBe('low');
-    expect(chosen?.reliefKw).toBeCloseTo(0.307, 6);
+    expect(chosen?.reliefKw).toBeCloseTo(0.25, 6);
   });
 
   it('still takes the gentlest rung when the measurement has caught up', () => {
     // No-regression guard: once `measure_power` reports the real 2.865 kW,
-    // `max -> medium` releases 1.194 kW, so the choice must stop there rather
-    // than continuing to `off`. This reproduces the reliefKw logged at 20:06:33.
+    // `max -> medium` releases 1.115 kW down to `medium`'s 1.75 kW nameplate, so
+    // the choice must stop there rather than continuing to `off`. (Production
+    // logged 1.194 at 20:06:33, priced from `medium`'s learned 1.671 kW.)
     const result = ladderFor(heater({ currentDrawKw: 2.865 }), waterHeaterProfile, 'turn_off');
 
     expect(result.kind).toBe('ladder');
     if (result.kind !== 'ladder') return;
     const chosen = chooseShedRung(result.rungs, BREACH_KW);
     expect(chosen?.toStepId).toBe('medium');
-    expect(chosen?.reliefKw).toBeCloseTo(1.194, 6);
+    expect(chosen?.reliefKw).toBeCloseTo(1.115, 6);
+  });
+
+  it('credits a descent only down to the target rung\'s nameplate, not a learned figure below it', () => {
+    // Production 2026-10-01: the charger's `6a` rung learned 0.7878 kW from
+    // trickle samples against a 1.38 kW nameplate while it really drew
+    // 1.13-1.36 kW. Shedding `10a` (2.2 kW measured) to `6a` leaves up to the
+    // nameplate drawing, so only 0.82 kW is sure to go away; the learned figure
+    // would have credited 1.41 kW and closed a deficit on watts that stay.
+    const learnedLow = charger({
+      selectedStepId: '10a',
+      currentDrawKw: 2.2,
+      stepPowerCalibration: { '6a': 0.7878, '10a': 1.9 },
+    });
+    const result = ladderFor(learnedLow, chargerProfile, 'turn_off');
+
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs).toEqual([
+      { toStepId: '6a', reliefKw: expect.closeTo(0.82, 6) },
+      { toStepId: 'off', reliefKw: expect.closeTo(2.2, 6) },
+    ]);
+    // A 1.0 kW deficit is not covered by `6a`, so the choice goes on to `off`.
+    expect(chooseShedRung(result.rungs, 1.0)?.toStepId).toBe('off');
   });
 
   it('reports no reachable step when the device is already at its lowest active step', () => {

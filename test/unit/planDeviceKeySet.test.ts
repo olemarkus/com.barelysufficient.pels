@@ -144,16 +144,18 @@ const kinds: Kind[] = [
     shed: true, behavior: SET_STEP, conditional: [],
   },
   {
+    // The learned rungs stay on the INPUT, where smart tasks read them. The plan
+    // prices every rung at nameplate, so its output does not carry them.
     label: 'an EV charger with calibrated rungs and an unplugged cable',
     dev: steppedInputDevice({
       id: 'ev1', name: 'EV', isEvCharger: true, steppedLoadProfile: steppedProfile,
       selectedStepId: 'medium', currentDrawKw: 2,
-      stepPowerCalibration: { low: 1180, medium: 1950, max: 2900 },
+      stepPowerCalibration: { low: 1.18, medium: 1.95, max: 2.9 },
       objectiveKind: 'ev_soc', commandabilityReason: 'charger_unplugged',
       reservesStartupPower: true, surplusTracking: true,
     }),
     behavior: SET_STEP,
-    conditional: [...STEPPED_CLUSTER, 'stepPowerCalibration', 'objectiveKind', 'commandabilityReason', 'reservesStartupPower'],
+    conditional: [...STEPPED_CLUSTER, 'objectiveKind', 'commandabilityReason', 'reservesStartupPower'],
   },
   {
     label: 'a binary device tracking surplus for a temperature objective',

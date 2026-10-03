@@ -48,7 +48,11 @@ const deps = (measurementTs: number) => ({
   log: vi.fn(),
 });
 
-/** The target: a boosted heater on at `medium`, wanting `max` (+1 kW). */
+/**
+ * The target: a boosted heater on at `medium`, wanting `max` (+1 kW). It draws
+ * its rung: a climb from a rung reading nothing would commit `max`'s whole
+ * nameplate (`resolveStepChangeKw`).
+ */
 const heater = (reportedStepId: 'medium' | 'max'): DevicePlanDevice => steppedPlanDevice({
   id: 'heater',
   name: 'Water heater',
@@ -59,6 +63,7 @@ const heater = (reportedStepId: 'medium' | 'max'): DevicePlanDevice => steppedPl
   selectedStepId: reportedStepId,
   reportedStepId,
   desiredStepId: reportedStepId,
+  currentDrawKw: reportedStepId === 'medium' ? 2 : 3,
 });
 
 /** The donor: an EV charger at its lowest step, 1.25 kW. */

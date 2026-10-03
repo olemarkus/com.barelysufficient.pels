@@ -53,7 +53,6 @@ type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice | DevicePlanDevice,
   | 'reportedStepId'
   | 'desiredStepId'
-  | 'stepPowerCalibration'
 >;
 type StepIdentityFields = Pick<StepCapableDevice, 'reportedStepId' | 'selectedStepId' | 'desiredStepId'>;
 type StepSheddingCapableDevice = SteppedDiscriminantProbe & Pick<
@@ -415,21 +414,20 @@ const clampToLowestActiveWhenOtherDevicesLimited = (params: {
 };
 
 /**
- * The highest ACTIVE rung whose calibrated power fits inside
- * `budgetKw`, or `null` when even the ladder floor does not fit. Off steps are
- * never answered — "no rung fits" is the caller's decision to make, and for the
- * surplus allocator it is exactly the question the floor policy settles.
+ * The highest ACTIVE rung whose nameplate power fits inside `budgetKw`, or
+ * `null` when even the ladder floor does not fit. Off steps are never answered —
+ * "no rung fits" is the caller's decision to make, and for the surplus allocator
+ * it is exactly the question the floor policy settles.
  *
- * Calibrated power, not nameplate: `resolveStepPowerKw` prefers the
- * calibrated draw the device actually pulls at that rung and falls back to the
- * profile's planning watts only where the calibration view has no entry. A
- * ladder is not monotonic in calibrated terms — a mis-sampled rung can price
- * above the one above it — so this walks every rung rather than binary-searching
- * from the top, and answers the highest FITTING one rather than the one below
- * the first miss.
+ * Nameplate, not the learned figure, for the reason in `resolveStepChangeKw`: a
+ * rung is fitted into room at what it may draw, and a learned figure is only ever
+ * at or below that.
  */
 export const resolveHighestStepWithinKw = (
-  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  // The same probe-or-device union as `getSteppedLoadProfileForDevice`: a bare
+  // `Pick<StepCapableDevice, 'steppedLoadProfile'>` is a weak type, which a
+  // non-stepped plan device does not satisfy.
+  device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
   budgetKw: number,
 ): SteppedLoadStep | null => {
   const profile = getSteppedLoadProfileForDevice(device);
@@ -439,7 +437,7 @@ export const resolveHighestStepWithinKw = (
   for (const step of sortSteppedLoadSteps(profile.steps)) {
     if (isSteppedLoadOffStep(profile, step.id)) continue;
     if (step.planningPowerW <= 0) continue;
-    if (resolveStepPowerKw(device, step.id) > budgetKw) continue;
+    if (step.planningPowerW / 1000 > budgetKw) continue;
     if (best === null || step.planningPowerW > best.planningPowerW) best = step;
   }
   return best;
@@ -542,10 +540,7 @@ export const resolveSteppedLoadPlanningKw = (
 // device with a power axis can be priced: `MeteredKind`, reached through
 // `isMeteredPlanDevice`.
 type StepChangeDevice =
-  & Pick<
-    StepCapableDevice,
-    'steppedLoadProfile' | 'stepPowerCalibration'
-  >
+  & Pick<StepCapableDevice, 'steppedLoadProfile'>
   & MeteredKind
   & StepIdentityFields
   & { currentOn?: boolean };
@@ -568,11 +563,10 @@ const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
  * of rules, one place where the meter and the step model are reconciled.
  *
  * Two sources can answer "what is this device drawing now": the meter
- * (`currentDrawKw`) and the model (this device's calibrated or nameplate power
- * for the step it reports being on). Only the model can answer the after-side,
- * since the meter has not seen that rung yet. The direction of the change
- * decides which one owns the before-side, because the two directions have
- * opposite pessimism:
+ * (`currentDrawKw`) and the model (the nameplate `planningPowerW` of the step it
+ * reports being on). Only the model can answer the after-side, since the meter
+ * has not seen that rung yet. The direction of the change decides which one owns
+ * the before-side, because the two directions have opposite pessimism:
  *
  * - Going DOWN we are counting on watts to go away, and **the meter is the
  *   bound**: a device cannot release more than it is drawing. Clamping the
@@ -595,6 +589,18 @@ const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
  * declare a breach closed on watts that were never flowing; crediting the meter
  * under-credits a stale one, which the ladder already covers by walking to a
  * deeper rung.
+ *
+ * The model is the rung's NAMEPLATE, never its learned power, on both lanes and
+ * both sides. The calibration store's figure is capped at nameplate and learns
+ * from whatever samples it accepts: on 2026-10-01 a charger's `6a` rung had
+ * learned 0.79 kW from trickle readings while it drew 1.13-1.36 kW, and a resume
+ * from off was admitted at 0.79 kW into room the rung did not fit. Nameplate on a
+ * climb's after-side commits what the rung may draw. On a descent's after-side it
+ * credits only what is sure to go away: a device that really runs below
+ * nameplate on the lower rung is under-credited, which the ladder covers by
+ * walking deeper, but a breach is never declared closed on watts that stay.
+ * Learned step power answers how fast a smart task delivers energy
+ * (`lib/objectives`), not how much room a rung needs.
  */
 export function resolveStepChangeKw(
   device: StepChangeDevice,
@@ -610,14 +616,13 @@ export function resolveStepChangeKw(
   // climb) and answer nothing for a device about to start drawing.
   const observedOff = device.currentOn === false;
 
-  // Direction comes from the ladder's ORDER, never from the estimates: a step
-  // whose calibration has learned oddly must not be able to invert which way
-  // the ladder runs. Position, not watts — `normalizeSteppedLoadProfile`
-  // dedupes step IDs but not wattages, so a hand-configured profile can carry
-  // two distinct rungs at the same `planningPowerW`. Comparing watts calls that
-  // transition "no change", and the restore lane then never commands the tied
-  // rung and stalls before every rung above it. `sortSteppedLoadSteps` breaks
-  // the tie by id, so the order is total and both rungs are reachable.
+  // Direction comes from the ladder's ORDER, not from watts:
+  // `normalizeSteppedLoadProfile` dedupes step IDs but not wattages, so a
+  // hand-configured profile can carry two distinct rungs at the same
+  // `planningPowerW`. Comparing watts calls that transition "no change", and the
+  // restore lane then never commands the tied rung and stalls before every rung
+  // above it. `sortSteppedLoadSteps` breaks the tie by id, so the order is total
+  // and both rungs are reachable.
   const fromIndex = observedOff ? OFF_LADDER_INDEX : resolveStepIndex(device, effectiveFromStepId);
   const toIndex = resolveStepIndex(device, toStepId);
   if (toIndex === fromIndex) return NO_STEP_CHANGE;
@@ -626,7 +631,7 @@ export function resolveStepChangeKw(
   const beforeKw = observedOff
     ? 0
     : resolveStepChangeBeforeKw(device, effectiveFromStepId, direction);
-  const afterKw = resolveStepPowerKw(device, toStepId);
+  const afterKw = resolveSteppedLoadPlanningKw(device, toStepId);
   const deltaKw = direction === 'down'
     ? Math.max(0, beforeKw - afterKw)
     : Math.max(0, afterKw - beforeKw);
@@ -657,13 +662,17 @@ function resolveStepChangeBeforeKw(
   fromStepId: string | undefined,
   direction: 'down' | 'up',
 ): number {
-  const modelKw = resolveStepPowerKw(device, fromStepId);
+  const modelKw = resolveSteppedLoadPlanningKw(device, fromStepId);
   const measuredKw = Math.max(0, device.currentDrawKw);
   // A zero reading at a running step is not evidence of idleness — an
   // unreadable meter resolves to 0 as well, and a device mid-cycle or throttled
-  // reads zero while still committed to its rung. The model is the only usable
-  // estimate either way.
-  if (measuredKw <= 0) return modelKw;
+  // reads zero while still committed to its rung. On a descent the model is the
+  // only usable estimate either way. A climb takes the cautious end instead:
+  // nothing of this rung is in the whole-home total, so the climb commits the
+  // target's full nameplate, as it does from off. A paused car on `6a` that
+  // resumes at `10a` adds the whole 2.3 kW, not 2.3 minus the 1.38 it was not
+  // drawing.
+  if (measuredKw <= 0) return direction === 'up' ? 0 : modelKw;
   return direction === 'down' ? measuredKw : Math.min(measuredKw, modelKw);
 }
 
@@ -674,24 +683,6 @@ export function isSteppedLoadStepBelow(
   referenceStepId: string,
 ): boolean {
   return resolveStepIndex(device, stepId) < resolveStepIndex(device, referenceStepId);
-}
-
-// Per the "resolution belongs in producer" rule, the producer
-// (`lib/planInput.buildStepPowerCalibrationView`) has already bound the calibrated
-// value to samples inside the configured step's power band. The plan layer
-// trusts the view; this only falls back to nameplate when no entry is present.
-//
-// One figure, not two ends of a band: the store learns a single number per
-// rung, so a caller wanting the conservative end has to find it against the
-// meter, never against a second calibration value.
-export function resolveStepPowerKw(
-  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
-  stepId: string | undefined,
-): number {
-  if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
-  const calibrated = device.stepPowerCalibration?.[stepId];
-  if (typeof calibrated === 'number' && Number.isFinite(calibrated)) return calibrated;
-  return resolveSteppedLoadPlanningKw(device, stepId);
 }
 
 function resolveUnconfirmedLowerDesiredStep(params: {

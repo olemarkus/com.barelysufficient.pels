@@ -89,21 +89,19 @@ export type DeferredObjective = {
 /**
  * One rung of a device's ladder, as the planner works with it.
  *
- * `usefulPowerKw` is the rate energy lands in the tank/battery/car;
- * `admissionPowerKw` is what the device draws from the grid, which is what
- * competes for the hard cap. They differ for a device with conversion losses or
- * gain, and are equal for a resistive load.
+ * `usefulPowerKw` is the rate energy lands in the tank/battery/car: the rung's
+ * learned power, capped at nameplate, so it sizes bookings and planning speed.
+ * `admissionPowerKw` is what the rung may draw from the grid, which is what
+ * competes for the hard cap: the rung's NAMEPLATE, the same price the planner's
+ * restore admission and startup reserve put on it. Every question that fits a
+ * rung into room reads `admissionPowerKw`; every question about energy reads
+ * `usefulPowerKw`. For every rung PELS builds, useful is at or below admission,
+ * short of it by however far the learned figure trails nameplate.
  *
  * Both are REQUIRED and both are finite and non-negative. That is a producer
- * guarantee, not a hope: `resolveObjectiveSteps` (from a device's calibrated
- * profile) and `normalizeObjectiveSteps` (from planner input) are the only two
- * ways a step is built, and each resolves `admissionPowerKw` — falling back to
- * the step's nameplate when the calibration store has nothing usable.
- *
- * Today the two fields are always EQUAL: the store learns one number per rung
- * and both resolvers read it. They stay separate because the difference is real
- * for a device with conversion loss or gain, not because anything currently
- * produces one.
+ * guarantee, not a hope: `resolveObjectiveSteps` (from a device's profile and
+ * calibration view) and `normalizeObjectiveSteps` (from planner input) are the
+ * only two ways a step is built, and each resolves `admissionPowerKw`.
  *
  * It was previously optional "for backward-compatible callers". There were none:
  * both producers always set it, so the fallback ran at all five consumer sites and

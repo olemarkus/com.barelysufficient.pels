@@ -68,6 +68,8 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
           boostActive,
           selectedStepId: 'medium',
           desiredStepId: 'medium',
+          // Drawing its rung: a boosted climb is priced from what is flowing.
+          currentDrawKw: 2,
         }),
         buildPlanDevice({
           id: 'lower-priority',

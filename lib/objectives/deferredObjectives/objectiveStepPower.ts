@@ -6,6 +6,10 @@
  * so capping at nameplate prevents an over-delivering observation from
  * making horizon plans optimistic; flooring at zero keeps malformed input
  * from corrupting the allocator.
+ *
+ * Delivery only. Fitting the rung into capacity room reads
+ * {@link DeferredObjectiveStep.admissionPowerKw}, which is the nameplate
+ * (`objectiveSteps.ts`): a learned figure can sit well below what the rung draws.
  */
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 

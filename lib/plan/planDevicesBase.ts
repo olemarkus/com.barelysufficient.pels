@@ -277,8 +277,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
       planningPowerKw: dev.planningPowerKw,
     } satisfies SteppedLoadKind);
   }
-  // BUDGET SPENT: the eleven conditionals below and above, plus the three
-  // logical operators in the literal, put this function at exactly the
+  // BUDGET NEARLY SPENT: the ten conditionals below and above, plus the three
+  // logical operators in the literal, put this function one under the
   // `complexity` ceiling of 15 (`eslint.config.mjs`, warnings are errors). A
   // twelfth conditional field needs a helper, not another `if` — that is what
   // the five deleted `pick*` helpers were buying, at fourteen objects a device.
@@ -290,7 +290,6 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   if (shedDesiredStepId !== undefined) loose.plannedShedStepId = shedDesiredStepId;
   // Propagated owner/producer facts, carried only when set so the plan device
   // says "absent" by omission the way the spread literals did.
-  if (dev.stepPowerCalibration) loose.stepPowerCalibration = dev.stepPowerCalibration;
   if (dev.surplusOnly === true) loose.surplusOnly = true;
   if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
@@ -299,8 +298,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 }
 /* eslint-enable functional/immutable-data */
 
-// A helper rather than a twelfth conditional in the builder above (its
-// complexity budget is spent): the draw is forwarded unchanged, resolved once at
+// A helper rather than another conditional in the builder above (its
+// complexity budget is nearly spent): the draw is forwarded unchanged, resolved once at
 // `toPlanDevice`, and only for a device that has one.
 /**
  * The holds that are not capacity pressure, DECIDED once here rather than carried

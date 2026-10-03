@@ -114,7 +114,6 @@ export type PelsPlanDeviceSummary = {
   plannedTarget?: number;
   reason?: string;
   controllable?: boolean;
-  stepPowerCalibration?: Record<string, number>;
   pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
 };
 

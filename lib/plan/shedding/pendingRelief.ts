@@ -62,7 +62,7 @@ import type { DeviceReason } from '../../../packages/shared-domain/src/planReaso
 import type { ShedLatchDecision, ShedPlanLatch } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
-import { isSteppedLoadDevice, isSteppedLoadStepBelow, resolveStepPowerKw } from '../planSteppedLoad';
+import { isSteppedLoadDevice, isSteppedLoadStepBelow, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
 import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { ShedSelection } from './selection';
 import { chooseShedRung } from './steppedCandidates';
@@ -185,7 +185,11 @@ function isStillDecidable(device: PlanInputDevice | undefined, decidedStepId: st
   return isSteppedLoadDevice(device) && getSteppedLoadStep(device.steppedLoadProfile, decidedStepId) !== null;
 }
 
-/** The draw still above the state the decision put this device in: above the held rung, or all of it. */
+/**
+ * The draw still above the state the decision put this device in: above the held rung, or all of it.
+ * The rung is priced at its nameplate, like every capacity decision (`resolveStepChangeKw`): a learned
+ * figure is never above it, so it could only credit relief that never comes.
+ */
 function resolveUndeliveredReliefKw(
   device: PlanInputDevice | undefined,
   heldStepId: string | undefined,
@@ -193,7 +197,7 @@ function resolveUndeliveredReliefKw(
   if (!isReadable(device)) return 0;
   const drawKw = Math.max(0, device.currentDrawKw);
   if (heldStepId === undefined || !isSteppedLoadDevice(device)) return drawKw;
-  return Math.max(0, drawKw - resolveStepPowerKw(device, heldStepId));
+  return Math.max(0, drawKw - resolveSteppedLoadPlanningKw(device, heldStepId));
 }
 
 /** The share of delivered relief the reading has not shown, or 0 once it has seen half. */

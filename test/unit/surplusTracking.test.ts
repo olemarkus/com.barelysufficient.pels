@@ -147,6 +147,15 @@ describe('resolveHighestStepWithinKw', () => {
   it('answers null for a non-finite budget rather than picking a rung', () => {
     expect(resolveHighestStepWithinKw(device, Number.NaN)).toBeNull();
   });
+
+  it('fits a rung at its nameplate, never a lower learned figure', () => {
+    // Production 2026-10-01: a charger's lowest rung had learned 0.79 kW from
+    // trickle samples against its nameplate. A 1.0 kW budget does not buy a rung
+    // that may draw 1.25 kW.
+    const learnedLow = buildTracker({ stepPowerCalibration: { low: 0.79 } });
+    expect(resolveHighestStepWithinKw(learnedLow, 1.0)).toBeNull();
+    expect(resolveHighestStepWithinKw(learnedLow, 1.25)?.id).toBe('low');
+  });
 });
 
 describe('surplus tracking — the variable claimant', () => {
@@ -155,6 +164,20 @@ describe('surplus tracking — the variable claimant', () => {
     // 3.3 kW export − 0.25 reserve = 3.05 kW budget → `max` (3.0 kW) fits.
     engage({ state, signedNetKw: -3.3, devices: [buildTracker()] });
     expect(ceiling(state)).toBe('max');
+  });
+
+  it('engages at the floor rung\'s nameplate, not a lower learned figure', () => {
+    // Priced at the learned 0.79 kW, 1.2 kW of export clears a 1.04 kW engage bar
+    // and parks the device on `low`, which may then draw its 1.25 kW nameplate and
+    // import the difference. At nameplate the bar is 1.5 kW, so it stays stopped.
+    const state = createPlanEngineState();
+    engage({
+      state,
+      signedNetKw: -1.2,
+      devices: [buildTracker({ currentDrawKw: 0, stepPowerCalibration: { low: 0.79 } })],
+    });
+    expect(ceiling(state)).toBeUndefined();
+    expect(stopped(state)).toBe(true);
   });
 
   it('drops to a lower rung as the pool shrinks', () => {
