@@ -3,9 +3,11 @@ import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskD
 import { LEGACY_DELIVERY_EVIDENCE } from './deliveryEvidence';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
+  DeferredObjectivePlanHistoryHourStartBooking,
   DeferredObjectivePlanHistoryHourlyContribution,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
+import { isHourStartBooking } from './planHistorySettings';
 
 /** Unknown means the run's original requirement cannot be recovered from remaining need. */
 export type MeteredRunCommitment = { kind: 'known'; kwh: number } | { kind: 'unknown' };
@@ -21,6 +23,9 @@ export type PersistedMeteredDeliveryState = {
   costDisplay: DeferredObjectivePlanHistoryCostDisplay | null;
   deliveryPriceComplete: boolean;
   hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
+  // Hours whose start the run already saw, so a restart inside one of them
+  // does not book that hour again from a plan revised after it began.
+  hourStartBookings: DeferredObjectivePlanHistoryHourStartBooking[];
 };
 
 const isCommitment = (value: unknown): value is MeteredRunCommitment => {
@@ -30,13 +35,25 @@ const isCommitment = (value: unknown): value is MeteredRunCommitment => {
     || (candidate.kind === 'known' && isFiniteNumber(candidate.kwh) && candidate.kwh >= 0);
 };
 
-/** Upgrade pre-commitment rows without throwing away their measured delivery. */
-export const migrateMeteredDeliveryCommitment = (raw: unknown): unknown => {
+/**
+ * Upgrade rows saved before a field existed without throwing away their
+ * measured delivery: no commitment reads as unknown, no delivery evidence as
+ * legacy, no hour-start bookings as none captured.
+ *
+ * Accepted one-time artifact: a run in flight when a device first upgrades to
+ * the build that records hour-start bookings restores with none, so its
+ * finalized entry carries only the hours that began after the upgrade, and the
+ * readers take that list as complete (earlier hours read "Not scheduled", the
+ * logged planned total runs low, the coverage line is hidden). Every later run
+ * records from its first hour.
+ */
+export const migrateMeteredDeliveryState = (raw: unknown): unknown => {
   if (!raw || typeof raw !== 'object') return raw;
   return {
     ...raw,
     ...('commitment' in raw ? {} : { commitment: { kind: 'unknown' } }),
     ...('deliveryEvidence' in raw ? {} : { deliveryEvidence: LEGACY_DELIVERY_EVIDENCE }),
+    ...('hourStartBookings' in raw ? {} : { hourStartBookings: [] }),
   };
 };
 
@@ -67,6 +84,13 @@ const isContributionList = (value: unknown): boolean => (
   Array.isArray(value) && value.every(isHourlyContribution)
 );
 
+// Both per-hour lists; the bookings share the finalized entry's guard.
+const hasValidHourLists = (candidate: Record<string, unknown>): boolean => (
+  isContributionList(candidate.hourlyContributions)
+    && Array.isArray(candidate.hourStartBookings)
+    && candidate.hourStartBookings.every(isHourStartBooking)
+);
+
 export const isPersistedMeteredDeliveryState = (
   value: unknown,
 ): value is PersistedMeteredDeliveryState => {
@@ -83,5 +107,5 @@ export const isPersistedMeteredDeliveryState = (
     && isFiniteNumber(candidate.totalCost)
     && (candidate.costDisplay === null || isCostDisplay(candidate.costDisplay))
     && typeof candidate.deliveryPriceComplete === 'boolean'
-    && isContributionList(candidate.hourlyContributions);
+    && hasValidHourLists(candidate);
 };

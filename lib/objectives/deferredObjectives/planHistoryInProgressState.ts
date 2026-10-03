@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
+  DeferredObjectivePlanHistoryHourStartBooking,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryObservedInterval,
   DeferredObjectivePlanHistoryRecord,
@@ -65,6 +66,7 @@ export type InProgressRecord = Omit<
   | 'costDisplay'
   | 'revisions'
   | 'hourlyContributions'
+  | 'hourStartBookings'
   | 'metReason'
   | 'initialEnergyExpectedKWh'
   | 'progressDirection'
@@ -151,6 +153,12 @@ export type InProgressRecord = Omit<
   // `hasDeliveryContribution` the same way `deliveredKWh` / `totalCost`
   // are.
   hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
+  // One entry per hour whose start the run saw, in hour order, captured by
+  // `captureHourStartBooking` (`planHistoryHourStartBookings.ts`) and never
+  // revised. Includes hours the plan in force booked nothing for, so a restart
+  // inside such an hour cannot book it afterwards from a plan revised mid-hour.
+  // Persisted with the metered state.
+  hourStartBookings: DeferredObjectivePlanHistoryHourStartBooking[];
 };
 
 
@@ -318,6 +326,7 @@ export const startRecord = (
     deliveryPriceComplete: true,
     revisions: [],
     hourlyContributions: [],
+    hourStartBookings: [],
   };
 };
 
@@ -660,6 +669,12 @@ export const finalizeRecord = (
       ? { hourlyContributions: record.hourlyContributions.slice() }
       : {}),
     ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
+    // Present whenever the run saw at least one hour begin under a plan, even
+    // one that booked nothing: presence is what tells the readers to trust
+    // this record over the final revision's hours.
+    ...(record.hourStartBookings.length > 0
+      ? { hourStartBookings: record.hourStartBookings.slice() }
+      : {}),
   };
 };
 

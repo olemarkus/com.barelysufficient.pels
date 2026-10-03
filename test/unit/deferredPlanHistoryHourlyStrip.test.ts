@@ -130,6 +130,44 @@ describe('resolveHistoryDetailHourlyStrip', () => {
     expect(data.buckets[1]!.kwh).toBe(2.0); // Falls back to plannedKWh for tooltip context.
   });
 
+  // Regression, prod 2026-10-01/02: hourly re-plans drop elapsed hours, so an
+  // EV run's final revision held one hour shrunk to 0.03 kWh. The strip must
+  // read each hour's booking at its start instead.
+  it('marks the hours booked when each began as planned, not the final revision\'s hours', () => {
+    const entry = buildEntry({
+      originalPlan: {
+        hours: [{ startsAtMs: START_MS + HOUR_MS, plannedKWh: 9 }],
+        energyNeededKWh: 9,
+        planStatus: 'on_track',
+        revisedAtMs: START_MS,
+      },
+      finalPlan: {
+        hours: [{ startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+        energyNeededKWh: 0.03,
+        planStatus: 'cannot_meet',
+        revisedAtMs: DEADLINE_MS - 2 * 60_000,
+      },
+      hourStartBookings: [
+        { atMs: START_MS, bookedKWh: 3 },
+        { atMs: START_MS + HOUR_MS, bookedKWh: 0 },
+        { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 2.5 },
+        { atMs: START_MS + 3 * HOUR_MS, bookedKWh: 2 },
+      ],
+      hourlyContributions: [
+        { atMs: START_MS, deliveredKWh: 2.8, priceValue: 0.3, tone: 'cheap' },
+        { atMs: START_MS + 3 * HOUR_MS, deliveredKWh: 1.9, priceValue: 0.5, tone: 'normal' },
+      ],
+    });
+    const data = resolveHistoryDetailHourlyStrip(entry);
+    if (data.mode !== 'present') throw new Error('expected present');
+    expect(data.buckets.map((bucket) => bucket.planned)).toEqual([true, false, true, true]);
+    expect(data.buckets.map((bucket) => bucket.outlinePresent)).toEqual([false, false, true, false]);
+    // The skipped hour's bar falls back to its booking at hour start.
+    expect(data.buckets[2]!.kwh).toBe(2.5);
+    // The original plan's 9 kWh for the second hour was gone when that hour began.
+    expect(data.buckets[1]!.kwh).toBe(0);
+  });
+
   it('suppresses the cheapest highlight when no cheap hour was delivered', () => {
     const hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[] = [
       // A cheap hour with zero delivered → not "actually charged in".

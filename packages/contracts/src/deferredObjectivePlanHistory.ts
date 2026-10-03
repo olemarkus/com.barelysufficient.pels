@@ -142,6 +142,26 @@ export type DeferredObjectivePlanHistoryHourlyContribution = {
   tone: DeferredObjectivePlanHistoryHourlyTone;
 };
 
+// What one hour of the run had booked when it became current: the revision in
+// force at the hour's start (normally the one the previous hour's `:58` settle
+// wrote, or the run's first plan for the hour it arrived in). Recorded once
+// per hour and never revised, so it survives the hourly re-plans that drop
+// elapsed hours from every later revision — no revision snapshot can say
+// what an earlier hour had booked.
+//
+// `atMs` is the hour-aligned start; `bookedKWh` the useful energy booked for
+// it (`0` when the plan in force booked nothing for that hour). An hour with
+// no revision in force at its start has no entry, and neither has an hour with
+// no recorder tick inside it (an outage spanning the whole hour).
+//
+// A per-hour view, not the run's need: a `:58` re-plan books an
+// under-delivered hour's shortfall into later hours, so the sum over the
+// bookings counts that energy again. The need is `initialEnergyExpectedKWh`.
+export type DeferredObjectivePlanHistoryHourStartBooking = {
+  atMs: number;
+  bookedKWh: number;
+};
+
 // Snapshot of objective progress while a run is in flight. The recorder
 // maintains a per-run ring keyed on a 15-minute bucket grid (hourly before
 // v2.11.x — consumers must not assume a cadence: sort by `atMs` and tolerate
@@ -333,6 +353,20 @@ export type DeferredObjectivePlanHistoryEntry = {
   // field (no migration: existing v4 entries simply load with the field absent
   // and degrade gracefully). See `DeferredObjectivePlanHistoryHourlyContribution`.
   hourlyContributions?: DeferredObjectivePlanHistoryHourlyContribution[];
+  // Each hour's booking as it stood when the hour began, in hour order. The
+  // record of what the run had scheduled: the chart's run bands, the hourly
+  // strip, the receipt's largest planned hour and the logged planned total
+  // read it (`pickScheduledHours` in
+  // `packages/shared-domain/src/deferredPlanHistoryShared.ts`). Its presence
+  // also hides the "Observed N of M scheduled hours" line, which it would make
+  // tautological (`formatPlanHistoryObservedCoverage`).
+  // Separate from `hourlyContributions` because that list only has hours that
+  // received delivery, and a booked hour with none must still count. Optional
+  // and additive like `costDisplay` (no version bump): entries finalized before
+  // it shipped, and runs that never had a plan, persist without it and the
+  // readers fall back to the final revision's hours. See
+  // `DeferredObjectivePlanHistoryHourStartBooking`.
+  hourStartBookings?: DeferredObjectivePlanHistoryHourStartBooking[];
 };
 
 // Runtime cap on `progressSamples` per entry (200) lives in

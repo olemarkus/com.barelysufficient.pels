@@ -19,6 +19,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { deadlineLabels } from './deadlineLabels';
+import { pickScheduledHours, type ScheduledHistoryHour } from './deferredPlanHistoryShared';
 import type { DeferredObjectiveUnit } from '../../contracts/src/deferredObjectiveSettings';
 
 // Trajectory chart mode. `trajectory` is the v4 shape used when the entry has
@@ -93,9 +94,10 @@ export type DeferredPlanHistoryChartData = {
   // exists (`plannedFinal` populated). Gates the "Plan changed" marker and
   // the "Compare with initial plan" toggle. Always false on `legacy_kwh`.
   replanned: boolean;
-  // Scheduled-run bands: merged spans of the booked hours (plannedKWh > 0) of
-  // the schedule that was last in force (`finalPlan ?? originalPlan` for a
-  // finished run, `latest` for a live one), clamped to the window. Producer-
+  // Scheduled-run bands: merged spans of the booked hours (plannedKWh > 0),
+  // clamped to the window — for a finished run, each hour as it was booked when
+  // it began (`pickScheduledHours`, falling back to `finalPlan ?? originalPlan`
+  // on older entries); for a live one, `latest`. Producer-
   // resolved per `feedback_layering_resolution_in_producer` so the view shades
   // flat ranges without re-deriving them from plan snapshots. Empty on
   // `legacy_kwh` or when no hour books any energy.
@@ -126,12 +128,8 @@ const HOUR_MS = 60 * 60 * 1000;
 // 3-hour block reads as one shaded run, not three abutting rects. Exported so
 // the live-task producer (`deferredActivePlanChartData.ts`) resolves bands from
 // `latest.hours` with identical semantics.
-type RunBandHour = Pick<
-  DeferredObjectivePlanHistoryRevisionSnapshot['hours'][number],
-  'startsAtMs' | 'plannedKWh' | 'coversFromMs'
->;
 export const resolveRunBands = (
-  hours: readonly RunBandHour[],
+  hours: readonly ScheduledHistoryHour[],
   windowStartMs: number,
   windowEndMs: number,
 ): DeferredPlanHistoryChartBand[] => {
@@ -551,6 +549,7 @@ type ChartDataEntry = Pick<
   | 'deadlineAtMs'
   | 'originalPlan'
   | 'finalPlan'
+  | 'hourStartBookings'
   | 'progressSamples'
   | 'finalizedAtMs'
   | 'metAtMs'
@@ -629,10 +628,11 @@ const buildTrajectoryPayload = (
     plannedVisible: replanned ? plannedFinal : plannedOriginal,
     replanned,
     observed: resolveDisplayedObserved(entry, observed, frame),
-    // Bands shade the schedule that was last in force — the final plan when the
-    // run replanned, else the original — showing when planned work was booked.
+    // Bands shade the hours that had work booked when they began. The final
+    // plan alone would shade only what was still ahead at its last revision,
+    // since every hourly re-plan drops the hours that have passed.
     runBands: resolveRunBands(
-      (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
+      pickScheduledHours(entry) ?? [],
       frame.windowStartMs,
       frame.windowEndMs,
     ),

@@ -30,3 +30,43 @@ describe('recorded smart-task miss attribution', () => {
     expect(formatRefinedMissCause({ ...entry(blocked('capacity_limited')), outcome })).toBeNull();
   });
 });
+
+describe('logged planned total', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const DEADLINE_MS = Date.UTC(2026, 9, 2, 5, 0, 0);
+  const clear: TaskDeliveryExplanation = { kind: 'recorded', primary: { kind: 'clear' }, contributors: [], intervals: [] };
+  // The final revision of a run re-planned hourly: one hour, shrunk to its
+  // last two minutes.
+  const finalPlan = {
+    hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+    energyNeededKWh: 0.03,
+    planStatus: 'cannot_meet' as const,
+    revisedAtMs: DEADLINE_MS - 2 * 60_000,
+  };
+
+  // Regression, prod 2026-10-01/02: an overnight EV run logged plannedKWh 0.03
+  // because hourly re-plans had dropped every elapsed hour from the final
+  // revision. The sum includes energy re-booked after a short hour; it is
+  // telemetry and never compared with delivery.
+  it('sums each hour\'s booking at its start, not the final revision\'s remainder', () => {
+    const run = {
+      ...entry(clear, 9.1),
+      finalPlan,
+      hourStartBookings: [
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 3.2 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 0 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 3.4 },
+        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 2.9 },
+      ],
+    };
+    expect(resolveDeferredPlanHistoryMissAttribution(run).plannedKWh).toBeCloseTo(9.5);
+  });
+
+  it('keeps reading the final revision\'s hours for an entry recorded before hour-start bookings', () => {
+    expect(resolveDeferredPlanHistoryMissAttribution({ ...entry(clear), finalPlan }).plannedKWh).toBeCloseTo(0.03);
+  });
+
+  it('reports no planned total when no plan was recorded', () => {
+    expect(resolveDeferredPlanHistoryMissAttribution(entry(clear)).plannedKWh).toBeNull();
+  });
+});

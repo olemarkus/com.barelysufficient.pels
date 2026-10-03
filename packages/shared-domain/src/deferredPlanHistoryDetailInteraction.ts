@@ -188,8 +188,9 @@ export type HistoryRunBand = { fromMs: number; toMs: number; label: string | nul
 
 /**
  * Labelled run bands for the history trajectory chart. The band geometry is
- * the chart payload's own producer-resolved `runBands` (final-preferred plan,
- * merged + window-clamped in `deferredPlanHistoryChartData.ts`) — this helper
+ * the chart payload's own producer-resolved `runBands` (each hour's booking at
+ * its start via `pickScheduledHours`, merged + window-clamped in
+ * `deferredPlanHistoryChartData.ts`) — this helper
  * only decorates the first band with the kind verb ("Heating" / "Cooling" / "Charging"),
  * same grammar as the live trajectory card. One semantic source: re-deriving
  * the spans from `finalPlan ?? originalPlan` here would let the labelled
@@ -366,7 +367,7 @@ const formatMoney = (value: number, unit: string): string => (
 
 type StripReadoutEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
-  'revisions' | 'objectiveKind' | 'originalPlan' | 'finalPlan' | 'startedAtMs' | 'costDisplay'
+  'revisions' | 'objectiveKind' | 'originalPlan' | 'finalPlan' | 'hourStartBookings' | 'startedAtMs' | 'costDisplay'
 >;
 
 const snapshotHasHour = (
@@ -389,13 +390,19 @@ const snapshotHasHour = (
 // line rather than misattribute). Bare `schedule_revised` reasons keep the
 // stem only, like fallback rows — "plan change — schedule revised" is a
 // tautology.
+//
+// Never on an entry with `hourStartBookings`: there an outlined hour is one
+// that still had its booking when it began, so no plan change skipped it. Its
+// absence from the final plan only means the hour had passed by the last
+// re-plan.
 const resolveSkipReason = (
   entry: StripReadoutEntry,
   replanned: boolean,
   atMs: number,
   timeZone: string,
 ): string => {
-  const droppedFromFinal = replanned
+  const droppedFromFinal = entry.hourStartBookings === undefined
+    && replanned
     && snapshotHasHour(entry.originalPlan, atMs)
     && !snapshotHasHour(entry.finalPlan, atMs);
   const revisions = Array.isArray(entry.revisions) ? entry.revisions : [];
