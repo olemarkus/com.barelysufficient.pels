@@ -22,6 +22,8 @@ const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService']) => 
     protected readonly reloadHomeModeCatalog = () => {};
     protected readonly resolveHomeModeName = (mode: string) => mode;
     protected readonly getHomeModeNames = () => new Set(['Home']);
+    protected readonly listDeviceTargetModes = () => null;
+    protected readonly setDeviceModeTarget = () => ({ state: 'unavailable' as const });
 
     protected readonly smartTaskApi = {} as never;
 

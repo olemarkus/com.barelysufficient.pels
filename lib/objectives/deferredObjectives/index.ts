@@ -53,6 +53,7 @@ export {
   readDeferredObjectiveRoster,
   readAllObjectives,
   readObjectiveForDevice,
+  readSmartTaskInProgress,
   writeObjectiveForDevice,
 } from './objectiveStore';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';

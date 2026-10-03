@@ -7,7 +7,7 @@
     "en": "Set expected power for [[device]] to [[power_w]] W"
   },
   "hint": {
-    "en": "Legacy/manual override of a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
+    "en": "Legacy card, kept for Flows that already use it. Sets the device's Power when running figure in watts. Fails for a stepped-load device, which is sized per configured step."
   },
   "args": [
     {

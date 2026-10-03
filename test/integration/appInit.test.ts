@@ -238,7 +238,14 @@ describe('app init plan service wiring', () => {
       dailyBudgetService: undefined,
     });
 
-    registerAppFlowCards(ctx, (mode) => getHomeModeCatalogForTest(ctx).resolveModeName(mode), () => getHomeModeCatalogForTest(ctx).getAllModes(), () => getHomeModeCatalogForTest(ctx).getOperatingMode());
+    registerAppFlowCards(
+      ctx,
+      (mode) => getHomeModeCatalogForTest(ctx).resolveModeName(mode),
+      () => getHomeModeCatalogForTest(ctx).getAllModes(),
+      () => getHomeModeCatalogForTest(ctx).getOperatingMode(),
+      (deviceId) => getHomeModeCatalogForTest(ctx).listDeviceTargetModes(deviceId),
+      (deviceId, selection, targetC) => getHomeModeCatalogForTest(ctx).setDeviceModeTarget(deviceId, selection, targetC),
+    );
 
     expect(
       () => (capturedFlowCardDeps.current as { loadDailyBudgetSettings: () => void }).loadDailyBudgetSettings(),
