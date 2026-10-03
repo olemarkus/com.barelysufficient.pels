@@ -91,6 +91,21 @@ describe('current-hour price level resolves from a single series build', () => {
     expect(buildSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('answers the look-ahead from one build, against the same series', () => {
+    const service = createService();
+    const buildSpy = vi.spyOn(service, 'getCombinedPricePeriods');
+
+    // From 08:30 UTC, three hours ahead: 09:00 stays normal, 10:00 is the cheap
+    // hour and 11:00 returns to normal.
+    const levels = service.getPriceLevelChangesWithin({
+      nowMs: Date.UTC(2026, 2, 11, 8, 30, 0),
+      horizonMs: 3 * 3600_000,
+    });
+
+    expect(levels).toEqual([PriceLevel.CHEAP, PriceLevel.NORMAL]);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('answers UNKNOWN when the current hour has no price', () => {
     priceCache.write('spot_prices', []);
     const service = createService();

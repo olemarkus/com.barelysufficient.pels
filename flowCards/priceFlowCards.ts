@@ -2,10 +2,13 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/
 import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import {
+  readFlowNumberArg,
   readFlowRawArg,
   readFlowStringArg,
 } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
+
+const HOUR_MS = 60 * 60 * 1000;
 
 export function registerPriceLevelCards(deps: FlowCardDeps): void {
   const priceLevelChangedTrigger = deps.homey.flow.getTriggerCard('price_level_changed');
@@ -27,6 +30,32 @@ export function registerPriceLevelCards(deps: FlowCardDeps): void {
   });
   priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => (
     getPriceLevelOptions(query)
+  ));
+
+  const changesWithinCond = deps.homey.flow.getConditionCard('price_level_changes_within');
+  changesWithinCond.registerRunListener(async (args: unknown) => {
+    const chosenLevel = readPriceLevelArg(args);
+    const hours = readFlowNumberArg(args, 'hours');
+    if (hours === null || hours <= 0) throw new Error('Hours must be a number above 0.');
+    const read = deps.getPriceLevelChangesWithin({
+      nowMs: deps.getNow().getTime(),
+      horizonMs: hours * HOUR_MS,
+    });
+    if (read.state === 'unavailable') throw new Error('PELS could not read prices. Try again shortly.');
+    const matches = read.levels.includes(chosenLevel);
+    deps.debugStructured({
+      event: 'price_level_lookahead_evaluated',
+      level: chosenLevel,
+      hours,
+      levels: read.levels,
+      matches,
+    });
+    return matches;
+  });
+  // A period always resolves to Cheap, Normal or Expensive, so the price never
+  // changes TO Unknown and offering it would only build a Flow that never runs.
+  changesWithinCond.registerArgumentAutocompleteListener('level', async (query: string) => (
+    getPriceLevelOptions(query).filter((option) => option.id !== PriceLevel.UNKNOWN)
   ));
 }
 
