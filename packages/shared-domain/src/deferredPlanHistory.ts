@@ -18,7 +18,6 @@ import {
   HOUR_MS,
   OVERSHOOT_THRESHOLD_BY_KIND,
   pickLastPlan,
-  snapshotShowsBudgetExhausted,
 } from './deferredPlanHistoryShared';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
@@ -342,78 +341,16 @@ export const resolveMissStreakBadges = (
   return badges;
 };
 
-/**
- * Composes a short human-readable explanation for *why* a finalized run was marked missed.
- * Resolves to flat copy from the recorded snapshots so the missed-history surface mirrors the
- * succeeded path's "explanation density": users opening a missed run need to see the cause
- * without inferring from chart bars alone.
- *
- * Branches resolve in priority order (most specific first):
- *  1. Daily budget exhausted on the last revision → "Daily budget filled before the
- *     deadline." (blameless; recourse copy lives on the recourse button per v2.7.3
- *     history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
- *  2. `formatRefinedMissCause` — the attributed cause, when it resolves one.
- *  3. Final plan status `cannot_meet` → "Couldn't reserve enough cheap hours in time."
- *  4. Final plan status `at_risk`     → "Fell behind and didn't catch up in time."
- *  5. Discovered from backfill        → "PELS restarted mid-task; outcome estimated."
- *  6. Otherwise                       → "Didn't reach the target before the deadline."
- *
- * Branches 3-6 are RESIDUAL. Since the attribution learned to read the producer's
- * `floorShortfallCause`, step 2 claims most missed runs — including nearly every
- * `cannot_meet`, which is why the cheap-hours line is rarely reached now. Do not
- * read its position here as "this is what a `cannot_meet` run says".
- *
- * Sentences are kept tight (≤ ~48 chars) so the list-card reason line fits on one
- * row at 320px; the consumer prefixes "Why:" to set it apart from the coverage line.
- *
- * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page
- * always renders something so the user is never left with a chip and no explanation.
- *
- * Per `feedback_hard_cap_is_physical.md`, no branch recommends raising the capacity
- * hard cap or the daily budget — the recourse button (resolved by
- * `resolveMissedHistoryRecourse`) is the only surface that names the user-facing
- * "lower target / move deadline / lower daily budget" action.
- *
- * Lives in shared-domain so the same strings can feed runtime log breadcrumbs (per
- * `feedback_ui_text_shared_with_logs.md`).
- */
+/** The run owner records causes; history formatting does not infer them from chart telemetry. */
 export const formatPlanHistoryMissedReason = (
   entry: Pick<
     ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh' | 'objectiveKind'
-    | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
+    | 'progressDirection' | 'startProgressValue' | 'finalProgressValue' | 'deliveryExplanation'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
-  // v2.7.3 — blameless rewrite. Recourse copy lives on the recourse button
-  // (resolved separately by `resolveMissedHistoryRecourse`), so the "Why"
-  // sentence answers only "what happened" — never "what should you do".
-  // Per `feedback_hard_cap_is_physical.md`, no branch ever suggests raising
-  // the capacity hard cap or daily budget; the user-facing recommendation
-  // (lower target / move deadline / lower daily budget) is the recourse
-  // button's job.
-  const lastPlan = pickLastPlan(entry);
-  if (snapshotShowsBudgetExhausted(lastPlan)) {
-    return 'Daily budget filled before the deadline.';
-  }
-  // v2.7.4 — plan-time miss attribution (Session A). Inserted ahead of the
-  // `planStatus` branches so a `cannot_meet` that rested on a low-confidence
-  // learned rate reads "still learning" rather than "couldn't reserve cheap
-  // hours", and a run that delivered the planned power yet missed names the
-  // energy-needed underestimate instead of a generic shortfall. Returns null
-  // for every cause the shipped copy below already handles honestly.
-  const refinedCause = formatRefinedMissCause(entry);
-  if (refinedCause !== null) return refinedCause;
-  if (lastPlan?.planStatus === 'cannot_meet') {
-    return "Couldn't reserve enough cheap hours in time.";
-  }
-  if (lastPlan?.planStatus === 'at_risk') {
-    return "Fell behind and didn't catch up in time.";
-  }
-  if (entry.discoveredFrom === 'backfill') {
-    return 'PELS restarted mid-task; outcome estimated.';
-  }
-  return "Didn't reach the target before the deadline.";
+  return formatRefinedMissCause(entry);
 };
 
 // ─── Finalized-run postmortem sentence (extracted to a sibling) ─────────────

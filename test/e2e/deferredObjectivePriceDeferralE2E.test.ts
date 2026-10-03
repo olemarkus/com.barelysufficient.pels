@@ -1,3 +1,4 @@
+import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 // End-to-end proof that smart-task (deferred-objective) price deferral actively
 // prefers cheaper hours over more expensive ones, using a RELATIVE price
 // comparison (raw-price ratio, not an absolute band).
@@ -49,6 +50,8 @@ const DEVICE_ID = 'water-heater';
 const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1, admissionPowerKw: 1 };
 
 const objective = (deadlineHourIndex: number, energyNeededKWh: number): DeferredObjective => ({
+  fullyReserved: false,
+  deadlineMarginMs: 0,
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
   enforcement: 'soft',
@@ -96,6 +99,19 @@ const diagnosticFor = (
   deadlineHourIndex: number,
   energyNeededKWh: number,
 ): DeferredObjectiveDiagnostic => ({
+  completion: resolveTaskCompletion({
+    currentValue: 60, requestedTarget: 65, direction: 'increasing', thermalEvidence: { kind: 'none' },
+  }),
+  evaluation: {
+    deviceId: DEVICE_ID, deadlineAtMs: BASE_MS + deadlineHourIndex * HOUR_MS, requestedTarget: 65,
+    progress: { kind: 'known', value: 60, direction: 'increasing' },
+    completion: resolveTaskCompletion({
+      currentValue: 60, requestedTarget: 65, direction: 'increasing', thermalEvidence: { kind: 'none' },
+    }),
+    planning: { kind: 'allocated', plan },
+    permissions: { budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false },
+    targetControl: { kind: 'temperature', value: 65 },
+  },
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
@@ -166,13 +182,12 @@ const runCycle = (params: {
     objective: objective(params.deadlineHourIndex, params.energyNeededKWh),
     steps: [STEP],
     buckets: buildPriceBuckets(nowMs, params.deadlineHourIndex, params.prices),
-    committed: true,
-    committedHours,
+    commitment: { kind: 'committed', hours: committedHours },
     aheadOfHourMilestone: ahead,
   });
 
   const diagnostic = diagnosticFor(plan, params.deadlineHourIndex, params.energyNeededKWh);
-  const decision = applyDeferredObjectiveAdmission([diagnostic], [device]).get(DEVICE_ID)!;
+  const decision = applyDeferredObjectiveAdmission([diagnostic.evaluation], [device]).get(DEVICE_ID)!;
 
   return {
     ahead,

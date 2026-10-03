@@ -569,6 +569,7 @@ describe('resolveSmartTaskListStatus — blocked charger and plan-verdict preced
 
   it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...base,
       diagnosticReasonCode: 'objective_invalid_session',
       planStatus: 'on_track',
@@ -582,20 +583,25 @@ describe('resolveSmartTaskListStatus — blocked charger and plan-verdict preced
   const queued = { ...base, diagnosticReasonCode: undefined, firstActionAtMs: 10_000 } as const;
 
   it('keeps at_risk visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'at_risk' })).toBe('at_risk');
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'at_risk' })).toBe('at_risk');
   });
 
   it('keeps cannot_meet visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'cannot_meet' })).toBe('cannot_meet');
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'cannot_meet' })).toBe('cannot_meet');
   });
 
   it('keeps satisfied visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'satisfied' })).toBe('satisfied');
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'satisfied' })).toBe('satisfied');
   });
 
   it('returns queued only for a healthy plan with a future first action', () => {
-    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'on_track' })).toBe('queued');
-    expect(resolveSmartTaskListStatus({ ...queued, firstActionAtMs: null, planStatus: 'on_track' }))
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'on_track' })).toBe('queued');
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...queued, firstActionAtMs: null, planStatus: 'on_track' }))
       .toBe('on_track');
   });
 });

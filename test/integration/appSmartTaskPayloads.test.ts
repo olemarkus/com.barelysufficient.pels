@@ -6,7 +6,7 @@ import type {
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -33,6 +33,7 @@ import { createMemoryEnergyDeliveryStore, everyReadingLive } from '../helpers/de
 const buildActivePlan = (
   overrides: Partial<DeferredObjectiveActivePlanV1> = {},
 ): DeferredObjectiveActivePlanV1 => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',
@@ -49,6 +50,7 @@ const buildActivePlan = (
 const buildHistoryEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryRecord> = {},
 ): DeferredObjectivePlanHistoryRecord => ({
+  deliveryExplanation: { kind: 'legacy_unrecorded' },
   id: 'entry-1',
   deviceId: 'dev-1',
   targetValue: 65,
@@ -70,7 +72,7 @@ const buildHistoryEntry = (
 
 type Recorders = {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  history?: DeferredObjectivePlanHistoryV5;
+  history?: DeferredObjectivePlanHistoryV6;
   trajectoryByDeviceId?: Record<string, ReturnType<DeferredObjectivePlanHistoryRecorder['getInProgressTrajectory']>>;
   wireHistoryRecorder?: boolean;
   energyRuns?: readonly EnergyDeliveryRun[];
@@ -181,7 +183,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
   it('partitions entries per device', () => {
     const payload = buildPayloads({
       history: {
-        version: 5,
+        version: 6,
         entries: [
           buildHistoryEntry({ id: 'mine' }),
           buildHistoryEntry({ id: 'other-device', deviceId: 'dev-2', finalizedAtMs: 2_000 }),
@@ -194,7 +196,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
 
   it('resolves each entry to the unit-agnostic view', () => {
     const payload = buildPayloads({
-      history: { version: 5, entries: [buildHistoryEntry()] },
+      history: { version: 6, entries: [buildHistoryEntry()] },
     }).getDeferredObjectivePlanHistoryUiPayload();
     const entry = payload.entriesByDeviceId['dev-1']?.[0];
     expect(entry?.targetValue).toBe(65);
@@ -204,7 +206,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
 
   it('uses the current device name and inferred objective kind', () => {
     const payload = buildPayloads({
-      history: { version: 5, entries: [buildHistoryEntry()] },
+      history: { version: 6, entries: [buildHistoryEntry()] },
     }, [{ id: 'dev-1', name: 'Renamed charger', deviceClass: 'evcharger', isEvCharger: true, targets: [] }])
       .getDeferredObjectivePlanHistoryUiPayload();
     expect(payload.entriesByDeviceId['dev-1']?.[0]).toMatchObject({
@@ -215,7 +217,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryUiPayload', () => 
 
   it('hides retained history while its device cannot be resolved', () => {
     const payload = buildPayloads({
-      history: { version: 5, entries: [buildHistoryEntry()] },
+      history: { version: 6, entries: [buildHistoryEntry()] },
     }, []).getDeferredObjectivePlanHistoryUiPayload();
     expect(payload.entriesByDeviceId).toEqual({});
   });
@@ -225,7 +227,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload', 
   it('keeps only entries finalized at or after the cutoff', () => {
     const payload = buildPayloads({
       history: {
-        version: 5,
+        version: 6,
         entries: [
           buildHistoryEntry({ id: 'stale', finalizedAtMs: 1_000 }),
           buildHistoryEntry({ id: 'boundary', finalizedAtMs: 5_000 }),
@@ -239,7 +241,7 @@ describe('AppSmartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload', 
   it('drops an entry with a non-finite finalizedAtMs rather than ordering it arbitrarily', () => {
     const payload = buildPayloads({
       history: {
-        version: 5,
+        version: 6,
         entries: [buildHistoryEntry({ id: 'junk', finalizedAtMs: Number.NaN })],
       },
     }).getDeferredObjectivePlanHistoryRecentUiPayload(0);
@@ -267,7 +269,7 @@ describe('AppSmartTaskPayloads energy tasks', () => {
   it('reads an energy run in history as an energy run, off the on/off device it ran on', () => {
     const payload = buildPayloads({
       history: {
-        version: 5,
+        version: 6,
         entries: [buildHistoryEntry({ id: 'energy-run', deviceId: 'relay-1', targetValue: 6 })],
       },
     }, [{ id: 'relay-1', name: 'Water heater relay', deviceType: 'onoff', binaryControllable: true, targets: [] }])

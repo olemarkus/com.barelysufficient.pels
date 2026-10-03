@@ -44,6 +44,7 @@ describe('device_in_sub_home reject copy', () => {
 describe('device_in_sub_home active-task presentation', () => {
   it('overrides a cached on-track revision with the unavailable list status', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       pending: false,
       pendingReason: undefined,
       diagnosticReasonCode: 'objective_device_in_sub_home',
@@ -56,6 +57,7 @@ describe('device_in_sub_home active-task presentation', () => {
 
   it('maps a never-revised separate-meter task to unavailable instead of building-plan', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       pending: true,
       pendingReason: 'device_in_sub_home',
       diagnosticReasonCode: 'objective_device_in_sub_home',

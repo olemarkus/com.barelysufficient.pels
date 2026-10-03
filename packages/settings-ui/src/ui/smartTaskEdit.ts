@@ -221,6 +221,7 @@ const toPreviewView = (
   verdictLine: resolveSmartTaskPreviewStatusCopy(
     response.estimate.status,
     response.estimate.unavailableReason,
+    response.estimate.budgetRole,
   ),
   caveat: CREATE_SMART_TASK_WIDGET_COPY.estimateCaveat,
 });

@@ -53,6 +53,7 @@ export const toPlanHistoryRecord = (
   } = entry;
   const resolved: DeferredObjectivePlanHistoryRecord = {
     ...rest,
+    deliveryExplanation: { kind: 'legacy_unrecorded' },
     outcome: entry.outcome === 'unknown' ? 'abandoned' : entry.outcome,
     targetValue: resolveTargetValue(entry),
     startProgressValue: resolveStartProgressValue(entry),

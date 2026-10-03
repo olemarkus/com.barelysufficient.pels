@@ -124,6 +124,7 @@ const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
   // Server-formatted in real responses; a fixed demo window here.
   scheduledWindowLabel: '02:00–04:00',
   estimate: {
+    budgetRole: 'none',
     status: 'on_track',
     scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
       startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,

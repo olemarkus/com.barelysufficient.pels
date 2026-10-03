@@ -83,6 +83,9 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // projection could not run (see the status union doc); the numeric fields
   // below are then all null.
   status: DeferredObjectivePlanPreviewStatus;
+  // Resolved by the horizon producer; preview surfaces do not infer a cause
+  // from the schedule or from permission settings. Unavailable previews use none.
+  budgetRole: 'none' | 'sole' | 'contributing';
   // Present when `status === 'unavailable'`. Lets small preview surfaces explain
   // the real missing input instead of blaming every unavailable preview on
   // missing prices.

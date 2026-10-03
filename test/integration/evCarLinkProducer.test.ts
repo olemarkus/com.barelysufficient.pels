@@ -599,6 +599,7 @@ describe('self-stop detection', () => {
     h.setCharger({ measuredPowerW: 0 });
     h.car(carDevice({ state: 'plugged_in', socPct: 80 }), linkedAt + 10_000);
     expect(h.of('ev_car_self_stopped')).toHaveLength(0);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
 
     h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
     const stopped = h.of('ev_car_self_stopped');
@@ -609,6 +610,12 @@ describe('self-stop detection', () => {
       subReason: 'car_not_charging',
       stoppedAtSocPct: 80,
     });
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({
+      kind: 'self_stopped', cause: 'device_not_accepting',
+    });
+    h.setCharger({ measuredPowerW: 7_000 });
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 80 }), linkedAt + 20_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
   });
 
   it('distinguishes the car holding on its own schedule', () => {
@@ -617,6 +624,34 @@ describe('self-stop detection', () => {
     h.car(carDevice({ state: 'plugged_in_paused', socPct: 55 }), linkedAt + 10_000);
     h.tick(linkedAt + 10_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
     expect(h.of('ev_car_self_stopped')[0]).toMatchObject({ subReason: 'car_schedule_hold' });
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({
+      kind: 'self_stopped', cause: 'device_schedule',
+    });
+  });
+
+  it('reports a qualified matched car limit only with current-session idle power and level', () => {
+    h.snapshot.cars['car-1'] = { stopSocPct: [80, 80], lastObservedAtMs: 1 };
+    const linkedAt = linkAndCharge(10_000);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
+
+    h.setCharger({ measuredPowerW: 0, measuredPowerObservedAtMs: linkedAt });
+    // Zero is an invalid capability timestamp and falls back to arrival time;
+    // a valid old timestamp leaves the accepted 79% reading intact.
+    h.car(carDevice({ state: 'plugged_in', socPct: 80, socObservedAtMs: 1 }), linkedAt + 5_000);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
+    h.car(carDevice({ state: 'plugged_in', socPct: 80 }), linkedAt + 10_000);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'limit_reached' });
+    h.car(carDevice({ state: 'plugged_in', socPct: 40, socObservedAtMs: 1 }), linkedAt + 15_000);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'limit_reached' });
+
+    h.setCharger({ measuredPowerW: undefined });
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
+    h.setCharger({ measuredPowerW: 0, measuredPowerObservedAtMs: 0 });
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
+
+    h.setCharger({ measuredPowerW: 7_000, measuredPowerObservedAtMs: linkedAt + 20_000 });
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 80 }), linkedAt + 20_000);
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
   });
 
   it('does not fire on a momentary zero mid-ramp', () => {
@@ -866,6 +901,7 @@ describe('self-stop evidence is the car\'s own', () => {
     expect(h.selfStops()[0]?.chargeLimitPct).toBeUndefined();
     runSession(SESSION_GAP_MS, 70);
     expect(h.selfStops()[1]).toMatchObject({ chargeLimitPct: 70 });
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'limit_reached' });
 
     // A car that arrives above its home limit (fast-charged on a trip) proves
     // nothing about where it stops here.

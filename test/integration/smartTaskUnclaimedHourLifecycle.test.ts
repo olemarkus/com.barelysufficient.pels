@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 // What an hour the allocator booked NOTHING into means to the device, driven across
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // a whole task lifecycle — and how the answer changes with the task's position.
@@ -256,6 +257,7 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
     const [diag] = buildDeferredObjectiveDiagnostics({
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -270,7 +272,7 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
       activePlans,
     });
     recorder.observe(diag ? [diag] : [], nowMs);
-    const decision = diag ? applyDeferredObjectiveAdmission([diag], [device]).get(DEVICE_ID) : undefined;
+    const decision = diag ? applyDeferredObjectiveAdmission(([diag]).map((diagnostic) => diagnostic.evaluation), [device]).get(DEVICE_ID) : undefined;
 
     // What the device does with each decision. `planned` drives it. `unclaimed`
     // hands it to the planner as managed, which with no competing load and no

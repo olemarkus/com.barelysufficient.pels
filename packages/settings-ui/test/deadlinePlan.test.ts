@@ -106,6 +106,7 @@ const buildHeaterActivePlan = (params: {
     }
     : originalRevision;
   return {
+    liveCompletion: { kind: 'unavailable' as const },
     deviceId: 'heater',
     deviceName: 'Connected 300',
     objectiveKind: 'temperature',
@@ -1707,6 +1708,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'bootstrap' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2091,6 +2093,7 @@ describe('deadline plan page payload', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2157,6 +2160,7 @@ describe('deadline plan page payload', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2257,6 +2261,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'bootstrap' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2350,6 +2355,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'bootstrap' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2383,26 +2389,33 @@ describe('deadline plan page payload', () => {
     return { bootstrap, deviceId: 'ev', devices, prices, nowMs: now.getTime() };
   };
 
-  it('explains a plan capped at the car\'s own charge limit, and counts progress to the limit', () => {
+  it('explains the car\'s own charge limit and counts progress to the requested target', () => {
     const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: false }, 40)));
 
     expect(payload.hero.metaLine).toBe(
       "Your car stops at its own charge limit of 70%, below this smart task's 80% target."
-        + ' PELS charges to 70% and counts the task as done there.',
+        + ' Raise the car’s charge limit to allow this task to reach its target.',
     );
-    expect(payload.hero.deliveredSoFarLine).toContain('now 40% of 70% target');
+    expect(payload.hero.deliveredSoFarLine).toContain('now 40% of 80% target');
   });
 
-  it('shows a task whose car stopped at its limit as done, not as waiting for a reading', () => {
+  it('keeps the requested target unmet when a stopped car has no reading', () => {
     // The charger ends the session at the limit and takes the car's level with it.
     const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null));
 
     expect(renderInput).toMatchObject({
       status: 'unavailable',
-      reason: 'already_satisfied',
+      reason: 'no_current_reading',
       body: "Your car stopped at its own charge limit of 70%, below this smart task's 80% target."
-        + ' PELS counted the task as done.',
+        + ' The requested target is still unmet.',
     });
+  });
+
+  it('does not report completion at a lower car limit while the reading is available', () => {
+    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: true }, 70)));
+    expect(payload.hero.deliveredSoFarLine).toContain('now 70% of 80% target');
+    expect(payload.hero.metaLine).toContain('The requested target is still unmet.');
+    expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
   });
 
   it('omits the bootstrap note once the revision has been refined to learned data', () => {
@@ -2448,6 +2461,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'learned' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2558,6 +2572,7 @@ describe('deadline plan page payload', () => {
       estimatedDurationText: '3h',
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2667,6 +2682,7 @@ describe('deadline plan page payload', () => {
       estimatedDurationText: '2h 51m',
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2751,6 +2767,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'learned' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2849,6 +2866,7 @@ describe('deadline plan page payload', () => {
       kwhPerUnitSource: 'bootstrap' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -2941,6 +2959,7 @@ describe('deadline plan page payload', () => {
     };
     // Legacy persisted plan: no `kwhPerUnitProvenance` field.
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -3030,6 +3049,7 @@ describe('deadline plan page payload', () => {
       planStatus: 'on_track' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'heater',
       deviceName: 'Connected 300',
       objectiveKind: 'temperature',
@@ -3509,6 +3529,7 @@ describe('deadline plan page payload', () => {
       estimatedDurationText: '2h',
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'heater',
       deviceName: 'Connected 300',
       objectiveKind: 'temperature',
@@ -3573,6 +3594,7 @@ describe('deadline plan page payload', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -5918,12 +5940,13 @@ describe('shared-domain hero-line formatters', () => {
       enabled: true, kind: 'energy' as const, enforcement: 'soft' as const, targetEnergyKWh: 6, deadlineAtMs: 1,
     };
     const stored: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'relay', deviceName: 'Relay', objectiveKind: 'energy', targetValue: 6, deadlineAtMs: 1,
       startedAtMs: 0, pending: false, objectiveSignature: 'sig', original: null, latest: null,
     };
     const plan = toResolvedActivePlan(stored, () => 2.5, null);
     expect(resolveEnergyProgress(task, plan)).toEqual({
-      currentValue: 2.5, progressDirection: 'increasing', remainingUnits: 3.5, targetValue: 6, plannedTargetValue: 6,
+      currentValue: 2.5, progressDirection: 'increasing', remainingUnits: 3.5, targetValue: 6,
       unit: 'kWh',
     });
     // A plan still standing from the device's previous task of another kind:
@@ -6418,6 +6441,7 @@ describe('pending hero producer wiring', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',

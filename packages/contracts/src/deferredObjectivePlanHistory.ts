@@ -1,3 +1,4 @@
+import type { TaskDeliveryExplanation } from './taskDelivery.js';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
@@ -73,46 +74,25 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // persist without the field — UI consumers must treat absence as
   // "fall back to a straight line through hours". Added in schema v4.
   kwhPerUnitMean?: number;
-  // Number of horizon buckets whose per-bucket cap collapsed to zero because
-  // the daily budget cap had already been reached when this revision was
-  // written. Mirrors the runtime
-  // `DeferredObjectiveActivePlanRevisionV1.dailyBudgetExhaustedBucketCount`
-  // so the history-detail postmortem can explain a `cannot_meet` outcome
-  // that would otherwise read as a device or schedule problem. Optional:
-  // legacy v3 entries and revisions written before this field shipped
-  // persist without it — consumers treat absence as zero. Added in v2.7.2.
+  // Plan-time count of buckets whose daily budget cap collapsed to zero.
+  // Retained as historical planning telemetry; this does not establish the
+  // cause of a finalized miss. Optional on legacy revisions. Added in v2.7.2.
   dailyBudgetExhaustedBucketCount?: number;
-  // Producer-resolved reason the guaranteed floor fell short when this revision
-  // was written. Mirrors
-  // `DeferredObjectiveActivePlanRevisionV1.floorShortfallCause`. This is the
-  // ONLY budget signal newly finalized entries carry — it replaced the retired
-  // `dailyBudgetExhaustedBucketCount` above, which asked whether the DAY total
-  // had been reached rather than whether this run was budget-bound. Consumers
-  // must read it through `snapshotShowsBudgetExhausted`, which also honours the
-  // retired count so history written by an older build still classifies.
+  // Producer-resolved plan-time reason the guaranteed floor fell short.
+  // Delivery attribution belongs to the entry's recorded deliveryExplanation;
+  // this snapshot cannot establish whether control denied delivery.
   // Optional: absent when the run had no shortfall. Added in v2.9.1.
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
-  // Plan-time provenance of the learned kWh-per-unit rate that backed this
-  // revision, pulled from the active plan's `kwhPerUnitProvenance` at snapshot
-  // time. Persisted so a finalized `missed` entry can be attributed to a
-  // shaky estimate (low confidence / few samples) versus a genuine capacity
-  // shortfall — the live profile store has long since moved on by the time
-  // anyone reads the history. Both optional: absent for bootstrap plans, for
-  // revisions written before a profile resolved, and for legacy entries
-  // persisted before this field shipped (consumers treat absence as
-  // "unknown" and suppress the confidence half of the attribution). Added in
-  // v2.7.4.
+  // Plan-time learned-rate provenance, retained as factual planning telemetry.
+  // Optional for bootstrap plans and legacy revisions. Added in v2.7.4.
   rateConfidence?: 'low' | 'medium' | 'high';
   acceptedSamples?: number;
   // The per-active-hour useful power (kW) the planner committed for this run —
   // the lowest non-zero step, the only delivery guaranteed for a full hour
   // (see `lib/objectives/deferredObjectives/planningSpeed.ts`). Mirrors the active
-  // plan's `initialPlanningSpeedKw`. Persisted so the attribution can compare
-  // the committed floor against the energy the executor actually delivered:
-  // delivery at or above the floor on a missed run points at an energy-needed
-  // underestimate rather than a capacity miss. Optional — absent when the
-  // plan never resolved a planning speed and on legacy entries. Added in
-  // v2.7.4.
+  // plan's `initialPlanningSpeedKw`. Retained as planning telemetry rather than
+  // evidence of why delivery failed. Optional when planning speed never resolved
+  // and on legacy entries. Added in v2.7.4.
   planningSpeedKw?: number;
   // Mean-based energy this revision still needed to reach target, captured from
   // THIS revision by `captureRevisionSnapshot` alongside `energyNeededKWh`.
@@ -380,6 +360,7 @@ export type DeferredObjectivePlanHistoryRecord = Omit<
   | 'finalProgressC' | 'finalProgressPercent'
   | 'progressSamples' | 'outcome'
 > & {
+  deliveryExplanation: TaskDeliveryExplanation;
   targetValue: number | null;
   startProgressValue: number | null;
   finalProgressValue: number | null;
@@ -409,7 +390,7 @@ export type DeferredObjectivePlanHistoryV4 = {
   entries: DeferredObjectivePlanHistoryEntry[];
 };
 
-export type DeferredObjectivePlanHistoryV5 = {
-  version: 5;
+export type DeferredObjectivePlanHistoryV6 = {
+  version: 6;
   entries: DeferredObjectivePlanHistoryRecord[];
 };

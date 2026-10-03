@@ -10,8 +10,9 @@
  * plug/unplug transitions, and records the state-of-charge values at which a
  * car stops charging of its own accord. Nothing in this shape feeds planning,
  * admission, or actuation directly; the device layer resolves the stops into a
- * qualified charge limit and lends it with the car's battery level, which is how
- * it caps an EV smart task.
+ * qualified charge limit and lends it with the car's battery level for reporting.
+ * Device-owned delivery evidence can explain that limit without lowering a
+ * smart task's requested target or declaring the task complete.
  */
 
 /**

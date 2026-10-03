@@ -1,3 +1,5 @@
+import { resolveTaskDeliveryControl } from './taskDeliveryControl';
+import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { normalizeError } from '../utils/errorUtils';
 import { PLAN_STATUS_PUBLISHED_EVENT } from '../utils/settingsKeys';
@@ -210,24 +212,28 @@ export class PlanService {
     return this.deps.getPlanDevices();
   }
 
-  // Bridge from the observer-layer idle classifier into the plan layer.
-  // Surfaced so the deferred-objective history recorder (lives in `lib/plan`,
-  // wired in `appInit.ts`) can promote a smart task to `met` / `'stalled'`
-  // when the device has settled near its setpoint. The classifier ticks
-  // *after* plan emission (`tickIdleClassifier`), so on a given cycle the
-  // recorder sees the state derived from the previous plan — that lag is
-  // negligible against the 15-min `IDLE_UNRESPONSIVE_MIN_DURATION_MS`
-  // window, but it does mean a fresh boot returns `undefined` until at
-  // least one plan tick has run.
-  // Carries the setpoint the verdict was measured against, not just the verdict:
-  // PELS parks a managed device by writing a lower setback setpoint, and a device
-  // idling at that setback is trivially `near_target_idle` while having delivered
-  // nothing toward a higher smart-task target. Consumers gate on
-  // `stallEvidenceCoversTarget`.
-  getStallEvidence(
-    deviceId: string,
-  ): StallEvidence | undefined {
-    return this.idleClassifier.getStallEvidence(deviceId);
+  /** Read the plan owner's delivery decision with current executor convergence facts. */
+  getTaskDeliveryControl(deviceId: string): TaskDeliveryControl {
+    const plan = this.getLatestPlanSnapshot();
+    const device = plan?.devices.find((candidate) => candidate.id === deviceId);
+    if (!plan || !device) return { kind: 'no_decision' };
+    const execution = this.deps.planEngine.getDeviceExecutionStates(plan).get(deviceId);
+    if (!execution) throw new Error(`Missing execution state for ${deviceId}`);
+    return resolveTaskDeliveryControl(device, execution);
+  }
+
+  /** Validate observer completion evidence against current accepted observations without rebuilding. */
+  getStallEvidence(deviceId: string): StallEvidence | undefined {
+    const current = this.deps.getPlanDevices().find((device) => device.id === deviceId);
+    const decision = this.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId);
+    const temperature = this.deps.getObservedTemperature(deviceId);
+    if (!current || !isMeteredPlanDevice(current) || !decision || !current.available
+      || current.currentState === undefined || temperature.kind !== 'observed') return undefined;
+    return this.idleClassifier.getLiveStallEvidence({
+      id: current.id, name: current.name, currentState: current.currentState,
+      currentDrawKw: current.currentDrawKw, plannedState: decision.plannedState,
+      temperature: temperature.value,
+    });
   }
 
   computeDynamicSoftLimit(): number {

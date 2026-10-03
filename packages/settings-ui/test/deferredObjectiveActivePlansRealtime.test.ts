@@ -39,6 +39,7 @@ const planFor = (deviceId: string, revision: number): DeferredObjectiveActivePla
   version: 1,
   plansByDeviceId: {
     [deviceId]: {
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId,
       deviceName: 'Test EV',
       objectiveKind: 'ev_soc',
@@ -90,7 +91,7 @@ describe('coerceDeferredObjectiveActivePlans', () => {
     const result = coerceDeferredObjectiveActivePlans(raw);
     expect(result).not.toBeNull();
     expect(result?.version).toBe(1);
-    expect(result?.plansByDeviceId['ev-1']).toBe(raw.plansByDeviceId['ev-1']);
+    expect(result?.plansByDeviceId['ev-1']).toStrictEqual(raw.plansByDeviceId['ev-1']);
     expect(result?.plansByDeviceId['ev-1']?.latest?.revision).toBe(2);
   });
 

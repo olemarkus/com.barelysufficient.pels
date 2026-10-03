@@ -1,3 +1,5 @@
+import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
+import { inactiveTaskEvaluation, type TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import type { DeferredObjectiveStallClassificationReader } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import {
@@ -19,7 +21,7 @@ import type {
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   resolveDeferredPlanHistoryMissAttribution,
@@ -94,34 +96,55 @@ const makeDiag = (
     horizonPlan: makeHorizon(),
     ...overrides,
   } as DeferredObjectiveDiagnostic;
-  // Keep the unit-agnostic pair consistent with whatever kind-split fields the
-  // override set, unless the override set the pair explicitly.
+  const reportedValue = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  const currentValue = overrides.currentValue !== undefined ? overrides.currentValue : reportedValue;
   const targetValue = overrides.targetValue
-    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? 0);
-  return {
-    ...diag,
-    currentValue: overrides.currentValue
-      ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
-    targetValue,
-    // No car limit unless the case sets one: the reachable target is the target.
-    reachableTargetValue: overrides.reachableTargetValue ?? targetValue,
+    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? diag.targetValue);
+  const untrusted = ['objective_progress_stale', 'objective_missing_temperature', 'objective_invalid_session',
+    'objective_missing_device', 'objective_invalid_deadline'].includes(diag.reasonCode);
+  const progress: TaskEvaluation['progress'] = currentValue !== null
+    && diag.progressDirection !== 'unknown' && !untrusted
+    ? { kind: 'known', value: currentValue, direction: diag.progressDirection }
+    : { kind: 'unobserved' };
+  const completion = overrides.completion ?? (progress.kind === 'known'
+    ? resolveTaskCompletion({ currentValue: progress.value, requestedTarget: targetValue,
+      direction: progress.direction, thermalEvidence: { kind: 'none' } })
+    : { kind: 'inactive' as const });
+  const evaluation: TaskEvaluation = overrides.evaluation ?? {
+    ...inactiveTaskEvaluation(diag.deviceId, overrides.deadlineAtMs, targetValue),
+    progress, completion,
+    planning: diag.horizonPlan !== undefined && diag.trajectory.kind === 'resolved'
+      && diag.trajectory.status !== 'invalid'
+      ? { kind: 'allocated', plan: diag.horizonPlan }
+      : { kind: 'inactive' },
+    permissions: {
+      budgetExempt: diag.budgetExemptApplied === true,
+      limitLowerPriority: diag.limitLowerPriorityApplied === true,
+      pauseLowerPriority: diag.pauseLowerPriorityApplied === true,
+    },
+    targetControl: diag.objectiveKind === 'temperature'
+      ? { kind: 'temperature', value: targetValue }
+      : { kind: 'none' },
   };
+  return { ...diag, currentValue, targetValue,
+    reachableTargetValue: overrides.reachableTargetValue ?? targetValue,
+    completion: evaluation.completion, evaluation };
 };
 
 const buildPersistDeps = (
-  initial?: DeferredObjectivePlanHistoryV5,
+  initial?: DeferredObjectivePlanHistoryV6,
   initialMeteredDeliveryStates: readonly PersistedMeteredDeliveryState[] = [],
 ): {
   deps: PlanHistoryPersistDeps;
-  saved: () => DeferredObjectivePlanHistoryV5 | null;
+  saved: () => DeferredObjectivePlanHistoryV6 | null;
   savedMeteredDelivery: () => readonly PersistedMeteredDeliveryState[];
 } => {
-  let saved: DeferredObjectivePlanHistoryV5 | null = null;
+  let saved: DeferredObjectivePlanHistoryV6 | null = null;
   let savedMeteredDelivery = initialMeteredDeliveryStates;
   return {
     deps: {
       load: () => ({
-        snapshot: initial === undefined ? { version: 5, entries: [] } : initial,
+        snapshot: initial === undefined ? { version: 6, entries: [] } : initial,
         persistenceSafe: true,
         meteredDeliveryStates: savedMeteredDelivery,
       }),
@@ -356,7 +379,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         kwhPerUnitSource: 'exact',
         ...overrides,
       });
-      return { ...rest, objectiveKind: 'energy', targetEnergyKWh: 16 };
+      return { ...rest, objectiveKind: 'energy', targetEnergyKWh: 16,
+        evaluation: { ...rest.evaluation, targetControl: { kind: 'none' } } };
     };
 
     recorder.observe([energyDiag(0)], 0, null);
@@ -624,7 +648,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.outcome).toBe('missed');
     expect(entries[0]!.startProgressValue).toBe(19);
-    expect(entries[0]!.finalProgressValue).toBe(19); // unknown diagnostics don't roll forward progress
+    expect(entries[0]!.finalProgressValue).toBe(22); // Unknown planning status does not invalidate trusted progress.
     expect(entries[0]!.discoveredFrom).toBe('observation');
     expect(entries[0]!.observedIntervals.length).toBeGreaterThan(0);
   });
@@ -808,7 +832,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     let saveCalls = 0;
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => {
         saveCalls += 1;
         return false;
@@ -827,6 +851,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
   it('hydrates recovered durable history on a clean lifecycle flush without writing', () => {
     const durable: DeferredObjectivePlanHistoryRecord = {
+      deliveryExplanation: { kind: 'legacy_unrecorded' },
       id: 'durable-after-recovery',
       deviceId: 'dev',
       targetValue: 65,
@@ -849,8 +874,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
       load: () => recovered
-        ? { snapshot: { version: 5, entries: [durable] }, persistenceSafe: true, meteredDeliveryStates: [] }
-        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
+        ? { snapshot: { version: 6, entries: [durable] }, persistenceSafe: true, meteredDeliveryStates: [] }
+        : { snapshot: { version: 6, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
       save: () => { saveCalls += 1; return true; },
     });
 
@@ -866,6 +891,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const durableDeadline = 2 * HOUR_MS;
     const localDeadline = 3 * HOUR_MS;
     const durable: DeferredObjectivePlanHistoryRecord = {
+      deliveryExplanation: { kind: 'legacy_unrecorded' },
       id: 'durable-observed',
       deviceId: 'dev',
       targetValue: 65,
@@ -891,16 +917,16 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       metAtMs: null,
     };
     let recovered = false;
-    let saved: DeferredObjectivePlanHistoryV5 | null = null;
+    let saved: DeferredObjectivePlanHistoryV6 | null = null;
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
       load: () => recovered
         ? {
-          snapshot: { version: 5, entries: [durableReplacement, durable] },
+          snapshot: { version: 6, entries: [durableReplacement, durable] },
           persistenceSafe: true,
           meteredDeliveryStates: [],
         }
-        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
+        : { snapshot: { version: 6, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
       save: (next) => { saved = next; return true; },
     });
     const config = (deadlineAtMs: number) => ({
@@ -931,6 +957,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   it('keeps a local observed replacement run beside a durable same-deadline run', () => {
     const deadlineAtMs = 3 * HOUR_MS;
     const durable: DeferredObjectivePlanHistoryRecord = {
+      deliveryExplanation: { kind: 'legacy_unrecorded' },
       id: 'durable-replaced',
       deviceId: 'dev',
       targetValue: 60,
@@ -949,12 +976,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       finalPlan: null,
     };
     let recovered = false;
-    let saved: DeferredObjectivePlanHistoryV5 | null = null;
+    let saved: DeferredObjectivePlanHistoryV6 | null = null;
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
       load: () => recovered
-        ? { snapshot: { version: 5, entries: [durable] }, persistenceSafe: true, meteredDeliveryStates: [] }
-        : { snapshot: { version: 5, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
+        ? { snapshot: { version: 6, entries: [durable] }, persistenceSafe: true, meteredDeliveryStates: [] }
+        : { snapshot: { version: 6, entries: [] }, persistenceSafe: false, meteredDeliveryStates: [] },
       save: (next) => { saved = next; return true; },
     });
     recorder.observe([makeDiag({
@@ -976,10 +1003,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   });
 
   it('hydrates from persisted history on construction', () => {
-    const initial: DeferredObjectivePlanHistoryV5 = {
-      version: 5,
+    const initial: DeferredObjectivePlanHistoryV6 = {
+      version: 6,
       entries: [
         {
+          deliveryExplanation: { kind: 'legacy_unrecorded' },
           id: 'hydration-entry-1',
           deviceId: 'dev',
           targetValue: 65,
@@ -1163,10 +1191,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const futureDeadline = 6 * HOUR_MS;
 
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: futureDeadline, currentTemperatureC: 50 })], 0, null);
+      recorder.flushIfDirty();
       recorder.finalizeElapsedDeadline('dev', HOUR_MS);
 
       expect(recorder.flushIfDirty()).toBe(false);
-      expect(saved()).toBeNull();
+      expect(saved()?.entries).toEqual([]);
     });
 
     it('is a no-op when there is no in-progress run for the device', () => {
@@ -1204,6 +1233,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       version: 1 as const,
       plansByDeviceId: {
         [params.deviceId]: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
@@ -1283,6 +1313,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         version: 1 as const,
         plansByDeviceId: {
           dev: {
+            liveCompletion: { kind: 'unavailable' as const },
             deviceId: 'dev',
             deviceName: 'EV',
             objectiveKind: 'ev_soc' as const,
@@ -1593,6 +1624,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       version: 1 as const,
       plansByDeviceId: {
         [params.deviceId]: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
@@ -1806,12 +1838,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalPlan?.kwhPerUnitMean).toBeUndefined();
     });
 
-    it('captures `floorShortfallCause` on the final snapshot so a miss keeps its attribution', () => {
-      // The signal that replaced `dailyBudgetExhaustedBucketCount`. It must
-      // reach the persisted snapshot or `snapshotShowsBudgetExhausted` goes
-      // permanently false for new history — which stops
-      // `deadlineMissedToBudgetOnDay` censoring budget-caused misses out of the
-      // weather energy-signature fit that drives auto-applied daily budgets.
+    it('captures `floorShortfallCause` on the final snapshot as planning metadata', () => {
+      // Persist planning metadata for schedule inspection independently of delivery causes.
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
@@ -2122,6 +2150,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     it('keeps a restored unknown commitment unknown after zero delivery and later ticks', () => {
       const deadlineAtMs = 20 * 60_000;
       const persisted = buildPersistDeps(undefined, [{
+        deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
         deviceId: 'dev', deadlineAtMs, startedAtMs: 0,
         commitment: { kind: 'unknown' }, deliveredKWh: 0, totalCost: 0,
         costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [],
@@ -2310,7 +2339,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBe('stalled');
     });
 
-    it('keeps recording 15-minute post-stall samples while the plateau freeze holds', () => {
+    it('keeps recording 15-minute post-stall samples while near-target acceptance holds', () => {
       // The stall freeze pins `satisfied` / `metAtMs` / `finalProgress*` at
       // the plateau reading, but the progress-sample ring is deliberately NOT
       // frozen — the post-stall coast is exactly what the 15-minute grid is
@@ -2383,7 +2412,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deadlineAtMs,
         currentTemperatureC,
         trajectory: { kind: 'resolved', status: 'satisfied' },
-        reasonCode: 'objective_stalled_near_target',
+        reasonCode: 'objective_stalled_near_target', completion: { kind: 'accepted_near_target' },
         horizonPlan: makeHorizon({ status: 'cannot_meet', statusDetail: 'target_cannot_be_met' }),
       });
 
@@ -2401,7 +2430,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBe('stalled');
     });
 
-    it('records a run met at its car\'s own charge limit, and keeps it met once the charger lets go', () => {
+    it('keeps a run unmet below its requested target at a car limit', () => {
       // Production, 2026-09-26: an 80 % task on a car that stops at 70 %. The
       // capped task is satisfied at 70; the Easee then ended the session and
       // read unplugged, which is a non-plannable tick with no progress.
@@ -2444,8 +2473,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.outcome).toBe('met');
-      expect(entry.metReason).toBe('observed_limit');
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
       expect(entry.finalProgressValue).toBe(70);
     });
 
@@ -2556,7 +2585,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBeUndefined();
     });
 
-    it('promotes to met/stalled_device_capped when classifier reports capped_idle', () => {
+    it('keeps a capped device unmet below the requested target', () => {
       // Connected 300 capped-internally scenario: device parks at 58 °C
       // against a 65 °C target with power cycling around its own
       // thermostat hysteresis. The cycling reset means the existing
@@ -2585,13 +2614,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.outcome).toBe('met');
-      expect(entry.metReason).toBe('stalled_device_capped');
-      expect(entry.metAtMs).toBe(3 * HOUR_MS);
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+      expect(entry.metAtMs).toBeNull();
       expect(entry.finalProgressValue).toBeCloseTo(58, 1);
     });
 
-    it('keeps the capped-idle promotion sticky across later non-plannable ticks', () => {
+    it('keeps a capped device unmet after later below-target readings', () => {
       // Mirrors the `near_target_idle` stickiness — the device having
       // accepted the run against its own cap is terminal even if the
       // tank drifts down a degree afterwards. Without this, the next
@@ -2627,12 +2656,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.outcome).toBe('met');
-      expect(entry.metReason).toBe('stalled_device_capped');
-      expect(entry.finalProgressValue).toBeCloseTo(58, 1);
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+      expect(entry.finalProgressValue).toBeCloseTo(55, 1);
     });
 
-    it('keeps the stall promotion sticky across subsequent plannable ticks reporting below-target progress', () => {
+    it('reopens near-target completion after the observer exits its accepted band', () => {
       const { deps, saved } = buildPersistDeps();
       let classify: DeferredObjectiveStallClassificationReader = () => undefined;
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: (id) => classify(id) });
@@ -2669,9 +2698,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.outcome).toBe('met');
-      expect(entry.metReason).toBe('stalled');
-      expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+      expect(entry.finalProgressValue).toBeCloseTo(55, 1);
     });
 
     it('skips stall promotion on the first tick of a new record — stale classification carryover guard', () => {
@@ -2821,7 +2850,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBe('stalled');
     });
 
-    it('Connected 300 capped-internally end-to-end: classifier-driven capped_idle promotes to succeeded', async () => {
+    it('Connected 300 internal cap remains unmet end-to-end', async () => {
       // Full reproducer of the bug: Connected 300 capped internally
       // at ~60 °C with a 65 °C smart-task target. The classifier
       // observes a cycling+stable-temp+gap-too-big pattern over the
@@ -2881,8 +2910,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Run finalises as succeeded — not the buggy "missed" verdict this
       // pattern used to produce. The metReason names the device cap so
       // the postmortem can route to the correct recourse copy.
-      expect(entry.outcome).toBe('met');
-      expect(entry.metReason).toBe('stalled_device_capped');
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
       expect(entry.finalProgressValue).toBeCloseTo(58, 1);
     });
   });
@@ -2901,6 +2930,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       version: 1 as const,
       plansByDeviceId: {
         [params.deviceId]: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: params.deviceId,
           deviceName: 'Water Heater',
           objectiveKind: 'temperature' as const,
@@ -2990,7 +3020,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // log carries (low band, 3 samples) is still surfaced for correlation.
       expect(finalized).toMatchObject({
         outcome: 'missed',
-        missCause: 'no_delivery',
+        missCause: 'observation_unavailable',
         rateConfidence: 'low',
         acceptedSamples: 3,
       });
@@ -3025,6 +3055,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         version: 1 as const,
         plansByDeviceId: {
           dev: {
+            liveCompletion: { kind: 'unavailable' as const },
             deviceId: 'dev',
             deviceName: 'Water Heater',
             objectiveKind: 'temperature' as const,
@@ -3124,14 +3155,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         name: 'Water Heater',
         objectiveKind: 'temperature',
       }));
-      expect(uiAttribution.cause).toBe('energy_underestimate');
-      expect(uiAttribution.deliveredAtOrAbovePlan).toBe(true);
+      expect(uiAttribution.cause).toBe('delivery_unfulfilled');
 
       // 3. Runtime structured log resolves the same cause.
       const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
       expect(finalized).toMatchObject({
         outcome: 'missed',
-        missCause: 'energy_underestimate',
+        missCause: 'delivery_unfulfilled',
       });
     });
 

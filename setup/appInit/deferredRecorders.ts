@@ -31,7 +31,7 @@ import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/de
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import { createPlanHistoryStoreForApp } from './planHistoryStore';
-import { requirePlanService, requirePriceCoordinator } from './contextGuards';
+import { requireDeviceManager, requirePlanService, requirePriceCoordinator } from './contextGuards';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { createEnergyDeliveryStore } from '../../lib/objectives/deferredObjectives/energyDeliveryStore';
 
@@ -167,6 +167,9 @@ export function createDeferredObjectivePlanHistoryRecorder(
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
     // Read lazily on the lifecycle clock, after the plan service exists.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
+    getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
+    getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
+    isLiveMeasuredDraw: (deviceId) => ctx.isLiveMeasuredDraw(deviceId),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;

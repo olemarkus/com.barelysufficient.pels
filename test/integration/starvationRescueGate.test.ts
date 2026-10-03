@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -212,6 +213,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({

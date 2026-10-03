@@ -1,3 +1,4 @@
+import { buildAllocatedTaskEvaluation, buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
@@ -18,7 +19,6 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {
   buildKnownEnergyFields,
   canReportFreshProgressWhileUnknown,
-  isCurrentBucketPlanned,
   mergeProgressFields,
   resolveProgressEnergy,
   withUnavailableTrajectory,
@@ -32,7 +32,10 @@ export const buildPolicyGatedKnownInputs = (
 ): DeferredObjectiveDiagnostic => {
   const { powerTracker, deviceId, objective } = ctx;
   const { remainingUnits } = progress;
-  if (!canReportFreshProgressWhileUnknown(policyReasonCode)) return base;
+  const evaluation = buildUnallocatedTaskEvaluation(deviceId, objective, progress);
+  if (!canReportFreshProgressWhileUnknown(policyReasonCode)) {
+    return { ...base, evaluation, completion: evaluation.completion };
+  }
 
   const profileEnergy = !progress.reasonCode && remainingUnits > 0
     && policyReasonCode === 'objective_missing_price_horizon'
@@ -42,6 +45,8 @@ export const buildPolicyGatedKnownInputs = (
   const withProgress = mergeProgressFields(base, progress.reasonCode ? null : progress.currentValue);
   return {
     ...withProgress,
+    evaluation,
+    completion: evaluation.completion,
     ...(!progress.reasonCode && remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
     ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
   };
@@ -73,7 +78,7 @@ export const buildFreshDiagnostic = (params: {
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput;
   base: DeferredObjectiveDiagnostic;
-  progress: DeferredObjectiveProgressResolution;
+  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
@@ -124,17 +129,20 @@ export const buildFreshDiagnostic = (params: {
     pricesAvailableUpToMs: resolvePriceHorizonAvailableUpToMs(priceHorizon),
   };
 
+  const evaluation = buildAllocatedTaskEvaluation(deviceId, objective, progress, planWithPriceWatermark);
   return {
     ...mergeProgressFields(base, progress.currentValue),
+    evaluation,
+    completion: evaluation.completion,
     trajectory: { kind: 'resolved', status: planWithPriceWatermark.status },
     reasonCode: planWithPriceWatermark.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
     expectedStepId: planWithPriceWatermark.expectedStepId,
-    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
-      && isCurrentBucketPlanned(planWithPriceWatermark),
-    limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
-    pauseLowerPriorityApplied: objective.rescue?.pauseLowerPriorityDevices === 'always',
+    budgetExemptApplied: evaluation.permissions.budgetExempt
+      && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
+    limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,
+    pauseLowerPriorityApplied: evaluation.permissions.pauseLowerPriority,
     horizonPlan: planWithPriceWatermark,
   };
 };

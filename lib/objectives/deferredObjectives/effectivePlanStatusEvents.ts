@@ -19,7 +19,7 @@ export const effectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
 ): DeferredObjectiveActivePlanStatusV1 | null => {
   if (plan.latest === null) return null;
-  return resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode);
+  return resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode, plan.liveCompletion);
 };
 
 /**

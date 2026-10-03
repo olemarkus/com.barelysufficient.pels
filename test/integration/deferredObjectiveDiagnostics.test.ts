@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
@@ -51,7 +52,7 @@ import {
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectivePlanHistoryV6 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { buildHoursFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
@@ -223,13 +224,13 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
 
 const buildHistoryRecorder = (): {
   recorder: DeferredObjectivePlanHistoryRecorder;
-  saved: () => DeferredObjectivePlanHistoryV5 | null;
+  saved: () => DeferredObjectivePlanHistoryV6 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV5 | null = null;
+  let saved: DeferredObjectivePlanHistoryV6 | null = null;
   return {
     recorder: new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: (next) => { saved = next; return true; },
     }),
     saved: () => saved,
@@ -399,6 +400,7 @@ type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsR
 // Fixture defaults for the live-wiring inputs: no committed plans, no excluded
 // devices, and no device parked at its target.
 type DefaultedDiagnosticsParam =
+  | 'isReservationSuppressed'
   | 'getPrioritiesForDevices'
   | 'activePlans'
   | 'resolveDeviceExclusion'
@@ -414,6 +416,7 @@ const buildDeferredObjectiveDiagnostics = (
     activePlans: params.activePlans ?? null,
     resolveDeviceExclusion: params.resolveDeviceExclusion ?? (() => null),
     getStallClassification: params.getStallClassification ?? (() => undefined),
+    isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
     getDeliveredEnergyKWh: params.getDeliveredEnergyKWh ?? (() => 0),
     getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs),
@@ -1087,7 +1090,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
     const first = buildDeferredObjectiveDiagnostics({ ...common, devices: [highPending, lowDevice] });
     const firstLow = first.find((diagnostic) => diagnostic.deviceId === 'ev-2')!;
-    const firstLowHours = buildHoursFromHorizonPlan(firstLow)!;
+    const firstLowHours = buildHoursFromHorizonPlan(firstLow.evaluation)!;
     const lowLatest = {
       revision: 1,
       revisedAtMs: NOW_MS,
@@ -1103,6 +1106,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-2': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-2',
           deviceName: 'Second EV',
           objectiveKind: 'ev_soc',
@@ -1165,6 +1169,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       planStatus: 'on_track' as const,
     };
     const buildPlan = (deviceId: string, deviceName: string, priority: number) => ({
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId,
       deviceName,
       objectiveKind: 'ev_soc' as const,
@@ -1233,6 +1238,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'z-high': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'z-high',
           deviceName: 'Higher EV',
           objectiveKind: 'ev_soc',
@@ -1354,6 +1360,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         allocationContextSignature: `signed-${params.deviceId}`,
       };
       return {
+        liveCompletion: { kind: 'unavailable' as const },
         deviceId: params.deviceId,
         deviceName: params.deviceName,
         objectiveKind: 'ev_soc' as const,
@@ -1440,6 +1447,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1473,7 +1481,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       sustainableRateKw: 10,
     });
     const [reservation] = buildPriorityReservations({
-      diagnostic: diagnostic!,
+      evaluation: diagnostic!.evaluation,
       objective,
       device,
       activePlans,
@@ -1561,6 +1569,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1629,6 +1638,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1720,6 +1730,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1889,6 +1900,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1927,7 +1939,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.plannedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
     expect(diagnostic?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh).toBe(3);
     const [reservation] = buildPriorityReservations({
-      diagnostic: diagnostic!,
+      evaluation: diagnostic!.evaluation,
       objective: settings.objectivesByDeviceId['ev-1']!,
       device: buildDevice(),
       activePlans,
@@ -1944,6 +1956,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -1993,6 +2006,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -2049,6 +2063,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -2131,6 +2146,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -2187,6 +2203,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         version: 1,
         plansByDeviceId: {
           'heater-1': {
+            liveCompletion: { kind: 'unavailable' as const },
             deviceId: 'heater-1',
             deviceName: 'Connected 300',
             objectiveKind: 'temperature',
@@ -3722,6 +3739,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         version: 1,
         plansByDeviceId: {
           'ev-1': {
+            liveCompletion: { kind: 'unavailable' as const },
             deviceId: 'ev-1',
             deviceName: 'ev-1',
             objectiveKind: 'ev_soc',
@@ -3846,7 +3864,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0).length ?? 0
       );
 
-      it('reserves nothing against the tasks behind it', () => {
+      it('does not release EV reservations from thermostat evidence', () => {
         // A 1.5 kW cap: ev-1 books its 1 kW min rung into every hour, which
         // leaves 0.5 kW, so while it holds that power ev-2's 1 kW rung fits nowhere.
         const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
@@ -3856,10 +3874,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         expect(lowerTaskBookedHourCount(buildDeferredObjectiveDiagnostics({
           ...params,
           getStallClassification: parkedAtTarget,
-        }))).toBeGreaterThan(0);
+        }))).toBe(0);
       });
 
-      it('keeps the stalled task\'s own status raw until the lifecycle lane reports it satisfied', () => {
+      it('keeps an EV task unmet in both lanes despite thermostat evidence', () => {
         // The allocation reads the stall for the ledger alone: admission reads a
         // `satisfied` task as inactive, so the decoration lane must keep the raw
         // verdict. Only the lifecycle lane rewrites it, for the owner-facing status.
@@ -3869,7 +3887,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           .find((diagnostic) => diagnostic.deviceId === 'ev-1');
         expect(resolvedTrajectoryStatus(higherTask(buildDeferredObjectiveDiagnostics(params))!))
           .toBe('at_risk');
-        expect(resolvedTrajectoryStatus(higherTask(buildReportedDiagnostics(params))!)).toBe('satisfied');
+        expect(resolvedTrajectoryStatus(higherTask(buildReportedDiagnostics(params))!)).toBe('at_risk');
       });
     });
   });
@@ -3912,6 +3930,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     version: 1,
     plansByDeviceId: {
       'ev-1': {
+        liveCompletion: { kind: 'unavailable' as const },
         deviceId: 'ev-1',
         deviceName: 'Driveway EV',
         objectiveKind: 'ev_soc',
@@ -4060,7 +4079,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
   });
 
-  it('resolves a parked on_track device to satisfied with the near-target reason, preserving the raw status', () => {
+  it('does not apply near-target temperature evidence to an EV task', () => {
     const params = withEstablishedPlan(onTrackParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('on_track');
 
@@ -4070,15 +4089,15 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
         ? { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }
         : undefined),
     });
-    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
-    expect(diagnostic?.reasonCode).toBe('objective_stalled_near_target');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
+    expect(diagnostic?.reasonCode).not.toBe('objective_stalled_near_target');
     expect(diagnostic?.actuationSatisfied).toBe(false);
     // The raw trajectory verdict stays on the horizonPlan so the postmortem
     // recorder and the structured horizon log keep the honest reading.
     expect(diagnostic?.horizonPlan?.status).toBe('on_track');
   });
 
-  it('resolves a parked failing device (at_risk) to satisfied with the device-capped reason', () => {
+  it('does not apply capped temperature evidence to an EV task', () => {
     const params = withEstablishedPlan(atRiskParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('at_risk');
 
@@ -4086,8 +4105,8 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       ...params,
       getStallClassification: () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),
     });
-    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
-    expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
+    expect(diagnostic?.reasonCode).not.toBe('objective_stalled_device_capped');
     expect(diagnostic?.actuationSatisfied).toBe(false);
     expect(diagnostic?.horizonPlan?.status).toBe('at_risk');
   });

@@ -1,6 +1,5 @@
 import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { WeatherDaySuppression } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { pickLastPlan, snapshotShowsBudgetExhausted } from '../../packages/shared-domain/src/deferredPlanHistoryShared';
 import { asDeliveredEnergyKWh, asRemainingEnergyKWh } from '../../packages/shared-domain/src/energyQuantities';
 import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 
@@ -18,9 +17,9 @@ import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dat
  *     damage: energy the budget denied a task that then missed its deadline. A
  *     magnitude, present only when PELS could measure one.
  *
- * Both are gated on the same predicate today — the budget was the whole reason
- * the planner's floor fell short. A miss the budget only CONTRIBUTED to is
- * deliberately not counted; see the note in `notes/starvation/README.md`.
+ * Both require recorded delivery evidence naming budget as the primary blocker
+ * with no other contributors. Legacy and mixed-cause misses cannot establish
+ * budget-only damage; see `notes/starvation/README.md`.
  *
  * Best-effort by design, and the direction of the error matters here. On a boot
  * that slept past midnight the weather catch-up can roll a day up before the
@@ -67,10 +66,9 @@ const unservedEnergyKWh = (entry: DeferredObjectivePlanHistoryRecord): number | 
  * day's evidence. Takes the recorder's own finalized records — an absent
  * recorder passes none.
  *
- * The cause is read from ONE plan snapshot, chosen by `pickLastPlan`. A
- * per-field fallback across final and original would resurrect a stale positive
- * from the richer original plan on a run whose final revision saw no budget
- * bound at all.
+ * The recorder owns delivery attribution. Plan-time feasibility snapshots do
+ * not prove that budget control denied delivery, so neither current nor legacy
+ * snapshots participate in this decision.
  */
 export function resolveDeadlineMissSuppression(
   entries: readonly DeferredObjectivePlanHistoryRecord[],
@@ -81,7 +79,11 @@ export function resolveDeadlineMissSuppression(
   let deniedKwh = 0;
   for (const entry of entries) {
     if (entry.outcome !== 'missed') continue;
-    if (!snapshotShowsBudgetExhausted(pickLastPlan(entry))) continue;
+    const explanation = entry.deliveryExplanation;
+    if (explanation.kind !== 'recorded'
+      || explanation.primary.kind !== 'blocked'
+      || explanation.primary.cause !== 'budget_limited'
+      || explanation.contributors.some((cause) => cause !== 'budget_limited')) continue;
     if (getDateKeyInTimeZone(new Date(entry.deadlineAtMs), timeZone) !== dateKey) continue;
     missed = true;
     deniedKwh += unservedEnergyKWh(entry) ?? 0;

@@ -334,11 +334,10 @@ export const EV_CAR_LINK_LIMIT_MAX_SPREAD_PCT = 2;
  * stops only, so a limit the owner changes is relearned in two sessions instead
  * of being outvoted by the old one.
  *
- * The lowest, not the median, because a smart task is capped at this value and
- * counts as met on reaching it: a car that stops a point either side of its
- * setting (stops at 70 and 71) must be able to reach its own limit every time,
- * or the task never reads met and keeps claiming hours for a car that will not
- * draw. Every stop in the window is a level the car is known to reach.
+ * The lowest, not the median, because every stop in the window is a level the
+ * car is known to reach. A car stopping either side of its setting (70 and 71)
+ * can therefore be recognized at its own limit on either stop. This explains
+ * device delivery; it never lowers a smart task's requested target or completes it.
  */
 export const resolveEvCarChargeLimit = (
     snapshot: EvCarLinkSnapshot,

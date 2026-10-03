@@ -52,6 +52,7 @@ describe('planHistoryStore', () => {
   it('round-trips and removes in-progress metered delivery independently of finalized history', () => {
     const { db, store } = open();
     const state: PersistedMeteredDeliveryState = {
+      deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
       commitment: { kind: 'known', kwh: 5 },
       deviceId: 'dev',
       deadlineAtMs: 10_000,
@@ -81,7 +82,7 @@ describe('planHistoryStore', () => {
     };
     db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
       .run('dev|10000', JSON.stringify(legacy));
-    expect(store.readMeteredDelivery()).toEqual([{ ...legacy, commitment: { kind: 'unknown' } }]);
+    expect(store.readMeteredDelivery()).toEqual([{ ...legacy, commitment: { kind: 'unknown' }, deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } } }]);
   });
 
   it('answers null while empty, and round-trips a history one row per entry, oldest first', () => {
@@ -89,7 +90,7 @@ describe('planHistoryStore', () => {
     expect(store.read()).toBeNull();
     const history = v5(entry('b', 2_000), entry('a', 1_000));
     store.write(history);
-    expect(store.read()).toEqual({ version: 5, entries: [history.entries[1], history.entries[0]] });
+    expect(store.read()).toEqual({ version: 6, entries: [history.entries[1], history.entries[0]] });
     expect((db.prepare('SELECT COUNT(*) AS n FROM deferred_objective_plan_history').get() as { n: number }).n).toBe(2);
   });
 

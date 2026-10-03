@@ -533,6 +533,7 @@ describe('Overview under a selected meter area', () => {
       version: 1,
       plansByDeviceId: {
         dev_main_heater: {
+          liveCompletion: { kind: 'unavailable' },
           pending: false,
           deviceName: 'Main Heater',
           deadlineAtMs,

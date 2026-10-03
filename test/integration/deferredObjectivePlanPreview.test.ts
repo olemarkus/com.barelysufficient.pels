@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
@@ -256,6 +257,7 @@ type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsR
 // Fixture defaults for the live-wiring inputs: no committed plans, no excluded
 // devices, and no device parked at its target.
 type DefaultedDiagnosticsParam =
+  | 'isReservationSuppressed'
   | 'getPrioritiesForDevices'
   | 'activePlans'
   | 'resolveDeviceExclusion'
@@ -269,6 +271,7 @@ const buildDeferredObjectiveDiagnostics = (
   activePlans: params.activePlans ?? null,
   resolveDeviceExclusion: params.resolveDeviceExclusion ?? noDeviceExclusion,
   getStallClassification: params.getStallClassification ?? noStallEvidence,
+  isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
   getDeliveredEnergyKWh: params.getDeliveredEnergyKWh ?? noDeliveredEnergy,
   getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
@@ -333,6 +336,7 @@ const runPreview = (params: {
   activePlans: params.ctx.activePlans ?? null,
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: params.ctx.getPrioritiesForDevices
     ?? createFixturePriorityQuery(params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : [])),
@@ -402,7 +406,7 @@ describe('previewDeferredObjectivePlan', () => {
       activePlans: null,
       sustainableRateKw: 1.5,
     });
-    const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!) ?? []).map((hour) => hour.startsAtMs));
+    const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? []).map((hour) => hour.startsAtMs));
 
     expect(estimate.status).toBe('at_risk');
     expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
@@ -765,6 +769,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_NEAR_MS }), ctx });
 
     expect(estimate.status).toBe('at_risk');
+    expect(estimate.budgetRole).toBe('sole');
     expect(estimate.scheduledHours.length).toBeGreaterThan(0);
     expect(estimate.energyEstimateKWh).toBeCloseTo(4, 3);
   });
@@ -780,6 +785,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx });
 
     expect(estimate.status).toBe('cannot_meet');
+    expect(estimate.budgetRole).toBe('contributing');
     // The floor cannot fit the full target, but the planner still books the
     // hours it can — energy needed is surfaced regardless.
     expect(estimate.energyEstimateKWh).toBeCloseTo(4, 3);
@@ -939,7 +945,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       const recorderFinishAtMs = resolveProjectedFinishAtMs(diag);
       // Sanity-check the recorder produced a non-trivial schedule from the
       // shared helper so the comparison below is meaningful.
-      expect(recorderSchedule).toEqual(buildHoursFromHorizonPlan(diag));
+      expect(recorderSchedule).toEqual(buildHoursFromHorizonPlan(diag.evaluation));
       expect(recorderHours.length).toBeGreaterThan(0);
 
       // Preview path: same inputs, no persisted state.

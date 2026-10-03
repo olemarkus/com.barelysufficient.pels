@@ -1,3 +1,4 @@
+import { requireDeferredObjectivePlanHistoryRecorder } from './appInit/deferredRecorders';
 import type { AppContext } from '../lib/app/appContext';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
@@ -213,6 +214,7 @@ export class AppSmartTaskApi {
       activePlans: activePlanRecorder.getActivePlansSnapshot(),
       getPrioritiesForDevices: this.getPrioritiesForDevices,
       resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
+      isReservationSuppressed: requireDeferredObjectivePlanHistoryRecorder(this.ctx).isReservationSuppressed,
       getStallClassification: (id) => planService.getStallEvidence(id),
       getDeliveredEnergyKWh: requireDeferredObjectiveEnergyDelivery(this.ctx).getDeliveredKWh,
       powerTracker: this.ctx.powerTracker,

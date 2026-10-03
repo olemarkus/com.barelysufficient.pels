@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 // End-to-end schedule simulation for a smart task whose device under-delivers
 // and runs past its committed hour window. It drives the REAL planner
 // (`planDeferredObjectiveHorizon`) into the REAL active-plan recorder
@@ -76,6 +77,8 @@ const settingsEntry = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => 
 });
 
 const objective = (deadlineAtMs: number, energyNeededKWh: number): DeferredObjective => ({
+  fullyReserved: false,
+  deadlineMarginMs: 0,
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
   enforcement: 'soft',
@@ -96,7 +99,7 @@ const diagnosticFor = (
   plan: DeferredObjectiveHorizonPlan,
   deadlineAtMs: number,
   energyNeededKWh: number,
-): DeferredObjectiveDiagnostic => ({
+): DeferredObjectiveDiagnostic => (withTaskDiagnosticFixture({
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
@@ -128,7 +131,7 @@ const diagnosticFor = (
   horizonBucketCount: plan.plannedBuckets.length,
   expectedStepId: plan.expectedStepId,
   horizonPlan: plan,
-});
+}));
 
 type HourRecord = {
   hourIndex: number;
@@ -169,12 +172,14 @@ const runSimulation = (params: {
       progressDirection: 'increasing',
     });
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs,
       objective: objective(deadlineAtMs, needKWh),
       steps: [STEP],
       buckets: bucketsTo(nowMs, deadlineAtMs),
-      committed: committedHours !== undefined,
-      committedHours,
+      commitment: committedHours === undefined
+        ? { kind: 'uncommitted' }
+        : { kind: 'committed', hours: committedHours },
     });
     recorder.observe([diagnosticFor(plan, deadlineAtMs, needKWh)], nowMs);
 

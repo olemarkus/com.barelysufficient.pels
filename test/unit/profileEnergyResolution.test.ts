@@ -345,18 +345,18 @@ describe('progressCurrentValue', () => {
   });
 
   it('returns the reading for ev_soc objectives', () => {
-    expect(progressCurrentValue({ progress: okProgress(65), objectiveKind: 'ev_soc' })).toBe(65);
+    expect(progressCurrentValue({ progress: okProgress(65), objectiveKind: 'ev_soc' })).toEqual({ kind: 'level', value: 65 });
   });
 
   it('returns the reading for temperature objectives', () => {
-    expect(progressCurrentValue({ progress: okProgress(55), objectiveKind: 'temperature' })).toBe(55);
+    expect(progressCurrentValue({ progress: okProgress(55), objectiveKind: 'temperature' })).toEqual({ kind: 'level', value: 55 });
   });
 
-  it('returns undefined for energy objectives (exact rate, no banded path)', () => {
-    expect(progressCurrentValue({ progress: okProgress(5), objectiveKind: 'energy' })).toBeUndefined();
+  it('returns explicit exact energy progress without a banded path', () => {
+    expect(progressCurrentValue({ progress: okProgress(5), objectiveKind: 'energy' })).toEqual({ kind: 'exact_energy', value: 5 });
   });
 
-  it('returns undefined when progress has a reasonCode', () => {
+  it('returns the owner reason when progress is unavailable', () => {
     expect(progressCurrentValue({
       progress: {
         remainingUnits: 0,
@@ -365,7 +365,7 @@ describe('progressCurrentValue', () => {
         reasonCode: 'objective_progress_stale',
       },
       objectiveKind: 'ev_soc',
-    })).toBeUndefined();
+    })).toEqual({ kind: 'unavailable', reasonCode: 'objective_progress_stale' });
   });
 });
 

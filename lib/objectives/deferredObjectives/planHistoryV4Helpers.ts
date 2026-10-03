@@ -202,7 +202,7 @@ export const buildFinalizedAttributionEvent = (
     rateConfidence: attribution.rateConfidence,
     acceptedSamples: attribution.acceptedSamples,
     dailyBudgetExhaustedBucketCount: attribution.dailyBudgetExhaustedBucketCount,
-    deliveredAtOrAbovePlan: attribution.deliveredAtOrAbovePlan,
+    contributingCauses: attribution.contributors,
   };
 };
 
@@ -235,32 +235,9 @@ export const captureRevisionSnapshot = (
   };
 };
 
-// Diagnostic reason codes that mean the `currentValue` reading is present but
-// **not trustworthy** — sensor stale,
-// session invalid, missing device, missing temperature, or invalid deadline.
-// Writing these into `progressSamples` would pollute the history chart with
-// untrusted telemetry, so the recorder gates writes on this set the same way
-// `finalProgress*` does.
-export const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveDiagnostic['reasonCode']> = new Set([
-  // Durable exclusion short-circuits (sub-home scope, device not managed):
-  // both are built without reading the device, so like
-  // `objective_missing_device` they carry no trustworthy progress values.
-  'objective_device_in_sub_home',
-  'objective_device_unmanaged',
-  'objective_invalid_deadline',
-  'objective_invalid_session',
-  'objective_missing_device',
-  'objective_missing_temperature',
-  'objective_progress_stale',
-]);
-
-// True iff the diagnostic carries a fresh, trustworthy reading. Mirrors the
-// gating `planHistory.ts` already applies before writing `finalProgressValue`,
-// so progress samples never disagree with the headline value the UI shows.
-// The reading is in the task's own unit, so the question is the same for
-// every kind.
+// History consumes the accepted operational progress, independently of reporting metadata.
 export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => (
-  !PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode) && diag.currentValue !== null
+  diag.evaluation.progress.kind === 'known'
 );
 
 // Build a progress sample from the diagnostic. Returns null when the
@@ -271,7 +248,7 @@ const buildProgressSample = (
   diag: DeferredObjectiveDiagnostic,
   atMs: number,
 ): ResolvedDeferredObjectivePlanHistoryProgressSample | null => (
-  hasTrustworthyProgress(diag) ? { atMs, value: diag.currentValue } : null
+  diag.evaluation.progress.kind === 'known' ? { atMs, value: diag.evaluation.progress.value } : null
 );
 
 // Seed the in-memory progress ring with the first observation so a run that

@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import type { ResolvedDeferredObjectivePlanHistoryProgressSample } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
@@ -31,6 +32,7 @@ const makeDiag = (
     deviceName: 'Water Heater',
     objectiveId: 'dev:temperature',
     objectiveKind: 'temperature',
+    progressDirection: 'increasing',
     enforcement: 'soft',
     trajectory: { kind: 'resolved', status: 'on_track' },
     reasonCode: 'planned_with_margin',
@@ -40,6 +42,7 @@ const makeDiag = (
     currentTemperatureC: 50,
     currentValue: 50,
     targetValue: 65,
+    reachableTargetValue: 65,
     deadlineAtMs: 6 * HOUR_MS,
     deadlineLocalTime: '06:00',
     energyNeededKWh: 22.5,
@@ -55,11 +58,11 @@ const makeDiag = (
     expectedStepId: 'low',
     ...overrides,
   } as DeferredObjectiveDiagnostic;
-  return {
+  return withTaskDiagnosticFixture({
     ...diag,
     currentValue: overrides.currentValue
       ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
-  };
+  });
 };
 
 const tempDiag = (currentTemperatureC: number): DeferredObjectiveDiagnostic => (
@@ -102,6 +105,18 @@ describe('recordProgressSample (15-minute grid)', () => {
     expect(drained[0]!.value).toBe(50.9);
     // The sample keeps the observation's real time, not the bucket start.
     expect(drained[0]!.atMs).toBe(14 * 60 * 1000);
+  });
+
+  it('captures producer-owned progress when reporting fields disagree', () => {
+    const initial = tempDiag(50);
+    const trusted = tempDiag(55);
+    const misleadingReport: DeferredObjectiveDiagnostic = {
+      ...trusted, currentValue: 99, reasonCode: 'objective_progress_stale',
+    };
+    const ring = recordProgressSample(seedProgressSamples(initial, 0), misleadingReport, QUARTER_MS);
+    expect(drainProgressSamples(ring).at(-1)?.value).toBe(55);
+    const record = startRecord(initial, 0, undefined)!;
+    expect(mergeRecord(record, misleadingReport, QUARTER_MS, undefined).finalProgressValue).toBe(55);
   });
 
   it('drops untrustworthy readings without touching the ring', () => {
@@ -195,7 +210,7 @@ describe('drainProgressSamples', () => {
   });
 });
 
-describe('mergeRecord × stall freeze at the 15-minute cadence', () => {
+describe('mergeRecord with accepted near-target progress', () => {
   it('keeps recording post-stall samples while finalProgress stays frozen at the plateau', () => {
     const record = startRecord(tempDiag(60.9), 0, undefined);
     expect(record).not.toBeNull();
@@ -203,12 +218,22 @@ describe('mergeRecord × stall freeze at the 15-minute cadence', () => {
     // Post-stall cooling tick a quarter-hour later: the sample ring is
     // deliberately NOT frozen (the coast is what the trajectory chart should
     // show) but the headline plateau values are.
-    const merged = mergeRecord(stalled, tempDiag(61.5), 3 * HOUR_MS + QUARTER_MS, undefined);
+    const coast = tempDiag(61.5);
+    const stillAccepted: DeferredObjectiveDiagnostic = {
+      ...coast, completion: { kind: 'accepted_near_target' },
+      evaluation: { ...coast.evaluation, completion: { kind: 'accepted_near_target' } },
+    };
+    const merged = mergeRecord(stalled, stillAccepted, 3 * HOUR_MS + QUARTER_MS, undefined);
     expect(merged.satisfied).toBe(true);
     expect(merged.metAtMs).toBe(3 * HOUR_MS);
     expect(merged.finalProgressValue).toBeCloseTo(61.8, 5);
     const drained = drainProgressSamples(merged.progressSamples);
     expect(drained.map((s) => s.value)).toEqual([60.9, 61.5]);
     expect(drained.map((s) => s.atMs)).toEqual([0, 3 * HOUR_MS + QUARTER_MS]);
+    const reopened = mergeRecord(merged, tempDiag(55), 4 * HOUR_MS, undefined);
+    expect(reopened.satisfied).toBe(false);
+    expect(reopened.metAtMs).toBeNull();
+    expect(reopened.metReason).toBeNull();
+    expect(reopened.finalProgressValue).toBe(55);
   });
 });

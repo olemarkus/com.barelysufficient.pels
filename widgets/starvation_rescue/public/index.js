@@ -317,6 +317,10 @@
   };
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
+  var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the deadline.";
+  var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
+  var WHY_CANNOT_MEET_BUDGET_PARTIAL = "Today\u2019s daily budget is holding part of this back, but there is not enough time either.";
+  var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
@@ -432,13 +436,17 @@
     unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
   };
   var resolveSmartTaskPreviewUnavailableCopy = (reason) => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? "unknown"];
-  var resolveSmartTaskPreviewStatusCopy = (status, unavailableReason) => {
+  var resolveSmartTaskPreviewStatusCopy = (status, unavailableReason, budgetRole) => {
     switch (status) {
       case "unavailable":
         return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
       case "cannot_meet":
+        if (budgetRole === "sole") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET}`;
+        if (budgetRole === "contributing") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
         return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
       case "at_risk":
+        if (budgetRole === "sole") return `At risk \u2014 ${WHY_AT_RISK_BUDGET}`;
+        if (budgetRole === "contributing") return `At risk \u2014 ${WHY_AT_RISK_BUDGET_PARTIAL}`;
         return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
       case "satisfied":
         return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
@@ -1159,7 +1167,11 @@
     setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
     setLine(
       targets.confirmUnavailableEl,
-      resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason)
+      resolveSmartTaskPreviewStatusCopy(
+        response.estimate.status,
+        response.estimate.unavailableReason,
+        response.estimate.budgetRole
+      )
     );
     setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
     const granted = response.estimate.grantedRescuePermissions;
@@ -1232,6 +1244,7 @@
     deadlineLabel: "Today 17:00",
     scheduledWindowLabel: "13:00\u201315:00",
     estimate: {
+      budgetRole: "none",
       status: "on_track",
       // Scheduled across the current hour + the next one, so the fixture can honestly
       // demonstrate the at-cap note (which is about running in the CURRENT clock hour).

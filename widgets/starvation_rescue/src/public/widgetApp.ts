@@ -39,6 +39,7 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
   deadlineLabel: 'Today 17:00',
   scheduledWindowLabel: '13:00–15:00',
   estimate: {
+    budgetRole: 'none',
     status: 'on_track',
     // Scheduled across the current hour + the next one, so the fixture can honestly
     // demonstrate the at-cap note (which is about running in the CURRENT clock hour).

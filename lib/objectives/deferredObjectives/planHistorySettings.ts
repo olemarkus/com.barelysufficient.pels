@@ -1,3 +1,4 @@
+import { isTaskDeliveryExplanation } from '../../../packages/shared-domain/src/taskDeliveryValidation';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
@@ -13,39 +14,19 @@ import type {
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
-// Bumped to 5 when persistence switched to compact, device-independent rows.
-// v3/v4 envelopes are read only by the one-shot boot import into the userdata
-// store (`planHistoryStore.ts`), which retires the settings keys after.
-// v4 was introduced in v2.7.2 alongside the smart-task history-detail trio:
-// `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
-// + `totalCost`, `revisions[]`, and (extension, no version bump) the
-// `costDisplay` price-display provenance. v4 is already released (shipped
-// v2.7.2, live in v2.11.x), but no bump is needed for an additive OPTIONAL
-// field: the normalizer validates every known field and compacts legacy rows,
-// while preserving optional extensions on the record. A newer client treats
-// an absent optional field as a graceful fallback. All new fields
-// are optional so v3 entries continue to load with the field absent (graceful
-// degrade); a `costDisplay`-less entry falls back to the recording-era øre/kr
-// default. New entries are
-// written at v5; v3/v4 reads are upgraded in-memory without
-// dropping any persisted state — see `feedback_homey_sdk_unreliable` for the
-// "never delete persisted state on a single empty/missing read" invariant.
-//
-// v3 is the OLDEST readable schema. v1, v2 and v3 all landed inside the v2.7.0
-// development window, so no published release ever persisted a v1 or v2
-// envelope and their upgrade path has been removed. An envelope claiming
-// either version reads as empty here and as `unavailable` from the strict
-// parser, rather than being re-imported with synthesized ids.
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 5 as const;
+// v6 records delivery explanations. v3-v5 keep their recorded measurements and
+// outcomes and explicitly mark causal evidence as unrecorded; no ratio-based
+// cause is reconstructed during migration.
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 6 as const;
 
-const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV5 => ({
+const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV6 => ({
   version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   entries: [],
 });
@@ -384,7 +365,8 @@ const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHist
   if (!hasValidTimestamps(v) || !hasValidRecordProgress(v)) return false;
   if (!isTerminalOutcome(v.outcome) || !hasValidOutcome(v)) return false;
   if (!hasValidCoverage(v) || !hasValidPlanSnapshots(v)) return false;
-  return hasValidRecordExtensions(v);
+  return hasValidRecordExtensions(v)
+    && (v.deliveryExplanation === undefined || isTaskDeliveryExplanation(v.deliveryExplanation));
 };
 
 // v3 and v4 entries share the same validation function: the v4-only fields
@@ -392,12 +374,23 @@ const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHist
 // `revisionSnapshot.kwhPerUnitMean`) are all optional, so v3 entries
 // satisfy the legacy validator. v3/v4 → v5 also compacts the kind-split values
 // while retaining every validated optional extension.
+const upgradeCompactRecord = (record: DeferredObjectivePlanHistoryRecord): DeferredObjectivePlanHistoryRecord => (
+  toPlanHistoryRecord({
+    ...record,
+    deliveryExplanation: 'deliveryExplanation' in record
+      ? record.deliveryExplanation : { kind: 'legacy_unrecorded' },
+  })
+);
+const lacksDeliveryExplanation = (entry: unknown): boolean => (
+  !entry || typeof entry !== 'object' || !('deliveryExplanation' in entry)
+);
+
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord[] => {
   const normalized: DeferredObjectivePlanHistoryRecord[] = [];
   for (const entry of entries) {
     if (isPlanHistoryRecord(entry)) {
-      normalized.push(toPlanHistoryRecord(entry));
+      normalized.push(upgradeCompactRecord(entry));
       continue;
     }
     if (isPlanHistoryEntry(entry)) normalized.push(toPlanHistoryRecord(entry));
@@ -408,13 +401,16 @@ const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord
 
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,
-): DeferredObjectivePlanHistoryV5 => {
+): DeferredObjectivePlanHistoryV6 => {
   if (!raw || typeof raw !== 'object') return createEmptyDeferredObjectivePlanHistory();
   const r = raw as Record<string, unknown>;
+  if (r.version === 6 && Array.isArray(r.entries) && r.entries.some(lacksDeliveryExplanation)) {
+    return createEmptyDeferredObjectivePlanHistory();
+  }
   if (!Array.isArray(r.entries)) return createEmptyDeferredObjectivePlanHistory();
   // v3/v4 reads upgrade to compact v5 in-place. New fields stay absent on
   // legacy entries (graceful degrade per `feedback_homey_sdk_unreliable`).
-  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 4 || r.version === 3) {
+  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 5 || r.version === 4 || r.version === 3) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: normalizeV3OrV4(r.entries),
@@ -426,7 +422,7 @@ export const normalizeDeferredObjectivePlanHistory = (
 /** Strict persistence parser. One malformed row makes the SDK read
  * unavailable so a partial snapshot can never be written over full history. */
 export type DeferredObjectivePlanHistoryParseResult =
-  | { state: 'resolved'; snapshot: DeferredObjectivePlanHistoryV5 }
+  | { state: 'resolved'; snapshot: DeferredObjectivePlanHistoryV6 }
   | { state: 'unavailable' };
 
 export const parseDeferredObjectivePlanHistory = (
@@ -435,7 +431,7 @@ export const parseDeferredObjectivePlanHistory = (
   if (!raw || typeof raw !== 'object') return { state: 'unavailable' };
   const candidate = raw as Record<string, unknown>;
   if (!Array.isArray(candidate.entries)) return { state: 'unavailable' };
-  if (![3, 4, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
+  if (![3, 4, 5, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
     return { state: 'unavailable' };
   }
   const normalized = normalizeDeferredObjectivePlanHistory(raw);

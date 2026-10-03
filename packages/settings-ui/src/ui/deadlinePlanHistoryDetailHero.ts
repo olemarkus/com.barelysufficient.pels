@@ -2,7 +2,7 @@
 // pattern of `deadlinePlanHero.ts` for the live hero: resolves a single
 // pre-baked payload object (`tone`, `lead`, `secondary`, `recourse`,
 // `chartCollapsedByDefault`) so the view layer never branches on the
-// outcome / planStatus / `dailyBudgetExhaustedBucketCount`.
+// outcome or recorded delivery explanation.
 //
 // Page mission per `notes/smart-task-ui/README.md`:
 //   - Succeeded → receipt: did it work, at what cost?
@@ -144,9 +144,6 @@ export const buildHistoryDetailHero = (
 ): DeadlinePlanHistoryHeroPayload => {
   const { entry, timeZone, deadlineLine } = params;
   const lead = formatPlanHistoryPostmortem(entry, timeZone);
-  const lastPlan = entry.finalPlan ?? entry.originalPlan;
-  const dailyBudgetExhausted = typeof lastPlan?.dailyBudgetExhaustedBucketCount === 'number'
-    && lastPlan.dailyBudgetExhaustedBucketCount > 0;
   const heading = {
     deviceName: entry.deviceName ?? null,
     deadlineLine,
@@ -237,11 +234,7 @@ export const buildHistoryDetailHero = (
       // are useful — the postmortem answers "what happened" and the Why
       // answers "why and what should I do".
       whyLine: formatPlanHistoryMissedReason(entry),
-      recourse: resolveMissedHistoryRecourse({
-        outcome: entry.outcome,
-        dailyBudgetExhausted,
-        deviceId: entry.deviceId,
-      }),
+      recourse: resolveMissedHistoryRecourse(entry),
       chartCollapsedByDefault: false,
       quietAbandoned: false,
       receiptTimeline: null,

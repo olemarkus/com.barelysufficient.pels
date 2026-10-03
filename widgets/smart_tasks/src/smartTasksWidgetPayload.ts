@@ -33,6 +33,7 @@ import {
   formatSmartTaskListConfidenceChipLabel,
   RECOURSE_CANNOT_MEET_BUDGET,
   RECOURSE_CANNOT_MEET_DEVICE,
+  resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
   resolveSmartTaskCarChargeLimit,
@@ -344,6 +345,7 @@ const resolveStatusId = (
     firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
     nowMs,
     carChargeLimitReached: plan.carChargeLimit?.reached === true,
+    liveCompletion: plan.liveCompletion,
   })
 );
 
@@ -474,18 +476,11 @@ const resolveEndedTarget = (entry: ResolvedDeferredObjectivePlanHistoryEntry): n
   isFiniteNumber(entry.targetValue) ? entry.targetValue : null
 );
 
-// A missed run is budget-bound when the recorded plan snapshot saw the daily
-// budget exhausted; otherwise it's device/shortfall-bound. Drives which
-// (hard-cap-safe) recourse hint applies — mirrors `resolveMissedHistoryRecourse`.
-const endedRunWasBudgetBound = (entry: ResolvedDeferredObjectivePlanHistoryEntry): boolean => (
-  ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0
-);
-
-// Missed → budget/device recourse hint (reusing the active cannot-finish copy);
-// every other outcome carries no recourse.
+// Use the shared recorded-cause recourse; the widget adds its compact hint.
 const resolveEndedRecourse = (entry: ResolvedDeferredObjectivePlanHistoryEntry): string | null => {
-  if (entry.outcome !== 'missed') return null;
-  return endedRunWasBudgetBound(entry) ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
+  const recourse = resolveMissedHistoryRecourse(entry);
+  if (recourse === null) return null;
+  return recourse.targetTab === 'budget' ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
 };
 
 const buildEndedRow = (

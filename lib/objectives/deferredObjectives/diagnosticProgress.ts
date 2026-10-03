@@ -123,13 +123,9 @@ const hasUsableTemperatureProgress = (params: {
 };
 
 /**
- * The target this task can actually reach, in the task's own unit: the owner's
- * target, capped by the car's own charge limit when an EV task's car stops below
- * it (owner ruling 2026-09-26). The limit is the one the device layer resolved
- * from the car's own repeated stops and lends with the car's level
- * (`carChargeLimitPercent`); nothing here infers one. A car that stops at 70 %
- * cannot be charged to 80 % by any plan, so energy is sized to 70 % and the
- * task is met there. Every other task reaches its target.
+ * Reporting-only car ceiling in the task's unit. Scheduling, energy sizing and
+ * completion always use the requested target; this value explains a lower
+ * device-owned charge limit without changing the task's obligation.
  */
 export const resolveReachableTargetValue = (
   objective: DeferredObjectiveSettingsEntry,
@@ -195,7 +191,7 @@ export const resolveObjectiveProgress = (
         reasonCode: progress.reasonCode,
       };
     }
-    const remainingUnits = Math.max(0, resolveReachableTargetValue(objective, device) - progress.currentPercent);
+    const remainingUnits = Math.max(0, objective.targetPercent - progress.currentPercent);
     // A bare-connected charger (`plugged_in`) no longer blocks the objective. The
     // block rested on "PELS cannot drive the charger toward the target", and that
     // is false: `plugged_in` is commandable, and on prod 2026-07-26 PELS started a
@@ -246,3 +242,7 @@ export const resolveObjectiveProgress = (
     reasonCode: null,
   };
 };
+
+export const isObjectiveProgressSatisfied = (progress: DeferredObjectiveProgressResolution): boolean => (
+  progress.reasonCode === null && progress.remainingUnits <= 0
+);

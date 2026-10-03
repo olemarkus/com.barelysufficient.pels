@@ -1,3 +1,5 @@
+import { taskPermissionsForObjective } from './taskEvaluationProducer';
+import { inactiveTaskEvaluation } from './taskEvaluation';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
@@ -11,7 +13,7 @@ import {
 import { formatDeadlineLocalTime } from './deadline';
 import { resolvePlanningSpeedKw } from './planningSpeed';
 import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
-import type { DeferredObjectiveKind, DeferredObjectiveHorizonPlan } from './types';
+import type { DeferredObjectiveKind } from './types';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import type {
@@ -34,18 +36,28 @@ export const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
   reasonCode: null,
 };
 
-// Maps the progress resolution back to a single input-value for the banded
-// estimator. Temperature objectives integrate by °C, EV SoC objectives by %.
-// An energy objective's rate is exact (one kWh per kWh), so it consults no
-// profile band and there is no value to integrate over.
-export const progressCurrentValue = (params: {
+type ResolvedProgress = Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
+export type ObjectiveProfileProgress =
+  | { kind: 'level'; value: number }
+  | { kind: 'exact_energy'; value: number }
+  | { kind: 'unavailable'; reasonCode: Exclude<DeferredObjectiveProgressResolution['reasonCode'], null> };
+
+type ProgressCurrentValueParams = {
   progress: DeferredObjectiveProgressResolution;
   objectiveKind: DeferredObjectiveKind;
-}): number | undefined => {
-  const { progress, objectiveKind } = params;
-  if (progress.reasonCode || objectiveKind === 'energy') return undefined;
-  return progress.currentValue;
 };
+
+// An energy task has exact metered progress, not a missing level. Unavailable
+// observations carry their owner's reason instead of falling into a rate fallback.
+export function progressCurrentValue(
+  params: ProgressCurrentValueParams & { progress: ResolvedProgress },
+): Exclude<ObjectiveProfileProgress, { kind: 'unavailable' }>;
+export function progressCurrentValue(params: ProgressCurrentValueParams): ObjectiveProfileProgress;
+export function progressCurrentValue(params: ProgressCurrentValueParams): ObjectiveProfileProgress {
+  const { progress, objectiveKind } = params;
+  if (progress.reasonCode !== null) return { kind: 'unavailable', reasonCode: progress.reasonCode };
+  return { kind: objectiveKind === 'energy' ? 'exact_energy' : 'level', value: progress.currentValue };
+}
 
 export const canReportFreshProgressWhileUnknown = (
   reasonCode: DeferredObjectiveDiagnosticReasonCode,
@@ -62,16 +74,19 @@ export const resolveProgressEnergy = (params: {
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
   remainingUnits: number;
-  progress: DeferredObjectiveProgressResolution;
-}): DeferredObjectiveEnergyResolution => resolveProfileEnergy({
-  powerTracker: params.powerTracker,
-  deviceId: params.deviceId,
-  objectiveKind: params.objective.kind,
-  enforcement: params.objective.enforcement,
-  remainingUnits: params.remainingUnits,
-  progressDirection: params.progress.progressDirection,
-  currentValue: progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind }),
-});
+  progress: ResolvedProgress;
+}): DeferredObjectiveEnergyResolution => {
+  const input = progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind });
+  return resolveProfileEnergy({
+    powerTracker: params.powerTracker,
+    deviceId: params.deviceId,
+    objectiveKind: params.objective.kind,
+    enforcement: params.objective.enforcement,
+    remainingUnits: params.remainingUnits,
+    progressDirection: params.progress.progressDirection,
+    ...(input.kind === 'level' ? { currentValue: input.value } : {}),
+  });
+};
 
 // Variant-preserving merge of the progress reading onto an existing diagnostic.
 // The reading is in the task's own unit; the diagnostic's own `objectiveKind`
@@ -87,19 +102,6 @@ export const mergeProgressFields = (
   if (base.objectiveKind === 'energy') return { ...base, currentPercent: null, currentValue };
   return { ...base, currentPercent: currentValue, currentValue };
 };
-
-// "Is the current bucket actually running this cycle?" — gates the
-// `budgetExemptApplied` diagnostic. A price-deferral-eligible OR cold-start-released
-// hour is released (admission idles the device), and an `unclaimed` hour makes no
-// claim at all, so in neither case is the budget exemption active even when the
-// committed bucket still carries booked energy; report it false so the structured
-// log matches what the device is actually doing.
-//
-// Reads the producer's claim rather than re-deriving the condition, so this cannot
-// drift from the decision admission actually makes.
-export const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
-  horizonPlan.currentHourClaim === 'claimed'
-);
 
 // The progress fields of a diagnostic that has not resolved its objective's
 // progress (yet): the trajectory builders fill them in once it has.
@@ -137,6 +139,9 @@ export const buildDiagnosticBase = (params: {
   });
   const common: BaseDeferredObjectiveDiagnostic = {
     deviceId: params.deviceId,
+    evaluation: { ...inactiveTaskEvaluation(params.deviceId, params.objective.deadlineAtMs,
+      resolveObjectiveTargetValue(params.objective)),
+      permissions: taskPermissionsForObjective(params.objective) },
     progressDirection: resolveObjectiveProgressDirectionRead({
       objectiveKind: params.objective.kind,
       thermalDirection: params.device?.thermalDirection ?? 'unknown',
@@ -148,6 +153,7 @@ export const buildDiagnosticBase = (params: {
     trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
     reasonCode: 'objective_progress_stale',
     actuationSatisfied: false,
+    completion: { kind: 'inactive' },
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     currentPercent: params.objective.kind === 'ev_soc' ? params.currentValue : null,
     // Unit-agnostic pair, in the task's own unit for every kind.

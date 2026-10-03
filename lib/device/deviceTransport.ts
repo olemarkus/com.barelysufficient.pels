@@ -1,3 +1,4 @@
+import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 /**
  * Device-layer hub: owns observed current device state and the device-specific
  * actuation transport behind one boundary. Reconcile/merge changes are
@@ -288,6 +289,10 @@ export class DeviceTransport {
      * narrowed to the cars the user allowed for it. Resolved per call rather than
      * held on the snapshot; see `transport/carAssociation.ts`.
      */
+    getTaskDeliveryConstraint(deviceId: string): TaskDeviceConstraint {
+        return this.observationProducers.evCarLink.getTaskDeliveryConstraint(deviceId);
+    }
+
     getAssociatedCar(id: string): AssociatedCarSnapshot | undefined {
         const eligibleCarIds = this.providers.getEvCarAssociationCarIds?.(id) ?? [];
         const associatedCar = this.observationProducers.evCarLink.getAssociatedCarForCharger(id);

@@ -19,6 +19,7 @@ import { resolveDeadlinesListHero } from '../../packages/shared-domain/src/deadl
 describe('un-managed device: list status', () => {
   it('overrides a cached on-track revision with the paused status', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       pending: false,
       pendingReason: undefined,
       diagnosticReasonCode: 'objective_device_unmanaged',
@@ -31,6 +32,7 @@ describe('un-managed device: list status', () => {
 
   it('maps a never-revised paused task to the pause, not "Building plan…"', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       pending: true,
       pendingReason: 'device_unmanaged',
       diagnosticReasonCode: undefined,

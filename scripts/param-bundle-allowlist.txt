@@ -139,7 +139,6 @@ lib/objectives/deferredObjectives/currentHourClaim.ts 1
 lib/objectives/deferredObjectives/deadline.ts 5
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 2
 lib/objectives/deferredObjectives/diagnosticFields.ts 3
-lib/objectives/deferredObjectives/diagnosticsBridge.ts 4
 lib/objectives/deferredObjectives/freshDiagnostic.ts 3
 lib/objectives/deferredObjectives/frozenDiagnostic.ts 3
 lib/objectives/deferredObjectives/frozenHorizonPlan.ts 2
@@ -155,6 +154,7 @@ lib/objectives/deferredObjectives/rescueReplan.ts 1
 lib/objectives/deferredObjectives/resolveCommittedHours.ts 2
 lib/objectives/deferredObjectives/statusTransitions.ts 4
 lib/objectives/deferredObjectives/stepSelection.ts 1
+lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts 3
 lib/objectives/deferredObjectives/trajectoryMilestone.ts 3
 lib/objectives/noPowerSourceDiagnostic.ts 1
 lib/objectives/profiles.ts 8
@@ -304,10 +304,9 @@ packages/shared-domain/src/activePlanRevisionLog.ts 2
 packages/shared-domain/src/dailyBudget/attributionSplit.ts 1
 packages/shared-domain/src/dailyBudget/dayContext.ts 2
 packages/shared-domain/src/dailyBudgetHeroStrings.ts 1
-packages/shared-domain/src/deadlineLabels.ts 13
+packages/shared-domain/src/deadlineLabels.ts 12
 packages/shared-domain/src/deadlinesListHero.ts 1
 packages/shared-domain/src/deferredActivePlanChartData.ts 1
-packages/shared-domain/src/deferredPlanHistoryAttribution.ts 1
 packages/shared-domain/src/deferredPlanHistoryChartData.ts 2
 packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts 1
 packages/shared-domain/src/energySignature/energySignature.ts 1

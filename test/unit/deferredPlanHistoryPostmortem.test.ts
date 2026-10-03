@@ -1,3 +1,4 @@
+import type { TaskDeliveryCause } from '../../packages/contracts/src/taskDelivery';
 // Unit tests for the smart-task history-detail postmortem resolver (v2.7.2 PR 3).
 // Outcome-shaped variants split across `met` / `missed` / `abandoned`.
 // Each test constructs a minimal entry and asserts
@@ -197,7 +198,7 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.sentence).toMatch(/PELS counted/);
     });
 
-    it('resolves met-by-device-cap when classifier promoted via capped_idle', () => {
+    it('preserves the legacy met-by-device-cap result recorded for capped_idle', () => {
       // Connected 300 capped-internally regression: tank parked at 58 °C
       // (7 °C gap from a 65 °C target) while power cycled around the
       // device's own anti-cycle hysteresis. The
@@ -221,10 +222,10 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.sentence).not.toContain('hard cap');
     });
 
-    it('resolves met-at-car-limit when an EV task was met at its car\'s own charge limit', () => {
+    it('preserves a legacy EV result recorded as met at its car\'s own charge limit', () => {
       // Production, 2026-09-26: an 80 % task on a Polestar set to stop at 70 %.
-      // The car's limit capped what any plan could reach, so the run was met
-      // there, and the sentence names the car as the cause.
+      // Older PELS versions recorded this run as met there. Migration preserves
+      // that historical result; new runs must still meet the requested target.
       const entry = buildEntry({
         objectiveKind: 'ev_soc',
         targetTemperatureC: null,
@@ -263,19 +264,44 @@ describe('formatPlanHistoryPostmortem', () => {
   });
 
   describe('missed outcome', () => {
-    it('resolves missed-by-budget-exhaustion when the final snapshot reports budget cap collapse', () => {
-      const entry = buildEntry({
-        outcome: 'missed',
-        finalProgressC: 38,
-        finalPlan: buildSnapshot({
-          planStatus: 'cannot_meet',
-          dailyBudgetExhaustedBucketCount: 4,
-        }),
-      });
+    it('resolves the budget postmortem from recorded delivery evidence without a plan snapshot', () => {
+      const entry: ResolvedDeferredObjectivePlanHistoryEntry = {
+        ...buildEntry({ outcome: 'missed', finalProgressC: 38 }),
+        deliveryExplanation: {
+          kind: 'recorded', primary: { kind: 'blocked', cause: 'budget_limited' },
+          contributors: [], intervals: [],
+        },
+      };
       const result = formatPlanHistoryPostmortem(entry, 'UTC');
       expect(result.variant).toBe('missed-by-budget-exhaustion');
-      expect(result.sentence).toContain('daily energy budget');
-      expect(result.sentence).toContain('16:00');
+      expect(result.sentence).toBe('The daily budget held delivery back before 16:00.');
+    });
+
+    it('retains factual timing for legacy budget-shaped snapshots without claiming a budget cause', () => {
+      const entry = buildEntry({
+        outcome: 'missed', finalProgressC: 38,
+        finalPlan: buildSnapshot({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 4 }),
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-shortfall');
+      expect(result.sentence).toContain('38.0 °C by 16:00');
+      expect(result.sentence).not.toContain('budget');
+    });
+
+    it('does not promote an earlier budget contribution above the final device blocker', () => {
+      const entry: ResolvedDeferredObjectivePlanHistoryEntry = {
+        ...buildEntry({
+          outcome: 'missed', finalProgressC: 38,
+          finalPlan: buildSnapshot({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 4 }),
+        }),
+        deliveryExplanation: {
+          kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
+          contributors: ['budget_limited'], intervals: [],
+        },
+      };
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-shortfall');
+      expect(result.sentence).toContain('38.0 °C by 16:00');
     });
 
     it('resolves missed-by-shortfall when budget is fine but progress did not reach target', () => {
@@ -382,39 +408,76 @@ describe('formatPlanHistoryPostmortem', () => {
   });
 });
 
-describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
-  it('returns a daily-budget-pointing sentence when the final snapshot reports budget exhaustion', () => {
-    const entry = buildEntry({
-      outcome: 'missed',
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        dailyBudgetExhaustedBucketCount: 3,
-      }),
-    });
-    const result = formatPlanHistoryMissedReason(entry);
-    expect(result).not.toBeNull();
-    expect(result).toContain('Daily budget');
+describe('formatPlanHistoryMissedReason (recorded delivery explanation)', () => {
+  const withRecordedCause = (
+    entry: ResolvedDeferredObjectivePlanHistoryEntry,
+    cause: TaskDeliveryCause,
+    contributors: TaskDeliveryCause[] = [],
+  ): ResolvedDeferredObjectivePlanHistoryEntry => ({
+    ...entry,
+    deliveryExplanation: {
+      kind: 'recorded', primary: { kind: 'blocked', cause }, contributors,
+      intervals: [{ fromMs: DEADLINE_MS - HOUR_MS, toMs: DEADLINE_MS, cause }],
+    },
+  });
+  const legacyCopy = 'Delivery blockers were not recorded for this earlier task.';
+
+  it.each([
+    { planStatus: 'cannot_meet' as const, dailyBudgetExhaustedBucketCount: 3 },
+    { planStatus: 'cannot_meet' as const, floorShortfallCause: 'time_capacity' as const },
+    { planStatus: 'cannot_meet' as const, rateConfidence: 'low' as const, acceptedSamples: 3 },
+  ])('does not turn an older plan snapshot into delivery evidence: %j', (snapshot) => {
+    const entry = buildEntry({ outcome: 'missed', finalPlan: buildSnapshot(snapshot) });
+    expect(entry.deliveryExplanation).toEqual({ kind: 'legacy_unrecorded' });
+    expect(formatPlanHistoryMissedReason(entry)).toBe(legacyCopy);
   });
 
-  it('blameless rewrite — does not recommend lowering the target or moving the deadline', () => {
-    // Recourse copy lives on the recourse button; the Why line must not
-    // duplicate it. Per `feedback_hard_cap_is_physical.md` no branch
-    // suggests raising the cap either.
-    const budgetEntry = buildEntry({
-      outcome: 'missed',
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        dailyBudgetExhaustedBucketCount: 3,
-      }),
+  it.each([0.9, 2.5])('does not guess a legacy cause from %s kWh against a 2 kWh estimate', (deliveredKWh) => {
+    const entry = buildEntry({
+      outcome: 'missed', deliveredKWh, initialEnergyExpectedKWh: 2,
+      originalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
+      finalPlan: buildSnapshot({ planStatus: 'cannot_meet', rateConfidence: 'high', acceptedSamples: 12 }),
     });
-    const cannotEntry = buildEntry({
-      outcome: 'missed',
-      finalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
-    });
-    for (const result of [
-      formatPlanHistoryMissedReason(budgetEntry),
-      formatPlanHistoryMissedReason(cannotEntry),
-    ]) {
+    expect(formatPlanHistoryMissedReason(entry)).toBe(legacyCopy);
+  });
+
+  it.each([
+    ['budget_limited', 'The daily budget held delivery back.'],
+    ['capacity_limited', 'Power-limit control held delivery back.'],
+    ['estimate_uncertain', 'The energy estimate could not establish a feasible schedule.'],
+    ['device_not_accepting', 'The device stopped accepting energy before reaching the target.'],
+    ['device_limit', 'The device has its own limit below the requested target.'],
+  ] as const)('names the recorded %s cause regardless of plan snapshot or energy ratio', (cause, copy) => {
+    const entry = withRecordedCause(buildEntry({
+      outcome: 'missed', deliveredKWh: 0.9, initialEnergyExpectedKWh: 2,
+      finalPlan: buildSnapshot({ planStatus: 'cannot_meet', rateConfidence: 'low', dailyBudgetExhaustedBucketCount: 3 }),
+    }), cause);
+    expect(formatPlanHistoryMissedReason(entry)).toBe(copy);
+  });
+
+  it('keeps the final device blocker primary and names earlier restrictions as contributors', () => {
+    const entry = withRecordedCause(buildEntry({
+      outcome: 'missed', deliveredKWh: 2.5,
+      finalPlan: buildSnapshot({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 2 }),
+    }), 'device_not_accepting', ['budget_limited', 'capacity_limited']);
+    expect(formatPlanHistoryMissedReason(entry)).toBe(
+      'The device stopped accepting energy before reaching the target.'
+      + ' Earlier: The daily budget held delivery back. Power-limit control held delivery back.',
+    );
+  });
+
+  it('reports an unmet target under permitted delivery without inventing an estimate or capacity cause', () => {
+    const entry: ResolvedDeferredObjectivePlanHistoryEntry = {
+      ...buildEntry({ outcome: 'missed', deliveredKWh: 2.5, initialEnergyExpectedKWh: 2 }),
+      deliveryExplanation: { kind: 'recorded', primary: { kind: 'clear' }, contributors: [], intervals: [] },
+    };
+    expect(formatPlanHistoryMissedReason(entry)).toBe('The requested target was not reached during permitted delivery.');
+  });
+
+  it('keeps reason lines factual without recommending target or deadline changes', () => {
+    const entry = buildEntry({ outcome: 'missed' });
+    for (const cause of ['budget_limited', 'capacity_limited', 'device_limit'] as const) {
+      const result = formatPlanHistoryMissedReason(withRecordedCause(entry, cause));
       expect(result).not.toBeNull();
       expect(result!.toLowerCase()).not.toContain('try lowering');
       expect(result!.toLowerCase()).not.toContain('moving the deadline');
@@ -423,92 +486,9 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
     }
   });
 
-  it('keeps the cannot_meet fallback sentence when no budget exhaustion is recorded', () => {
-    const entry = buildEntry({
-      outcome: 'missed',
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        // No `dailyBudgetExhaustedBucketCount` → cannot_meet fallback branch.
-      }),
-    });
-    const result = formatPlanHistoryMissedReason(entry);
-    expect(result).toBe("Couldn't reserve enough cheap hours in time.");
-  });
-
   it('returns null for non-missed outcomes', () => {
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'met' }))).toBeNull();
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'abandoned' }))).toBeNull();
-  });
-
-  // v2.7.4 — plan-time miss attribution (Session A) refines the Why line for
-  // the two causes the planStatus alone can't tell apart.
-  it('names the still-learning estimate ahead of the cannot_meet fallback', () => {
-    // Genuine cold start (few samples) with delivery unmeasured: the honest
-    // fallback is "still learning", and it has no reading count — the count is
-    // decoupled from the confidence band, so showing it read as broken trust.
-    const entry = buildEntry({
-      outcome: 'missed',
-      deliveredKWh: undefined,
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        rateConfidence: 'low',
-        acceptedSamples: 3,
-      }),
-    });
-    expect(formatPlanHistoryMissedReason(entry)).toBe(
-      "Still learning this device's energy use.",
-    );
-  });
-
-  it('names an energy underestimate when delivery met the commitment but missed', () => {
-    const entry = buildEntry({
-      outcome: 'missed',
-      deliveredKWh: 2.5, // ≥ the 2.0 commitment → power was available.
-      // The commitment is anchored on the entry, captured once at startRecord;
-      // the revisions supply provenance only.
-      initialEnergyExpectedKWh: 2,
-      originalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        rateConfidence: 'high',
-        acceptedSamples: 12,
-      }),
-    });
-    expect(formatPlanHistoryMissedReason(entry)).toBe(
-      'Target needed more energy than estimated.',
-    );
-  });
-
-  it('names a capacity shortfall rather than the cheap-hours line', () => {
-    // The `cannot_meet` fallback blames the price curve. When the producer
-    // recorded `time_capacity` there is a truthful sentence to show instead.
-    const entry = buildEntry({
-      outcome: 'missed',
-      deliveredKWh: 0.9,
-      initialEnergyExpectedKWh: 2,
-      originalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        floorShortfallCause: 'time_capacity',
-      }),
-    });
-    expect(formatPlanHistoryMissedReason(entry)).toBe(
-      'Not enough power or time before the deadline.',
-    );
-  });
-
-  it('budget exhaustion still outranks the attribution refinement', () => {
-    const entry = buildEntry({
-      outcome: 'missed',
-      deliveredKWh: 2.5,
-      finalPlan: buildSnapshot({
-        planStatus: 'cannot_meet',
-        dailyBudgetExhaustedBucketCount: 2,
-        rateConfidence: 'low',
-        acceptedSamples: 3,
-      }),
-    });
-    expect(formatPlanHistoryMissedReason(entry)).toContain('Daily budget');
   });
 });
 

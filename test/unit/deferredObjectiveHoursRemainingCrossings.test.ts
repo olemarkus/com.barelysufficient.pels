@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import {
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
@@ -13,10 +14,11 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceId: string;
-}): DeferredObjectiveDiagnostic => ({
+}): DeferredObjectiveDiagnostic => (withTaskDiagnosticFixture({
   deviceName: 'Boiler',
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
+  progressDirection: 'increasing',
   enforcement: 'soft',
   trajectory: { kind: 'resolved', status: 'on_track' },
   reasonCode: 'objective_progress_stale',
@@ -24,6 +26,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   currentPercent: null,
   currentValue: 50,
   targetValue: 55,
+  reachableTargetValue: 55,
   targetTemperatureC: 55,
   currentTemperatureC: 50,
   deadlineAtMs: 0,
@@ -40,7 +43,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   horizonBucketCount: 1,
   expectedStepId: null,
   ...overrides,
-} as DeferredObjectiveDiagnostic);
+} as DeferredObjectiveDiagnostic));
 
 const setup = () => {
   const bus = createDeferredObjectiveHoursRemainingBus();

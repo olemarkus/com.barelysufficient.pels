@@ -58,33 +58,10 @@ export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number
 export type DeadlineProgress = {
   currentValue: number;
   progressDirection: 'increasing' | 'decreasing';
-  // Counted to `plannedTargetValue`, the target the plan works to.
   remainingUnits: number;
-  // The owner's target, as the task shows it.
   targetValue: number;
-  // The target the plan works to: the owner's, or the car's own charge limit
-  // below it when that caps an EV task (`withCarChargeLimitProgress`).
-  plannedTargetValue: number;
   unit: DeferredObjectiveUnit;
 };
-
-/**
- * Progress counted to the car's own charge limit when it caps the task: the
- * trajectory, the "how much is left" and the delivered line all speak the plan's
- * target, while the owner's target stays on `targetValue` for the subline.
- */
-export const withCarChargeLimitProgress = (
-  progress: DeadlineProgress,
-  limitValue: number | null,
-): DeadlineProgress => (
-  limitValue === null
-    ? progress
-    : {
-      ...progress,
-      remainingUnits: Math.max(0, limitValue - progress.currentValue),
-      plannedTargetValue: limitValue,
-    }
-);
 
 /**
  * The percentage a present SoC bag stands behind, or `null` when it stands behind
@@ -141,7 +118,6 @@ export const resolveProgress = (
     progressDirection: 'increasing',
     remainingUnits: Math.max(0, objective.targetPercent - percent),
     targetValue: objective.targetPercent,
-    plannedTargetValue: objective.targetPercent,
     unit: '%',
   };
 };
@@ -164,7 +140,6 @@ export const resolveEnergyProgress = (
     progressDirection: 'increasing',
     remainingUnits: Math.max(0, objective.targetEnergyKWh - delivered),
     targetValue: objective.targetEnergyKWh,
-    plannedTargetValue: objective.targetEnergyKWh,
     unit: 'kWh',
   };
 };
@@ -196,7 +171,6 @@ function buildTemperatureProgress(
     progressDirection,
     remainingUnits: Math.max(0, delta),
     targetValue: targetTemperature,
-    plannedTargetValue: targetTemperature,
     unit: '°C',
   };
 }

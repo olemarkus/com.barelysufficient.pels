@@ -23,6 +23,7 @@ const TIME_ZONE = 'Europe/Oslo';
 const NOW_MS = Date.UTC(2026, 0, 1, 4, 0, 0);
 
 const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> = {}): DeferredObjectivePlanPreviewEstimate => ({
+  budgetRole: 'none',
   status: 'on_track',
   scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, plannedKWh: 2 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,

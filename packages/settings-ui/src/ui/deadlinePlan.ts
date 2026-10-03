@@ -13,7 +13,6 @@ import {
   formatSmartTaskCarLimitReason,
   resolveSmartTaskCarChargeLimit,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
-  type SmartTaskCarChargeLimit,
   type DeadlinePendingContext,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
@@ -41,7 +40,6 @@ import {
   resolveEnergyNeededKWh,
   resolveProfile,
   resolveTaskProgress,
-  withCarChargeLimitProgress,
 } from './deadlinePlanResolvers.ts';
 import {
   renderDeadlinePlan,
@@ -189,23 +187,13 @@ type ObjectivePayloadReady = {
   priceUnitLabel: string;
 };
 
-const doneAtCarLimit = (carChargeLimit: SmartTaskCarChargeLimit): ObjectivePayloadResult => ({
-  kind: 'unavailable',
-  reason: 'already_satisfied',
-  body: formatSmartTaskCarLimitReason({ ...carChargeLimit, reached: true }),
-});
-
 const alreadySatisfiedResult = (
   objectiveKind: DeferredObjectiveSettingsEntry['kind'],
   progressDirection: 'increasing' | 'decreasing' | 'unknown',
-  carChargeLimit: SmartTaskCarChargeLimit | null,
-): ObjectivePayloadResult => {
-  if (carChargeLimit !== null) return doneAtCarLimit(carChargeLimit);
-  return {
-    kind: 'unavailable', reason: 'already_satisfied',
-    body: deadlineLabels(objectiveKind, progressDirection).unavailableByReason.already_satisfied.body,
-  };
-};
+): ObjectivePayloadResult => ({
+  kind: 'unavailable', reason: 'already_satisfied',
+  body: deadlineLabels(objectiveKind, progressDirection).unavailableByReason.already_satisfied.body,
+});
 
 const resolveDirectionUnavailable = (
   objectiveKind: DeferredObjectiveSettingsEntry['kind'],
@@ -231,18 +219,15 @@ const prepareObjectivePayload = (
   const progressDirection = ctx.activePlan.progressDirection;
   const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
   if (directionUnavailable !== null) return directionUnavailable;
-  const observedProgress = resolveTaskProgress(ctx.device, ctx.objective, ctx.activePlan);
-  const carChargeLimit = resolveSmartTaskCarChargeLimit(
-    ctx.activePlan.carChargeLimit,
-    ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null,
-  );
-  // Done at the car's own charge limit. Checked before the reading, because the
-  // charger that ends the session at the limit takes the car's level with it.
-  if (carChargeLimit?.reached === true) return doneAtCarLimit(carChargeLimit);
-  if (!observedProgress) return { kind: 'unavailable', reason: 'no_current_reading' };
-  const progress = withCarChargeLimitProgress(observedProgress, carChargeLimit?.limitValue ?? null);
+  const progress = resolveTaskProgress(ctx.device, ctx.objective, ctx.activePlan);
+  if (!progress) {
+    const carLimit = resolveSmartTaskCarChargeLimit(ctx.activePlan.carChargeLimit,
+      ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null);
+    return { kind: 'unavailable', reason: 'no_current_reading',
+      ...(carLimit === null ? {} : { body: formatSmartTaskCarLimitReason(carLimit) }) };
+  }
   if (progress.remainingUnits <= 0) {
-    return alreadySatisfiedResult(ctx.objective.kind, progressDirection, carChargeLimit);
+    return alreadySatisfiedResult(ctx.objective.kind, progressDirection);
   }
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
@@ -428,10 +413,12 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // a green on-track hero until the next settle. `latest.planStatus` stays the
   // committed trajectory and is still what the budget-cause derivation below
   // reads — a device left off is not a budget shortfall.
-  const reportedPlanStatus = resolveEffectivePlanStatus(
-    latest.planStatus,
-    activePlan!.diagnosticReasonCode,
+  const effectivePlanStatus = resolveEffectivePlanStatus(
+    latest.planStatus, activePlan!.diagnosticReasonCode, activePlan!.liveCompletion,
   );
+  const reportedPlanStatus = activePlan!.carChargeLimit?.reached === true && effectivePlanStatus !== 'cannot_meet'
+    ? 'at_risk'
+    : effectivePlanStatus;
   const deviceLeftOff = activePlan!.diagnosticReasonCode === 'objective_device_left_off';
   const cannotMeet = reportedPlanStatus === 'cannot_meet' || reportedPlanStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
@@ -521,7 +508,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       plannedTotalKWh: energyNeededKWh,
       currentProgress: progress.currentValue,
       startProgress,
-      targetValue: progress.plannedTargetValue,
+      targetValue: progress.targetValue,
       targetUnit: progress.unit,
     }),
     timeline: buildTimeline({
@@ -542,7 +529,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       currentChargeByStartMs,
       currentCoverStartByStartMs: buildCoverStartByStartMs(latest),
       currentValue: progress.currentValue,
-      targetValue: progress.plannedTargetValue,
+      targetValue: progress.targetValue,
       progressDirection: progress.progressDirection,
       progressPerKWh,
       unit: progress.unit,

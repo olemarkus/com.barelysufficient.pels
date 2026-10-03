@@ -1,3 +1,4 @@
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 /* eslint-disable max-lines -- single home for kind-aware smart-task copy
    (chips, status labels, pending-hero variants, history copy, cost & delivered-
    so-far formatters, EV provenance rows). Splitting per surface would scatter
@@ -17,6 +18,7 @@ import type {
 import type {
   DeferredObjectiveActivePlanCarChargeLimitV1,
   DeferredObjectiveActivePlanDiagnosticReason,
+  DeferredObjectiveLiveCompletion,
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
@@ -353,9 +355,9 @@ export const formatSmartTaskCarLimitReason = (cap: SmartTaskCarChargeLimit): str
   const target = formatCarLimitPercent(cap.targetValue);
   return cap.reached
     ? `Your car stopped at its own charge limit of ${limit}, below this smart task's ${target} target.`
-      + ' PELS counted the task as done.'
+      + ' The requested target is still unmet.'
     : `Your car stops at its own charge limit of ${limit}, below this smart task's ${target} target.`
-      + ` PELS charges to ${limit} and counts the task as done there.`;
+      + ' Raise the car’s charge limit to allow this task to reach its target.';
 };
 
 /** The widget's shorter why-line for the same task. */
@@ -661,14 +663,19 @@ export const resolveSmartTaskPreviewUnavailableCopy = (
 
 export const resolveSmartTaskPreviewStatusCopy = (
   status: DeferredObjectivePlanPreviewStatus,
-  unavailableReason?: DeferredObjectivePlanPreviewUnavailableReason,
+  unavailableReason: DeferredObjectivePlanPreviewUnavailableReason | undefined,
+  budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'],
 ): string | null => {
   switch (status) {
     case 'unavailable':
       return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
     case 'cannot_meet':
+      if (budgetRole === 'sole') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET}`;
+      if (budgetRole === 'contributing') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
       return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
     case 'at_risk':
+      if (budgetRole === 'sole') return `At risk — ${WHY_AT_RISK_BUDGET}`;
+      if (budgetRole === 'contributing') return `At risk — ${WHY_AT_RISK_BUDGET_PARTIAL}`;
       return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
     case 'satisfied':
       return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
@@ -1386,11 +1393,10 @@ export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
  * through this, so a user opening a row marked `At risk` can never land on a
  * green on-track hero.
  *
- * Only a healthy verdict is overlaid. `cannot_meet` and `satisfied` are already
- * the more truthful answer, and softening either would misreport a finished or
- * already-failed task. The overlay is live in BOTH directions — the recorder
- * refreshes `diagnosticReasonCode` every cycle — so turning the device back on
- * restores the committed verdict immediately rather than at the next settle.
+ * Completion comes from the current diagnostic, independently of the allocation
+ * revision. Accepted near-target holds and trustworthy reopening therefore appear
+ * immediately without rewriting the frozen schedule. Legacy/unavailable completion
+ * preserves the settled verdict; live restriction reasons still downgrade health.
  *
  * EVERY surface that reports a task's status must resolve through here. The full
  * set, so a new one can be checked against it:
@@ -1407,14 +1413,23 @@ export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
  * TRAJECTORY was; a device left off is not a budget shortfall, and freezing the
  * overlay is what would make it outlive the hold.
  */
-export const resolveEffectivePlanStatus = <T extends DeferredObjectiveActivePlanStatusV1>(
-  planStatus: T,
+export const resolveEffectivePlanStatus = (
+  planStatus: DeferredObjectiveActivePlanStatusV1,
   diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
-): T | 'at_risk' => (
-  diagnosticReasonCode === 'objective_device_left_off' && planStatus === 'on_track'
-    ? 'at_risk'
-    : planStatus
-);
+  liveCompletion: DeferredObjectiveLiveCompletion,
+): DeferredObjectiveActivePlanStatusV1 => {
+  const currentStatus = liveCompletion.kind === 'unavailable'
+    ? planStatus : resolveCompletionStatus(liveCompletion);
+  return (diagnosticReasonCode === 'objective_device_left_off'
+    || diagnosticReasonCode === 'objective_delivery_restricted'
+    || diagnosticReasonCode === 'objective_not_accepting_energy'
+    || diagnosticReasonCode === 'objective_device_limit') && currentStatus === 'on_track'
+    ? 'at_risk' : currentStatus;
+};
+
+const resolveCompletionStatus = (
+  completion: Exclude<DeferredObjectiveLiveCompletion, { kind: 'unavailable' }>,
+): DeferredObjectiveActivePlanStatusV1 => completion.kind === 'satisfied' ? 'satisfied' : completion.status;
 
 // `nowMs` is used to distinguish the `queued` id (plan ready, first action in
 // future — labelled "On track" in the UI, same as `on_track`) from other
@@ -1436,7 +1451,7 @@ const resolveCurrentCauseListStatus = (
   // ends the session at the car's limit reads unplugged with the car still in,
   // and telling that owner to plug in would be wrong. Ahead of the `:58`
   // settle too, which is when a satisfied verdict reaches `planStatus`.
-  if (carChargeLimitReached) return 'satisfied';
+  if (carChargeLimitReached) return 'at_risk';
   // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
   // non-pending plans so this branch fires regardless of whether `latest` is
   // still cached. Without this, the list chip would say "On track" while the
@@ -1458,6 +1473,7 @@ export const resolveSmartTaskListStatus = (params: {
   nowMs: number;
   // The plan's `carChargeLimit.reached`: the car stopped at its own charge limit.
   carChargeLimitReached: boolean;
+  liveCompletion: DeferredObjectiveLiveCompletion;
 }): SmartTaskListStatusId => {
   const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
 
@@ -1472,7 +1488,7 @@ export const resolveSmartTaskListStatus = (params: {
   }
   // Device left off outside PELS: overlay the committed verdict, which is still
   // the trajectory truth and says nothing about a device that is not running.
-  const reported = resolveEffectivePlanStatus(planStatus, diagnosticReasonCode);
+  const reported = resolveEffectivePlanStatus(planStatus, diagnosticReasonCode, params.liveCompletion);
 
   // Plan verdicts outrank the future-first-action check: `queued` renders the
   // same green `On track` chip as `on_track`, so letting it win here would
@@ -3136,27 +3152,19 @@ const MISSED_HISTORY_RECOURSE_SHORTFALL: Omit<DeadlineCannotMeetRecourse, 'devic
   targetTab: 'overview',
 };
 
-// Resolves the recourse action for a missed history entry. Producer-side
-// branch on `dailyBudgetExhausted` so the consumer never branches on the
-// snapshot's optional `dailyBudgetExhaustedBucketCount`. Per
-// `feedback_hard_cap_is_physical.md` the budget branch lands on
-// `targetTab: 'budget'` — never the capacity hard cap.
-//
-// Two-branch resolver:
-//   - budget exhausted → `Lower daily budget` (targetTab: 'budget')
-//   - everything else  → `Review device` (targetTab: 'overview' +
-//                        deviceId deep link)
-//
-// Returns `null` when the entry is not a missed run — the receipt-shape
-// succeeded hero and the muted abandoned hero carry no recourse.
-export const resolveMissedHistoryRecourse = (params: {
-  outcome: 'met' | 'missed' | 'abandoned' | 'replaced' | 'unknown';
-  dailyBudgetExhausted: boolean;
-  deviceId: string;
-}): DeadlineCannotMeetRecourse | null => {
-  if (params.outcome !== 'missed') return null;
-  if (params.dailyBudgetExhausted) return MISSED_HISTORY_RECOURSE_LOWER_BUDGET;
-  return { ...MISSED_HISTORY_RECOURSE_SHORTFALL, deviceId: params.deviceId };
+// The final active delivery blocker selects the relevant review destination.
+// Earlier contributing restrictions stay in the explanation, but do not route
+// a device-side final blocker to Budget. Legacy rows offer general device review
+// without inventing a cause from their saved schedule.
+export const resolveMissedHistoryRecourse = (
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'outcome' | 'deliveryExplanation' | 'deviceId'>,
+): DeadlineCannotMeetRecourse | null => {
+  if (entry.outcome !== 'missed') return null;
+  const explanation = entry.deliveryExplanation;
+  if (explanation.kind === 'recorded'
+    && explanation.primary.kind === 'blocked'
+    && explanation.primary.cause === 'budget_limited') return MISSED_HISTORY_RECOURSE_LOWER_BUDGET;
+  return { ...MISSED_HISTORY_RECOURSE_SHORTFALL, deviceId: entry.deviceId };
 };
 
 // Resolve the smart-task chip's underlying confidence value from the persisted

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type {
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveSettingsKind } from '../../../contracts/src/deferredObjectiveSettings';
@@ -17,7 +17,19 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 // Minimal structural shapes for the recorder + diagnostic. Defined locally rather than
 // imported from `lib/` so the settings-ui tsconfig (ES2020 lib) is not asked to type-check
 // runtime files that rely on ES2022 features (e.g. Array.prototype.at).
+type CompletionLike = { kind: 'target_reached' } | { kind: 'unmet' };
+type TaskEvaluationLike = {
+  deviceId: string; deadlineAtMs: number; requestedTarget: number;
+  progress: { kind: 'known'; value: number; direction: 'increasing' };
+  completion: CompletionLike;
+  planning: { kind: 'inactive' };
+  permissions: { budgetExempt: boolean; limitLowerPriority: boolean; pauseLowerPriority: boolean };
+  targetControl: { kind: 'temperature'; value: number };
+};
+
 type DeferredObjectiveDiagnosticLike = {
+  completion: CompletionLike;
+  evaluation: TaskEvaluationLike;
   deviceId: string;
   deviceName?: string;
   objectiveId: string;
@@ -60,15 +72,18 @@ type PlanHistoryRecorderLike = {
 type PlanHistoryRuntimeModule = {
   DeferredObjectivePlanHistoryRecorder: new (deps: {
     load: () => {
-      snapshot: DeferredObjectivePlanHistoryV5;
+      snapshot: DeferredObjectivePlanHistoryV6;
       persistenceSafe: boolean;
       meteredDeliveryStates: readonly unknown[];
     };
-    save: (history: DeferredObjectivePlanHistoryV5) => boolean;
+    save: (history: DeferredObjectivePlanHistoryV6) => boolean;
     endedBus: { publish: (event: unknown) => void; onEnded: (listener: unknown) => () => void };
     resolveHourPrice: (hourStartMs: number) => null;
     debugStructured: (payload: Record<string, unknown>) => void;
     getStallClassification: (deviceId: string) => undefined;
+    getDeviceConstraint: (deviceId: string) => { kind: 'none' };
+    getDeliveryControl: (deviceId: string) => { kind: 'permitted' };
+    isLiveMeasuredDraw: (deviceId: string) => boolean;
   }) => PlanHistoryRecorderLike;
 };
 
@@ -124,6 +139,15 @@ type TemperatureDiagOverrides = {
 };
 
 const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObjectiveDiagnosticLike => ({
+  completion: { kind: overrides.currentTemperatureC >= overrides.targetTemperatureC ? 'target_reached' : 'unmet' },
+  evaluation: {
+    deviceId: overrides.deviceId, deadlineAtMs: overrides.deadlineAtMs, requestedTarget: overrides.targetTemperatureC,
+    progress: { kind: 'known', value: overrides.currentTemperatureC, direction: 'increasing' },
+    completion: { kind: overrides.currentTemperatureC >= overrides.targetTemperatureC ? 'target_reached' : 'unmet' },
+    planning: { kind: 'inactive' },
+    permissions: { budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false },
+    targetControl: { kind: 'temperature', value: overrides.targetTemperatureC },
+  },
   deviceId: overrides.deviceId,
   deviceName: overrides.deviceName,
   objectiveId: `${overrides.deviceId}:temperature`,
@@ -147,16 +171,19 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   expectedStepId: null,
 });
 
-const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV5> => {
+const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
   const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
-  let saved: DeferredObjectivePlanHistoryV5 | null = null;
+  let saved: DeferredObjectivePlanHistoryV6 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
-    load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+    load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
     save: (history) => { saved = history; return true; },
     endedBus: { publish: () => undefined, onEnded: () => () => undefined },
     resolveHourPrice: () => null,
     debugStructured: () => undefined,
     getStallClassification: () => undefined,
+    getDeviceConstraint: () => ({ kind: 'none' }),
+    getDeliveryControl: () => ({ kind: 'permitted' }),
+    isLiveMeasuredDraw: () => true,
   });
 
   // Both devices are observed on every planning tick, mirroring how the runtime hands the
@@ -209,7 +236,7 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV5> => {
 };
 
 const groupByDevice = (
-  history: DeferredObjectivePlanHistoryV5,
+  history: DeferredObjectivePlanHistoryV6,
 ): Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> => {
   const grouped: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> = {};
   for (const entry of history.entries) {
@@ -304,6 +331,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
       const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
       const HOUR = 3_600_000;
       const entry = {
+        deliveryExplanation: { kind: 'legacy_unrecorded' as const },
         id: 'fixture-yaxis-regression',
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',
@@ -404,6 +432,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
       const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
       const HOUR = 3_600_000;
       const entry = {
+        deliveryExplanation: { kind: 'legacy_unrecorded' as const },
         id: 'fixture-receipt-first',
         deviceId: 'dev_connected300',
         deviceName: 'Connected 300',

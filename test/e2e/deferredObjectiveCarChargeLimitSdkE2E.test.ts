@@ -1,9 +1,8 @@
 // SDK-boundary e2e for an EV smart task capped at its car's own charge limit.
 //
-// WHAT THIS PROBES: owner ruling 2026-09-26 — when a car stops charging on its
-// own below a smart task's target, the task is capped at that limit, planned to
-// it, and met there. Production that night: an 80 % task on a Polestar set to
-// stop at 70 %, which finalized `missed / energy_underestimate`.
+// WHAT THIS PROBES: an 80% task retains its requested target when the car's
+// own charger limit is 70%. The lower limit is a device constraint and cannot
+// turn an unmet requested target into a completed task.
 //
 // HOW IT IS SIMULATED: through real Homey signals only. The car's limit is the
 // evidence the probe persists (`ev_car_link_state`: two stops at 70 %); the car
@@ -72,7 +71,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     vi.useRealTimers();
   });
 
-  it('plans to the car\'s limit, leaves the charger alone there, and records the run met at it', async () => {
+  it('retains the requested target and records a miss when the car stops at its lower limit', async () => {
     const car = new MockDevice(CAR_ID, 'Polestar 3', ['ev_charging_state', 'measure_battery'], 'car');
     await car.setCapabilityValue('ev_charging_state', 'plugged_out');
     await car.setCapabilityValue('measure_battery', 53);
@@ -95,7 +94,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     settings.set(CAPACITY_DRY_RUN, false);
     settings.set(OPERATING_MODE_SETTING, 'Home');
     settings.set(MANAGED_DEVICES, { [CHARGER_ID]: true });
-    settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: false });
+    settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: true });
     settings.set('capacity_priorities', { Home: { [CHARGER_ID]: 1 } });
     settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
     // Two earlier sessions where the car stopped on its own at 70 %.
@@ -116,7 +115,8 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     ));
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await createApp().onInit();
+    const app = createApp();
+    await app.onInit();
     await pumpMinutes(2);
 
     // Plug in: both sides move together, so the probe links the pair.
@@ -135,6 +135,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
       return level?.kind === 'known' && level.percent === 65;
     });
     expect(chargerLevel()).toMatchObject({ kind: 'known', percent: 65, carChargeLimitPercent: 70 });
+    expect(app.planService.getTaskDeliveryControl(CHARGER_ID)).toEqual({ kind: 'permitted' });
     // The persisted active plan the smart-task card and widget read carries the
     // cap, so they can say why the plan stops short of the 80 % shown.
     await pumpMinutes(1);
@@ -144,8 +145,8 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
       } | undefined)?.plansByDeviceId?.[CHARGER_ID],
     ).toMatchObject({ carChargeLimit: { limitValue: 70, reached: false } });
 
-    // The car reaches its limit. The task is met there, and PELS does not pause
-    // the charger for it: the car stops by itself.
+    // The car reaches its limit. The requested 80% remains unmet, and PELS
+    // leaves charging available for the car to decide when it stops.
     const writesBefore = putSpy.mock.calls.filter(([path]) => path === CHARGING_PATH).length;
     await car.setCapabilityValue('measure_battery', 70);
     await pumpMinutes(10);
@@ -163,7 +164,8 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
 
     const history = await api.ui_deferred_objective_history({ homey: mockHomeyInstance as never });
     expect(history.entriesByDeviceId[CHARGER_ID]).toEqual([
-      expect.objectContaining({ outcome: 'met', metReason: 'observed_limit', finalProgressValue: 70 }),
+      expect.objectContaining({ outcome: 'missed', targetValue: 80, finalProgressValue: 70 }),
     ]);
+    expect(JSON.stringify(history.entriesByDeviceId[CHARGER_ID][0].deliveryExplanation)).not.toContain('capacity_limited');
   });
 });

@@ -1,3 +1,6 @@
+import { isTaskDeliveryEvidence } from '../../../packages/shared-domain/src/taskDeliveryValidation';
+import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
+import { LEGACY_DELIVERY_EVIDENCE } from './deliveryEvidence';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryHourlyContribution,
@@ -8,6 +11,7 @@ import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards
 export type MeteredRunCommitment = { kind: 'known'; kwh: number } | { kind: 'unknown' };
 
 export type PersistedMeteredDeliveryState = {
+  deliveryEvidence: TaskDeliveryEvidence;
   commitment: MeteredRunCommitment;
   deviceId: string;
   deadlineAtMs: number;
@@ -28,8 +32,12 @@ const isCommitment = (value: unknown): value is MeteredRunCommitment => {
 
 /** Upgrade pre-commitment rows without throwing away their measured delivery. */
 export const migrateMeteredDeliveryCommitment = (raw: unknown): unknown => {
-  if (!raw || typeof raw !== 'object' || 'commitment' in raw) return raw;
-  return { ...raw, commitment: { kind: 'unknown' } };
+  if (!raw || typeof raw !== 'object') return raw;
+  return {
+    ...raw,
+    ...('commitment' in raw ? {} : { commitment: { kind: 'unknown' } }),
+    ...('deliveryEvidence' in raw ? {} : { deliveryEvidence: LEGACY_DELIVERY_EVIDENCE }),
+  };
 };
 
 const isCostDisplay = (value: unknown): value is DeferredObjectivePlanHistoryCostDisplay => {
@@ -55,12 +63,17 @@ const isHourlyContribution = (value: unknown): value is DeferredObjectivePlanHis
     && isTone(candidate.tone);
 };
 
+const isContributionList = (value: unknown): boolean => (
+  Array.isArray(value) && value.every(isHourlyContribution)
+);
+
 export const isPersistedMeteredDeliveryState = (
   value: unknown,
 ): value is PersistedMeteredDeliveryState => {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
-  return isCommitment(candidate.commitment)
+  return isTaskDeliveryEvidence(candidate.deliveryEvidence)
+    && isCommitment(candidate.commitment)
     && typeof candidate.deviceId === 'string'
     && candidate.deviceId.length > 0
     && isFiniteNumber(candidate.deadlineAtMs)
@@ -70,6 +83,5 @@ export const isPersistedMeteredDeliveryState = (
     && isFiniteNumber(candidate.totalCost)
     && (candidate.costDisplay === null || isCostDisplay(candidate.costDisplay))
     && typeof candidate.deliveryPriceComplete === 'boolean'
-    && Array.isArray(candidate.hourlyContributions)
-    && candidate.hourlyContributions.every(isHourlyContribution);
+    && isContributionList(candidate.hourlyContributions);
 };

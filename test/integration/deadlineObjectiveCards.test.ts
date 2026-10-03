@@ -145,6 +145,7 @@ const buildActivePlan = (overrides: {
   const pending = overrides.pending ?? false;
   const latest = overrides.latest ?? (pending ? null : buildActivePlanRevision(overrides.planStatus ?? 'on_track'));
   return {
+    liveCompletion: { kind: 'unavailable' },
     deviceId,
     deviceName: overrides.deviceName ?? 'Boiler',
     objectiveKind: 'temperature',

@@ -19,6 +19,12 @@ const missed = (
   partial: Partial<DeferredObjectivePlanHistoryRecord> = {},
 ): DeferredObjectivePlanHistoryRecord => partialDouble<DeferredObjectivePlanHistoryRecord>({
   outcome: 'missed',
+  deliveryExplanation: {
+    kind: 'recorded',
+    primary: { kind: 'blocked', cause: 'budget_limited' },
+    contributors: [],
+    intervals: [],
+  },
   deadlineAtMs: DEADLINE_MS,
   finalPlan: plan({ dailyBudgetExhaustedBucketCount: 3 }),
   originalPlan: null,
@@ -35,34 +41,72 @@ const resolve = (
 );
 
 describe('resolveDeadlineMissSuppression — which misses count', () => {
-  it('counts a miss whose FINAL plan saw the budget exhausted on that day', () => {
-    expect(resolve([missed()]).deadlineMissedToBudget).toBe(true);
+  it('counts recorded budget-only delivery blockers without any plan snapshot', () => {
+    expect(resolve([missed({ finalPlan: null, originalPlan: null })]))
+      .toEqual({ deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2 });
   });
 
-  it('does NOT resurrect a stale positive count from originalPlan when finalPlan ran clean', () => {
-    // finalPlan present but no exhausted buckets (field omitted when zero);
-    // originalPlan carried a positive count from an earlier richer schedule.
+  it('uses recorded budget evidence even when the final plan projected no budget shortfall', () => {
     expect(resolve([missed({
-      finalPlan: plan({}),
+      finalPlan: plan({ floorShortfallCause: 'time_capacity' }),
       originalPlan: plan({ dailyBudgetExhaustedBucketCount: 5 }),
-    })])).toEqual({});
-  });
-
-  it('falls back to originalPlan only when finalPlan is wholly absent (unrevised run)', () => {
-    expect(resolve([missed({
-      finalPlan: null,
-      originalPlan: plan({ dailyBudgetExhaustedBucketCount: 2 }),
     })]).deadlineMissedToBudget).toBe(true);
   });
 
-  it('counts a miss attributed by floorShortfallCause, the signal new entries carry', () => {
-    expect(resolve([missed({ finalPlan: plan({ floorShortfallCause: 'budget' }) })])
-      .deadlineMissedToBudget).toBe(true);
+  it('does not turn legacy budget-shaped snapshots into proved damage', () => {
+    for (const finalPlan of [
+      plan({ dailyBudgetExhaustedBucketCount: 3 }),
+      plan({ floorShortfallCause: 'budget' }),
+      null,
+    ]) {
+      expect(resolve([missed({
+        deliveryExplanation: { kind: 'legacy_unrecorded' },
+        finalPlan,
+        originalPlan: plan({ floorShortfallCause: 'budget' }),
+      })])).toEqual({});
+    }
   });
 
-  it('ignores a miss attributed to a non-budget cause', () => {
-    expect(resolve([missed({ finalPlan: plan({ floorShortfallCause: 'time_capacity' }) })]))
-      .toEqual({});
+  it('ignores a permitted delivery miss despite budget-shaped snapshots', () => {
+    expect(resolve([missed({
+      deliveryExplanation: {
+        kind: 'recorded', primary: { kind: 'clear' }, contributors: [], intervals: [],
+      },
+      finalPlan: plan({ floorShortfallCause: 'budget' }),
+    })])).toEqual({});
+  });
+
+  it('excludes a device cutoff even when budget was an earlier contributor', () => {
+    expect(resolve([missed({
+      deliveryExplanation: {
+        kind: 'recorded',
+        primary: { kind: 'blocked', cause: 'device_not_accepting' },
+        contributors: ['budget_limited'],
+        intervals: [],
+      },
+    })])).toEqual({});
+  });
+
+  it('excludes primary budget control when any other delivery blocker contributed', () => {
+    expect(resolve([missed({
+      deliveryExplanation: {
+        kind: 'recorded',
+        primary: { kind: 'blocked', cause: 'budget_limited' },
+        contributors: ['capacity_limited'],
+        intervals: [],
+      },
+    })])).toEqual({});
+  });
+
+  it('accepts repeated budget contributors as budget-only evidence', () => {
+    expect(resolve([missed({
+      deliveryExplanation: {
+        kind: 'recorded',
+        primary: { kind: 'blocked', cause: 'budget_limited' },
+        contributors: ['budget_limited'],
+        intervals: [],
+      },
+    })]).deadlineMissDeniedKwh).toBe(2);
   });
 
   it('ignores non-missed outcomes, other days, and an empty history', () => {

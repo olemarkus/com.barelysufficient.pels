@@ -1,55 +1,38 @@
 import { resolveMissedHistoryRecourse } from '../../packages/shared-domain/src/deadlineLabels';
+import type { TaskDeliveryExplanation } from '../../packages/contracts/src/taskDelivery';
 
-// Producer-side resolution: history-detail hero just renders these payloads.
-// These tests pin the two-branch contract so the consumer never has to
-// re-derive `targetTab` / `deviceId` / label from entry shape.
+const recorded = (cause: 'budget_limited' | 'device_not_accepting'): Extract<TaskDeliveryExplanation, { kind: 'recorded' }> => ({
+  kind: 'recorded', primary: { kind: 'blocked', cause }, contributors: [], intervals: [],
+});
 
 describe('resolveMissedHistoryRecourse', () => {
-  it('returns null when the entry did not miss', () => {
+  it.each(['met', 'abandoned', 'replaced'] as const)('returns null for %s entries', (outcome) => {
     expect(resolveMissedHistoryRecourse({
-      outcome: 'met',
-      dailyBudgetExhausted: false,
-      deviceId: 'dev_x',
-    })).toBeNull();
-    expect(resolveMissedHistoryRecourse({
-      outcome: 'abandoned',
-      dailyBudgetExhausted: false,
-      deviceId: 'dev_x',
-    })).toBeNull();
-    expect(resolveMissedHistoryRecourse({
-      outcome: 'replaced',
-      dailyBudgetExhausted: false,
-      deviceId: 'dev_x',
-    })).toBeNull();
-    expect(resolveMissedHistoryRecourse({
-      outcome: 'unknown',
-      dailyBudgetExhausted: false,
-      deviceId: 'dev_x',
+      outcome, deviceId: 'dev_x', deliveryExplanation: recorded('budget_limited'),
     })).toBeNull();
   });
 
-  it('budget-exhausted missed run lands on the Budget tab and carries no deviceId deep link', () => {
+  it('routes a recorded final budget blocker to Budget without a device deep link', () => {
     const recourse = resolveMissedHistoryRecourse({
-      outcome: 'missed',
-      dailyBudgetExhausted: true,
-      deviceId: 'dev_water_heater',
+      outcome: 'missed', deviceId: 'dev_water_heater', deliveryExplanation: recorded('budget_limited'),
     });
     expect(recourse).toEqual({ label: 'Lower daily budget', targetTab: 'budget' });
-    // Budget recourse is tab-only — the user manages the daily budget at
-    // the app level, not on a specific device, so no overlay deep link.
     expect(recourse?.deviceId).toBeUndefined();
   });
 
-  it('shortfall missed run threads the entry deviceId so the click can open the device-settings overlay', () => {
+  it('routes the final device blocker to its device despite an earlier budget restriction', () => {
     const recourse = resolveMissedHistoryRecourse({
-      outcome: 'missed',
-      dailyBudgetExhausted: false,
-      deviceId: 'dev_water_heater',
+      outcome: 'missed', deviceId: 'dev_water_heater',
+      deliveryExplanation: { ...recorded('device_not_accepting'), contributors: ['budget_limited'] },
     });
     expect(recourse).toEqual({
-      label: 'Review device',
-      targetTab: 'overview',
-      deviceId: 'dev_water_heater',
+      label: 'Review device', targetTab: 'overview', deviceId: 'dev_water_heater',
     });
+  });
+
+  it('offers general review for legacy entries without inventing a budget cause', () => {
+    expect(resolveMissedHistoryRecourse({
+      outcome: 'missed', deviceId: 'dev_water_heater', deliveryExplanation: { kind: 'legacy_unrecorded' },
+    })).toEqual({ label: 'Review device', targetTab: 'overview', deviceId: 'dev_water_heater' });
   });
 });

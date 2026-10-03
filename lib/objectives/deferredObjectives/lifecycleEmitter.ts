@@ -1,3 +1,5 @@
+import type { TaskReservationReader } from './taskDeliveryState';
+import { reportTaskDeliveryStatus, type TaskDeliveryReader } from './deliveryEvidence';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { PowerTrackerState } from '../../power/tracker';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
@@ -139,6 +141,8 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   // booking clock: the tick books the draw before it builds the diagnostics, so
   // an energy task's progress is current as of this tick.
   energyDelivery: EnergyTaskDeliveryTracker;
+  getDeliveryEvidence: TaskDeliveryReader;
+  isReservationSuppressed: TaskReservationReader;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -171,7 +175,7 @@ export class DeferredObjectiveLifecycleEmitter {
     // so the status chip, notifications, Flows (active-plan recorder) and the
     // postmortem all agree. The decoration/actuation path builds its own
     // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
-    const diagnostics = reportStalledTasksAsSatisfied(buildDeferredObjectiveDiagnostics({
+    let diagnostics = reportStalledTasksAsSatisfied(buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),
       devices,
@@ -187,10 +191,13 @@ export class DeferredObjectiveLifecycleEmitter {
       resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       getStallClassification: this.deps.getStallClassification,
       getDeliveredEnergyKWh: this.deps.energyDelivery.getDeliveredKWh,
+      isReservationSuppressed: this.deps.isReservationSuppressed,
     }), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory(diagnostics, nowMs, activePlans);
+
+    diagnostics = diagnostics.map((diagnostic) => reportTaskDeliveryStatus(diagnostic, this.deps.getDeliveryEvidence));
 
     // Active-plan commitment WRITE, on the clock. The recorder gates replan
     // revisions to once per hour at the :58 mark (a first revision is immediate).

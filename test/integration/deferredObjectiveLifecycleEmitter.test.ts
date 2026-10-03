@@ -1,8 +1,10 @@
+import { noDeliveryEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import {
   createInertEnergyDelivery,
   createMemoryEnergyDeliveryStore,
   everyReadingLive,
+  noReservationSuppression,
   noDeviceExclusion,
   noStallEvidence,
 } from '../helpers/deferredObjectiveWiringFixtures';
@@ -85,6 +87,8 @@ const buildDeps = (
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
   energyDelivery: createInertEnergyDelivery(),
+  isReservationSuppressed: noReservationSuppression,
+  getDeliveryEvidence: noDeliveryEvidence,
   observeDeferredObjectivePlanHistory: () => undefined,
   observeDeferredObjectiveActivePlans: () => undefined,
   ...overrides,
@@ -158,7 +162,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     expect(diagnostics[0].currentValue).toBeCloseTo(2);
   });
 
-  it('reports a task whose device is parked at its target as satisfied', () => {
+  it('does not apply thermostat idle completion to an EV task', () => {
     // The status chip, notifications and Flows read this lane's diagnostics, so
     // it is the one lane that resolves a stall to `satisfied` (the decoration
     // lane reads the same stall evidence for the reservation ledger only).
@@ -167,6 +171,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       version: 1,
       plansByDeviceId: {
         'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'ev-1',
           deviceName: 'Driveway EV',
           objectiveKind: 'ev_soc',
@@ -205,10 +210,8 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     emitter.tick(NOW_MS);
 
     const [diagnostics] = observeDeferredObjectivePlanHistory.mock.calls[0]!;
-    expect(diagnostics[0]).toMatchObject({
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      reasonCode: 'objective_stalled_near_target',
-    });
+    expect(diagnostics[0].trajectory).not.toEqual({ kind: 'resolved', status: 'satisfied' });
+    expect(diagnostics[0].reasonCode).not.toBe('objective_stalled_near_target');
   });
 
   it('no-ops when no settings provider returns settings', () => {

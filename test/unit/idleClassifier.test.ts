@@ -107,6 +107,89 @@ describe('createIdleClassifier', () => {
     });
   });
 
+  describe('live completion evidence', () => {
+    const parkedClassifier = () => {
+      const classifier = createIdleClassifier();
+      classifier.classifyAll([heaterAt()], 1_000_000);
+      classifier.classifyAll([heaterAt()], 1_000_000 + IDLE_HOLD_MIN_DURATION_MS);
+      return classifier;
+    };
+
+    it('withdraws stale near-target evidence on a trusted temperature regression without another plan', () => {
+      const classifier = parkedClassifier();
+      expect(classifier.getLiveStallEvidence(heaterAt())).toBeDefined();
+      expect(classifier.getLiveStallEvidence(heaterAt({ temperature: { currentTemperature: 55, currentTarget: 65 } })))
+        .toBeUndefined();
+      expect(classifier.getStallEvidence('heater-1')).toBeUndefined();
+      expect(classifier.getLiveStallEvidence(heaterAt())).toBeUndefined();
+    });
+
+    it('keeps the observer exit hysteresis and reports the latest trusted gap', () => {
+      const classifier = parkedClassifier();
+      expect(classifier.getLiveStallEvidence(heaterAt({ temperature: { currentTemperature: 58.6, currentTarget: 65 } })))
+        .toMatchObject({ classification: 'near_target_idle', temperatureGapC: expect.closeTo(6.4) });
+    });
+
+    it('keeps accepted warmth when completion turns the device off or lowers its setpoint', () => {
+      const classifier = parkedClassifier();
+      expect(classifier.getLiveStallEvidence(heaterAt({
+        currentState: 'off', temperature: { currentTemperature: 61.5, currentTarget: 40 },
+      }))).toMatchObject({ classification: 'near_target_idle', classifiedAgainstTargetValue: 65, temperatureGapC: 3.5 });
+    });
+
+    it('preserves the original accepted setpoint across plan cycles with a lowered fallback target and off posture', () => {
+      const classifier = parkedClassifier();
+      const lowered = heaterAt({ temperature: { currentTemperature: 61.5, currentTarget: 40 } });
+      classifier.classifyAll([lowered], 2_000_000); // Changed basis discards the old streak.
+      classifier.classifyAll([lowered], 2_000_001); // First observation on the new basis.
+      classifier.classifyAll([lowered], 2_000_001 + IDLE_HOLD_MIN_DURATION_MS);
+      expect(classifier.getStallEvidence('heater-1')).toMatchObject({ classifiedAgainstTargetValue: 40 });
+      expect(classifier.getLiveStallEvidence(lowered)).toMatchObject({
+        classification: 'near_target_idle', classifiedAgainstTargetValue: 65, temperatureGapC: 3.5,
+      });
+      const off = { ...lowered, currentState: 'off' };
+      classifier.classifyAll([off], 3_000_000);
+      expect(classifier.getClassification('heater-1')).toBeUndefined();
+      expect(classifier.getLiveStallEvidence(off)).toMatchObject({ classifiedAgainstTargetValue: 65 });
+      const withinExit = { ...off, temperature: { currentTemperature: 58.6, currentTarget: 40 } };
+      classifier.classifyAll([withinExit], 3_100_000);
+      expect(classifier.getLiveStallEvidence(withinExit)).toMatchObject({
+        classifiedAgainstTargetValue: 65, temperatureGapC: expect.closeTo(6.4),
+      });
+      const outsideExit = { ...off, temperature: { currentTemperature: 58.4, currentTarget: 40 } };
+      classifier.classifyAll([outsideExit], 3_200_000);
+      expect(classifier.getLiveStallEvidence(outsideExit)).toBeUndefined();
+    });
+
+    it('adopts a newly accepted higher setpoint after its own hold', () => {
+      const classifier = parkedClassifier();
+      const higher = heaterAt({ temperature: { currentTemperature: 65.5, currentTarget: 70 } });
+      classifier.classifyAll([higher], 2_000_000);
+      expect(classifier.getLiveStallEvidence(higher)).toMatchObject({ classifiedAgainstTargetValue: 65 });
+      classifier.classifyAll([higher], 2_000_001); // Seed after the setpoint-change reset.
+      classifier.classifyAll([higher], 2_000_001 + IDLE_HOLD_MIN_DURATION_MS);
+      expect(classifier.getLiveStallEvidence(higher)).toMatchObject({ classifiedAgainstTargetValue: 70 });
+    });
+
+    it('withdraws retained original-target acceptance when a later plan cycle observes resumed draw', () => {
+      const classifier = parkedClassifier();
+      const fallback = heaterAt({ currentState: 'off',
+        temperature: { currentTemperature: 61.5, currentTarget: 40 } });
+      classifier.classifyAll([fallback], 2_000_000);
+      expect(classifier.getLiveStallEvidence(fallback)).toMatchObject({ classifiedAgainstTargetValue: 65 });
+      classifier.classifyAll([heaterAt({ currentDrawKw: 1.2 })], 2_100_000);
+      expect(classifier.getLiveStallEvidence(heaterAt())).toBeUndefined();
+    });
+
+    it('withdraws acceptance when drawing resumes and waits for a new hold', () => {
+      const classifier = parkedClassifier();
+      expect(classifier.getLiveStallEvidence(heaterAt({ currentDrawKw: 1.2 }))).toBeUndefined();
+      expect(classifier.getLiveStallEvidence(heaterAt())).toBeUndefined();
+      classifier.classifyAll([heaterAt()], 2_000_000);
+      expect(classifier.getStallEvidence('heater-1')).toBeUndefined();
+    });
+  });
+
   // near_target_idle is the benign duty-cycle classification: it must NOT reach
   // the ungated info sink (which feeds the no-debug diagnostics report) — it
   // routes to the topic-gated debug emitter instead.

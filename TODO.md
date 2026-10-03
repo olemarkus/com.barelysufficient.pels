@@ -75,7 +75,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
-- **Smart tasks** — 1: `on_track` while the planned bucket goes undelivered
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
 - **Docs** — 1: safe pace defined as "hard cap minus safety margin"
 
@@ -364,89 +363,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
-- [ ] **P2 — an energy task whose device stopped taking energy keeps reserving capacity from
-      lower-priority tasks until its deadline.** A water heater on a relay switches its element off
-      once the tank is hot; the energy task then falls behind, books every remaining hour, and
-      each of those hours still publishes a priority reservation, so a lower-priority task (an EV,
-      say) is allocated around power the heater will not draw. A relay has no setpoint, so the
-      idle classifier's stall evidence (the path that releases a parked thermostat's reservation)
-      never fires for it. **Where:** the reservation step in `buildDeferredObjectiveDiagnostics`
-      (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`, `buildPriorityReservations`,
-      gated today only on `stallAtTarget`). **What changes:** skip the reservation for an energy
-      task whose device drew about 0 kW for a dwell (15 min) during an hour it claimed, from a
-      producer-side "claimed but not drawing" verdict rather than the raw draw. The task keeps its
-      schedule and is not satisfied by it. **Done:** an SDK-boundary e2e with an energy task on a
-      relay that cuts out and a lower-priority EV task shows the EV allocated the heater's later
-      hours on the next settle.
-
-- [ ] **P2 — a disproved car charge limit is served from the frozen plan until the `:58` settle.**
-      When a car charges past its qualified limit (`ev_car_observed_limit_disproven`), the task's
-      reachable target returns to the owner's, but the committed hours and their
-      `plannedUnitMilestone`s were booked against the cap. Until the next settle the frozen read
-      judges the car "ahead" of a milestone that ends at the old limit and can release or hold the
-      charger in a later-cheaper hour, for up to an hour. **Where:** the replan decision in
-      `buildDeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
-      `replanRequested`), which asks only for an objective edit, a missing commitment or the settle
-      mark. **What changes:** record the reachable target a commitment was booked against on the
-      revision, and request a fresh allocation when the live reachable target differs.
-      **Done:** an SDK e2e where the limit is disproved mid-run replans to the owner's target on the
-      next lifecycle tick.
-
-- [ ] **The budget-contribution probe cannot tell a per-bucket budget cap from another
-      task's reservation.** `resolveBudgetBoundFeasibility` uncaps by setting
-      `usefulEnergyCapKWh: Number.POSITIVE_INFINITY`, but that field is not the raw budget
-      slice — `bucketAllocation.ts` computes `max(0, usefulEnergyCapKWh - higherPriorityReservedKWh)`,
-      so the probe compares `max(0, C-R)` against `Infinity` and cannot attribute which of the
-      two bound the hour. When the cap alone would not have bound but a higher-priority smart
-      task's reservation does, the verdict is `contributing` and the hero names the daily budget
-      for a shortfall another task caused. Pre-existing on the `sole` path, where it required
-      uncapping to close the gap outright; `contributing` fires on any strict improvement, so it
-      is now reachable on a user-facing sentence. Fix: uncap the budget component only, leaving
-      the reservation subtraction intact — the two limits need separate fields on the bucket, or
-      the probe needs the reservation total to add back. Done when a bucket bound purely by a
-      higher-priority reservation resolves `none`. Files:
-      `lib/objectives/deferredObjectives/horizonPlanner.ts`,
-      `lib/objectives/deferredObjectives/bucketAllocation.ts`. Source: adversarial review of the
-      budget-contributing-cause change, 2026-09-08. [P2]
-
-- [ ] **No coverage for the budget-contribution signal on a single-rung ladder or through
-      persistence.** Two gaps left by the same change. (a) `resolveClimbedBandFeasibility`
-      short-circuits when climbing adds no capacity and returns `floorUnplannedKWh` as the
-      capped-climbed residue; nothing exercises it, and that is the single-step EV-charger shape
-      the original entry cited as the motivating case. (b) Nothing asserts the round trip:
-      that `buildRevision` stamps `budgetContributedToShortfall`, that the parse seam accepts
-      `true`/absent/`false` and rejects a non-boolean, or that the frozen read restores it — the
-      fixture edits are `false` placeholders with no assertions. Done when a single-rung case and
-      a persist-then-restore case both fail against a reverted producer. Files:
-      `test/unit/deferredObjectiveHorizon.test.ts`,
-      `test/unit/deferredObjectiveActivePlanShape.test.ts`. Source: adversarial review of the
-      budget-contributing-cause change, 2026-09-08. [P3]
-
-- [ ] **The smart-task preview blames time when the daily budget is what stops the task.**
-      `resolveSmartTaskPreviewStatusCopy` (`packages/shared-domain/src/deadlineLabels.ts`), used by
-      the editor (`packages/settings-ui/src/ui/smartTaskEdit.ts`) and the New smart task widget
-      (`widgets/create_smart_task/src/public/render.ts`), always explains "Cannot finish" as not
-      enough usable time before the ready-by time. The preview estimate carries no shortfall cause,
-      while the saved task's detail does (`floorShortfallCause` / `budgetContributedToShortfall`).
-      Since "May limit lower-priority devices" no longer requires "May go over daily budget", a
-      limit-only preview on a budget-bound task steers the owner to move the ready-by time instead of
-      granting the budget permission. Change: carry the shortfall cause on the preview estimate and
-      pick the existing budget "why" lines there. Done when a budget-bound, limit-only preview names
-      the daily budget, pinned by a settings-UI spec. Source: pels-ux-fit on the limit/budget
-      decoupling, 2026-09-24. [P2]
-
-- [ ] **A smart task reports `on_track` while its current planned bucket goes undelivered.**
-      Prod 2026-08-01, water heater "Connected 300": the frozen horizon booked 1.183 kWh into the
-      current bucket, the device was restore-blocked the whole hour (shed, 0 W, tank temperature
-      falling 22.2 → 18.8 °C against a 65 °C / 06:00 deadline), and every
-      `deferred_objective_horizon_planned` log still read `status: "on_track",
-      reasonCode: "planned_with_margin"` with `energyExpectedKWh < energyNeededKWh`. The status
-      derives from the planned horizon, not from delivery against it, so an execution stall is
-      invisible until the deadline math finally tips into `Cannot finish`. Surface bucket
-      non-delivery (planned useful energy vs delivered) in the status/reason so the widget alert
-      fires while there is still time to act — this is the "trajectory visible for the skeptic"
-      gap on the smart-task lane. Found during the 2026-08-01 budget-hold copy investigation. [P1]
-
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
       Same shape as the fixed step-ladder gap one short-circuit earlier: in
       `buildDiagnosticWithPolicyHorizon`, a `profileEnergy.reasonCode` (e.g. a real
@@ -459,20 +375,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       commitments with stamped `plannedUnitMilestone` could be served with a degraded/absent
       energy estimate. Do it as its own change with its own SDK-boundary e2e. Source: 2026-08-02
       task-6 fix review. [P2]
-
-- [ ] **Split the three meanings collapsed into `progressCurrentValue`'s `undefined`.**
-      `lib/objectives/deferredObjectives/diagnosticFields.ts` returns `number | undefined`, and
-      the `undefined` means three different things: `generic_energy` has no band dimension (a
-      structural fact — degrading to the global mean is correct), progress is untrustworthy
-      (`progress.reasonCode` set: stale sensor, missing device), and the measurement is simply
-      absent. `integrateBands` treats all three alike, so cases 2 and 3 currently produce a
-      plausible-looking `remainingUnits × globalMean` energy figure derived from progress the
-      producer already declared untrustworthy. Return a discriminated result and let only the
-      first case degrade; the other two belong in the existing all-null "unavailable" arm of
-      `DeferredObjectiveEnergyResolution`. Deliberately NOT done alongside the miss-attribution
-      fix: it changes planner behaviour (objectives that get an estimate today would report
-      `objective_missing_capacity`), so it wants its own PR and its own SDK-boundary e2e.
-      Split out 2026-08-12. [P2]
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
@@ -1386,33 +1288,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the current map. Source: adversarial review of the measured-draw collapse,
       2026-08-08. [P2]
 
-- [ ] **A stall promotion is unattributable in the logs: nothing records the verdict or setpoint
-      that armed it.** `maybePromoteOnStall` (`lib/objectives/deferredObjectives/planHistory.ts`)
-      and `resolveStallReportedStatus` (`.../diagnosticsBridge.ts`) both act on
-      `StallEvidence`, and a promotion latches the run `satisfied` for good —
-      `computeMergedMetState` freezes it and `recordNonPlannableTick` excludes stall reasons from
-      the re-open path. The classifier logs only *transitions*
-      (`device_near_target_idle_started` / `_cleared`), so the per-cycle verdict the gate actually
-      read is never written anywhere. `deferred_objective_horizon_planned` carries the resulting
-      `status` / `reasonCode` but not its cause.
-
-      This blocked a real investigation on 2026-08-24: a Connected 300 run reported
-      `satisfied` / `objective_stalled_near_target` at 40.6 °C against a 65 °C target with 7.25 kWh
-      still booked, and the logs could not say which verdict and setpoint produced it — the last
-      classifier transition was five hours earlier and pointed the other way (`unresponsive`).
-
-      **Where:** the stall gate call sites above; the `deferred_objective_horizon_planned` payload
-      in `diagnosticsBridge.ts`.
-
-      **What changes:** emit the evidence the gate consumed — `classification` and
-      `classifiedAgainstTargetValue` alongside the objective's `targetValue` — either as fields on
-      the existing horizon-planned event or as a dedicated event at the promotion site. Log it on
-      the promotion, not on every cycle; a latch that fires once deserves one line.
-
-      **Done when:** a `satisfied` / `objective_stalled_*` status in a production log can be traced
-      to the verdict and setpoint that produced it without re-deriving them from device writes,
-      pinned by a test asserting the fields appear when a promotion fires. [P2]
-
 - [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**
       With `power_source = flow` and samples arriving less often than once a minute, every
       sustained run ends `evidence_stale` (`setup/capacityShortfallAlertDispatch.ts:366`, 60 s
@@ -1450,20 +1325,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
 ## Architecture and tooling debt
-
-- [ ] **The horizon planner accepts looser inputs than its one producer sends.**
-      `planDeferredObjectiveHorizon`'s only production caller (`rescueReplan.ts`) always passes
-      `committed` and, on the nested objective, `fullyReserved` and `deadlineMarginMs`, and never
-      passes `epsilonKWh`, so `resolveCommittedFlag`'s legacy length-based branch
-      (`horizonPlanner.ts`), `normalizeEpsilon` / `normalizeDeadlineMarginMs` and the optional
-      markers in `types.ts` guard states nothing produces. `aheadOfHourMilestone` is optional one
-      level up (the rescue replan's own params), so trace its producer before tightening it.
-      **What changes:** make the three required, drop `epsilonKWh` (the planner's own constant is
-      the only value it ever takes) and delete the fallbacks; 36 cases in
-      `test/unit/deferredObjectiveHorizon.test.ts` omit `committed` and lean on the legacy branch,
-      and five integration/e2e callers need the same fixture update. **Done when:**
-      `DeferredObjectiveHorizonInput` has no optional field the producer always sets, and no
-      `epsilonKWh` input. [P2]
 
 - [ ] **The device transport's parse providers are optional though production sets all 13.**
       13 members of `DeviceTransportParseProviders` (`lib/device/transport/managerParseDevice.ts`)

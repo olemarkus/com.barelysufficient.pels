@@ -271,6 +271,15 @@ const classifyByGapAndDuration = (
   return durationMs >= IDLE_UNRESPONSIVE_MIN_DURATION_MS ? 'unresponsive' : 'active';
 };
 
+/** Validate an accepted hold against current observations without booking another sample. */
+export const nearTargetIdleStillApplies = (input: IdleDetectorInput): boolean => (
+  measuredIsIdle(input.currentDrawKw) && classifyByGapAndDuration(
+    computeTemperatureGap(input.currentTemperature, input.targetTemperature),
+    IDLE_HOLD_MIN_DURATION_MS,
+    'near_target_idle',
+  ) === 'near_target_idle'
+);
+
 const pruneSamplesToWindow = (
   samples: readonly IdleSample[],
   now: number,

@@ -1,3 +1,4 @@
+import { buildAllocatedTaskEvaluation } from './taskEvaluationProducer';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,
@@ -18,7 +19,6 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 import {
   buildKnownEnergyFields,
-  isCurrentBucketPlanned,
   mergeProgressFields,
 } from './diagnosticFields';
 
@@ -146,7 +146,7 @@ export const buildDeadlineAwarePolicyHorizon = (
 export const buildFrozenDiagnostic = (params: {
   nowMs: number;
   base: DeferredObjectiveDiagnostic;
-  progress: DeferredObjectiveProgressResolution;
+  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
   deadlineAtMs: number;
@@ -178,18 +178,21 @@ export const buildFrozenDiagnostic = (params: {
     steps,
     epsilonKWh: FROZEN_EPSILON_KWH,
   });
+  const evaluation = buildAllocatedTaskEvaluation(deviceId, objective, progress, horizonPlan);
   return {
     ...mergeProgressFields(base, progress.currentValue),
+    evaluation,
+    completion: evaluation.completion,
     trajectory: { kind: 'resolved', status: horizonPlan.status },
     reasonCode: horizonPlan.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: frozenRead.hours.length,
     expectedStepId: horizonPlan.expectedStepId,
     ...(params.liveStepsUnavailable === true ? { liveStepsUnavailable: true as const } : {}),
-    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
-      && isCurrentBucketPlanned(horizonPlan),
-    limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
-    pauseLowerPriorityApplied: objective.rescue?.pauseLowerPriorityDevices === 'always',
+    budgetExemptApplied: evaluation.permissions.budgetExempt
+      && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
+    limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,
+    pauseLowerPriorityApplied: evaluation.permissions.pauseLowerPriority,
     horizonPlan,
   };
 };

@@ -77,6 +77,7 @@ const okPreview = {
   deadlineLabel: 'Tomorrow 07:00',
   scheduledWindowLabel: '02:00–04:00',
   estimate: {
+    budgetRole: 'none',
     status: 'on_track',
     scheduledHours: [{ startsAtMs: 1, plannedKWh: 1 }],
     projectedFinishAtMs: 2,
@@ -140,6 +141,26 @@ describe('smartTaskEdit controller', () => {
       deadlineAtMs: okPreview.deadlineAtMs,
       whenLine: 'If you save: runs 02:00–04:00 · Ready by Tomorrow 07:00',
     });
+  });
+
+  it.each([
+    ['at_risk', 'sole', 'Today’s daily budget may run out'],
+    ['cannot_meet', 'sole', 'Today’s daily budget runs out'],
+    ['cannot_meet', 'contributing', 'Today’s daily budget is holding part'],
+  ])('uses the producer budget explanation for %s previews (%s)', async (status, budgetRole, text) => {
+    await installHomey((call) => call.uri === SETTINGS_UI_SMART_TASK_PREVIEW_PATH
+      ? { ...okPreview, estimate: { ...okPreview.estimate, status, budgetRole } }
+      : { ok: true });
+    const controller = await loadController();
+    controller.openSmartTaskEditor({
+      ...CONTEXT,
+      baselinePermissions: { ...NO_PERMISSIONS, limitLowerPriorityDevices: true },
+    });
+    controller.setSmartTaskEditTarget('70');
+    await vi.advanceTimersByTimeAsync(500);
+    const verdict = controller.getSmartTaskEditSnapshot()!.preview!.verdictLine;
+    expect(verdict).toContain(text);
+    expect(verdict).not.toContain('not enough usable time');
   });
 
   it('reverting the draft mid-preview returns busy to idle (no stuck "Updating estimate…")', async () => {
